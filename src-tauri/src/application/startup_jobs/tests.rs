@@ -390,11 +390,18 @@ async fn test_startup_schedules_after_resuming_agent_tasks() {
     // Run startup - should resume the Executing task AND call scheduler
     runner.run().await;
 
-    // Verify scheduler was called (happens after resumption loop)
+    // Verify try_schedule_ready_tasks was called (happens after resumption loop).
+    // Note: try_retry_main_merges is also called when running_count == 0 (boot recovery),
+    // so total call_count may be 2. We assert the specific scheduling call occurred.
+    let schedule_calls: Vec<_> = scheduler
+        .get_calls()
+        .into_iter()
+        .filter(|c| c.method == "try_schedule_ready_tasks")
+        .collect();
     assert_eq!(
-        scheduler.call_count(),
+        schedule_calls.len(),
         1,
-        "Scheduler should be called after resuming agent-active tasks"
+        "Scheduler should call try_schedule_ready_tasks after resuming agent-active tasks"
     );
 }
 
@@ -1867,5 +1874,149 @@ async fn test_pending_merge_processed_in_phase1() {
         updated.internal_status,
         InternalStatus::PendingMerge,
         "PendingMerge task should be processed in Phase 1 merge-first recovery"
+    );
+}
+
+// ============================================================
+// Boot Recovery: main_merge_deferred Tests
+// ============================================================
+
+/// Scenario: quiescent boot — PendingMerge task with main_merge_deferred=true,
+/// no active agents (running_count == 0).
+/// Expected: try_retry_main_merges() is invoked exactly once at the end of startup.
+#[tokio::test]
+async fn test_boot_quiescent_invokes_try_retry_main_merges_once() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create project with a PendingMerge/main_merge_deferred task
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Deferred Merge Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata = Some(
+        serde_json::json!({"main_merge_deferred": true, "main_merge_deferred_at": "2026-01-01T00:00:00Z"})
+            .to_string(),
+    );
+    app_state.task_repo.create(task).await.unwrap();
+
+    // No agents running (quiescent boot)
+    assert_eq!(execution_state.running_count(), 0);
+
+    execution_state.set_max_concurrent(10);
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+    let runner = runner.with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+    runner.run().await;
+
+    // try_retry_main_merges should have been called exactly once (boot-recovery path)
+    let retry_calls: Vec<_> = scheduler
+        .get_calls()
+        .into_iter()
+        .filter(|c| c.method == "try_retry_main_merges")
+        .collect();
+    assert_eq!(
+        retry_calls.len(),
+        1,
+        "try_retry_main_merges should be called exactly once at startup when running_count == 0"
+    );
+}
+
+/// Scenario: Phase 1 guard — two PendingMerge tasks both with main_merge_deferred=true.
+/// Expected: Phase 1 does NOT call execute_entry_actions() on either task (they stay in
+/// PendingMerge and are not processed by Phase 1). Only try_retry_main_merges() picks them up.
+#[tokio::test]
+async fn test_phase1_guard_skips_main_merge_deferred_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Two PendingMerge siblings both with main_merge_deferred=true
+    let mut task_a = Task::new(project.id.clone(), "Deferred Merge A".to_string());
+    task_a.internal_status = InternalStatus::PendingMerge;
+    task_a.task_branch = Some("task/deferred-a".to_string());
+    task_a.metadata = Some(
+        serde_json::json!({"main_merge_deferred": true, "main_merge_deferred_at": "2026-01-01T00:00:00Z"})
+            .to_string(),
+    );
+    let task_a_id = task_a.id.clone();
+    app_state.task_repo.create(task_a).await.unwrap();
+
+    let mut task_b = Task::new(project.id.clone(), "Deferred Merge B".to_string());
+    task_b.internal_status = InternalStatus::PendingMerge;
+    task_b.task_branch = Some("task/deferred-b".to_string());
+    task_b.metadata = Some(
+        serde_json::json!({"main_merge_deferred": true, "main_merge_deferred_at": "2026-01-01T00:00:00Z"})
+            .to_string(),
+    );
+    let task_b_id = task_b.id.clone();
+    app_state.task_repo.create(task_b).await.unwrap();
+
+    // No agents running (running_count == 0 at boot)
+    assert_eq!(execution_state.running_count(), 0);
+    execution_state.set_max_concurrent(10);
+
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let (runner, app_state_repo) = build_runner(&app_state, &execution_state);
+    app_state_repo
+        .set_active_project(Some(&project.id))
+        .await
+        .unwrap();
+    let runner = runner.with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+    runner.run().await;
+
+    // Phase 1 must NOT have called execute_entry_actions on either task:
+    // If execute_entry_actions had been called, the tasks would have transitioned away
+    // from PendingMerge (to MergeIncomplete, Merging, etc.) in the test environment.
+    let updated_a = app_state
+        .task_repo
+        .get_by_id(&task_a_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let updated_b = app_state
+        .task_repo
+        .get_by_id(&task_b_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(
+        updated_a.internal_status,
+        InternalStatus::PendingMerge,
+        "Phase 1 must not call execute_entry_actions on main_merge_deferred task A"
+    );
+    assert_eq!(
+        updated_b.internal_status,
+        InternalStatus::PendingMerge,
+        "Phase 1 must not call execute_entry_actions on main_merge_deferred task B"
+    );
+
+    // try_retry_main_merges should have been called (serialized path handles them)
+    let retry_calls: Vec<_> = scheduler
+        .get_calls()
+        .into_iter()
+        .filter(|c| c.method == "try_retry_main_merges")
+        .collect();
+    assert_eq!(
+        retry_calls.len(),
+        1,
+        "try_retry_main_merges should be called once to handle deferred tasks in serialized order"
     );
 }
