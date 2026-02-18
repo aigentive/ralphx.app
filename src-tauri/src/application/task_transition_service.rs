@@ -221,7 +221,16 @@ impl<R: Runtime> DependencyManager for RepoBackedDependencyManager<R> {
             };
 
             if all_complete {
-                // All blockers complete - transition from Blocked to Ready
+                // All blockers complete — transition Blocked → Ready using a direct DB update
+                // (not TransitionHandler) to avoid recursive re-entry: we are already inside
+                // on_enter(Merged) → unblock_dependents(). TransitionHandler would call
+                // on_enter(Ready) which could trigger try_schedule_ready_tasks() mid-loop and
+                // interact with the scheduler before all dependents are processed.
+                //
+                // Scheduling guarantee: on_enter(Merged) calls try_schedule_ready_tasks() via
+                // tokio::spawn (600ms delay) AFTER this unblock_dependents() call completes,
+                // so every task set to Ready here is guaranteed to be picked up by the
+                // scheduler. See on_enter_states.rs State::Merged branch.
                 if dependent_task.internal_status == InternalStatus::Blocked {
                     dependent_task.internal_status = InternalStatus::Ready;
                     dependent_task.blocked_reason = None;

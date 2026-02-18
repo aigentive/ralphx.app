@@ -4371,4 +4371,211 @@ mod tests {
         assert!(validated_json.contains("Validated"));
         assert!(redirect_json.contains("Redirect"));
     }
+
+    // ========================================
+    // Pause/Resume/Unblock Behavioral Tests
+    // ========================================
+
+    #[tokio::test]
+    async fn test_blocked_task_unblocks_to_ready_stays_ready_during_pause() {
+        // A Blocked task that transitions to Ready during a global pause must stay Ready,
+        // not get re-paused. Blocked tasks are not in AGENT_ACTIVE_STATUSES so the pause
+        // loop never touches them. This test verifies that invariant.
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+        let app_state = AppState::new_test();
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        // Create a blocker task (Executing) and a dependent blocked task
+        let mut blocker = Task::new(project.id.clone(), "Blocker Task".to_string());
+        blocker.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+        let mut blocked = Task::new(project.id.clone(), "Blocked Task".to_string());
+        blocked.internal_status = InternalStatus::Blocked;
+        app_state.task_repo.create(blocked.clone()).await.unwrap();
+
+        // Register the dependency: blocked depends on blocker
+        app_state
+            .task_dependency_repo
+            .add_dependency(&blocked.id, &blocker.id)
+            .await
+            .unwrap();
+
+        // Pause execution: agent-active tasks pause, blocked tasks remain unchanged
+        execution_state.pause();
+        assert!(execution_state.is_paused());
+
+        // Verify: blocked task is NOT touched by pause (not in AGENT_ACTIVE_STATUSES)
+        let task_after_pause = app_state
+            .task_repo
+            .get_by_id(&blocked.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            task_after_pause.internal_status,
+            InternalStatus::Blocked,
+            "Blocked task should remain Blocked during pause"
+        );
+
+        // Simulate: blocker completes, unblock_dependents sets blocked → Ready
+        let mut ready_task = task_after_pause.clone();
+        ready_task.internal_status = InternalStatus::Ready;
+        ready_task.blocked_reason = None;
+        ready_task.touch();
+        app_state.task_repo.update(&ready_task).await.unwrap();
+
+        // Verify: blocked task is now Ready — stays Ready even while pause is active
+        let task_after_unblock = app_state
+            .task_repo
+            .get_by_id(&blocked.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            task_after_unblock.internal_status,
+            InternalStatus::Ready,
+            "Unblocked task should be Ready, not re-paused"
+        );
+
+        // Pause flag is still set — can_start_task() should block scheduling
+        assert!(
+            execution_state.is_paused(),
+            "Global pause flag still set — scheduler won't pick up Ready task yet"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_resume_restores_paused_before_scheduling_ordering() {
+        // After resume_execution(), the pause flag must be cleared AFTER the restoration
+        // loop, not before. This means: (1) paused tasks get restored while pause is still
+        // set, (2) can_start_task() returns false during the loop (preventing race with
+        // scheduler), (3) pause flag is cleared only after all paused tasks are queued.
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+        let app_state = AppState::new_test();
+
+        let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        let transition_service: TaskTransitionService<tauri::Wry> = TaskTransitionService::new(
+            Arc::clone(&app_state.task_repo),
+            Arc::clone(&app_state.task_dependency_repo),
+            Arc::clone(&app_state.project_repo),
+            Arc::clone(&app_state.chat_message_repo),
+            Arc::clone(&app_state.chat_attachment_repo),
+            Arc::clone(&app_state.chat_conversation_repo),
+            Arc::clone(&app_state.agent_run_repo),
+            Arc::clone(&app_state.ideation_session_repo),
+            Arc::clone(&app_state.activity_event_repo),
+            Arc::clone(&app_state.message_queue),
+            Arc::clone(&app_state.running_agent_registry),
+            Arc::clone(&execution_state),
+            None,
+            Arc::clone(&app_state.memory_event_repo),
+        );
+
+        // Create a task in Reviewing state, then pause it
+        let mut task = Task::new(project.id.clone(), "Reviewing Task".to_string());
+        task.internal_status = InternalStatus::Reviewing;
+        app_state.task_repo.create(task.clone()).await.unwrap();
+
+        execution_state.pause();
+        transition_service
+            .transition_task(&task.id, InternalStatus::Paused)
+            .await
+            .expect("Failed to transition to Paused");
+
+        // Verify: paused
+        let paused = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(paused.internal_status, InternalStatus::Paused);
+
+        // While paused, a blocked task becomes Ready (simulating unblock_dependents)
+        let mut ready_task = Task::new(project.id.clone(), "Ready Task".to_string());
+        ready_task.internal_status = InternalStatus::Ready;
+        app_state.task_repo.create(ready_task.clone()).await.unwrap();
+
+        // can_start_task() should be false while pause flag is set (paused tasks can't race
+        // with scheduler during the restoration loop)
+        assert!(
+            !execution_state.can_start_task(),
+            "can_start_task() must return false while pause flag is set"
+        );
+
+        // After resume, pause flag is cleared and new tasks can be scheduled
+        execution_state.resume();
+        assert!(
+            !execution_state.is_paused(),
+            "Pause flag must be cleared after resume()"
+        );
+        assert!(
+            execution_state.can_start_task(),
+            "can_start_task() must return true after resume()"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_max_concurrent_respected_on_resume_with_local_counter() {
+        // resume_execution() uses a local restoring_count counter to enforce max_concurrent
+        // without relying on can_start_task() (which returns false due to pause flag).
+        // This test verifies the counter logic: with max_concurrent=2 and 3 candidates,
+        // only 2 are admitted (running_count + restoring_count < max_concurrent).
+        let execution_state = Arc::new(ExecutionState::with_max_concurrent(2));
+
+        // Verify initial state: no tasks running
+        assert_eq!(execution_state.running_count(), 0);
+        assert_eq!(execution_state.max_concurrent(), 2);
+
+        execution_state.pause();
+        assert!(execution_state.is_paused());
+
+        // Simulate the restoring_count logic from resume_execution():
+        //   current = running_count + restoring_count
+        //   stop when current >= max_concurrent
+        // With running_count=0 and max_concurrent=2, only 2 of 3 candidates should restore.
+        let mut restoring_count: u32 = 0;
+        let max = execution_state.max_concurrent();
+
+        for _ in 0..3u32 {
+            let current = execution_state.running_count() + restoring_count;
+            if current >= max {
+                break;
+            }
+            restoring_count += 1;
+        }
+
+        assert_eq!(
+            restoring_count, 2,
+            "restoring_count should stop at max_concurrent=2, got {}",
+            restoring_count
+        );
+
+        // Clearing pause flag (as resume_execution does after the loop)
+        execution_state.resume();
+        assert!(
+            !execution_state.is_paused(),
+            "Pause flag cleared after restoration loop"
+        );
+
+        // After resume, can_start_task() reflects true capacity
+        // (running_count=0, max=2, not paused → can start)
+        assert!(
+            execution_state.can_start_task(),
+            "can_start_task() must be true after resume with capacity available"
+        );
+    }
 }

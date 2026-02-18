@@ -225,7 +225,7 @@ The state machine does **not** handle resume events directly. Resume is command-
 2. Read `task.metadata["pause_reason"].previous_status`
 3. Fall back to `status_history` if metadata absent
 4. Validate `restore_status` is in `AGENT_ACTIVE_STATUSES` — skip otherwise
-5. Check `execution_state.can_start_task()` — stop loop if at capacity
+5. Check capacity: `running_count + local_restore_count < max_concurrent` (cannot use `can_start_task()` — pause flag still set during restoration loop)
 6. `transition_task(task_id, restore_status)` → re-enters the pre-pause state
 7. Clear `pause_reason` from metadata, then call `execute_entry_actions()` → respawns agent
 
@@ -259,3 +259,39 @@ PauseReason::ProviderError { category, message, retry_after, previous_status, pa
 - `write_to_task_metadata(existing)` → merges into existing JSON, preserving other keys
 - `clear_from_task_metadata(existing)` → removes `pause_reason` + legacy `provider_error` key
 - `previous_status()` → returns the pre-pause status string (parse with `InternalStatus::from_str`)
+
+---
+
+## Pause vs Blocked Behavior
+
+### Which Statuses Are Affected by Pause
+
+| Status | Affected by global pause? | Why |
+|--------|--------------------------|-----|
+| `executing`, `re_executing`, `qa_refining`, `qa_testing`, `reviewing`, `merging` | YES → transitions to `paused` | In `AGENT_ACTIVE_STATUSES` — agent is running |
+| `blocked` | NO — immune to pause | Not in `AGENT_ACTIVE_STATUSES` — no agent to kill |
+| `ready` | NO — stays queued | No agent running; scheduler gated by `is_paused()` flag |
+| `paused` | — | Result of pausing an agent-active task |
+| `stopped` | — | Terminal; NOT restored on resume (requires manual `Retry`) |
+
+### Dependency Resolution During Pause
+
+`Blocked → Ready` proceeds **normally during pause** — it is a non-spawning transition:
+- `on_enter(Merged)` → `unblock_dependents()` fires regardless of pause state
+- Newly-Ready tasks **stay in `ready`** until resume — the scheduler checks `execution_state.is_paused()` before spawning any agent
+
+### Resume Ordering Guarantee
+
+```
+1. Find all Paused tasks for the project
+2. For each (pause flag still SET):
+   - Check capacity: running_count + local_restore_count < max_concurrent
+     (cannot use can_start_task() — returns false while pause flag is set)
+   - Read pre-pause status from metadata (status_history fallback)
+   - transition_task → re-enter pre-pause state → respawn agent
+   - Increment local_restore_count
+3. execution_state.resume() — clear pause flag
+4. try_schedule_ready_tasks() — pick up waiting Ready tasks
+```
+
+**Why this ordering:** clearing the pause flag before step 2 would allow the scheduler to race against the restoration loop, consuming capacity slots meant for paused tasks.
