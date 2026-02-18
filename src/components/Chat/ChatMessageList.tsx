@@ -31,7 +31,7 @@ import { Button } from "@/components/ui/button";
 import type { MessageAttachment } from "./MessageAttachments";
 import { useTeamStore, selectTeammateByName, selectTeamMessages, EMPTY_TEAM_MESSAGES } from "@/stores/teamStore";
 import type { TeamMessage } from "@/stores/teamStore";
-import { TeamSystemEvent } from "./TeamSystemEvent";
+import { TeamMessageBubble } from "./TeamMessageBubble";
 
 // ============================================================================
 // Constants
@@ -253,12 +253,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       // Apply team filter if active
       const teamFilteredMessages = teamFilter && teamFilter !== "all"
         ? filteredMessages.filter((msg) => {
+            // User messages always show in every tab (directed at lead, relevant context for all views)
+            if (msg.role === "user") return true;
             if (teamFilter === "lead") {
-              // Show lead messages (no sender or sender === "lead")
-              return !msg.sender || msg.sender === "lead";
+              // Show lead messages only (sender === "lead")
+              return msg.sender === "lead";
             }
-            // Show messages from specific teammate OR null-sender messages (user/system messages)
-            return msg.sender === teamFilter || msg.sender == null;
+            // Show messages from specific teammate only; null-sender system/assistant messages only in "all" tab
+            return msg.sender === teamFilter;
           })
         : filteredMessages;
 
@@ -423,10 +425,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       if (item.kind === "team_event") {
         const teamMsg = item.data;
         return (
-          <TeamSystemEvent
-            message={`${teamMsg.from} → ${teamMsg.to}: ${teamMsg.content}`}
-            timestamp={teamMsg.timestamp}
-          />
+          <div className="px-3 w-full" style={contentContainerStyle}>
+            <TeamMessageBubble
+              from={teamMsg.from}
+              to={teamMsg.to}
+              content={teamMsg.content}
+              timestamp={teamMsg.timestamp}
+            />
+          </div>
         );
       }
       const msg = item.data;
@@ -482,11 +488,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             if (item.kind === "team_event") {
               const teamMsg = item.data;
               return (
-                <TeamSystemEvent
-                  key={`team-${teamMsg.id}`}
-                  message={`${teamMsg.from} → ${teamMsg.to}: ${teamMsg.content}`}
-                  timestamp={teamMsg.timestamp}
-                />
+                <div key={`team-${teamMsg.id}`} className="px-3 w-full" style={contentContainerStyle}>
+                  <TeamMessageBubble
+                    from={teamMsg.from}
+                    to={teamMsg.to}
+                    content={teamMsg.content}
+                    timestamp={teamMsg.timestamp}
+                  />
+                </div>
               );
             }
             const msg = item.data;

@@ -11,7 +11,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { useTeamStore, selectActiveTeam, selectTeammates } from "@/stores/teamStore";
 import { TeammateCard } from "./TeammateCard";
-import { TeamCostDisplay } from "./TeamCostDisplay";
 import type { TeammateState } from "@/stores/teamStore";
 
 interface TeamActivityPanelProps {
@@ -152,13 +151,6 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
                 />
               ))}
             </div>
-
-            {/* Cost display */}
-            <TeamCostDisplay
-              totalTokens={team.totalTokens}
-              totalEstimatedCostUsd={team.totalEstimatedCostUsd}
-              teammates={teammates}
-            />
           </motion.div>
         )}
       </AnimatePresence>
