@@ -9,13 +9,13 @@ import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow, parseISO } from "date-fns";
 import { StepList } from "../StepList";
-import { SectionTitle, TwoColumnLayout, DetailCard } from "./shared";
+import { SectionTitle, TwoColumnLayout, DetailCard, StatusBanner } from "./shared";
 import { DurationDisplay } from "./shared/DurationDisplay";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
-import { Loader2, Play, RotateCcw, Clock, User, Users, AlertTriangle } from "lucide-react";
+import { Loader2, Play, RotateCcw, Clock, User, Users, AlertTriangle, ShieldAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ResumeValidationDialog,
@@ -201,6 +201,7 @@ function ActionButtonsCard({ task }: { task: Task }) {
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("solo");
   const [showValidationDialog, setShowValidationDialog] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
+  const [restartNote, setRestartNote] = useState("");
   const taskId = task.id;
   const status = task.internalStatus;
 
@@ -249,9 +250,10 @@ function ActionButtonsCard({ task }: { task: Task }) {
 
   const restartMutation = useMutation({
     mutationFn: async () => {
+      const note = restartNote.trim() || undefined;
       if (isStopped) {
         // Use smart restart for stopped tasks via API layer
-        const result = await api.tasks.restart(taskId, false);
+        const result = await api.tasks.restart(taskId, false, note);
         if (result.type === "ValidationFailed") {
           throw new Error(
             `Validation failed: ${result.warnings.map((w) => w.message).join(", ")}`
@@ -263,11 +265,13 @@ function ActionButtonsCard({ task }: { task: Task }) {
         return await api.tasks.move(
           taskId,
           "ready",
-          executionMode === "team" ? "team" : undefined
+          executionMode === "team" ? "team" : undefined,
+          note
         );
       }
     },
     onSuccess: () => {
+      setRestartNote("");
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
@@ -277,25 +281,29 @@ function ActionButtonsCard({ task }: { task: Task }) {
     if (!stopMetadata?.stoppedFromStatus) return;
     setIsResuming(true);
     try {
-      await api.tasks.move(taskId, stopMetadata.stoppedFromStatus);
+      const note = restartNote.trim() || undefined;
+      await api.tasks.move(taskId, stopMetadata.stoppedFromStatus, undefined, note);
+      setRestartNote("");
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       setShowValidationDialog(false);
     } finally {
       setIsResuming(false);
     }
-  }, [taskId, queryClient, stopMetadata]);
+  }, [taskId, queryClient, stopMetadata, restartNote]);
 
   // Handle go to ready from validation dialog
   const handleGoToReady = useCallback(async () => {
     setIsResuming(true);
     try {
-      await api.tasks.move(taskId, "ready");
+      const note = restartNote.trim() || undefined;
+      await api.tasks.move(taskId, "ready", undefined, note);
+      setRestartNote("");
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       setShowValidationDialog(false);
     } finally {
       setIsResuming(false);
     }
-  }, [taskId, queryClient]);
+  }, [taskId, queryClient, restartNote]);
 
   const handleAction = useCallback(async () => {
     // If task was stopped from a validated state, show validation dialog
@@ -394,6 +402,27 @@ function ActionButtonsCard({ task }: { task: Task }) {
         />
       </div>
 
+      {/* Restart Note textarea (for restartable states only, not shown for start) */}
+      {!isReady && (
+        <div className="mt-3 pt-3" style={{ borderTop: "1px solid hsla(220 10% 100% / 0.06)" }}>
+          <textarea
+            data-testid="restart-note-textarea"
+            value={restartNote}
+            onChange={(e) => setRestartNote(e.target.value)}
+            disabled={restartMutation.isPending || isResuming}
+            placeholder="Optional: tell the agent what to do differently..."
+            rows={3}
+            className="w-full resize-none rounded-md px-3 py-2 text-[12px] transition-colors disabled:opacity-40 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+            style={{
+              backgroundColor: "hsla(220 10% 100% / 0.05)",
+              color: "hsl(220 10% 80%)",
+              boxShadow: "none",
+              outline: "none",
+            }}
+          />
+        </div>
+      )}
+
       {/* Error display */}
       {restartMutation.error && (
         <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
@@ -418,6 +447,76 @@ function ActionButtonsCard({ task }: { task: Task }) {
   );
 }
 
+/**
+ * UnblockWarningCard - Shown for blocked tasks with failed dependencies.
+ * Presents an unblock action with a confirmation dialog warning that
+ * the upstream dependency failed.
+ */
+function UnblockWarningCard({
+  task,
+  failedDependencyName,
+}: {
+  task: Task;
+  failedDependencyName: string;
+}) {
+  const queryClient = useQueryClient();
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+
+  const unblockMutation = useMutation({
+    mutationFn: () => api.tasks.unblock(task.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+
+  const handleUnblock = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Unblock despite failed dependency?",
+      description: `"${failedDependencyName}" failed. Unblocking will move this task to Ready, but it may run against incomplete output. Proceed only if you understand the risk.`,
+      confirmText: "Unblock Anyway",
+      variant: "default",
+    });
+    if (!confirmed) return;
+    unblockMutation.mutate();
+  }, [confirm, failedDependencyName, unblockMutation]);
+
+  return (
+    <DetailCard>
+      <div data-testid="unblock-warning-card" className="flex items-center justify-between">
+        <span
+          className="text-[11px] font-semibold uppercase tracking-wider"
+          style={{ color: "hsl(220 10% 50%)" }}
+        >
+          Actions
+        </span>
+        <Button
+          data-testid="unblock-button"
+          onClick={handleUnblock}
+          disabled={unblockMutation.isPending}
+          className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
+          style={{
+            backgroundColor: "hsl(35 100% 50%)",
+            color: "white",
+          }}
+        >
+          {unblockMutation.isPending ? (
+            <Loader2 className="w-4 h-4 animate-spin" />
+          ) : (
+            <ShieldAlert className="w-4 h-4" />
+          )}
+          Unblock Anyway
+        </Button>
+      </div>
+      {unblockMutation.error && (
+        <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+          {unblockMutation.error.message}
+        </p>
+      )}
+      <ConfirmationDialog {...confirmationDialogProps} />
+    </DetailCard>
+  );
+}
+
 export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const hasSteps = (steps?.length ?? 0) > 0;
@@ -436,6 +535,7 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
     failure_error: string;
     failure_details?: string;
     is_timeout: boolean;
+    attempt_count: number;
   } | null = null;
 
   const isFailed = task.internalStatus === "failed" || task.internalStatus === "qa_failed";
@@ -445,10 +545,15 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       try {
         const metadata = JSON.parse(task.metadata);
         if (metadata.failure_error) {
+          const attemptCount =
+            typeof metadata.auto_retry_count_executing === "number"
+              ? metadata.auto_retry_count_executing
+              : 0;
           failureInfo = {
             failure_error: metadata.failure_error,
             failure_details: metadata.failure_details,
             is_timeout: metadata.is_timeout || false,
+            attempt_count: attemptCount,
           };
         }
       } catch {
@@ -464,9 +569,27 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       failureInfo = {
         failure_error: errorMessage,
         is_timeout: false,
+        attempt_count: 0,
       };
     }
   }
+
+  // Detect if a blocked task has a failed dependency as its blocker.
+  // The backend sets blocked_reason to "Dependency [task title] failed." when a blocker fails.
+  const DEPENDENCY_FAILED_PREFIX = "Dependency ";
+  const DEPENDENCY_FAILED_SUFFIX = " failed.";
+  const isBlockedByFailedDependency =
+    task.internalStatus === "blocked" &&
+    task.blockedReason !== null &&
+    task.blockedReason !== undefined &&
+    task.blockedReason.startsWith(DEPENDENCY_FAILED_PREFIX) &&
+    task.blockedReason.endsWith(DEPENDENCY_FAILED_SUFFIX);
+  const failedDependencyName = isBlockedByFailedDependency
+    ? task.blockedReason!.slice(
+        DEPENDENCY_FAILED_PREFIX.length,
+        task.blockedReason!.length - DEPENDENCY_FAILED_SUFFIX.length
+      )
+    : null;
 
   // Parse last_agent_error from metadata for any status
   const agentError = useMemo(() => {
@@ -500,23 +623,80 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
         <StopHistorySection stopMetadata={stopMetadata} />
       )}
 
+      {/* Dependency Failed Warning Banner (for blocked tasks with failed dependency) */}
+      {isBlockedByFailedDependency && failedDependencyName && (
+        <section data-testid="dependency-failed-banner">
+          <StatusBanner
+            icon={ShieldAlert}
+            title="Dependency Failed"
+            subtitle={`"${failedDependencyName}" failed — this task cannot proceed until manually unblocked.`}
+            variant="warning"
+          />
+        </section>
+      )}
+
       {/* Failure Reason Banner */}
       {failureInfo && (
         <section data-testid="failure-reason-section" className="space-y-2">
-          <SectionTitle>Failure Reason</SectionTitle>
-          <div className="rounded-md bg-red-500/10 p-3 text-[13px] text-red-400">
-            <div className="flex items-start gap-2">
-              <div className="flex-1">
-                {failureInfo.failure_error}
+          <SectionTitle>Failure Details</SectionTitle>
+          <div
+            className="rounded-xl p-4 space-y-3"
+            style={{ backgroundColor: "hsla(0 70% 55% / 0.08)" }}
+          >
+            {/* Attempt count */}
+            {failureInfo.attempt_count > 0 && (
+              <div data-testid="attempt-count" className="flex items-center gap-2">
+                <span
+                  className="text-[11px] font-semibold uppercase tracking-wider"
+                  style={{ color: "hsl(0 70% 65%)" }}
+                >
+                  Failed after {failureInfo.attempt_count}{" "}
+                  {failureInfo.attempt_count === 1 ? "attempt" : "attempts"}
+                </span>
                 {failureInfo.is_timeout && (
-                  <span className="ml-2 inline-block text-[11px] bg-red-500/20 px-2 py-0.5 rounded">
+                  <span
+                    data-testid="timeout-badge"
+                    className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                    style={{
+                      backgroundColor: "hsla(0 70% 55% / 0.25)",
+                      color: "hsl(0 70% 75%)",
+                    }}
+                  >
                     timeout
                   </span>
                 )}
               </div>
-            </div>
+            )}
+            {/* Show timeout badge even when attempt_count is 0 */}
+            {failureInfo.attempt_count === 0 && failureInfo.is_timeout && (
+              <div className="flex items-center gap-2">
+                <span
+                  data-testid="timeout-badge"
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                  style={{
+                    backgroundColor: "hsla(0 70% 55% / 0.25)",
+                    color: "hsl(0 70% 75%)",
+                  }}
+                >
+                  timeout
+                </span>
+              </div>
+            )}
+            {/* Error message */}
+            <p
+              data-testid="failure-error-message"
+              className="text-[13px]"
+              style={{ color: "hsl(0 70% 75%)" }}
+            >
+              {failureInfo.failure_error}
+            </p>
+            {/* Details */}
             {failureInfo.failure_details && (
-              <p className="mt-2 text-[12px] text-red-400/70">
+              <p
+                data-testid="failure-details"
+                className="text-[12px]"
+                style={{ color: "hsl(0 70% 65% / 0.75)" }}
+              >
                 {failureInfo.failure_details}
               </p>
             )}
@@ -593,6 +773,13 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       {!isHistorical && showsActions && (
         <section>
           <ActionButtonsCard task={task} />
+        </section>
+      )}
+
+      {/* Unblock action with warning (for blocked tasks with failed dependency) */}
+      {!isHistorical && isBlockedByFailedDependency && failedDependencyName && (
+        <section>
+          <UnblockWarningCard task={task} failedDependencyName={failedDependencyName} />
         </section>
       )}
     </TwoColumnLayout>

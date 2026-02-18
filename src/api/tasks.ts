@@ -235,12 +235,13 @@ export const tasksApi = {
    *
    * @param taskId The task ID
    * @param force If true, skip validation (use with caution)
+   * @param note Optional note to communicate intent to the re-executing agent
    * @returns RestartResult with Success or ValidationFailed variants
    */
-  restart: (taskId: string, force?: boolean): Promise<RestartResult> =>
+  restart: (taskId: string, force?: boolean, note?: string): Promise<RestartResult> =>
     typedInvokeWithTransform(
       "restart_task",
-      { taskId, force: force ?? false },
+      { taskId, force: force ?? false, note: note ?? null },
       RestartResultSchemaRaw,
       transformRestartResult
     ),
@@ -280,12 +281,13 @@ export const tasksApi = {
    * @param taskId The task ID
    * @param toStatus The target status
    * @param agentVariant Optional agent variant (e.g. "team" for parallel agents)
+   * @param note Optional note to communicate intent to the re-executing agent
    * @returns The updated task
    */
-  move: (taskId: string, toStatus: string, agentVariant?: string): Promise<Task> =>
+  move: (taskId: string, toStatus: string, agentVariant?: string, note?: string): Promise<Task> =>
     typedInvokeWithTransform(
       "move_task",
-      { taskId, toStatus, agentVariant: agentVariant ?? null },
+      { taskId, toStatus, agentVariant: agentVariant ?? null, note: note ?? null },
       TaskSchema,
       transformTask
     ),

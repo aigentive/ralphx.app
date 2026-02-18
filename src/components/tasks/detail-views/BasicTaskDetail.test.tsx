@@ -27,6 +27,8 @@ vi.mock("@/lib/tauri", () => ({
   api: {
     tasks: {
       move: vi.fn(async () => ({})),
+      restart: vi.fn(async () => ({ type: "Success", task: {} })),
+      unblock: vi.fn(async () => ({})),
     },
   },
 }));
@@ -49,6 +51,7 @@ import { api } from "@/lib/tauri";
 
 const mockUseTaskSteps = vi.mocked(useTaskSteps);
 const mockApiTasksMove = vi.mocked(api.tasks.move);
+const mockApiTasksUnblock = vi.mocked(api.tasks.unblock);
 
 function createTestTask(overrides?: Partial<Task>): Task {
   return {
@@ -200,7 +203,7 @@ describe("BasicTaskDetail", () => {
       render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
 
       expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
-      expect(screen.getByText("Failure Reason")).toBeInTheDocument();
+      expect(screen.getByText("Failure Details")).toBeInTheDocument();
       expect(screen.getByText("Connection timeout")).toBeInTheDocument();
       expect(screen.getByText("timeout")).toBeInTheDocument();
       expect(screen.getByText("Task failed to connect to the server")).toBeInTheDocument();
@@ -412,8 +415,120 @@ describe("BasicTaskDetail", () => {
       await user.click(button);
 
       await waitFor(() => {
-        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", undefined);
+        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", undefined, undefined);
       });
+    });
+  });
+
+  describe("restart note textarea", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockUseTaskSteps.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useTaskSteps>);
+      mockConfirmation.confirm = vi.fn(async () => true);
+    });
+
+    it("renders note textarea for failed state", () => {
+      const task = createTestTask({ internalStatus: "failed" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("restart-note-textarea")).toBeInTheDocument();
+    });
+
+    it("renders note textarea for stopped state", () => {
+      const task = createTestTask({ internalStatus: "stopped" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("restart-note-textarea")).toBeInTheDocument();
+    });
+
+    it("renders note textarea for cancelled state", () => {
+      const task = createTestTask({ internalStatus: "cancelled" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("restart-note-textarea")).toBeInTheDocument();
+    });
+
+    it("renders note textarea for paused state", () => {
+      const task = createTestTask({ internalStatus: "paused" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("restart-note-textarea")).toBeInTheDocument();
+    });
+
+    it("does not render note textarea for ready state", () => {
+      const task = createTestTask({ internalStatus: "ready" });
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("restart-note-textarea")).not.toBeInTheDocument();
+    });
+
+    it("passes note to api.tasks.move when restarting failed task", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "failed" });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const textarea = screen.getByTestId("restart-note-textarea");
+      await user.type(textarea, "Fix the broken import");
+
+      const button = screen.getByTestId("restart-button");
+      await user.click(button);
+
+      await waitFor(() => {
+        expect(mockApiTasksMove).toHaveBeenCalledWith(
+          task.id,
+          "ready",
+          undefined,
+          "Fix the broken import"
+        );
+      });
+    });
+
+    it("passes undefined note when textarea is empty", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "failed" });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const button = screen.getByTestId("restart-button");
+      await user.click(button);
+
+      await waitFor(() => {
+        expect(mockApiTasksMove).toHaveBeenCalledWith(
+          task.id,
+          "ready",
+          undefined,
+          undefined
+        );
+      });
+    });
+
+    it("note textarea accepts user input for stopped task", async () => {
+      const user = userEvent.setup();
+      // stop_metadata is a nested JSON string inside the outer metadata JSON object
+      const stopMetadataInner = JSON.stringify({
+        stopped_from_status: "executing",
+        stopped_at: new Date().toISOString(),
+        stop_reason: "User requested",
+      });
+      const stopMetadata = JSON.stringify({
+        stop_metadata: stopMetadataInner,
+      });
+      const task = createTestTask({
+        internalStatus: "stopped",
+        metadata: stopMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      const textarea = screen.getByTestId("restart-note-textarea");
+      expect(textarea).toBeInTheDocument();
+      await user.type(textarea, "Try a different approach");
+      expect(textarea).toHaveValue("Try a different approach");
     });
   });
 
@@ -476,7 +591,7 @@ describe("BasicTaskDetail", () => {
       await user.click(screen.getByTestId("start-button"));
 
       await waitFor(() => {
-        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", "team");
+        expect(mockApiTasksMove).toHaveBeenCalledWith(task.id, "ready", "team", undefined);
       });
     });
 
@@ -494,6 +609,277 @@ describe("BasicTaskDetail", () => {
             description: expect.stringContaining("in team mode"),
           }),
         );
+      });
+    });
+  });
+
+  describe("attempt count display for failed tasks", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockUseTaskSteps.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useTaskSteps>);
+    });
+
+    it("shows attempt count when auto_retry_count_executing is present in metadata", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Agent gave up",
+        is_timeout: false,
+        auto_retry_count_executing: 3,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("attempt-count")).toBeInTheDocument();
+      expect(screen.getByText(/Failed after 3 attempts/)).toBeInTheDocument();
+    });
+
+    it("shows singular 'attempt' for count of 1", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Agent gave up",
+        is_timeout: false,
+        auto_retry_count_executing: 1,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByText(/Failed after 1 attempt/)).toBeInTheDocument();
+    });
+
+    it("does not show attempt count when auto_retry_count_executing is 0", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Agent gave up",
+        is_timeout: false,
+        auto_retry_count_executing: 0,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("attempt-count")).not.toBeInTheDocument();
+    });
+
+    it("shows timeout badge alongside attempt count for timeout failures", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Agent timed out",
+        is_timeout: true,
+        auto_retry_count_executing: 5,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("attempt-count")).toBeInTheDocument();
+      expect(screen.getByTestId("timeout-badge")).toBeInTheDocument();
+      expect(screen.getByText("timeout")).toBeInTheDocument();
+    });
+
+    it("shows timeout badge even when attempt count is 0", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Agent timed out",
+        is_timeout: true,
+        auto_retry_count_executing: 0,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("timeout-badge")).toBeInTheDocument();
+      expect(screen.queryByTestId("attempt-count")).not.toBeInTheDocument();
+    });
+
+    it("shows failure error message via data-testid", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Build script failed",
+        is_timeout: false,
+        auto_retry_count_executing: 2,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("failure-error-message")).toBeInTheDocument();
+      expect(screen.getByTestId("failure-error-message")).toHaveTextContent("Build script failed");
+    });
+
+    it("shows failure details via data-testid when present", () => {
+      const failureMetadata = JSON.stringify({
+        failure_error: "Build failed",
+        failure_details: "npm run build exited with code 1",
+        is_timeout: false,
+        auto_retry_count_executing: 1,
+      });
+      const task = createTestTask({
+        internalStatus: "failed",
+        metadata: failureMetadata,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("failure-details")).toHaveTextContent(
+        "npm run build exited with code 1"
+      );
+    });
+  });
+
+  describe("dependency-failed StatusBanner for blocked tasks", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockUseTaskSteps.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useTaskSteps>);
+      mockConfirmation.confirm = vi.fn(async () => true);
+    });
+
+    it("shows dependency-failed banner when blockedReason indicates failed dependency", () => {
+      const task = createTestTask({
+        internalStatus: "blocked",
+        blockedReason: "Dependency Setup Infrastructure failed.",
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("dependency-failed-banner")).toBeInTheDocument();
+      expect(screen.getByText("Dependency Failed")).toBeInTheDocument();
+      expect(
+        screen.getByText(/"Setup Infrastructure" failed/)
+      ).toBeInTheDocument();
+    });
+
+    it("does not show dependency-failed banner when blockedReason is a normal waiting reason", () => {
+      const task = createTestTask({
+        internalStatus: "blocked",
+        blockedReason: "Waiting for: Setup Infrastructure",
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("dependency-failed-banner")).not.toBeInTheDocument();
+    });
+
+    it("does not show dependency-failed banner when task is not blocked", () => {
+      const task = createTestTask({
+        internalStatus: "ready",
+        blockedReason: null,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("dependency-failed-banner")).not.toBeInTheDocument();
+    });
+
+    it("does not show dependency-failed banner when blockedReason is null", () => {
+      const task = createTestTask({
+        internalStatus: "blocked",
+        blockedReason: null,
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("dependency-failed-banner")).not.toBeInTheDocument();
+    });
+
+    it("shows unblock-warning-card with unblock button for failed dependency", () => {
+      const task = createTestTask({
+        internalStatus: "blocked",
+        blockedReason: "Dependency Build Frontend failed.",
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByTestId("unblock-warning-card")).toBeInTheDocument();
+      expect(screen.getByTestId("unblock-button")).toBeInTheDocument();
+      expect(screen.getByText("Unblock Anyway")).toBeInTheDocument();
+    });
+
+    it("hides unblock-warning-card in historical mode", () => {
+      const task = createTestTask({
+        internalStatus: "blocked",
+        blockedReason: "Dependency Build Frontend failed.",
+      });
+
+      render(<BasicTaskDetail task={task} isHistorical />, { wrapper: TestWrapper });
+
+      expect(screen.queryByTestId("unblock-warning-card")).not.toBeInTheDocument();
+    });
+
+    it("shows confirmation dialog with warning text on unblock click", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({
+        internalStatus: "blocked",
+        blockedReason: "Dependency Build Frontend failed.",
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("unblock-button"));
+
+      await waitFor(() => {
+        expect(mockConfirmation.confirm).toHaveBeenCalledWith(
+          expect.objectContaining({
+            title: "Unblock despite failed dependency?",
+            description: expect.stringContaining("Build Frontend"),
+          })
+        );
+      });
+    });
+
+    it("calls api.tasks.unblock when confirmed", async () => {
+      const user = userEvent.setup();
+      mockConfirmation.confirm = vi.fn(async () => true);
+      const task = createTestTask({
+        internalStatus: "blocked",
+        blockedReason: "Dependency Build Frontend failed.",
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("unblock-button"));
+
+      await waitFor(() => {
+        expect(mockApiTasksUnblock).toHaveBeenCalledWith(task.id);
+      });
+    });
+
+    it("does not call api.tasks.unblock when confirmation is cancelled", async () => {
+      const user = userEvent.setup();
+      mockConfirmation.confirm = vi.fn(async () => false);
+      const task = createTestTask({
+        internalStatus: "blocked",
+        blockedReason: "Dependency Build Frontend failed.",
+      });
+
+      render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      await user.click(screen.getByTestId("unblock-button"));
+
+      await waitFor(() => {
+        expect(mockConfirmation.confirm).toHaveBeenCalled();
+        expect(mockApiTasksUnblock).not.toHaveBeenCalled();
       });
     });
   });
