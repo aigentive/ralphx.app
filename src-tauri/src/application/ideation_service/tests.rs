@@ -83,7 +83,7 @@ impl IdeationSessionRepository for MockSessionRepository {
         Ok(())
     }
 
-    async fn update_title(&self, id: &IdeationSessionId, title: Option<String>) -> AppResult<()> {
+    async fn update_title(&self, id: &IdeationSessionId, title: Option<String>, _title_source: &str) -> AppResult<()> {
         if let Some(session) = self.sessions.lock().unwrap().get_mut(&id.to_string()) {
             session.title = title;
             session.updated_at = Utc::now();
@@ -752,7 +752,7 @@ async fn test_update_session_title() {
     let service = create_service_with_session(session);
 
     service
-        .update_session_title(&session_id, Some("Updated".to_string()))
+        .update_session_title(&session_id, Some("Updated".to_string()), "auto")
         .await
         .unwrap();
 

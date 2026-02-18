@@ -84,9 +84,15 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         Ok(())
     }
 
-    async fn update_title(&self, id: &IdeationSessionId, title: Option<String>) -> AppResult<()> {
+    async fn update_title(
+        &self,
+        id: &IdeationSessionId,
+        title: Option<String>,
+        title_source: &str,
+    ) -> AppResult<()> {
         if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
             session.title = title;
+            session.title_source = Some(title_source.to_string());
             session.updated_at = Utc::now();
         }
         Ok(())

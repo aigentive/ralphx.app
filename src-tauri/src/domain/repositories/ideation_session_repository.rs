@@ -30,8 +30,13 @@ pub trait IdeationSessionRepository: Send + Sync {
         status: IdeationSessionStatus,
     ) -> AppResult<()>;
 
-    /// Update session title
-    async fn update_title(&self, id: &IdeationSessionId, title: Option<String>) -> AppResult<()>;
+    /// Update session title and source ("auto" for session-namer, "user" for manual rename)
+    async fn update_title(
+        &self,
+        id: &IdeationSessionId,
+        title: Option<String>,
+        title_source: &str,
+    ) -> AppResult<()>;
 
     /// Update session plan artifact ID
     async fn update_plan_artifact_id(
@@ -147,6 +152,7 @@ mod tests {
             &self,
             _id: &IdeationSessionId,
             _title: Option<String>,
+            _title_source: &str,
         ) -> AppResult<()> {
             Ok(())
         }
@@ -263,6 +269,7 @@ mod tests {
             converted_at: None,
             team_mode: None,
             team_config_json: None,
+            title_source: None,
         }
     }
 
@@ -367,7 +374,7 @@ mod tests {
         let session_id = IdeationSessionId::new();
 
         let result = repo
-            .update_title(&session_id, Some("New Title".to_string()))
+            .update_title(&session_id, Some("New Title".to_string()), "auto")
             .await;
         assert!(result.is_ok());
     }
@@ -377,7 +384,7 @@ mod tests {
         let repo = MockIdeationSessionRepository::new();
         let session_id = IdeationSessionId::new();
 
-        let result = repo.update_title(&session_id, None).await;
+        let result = repo.update_title(&session_id, None, "auto").await;
         assert!(result.is_ok());
     }
 
@@ -515,7 +522,7 @@ mod tests {
 
         // Test update_title through trait object
         let result = repo
-            .update_title(&session.id, Some("Updated Title".to_string()))
+            .update_title(&session.id, Some("Updated Title".to_string()), "auto")
             .await;
         assert!(result.is_ok());
     }
