@@ -200,6 +200,7 @@ function ActionButtonsCard({ task }: { task: Task }) {
   const [executionMode, setExecutionMode] = useState<ExecutionMode>("solo");
   const [showValidationDialog, setShowValidationDialog] = useState(false);
   const [isResuming, setIsResuming] = useState(false);
+  const [restartNote, setRestartNote] = useState("");
   const taskId = task.id;
   const status = task.internalStatus;
 
@@ -248,9 +249,10 @@ function ActionButtonsCard({ task }: { task: Task }) {
 
   const restartMutation = useMutation({
     mutationFn: async () => {
+      const note = restartNote.trim() || undefined;
       if (isStopped) {
         // Use smart restart for stopped tasks via API layer
-        const result = await api.tasks.restart(taskId, false);
+        const result = await api.tasks.restart(taskId, false, note);
         if (result.type === "ValidationFailed") {
           throw new Error(
             `Validation failed: ${result.warnings.map((w) => w.message).join(", ")}`
@@ -262,11 +264,13 @@ function ActionButtonsCard({ task }: { task: Task }) {
         return await api.tasks.move(
           taskId,
           "ready",
-          executionMode === "team" ? "team" : undefined
+          executionMode === "team" ? "team" : undefined,
+          note
         );
       }
     },
     onSuccess: () => {
+      setRestartNote("");
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
     },
   });
@@ -276,25 +280,29 @@ function ActionButtonsCard({ task }: { task: Task }) {
     if (!stopMetadata?.stoppedFromStatus) return;
     setIsResuming(true);
     try {
-      await api.tasks.move(taskId, stopMetadata.stoppedFromStatus);
+      const note = restartNote.trim() || undefined;
+      await api.tasks.move(taskId, stopMetadata.stoppedFromStatus, undefined, note);
+      setRestartNote("");
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       setShowValidationDialog(false);
     } finally {
       setIsResuming(false);
     }
-  }, [taskId, queryClient, stopMetadata]);
+  }, [taskId, queryClient, stopMetadata, restartNote]);
 
   // Handle go to ready from validation dialog
   const handleGoToReady = useCallback(async () => {
     setIsResuming(true);
     try {
-      await api.tasks.move(taskId, "ready");
+      const note = restartNote.trim() || undefined;
+      await api.tasks.move(taskId, "ready", undefined, note);
+      setRestartNote("");
       queryClient.invalidateQueries({ queryKey: taskKeys.all });
       setShowValidationDialog(false);
     } finally {
       setIsResuming(false);
     }
-  }, [taskId, queryClient]);
+  }, [taskId, queryClient, restartNote]);
 
   const handleAction = useCallback(async () => {
     // If task was stopped from a validated state, show validation dialog
@@ -392,6 +400,27 @@ function ActionButtonsCard({ task }: { task: Task }) {
           disabled={restartMutation.isPending || isResuming}
         />
       </div>
+
+      {/* Restart Note textarea (for restartable states only, not shown for start) */}
+      {!isReady && (
+        <div className="mt-3 pt-3" style={{ borderTop: "1px solid hsla(220 10% 100% / 0.06)" }}>
+          <textarea
+            data-testid="restart-note-textarea"
+            value={restartNote}
+            onChange={(e) => setRestartNote(e.target.value)}
+            disabled={restartMutation.isPending || isResuming}
+            placeholder="Optional: tell the agent what to do differently..."
+            rows={3}
+            className="w-full resize-none rounded-md px-3 py-2 text-[12px] transition-colors disabled:opacity-40 outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+            style={{
+              backgroundColor: "hsla(220 10% 100% / 0.05)",
+              color: "hsl(220 10% 80%)",
+              boxShadow: "none",
+              outline: "none",
+            }}
+          />
+        </div>
+      )}
 
       {/* Error display */}
       {restartMutation.error && (
