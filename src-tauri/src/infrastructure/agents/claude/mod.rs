@@ -7,7 +7,7 @@ mod claude_code_client;
 mod stream_processor;
 
 pub use agent_config::{
-    agent_configs, claude_runtime_config, get_agent_config, get_allowed_tools,
+    agent_configs, claude_runtime_config, defer_merge_enabled, get_agent_config, get_allowed_tools,
     get_effective_settings, get_preapproved_tools, process_mapping, team_constraints_config,
     AgentConfig,
 };
