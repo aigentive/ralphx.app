@@ -9,6 +9,8 @@
 // - GET  /api/team/session_state/:session_id — get_team_session_state
 // - POST /api/team/session_state — save_team_session_state
 
+use std::path::PathBuf;
+
 use axum::{
     extract::{Path, State},
     http::StatusCode,
@@ -25,7 +27,7 @@ use crate::application::team_state_tracker::{
 };
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation,
-    ArtifactRelationId, ArtifactRelationType, ArtifactType,
+    ArtifactRelationId, ArtifactRelationType, ArtifactType, GitMode, TaskId,
 };
 use crate::http_server::types::{
     ApproveTeamPlanRequest, ApproveTeamPlanResponse, CreateTeamArtifactRequest,
@@ -281,7 +283,17 @@ pub async fn approve_team_plan(
             })?;
     }
 
-    // 3. Register, spawn, and stream each teammate as a separate CLI process.
+    // 3. Resolve the working directory (worktree-aware for task contexts)
+    let working_dir = resolve_teammate_working_dir(&state, &req.context_type, &req.context_id).await;
+    info!(
+        plan_id = %req.plan_id,
+        context_type = %req.context_type,
+        context_id = %req.context_id,
+        working_dir = %working_dir.display(),
+        "Resolved teammate working directory"
+    );
+
+    // 4. Register, spawn, and stream each teammate as a separate CLI process.
     //    This is the ONLY place where teammate worker processes are created.
     //    The lead agent's Task tool creates in-process subagents within its own
     //    Claude session, but these separate CLI processes are what the frontend tracks.
@@ -324,7 +336,8 @@ pub async fn approve_team_plan(
         .with_mcp_tools(pending.mcp_tools.clone())
         .with_color(&teammate_color)
         .with_mcp_agent_type(mcp_type)
-        .with_print_mode_prompt(&pending.prompt);
+        .with_print_mode_prompt(&pending.prompt)
+        .with_working_dir(working_dir.clone());
 
         let client = ClaudeCodeClient::new();
         let args = client.build_teammate_cli_args(&spawn_config);
@@ -574,10 +587,13 @@ pub async fn request_teammate_spawn(
     })?;
 
     // 2. Find the active team
-    let (team_name, context_id) = find_active_team(&state).await.map_err(|e| {
+    let (team_name, context_id, context_type) = find_active_team(&state).await.map_err(|e| {
         error!(error = %e, "No active team found for teammate spawn");
         (StatusCode::CONFLICT, e)
     })?;
+
+    // Resolve working directory (worktree-aware for task contexts)
+    let working_dir = resolve_teammate_working_dir(&state, &context_type, &context_id).await;
 
     // 3. Generate unique teammate name (add suffix for uniqueness)
     let teammate_name = generate_unique_teammate_name(&state, &team_name, &req.role).await;
@@ -619,7 +635,8 @@ pub async fn request_teammate_spawn(
     .with_model(&req.model)
     .with_tools(req.tools.clone())
     .with_mcp_tools(req.mcp_tools.clone())
-    .with_color(&teammate_color);
+    .with_color(&teammate_color)
+    .with_working_dir(working_dir);
 
     let client = ClaudeCodeClient::new();
     match client.spawn_teammate_interactive(spawn_config).await {
@@ -732,12 +749,101 @@ pub async fn request_teammate_spawn(
 // Spawn helpers
 // ============================================================================
 
+/// Context types where context_id is a task ID (worktree resolution applies).
+const TASK_CONTEXT_TYPES: &[&str] = &["task_execution", "task", "review", "merge"];
+
+/// Resolve the working directory for a teammate spawn.
+///
+/// When context_type indicates task execution and the project uses worktree mode,
+/// returns the task's worktree_path. Otherwise falls back to the project's
+/// working_directory, then std::env::current_dir().
+///
+/// Mirrors `AgenticClientSpawner::resolve_working_directory` in spawner.rs.
+async fn resolve_teammate_working_dir(
+    state: &HttpServerState,
+    context_type: &str,
+    context_id: &str,
+) -> PathBuf {
+    // Only attempt task/project lookup for task-related context types
+    if !TASK_CONTEXT_TYPES.contains(&context_type) {
+        return default_working_dir();
+    }
+
+    let task_id = TaskId(context_id.to_string());
+
+    let task = match state.app_state.task_repo.get_by_id(&task_id).await {
+        Ok(Some(task)) => task,
+        Ok(None) => {
+            warn!(
+                context_id = context_id,
+                "Teammate working dir: task not found — using default"
+            );
+            return default_working_dir();
+        }
+        Err(e) => {
+            warn!(
+                context_id = context_id,
+                error = %e,
+                "Teammate working dir: task lookup failed — using default"
+            );
+            return default_working_dir();
+        }
+    };
+
+    let project = match state.app_state.project_repo.get_by_id(&task.project_id).await {
+        Ok(Some(project)) => project,
+        Ok(None) => {
+            warn!(
+                project_id = %task.project_id,
+                "Teammate working dir: project not found — using default"
+            );
+            return default_working_dir();
+        }
+        Err(e) => {
+            warn!(
+                project_id = %task.project_id,
+                error = %e,
+                "Teammate working dir: project lookup failed — using default"
+            );
+            return default_working_dir();
+        }
+    };
+
+    match project.git_mode {
+        GitMode::Worktree => {
+            if let Some(ref wt_path) = task.worktree_path {
+                info!(
+                    task_id = context_id,
+                    worktree_path = wt_path,
+                    "Teammate working dir: using task worktree path"
+                );
+                PathBuf::from(wt_path)
+            } else {
+                warn!(
+                    task_id = context_id,
+                    project_id = %task.project_id,
+                    "Safety net: Worktree mode but worktree_path is None — \
+                     refusing to use project directory (main branch). \
+                     Falling back to default."
+                );
+                default_working_dir()
+            }
+        }
+        _ => PathBuf::from(&project.working_directory),
+    }
+}
+
+/// Fallback working directory (same as TeammateSpawnConfig::new default).
+fn default_working_dir() -> PathBuf {
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
 /// Color palette for teammate distinction
 const TEAMMATE_COLORS: &[&str] = &["blue", "green", "cyan", "magenta", "yellow"];
 
 /// Find the first active team via TeamService.
-/// Returns (team_name, context_id).
-async fn find_active_team(state: &HttpServerState) -> Result<(String, String), String> {
+/// Returns (team_name, context_id, context_type).
+async fn find_active_team(state: &HttpServerState) -> Result<(String, String, String), String> {
     let teams = state.team_service.list_teams().await;
     for team_name in &teams {
         if let Ok(status) = state.team_service.get_team_status(team_name).await {
@@ -745,7 +851,7 @@ async fn find_active_team(state: &HttpServerState) -> Result<(String, String), S
             if phase == crate::application::team_state_tracker::TeamPhase::Active
                 || phase == crate::application::team_state_tracker::TeamPhase::Forming
             {
-                return Ok((team_name.clone(), status.context_id));
+                return Ok((team_name.clone(), status.context_id, status.context_type));
             }
         }
     }
@@ -1202,9 +1308,10 @@ mod tests {
             .await
             .unwrap();
 
-        let (name, ctx_id) = find_active_team(&state).await.unwrap();
+        let (name, ctx_id, ctx_type) = find_active_team(&state).await.unwrap();
         assert_eq!(name, "test-team");
         assert_eq!(ctx_id, "session-123");
+        assert_eq!(ctx_type, "ideation");
     }
 
     #[tokio::test]
@@ -1222,7 +1329,7 @@ mod tests {
             .await
             .unwrap();
 
-        let (name, _) = find_active_team(&state).await.unwrap();
+        let (name, _, _) = find_active_team(&state).await.unwrap();
         assert_eq!(name, "my-team");
     }
 
