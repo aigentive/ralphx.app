@@ -13,7 +13,7 @@ import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ChatMessageList, type ChatMessageData } from "./ChatMessageList";
 import type { ToolCall } from "./ToolCallIndicator";
-import type { StreamingContentBlock, StreamingTask } from "@/types/streaming-task";
+import type { StreamingContentBlock } from "@/types/streaming-task";
 
 // Mock scrollIntoView before tests run — should NEVER be called for auto-scroll
 const scrollIntoViewMock = vi.fn();
