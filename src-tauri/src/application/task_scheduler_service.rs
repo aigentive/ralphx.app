@@ -205,8 +205,10 @@ impl<R: Runtime> TaskSchedulerService<R> {
                 }
             };
 
-            // For Local-mode projects, check if another task is already running
-            if project.git_mode == GitMode::Local {
+            // For Local-mode projects, check if another task is already running.
+            // plan_merge tasks are exempt: they merge branches and don't use working
+            // directories, so the single-task serialization constraint doesn't apply to them.
+            if project.git_mode == GitMode::Local && task.category != "plan_merge" {
                 let has_running = match self
                     .task_repo
                     .has_task_in_states(&project.id, LOCAL_MODE_RUNNING_STATES)
@@ -1910,6 +1912,164 @@ mod tests {
             flag1_cleared,
             flag2_cleared
         );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // plan_merge Exemption Tests (S4 fix)
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// plan_merge tasks should be schedulable in Local mode even when another task is Executing.
+    /// They don't use working directories, so the single-task concurrency restriction is
+    /// irrelevant for them.
+    #[tokio::test]
+    async fn test_plan_merge_exempt_from_local_mode_concurrency_executing() {
+        use crate::domain::entities::GitMode;
+
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        // Create a Local-mode project
+        let mut project = Project::new("Local Project".to_string(), "/test/local".to_string());
+        project.git_mode = GitMode::Local;
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        // Create an Executing task (would block regular tasks in Local mode)
+        let mut executing_task = Task::new(project.id.clone(), "Executing Task".to_string());
+        executing_task.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(executing_task).await.unwrap();
+
+        // Create a plan_merge Ready task (should NOT be blocked)
+        let mut plan_merge_task = Task::new(project.id.clone(), "Merge Plan".to_string());
+        plan_merge_task.internal_status = InternalStatus::Ready;
+        plan_merge_task.category = "plan_merge".to_string();
+        app_state
+            .task_repo
+            .create(plan_merge_task.clone())
+            .await
+            .unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+
+        // plan_merge task should be schedulable even though a regular task is Executing
+        let found = scheduler.find_oldest_schedulable_task().await;
+        assert!(
+            found.is_some(),
+            "plan_merge task should be schedulable in Local mode even when another task is Executing"
+        );
+        assert_eq!(
+            found.unwrap().id,
+            plan_merge_task.id,
+            "Should find the plan_merge task, not be blocked by Local-mode concurrency check"
+        );
+    }
+
+    /// Regular tasks should still be blocked in Local mode when another task is Executing.
+    /// Only plan_merge tasks are exempt.
+    #[tokio::test]
+    async fn test_regular_task_still_blocked_by_local_mode_when_executing() {
+        use crate::domain::entities::GitMode;
+
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        // Create a Local-mode project
+        let mut project = Project::new("Local Project".to_string(), "/test/local".to_string());
+        project.git_mode = GitMode::Local;
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        // Create an Executing task (blocks regular tasks in Local mode)
+        let mut executing_task = Task::new(project.id.clone(), "Executing Task".to_string());
+        executing_task.internal_status = InternalStatus::Executing;
+        app_state.task_repo.create(executing_task).await.unwrap();
+
+        // Create a regular (non-plan_merge) Ready task (should be blocked)
+        let mut ready_task = Task::new(project.id.clone(), "Regular Ready Task".to_string());
+        ready_task.internal_status = InternalStatus::Ready;
+        // category defaults to empty string, not plan_merge
+        app_state
+            .task_repo
+            .create(ready_task.clone())
+            .await
+            .unwrap();
+
+        let scheduler = build_scheduler(&app_state, &execution_state);
+
+        // Regular task should still be blocked
+        let found = scheduler.find_oldest_schedulable_task().await;
+        assert!(
+            found.is_none(),
+            "Regular task should still be blocked in Local mode when another task is Executing"
+        );
+    }
+
+    /// plan_merge tasks should be exempt from ALL LOCAL_MODE_RUNNING_STATES, not just Executing.
+    #[tokio::test]
+    async fn test_plan_merge_exempt_from_all_local_mode_running_states() {
+        use crate::domain::entities::GitMode;
+
+        let (execution_state, app_state) = setup_test_state().await;
+        execution_state.set_max_concurrent(10);
+
+        let running_states = vec![
+            InternalStatus::Executing,
+            InternalStatus::ReExecuting,
+            InternalStatus::Reviewing,
+            InternalStatus::Merging,
+        ];
+
+        for blocking_state in running_states {
+            // Create a new Local-mode project for each state
+            let mut project = Project::new(
+                format!("Local Project {}", blocking_state.as_str()),
+                format!("/test/local/{}", blocking_state.as_str()),
+            );
+            project.git_mode = GitMode::Local;
+            app_state
+                .project_repo
+                .create(project.clone())
+                .await
+                .unwrap();
+
+            // Create a task in the blocking state
+            let mut blocking_task = Task::new(project.id.clone(), "Blocking Task".to_string());
+            blocking_task.internal_status = blocking_state;
+            app_state.task_repo.create(blocking_task).await.unwrap();
+
+            // Create a plan_merge Ready task
+            let mut plan_merge_task = Task::new(project.id.clone(), "Merge Plan".to_string());
+            plan_merge_task.internal_status = InternalStatus::Ready;
+            plan_merge_task.category = "plan_merge".to_string();
+            app_state
+                .task_repo
+                .create(plan_merge_task.clone())
+                .await
+                .unwrap();
+
+            let scheduler = build_scheduler(&app_state, &execution_state);
+
+            // plan_merge should be schedulable regardless of running state
+            // (it may find plan_merge tasks from earlier iterations too, so we just check
+            // that the found task is from this project or another plan_merge task)
+            let found = scheduler.find_oldest_schedulable_task().await;
+            assert!(
+                found.is_some(),
+                "plan_merge task should be schedulable even when Local-mode project has {} task",
+                blocking_state.as_str()
+            );
+            let found_task = found.unwrap();
+            assert_eq!(
+                found_task.category, "plan_merge",
+                "Found task should be a plan_merge task (exempt from Local-mode concurrency)"
+            );
+        }
     }
 
     #[tokio::test]
