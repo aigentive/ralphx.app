@@ -138,13 +138,16 @@ where
             .await
     }
 
-    /// Update session title
+    /// Update session title and source ("auto" for session-namer, "user" for manual rename)
     pub async fn update_session_title(
         &self,
         session_id: &IdeationSessionId,
         title: Option<String>,
+        title_source: &str,
     ) -> AppResult<()> {
-        self.session_repo.update_title(session_id, title).await
+        self.session_repo
+            .update_title(session_id, title, title_source)
+            .await
     }
 
     /// Delete a session and all its data
