@@ -22,7 +22,7 @@ pub(crate) use super::merge_validation::{
 // Internal imports used by code remaining in this file
 use super::merge_helpers::{
     compute_merge_worktree_path, compute_rebase_worktree_path, extract_task_id_from_merge_path,
-    is_task_in_merge_workflow, task_targets_branch, truncate_str,
+    is_task_in_merge_workflow, task_targets_branch, truncate_str, validate_plan_merge_preconditions,
 };
 // Used by #[cfg(test)] mod tests via `super::*`
 #[cfg(test)]
@@ -64,39 +64,23 @@ const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
 ///
 /// | Category | Commit Type |
 /// |---|---|
-/// | Feature | `feat` |
-/// | Fix | `fix` |
-/// | Refactor | `refactor` |
-/// | Docs | `docs` |
-/// | Test | `test` |
-/// | Performance | `perf` |
-/// | Security, DevOps, Chore, Setup, Research, Design | `chore` |
+/// | Regular | `feat` |
+/// | PlanMerge | `feat` |
 fn category_to_commit_type(category: &TaskCategory) -> &'static str {
     match category {
-        TaskCategory::Feature => "feat",
-        TaskCategory::Fix => "fix",
-        TaskCategory::Refactor => "refactor",
-        TaskCategory::Docs => "docs",
-        TaskCategory::Test => "test",
-        TaskCategory::Performance => "perf",
-        TaskCategory::Security
-        | TaskCategory::DevOps
-        | TaskCategory::Chore
-        | TaskCategory::Setup
-        | TaskCategory::Research
-        | TaskCategory::Design => "chore",
+        TaskCategory::Regular => "feat",
+        TaskCategory::PlanMerge => "feat",
     }
 }
 
 /// Derive the conventional commit type via majority-wins across task categories.
 ///
-/// Parses each task's category string into a `TaskCategory`, counts votes per commit type,
-/// and returns the type with the most votes. Ties are broken by variant priority:
+/// Maps each task's category to a commit type, counts votes, and returns the type
+/// with the most votes. Ties are broken by variant priority:
 /// feat > fix > refactor > docs > test > perf > chore.
-/// Falls back to `"feat"` if the task list is empty or all categories are unparseable.
+/// Falls back to `"feat"` if the task list is empty.
 fn derive_commit_type(tasks: &[crate::domain::entities::Task]) -> &'static str {
     use std::collections::HashMap;
-    use std::str::FromStr;
 
     // Priority order for tie-breaking (lower index = higher priority)
     const PRIORITY: &[&str] = &[
@@ -105,10 +89,8 @@ fn derive_commit_type(tasks: &[crate::domain::entities::Task]) -> &'static str {
 
     let mut votes: HashMap<&'static str, usize> = HashMap::new();
     for task in tasks {
-        if let Ok(cat) = TaskCategory::from_str(&task.category) {
-            let commit_type = category_to_commit_type(&cat);
-            *votes.entry(commit_type).or_insert(0) += 1;
-        }
+        let commit_type = category_to_commit_type(&task.category);
+        *votes.entry(commit_type).or_insert(0) += 1;
     }
 
     if votes.is_empty() {
@@ -187,11 +169,8 @@ async fn build_plan_merge_commit_msg(
 /// Build a squash commit message for regular (non-plan-merge) tasks.
 ///
 /// Format: `$category_commit_type: {branch} ({title})`
-fn build_squash_commit_msg(category: &str, title: &str, source_branch: &str) -> String {
-    use std::str::FromStr;
-    let commit_type = TaskCategory::from_str(category)
-        .map(|cat| category_to_commit_type(&cat))
-        .unwrap_or("feat");
+fn build_squash_commit_msg(category: &TaskCategory, title: &str, source_branch: &str) -> String {
+    let commit_type = category_to_commit_type(category);
     format!("{}: {} ({})", commit_type, source_branch, title)
 }
 
@@ -319,8 +298,62 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        // Resolve source and target branches (handles merge tasks and plan feature branches)
+        // Pre-merge validation: for plan_merge tasks, check preconditions upfront
+        // before attempting any git operations. This surfaces actionable errors
+        // (S9: repo not wired, S10/S12: branch not active, S13: feature branch deleted)
+        // as clear MergeIncomplete transitions instead of silent failures deep in the merge flow.
         let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+        if let Err(validation_err) =
+            validate_plan_merge_preconditions(&task, &project, plan_branch_repo).await
+        {
+            let error_msg = validation_err.message();
+            let error_code = validation_err.error_code();
+            tracing::warn!(
+                task_id = task_id_str,
+                error_code = error_code,
+                error = %error_msg,
+                "Pre-merge validation failed for plan_merge task — transitioning to MergeIncomplete"
+            );
+
+            task.metadata = Some(
+                serde_json::json!({
+                    "error": error_msg,
+                    "error_code": error_code,
+                    "category": task.category,
+                })
+                .to_string(),
+            );
+            task.internal_status = InternalStatus::MergeIncomplete;
+            task.touch();
+
+            if let Err(e) = task_repo.update(&task).await {
+                tracing::error!(error = %e, "Failed to update task to MergeIncomplete after pre-merge validation failure");
+                return;
+            }
+
+            if let Err(e) = task_repo
+                .persist_status_change(
+                    &task_id,
+                    InternalStatus::PendingMerge,
+                    InternalStatus::MergeIncomplete,
+                    "merge_incomplete",
+                )
+                .await
+            {
+                tracing::warn!(error = %e, "Failed to record merge_incomplete transition (non-fatal)");
+            }
+
+            self.machine
+                .context
+                .services
+                .event_emitter
+                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                .await;
+
+            return;
+        }
+
+        // Resolve source and target branches (handles merge tasks and plan feature branches)
         let (source_branch, target_branch) =
             resolve_merge_branches(&task, &project, plan_branch_repo).await;
 
@@ -920,7 +953,7 @@ impl<'a> super::TransitionHandler<'a> {
         // Build commit message for squash merges.
         // For plan_merge tasks: use live session title + task enumeration.
         // For regular tasks: use category-derived commit type.
-        let squash_commit_msg = if task.category == "plan_merge" {
+        let squash_commit_msg = if task.category == TaskCategory::PlanMerge {
             if let (Some(session_id), Some(task_repo), Some(session_repo)) = (
                 task.ideation_session_id.as_ref(),
                 self.machine.context.services.task_repo.as_deref(),
@@ -6963,26 +6996,16 @@ mod tests {
 
     #[test]
     fn test_category_to_commit_type_mappings() {
-        assert_eq!(category_to_commit_type(&TaskCategory::Feature), "feat");
-        assert_eq!(category_to_commit_type(&TaskCategory::Fix), "fix");
-        assert_eq!(category_to_commit_type(&TaskCategory::Refactor), "refactor");
-        assert_eq!(category_to_commit_type(&TaskCategory::Docs), "docs");
-        assert_eq!(category_to_commit_type(&TaskCategory::Test), "test");
-        assert_eq!(category_to_commit_type(&TaskCategory::Performance), "perf");
-        assert_eq!(category_to_commit_type(&TaskCategory::Security), "chore");
-        assert_eq!(category_to_commit_type(&TaskCategory::DevOps), "chore");
-        assert_eq!(category_to_commit_type(&TaskCategory::Chore), "chore");
-        assert_eq!(category_to_commit_type(&TaskCategory::Setup), "chore");
-        assert_eq!(category_to_commit_type(&TaskCategory::Research), "chore");
-        assert_eq!(category_to_commit_type(&TaskCategory::Design), "chore");
+        assert_eq!(category_to_commit_type(&TaskCategory::Regular), "feat");
+        assert_eq!(category_to_commit_type(&TaskCategory::PlanMerge), "feat");
     }
 
-    fn make_task_with_category(category: &str) -> Task {
+    fn make_task_with_category(category: TaskCategory) -> Task {
         let mut t = Task::new(
             ProjectId::from_string("proj-1".to_string()),
             format!("Task with category {}", category),
         );
-        t.category = category.to_string();
+        t.category = category;
         t
     }
 
@@ -6992,49 +7015,19 @@ mod tests {
     }
 
     #[test]
-    fn test_derive_commit_type_single_feature() {
-        let tasks = vec![make_task_with_category("feature")];
+    fn test_derive_commit_type_single_regular() {
+        let tasks = vec![make_task_with_category(TaskCategory::Regular)];
         assert_eq!(derive_commit_type(&tasks), "feat");
     }
 
     #[test]
-    fn test_derive_commit_type_majority_wins_fix() {
+    fn test_derive_commit_type_multiple_tasks() {
         let tasks = vec![
-            make_task_with_category("fix"),
-            make_task_with_category("fix"),
-            make_task_with_category("feature"),
-        ];
-        assert_eq!(derive_commit_type(&tasks), "fix");
-    }
-
-    #[test]
-    fn test_derive_commit_type_tie_broken_by_priority() {
-        // feat and fix both have 1 vote — feat wins due to higher priority
-        let tasks = vec![
-            make_task_with_category("feature"),
-            make_task_with_category("fix"),
+            make_task_with_category(TaskCategory::Regular),
+            make_task_with_category(TaskCategory::Regular),
+            make_task_with_category(TaskCategory::PlanMerge),
         ];
         assert_eq!(derive_commit_type(&tasks), "feat");
-    }
-
-    #[test]
-    fn test_derive_commit_type_all_chore_categories() {
-        let tasks = vec![
-            make_task_with_category("security"),
-            make_task_with_category("devops"),
-            make_task_with_category("chore"),
-        ];
-        assert_eq!(derive_commit_type(&tasks), "chore");
-    }
-
-    #[test]
-    fn test_derive_commit_type_unparseable_category_ignored() {
-        // "plan_merge" is not a TaskCategory variant — should be skipped
-        let tasks = vec![
-            make_task_with_category("plan_merge"),
-            make_task_with_category("fix"),
-        ];
-        assert_eq!(derive_commit_type(&tasks), "fix");
     }
 
     // =========================================================================
@@ -7042,33 +7035,15 @@ mod tests {
     // =========================================================================
 
     #[test]
-    fn test_build_squash_commit_msg_feature() {
-        let msg = build_squash_commit_msg("feature", "Write tests", "ralphx/ralphx/task-xyz");
+    fn test_build_squash_commit_msg_regular_task() {
+        let msg = build_squash_commit_msg(&TaskCategory::Regular, "Write tests", "ralphx/ralphx/task-xyz");
         assert_eq!(msg, "feat: ralphx/ralphx/task-xyz (Write tests)");
     }
 
     #[test]
-    fn test_build_squash_commit_msg_fix_category() {
-        let msg = build_squash_commit_msg("fix", "Fix bug", "ralphx/ralphx/task-123");
-        assert_eq!(msg, "fix: ralphx/ralphx/task-123 (Fix bug)");
-    }
-
-    #[test]
-    fn test_build_squash_commit_msg_refactor_category() {
-        let msg = build_squash_commit_msg("refactor", "Refactor auth", "ralphx/ralphx/task-456");
-        assert_eq!(msg, "refactor: ralphx/ralphx/task-456 (Refactor auth)");
-    }
-
-    #[test]
-    fn test_build_squash_commit_msg_chore_category() {
-        let msg = build_squash_commit_msg("chore", "Update deps", "ralphx/ralphx/task-789");
-        assert_eq!(msg, "chore: ralphx/ralphx/task-789 (Update deps)");
-    }
-
-    #[test]
-    fn test_build_squash_commit_msg_unknown_category_falls_back_to_feat() {
-        let msg = build_squash_commit_msg("unknown", "Do stuff", "ralphx/ralphx/task-000");
-        assert_eq!(msg, "feat: ralphx/ralphx/task-000 (Do stuff)");
+    fn test_build_squash_commit_msg_different_category() {
+        let msg = build_squash_commit_msg(&TaskCategory::PlanMerge, "Fix bug", "ralphx/ralphx/task-123");
+        assert_eq!(msg, "feat: ralphx/ralphx/task-123 (Fix bug)");
     }
 
     // =========================================================================
@@ -7093,6 +7068,7 @@ mod tests {
             converted_at: None,
             team_mode: None,
             team_config_json: None,
+            title_source: None,
         }
     }
 
@@ -7112,15 +7088,15 @@ mod tests {
             converted_at: None,
             team_mode: None,
             team_config_json: None,
+            title_source: None,
         }
     }
 
-    fn make_plan_task(session_id_str: &str, title: &str, category: &str) -> Task {
+    fn make_plan_task(session_id_str: &str, title: &str) -> Task {
         let mut t = Task::new(
             ProjectId::from_string("proj-1".to_string()),
             title.to_string(),
         );
-        t.category = category.to_string();
         t.ideation_session_id =
             Some(IdeationSessionId::from_string(session_id_str.to_string()));
         t
@@ -7131,9 +7107,9 @@ mod tests {
         let session_id = "sess-001";
         let session = make_session_with_title_for_test(session_id, "Add OAuth2 login");
         let tasks = vec![
-            make_plan_task(session_id, "Add JWT token refresh endpoint", "feature"),
-            make_plan_task(session_id, "Implement OAuth2 provider integration", "feature"),
-            make_plan_task(session_id, "Add session expiry UI warning", "feature"),
+            make_plan_task(session_id, "Add JWT token refresh endpoint"),
+            make_plan_task(session_id, "Implement OAuth2 provider integration"),
+            make_plan_task(session_id, "Add session expiry UI warning"),
         ];
 
         let task_repo = MemoryTaskRepository::with_tasks(tasks);
@@ -7170,40 +7146,10 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_build_plan_merge_commit_msg_fix_dominated_plan() {
-        let session_id = "sess-002";
-        let session = make_session_with_title_for_test(session_id, "Fix auth race conditions");
-        let tasks = vec![
-            make_plan_task(session_id, "Fix token refresh timing", "fix"),
-            make_plan_task(session_id, "Fix logout race condition", "fix"),
-            make_plan_task(session_id, "Fix missing CSRF headers", "fix"),
-        ];
-
-        let task_repo = MemoryTaskRepository::with_tasks(tasks);
-        let session_repo = MemoryIdeationSessionRepository::new();
-        let sid = IdeationSessionId::from_string(session_id.to_string());
-        session_repo.create(session).await.unwrap();
-
-        let msg = build_plan_merge_commit_msg(
-            &sid,
-            "ralphx/ralphx/plan-d4e5f6",
-            &task_repo,
-            &session_repo,
-        )
-        .await;
-
-        assert!(
-            msg.starts_with("fix: Fix auth race conditions"),
-            "Should use fix type (majority), got: {}",
-            msg
-        );
-    }
-
-    #[tokio::test]
     async fn test_build_plan_merge_commit_msg_no_session_title_falls_back_to_first_task() {
         let session_id = "sess-003";
         let session = make_session_no_title(session_id);
-        let tasks = vec![make_plan_task(session_id, "Add payment gateway", "feature")];
+        let tasks = vec![make_plan_task(session_id, "Add payment gateway")];
 
         let task_repo = MemoryTaskRepository::with_tasks(tasks);
         let session_repo = MemoryIdeationSessionRepository::new();
@@ -7255,7 +7201,7 @@ mod tests {
         let session_id = "sess-005";
         let session = make_session_with_title_for_test(session_id, "Big refactor");
         let tasks: Vec<Task> = (1..=25)
-            .map(|i| make_plan_task(session_id, &format!("Task {}", i), "refactor"))
+            .map(|i| make_plan_task(session_id, &format!("Task {}", i)))
             .collect();
 
         let task_repo = MemoryTaskRepository::with_tasks(tasks);
@@ -7289,8 +7235,8 @@ mod tests {
         let session =
             make_session_with_title_for_test(session_id, "Add OAuth2 login and JWT sessions");
         let tasks = vec![
-            make_plan_task(session_id, "Add JWT token refresh endpoint", "feature"),
-            make_plan_task(session_id, "Implement OAuth2 provider integration", "feature"),
+            make_plan_task(session_id, "Add JWT token refresh endpoint"),
+            make_plan_task(session_id, "Implement OAuth2 provider integration"),
         ];
 
         let task_repo = MemoryTaskRepository::with_tasks(tasks);
@@ -7310,38 +7256,6 @@ mod tests {
             msg.lines().next().unwrap(),
             "feat: Add OAuth2 login and JWT sessions",
             "Should use user-renamed session title as subject"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_build_plan_merge_commit_msg_mixed_categories_majority_wins() {
-        let session_id = "sess-007";
-        let session = make_session_with_title_for_test(session_id, "Sprint cleanup");
-        // 2 fix, 1 feature, 1 chore → fix wins
-        let tasks = vec![
-            make_plan_task(session_id, "Fix token expiry", "fix"),
-            make_plan_task(session_id, "Fix logout bug", "fix"),
-            make_plan_task(session_id, "Add rate limiting", "feature"),
-            make_plan_task(session_id, "Update changelog", "chore"),
-        ];
-
-        let task_repo = MemoryTaskRepository::with_tasks(tasks);
-        let session_repo = MemoryIdeationSessionRepository::new();
-        let sid = IdeationSessionId::from_string(session_id.to_string());
-        session_repo.create(session).await.unwrap();
-
-        let msg = build_plan_merge_commit_msg(
-            &sid,
-            "ralphx/ralphx/plan-555",
-            &task_repo,
-            &session_repo,
-        )
-        .await;
-
-        assert!(
-            msg.starts_with("fix: Sprint cleanup"),
-            "fix should win majority vote, got: {}",
-            msg
         );
     }
 }

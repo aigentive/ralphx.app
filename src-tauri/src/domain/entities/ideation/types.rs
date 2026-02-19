@@ -243,7 +243,7 @@ impl FromStr for ProposalStatus {
 /// Category of a task proposal
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum TaskCategory {
+pub enum ProposalCategory {
     /// Initial project setup
     Setup,
     /// New feature implementation
@@ -270,63 +270,63 @@ pub enum TaskCategory {
     Chore,
 }
 
-impl Default for TaskCategory {
+impl Default for ProposalCategory {
     fn default() -> Self {
         Self::Feature
     }
 }
 
-impl std::fmt::Display for TaskCategory {
+impl std::fmt::Display for ProposalCategory {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            TaskCategory::Setup => write!(f, "setup"),
-            TaskCategory::Feature => write!(f, "feature"),
-            TaskCategory::Fix => write!(f, "fix"),
-            TaskCategory::Refactor => write!(f, "refactor"),
-            TaskCategory::Docs => write!(f, "docs"),
-            TaskCategory::Test => write!(f, "test"),
-            TaskCategory::Performance => write!(f, "performance"),
-            TaskCategory::Security => write!(f, "security"),
-            TaskCategory::DevOps => write!(f, "devops"),
-            TaskCategory::Research => write!(f, "research"),
-            TaskCategory::Design => write!(f, "design"),
-            TaskCategory::Chore => write!(f, "chore"),
+            ProposalCategory::Setup => write!(f, "setup"),
+            ProposalCategory::Feature => write!(f, "feature"),
+            ProposalCategory::Fix => write!(f, "fix"),
+            ProposalCategory::Refactor => write!(f, "refactor"),
+            ProposalCategory::Docs => write!(f, "docs"),
+            ProposalCategory::Test => write!(f, "test"),
+            ProposalCategory::Performance => write!(f, "performance"),
+            ProposalCategory::Security => write!(f, "security"),
+            ProposalCategory::DevOps => write!(f, "devops"),
+            ProposalCategory::Research => write!(f, "research"),
+            ProposalCategory::Design => write!(f, "design"),
+            ProposalCategory::Chore => write!(f, "chore"),
         }
     }
 }
 
-/// Error type for parsing TaskCategory from a string
+/// Error type for parsing ProposalCategory from a string
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParseTaskCategoryError {
+pub struct ParseProposalCategoryError {
     pub value: String,
 }
 
-impl std::fmt::Display for ParseTaskCategoryError {
+impl std::fmt::Display for ParseProposalCategoryError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "unknown task category: '{}'", self.value)
+        write!(f, "unknown proposal category: '{}'", self.value)
     }
 }
 
-impl std::error::Error for ParseTaskCategoryError {}
+impl std::error::Error for ParseProposalCategoryError {}
 
-impl FromStr for TaskCategory {
-    type Err = ParseTaskCategoryError;
+impl FromStr for ProposalCategory {
+    type Err = ParseProposalCategoryError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "setup" => Ok(TaskCategory::Setup),
-            "feature" => Ok(TaskCategory::Feature),
-            "fix" => Ok(TaskCategory::Fix),
-            "refactor" => Ok(TaskCategory::Refactor),
-            "docs" => Ok(TaskCategory::Docs),
-            "test" => Ok(TaskCategory::Test),
-            "performance" => Ok(TaskCategory::Performance),
-            "security" => Ok(TaskCategory::Security),
-            "devops" => Ok(TaskCategory::DevOps),
-            "research" => Ok(TaskCategory::Research),
-            "design" => Ok(TaskCategory::Design),
-            "chore" => Ok(TaskCategory::Chore),
-            _ => Err(ParseTaskCategoryError {
+            "setup" => Ok(ProposalCategory::Setup),
+            "feature" => Ok(ProposalCategory::Feature),
+            "fix" => Ok(ProposalCategory::Fix),
+            "refactor" => Ok(ProposalCategory::Refactor),
+            "docs" => Ok(ProposalCategory::Docs),
+            "test" => Ok(ProposalCategory::Test),
+            "performance" => Ok(ProposalCategory::Performance),
+            "security" => Ok(ProposalCategory::Security),
+            "devops" => Ok(ProposalCategory::DevOps),
+            "research" => Ok(ProposalCategory::Research),
+            "design" => Ok(ProposalCategory::Design),
+            "chore" => Ok(ProposalCategory::Chore),
+            _ => Err(ParseProposalCategoryError {
                 value: s.to_string(),
             }),
         }

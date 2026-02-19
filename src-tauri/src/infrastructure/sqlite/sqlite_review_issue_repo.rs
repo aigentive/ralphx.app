@@ -318,7 +318,7 @@ mod tests {
             rusqlite::params![
                 task.id.as_str(),
                 task.project_id.as_str(),
-                task.category,
+                task.category.to_string(),
                 task.title,
                 task.description,
                 task.priority,

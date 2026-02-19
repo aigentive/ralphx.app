@@ -253,6 +253,19 @@ pub trait TaskRepository: Send + Sync {
     /// * Vec of Ready tasks ordered by created_at ASC
     async fn get_oldest_ready_tasks(&self, limit: u32) -> AppResult<Vec<Task>>;
 
+    /// Get Ready tasks that have been in Ready state longer than a threshold.
+    ///
+    /// Used by the watchdog to detect tasks stuck in Ready state due to
+    /// missed scheduling triggers (lock contention, scheduler unavailable, etc.).
+    /// A task is considered stale when `updated_at < (now - threshold_secs)`.
+    ///
+    /// # Arguments
+    /// * `threshold_secs` - Age threshold in seconds; tasks older than this are returned
+    ///
+    /// # Returns
+    /// * Vec of stale Ready tasks ordered by updated_at ASC (oldest first)
+    async fn get_stale_ready_tasks(&self, threshold_secs: u64) -> AppResult<Vec<Task>>;
+
     // ═══════════════════════════════════════════════════════════════════════
     // State History Operations (Phase 64 - Link Conversation IDs)
     // ═══════════════════════════════════════════════════════════════════════
@@ -459,6 +472,10 @@ mod tests {
         }
 
         async fn get_oldest_ready_tasks(&self, _limit: u32) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
+        async fn get_stale_ready_tasks(&self, _threshold_secs: u64) -> AppResult<Vec<Task>> {
             Ok(vec![])
         }
 

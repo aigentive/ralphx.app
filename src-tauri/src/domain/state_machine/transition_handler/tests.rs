@@ -2292,12 +2292,14 @@ async fn test_branch_discovery_integrates_with_pending_merge() {
     // Wait for attempt_programmatic_merge to complete (it's async)
     tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    // Verify the branch was discovered and attached
+    // Verify the branch was discovered and the merge completed.
+    // Note: cleanup_branch_and_worktree_internal clears task_branch after a successful merge,
+    // so we verify the merge outcome (Merged status) rather than task_branch directly.
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     assert_eq!(
-        updated_task.task_branch,
-        Some(expected_branch),
-        "Branch should be discovered and re-attached during PendingMerge entry"
+        updated_task.internal_status,
+        InternalStatus::Merged,
+        "Task should reach Merged status — proving branch was discovered and merge succeeded (branch={expected_branch})"
     );
 }
 
@@ -2412,19 +2414,16 @@ async fn test_merge_retry_recovery_discovers_branch_and_merges() {
     // Wait for attempt_programmatic_merge to complete (it's async)
     tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    // Verify the branch was discovered and attached
+    // Verify the branch was discovered and the merge completed.
+    // Note: cleanup_branch_and_worktree_internal clears task_branch after a successful merge,
+    // so we verify the merge outcome rather than task_branch directly.
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert_eq!(
-        updated_task.task_branch,
-        Some(expected_branch.clone()),
-        "Branch should be discovered and re-attached during retry"
-    );
 
-    // Verify merge succeeded and task reached Merged
+    // Verify merge succeeded and task reached Merged (proves branch was discovered)
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::Merged,
-        "Task should transition to Merged after successful programmatic merge"
+        "Task should transition to Merged after successful programmatic merge (branch={expected_branch})"
     );
 }
 

@@ -15,7 +15,8 @@ use ralphx_lib::application::git_service::checkout_free::{
 };
 use ralphx_lib::application::{GitService, MergeAttemptResult};
 use ralphx_lib::domain::entities::{
-    ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, Project, ProjectId, Task, TaskId,
+    ArtifactId, IdeationSessionId, InternalStatus, PlanBranch, Project, ProjectId, Task,
+    TaskCategory, TaskId,
 };
 use ralphx_lib::domain::repositories::{PlanBranchRepository, TaskRepository};
 use ralphx_lib::domain::state_machine::resolve_merge_branches;
@@ -211,7 +212,7 @@ async fn gap_plan_merge_task_gets_wrong_source_without_plan_repo() {
     // GAP: plan_merge task uses task_branch as source (wrong), not plan_branch_name
     let project = create_test_project("test-project", Path::new("/tmp/test"));
     let mut task = create_pending_merge_task(&project, "ralphx/test/task-456");
-    task.category = "plan_merge".to_string();
+    task.category = TaskCategory::PlanMerge;
 
     let (source, target) = resolve_merge_branches(&task, &project, &None).await;
 
@@ -248,7 +249,7 @@ async fn fix_plan_merge_task_resolves_plan_branch_to_main() {
     let task_id = TaskId::new();
     let mut task = create_pending_merge_task(&project, "ralphx/test/task-merge");
     task.id = task_id.clone();
-    task.category = "plan_merge".to_string();
+    task.category = TaskCategory::PlanMerge;
     task.ideation_session_id = Some(session_id.clone());
 
     let plan_repo = setup_plan_branch_repo(
@@ -694,7 +695,7 @@ async fn fix_full_pipeline_plan_merge_to_main() {
     let task_id = TaskId::new();
     let mut task = create_pending_merge_task(&project, "plan/feature");
     task.id = task_id.clone();
-    task.category = "plan_merge".to_string();
+    task.category = TaskCategory::PlanMerge;
     task.ideation_session_id = Some(session_id.clone());
 
     // Setup plan branch repo with merge task ID
@@ -1378,7 +1379,7 @@ async fn gap_plan_merge_verification_failure() {
     let task_id = TaskId::new();
     let mut task = create_pending_merge_task(&project, "plan/feature");
     task.id = task_id.clone();
-    task.category = "plan_merge".to_string();
+    task.category = TaskCategory::PlanMerge;
     task.ideation_session_id = Some(session_id.clone());
 
     let _plan_repo = setup_plan_branch_repo(

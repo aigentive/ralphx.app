@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use ralphx_lib::application::AppState;
 use ralphx_lib::commands::execution_commands::ExecutionState;
-use ralphx_lib::domain::entities::{IdeationSessionId, InternalStatus, Project, Task};
+use ralphx_lib::domain::entities::{IdeationSessionId, InternalStatus, Project, Task, TaskCategory};
 
 // ============================================================================
 // Local helpers (private in production code, reimplemented for tests)
@@ -506,7 +506,7 @@ async fn test_plan_merge_task_deferred_when_agents_running() {
 
     // Create a plan_merge task (merges feature branch into main)
     let mut task = create_pending_merge_task(&project.id, "Plan merge task", None);
-    task.category = "plan_merge".to_string();
+    task.category = TaskCategory::PlanMerge;
     // In real code, resolve_merge_branches would return (feature_branch, main)
     // because this task is the merge_task_id of an active plan branch
     app_state.task_repo.create(task.clone()).await.unwrap();

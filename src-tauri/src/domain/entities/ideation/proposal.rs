@@ -19,7 +19,7 @@ pub struct TaskProposal {
     /// Detailed description of what needs to be done
     pub description: Option<String>,
     /// Task category
-    pub category: TaskCategory,
+    pub category: ProposalCategory,
     /// Implementation steps (JSON array of strings)
     pub steps: Option<String>,
     /// Acceptance criteria (JSON array of strings)
@@ -61,7 +61,7 @@ impl TaskProposal {
     pub fn new(
         session_id: IdeationSessionId,
         title: impl Into<String>,
-        category: TaskCategory,
+        category: ProposalCategory,
         suggested_priority: Priority,
     ) -> Self {
         let now = Utc::now();
@@ -163,7 +163,7 @@ impl TaskProposal {
             category: row
                 .get::<_, String>("category")?
                 .parse()
-                .unwrap_or(TaskCategory::Feature),
+                .unwrap_or(ProposalCategory::Feature),
             steps: row.get("steps")?,
             acceptance_criteria: row.get("acceptance_criteria")?,
             suggested_priority: row

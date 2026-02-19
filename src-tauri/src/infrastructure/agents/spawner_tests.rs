@@ -119,6 +119,9 @@ impl TaskRepository for MockTaskRepoForSpawner {
     async fn get_oldest_ready_tasks(&self, _: u32) -> AppResult<Vec<Task>> {
         Ok(vec![])
     }
+    async fn get_stale_ready_tasks(&self, _: u64) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
     async fn update_latest_state_history_metadata(
         &self,
         _: &TaskId,
