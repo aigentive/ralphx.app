@@ -4,14 +4,13 @@
 // MergeStrategy using worktree isolation. They return a MergeOutcome which
 // is then handled uniformly by the shared post-merge handler.
 //
-// NOTE: These methods are not yet wired into side_effects.rs (Pass 1-3 will do that).
-#![allow(dead_code)]
+// Wired in side_effects.rs (Pass 2).
 
 use std::path::{Path, PathBuf};
 
 use crate::application::{GitService, MergeAttemptResult};
 use crate::application::git_service::checkout_free::{self, CheckoutFreeMergeResult};
-use crate::domain::entities::{Project, Task, TaskId};
+use crate::domain::entities::Project;
 use crate::error::AppError;
 
 use super::merge_helpers::{compute_merge_worktree_path, compute_rebase_worktree_path};
@@ -41,12 +40,14 @@ pub(super) enum MergeOutcome {
     BranchNotFound { branch: String },
 
     /// Merge deferred (e.g., branch lock held by another task, sibling tasks still running)
+    #[allow(dead_code)]
     Deferred { reason: String },
 
     /// Git operation or other error
     GitError(AppError),
 
     /// Status already handled (early return case)
+    #[allow(dead_code)]
     AlreadyHandled,
 }
 
@@ -63,8 +64,6 @@ impl<'a> super::TransitionHandler<'a> {
         source_branch: &str,
         target_branch: &str,
         project: &Project,
-        _task: &mut Task,
-        _task_id: &TaskId,
         task_id_str: &str,
     ) -> MergeOutcome {
         // Detect if the target branch is already checked out in the primary repo.
@@ -221,6 +220,9 @@ impl<'a> super::TransitionHandler<'a> {
                     error = %e,
                     "Worktree merge failed"
                 );
+                if merge_wt.exists() {
+                    let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
+                }
                 MergeOutcome::GitError(e)
             }
         }
@@ -377,6 +379,12 @@ impl<'a> super::TransitionHandler<'a> {
             }
             Err(e) => {
                 tracing::error!(error = %e, "Worktree rebase failed");
+                if rebase_wt.exists() {
+                    let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
+                }
+                if merge_wt.exists() {
+                    let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
+                }
                 MergeOutcome::GitError(e)
             }
         }
@@ -615,6 +623,12 @@ impl<'a> super::TransitionHandler<'a> {
             }
             Err(e) => {
                 tracing::error!(error = %e, "Worktree rebase-squash failed");
+                if rebase_wt.exists() {
+                    let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
+                }
+                if merge_wt.exists() {
+                    let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
+                }
                 MergeOutcome::GitError(e)
             }
         }
