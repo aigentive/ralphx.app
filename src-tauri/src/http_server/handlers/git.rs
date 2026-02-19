@@ -144,15 +144,19 @@ pub async fn complete_merge(
 
     // 5b. Check for rebase conflict resolution — if so, transition back to PendingMerge
     //     so attempt_programmatic_merge re-runs (source is now rebased → merge fast-forwards)
-    let is_rebase_conflict = task
-        .metadata
-        .as_deref()
-        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-        .and_then(|v| {
-            v.get("conflict_type")
-                .and_then(|ct| ct.as_str().map(|s| s == "rebase"))
-        })
-        .unwrap_or(false);
+    let merge_worktree_path = task
+        .worktree_path
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
+    let is_rebase_conflict = GitService::is_rebase_in_progress(&merge_worktree_path);
+    tracing::info!(
+        task_id = task_id.as_str(),
+        is_rebase_conflict = is_rebase_conflict,
+        worktree_path = %merge_worktree_path.display(),
+        "is_rebase_conflict detected from git state: {}",
+        is_rebase_conflict
+    );
 
     if is_rebase_conflict {
         tracing::info!(

@@ -38,7 +38,7 @@ Adding/modifying MCP tools for agents: `.claude/rules/agent-mcp-tools.md` (three
 | worker | get_task_context, get_artifact*, *_step |
 | coder | get_task_context, get_artifact*, *_step |
 | reviewer | complete_review |
-| merger | complete_merge, report_conflict, report_incomplete, get_merge_target, get_task_context |
+| merger | report_conflict, report_incomplete, get_merge_target, get_task_context |
 
 ## Manifest Format
 ```json
