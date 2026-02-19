@@ -34,12 +34,12 @@ use crate::domain::state_machine::transition_handler::{
 /// Merger agent timeout. After this many seconds without a completion signal,
 /// the reconciler marks the task as MergeIncomplete so it surfaces to the user
 /// and can be auto-retried. Configurable via RALPHX_MERGER_TIMEOUT_SECS env var
-/// (default: 600 seconds / 10 minutes).
+/// (default: 1200 seconds / 20 minutes — generous for conflict resolution + test runs).
 fn merging_timeout_seconds() -> i64 {
     std::env::var("RALPHX_MERGER_TIMEOUT_SECS")
         .ok()
         .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(600)
+        .unwrap_or(1200)
 }
 const MERGING_MAX_AUTO_RETRIES: u32 = 3;
 const PENDING_MERGE_STALE_MINUTES: i64 = 5;

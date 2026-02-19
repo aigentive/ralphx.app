@@ -79,8 +79,8 @@ impl StreamTimeoutConfig {
     pub fn for_context(context_type: &ChatContextType) -> Self {
         match context_type {
             ChatContextType::Merge => Self {
-                line_read_timeout: Duration::from_secs(180),
-                parse_stall_timeout: Duration::from_secs(90),
+                line_read_timeout: Duration::from_secs(600),
+                parse_stall_timeout: Duration::from_secs(180),
                 teammate_name: None,
                 teammate_color: None,
             },
@@ -1160,8 +1160,8 @@ mod tests {
     #[test]
     fn test_timeout_config_merge() {
         let config = StreamTimeoutConfig::for_context(&ChatContextType::Merge);
-        assert_eq!(config.line_read_timeout, Duration::from_secs(180));
-        assert_eq!(config.parse_stall_timeout, Duration::from_secs(90));
+        assert_eq!(config.line_read_timeout, Duration::from_secs(600));
+        assert_eq!(config.parse_stall_timeout, Duration::from_secs(180));
     }
 
     #[test]
@@ -1203,15 +1203,18 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_shorter_than_review_shorter_than_default() {
+    fn test_timeout_config_ordering() {
+        // Merge needs generous timeouts (agent may run silent tests for minutes)
+        // Review is faster than default, merge matches default
         let merge = StreamTimeoutConfig::for_context(&ChatContextType::Merge);
         let review = StreamTimeoutConfig::for_context(&ChatContextType::Review);
         let default = StreamTimeoutConfig::for_context(&ChatContextType::TaskExecution);
 
-        assert!(merge.line_read_timeout < review.line_read_timeout);
         assert!(review.line_read_timeout < default.line_read_timeout);
-        assert!(merge.parse_stall_timeout < review.parse_stall_timeout);
         assert!(review.parse_stall_timeout < default.parse_stall_timeout);
+        // Merge matches default — merger agents may run silent test suites
+        assert_eq!(merge.line_read_timeout, default.line_read_timeout);
+        assert_eq!(merge.parse_stall_timeout, default.parse_stall_timeout);
     }
 
     #[test]
