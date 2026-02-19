@@ -60,10 +60,8 @@ export function validateForm(form: FormState): FormErrors {
     errors.workingDirectory = "Location is required";
   }
 
-  if (form.gitMode === "worktree") {
-    if (!form.baseBranch.trim()) {
-      errors.baseBranch = "Base branch is required";
-    }
+  if (!form.baseBranch.trim()) {
+    errors.baseBranch = "Base branch is required";
   }
 
   return errors;

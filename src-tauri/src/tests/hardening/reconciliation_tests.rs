@@ -6,7 +6,7 @@
 use super::helpers::*;
 
 use crate::commands::ExecutionState;
-use crate::domain::entities::{GitMode, InternalStatus, ProjectId, TaskId};
+use crate::domain::entities::{InternalStatus, ProjectId, TaskId};
 use crate::domain::repositories::TaskRepository;
 use crate::domain::state_machine::events::TaskEvent;
 use crate::domain::state_machine::machine::{Response, State};
@@ -514,21 +514,3 @@ async fn test_e9_merge_recovery_preserves_worktree_context() {
     );
 }
 
-#[tokio::test]
-async fn test_e9_worktree_mode_vs_local_mode() {
-    // PARTIAL: Only Worktree mode tasks have worktree_path set
-    let project_id = ProjectId::from_string("proj-e9d".to_string());
-
-    let local_task = create_test_task(&project_id, "Local mode task");
-    assert!(local_task.worktree_path.is_none());
-
-    let mut wt_task = create_test_task(&project_id, "Worktree mode task");
-    wt_task.worktree_path = Some("/tmp/worktrees/wt-task".to_string());
-    assert!(wt_task.worktree_path.is_some());
-
-    assert_eq!(create_test_project("local-proj").git_mode, GitMode::Local);
-    assert_eq!(
-        create_test_project_with_git_mode("wt-proj", GitMode::Worktree).git_mode,
-        GitMode::Worktree
-    );
-}

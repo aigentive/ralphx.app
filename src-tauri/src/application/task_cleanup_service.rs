@@ -11,7 +11,6 @@ use tauri::AppHandle;
 
 use crate::application::git_service::GitService;
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
-use crate::domain::entities::project::GitMode;
 use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory, TaskId};
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
@@ -348,9 +347,6 @@ impl TaskCleanupService {
 
     /// Clean up git resources (worktree + branch) for a task.
     /// Best-effort — errors are logged but not propagated.
-    ///
-    /// Safety: checks out base branch before deleting task branch to avoid
-    /// "cannot delete the branch you are currently on" errors in Local mode.
     async fn cleanup_git_resources(&self, task: &Task) {
         let project = match self.project_repo.get_by_id(&task.project_id).await {
             Ok(Some(p)) => p,
@@ -364,63 +360,34 @@ impl TaskCleanupService {
             None => return,
         };
 
-        match project.git_mode {
-            GitMode::Worktree => {
-                // Delete worktree first if it exists
-                if let Some(ref worktree_path) = task.worktree_path {
-                    let worktree_path_buf = PathBuf::from(worktree_path);
-                    if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path_buf).await {
-                        tracing::warn!(
-                            worktree = worktree_path.as_str(),
-                            error = %e,
-                            "Failed to delete worktree during cleanup (non-fatal)"
-                        );
-                    }
-                }
-
-                // Checkout base branch before deleting task branch
-                if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
-                    tracing::warn!(
-                        base_branch = base_branch,
-                        error = %e,
-                        "Failed to checkout base branch during cleanup (non-fatal)"
-                    );
-                }
-
-                // Delete task branch
-                if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
-                    tracing::warn!(
-                        branch = task_branch.as_str(),
-                        error = %e,
-                        "Failed to delete branch during cleanup (non-fatal)"
-                    );
-                }
+        // Delete worktree first if it exists
+        if let Some(ref worktree_path) = task.worktree_path {
+            let worktree_path_buf = PathBuf::from(worktree_path);
+            if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path_buf).await {
+                tracing::warn!(
+                    worktree = worktree_path.as_str(),
+                    error = %e,
+                    "Failed to delete worktree during cleanup (non-fatal)"
+                );
             }
-            GitMode::Local => {
-                // Abort any in-progress rebase (safety for Local mode)
-                if GitService::is_rebase_in_progress(&repo_path) {
-                    let _ = GitService::abort_rebase(&repo_path).await;
-                }
+        }
 
-                // Checkout base branch before deleting task branch
-                // (avoids "cannot delete the branch you are currently on")
-                if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
-                    tracing::warn!(
-                        base_branch = base_branch,
-                        error = %e,
-                        "Failed to checkout base branch during cleanup (non-fatal)"
-                    );
-                }
+        // Checkout base branch before deleting task branch
+        if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
+            tracing::warn!(
+                base_branch = base_branch,
+                error = %e,
+                "Failed to checkout base branch during cleanup (non-fatal)"
+            );
+        }
 
-                // Delete task branch
-                if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
-                    tracing::warn!(
-                        branch = task_branch.as_str(),
-                        error = %e,
-                        "Failed to delete branch during cleanup (non-fatal)"
-                    );
-                }
-            }
+        // Delete task branch
+        if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
+            tracing::warn!(
+                branch = task_branch.as_str(),
+                error = %e,
+                "Failed to delete branch during cleanup (non-fatal)"
+            );
         }
     }
 

@@ -1081,7 +1081,7 @@ mod tests {
         let long_input: String = (1..=100)
             .fold(String::new(), |mut acc, i| {
                 use std::fmt::Write;
-                write!(acc, "## Phase {}: Some very long phase title with lots of words here\n", i).unwrap();
+                writeln!(acc, "## Phase {}: Some very long phase title with lots of words here", i).unwrap();
                 acc
             });
         let result = summarize_plan_for_dependencies(&long_input);

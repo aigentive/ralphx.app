@@ -2,42 +2,21 @@
  * GitSettingsSection - Git settings for project configuration
  *
  * Features:
- * - Git Mode selector: Worktree (Recommended) / Local Branches
  * - Editable Base Branch with "Detect Default" action
- * - Worktree Location setting (when in worktree mode), persisted per project
+ * - Worktree Location setting, persisted per project
  *
  * Follows SettingsView pattern using shared components.
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { GitBranch, AlertTriangle, Loader2, RefreshCw } from "lucide-react";
+import { GitBranch, Loader2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { api, getGitDefaultBranch } from "@/lib/tauri";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
-import type { GitMode, MergeValidationMode, Project } from "@/types/project";
+import type { MergeValidationMode } from "@/types/project";
 import { SectionCard, SelectSettingRow, SettingRow, ToggleSettingRow } from "./SettingsView.shared";
-
-/**
- * Git mode options for the select dropdown
- */
-const GIT_MODE_OPTIONS: {
-  value: GitMode;
-  label: string;
-  description: string;
-}[] = [
-  {
-    value: "worktree",
-    label: "Isolated Worktrees (Recommended)",
-    description: "Each task gets a separate working directory",
-  },
-  {
-    value: "local",
-    label: "Local Branches",
-    description: "Single directory, one task at a time",
-  },
-];
 
 /**
  * Merge validation mode options
@@ -154,33 +133,6 @@ export function GitSettingsSection() {
     setPendingBaseBranch(null);
     setPendingWorktreeDir(null);
   }, [project?.id]);
-
-  // Handler for git mode change
-  const handleGitModeChange = useCallback(
-    async (newMode: GitMode, currentProject: Project | null) => {
-      if (!currentProject || newMode === currentProject.gitMode) return;
-
-      setIsUpdating(true);
-      try {
-        await api.projects.changeGitMode(
-          currentProject.id,
-          newMode,
-          newMode === "worktree" ? pendingWorktreeDir ?? undefined : undefined
-        );
-
-        // Update local store
-        updateProject(currentProject.id, { gitMode: newMode });
-        toast.success(`Git mode changed to ${newMode === "worktree" ? "Isolated Worktrees" : "Local Branches"}`);
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : "Failed to change git mode"
-        );
-      } finally {
-        setIsUpdating(false);
-      }
-    },
-    [pendingWorktreeDir, updateProject]
-  );
 
   // Handler for base branch change (local state)
   const handleBaseBranchChange = useCallback((value: string) => {
@@ -334,7 +286,6 @@ export function GitSettingsSection() {
     return null;
   }
 
-  const currentGitMode = project.gitMode;
   const baseBranch = pendingBaseBranch ?? project.baseBranch ?? "";
   const worktreeParentDirectory =
     pendingWorktreeDir ?? project.worktreeParentDirectory ?? "~/ralphx-worktrees";
@@ -345,33 +296,6 @@ export function GitSettingsSection() {
       title="Git"
       description="Version control settings"
     >
-      <SelectSettingRow
-        id="git-mode"
-        label="Git Mode"
-        description="How tasks are isolated during execution"
-        value={currentGitMode}
-        options={GIT_MODE_OPTIONS}
-        disabled={isUpdating}
-        onChange={(newMode) => handleGitModeChange(newMode, project)}
-      />
-
-      {/* Warning banner for local mode */}
-      {currentGitMode === "local" && (
-        <div
-          className="flex items-start gap-2 p-3 rounded-md my-2"
-          style={{
-            background: "rgba(245, 158, 11, 0.08)",
-            border: "1px solid rgba(245, 158, 11, 0.2)",
-          }}
-        >
-          <AlertTriangle className="w-4 h-4 text-[var(--status-warning)] shrink-0 mt-0.5" />
-          <p className="text-xs text-[var(--text-muted)]">
-            Local mode allows only one task to execute at a time. Your uncommitted
-            changes may be affected during execution.
-          </p>
-        </div>
-      )}
-
       <TextSettingRow
         id="base-branch"
         label="Base Branch"
@@ -387,18 +311,16 @@ export function GitSettingsSection() {
         actionLoading={isDetectingDefault}
       />
 
-      {currentGitMode === "worktree" && (
-        <TextSettingRow
-          id="worktree-location"
-          label="Worktree Location"
-          description="Directory where task worktrees are created"
-          value={worktreeParentDirectory}
-          placeholder="~/ralphx-worktrees"
-          disabled={isUpdating}
-          onChange={handleWorktreeDirChange}
-          onBlur={handleWorktreeDirBlur}
-        />
-      )}
+      <TextSettingRow
+        id="worktree-location"
+        label="Worktree Location"
+        description="Directory where task worktrees are created"
+        value={worktreeParentDirectory}
+        placeholder="~/ralphx-worktrees"
+        disabled={isUpdating}
+        onChange={handleWorktreeDirChange}
+        onBlur={handleWorktreeDirBlur}
+      />
 
       <ToggleSettingRow
         id="feature-branches"

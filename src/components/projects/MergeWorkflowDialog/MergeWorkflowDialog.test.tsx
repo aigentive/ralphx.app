@@ -509,26 +509,6 @@ describe("MergeWorkflowDialog", () => {
   // ============================================================================
 
   describe("Different Project Types", () => {
-    it("should work with local git mode project", () => {
-      const localProject: Project = {
-        ...mockProject,
-        gitMode: "local",
-        baseBranch: null,
-        worktreeParentDirectory: null,
-      };
-      const onConfirm = vi.fn();
-      render(
-        <MergeWorkflowDialog
-          {...createDefaultProps({ project: localProject, onConfirm })}
-        />
-      );
-      fireEvent.click(screen.getByTestId("confirm-button"));
-      expect(onConfirm).toHaveBeenCalledWith({
-        option: "merge",
-        project: localProject,
-      });
-    });
-
     it("should display correct project name for different projects", () => {
       const differentProject: Project = {
         ...mockProject,

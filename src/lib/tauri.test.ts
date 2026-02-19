@@ -149,7 +149,7 @@ const createMockProject = (overrides = {}) => ({
   id: "project-1",
   name: "Test Project",
   working_directory: "/path/to/project",
-  git_mode: "local",
+  git_mode: "worktree",
   base_branch: null,
   worktree_parent_directory: null,
   use_feature_branches: true,

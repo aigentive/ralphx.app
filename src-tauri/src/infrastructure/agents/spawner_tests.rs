@@ -573,33 +573,6 @@ async fn test_resolve_working_directory_worktree_mode_no_worktree_path() {
 }
 
 #[tokio::test]
-async fn test_resolve_working_directory_local_mode() {
-    let mock = Arc::new(MockAgenticClient::new());
-
-    let project_id = ProjectId("proj-3".to_string());
-    let mut task = Task::new(project_id.clone(), "Test task".to_string());
-    task.id = TaskId("task-local".to_string());
-    task.worktree_path = Some("/worktrees/task-local".to_string()); // should be ignored
-
-    let mut project = Project::new("Test Project".to_string(), "/project/root".to_string());
-    project.id = project_id;
-    project.git_mode = GitMode::Local;
-
-    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner { task: Some(task) });
-    let project_repo: Arc<dyn ProjectRepository> = Arc::new(MockProjectRepoForSpawner {
-        project: Some(project),
-    });
-
-    let spawner = AgenticClientSpawner::new(mock)
-        .with_working_dir("/fallback")
-        .with_repos(task_repo, project_repo);
-
-    // Local mode always uses project working_directory
-    let resolved = spawner.resolve_working_directory("task-local").await;
-    assert_eq!(resolved, PathBuf::from("/project/root"));
-}
-
-#[tokio::test]
 async fn test_resolve_working_directory_fallback_no_repos() {
     let mock = Arc::new(MockAgenticClient::new());
 

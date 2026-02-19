@@ -6,7 +6,7 @@ import { z } from "zod";
 /**
  * Git mode for project repository
  */
-export const GitModeSchema = z.enum(["local", "worktree"]);
+export const GitModeSchema = z.enum(["worktree"]);
 export type GitMode = z.infer<typeof GitModeSchema>;
 
 /**
@@ -87,7 +87,7 @@ export const ProjectSchema = ProjectResponseSchema;
 export const CreateProjectSchema = z.object({
   name: z.string().min(1, "Project name is required"),
   workingDirectory: z.string().min(1, "Working directory is required"),
-  gitMode: GitModeSchema.default("local"),
+  gitMode: GitModeSchema.default("worktree"),
   baseBranch: z.string().optional(),
   worktreeParentDirectory: z.string().optional(),
 });

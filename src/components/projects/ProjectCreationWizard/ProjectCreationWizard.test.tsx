@@ -67,10 +67,10 @@ describe("ProjectCreationWizard", () => {
       expect(screen.queryByTestId("browse-button")).not.toBeInTheDocument();
     });
 
-    it("renders git mode options", () => {
+    it("renders git settings with base branch", () => {
       renderWizard();
-      expect(screen.getByTestId("git-mode-local")).toBeInTheDocument();
-      expect(screen.getByTestId("git-mode-worktree")).toBeInTheDocument();
+      expect(screen.getByText("Git Settings")).toBeInTheDocument();
+      expect(screen.getByTestId("base-branch-select")).toBeInTheDocument();
     });
 
     it("renders cancel and create buttons", () => {
@@ -87,66 +87,20 @@ describe("ProjectCreationWizard", () => {
   });
 
   // ==========================================================================
-  // Git Mode Selection Tests
+  // Git Settings Tests
   // ==========================================================================
 
-  describe("git mode selection", () => {
-    it("local mode is selected by default", () => {
+  describe("git settings", () => {
+    it("shows base branch select and worktree path by default", () => {
       renderWizard();
-      const localOption = screen.getByTestId("git-mode-local");
-      expect(localOption).toHaveAttribute("data-selected", "true");
-    });
-
-    it("worktree mode is not selected by default", () => {
-      renderWizard();
-      const worktreeOption = screen.getByTestId("git-mode-worktree");
-      expect(worktreeOption).toHaveAttribute("data-selected", "false");
-    });
-
-    it("shows worktree fields when worktree mode is selected", async () => {
-      const user = userEvent.setup();
-      renderWizard();
-
-      await user.click(screen.getByTestId("git-mode-worktree"));
 
       expect(screen.getByTestId("base-branch-select")).toBeInTheDocument();
       expect(screen.getByTestId("worktree-path-display")).toBeInTheDocument();
     });
 
-    it("hides worktree fields when local mode is selected", async () => {
-      const user = userEvent.setup();
+    it("shows advanced settings trigger", () => {
       renderWizard();
-
-      // First select worktree mode
-      await user.click(screen.getByTestId("git-mode-worktree"));
-      expect(screen.getByTestId("base-branch-select")).toBeInTheDocument();
-
-      // Then select local mode
-      await user.click(screen.getByTestId("git-mode-local"));
-      expect(screen.queryByTestId("base-branch-select")).not.toBeInTheDocument();
-    });
-
-    it("displays warning for local mode", () => {
-      renderWizard();
-      expect(
-        screen.getByText(/Your uncommitted changes may be affected/i)
-      ).toBeInTheDocument();
-    });
-
-    it("updates git mode selection visually", async () => {
-      const user = userEvent.setup();
-      renderWizard();
-
-      const localOption = screen.getByTestId("git-mode-local");
-      const worktreeOption = screen.getByTestId("git-mode-worktree");
-
-      expect(localOption).toHaveAttribute("data-selected", "true");
-      expect(worktreeOption).toHaveAttribute("data-selected", "false");
-
-      await user.click(worktreeOption);
-
-      expect(localOption).toHaveAttribute("data-selected", "false");
-      expect(worktreeOption).toHaveAttribute("data-selected", "true");
+      expect(screen.getByTestId("advanced-settings-trigger")).toBeInTheDocument();
     });
   });
 
@@ -186,7 +140,7 @@ describe("ProjectCreationWizard", () => {
   // ==========================================================================
 
   describe("submission", () => {
-    it("calls onCreate with local mode project data", async () => {
+    it("calls onCreate with worktree mode project data", async () => {
       const user = userEvent.setup();
       const mockOnCreate = vi.fn();
       const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
@@ -198,16 +152,14 @@ describe("ProjectCreationWizard", () => {
         expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
       });
 
-      // Switch to local mode
-      await user.click(screen.getByTestId("git-mode-local"));
-
       // Submit
       await user.click(screen.getByTestId("create-button"));
 
       expect(mockOnCreate).toHaveBeenCalledWith({
         name: "my-app", // auto-inferred from folder
         workingDirectory: "/Users/dev/my-app",
-        gitMode: "local",
+        gitMode: "worktree",
+        baseBranch: "main",
       });
     });
 
@@ -227,49 +179,15 @@ describe("ProjectCreationWizard", () => {
       await user.clear(screen.getByTestId("project-name-input"));
       await user.type(screen.getByTestId("project-name-input"), "Custom Project Name");
 
-      // Switch to local mode
-      await user.click(screen.getByTestId("git-mode-local"));
-
       // Submit
       await user.click(screen.getByTestId("create-button"));
 
       expect(mockOnCreate).toHaveBeenCalledWith({
         name: "Custom Project Name",
         workingDirectory: "/Users/dev/my-app",
-        gitMode: "local",
-      });
-    });
-
-    it("calls onCreate with worktree mode project data", async () => {
-      const user = userEvent.setup();
-      const mockOnCreate = vi.fn();
-      const mockBrowse = vi.fn().mockResolvedValue("/Users/dev/my-app");
-      renderWizard({ onCreate: mockOnCreate, onBrowseFolder: mockBrowse });
-
-      // Browse for folder
-      await user.click(screen.getByTestId("browse-button"));
-      await waitFor(() => {
-        expect(screen.getByTestId("folder-input")).toHaveValue("/Users/dev/my-app");
-      });
-
-      // Override name
-      await user.clear(screen.getByTestId("project-name-input"));
-      await user.type(screen.getByTestId("project-name-input"), "My Project");
-
-      // Select worktree mode
-      await user.click(screen.getByTestId("git-mode-worktree"));
-
-      // Submit
-      await user.click(screen.getByTestId("create-button"));
-
-      const expectedProject: CreateProject = {
-        name: "My Project",
-        workingDirectory: "/Users/dev/my-app",
         gitMode: "worktree",
         baseBranch: "main",
-      };
-
-      expect(mockOnCreate).toHaveBeenCalledWith(expectedProject);
+      });
     });
 
     it("trims whitespace from form values", async () => {
@@ -288,16 +206,14 @@ describe("ProjectCreationWizard", () => {
       await user.clear(screen.getByTestId("project-name-input"));
       await user.type(screen.getByTestId("project-name-input"), "  My Project  ");
 
-      // Switch to local mode
-      await user.click(screen.getByTestId("git-mode-local"));
-
       // Submit
       await user.click(screen.getByTestId("create-button"));
 
       expect(mockOnCreate).toHaveBeenCalledWith({
         name: "My Project",
         workingDirectory: "/Users/dev/my-app",
-        gitMode: "local",
+        gitMode: "worktree",
+        baseBranch: "main",
       });
     });
 
@@ -464,13 +380,11 @@ describe("ProjectCreationWizard", () => {
       expect(screen.getByTestId("folder-input")).toHaveValue("");
     });
 
-    it("resets git mode when modal reopens", async () => {
-      const user = userEvent.setup();
+    it("resets base branch when modal reopens", async () => {
       const { rerender } = renderWizard();
 
-      // Switch away from default mode (local → worktree)
-      await user.click(screen.getByTestId("git-mode-worktree"));
-      expect(screen.getByTestId("git-mode-worktree")).toHaveAttribute("data-selected", "true");
+      // Base branch should be "main" by default
+      expect(screen.getByTestId("base-branch-select")).toBeInTheDocument();
 
       // Close and reopen
       rerender(
@@ -480,9 +394,8 @@ describe("ProjectCreationWizard", () => {
         <ProjectCreationWizard {...defaultProps} isOpen={true} />
       );
 
-      // Check git mode is reset to default local
-      expect(screen.getByTestId("git-mode-local")).toHaveAttribute("data-selected", "true");
-      expect(screen.getByTestId("git-mode-worktree")).toHaveAttribute("data-selected", "false");
+      // Check git settings are still present
+      expect(screen.getByTestId("base-branch-select")).toBeInTheDocument();
     });
   });
 });
