@@ -630,9 +630,15 @@ impl StreamProcessor {
                 subtype,
                 ..
             } => {
-                if let Some(ref id) = session_id {
-                    self.session_id = session_id.clone();
-                    events.push(StreamEvent::SessionId(id.clone()));
+                // Only capture session_id from top-level (lead's own) result events.
+                // Teammate result events carry a non-None parent_tool_use_id; capturing
+                // their session_id would overwrite the lead's session and cause --resume
+                // to open the teammate's context instead of the orchestrator's.
+                if parent_tool_use_id.is_none() {
+                    if let Some(ref id) = session_id {
+                        self.session_id = session_id.clone();
+                        events.push(StreamEvent::SessionId(id.clone()));
+                    }
                 }
                 if is_error {
                     self.result_is_error = true;
@@ -716,10 +722,14 @@ impl StreamProcessor {
                     }
                 }
 
-                // Capture session_id if present
-                if let Some(ref id) = session_id {
-                    self.session_id = session_id.clone();
-                    events.push(StreamEvent::SessionId(id.clone()));
+                // Only capture session_id from top-level (lead's own) assistant messages.
+                // Teammate assistant messages carry a non-None parent_tool_use_id; capturing
+                // their session_id would overwrite the lead's session.
+                if parent_tool_use_id.is_none() {
+                    if let Some(ref id) = session_id {
+                        self.session_id = session_id.clone();
+                        events.push(StreamEvent::SessionId(id.clone()));
+                    }
                 }
             }
             StreamMessage::System {
@@ -1433,6 +1443,136 @@ mod tests {
     // ====================================================================
     // parent_tool_use_id and Task subagent tests
     // ====================================================================
+
+    /// Regression test: teammate Result events must NOT overwrite the lead's session_id.
+    /// In team mode, Claude CLI embeds each teammate's result (with a non-None
+    /// parent_tool_use_id) into the lead's stdout. The last result event to arrive must
+    /// not win — only the lead's own top-level result (parent_tool_use_id = None) sets
+    /// the stored session_id.
+    #[test]
+    fn test_result_session_id_ignored_when_parent_tool_use_id_set() {
+        let mut processor = StreamProcessor::new();
+
+        // Teammate result event: has a parent_tool_use_id → session_id must be ignored
+        let teammate_result = ParsedLine {
+            message: StreamMessage::Result {
+                result: Some("teammate done".to_string()),
+                session_id: Some("teammate-session-id".to_string()),
+                is_error: false,
+                errors: Vec::new(),
+                subtype: None,
+                cost_usd: 0.001,
+            },
+            parent_tool_use_id: Some("toolu_task_abc".to_string()),
+            is_synthetic: false,
+            tool_use_result: None,
+        };
+
+        let events = processor.process_parsed_line(teammate_result);
+
+        // No SessionId event should be emitted for a teammate result
+        assert!(
+            !events.iter().any(|e| matches!(e, StreamEvent::SessionId(_))),
+            "Expected no SessionId event from teammate result, but got one"
+        );
+        assert!(
+            processor.session_id.is_none(),
+            "session_id must not be set from teammate result event"
+        );
+
+        // Lead result event: no parent_tool_use_id → session_id must be captured
+        let lead_result = ParsedLine {
+            message: StreamMessage::Result {
+                result: Some("lead done".to_string()),
+                session_id: Some("lead-session-id".to_string()),
+                is_error: false,
+                errors: Vec::new(),
+                subtype: None,
+                cost_usd: 0.05,
+            },
+            parent_tool_use_id: None,
+            is_synthetic: false,
+            tool_use_result: None,
+        };
+
+        let events = processor.process_parsed_line(lead_result);
+
+        // SessionId event must be emitted for the lead result
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::SessionId(id) if id == "lead-session-id")),
+            "Expected SessionId(\"lead-session-id\") event from lead result"
+        );
+        assert_eq!(
+            processor.session_id,
+            Some("lead-session-id".to_string()),
+            "session_id must be set from lead result event"
+        );
+    }
+
+    /// Regression test: teammate Assistant messages must NOT overwrite the lead's session_id.
+    #[test]
+    fn test_assistant_session_id_ignored_when_parent_tool_use_id_set() {
+        let mut processor = StreamProcessor::new();
+
+        // Teammate assistant message: has a parent_tool_use_id → session_id must be ignored
+        let teammate_msg = ParsedLine {
+            message: StreamMessage::Assistant {
+                message: AssistantMessage {
+                    content: vec![AssistantContent::Text {
+                        text: "teammate response".to_string(),
+                    }],
+                    stop_reason: Some("end_turn".to_string()),
+                },
+                session_id: Some("teammate-assistant-session".to_string()),
+            },
+            parent_tool_use_id: Some("toolu_task_xyz".to_string()),
+            is_synthetic: false,
+            tool_use_result: None,
+        };
+
+        let events = processor.process_parsed_line(teammate_msg);
+
+        assert!(
+            !events.iter().any(|e| matches!(e, StreamEvent::SessionId(_))),
+            "Expected no SessionId event from teammate assistant message, but got one"
+        );
+        assert!(
+            processor.session_id.is_none(),
+            "session_id must not be set from teammate assistant message"
+        );
+
+        // Lead assistant message: no parent_tool_use_id → session_id must be captured
+        let lead_msg = ParsedLine {
+            message: StreamMessage::Assistant {
+                message: AssistantMessage {
+                    content: vec![AssistantContent::Text {
+                        text: "lead response".to_string(),
+                    }],
+                    stop_reason: Some("end_turn".to_string()),
+                },
+                session_id: Some("lead-assistant-session".to_string()),
+            },
+            parent_tool_use_id: None,
+            is_synthetic: false,
+            tool_use_result: None,
+        };
+
+        let events = processor.process_parsed_line(lead_msg);
+
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, StreamEvent::SessionId(id) if id == "lead-assistant-session")),
+            "Expected SessionId(\"lead-assistant-session\") event from lead assistant message"
+        );
+        assert_eq!(
+            processor.session_id,
+            Some("lead-assistant-session".to_string()),
+            "session_id must be set from lead assistant message"
+        );
+    }
 
     #[test]
     fn test_parse_line_extracts_parent_tool_use_id() {

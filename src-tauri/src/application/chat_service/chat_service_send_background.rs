@@ -84,6 +84,15 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     pub streaming_state_cache: StreamingStateCache,
 }
 
+/// Returns true when `--resume` was used (stored is Some) AND the stream returned a different
+/// session ID (new_id is Some and differs from stored). False in all other cases.
+fn session_changed_after_resume(stored: Option<&str>, new_id: Option<&str>) -> bool {
+    match (stored, new_id) {
+        (Some(s), Some(n)) => s != n,
+        _ => false,
+    }
+}
+
 pub(super) async fn finalize_assistant_message<R: Runtime>(
     chat_message_repo: &Arc<dyn ChatMessageRepository>,
     app_handle: Option<&AppHandle<R>>,
@@ -266,11 +275,34 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // Update conversation with claude_session_id
                 if let Some(ref sess_id) = claude_session_id {
                     tracing::info!("[CHAT_SERVICE] Updating conversation with session_id={}", sess_id);
-                    let _ = conversation_repo
+                    if let Err(e) = conversation_repo
                         .update_claude_session_id(&conversation_id, sess_id)
-                        .await;
+                        .await
+                    {
+                        tracing::error!(
+                            error = %e,
+                            conversation_id = conversation_id.as_str(),
+                            session_id = %sess_id,
+                            "[CHAT_SERVICE] Failed to persist claude_session_id — next resume attempt will use stale session ID"
+                        );
+                    }
                 } else {
                     tracing::warn!("[CHAT_SERVICE] No claude_session_id captured from stream - queue processing will be skipped!");
+                }
+
+                // Detect resume failure: if --resume was used but Claude returned a different session ID,
+                // it silently started a fresh session (original session likely expired).
+                if session_changed_after_resume(
+                    stored_session_id.as_deref(),
+                    claude_session_id.as_deref(),
+                ) {
+                    tracing::warn!(
+                        stored_session_id = %stored_session_id.as_deref().unwrap_or(""),
+                        new_session_id = %claude_session_id.as_deref().unwrap_or(""),
+                        context_type = %context_type,
+                        context_id = %context_id,
+                        "[RESUME] Session ID changed after --resume — Claude may have started a fresh session (stored session likely expired)"
+                    );
                 }
 
                 // Update pre-created assistant message with final content
@@ -528,4 +560,42 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             }
         }
     }.instrument(span));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::session_changed_after_resume;
+
+    #[test]
+    fn session_changed_returns_true_when_ids_differ() {
+        assert!(session_changed_after_resume(
+            Some("session-old-abc"),
+            Some("session-new-xyz"),
+        ));
+    }
+
+    #[test]
+    fn session_changed_returns_false_when_ids_match() {
+        assert!(!session_changed_after_resume(
+            Some("session-abc"),
+            Some("session-abc"),
+        ));
+    }
+
+    #[test]
+    fn session_changed_returns_false_when_no_stored_id() {
+        // --resume was not used; no comparison possible
+        assert!(!session_changed_after_resume(None, Some("session-new")));
+    }
+
+    #[test]
+    fn session_changed_returns_false_when_no_new_id() {
+        // Stream returned no session ID; cannot detect change
+        assert!(!session_changed_after_resume(Some("session-old"), None));
+    }
+
+    #[test]
+    fn session_changed_returns_false_when_both_none() {
+        assert!(!session_changed_after_resume(None, None));
+    }
 }
