@@ -282,7 +282,8 @@ pub fn run() {
                     startup_running_agent_registry.clone(),
                     startup_memory_event_repo.clone(),
                     Some(startup_app_handle.clone()),
-                ));
+                )
+                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo)));
                 scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn domain::state_machine::services::TaskScheduler>);
                 let task_scheduler: Arc<dyn domain::state_machine::services::TaskScheduler> = scheduler_concrete;
 

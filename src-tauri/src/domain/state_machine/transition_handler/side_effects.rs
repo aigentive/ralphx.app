@@ -683,6 +683,13 @@ impl<'a> super::TransitionHandler<'a> {
         } else {
             build_squash_commit_msg(&task.category, &task.title, &source_branch)
         };
+        tracing::info!(
+            task_id = task_id_str,
+            strategy = ?project.merge_strategy,
+            source_branch = %source_branch,
+            target_branch = %target_branch,
+            "Dispatching merge strategy"
+        );
         match project.merge_strategy {
             MergeStrategy::Merge => {
                 let outcome = self.merge_worktree_strategy(
@@ -802,6 +809,7 @@ impl<'a> super::TransitionHandler<'a> {
         target_branch: &str,
         task_repo: &Arc<dyn TaskRepository>,
     ) {
+        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 1 — removing stale index.lock");
         // --- index.lock removal ---
         // Remove a stale .git/index.lock left by a crashed git process.
         let index_lock_stale_secs = git_runtime_config().index_lock_stale_secs;
@@ -823,6 +831,7 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         {
+            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 2 — deleting task worktree");
             // Step 1: Delete task worktree to unlock branch for merge worktree creation
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
@@ -846,6 +855,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
 
+            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 3 — pruning stale worktree refs");
             // Step 2: Prune stale worktree references (metadata pointing to deleted dirs)
             if let Err(e) = GitService::prune_worktrees(repo_path).await {
                 tracing::warn!(
@@ -855,6 +865,7 @@ impl<'a> super::TransitionHandler<'a> {
                 );
             }
 
+            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 4 — deleting own stale merge/rebase worktrees");
             // Step 3: Force-delete our own merge and rebase worktrees from prior attempts
             for (wt_label, own_wt) in [
                 ("merge", compute_merge_worktree_path(project, task_id_str)),
@@ -880,6 +891,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
 
+            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 5 — scanning for orphaned merge worktrees");
             // Step 4: Scan for orphaned merge worktrees on the same target branch.
             // Another task's merge may have crashed/failed, leaving a worktree that locks
             // the target branch. We only clean up if the owning task is NOT actively merging.
@@ -925,6 +937,7 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
+        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 6 — cleaning working tree (git clean)");
         // Clean working tree before merge (non-fatal on error)
         match GitService::clean_working_tree(repo_path).await {
             Ok(()) => tracing::debug!(
@@ -935,6 +948,7 @@ impl<'a> super::TransitionHandler<'a> {
                 tracing::warn!(task_id = task_id_str, error = %e, "Pre-merge clean failed (non-fatal)")
             }
         }
+        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: complete");
     }
 
     /// Post-merge cleanup: update plan branch status, delete feature branch, unblock dependents.
