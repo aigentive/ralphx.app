@@ -24,7 +24,6 @@ import {
   FolderOpen,
   ChevronDown,
   Plus,
-  GitBranch,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Project } from "@/types/project";
@@ -46,44 +45,6 @@ export interface ProjectSelectorProps {
 // Sub-components
 // ============================================================================
 
-interface GitModeBadgeProps {
-  mode: "local" | "worktree";
-  compact?: boolean;
-}
-
-function GitModeBadge({ mode, compact = false }: GitModeBadgeProps) {
-  const isWorktree = mode === "worktree";
-
-  if (compact) {
-    return (
-      <span
-        className="inline-flex items-center gap-1 text-xs"
-        style={{ color: "var(--text-muted)" }}
-      >
-        {isWorktree && <GitBranch className="w-3 h-3" />}
-        <span className="font-mono">{isWorktree ? "worktree" : "local"}</span>
-      </span>
-    );
-  }
-
-  return (
-    <span
-      className="inline-flex items-center gap-1 text-xs px-1.5 py-0.5 rounded"
-      style={{
-        backgroundColor: isWorktree
-          ? "rgba(255, 107, 53, 0.1)"
-          : "var(--bg-base)",
-        color: isWorktree
-          ? "var(--accent-secondary)"
-          : "var(--text-muted)",
-      }}
-    >
-      {isWorktree && <GitBranch className="w-3 h-3" />}
-      <span>{isWorktree ? "Worktree" : "Local"}</span>
-    </span>
-  );
-}
-
 interface ProjectItemProps {
   project: Project;
   isActive: boolean;
@@ -91,8 +52,6 @@ interface ProjectItemProps {
 }
 
 function ProjectItem({ project, isActive, onSelect }: ProjectItemProps) {
-  const isWorktree = project.gitMode === "worktree";
-
   return (
     <DropdownMenuItem
       className={cn(
@@ -112,12 +71,6 @@ function ProjectItem({ project, isActive, onSelect }: ProjectItemProps) {
         />
         {/* Project name */}
         <span className="text-sm font-medium truncate">{project.name}</span>
-      </div>
-      <div className="flex items-center gap-1.5 flex-shrink-0">
-        {/* Git mode badge */}
-        <span className="text-xs text-[var(--text-muted)]">
-          {isWorktree ? "worktree" : "local"}
-        </span>
       </div>
     </DropdownMenuItem>
   );
@@ -182,10 +135,6 @@ export function ProjectSelector({ onNewProject, className = "", align = "center"
           {activeProject ? (
             <span className="flex items-center gap-2 min-w-0 overflow-hidden">
               <span className="text-sm font-medium truncate">{activeProject.name}</span>
-              <GitModeBadge
-                mode={activeProject.gitMode}
-                compact
-              />
             </span>
           ) : (
             <span className="text-sm text-[var(--text-muted)]">Select Project</span>

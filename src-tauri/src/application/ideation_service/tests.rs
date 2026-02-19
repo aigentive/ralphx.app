@@ -2,8 +2,8 @@
 use super::{CreateProposalOptions, IdeationService};
 use crate::domain::entities::{
     ArtifactId, ChatConversationId, ChatMessage, ChatMessageId, IdeationSession, IdeationSessionId,
-    IdeationSessionStatus, MessageRole, Priority, PriorityAssessment, ProjectId, ProposalStatus,
-    TaskCategory, TaskId, TaskProposal, TaskProposalId,
+    IdeationSessionStatus, MessageRole, Priority, PriorityAssessment, ProjectId, ProposalCategory,
+    ProposalStatus, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::domain::repositories::{
     ChatMessageRepository, IdeationSessionRepository, ProposalDependencyRepository,
@@ -83,7 +83,7 @@ impl IdeationSessionRepository for MockSessionRepository {
         Ok(())
     }
 
-    async fn update_title(&self, id: &IdeationSessionId, title: Option<String>) -> AppResult<()> {
+    async fn update_title(&self, id: &IdeationSessionId, title: Option<String>, _title_source: &str) -> AppResult<()> {
         if let Some(session) = self.sessions.lock().unwrap().get_mut(&id.to_string()) {
             session.title = title;
             session.updated_at = Utc::now();
@@ -666,7 +666,7 @@ fn create_proposal_options() -> CreateProposalOptions {
     CreateProposalOptions {
         title: "Test Proposal".to_string(),
         description: Some("A test proposal".to_string()),
-        category: TaskCategory::Feature,
+        category: ProposalCategory::Feature,
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
@@ -752,7 +752,7 @@ async fn test_update_session_title() {
     let service = create_service_with_session(session);
 
     service
-        .update_session_title(&session_id, Some("Updated".to_string()))
+        .update_session_title(&session_id, Some("Updated".to_string()), "auto")
         .await
         .unwrap();
 
@@ -834,7 +834,7 @@ async fn test_create_proposal_in_active_session() {
 
     assert_eq!(proposal.session_id, session_id);
     assert_eq!(proposal.title, "Test Proposal");
-    assert_eq!(proposal.category, TaskCategory::Feature);
+    assert_eq!(proposal.category, ProposalCategory::Feature);
     assert_eq!(proposal.suggested_priority, Priority::Medium);
 }
 

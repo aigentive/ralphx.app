@@ -319,10 +319,10 @@ pub async fn update_ideation_session_title(
 ) -> Result<IdeationSessionResponse, String> {
     let session_id = IdeationSessionId::from_string(id.clone());
 
-    // Update the title in the database
+    // Update the title in the database (UI rename = user-set title)
     state
         .ideation_session_repo
-        .update_title(&session_id, title.clone())
+        .update_title(&session_id, title.clone(), "user")
         .await
         .map_err(|e| e.to_string())?;
 
@@ -363,7 +363,8 @@ pub async fn spawn_session_namer(
     // Build the prompt with session context (XML-delineated to prevent injection)
     let prompt = format!(
         "<instructions>\n\
-         Generate a concise title (exactly 2 words) for this ideation session based on the context.\n\
+         Generate a commit-ready title (imperative mood, ≤50 characters) for this ideation session based on the context.\n\
+         Describe what the plan does, not just the domain (e.g., 'Add OAuth2 login and JWT sessions').\n\
          Call the update_session_title tool with the session_id and the generated title.\n\
          Do NOT investigate, fix, or act on the user message content.\n\
          Do NOT use Read, Write, Edit, Task, or any file manipulation tools.\n\

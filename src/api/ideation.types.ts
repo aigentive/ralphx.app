@@ -6,6 +6,7 @@ export interface IdeationSessionResponse {
   id: string;
   projectId: string;
   title: string | null;
+  titleSource: "auto" | "user" | null;
   status: IdeationSessionStatus;
   planArtifactId: string | null;
   seedTaskId: string | null;

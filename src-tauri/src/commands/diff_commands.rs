@@ -3,16 +3,14 @@
 //! Provides file change and diff data for reviewing task execution results.
 
 use crate::application::{AppState, ConflictDiff, DiffService, FileChange, FileDiff};
-use crate::domain::entities::{GitMode, Project, Task, TaskId};
+use crate::domain::entities::{Project, Task, TaskId};
 use crate::error::{AppError, AppResult};
 use std::path::PathBuf;
 use tauri::State;
 
-/// Determine the working path for a task based on git mode.
+/// Determine the working path for a task.
 ///
-/// - Worktree mode: use task.worktree_path (falls back to project.working_directory)
-/// - Local mode: use project.working_directory
-///
+/// Uses task.worktree_path if available and exists, falls back to project.working_directory.
 /// Also returns the project for access to base_branch.
 async fn get_task_context(
     app_state: &AppState,
@@ -32,16 +30,13 @@ async fn get_task_context(
         .await?
         .ok_or_else(|| AppError::ProjectNotFound(task.project_id.as_str().to_string()))?;
 
-    // Determine working path based on git mode
-    let working_path = match project.git_mode {
-        GitMode::Worktree => task
-            .worktree_path
-            .as_ref()
-            .map(PathBuf::from)
-            .filter(|path| path.exists())
-            .unwrap_or_else(|| PathBuf::from(&project.working_directory)),
-        GitMode::Local => PathBuf::from(&project.working_directory),
-    };
+    // Determine working path — worktree path if available, else project dir
+    let working_path = task
+        .worktree_path
+        .as_ref()
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     let working_path_str = working_path.to_string_lossy().to_string();
     Ok((task, working_path, working_path_str, project))

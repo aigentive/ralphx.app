@@ -119,6 +119,9 @@ impl TaskRepository for MockTaskRepoForSpawner {
     async fn get_oldest_ready_tasks(&self, _: u32) -> AppResult<Vec<Task>> {
         Ok(vec![])
     }
+    async fn get_stale_ready_tasks(&self, _: u64) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
     async fn update_latest_state_history_metadata(
         &self,
         _: &TaskId,
@@ -567,33 +570,6 @@ async fn test_resolve_working_directory_worktree_mode_no_worktree_path() {
     // Safety net: falls back to spawner default (NOT project dir) when worktree_path is None
     let resolved = spawner.resolve_working_directory("task-no-wt").await;
     assert_eq!(resolved, PathBuf::from("/fallback"));
-}
-
-#[tokio::test]
-async fn test_resolve_working_directory_local_mode() {
-    let mock = Arc::new(MockAgenticClient::new());
-
-    let project_id = ProjectId("proj-3".to_string());
-    let mut task = Task::new(project_id.clone(), "Test task".to_string());
-    task.id = TaskId("task-local".to_string());
-    task.worktree_path = Some("/worktrees/task-local".to_string()); // should be ignored
-
-    let mut project = Project::new("Test Project".to_string(), "/project/root".to_string());
-    project.id = project_id;
-    project.git_mode = GitMode::Local;
-
-    let task_repo: Arc<dyn TaskRepository> = Arc::new(MockTaskRepoForSpawner { task: Some(task) });
-    let project_repo: Arc<dyn ProjectRepository> = Arc::new(MockProjectRepoForSpawner {
-        project: Some(project),
-    });
-
-    let spawner = AgenticClientSpawner::new(mock)
-        .with_working_dir("/fallback")
-        .with_repos(task_repo, project_repo);
-
-    // Local mode always uses project working_directory
-    let resolved = spawner.resolve_working_directory("task-local").await;
-    assert_eq!(resolved, PathBuf::from("/project/root"));
 }
 
 #[tokio::test]

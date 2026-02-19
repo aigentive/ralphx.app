@@ -682,19 +682,14 @@ impl<R: Runtime> StartupJobRunner<R> {
     }
 
     /// Check if all blocker tasks are in a terminal state.
-    ///
-    /// Terminal states are: Merged, Failed, Cancelled.
-    /// Approved is NOT terminal — the task still needs to be merged.
-    /// Paused/Stopped are NOT treated as complete blockers.
+    /// Delegates to InternalStatus::is_terminal() as the single source of truth.
+    /// Terminal states: Merged, Failed, Cancelled, Stopped.
     /// If a blocker doesn't exist (was deleted), it's considered complete.
     async fn all_blockers_complete(&self, blocker_ids: &[crate::domain::entities::TaskId]) -> bool {
         for blocker_id in blocker_ids {
             match self.task_repo.get_by_id(blocker_id).await {
                 Ok(Some(task)) => {
-                    if !matches!(
-                        task.internal_status,
-                        InternalStatus::Merged | InternalStatus::Failed | InternalStatus::Cancelled
-                    ) {
+                    if !task.internal_status.is_terminal() {
                         return false;
                     }
                 }

@@ -7,9 +7,115 @@ use std::sync::Arc;
 
 use crate::application::GitService;
 use crate::domain::entities::InternalStatus;
-use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskId};
+use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskCategory, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::AppResult;
+
+// ===== Pre-merge validation =====
+
+/// Errors surfaced when pre-merge preconditions fail for a `plan_merge` task.
+///
+/// Each variant carries a human-readable message suitable for storing in task metadata
+/// and displaying in the UI as an actionable error.
+#[derive(Debug, PartialEq)]
+pub(crate) enum PreMergeValidationError {
+    /// `plan_branch_repo` is not wired in the service context.
+    PlanBranchRepoNotWired,
+    /// The `PlanBranch` record for this task's session has `status != Active`.
+    PlanBranchNotActive { status: String },
+    /// The feature branch does not exist in the git repository.
+    FeatureBranchMissing { branch_name: String },
+}
+
+impl PreMergeValidationError {
+    /// A short, human-readable error message for UI display.
+    pub(crate) fn message(&self) -> String {
+        match self {
+            PreMergeValidationError::PlanBranchRepoNotWired => {
+                "Plan branch repository is not configured. \
+                 This is a server configuration error — please restart the application."
+                    .to_string()
+            }
+            PreMergeValidationError::PlanBranchNotActive { status } => {
+                format!(
+                    "The plan branch is not active (current status: {status}). \
+                     It may have already been merged or was abandoned. \
+                     Check the plan branch status before retrying."
+                )
+            }
+            PreMergeValidationError::FeatureBranchMissing { branch_name } => {
+                format!(
+                    "Feature branch '{branch_name}' does not exist in git. \
+                     It may have been deleted. Re-create the branch or reset the plan to retry."
+                )
+            }
+        }
+    }
+
+    /// A short machine-readable error code for metadata storage.
+    pub(crate) fn error_code(&self) -> &'static str {
+        match self {
+            PreMergeValidationError::PlanBranchRepoNotWired => "plan_branch_repo_not_wired",
+            PreMergeValidationError::PlanBranchNotActive { .. } => "plan_branch_not_active",
+            PreMergeValidationError::FeatureBranchMissing { .. } => "feature_branch_missing",
+        }
+    }
+}
+
+/// Validate preconditions required before attempting a `plan_merge` task merge.
+///
+/// Checks:
+/// 1. `plan_branch_repo` is wired (Some) in the context
+/// 2. The `PlanBranch` record for this task has `status == Active`
+/// 3. The feature branch referenced by the `PlanBranch` exists in git
+///
+/// Returns `Ok(())` when all checks pass, `Err(PreMergeValidationError)` on first failure.
+/// Callers should transition the task to `MergeIncomplete` with the error's `message()` on failure.
+///
+/// Non-`plan_merge` tasks always pass (returns `Ok(())`).
+pub(crate) async fn validate_plan_merge_preconditions(
+    task: &Task,
+    project: &Project,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+) -> Result<(), PreMergeValidationError> {
+    // Only validate plan_merge category tasks
+    if task.category != TaskCategory::PlanMerge {
+        return Ok(());
+    }
+
+    // Check 1: plan_branch_repo must be wired
+    let Some(ref pb_repo) = plan_branch_repo else {
+        return Err(PreMergeValidationError::PlanBranchRepoNotWired);
+    };
+
+    // Check 2: PlanBranch must exist and have Active status
+    let plan_branch = pb_repo.get_by_merge_task_id(&task.id).await
+        .ok()
+        .flatten();
+
+    let Some(pb) = plan_branch else {
+        // No PlanBranch record for this merge task — treat as not active
+        return Err(PreMergeValidationError::PlanBranchNotActive {
+            status: "not_found".to_string(),
+        });
+    };
+
+    if pb.status != PlanBranchStatus::Active {
+        return Err(PreMergeValidationError::PlanBranchNotActive {
+            status: pb.status.to_string(),
+        });
+    }
+
+    // Check 3: Feature branch must exist in git
+    let repo_path = Path::new(&project.working_directory);
+    if !GitService::branch_exists(repo_path, &pb.branch_name).await {
+        return Err(PreMergeValidationError::FeatureBranchMissing {
+            branch_name: pb.branch_name.clone(),
+        });
+    }
+
+    Ok(())
+}
 
 /// Convert project name to a URL-safe slug for branch naming
 pub(super) fn slugify(name: &str) -> String {
@@ -200,6 +306,50 @@ pub(crate) fn clear_merge_deferred_metadata(task: &mut Task) {
             task.metadata = Some(meta.to_string());
         }
     }
+}
+
+/// Default timeout in seconds after which a deferred merge is forced to retry.
+pub(crate) const DEFERRED_MERGE_TIMEOUT_SECONDS: i64 = 120;
+
+/// Check if a `merge_deferred` task has exceeded the configured timeout.
+///
+/// Returns true if the `merge_deferred_at` timestamp in metadata is older than
+/// `DEFERRED_MERGE_TIMEOUT_SECONDS`. Returns false if the timestamp is missing or unparseable
+/// (no timeout enforcement in that case — the reconciliation watchdog handles it instead).
+pub(crate) fn is_merge_deferred_timed_out(task: &Task) -> bool {
+    let deferred_at = parse_metadata(task)
+        .and_then(|v| v.get("merge_deferred_at")?.as_str().map(String::from));
+
+    let Some(deferred_at_str) = deferred_at else {
+        return false;
+    };
+
+    let Ok(deferred_at) = chrono::DateTime::parse_from_rfc3339(&deferred_at_str) else {
+        return false;
+    };
+
+    let elapsed = chrono::Utc::now().signed_duration_since(deferred_at.with_timezone(&chrono::Utc));
+    elapsed.num_seconds() >= DEFERRED_MERGE_TIMEOUT_SECONDS
+}
+
+/// Check if a `main_merge_deferred` task has exceeded the configured timeout.
+///
+/// Returns true if the `main_merge_deferred_at` timestamp in metadata is older than
+/// `DEFERRED_MERGE_TIMEOUT_SECONDS`. Returns false if the timestamp is missing or unparseable.
+pub(crate) fn is_main_merge_deferred_timed_out(task: &Task) -> bool {
+    let deferred_at = parse_metadata(task)
+        .and_then(|v| v.get("main_merge_deferred_at")?.as_str().map(String::from));
+
+    let Some(deferred_at_str) = deferred_at else {
+        return false;
+    };
+
+    let Ok(deferred_at) = chrono::DateTime::parse_from_rfc3339(&deferred_at_str) else {
+        return false;
+    };
+
+    let elapsed = chrono::Utc::now().signed_duration_since(deferred_at.with_timezone(&chrono::Utc));
+    elapsed.num_seconds() >= DEFERRED_MERGE_TIMEOUT_SECONDS
 }
 
 /// Set the `trigger_origin` field in a task's metadata.
@@ -423,7 +573,7 @@ pub async fn resolve_merge_branches(
     );
 
     let Some(ref plan_branch_repo) = plan_branch_repo else {
-        if task.category == "plan_merge" {
+        if task.category == TaskCategory::PlanMerge {
             tracing::warn!(
                 task_id = task.id.as_str(),
                 "resolve_merge_branches: plan_branch_repo is None for plan_merge task — \
@@ -518,609 +668,4 @@ pub(super) async fn discover_and_attach_task_branch(
     );
 
     Ok(true)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domain::entities::{ArtifactId, IdeationSessionId, PlanBranch, Project, ProjectId, Task};
-    use crate::infrastructure::memory::{MemoryPlanBranchRepository, MemoryTaskRepository};
-    use std::fs;
-    use std::path::PathBuf;
-    use std::process::Command;
-    use tempfile::TempDir;
-
-    /// Create a temporary git repository for testing
-    fn create_temp_git_repo() -> (TempDir, PathBuf) {
-        let temp_dir = TempDir::new().unwrap();
-        let repo_path = temp_dir.path().to_path_buf();
-
-        // Initialize git repo
-        Command::new("git")
-            .args(["init"])
-            .current_dir(&repo_path)
-            .output()
-            .unwrap();
-
-        // Configure git
-        Command::new("git")
-            .args(["config", "user.email", "test@example.com"])
-            .current_dir(&repo_path)
-            .output()
-            .unwrap();
-
-        Command::new("git")
-            .args(["config", "user.name", "Test User"])
-            .current_dir(&repo_path)
-            .output()
-            .unwrap();
-
-        // Create initial commit
-        fs::write(repo_path.join("README.md"), "test").unwrap();
-        Command::new("git")
-            .args(["add", "."])
-            .current_dir(&repo_path)
-            .output()
-            .unwrap();
-        Command::new("git")
-            .args(["commit", "-m", "Initial commit"])
-            .current_dir(&repo_path)
-            .output()
-            .unwrap();
-
-        (temp_dir, repo_path)
-    }
-
-    /// Create a test project with the given name and working directory
-    fn create_test_project(name: &str, working_directory: String) -> Project {
-        Project::new(name.to_string(), working_directory)
-    }
-
-    /// Create a test task for a project
-    fn create_test_task(project_id: ProjectId) -> Task {
-        Task::new(project_id, "Test task".to_string())
-    }
-
-    #[tokio::test]
-    async fn test_discover_and_attach_branch_when_branch_exists() {
-        let (_temp_dir, repo_path) = create_temp_git_repo();
-        let project = create_test_project("test-project", repo_path.to_string_lossy().to_string());
-        let mut task = create_test_task(project.id.clone());
-        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
-
-        // Create the task in the repository
-        task_repo.create(task.clone()).await.unwrap();
-
-        // Create the expected branch
-        let expected_branch = format!(
-            "ralphx/{}/task-{}",
-            slugify(&project.name),
-            task.id.as_str()
-        );
-        Command::new("git")
-            .args(["branch", &expected_branch])
-            .current_dir(&repo_path)
-            .output()
-            .unwrap();
-
-        // Call discover_and_attach_task_branch
-        let result = discover_and_attach_task_branch(&mut task, &project, &task_repo).await;
-
-        // Should succeed and return true (branch was discovered and attached)
-        assert!(result.is_ok());
-        assert!(result.unwrap());
-
-        // Task should now have task_branch set
-        assert_eq!(task.task_branch, Some(expected_branch.clone()));
-
-        // Verify task was persisted with updated branch
-        let saved_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-        assert_eq!(saved_task.task_branch, Some(expected_branch));
-    }
-
-    #[tokio::test]
-    async fn test_discover_and_attach_branch_when_branch_missing() {
-        let (_temp_dir, repo_path) = create_temp_git_repo();
-        let project = create_test_project("test-project", repo_path.to_string_lossy().to_string());
-        let mut task = create_test_task(project.id.clone());
-        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
-
-        // Create the task in the repository
-        task_repo.create(task.clone()).await.unwrap();
-
-        // Do NOT create the branch - it should not exist
-
-        // Call discover_and_attach_task_branch
-        let result = discover_and_attach_task_branch(&mut task, &project, &task_repo).await;
-
-        // Should succeed but return false (branch was not found)
-        assert!(result.is_ok());
-        assert!(!result.unwrap());
-
-        // Task should still have task_branch as None
-        assert_eq!(task.task_branch, None);
-
-        // Verify task was NOT updated in repository
-        let saved_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-        assert_eq!(saved_task.task_branch, None);
-    }
-
-    #[tokio::test]
-    async fn test_discover_and_attach_branch_when_task_branch_already_set() {
-        let (_temp_dir, repo_path) = create_temp_git_repo();
-        let project = create_test_project("test-project", repo_path.to_string_lossy().to_string());
-        let mut task = create_test_task(project.id.clone());
-        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
-
-        // Set task_branch to an existing value
-        task.task_branch = Some("existing-branch".to_string());
-        task_repo.create(task.clone()).await.unwrap();
-
-        // Create a different branch (should be ignored)
-        let expected_branch = format!(
-            "ralphx/{}/task-{}",
-            slugify(&project.name),
-            task.id.as_str()
-        );
-        Command::new("git")
-            .args(["branch", &expected_branch])
-            .current_dir(&repo_path)
-            .output()
-            .unwrap();
-
-        // Call discover_and_attach_task_branch
-        let result = discover_and_attach_task_branch(&mut task, &project, &task_repo).await;
-
-        // Should succeed but return false (early return, no-op)
-        assert!(result.is_ok());
-        assert!(!result.unwrap());
-
-        // Task should still have the original branch
-        assert_eq!(task.task_branch, Some("existing-branch".to_string()));
-
-        // Verify task was NOT updated in repository
-        let saved_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-        assert_eq!(saved_task.task_branch, Some("existing-branch".to_string()));
-    }
-
-    #[tokio::test]
-    async fn test_discover_and_attach_branch_slugifies_project_name() {
-        let (_temp_dir, repo_path) = create_temp_git_repo();
-        let project = create_test_project(
-            "Test Project With Spaces!",
-            repo_path.to_string_lossy().to_string(),
-        );
-        let mut task = create_test_task(project.id.clone());
-        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
-
-        // Create the task in the repository
-        task_repo.create(task.clone()).await.unwrap();
-
-        // Create the branch with slugified name
-        let expected_branch = format!(
-            "ralphx/{}/task-{}",
-            slugify(&project.name),
-            task.id.as_str()
-        );
-        assert_eq!(
-            expected_branch,
-            format!("ralphx/test-project-with-spaces/task-{}", task.id.as_str())
-        );
-
-        Command::new("git")
-            .args(["branch", &expected_branch])
-            .current_dir(&repo_path)
-            .output()
-            .unwrap();
-
-        // Call discover_and_attach_task_branch
-        let result = discover_and_attach_task_branch(&mut task, &project, &task_repo).await;
-
-        // Should succeed and return true
-        assert!(result.is_ok());
-        assert!(result.unwrap());
-
-        // Task should have the correctly slugified branch name
-        assert_eq!(task.task_branch, Some(expected_branch));
-    }
-
-    // ===== Main Merge Deferred Metadata Tests =====
-
-    #[test]
-    fn test_has_main_merge_deferred_metadata_returns_false_when_no_metadata() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let task = Task::new(project.id, "Test task".to_string());
-
-        assert!(!has_main_merge_deferred_metadata(&task));
-    }
-
-    #[test]
-    fn test_has_main_merge_deferred_metadata_returns_false_when_flag_missing() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(r#"{"other_field": true}"#.to_string());
-
-        assert!(!has_main_merge_deferred_metadata(&task));
-    }
-
-    #[test]
-    fn test_has_main_merge_deferred_metadata_returns_true_when_flag_set() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
-
-        assert!(has_main_merge_deferred_metadata(&task));
-    }
-
-    #[test]
-    fn test_has_main_merge_deferred_metadata_returns_false_when_flag_false() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(r#"{"main_merge_deferred": false}"#.to_string());
-
-        assert!(!has_main_merge_deferred_metadata(&task));
-    }
-
-    #[test]
-    fn test_set_main_merge_deferred_metadata_creates_metadata_if_missing() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        assert!(task.metadata.is_none());
-
-        set_main_merge_deferred_metadata(&mut task);
-
-        assert!(task.metadata.is_some());
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert_eq!(meta["main_merge_deferred"], true);
-        assert!(meta["main_merge_deferred_at"].is_string());
-    }
-
-    #[test]
-    fn test_set_main_merge_deferred_metadata_preserves_existing_fields() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(r#"{"existing_field": "value"}"#.to_string());
-
-        set_main_merge_deferred_metadata(&mut task);
-
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert_eq!(meta["existing_field"], "value");
-        assert_eq!(meta["main_merge_deferred"], true);
-        assert!(meta["main_merge_deferred_at"].is_string());
-    }
-
-    #[test]
-    fn test_set_main_merge_deferred_metadata_overwrites_existing_flag() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(r#"{"main_merge_deferred": false, "main_merge_deferred_at": "old-time"}"#.to_string());
-
-        set_main_merge_deferred_metadata(&mut task);
-
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert_eq!(meta["main_merge_deferred"], true);
-        // Timestamp should be updated
-        assert_ne!(meta["main_merge_deferred_at"], "old-time");
-    }
-
-    #[test]
-    fn test_clear_main_merge_deferred_metadata_preserves_other_fields() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(
-            r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z", "other_field": "value"}"#.to_string(),
-        );
-
-        clear_main_merge_deferred_metadata(&mut task);
-
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert_eq!(meta["other_field"], "value");
-        assert!(meta.get("main_merge_deferred").is_none());
-        assert!(meta.get("main_merge_deferred_at").is_none());
-    }
-
-    #[test]
-    fn test_clear_main_merge_deferred_metadata_clears_metadata_if_empty() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z"}"#.to_string());
-
-        clear_main_merge_deferred_metadata(&mut task);
-
-        // Metadata should be cleared entirely when only main_merge_deferred fields were present
-        assert!(task.metadata.is_none());
-    }
-
-    #[test]
-    fn test_clear_main_merge_deferred_metadata_noop_when_no_metadata() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        assert!(task.metadata.is_none());
-
-        clear_main_merge_deferred_metadata(&mut task);
-
-        // Should remain None without error
-        assert!(task.metadata.is_none());
-    }
-
-    #[test]
-    fn test_set_and_clear_main_merge_deferred_roundtrip() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-
-        // Set the flag
-        set_main_merge_deferred_metadata(&mut task);
-        assert!(has_main_merge_deferred_metadata(&task));
-
-        // Clear the flag
-        clear_main_merge_deferred_metadata(&mut task);
-        assert!(!has_main_merge_deferred_metadata(&task));
-
-        // Metadata should be None after clearing (only had main_merge_deferred fields)
-        assert!(task.metadata.is_none());
-    }
-
-    // ===== Conflict Metadata Tests =====
-
-    #[test]
-    fn test_set_conflict_metadata_creates_metadata_if_missing() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        assert!(task.metadata.is_none());
-
-        let conflict_files = vec![
-            "src/main.rs".to_string(),
-            "src/lib.rs".to_string(),
-        ];
-        set_conflict_metadata(&mut task, &conflict_files, "programmatic");
-
-        assert!(task.metadata.is_some());
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert_eq!(
-            meta["conflict_files"],
-            serde_json::json!(["src/main.rs", "src/lib.rs"])
-        );
-        assert!(meta["conflict_snapshot_at"].is_string());
-        assert_eq!(meta["conflict_detected_by"], "programmatic");
-    }
-
-    #[test]
-    fn test_set_conflict_metadata_preserves_existing_fields() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(r#"{"existing_field": "value"}"#.to_string());
-
-        let conflict_files = vec!["src/conflict.rs".to_string()];
-        set_conflict_metadata(&mut task, &conflict_files, "agent");
-
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert_eq!(meta["existing_field"], "value");
-        assert_eq!(meta["conflict_files"], serde_json::json!(["src/conflict.rs"]));
-        assert_eq!(meta["conflict_detected_by"], "agent");
-    }
-
-    #[test]
-    fn test_set_conflict_metadata_overwrites_existing_conflict_files() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-        task.metadata = Some(
-            r#"{"conflict_files": ["old_file.rs"], "conflict_snapshot_at": "2026-02-15T00:00:00Z"}"#
-                .to_string(),
-        );
-
-        let conflict_files = vec!["new_file.rs".to_string()];
-        set_conflict_metadata(&mut task, &conflict_files, "programmatic");
-
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert_eq!(meta["conflict_files"], serde_json::json!(["new_file.rs"]));
-        // Timestamp should be updated
-        assert_ne!(meta["conflict_snapshot_at"], "2026-02-15T00:00:00Z");
-    }
-
-    #[test]
-    fn test_set_conflict_metadata_with_agent_source() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-
-        let conflict_files = vec!["path/to/file.ts".to_string()];
-        set_conflict_metadata(&mut task, &conflict_files, "agent");
-
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert_eq!(meta["conflict_detected_by"], "agent");
-    }
-
-    #[test]
-    fn test_set_conflict_metadata_with_programmatic_source() {
-        let project = Project::new("test".to_string(), "/tmp".to_string());
-        let mut task = Task::new(project.id, "Test task".to_string());
-
-        let conflict_files: Vec<String> = vec![];
-        set_conflict_metadata(&mut task, &conflict_files, "programmatic");
-
-        let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
-        assert_eq!(meta["conflict_detected_by"], "programmatic");
-    }
-
-    // ===== resolve_task_base_branch: Merged plan branch re-creation tests =====
-
-    /// Helper: create a PlanBranch with the given status and branch_name pointing to a git branch
-    /// in the temp repo.
-    fn make_plan_branch(
-        session_id: &IdeationSessionId,
-        project_id: &ProjectId,
-        branch_name: &str,
-        source_branch: &str,
-        status: PlanBranchStatus,
-    ) -> PlanBranch {
-        let mut pb = PlanBranch::new(
-            ArtifactId::from_string("artifact-test"),
-            session_id.clone(),
-            project_id.clone(),
-            branch_name.to_string(),
-            source_branch.to_string(),
-        );
-        pb.status = status;
-        pb
-    }
-
-    #[tokio::test]
-    async fn test_resolve_task_base_branch_merged_branch_missing_recreates_it() {
-        // Regression: when plan branch status is Merged and the git branch no longer exists,
-        // resolve_task_base_branch should recreate it from source_branch and return it,
-        // NOT fall back to "main".
-        let (_temp_dir, repo_path) = create_temp_git_repo();
-        let project = create_test_project("test-plan-branch", repo_path.to_string_lossy().to_string());
-
-        let session_id = IdeationSessionId::from_string("session-merged-test");
-        let mut task = create_test_task(project.id.clone());
-        task.ideation_session_id = Some(session_id.clone());
-
-        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
-        let pb = make_plan_branch(
-            &session_id,
-            &project.id,
-            "ralphx/test-plan-branch/plan-session-merged-test",
-            "main",
-            PlanBranchStatus::Merged,
-        );
-        plan_branch_repo.create(pb).await.unwrap();
-
-        // Plan branch git branch does NOT exist (was deleted after merge)
-        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
-            Some(plan_branch_repo.clone() as Arc<dyn PlanBranchRepository>);
-
-        let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
-
-        // Should return the plan branch name (recreated), not "main"
-        assert_eq!(
-            result,
-            "ralphx/test-plan-branch/plan-session-merged-test",
-            "Should return plan branch name when Merged branch is recreated"
-        );
-
-        // DB status should be reset to Active
-        let updated = plan_branch_repo
-            .get_by_session_id(&session_id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            updated.status,
-            PlanBranchStatus::Active,
-            "DB status should be reset to Active after recreation"
-        );
-
-        // Git branch should now exist
-        assert!(
-            GitService::branch_exists(
-                Path::new(&project.working_directory),
-                "ralphx/test-plan-branch/plan-session-merged-test"
-            )
-            .await,
-            "Git branch should exist after recreation"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_resolve_task_base_branch_merged_branch_exists_in_git_resets_db_status() {
-        // Regression: when plan branch status is Merged but the git branch still exists
-        // (e.g., deletion was skipped), resolve_task_base_branch should reset DB status
-        // to Active and return the branch name.
-        let (_temp_dir, repo_path) = create_temp_git_repo();
-        let project = create_test_project("test-plan-branch", repo_path.to_string_lossy().to_string());
-
-        let session_id = IdeationSessionId::from_string("session-merged-exists");
-        let mut task = create_test_task(project.id.clone());
-        task.ideation_session_id = Some(session_id.clone());
-
-        let plan_branch_name = "ralphx/test-plan-branch/plan-session-merged-exists";
-
-        // Create the git branch so it already exists
-        Command::new("git")
-            .args(["branch", plan_branch_name])
-            .current_dir(&repo_path)
-            .output()
-            .unwrap();
-
-        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
-        let pb = make_plan_branch(
-            &session_id,
-            &project.id,
-            plan_branch_name,
-            "main",
-            PlanBranchStatus::Merged,
-        );
-        plan_branch_repo.create(pb).await.unwrap();
-
-        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
-            Some(plan_branch_repo.clone() as Arc<dyn PlanBranchRepository>);
-
-        let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
-
-        // Should return the plan branch name
-        assert_eq!(
-            result, plan_branch_name,
-            "Should return plan branch name when git branch exists but DB says Merged"
-        );
-
-        // DB status should be reset to Active
-        let updated = plan_branch_repo
-            .get_by_session_id(&session_id)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(
-            updated.status,
-            PlanBranchStatus::Active,
-            "DB status should be reset to Active"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_resolve_task_base_branch_active_status_unchanged() {
-        // Sanity: Active status arm still works correctly after adding Merged arm.
-        let (_temp_dir, repo_path) = create_temp_git_repo();
-        let project = create_test_project("test-plan-branch", repo_path.to_string_lossy().to_string());
-
-        let session_id = IdeationSessionId::from_string("session-active-test");
-        let mut task = create_test_task(project.id.clone());
-        task.ideation_session_id = Some(session_id.clone());
-
-        let plan_branch_name = "ralphx/test-plan-branch/plan-session-active-test";
-
-        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
-        let pb = make_plan_branch(
-            &session_id,
-            &project.id,
-            plan_branch_name,
-            "main",
-            PlanBranchStatus::Active,
-        );
-        plan_branch_repo.create(pb).await.unwrap();
-
-        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
-            Some(plan_branch_repo.clone() as Arc<dyn PlanBranchRepository>);
-
-        let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
-
-        // Active arm creates the branch lazily and returns its name
-        assert_eq!(
-            result, plan_branch_name,
-            "Active arm should return plan branch name (creating lazily if needed)"
-        );
-    }
-
-    #[tokio::test]
-    async fn test_resolve_task_base_branch_no_session_id_returns_default() {
-        // Task with no ideation_session_id falls back to project base branch.
-        let (_temp_dir, repo_path) = create_temp_git_repo();
-        let project = create_test_project("test", repo_path.to_string_lossy().to_string());
-        let task = create_test_task(project.id.clone()); // no ideation_session_id
-
-        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> = None;
-
-        let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
-
-        assert_eq!(result, "main", "No session_id should fall back to default");
-    }
 }

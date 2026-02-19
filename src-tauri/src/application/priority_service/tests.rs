@@ -1,5 +1,5 @@
 use super::*;
-use crate::domain::entities::{ArtifactId, Complexity, Priority, TaskCategory};
+use crate::domain::entities::{ArtifactId, Complexity, Priority, ProposalCategory};
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -325,7 +325,7 @@ fn create_test_proposal(session_id: &IdeationSessionId, title: &str) -> TaskProp
     TaskProposal::new(
         session_id.clone(),
         title,
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     )
 }
@@ -338,7 +338,7 @@ fn create_proposal_with_complexity(
     let mut proposal = TaskProposal::new(
         session_id.clone(),
         title,
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
     proposal.estimated_complexity = complexity;
@@ -883,7 +883,7 @@ async fn test_high_priority_proposal() {
     let mut blocker = TaskProposal::new(
         session_id.clone(),
         "Critical MVP blocker",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
     blocker.description = Some("URGENT: This must be done ASAP".to_string());
@@ -933,7 +933,7 @@ async fn test_low_priority_proposal() {
     let mut low_prio = TaskProposal::new(
         session_id.clone(),
         "Nice to have feature for later",
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
     low_prio.description = Some("Optional enhancement, not essential".to_string());

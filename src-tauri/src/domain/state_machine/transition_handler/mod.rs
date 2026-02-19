@@ -5,11 +5,13 @@
 use super::events::TaskEvent;
 use super::machine::{Response, State, TaskStateMachine};
 use crate::application::GitService;
-use crate::domain::entities::{GitMode, ProjectId, TaskId};
+use crate::domain::entities::{ProjectId, TaskId};
 use std::sync::Arc;
 
 mod merge_completion;
 mod merge_helpers;
+mod merge_outcome_handler;
+mod merge_strategies;
 mod merge_validation;
 pub mod metadata_builder;
 pub(crate) mod on_enter_states;
@@ -33,6 +35,11 @@ pub(crate) use side_effects::has_merge_deferred_metadata;
 // Re-export main merge deferred metadata helpers for global idle retry
 pub(crate) use merge_helpers::clear_main_merge_deferred_metadata;
 pub(crate) use merge_helpers::has_main_merge_deferred_metadata;
+
+// Re-export deferred merge timeout helpers for forced retry after timeout
+pub(crate) use merge_helpers::is_main_merge_deferred_timed_out;
+pub(crate) use merge_helpers::is_merge_deferred_timed_out;
+pub(crate) use merge_helpers::DEFERRED_MERGE_TIMEOUT_SECONDS;
 
 // Re-export trigger origin metadata helpers for execution tracking
 pub(crate) use side_effects::clear_trigger_origin;
@@ -455,25 +462,15 @@ impl<'a> TransitionHandler<'a> {
     }
 }
 
-/// Resolve the working directory for a task based on git mode.
+/// Resolve the working directory for a task.
 ///
-/// - Local mode: Always returns project's working directory (branch switching)
-/// - Worktree mode: Returns task's worktree path if available, else project's working directory
+/// Returns task's worktree path if available, else project's working directory.
 fn resolve_working_directory(
     task: &crate::domain::entities::Task,
     project: &crate::domain::entities::Project,
 ) -> std::path::PathBuf {
-    match project.git_mode {
-        GitMode::Local => {
-            // Local mode: always use main repo (branch switches handle isolation)
-            std::path::PathBuf::from(&project.working_directory)
-        }
-        GitMode::Worktree => {
-            // Worktree mode: use task's worktree if exists
-            task.worktree_path
-                .as_ref()
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::path::PathBuf::from(&project.working_directory))
-        }
-    }
+    task.worktree_path
+        .as_ref()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(&project.working_directory))
 }

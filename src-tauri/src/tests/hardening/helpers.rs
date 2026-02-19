@@ -39,7 +39,7 @@ pub fn create_test_task_with_status(
     task
 }
 
-/// Create a test project with default git mode (Local).
+/// Create a test project with default git mode (Worktree).
 pub fn create_test_project(name: &str) -> Project {
     Project::new(name.to_string(), "/tmp/test-project".to_string())
 }

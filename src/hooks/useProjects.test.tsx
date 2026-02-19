@@ -21,7 +21,7 @@ const createMockProject = (overrides: Partial<Project> = {}): Project => ({
   id: "project-1",
   name: "Test Project",
   workingDirectory: "/path/to/project",
-  gitMode: "local",
+  gitMode: "worktree",
   baseBranch: null,
   worktreeParentDirectory: null,
   useFeatureBranches: true,

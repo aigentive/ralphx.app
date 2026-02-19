@@ -7,17 +7,13 @@ import {
 } from "./project";
 
 describe("GitModeSchema", () => {
-  it("should parse 'local' as valid", () => {
-    expect(GitModeSchema.parse("local")).toBe("local");
-  });
-
   it("should parse 'worktree' as valid", () => {
     expect(GitModeSchema.parse("worktree")).toBe("worktree");
   });
 
   it("should reject invalid git modes", () => {
     expect(() => GitModeSchema.parse("remote")).toThrow();
-    expect(() => GitModeSchema.parse("Local")).toThrow();
+    expect(() => GitModeSchema.parse("local")).toThrow();
     expect(() => GitModeSchema.parse("")).toThrow();
   });
 });
@@ -27,7 +23,7 @@ describe("ProjectSchema", () => {
     id: "550e8400-e29b-41d4-a716-446655440000",
     name: "Test Project",
     working_directory: "/path/to/project",
-    git_mode: "local" as const,
+    git_mode: "worktree" as const,
     base_branch: null,
     worktree_parent_directory: null,
     use_feature_branches: true,
@@ -93,18 +89,18 @@ describe("CreateProjectSchema", () => {
     const createData = {
       name: "New Project",
       workingDirectory: "/path/to/project",
-      gitMode: "local" as const,
+      gitMode: "worktree" as const,
     };
     expect(() => CreateProjectSchema.parse(createData)).not.toThrow();
   });
 
-  it("should default gitMode to 'local'", () => {
+  it("should default gitMode to 'worktree'", () => {
     const createData = {
       name: "New Project",
       workingDirectory: "/path/to/project",
     };
     const result = CreateProjectSchema.parse(createData);
-    expect(result.gitMode).toBe("local");
+    expect(result.gitMode).toBe("worktree");
   });
 
   it("should accept worktree configuration", () => {

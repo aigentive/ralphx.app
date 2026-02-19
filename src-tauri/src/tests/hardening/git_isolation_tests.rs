@@ -9,7 +9,7 @@
 // - Gap scenarios demonstrate missing validation
 
 use super::helpers::*;
-use crate::domain::entities::{GitMode, IdeationSessionId, InternalStatus, ProjectId, TaskId};
+use crate::domain::entities::{GitMode, IdeationSessionId, InternalStatus, ProjectId};
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::state_machine::events::TaskEvent;
 use crate::domain::state_machine::machine::State;
@@ -104,57 +104,12 @@ async fn test_a1_worktree_mode_without_repos_calls_send_message() {
 }
 
 // ============================================================================
-// A2: Branch create/checkout fails (Local mode) -> ExecutionBlocked
-// ============================================================================
-
-#[tokio::test]
-async fn test_a2_local_mode_transition_ready_to_executing() {
-    // Scenario A2: Branch create/checkout fails (Local mode) -> ExecutionBlocked — COVERED
-    //
-    // With mock repos pointing to a non-git directory, the branch creation
-    // will fail and return ExecutionBlocked from on_enter. TransitionHandler
-    // catches this error and still returns Success.
-
-    let svc = create_hardening_services();
-
-    // Create project in Local mode (default)
-    let project = create_test_project("local-proj");
-    let project_id = project.id.clone();
-    svc.project_repo.create(project).await.unwrap();
-
-    // Create task in Ready state
-    let mut task = create_test_task(&project_id, "Test local branch task");
-    task.internal_status = InternalStatus::Ready;
-    let task_id_str = task.id.as_str().to_string();
-    svc.task_repo.create(task).await.unwrap();
-
-    let services = build_task_services(&svc);
-    let mut machine = create_state_machine(&task_id_str, project_id.as_str(), services);
-    let mut handler = create_transition_handler(&mut machine);
-
-    let result = handler
-        .handle_transition(&State::Ready, &TaskEvent::StartExecution)
-        .await;
-
-    // After the fix, ExecutionBlocked triggers auto-dispatch of ExecutionFailed,
-    // so the task transitions to Failed instead of staying in Executing
-    assert!(
-        result.is_success(),
-        "TransitionHandler should return Success after auto-dispatching ExecutionFailed"
-    );
-    assert!(
-        matches!(result.state(), Some(State::Failed(_))),
-        "State should be Failed after ExecutionBlocked triggers auto-dispatch"
-    );
-}
-
-// ============================================================================
-// A3: Uncommitted changes detected (Local mode) -> ExecutionBlocked
+// A3: Uncommitted changes detected -> ExecutionBlocked
 // ============================================================================
 
 #[tokio::test]
 async fn test_a3_execution_blocked_variant_exists() {
-    // Scenario A3: Uncommitted changes detected (Local mode) -> ExecutionBlocked — COVERED
+    // Scenario A3: Uncommitted changes detected -> ExecutionBlocked — COVERED
     //
     // Since GitService::has_uncommitted_changes is static and checks real filesystem,
     // we verify the ExecutionBlocked error variant exists and can be constructed/matched.
@@ -196,43 +151,6 @@ async fn test_a4_execution_blocked_for_check_failure() {
         &error,
         AppError::ExecutionBlocked(msg) if msg.contains("could not check")
     ));
-}
-
-#[tokio::test]
-async fn test_a4_local_mode_with_repos_exercises_git_path() {
-    // Scenario A4 variant: Verify that with repos present, on_enter attempts
-    // the git check (which fails on /tmp/test-project) and the transition
-    // still succeeds because TransitionHandler catches on_enter errors.
-
-    let svc = create_hardening_services();
-
-    let project = create_test_project("local-check-proj");
-    let project_id = project.id.clone();
-    svc.project_repo.create(project).await.unwrap();
-
-    let mut task = create_test_task(&project_id, "Git check task");
-    task.internal_status = InternalStatus::Ready;
-    let task_id_str = task.id.as_str().to_string();
-    svc.task_repo.create(task).await.unwrap();
-
-    let services = build_task_services(&svc);
-    let mut machine = create_state_machine(&task_id_str, project_id.as_str(), services);
-    let mut handler = create_transition_handler(&mut machine);
-
-    let result = handler
-        .handle_transition(&State::Ready, &TaskEvent::StartExecution)
-        .await;
-
-    // Transition succeeds despite git check failure
-    assert!(result.is_success());
-
-    // on_enter returned ExecutionBlocked early, so send_message was NOT called
-    // (the `let _ = chat_service.send_message(...)` line is after the git block)
-    assert_eq!(
-        svc.chat_service.call_count(),
-        0,
-        "send_message should NOT be called when git isolation blocks execution"
-    );
 }
 
 // ============================================================================
@@ -365,72 +283,6 @@ async fn test_a6_execution_failed_event_transitions_executing_to_failed() {
         }
         other => panic!("Expected Failed state, got {:?}", other),
     }
-}
-
-// ============================================================================
-// A7: GitMode switched while tasks in-flight — no validation (GAP)
-// ============================================================================
-
-#[tokio::test]
-async fn test_a7_git_mode_switch_while_task_executing_no_validation() {
-    // Scenario A7: GitMode switched while tasks in-flight — GAP
-    //
-    // This test demonstrates the gap: there is no validation preventing
-    // a project's git_mode from being changed while tasks are in-flight.
-    // A task can be Executing with Local mode, and the project can be
-    // switched to Worktree mode with no error or check.
-
-    let svc = create_hardening_services();
-
-    // Create project in Local mode
-    let mut project = create_test_project("switchable-proj");
-    let project_id = project.id.clone();
-    project.git_mode = GitMode::Local;
-    svc.project_repo.create(project).await.unwrap();
-
-    // Create task in Executing state with Local mode assumptions
-    let mut task = create_test_task(&project_id, "In-flight task");
-    task.internal_status = InternalStatus::Executing;
-    task.task_branch = Some("ralphx/switchable-proj/task-123".to_string());
-    task.worktree_path = None; // Local mode: no worktree path
-    let task_id_str = task.id.as_str().to_string();
-    svc.task_repo.create(task).await.unwrap();
-
-    // GAP: Switch project git_mode to Worktree while task is in-flight
-    let mut updated_project = svc
-        .project_repo
-        .get_by_id(&project_id)
-        .await
-        .unwrap()
-        .unwrap();
-    updated_project.git_mode = GitMode::Worktree;
-    svc.project_repo.update(&updated_project).await.unwrap();
-
-    // Verify the mode was changed
-    let fetched = svc
-        .project_repo
-        .get_by_id(&project_id)
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        fetched.git_mode,
-        GitMode::Worktree,
-        "GAP: git_mode can be switched to Worktree while tasks are in Executing state"
-    );
-
-    // Verify in-flight task still exists in Executing state
-    let task_id = TaskId::from_string(task_id_str);
-    let fetched_task = svc.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
-    assert_eq!(fetched_task.internal_status, InternalStatus::Executing);
-
-    // GAP: The task has no worktree_path (was set up for Local mode),
-    // but the project now expects Worktree mode. No validation caught this.
-    assert!(
-        fetched_task.worktree_path.is_none(),
-        "GAP: Task created under Local mode has no worktree_path, \
-         but project is now in Worktree mode — no validation exists"
-    );
 }
 
 // ============================================================================

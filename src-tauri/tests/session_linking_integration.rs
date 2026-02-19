@@ -10,7 +10,7 @@
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactContent, ArtifactType, Complexity, IdeationSession, IdeationSessionBuilder,
-    IdeationSessionId, IdeationSessionStatus, Priority, ProjectId, ProposalStatus, TaskCategory,
+    IdeationSessionId, IdeationSessionStatus, Priority, ProjectId, ProposalCategory, ProposalStatus,
     TaskProposal, TaskProposalId,
 };
 // No SQLite infrastructure imports needed for memory-only tests
@@ -90,7 +90,7 @@ async fn create_session_with_plan_and_proposals(
             session_id: session_id.clone(),
             title: format!("Proposal {}", i),
             description: Some(format!("Description for proposal {}", i)),
-            category: TaskCategory::Feature,
+            category: ProposalCategory::Feature,
             status: ProposalStatus::Pending,
             suggested_priority: Priority::High,
             priority_score: 75,

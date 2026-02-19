@@ -11,7 +11,6 @@ tools:
   - WebSearch
   - Task
 allowedTools:
-  - mcp__ralphx__complete_merge
   - mcp__ralphx__report_conflict
   - mcp__ralphx__report_incomplete
   - mcp__ralphx__get_merge_target
@@ -33,18 +32,16 @@ A programmatic rebase + merge was already attempted on this task's branch and fa
 
 The conflict files are stored in the task's metadata under `conflict_files`. Get this information via `get_task_context`.
 
-## CRITICAL: How Merge Completion Works
+## How Merge Completion Works
 
-**Merge completion is AUTO-DETECTED when you exit.** You do NOT need to call `complete_merge` manually.
+On success: **exit cleanly.** The backend automatically verifies git state and completes the merge. When you finish and exit:
+1. The system checks git state (rebase complete, no conflict markers)
+2. If clean → task auto-transitions to Merged
+3. If incomplete → task auto-transitions to MergeConflict
 
-When you finish and exit:
-1. The system automatically checks git state
-2. If rebase is complete and no conflict markers remain in merge-related changed files → task auto-transitions to Merged
-3. If rebase is incomplete or conflicts remain → task auto-transitions to MergeConflict
-
-**You MUST call `report_conflict` if you cannot resolve the conflicts.** This provides valuable context for human intervention. If you simply exit without resolving, the system will detect the incomplete state but won't have your explanation.
-
-**`complete_merge` is OPTIONAL.** You can still call it for explicit signaling (backwards compatible), but it's not required.
+Your only MCP signals are for **failures**:
+- `report_conflict` — unresolvable conflicts (provides context for human intervention)
+- `report_incomplete` — any other blocker preventing merge completion
 
 ## Workflow
 
@@ -152,7 +149,6 @@ After resolving conflicts, run project-specific validation to ensure the merged 
    - Investigate the failure — it may be a conflict resolution error
    - Fix the issue before proceeding to Step 5
    - Re-run validation after fixing
-   - Do NOT call `complete_merge` until all validation passes
 
 5. **If validation is unavailable** (no analysis, `status: "analyzing"` persists) — fall back to manual checks:
    - For Rust files: `cargo check`
@@ -177,17 +173,10 @@ Once all conflicts are resolved and verified, merge INTO the **target_branch** f
    git merge <source_branch>
    ```
 
-3. **Exit.** The system will auto-detect merge completion by checking:
+3. **Exit cleanly.** The system auto-detects merge completion by checking:
    - Rebase state (no `.git/rebase-merge` or `.git/rebase-apply` directories)
    - No conflict markers in merge-related changed files
    - HEAD commit SHA
-
-**Optional:** If you want explicit confirmation, you can call `complete_merge`:
-```
-git rev-parse HEAD  # Get commit SHA
-complete_merge(task_id: "...", commit_sha: "...")
-```
-This is backwards compatible but not required — the system auto-detects success.
 
 ### When to Report Conflict
 
@@ -215,7 +204,6 @@ The user will be notified to resolve the conflicts manually.
 |------|---------|-----------|
 | `get_merge_target` | Get correct source and target branches for this task | Yes - call first |
 | `get_task_context` | Get task details and conflict file list | Yes - call after merge target |
-| `complete_merge` | Explicit merge completion signal (auto-detected otherwise) | No - optional |
 | `report_conflict` | Signal that conflicts need manual resolution with context | Yes - if you cannot resolve |
 | `report_incomplete` | Signal that merge is incomplete and needs further work | Yes - if merge cannot finish |
 | `get_project_analysis` | Get project-specific validation commands | Yes - for post-resolution validation |

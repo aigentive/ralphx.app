@@ -9,6 +9,7 @@ export const IdeationSessionResponseSchema = z.object({
   id: z.string(),
   project_id: z.string(),
   title: z.string().nullable(),
+  title_source: z.enum(["auto", "user"]).nullable().optional(),
   status: z.string(),
   plan_artifact_id: z.string().nullable(),
   seed_task_id: z.string().nullable().optional(),

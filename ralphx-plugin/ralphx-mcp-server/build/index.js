@@ -84,7 +84,6 @@ function validateTaskScope(toolName, args) {
         "add_step",
         "get_step_progress",
         // Merge tools (merger agent)
-        "complete_merge",
         "report_conflict",
         "report_incomplete",
         "get_merge_target",
@@ -297,11 +296,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             // GET /api/analyze_dependencies/:session_id
             const { session_id } = args;
             result = await callTauriGet(`analyze_dependencies/${session_id}`);
-        }
-        else if (name === "complete_merge") {
-            // POST /api/git/tasks/:task_id/complete-merge
-            const { task_id, commit_sha } = args;
-            result = await callTauri(`git/tasks/${task_id}/complete-merge`, { commit_sha });
         }
         else if (name === "report_conflict") {
             // POST /api/git/tasks/:task_id/report-conflict

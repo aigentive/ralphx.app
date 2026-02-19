@@ -11,7 +11,7 @@ const createTestProject = (overrides: Partial<Project> = {}): Project => ({
   id: `project-${Math.random().toString(36).slice(2)}`,
   name: "Test Project",
   workingDirectory: "/path/to/project",
-  gitMode: "local",
+  gitMode: "worktree",
   baseBranch: null,
   worktreeParentDirectory: null,
   useFeatureBranches: true,
@@ -89,7 +89,7 @@ describe("projectStore", () => {
       const project = createTestProject({
         id: "proj-1",
         name: "Original",
-        gitMode: "local",
+        gitMode: "worktree",
       });
       useProjectStore.setState({ projects: { "proj-1": project } });
 

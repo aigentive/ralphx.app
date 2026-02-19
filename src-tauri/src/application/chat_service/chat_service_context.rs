@@ -892,7 +892,7 @@ mod tests {
         async fn update_status(&self, _id: &IdeationSessionId, _status: IdeationSessionStatus) -> AppResult<()> {
             unimplemented!()
         }
-        async fn update_title(&self, _id: &IdeationSessionId, _title: Option<String>) -> AppResult<()> {
+        async fn update_title(&self, _id: &IdeationSessionId, _title: Option<String>, _title_source: &str) -> AppResult<()> {
             unimplemented!()
         }
         async fn delete(&self, _id: &IdeationSessionId) -> AppResult<()> {
@@ -1069,6 +1069,10 @@ mod tests {
         }
 
         async fn get_oldest_ready_tasks(&self, _limit: u32) -> AppResult<Vec<crate::domain::entities::Task>> {
+            Ok(vec![])
+        }
+
+        async fn get_stale_ready_tasks(&self, _threshold_secs: u64) -> AppResult<Vec<crate::domain::entities::Task>> {
             Ok(vec![])
         }
 

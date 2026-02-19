@@ -59,8 +59,9 @@ async fn test_dependency_manager_treats_paused_blocker_as_incomplete() {
     );
 }
 
+/// Stopped is now terminal — a stopped blocker no longer blocks dependents.
 #[tokio::test]
-async fn test_dependency_manager_treats_stopped_blocker_as_incomplete() {
+async fn test_is_blocker_complete_with_stopped_state() {
     let app_state = AppState::new_test();
     let manager = build_dependency_manager(&app_state);
 
@@ -82,8 +83,37 @@ async fn test_dependency_manager_treats_stopped_blocker_as_incomplete() {
 
     let has_blockers = manager.has_unresolved_blockers(blocked.id.as_str()).await;
     assert!(
-        has_blockers,
-        "Stopped blockers should be treated as unresolved"
+        !has_blockers,
+        "Stopped blockers should be treated as terminal (no longer blocking)"
+    );
+}
+
+/// MergeIncomplete is terminal — requires manual intervention, must not permanently block dependents.
+#[tokio::test]
+async fn test_is_blocker_complete_with_merge_incomplete_state() {
+    let app_state = AppState::new_test();
+    let manager = build_dependency_manager(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+
+    let mut blocker = Task::new(project.id.clone(), "MergeIncomplete Blocker".to_string());
+    blocker.internal_status = InternalStatus::MergeIncomplete;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    let mut blocked = Task::new(project.id.clone(), "Blocked Task".to_string());
+    blocked.internal_status = InternalStatus::Blocked;
+    app_state.task_repo.create(blocked.clone()).await.unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&blocked.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let has_blockers = manager.has_unresolved_blockers(blocked.id.as_str()).await;
+    assert!(
+        !has_blockers,
+        "MergeIncomplete blockers should be treated as terminal (no longer blocking)"
     );
 }
 

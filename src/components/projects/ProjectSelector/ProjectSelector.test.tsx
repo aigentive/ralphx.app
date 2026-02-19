@@ -23,7 +23,7 @@ const createMockProject = (overrides: Partial<Project> = {}): Project => ({
   id: `project-${Math.random().toString(36).slice(2)}`,
   name: "Test Project",
   workingDirectory: "/path/to/project",
-  gitMode: "local",
+  gitMode: "worktree",
   baseBranch: null,
   worktreeParentDirectory: null,
   useFeatureBranches: true,
@@ -65,37 +65,6 @@ describe("ProjectSelector", () => {
 
       render(<ProjectSelector onNewProject={() => {}} />);
       expect(screen.getByText("My Project")).toBeInTheDocument();
-    });
-
-    it("shows git mode indicator for active local project", () => {
-      const project = createMockProject({
-        id: "project-1",
-        name: "Local Project",
-        gitMode: "local",
-      });
-      useProjectStore.setState({
-        projects: { "project-1": project },
-        activeProjectId: "project-1",
-      });
-
-      render(<ProjectSelector onNewProject={() => {}} />);
-      expect(screen.getByText("local")).toBeInTheDocument();
-    });
-
-    it("shows worktree badge for active worktree project", () => {
-      const project = createMockProject({
-        id: "project-1",
-        name: "Worktree Project",
-        gitMode: "worktree",
-        baseBranch: "main",
-      });
-      useProjectStore.setState({
-        projects: { "project-1": project },
-        activeProjectId: "project-1",
-      });
-
-      render(<ProjectSelector onNewProject={() => {}} />);
-      expect(screen.getByText("worktree")).toBeInTheDocument();
     });
 
     it("has correct aria attributes (shadcn DropdownMenu uses menu)", () => {
@@ -257,50 +226,6 @@ describe("ProjectSelector", () => {
 
       await waitFor(() => {
         expect(screen.queryByTestId("project-selector-dropdown")).not.toBeInTheDocument();
-      });
-    });
-  });
-
-  describe("git mode badges in dropdown", () => {
-    it("shows local badge for local projects in dropdown", async () => {
-      const user = userEvent.setup();
-      const project = createMockProject({
-        id: "project-1",
-        name: "Local Project",
-        gitMode: "local",
-      });
-      useProjectStore.setState({
-        projects: { "project-1": project },
-        activeProjectId: null,
-      });
-
-      render(<ProjectSelector onNewProject={() => {}} />);
-      await user.click(screen.getByTestId("project-selector-trigger"));
-
-      await waitFor(() => {
-        // In the dropdown, local projects show "local" text
-        expect(screen.getAllByText("local").length).toBeGreaterThan(0);
-      });
-    });
-
-    it("shows worktree badge for worktree projects in dropdown", async () => {
-      const user = userEvent.setup();
-      const project = createMockProject({
-        id: "project-1",
-        name: "Worktree Project",
-        gitMode: "worktree",
-        baseBranch: "main",
-      });
-      useProjectStore.setState({
-        projects: { "project-1": project },
-        activeProjectId: null,
-      });
-
-      render(<ProjectSelector onNewProject={() => {}} />);
-      await user.click(screen.getByTestId("project-selector-trigger"));
-
-      await waitFor(() => {
-        expect(screen.getByText("worktree")).toBeInTheDocument();
       });
     });
   });

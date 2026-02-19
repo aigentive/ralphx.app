@@ -2,7 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use super::types::{ProposalStatus, TaskCategory};
+use super::types::{ProposalCategory, ProposalStatus};
 use crate::domain::entities::{IdeationSessionId, TaskProposalId};
 
 /// Summary of a single proposal for context inheritance
@@ -13,7 +13,7 @@ pub struct ContextProposalSummary {
     /// Proposal title
     pub title: String,
     /// Task category
-    pub category: TaskCategory,
+    pub category: ProposalCategory,
     /// Priority score (0-100)
     pub priority_score: i32,
     /// Current status
@@ -94,7 +94,7 @@ mod tests {
         let summary = ContextProposalSummary {
             id: TaskProposalId::from_string("prop-123"),
             title: "Test proposal".to_string(),
-            category: TaskCategory::Feature,
+            category: ProposalCategory::Feature,
             priority_score: 75,
             status: ProposalStatus::Accepted,
             acceptance_criteria: Some("[\"Criterion 1\"]".to_string()),
@@ -142,7 +142,7 @@ mod tests {
             ContextProposalSummary {
                 id: TaskProposalId::from_string("prop-1"),
                 title: "Proposal 1".to_string(),
-                category: TaskCategory::Feature,
+                category: ProposalCategory::Feature,
                 priority_score: 80,
                 status: ProposalStatus::Accepted,
                 acceptance_criteria: None,
@@ -150,7 +150,7 @@ mod tests {
             ContextProposalSummary {
                 id: TaskProposalId::from_string("prop-2"),
                 title: "Proposal 2".to_string(),
-                category: TaskCategory::Fix,
+                category: ProposalCategory::Fix,
                 priority_score: 60,
                 status: ProposalStatus::Pending,
                 acceptance_criteria: None,
@@ -172,7 +172,7 @@ mod tests {
             ContextProposalSummary {
                 id: TaskProposalId::from_string("prop-1"),
                 title: "Accepted".to_string(),
-                category: TaskCategory::Feature,
+                category: ProposalCategory::Feature,
                 priority_score: 80,
                 status: ProposalStatus::Accepted,
                 acceptance_criteria: None,
@@ -180,7 +180,7 @@ mod tests {
             ContextProposalSummary {
                 id: TaskProposalId::from_string("prop-2"),
                 title: "Pending".to_string(),
-                category: TaskCategory::Fix,
+                category: ProposalCategory::Fix,
                 priority_score: 60,
                 status: ProposalStatus::Pending,
                 acceptance_criteria: None,
@@ -188,7 +188,7 @@ mod tests {
             ContextProposalSummary {
                 id: TaskProposalId::from_string("prop-3"),
                 title: "Also Accepted".to_string(),
-                category: TaskCategory::Refactor,
+                category: ProposalCategory::Refactor,
                 priority_score: 70,
                 status: ProposalStatus::Accepted,
                 acceptance_criteria: None,
@@ -214,7 +214,7 @@ mod tests {
         let proposals = vec![ContextProposalSummary {
             id: TaskProposalId::from_string("prop-1"),
             title: "Test".to_string(),
-            category: TaskCategory::Feature,
+            category: ProposalCategory::Feature,
             priority_score: 50,
             status: ProposalStatus::Accepted,
             acceptance_criteria: None,
