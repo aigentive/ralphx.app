@@ -841,16 +841,31 @@ impl<'a> super::TransitionHandler<'a> {
                         worktree_path = %worktree_path,
                         "Deleting task worktree before programmatic merge to unlock branch"
                     );
-                    if let Err(e) =
-                        GitService::delete_worktree(repo_path, &worktree_path_buf).await
+                    // Wrap with timeout to prevent git lock contention (e.g. concurrent reviewer
+                    // agent cancellation) from blocking the merge pipeline indefinitely.
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(10),
+                        GitService::delete_worktree(repo_path, &worktree_path_buf),
+                    )
+                    .await
                     {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            error = %e,
-                            worktree_path = %worktree_path,
-                            "Failed to delete task worktree before merge"
-                        );
-                        // Continue anyway - merge will fail with a clear error
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                worktree_path = %worktree_path,
+                                "Failed to delete task worktree before merge (non-fatal, continuing)"
+                            );
+                            // Continue anyway - merge will fail with a clear error
+                        }
+                        Err(_elapsed) => {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                worktree_path = %worktree_path,
+                                "pre_merge_cleanup: step 2 worktree deletion timed out after 10s (non-fatal, continuing)"
+                            );
+                        }
                     }
                 }
             }
