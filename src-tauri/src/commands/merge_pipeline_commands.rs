@@ -10,9 +10,9 @@ use tauri::State;
 use crate::application::AppState;
 use crate::commands::execution_commands::ActiveProjectState;
 use crate::domain::entities::ProjectId;
-use crate::domain::entities::{InternalStatus, Task};
+use crate::domain::entities::{InternalStatus, PlanBranch, PlanBranchStatus, Project, Task, TaskCategory};
 use crate::domain::state_machine::transition_handler::{
-    has_main_merge_deferred_metadata, has_merge_deferred_metadata, resolve_merge_branches,
+    has_main_merge_deferred_metadata, has_merge_deferred_metadata,
 };
 
 /// A task in the merge pipeline
@@ -74,6 +74,42 @@ fn extract_merge_metadata(task: &Task) -> (Option<Vec<String>>, Option<String>) 
     }
 }
 
+/// Resolve source and target branches from pre-loaded plan branches (no DB queries).
+///
+/// Mirrors the logic of `resolve_merge_branches()` but uses an in-memory cache
+/// of plan branches instead of per-task DB lookups. Used by the poll endpoint
+/// to avoid 2 DB queries per task per 5-second poll cycle.
+fn resolve_merge_branches_from_cache(
+    task: &Task,
+    project: &Project,
+    plan_branches: &[PlanBranch],
+) -> (String, String) {
+    let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
+    let task_branch = task.task_branch.clone().unwrap_or_default();
+
+    // Check if this task IS the merge task for a plan branch
+    if task.category == TaskCategory::PlanMerge {
+        if let Some(pb) = plan_branches
+            .iter()
+            .find(|pb| pb.merge_task_id.as_ref() == Some(&task.id) && pb.status == PlanBranchStatus::Active)
+        {
+            return (pb.branch_name.clone(), base_branch);
+        }
+    }
+
+    // Check if this task belongs to a plan with an active feature branch
+    if let Some(ref session_id) = task.ideation_session_id {
+        if let Some(pb) = plan_branches
+            .iter()
+            .find(|pb| pb.session_id == *session_id && pb.status == PlanBranchStatus::Active)
+        {
+            return (task_branch, pb.branch_name.clone());
+        }
+    }
+
+    (task_branch, base_branch)
+}
+
 /// Get the merge pipeline for all projects
 ///
 /// Returns tasks in merge-related states grouped into:
@@ -128,16 +164,22 @@ pub async fn get_merge_pipeline(
             .await
             .map_err(|e| e.to_string())?;
 
+        // Batch-load plan branches once per project (instead of 2 DB queries per task)
+        let plan_branches = state
+            .plan_branch_repo
+            .get_by_project_id(&project.id)
+            .await
+            .unwrap_or_default();
+
         for task in tasks {
             // Filter by merge-related statuses
             if !merge_statuses.contains(&task.internal_status) {
                 continue;
             }
 
-            // Resolve merge branches
+            // Resolve merge branches from pre-loaded data (no DB queries)
             let (source_branch, target_branch) =
-                resolve_merge_branches(&task, project, &Some(Arc::clone(&state.plan_branch_repo)))
-                    .await;
+                resolve_merge_branches_from_cache(&task, project, &plan_branches);
 
             // Check if deferred
             let is_main_merge_deferred = has_main_merge_deferred_metadata(&task);
