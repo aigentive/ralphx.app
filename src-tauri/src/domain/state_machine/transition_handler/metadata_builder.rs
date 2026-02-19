@@ -194,6 +194,13 @@ impl MetadataUpdate {
         self
     }
 
+    /// Add a u32 numeric key-value pair to the update.
+    pub fn with_u32(mut self, key: impl Into<String>, value: u32) -> Self {
+        self.entries
+            .insert(key.into(), Value::Number(value.into()));
+        self
+    }
+
     /// Merge this update into existing metadata, preserving existing keys.
     ///
     /// # Arguments
@@ -252,10 +259,12 @@ impl Default for MetadataUpdate {
 /// - `failure_error`: The error message
 /// - `failure_details`: Optional additional details
 /// - `is_timeout`: Whether the failure was due to a timeout
+/// - `attempt_count`: Number of execution attempts (from `FailedData.attempt_count`)
 pub fn build_failed_metadata(data: &FailedData) -> MetadataUpdate {
     let mut update = MetadataUpdate::new()
         .with_string("failure_error", &data.error)
-        .with_bool("is_timeout", data.is_timeout);
+        .with_bool("is_timeout", data.is_timeout)
+        .with_u32("attempt_count", data.attempt_count);
 
     if let Some(ref details) = data.details {
         update = update.with_string("failure_details", details);

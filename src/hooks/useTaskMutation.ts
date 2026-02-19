@@ -133,10 +133,14 @@ export function useTaskMutation(projectId: string) {
 
   const unblockMutation = useMutation({
     mutationFn: (taskId: string) => api.tasks.unblock(taskId),
-    onSuccess: () => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
       queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
-      toast.success("Task unblocked");
+      if (response.warning) {
+        toast.warning(response.warning);
+      } else {
+        toast.success("Task unblocked");
+      }
     },
     onError: (error: Error) => {
       toast.error(`Failed to unblock task: ${error.message}`);

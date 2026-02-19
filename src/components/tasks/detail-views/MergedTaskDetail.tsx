@@ -26,6 +26,7 @@ import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import type { Task } from "@/types/task";
 import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
+import { DurationDisplay } from "./shared/DurationDisplay";
 
 interface MergedTaskDetailProps {
   task: Task;
@@ -207,6 +208,17 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
           />
         }
       />
+
+      {/* Duration (static) */}
+      {task.startedAt && task.completedAt && (
+        <div data-testid="merged-task-duration">
+          <DurationDisplay
+            mode="static"
+            startedAt={task.startedAt}
+            completedAt={task.completedAt}
+          />
+        </div>
+      )}
 
       {/* Merge Info */}
       <section data-testid="merge-info-section">
