@@ -3,7 +3,6 @@
 // Extracted from side_effects.rs — tests for merge arbitration logic
 // (task ID comparison, timestamp queries, and branch missing metadata).
 
-use super::helpers::*;
 use crate::domain::entities::task_metadata::{
     MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
     MergeRecoverySource,
