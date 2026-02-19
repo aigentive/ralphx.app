@@ -687,6 +687,19 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                 "last_agent_error_at".to_string(),
                                 serde_json::json!(chrono::Utc::now().to_rfc3339()),
                             );
+
+                            // Pre-compute failure metadata for timeouts so on_enter(Failed)
+                            // skip guard preserves is_timeout=true via the failure_error key
+                            if matches!(stream_error, Some(StreamError::Timeout { .. })) {
+                                obj.insert(
+                                    "failure_error".to_string(),
+                                    serde_json::json!(error),
+                                );
+                                obj.insert(
+                                    "is_timeout".to_string(),
+                                    serde_json::json!(true),
+                                );
+                            }
                         }
                         let mut updated_task = task.clone();
                         updated_task.metadata =
