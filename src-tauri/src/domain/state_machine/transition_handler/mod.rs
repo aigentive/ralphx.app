@@ -10,6 +10,7 @@ use std::sync::Arc;
 
 mod merge_completion;
 mod merge_helpers;
+mod merge_strategies;
 mod merge_validation;
 pub mod metadata_builder;
 pub(crate) mod on_enter_states;
