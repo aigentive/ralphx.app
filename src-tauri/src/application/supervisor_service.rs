@@ -5,6 +5,7 @@ use crate::domain::supervisor::{
     action_for_detection, DetectionResult, Pattern, ProgressInfo, Severity, SupervisorAction,
     SupervisorEvent, ToolCallInfo, ToolCallWindow,
 };
+use crate::infrastructure::agents::claude::supervisor_runtime_config;
 use crate::infrastructure::supervisor::EventBus;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -29,13 +30,14 @@ pub struct SupervisorConfig {
 
 impl Default for SupervisorConfig {
     fn default() -> Self {
+        let cfg = supervisor_runtime_config();
         Self {
-            token_threshold: 50_000,
-            max_tokens: 100_000,
-            time_threshold_seconds: 600,
-            progress_interval_seconds: 30,
-            loop_threshold: 3,
-            stuck_threshold: 5,
+            token_threshold: cfg.token_threshold as u32,
+            max_tokens: cfg.max_tokens as u32,
+            time_threshold_seconds: cfg.time_threshold_secs,
+            progress_interval_seconds: cfg.progress_interval_secs,
+            loop_threshold: cfg.loop_threshold as usize,
+            stuck_threshold: cfg.stuck_threshold as usize,
         }
     }
 }

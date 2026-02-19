@@ -6,6 +6,7 @@
 
 use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatus};
 use crate::error::AppError;
+use crate::infrastructure::agents::claude::limits_config;
 use serde::{Deserialize, Serialize};
 
 /// Claude CLI error message indicating an expired/invalid session.
@@ -59,8 +60,10 @@ pub struct ProviderErrorMetadata {
 }
 
 impl ProviderErrorMetadata {
-    /// Maximum auto-resume attempts before giving up
-    pub const MAX_RESUME_ATTEMPTS: u32 = 5;
+    /// Maximum auto-resume attempts before giving up (read from runtime config).
+    pub fn max_resume_attempts() -> u32 {
+        limits_config().max_resume_attempts as u32
+    }
 
     /// Read provider_error metadata from task metadata JSON string.
     pub fn from_task_metadata(metadata: Option<&str>) -> Option<Self> {
@@ -100,7 +103,7 @@ impl ProviderErrorMetadata {
 
     /// Check if retry_after time has passed.
     pub fn is_retry_eligible(&self) -> bool {
-        if self.resume_attempts >= Self::MAX_RESUME_ATTEMPTS {
+        if self.resume_attempts >= Self::max_resume_attempts() {
             return false;
         }
         if !self.auto_resumable {
@@ -1039,7 +1042,7 @@ mod tests {
             previous_status: "executing".to_string(),
             paused_at: "2026-02-15T09:00:00+00:00".to_string(),
             auto_resumable: true,
-            resume_attempts: ProviderErrorMetadata::MAX_RESUME_ATTEMPTS,
+            resume_attempts: ProviderErrorMetadata::max_resume_attempts(),
         };
         assert!(!meta.is_retry_eligible(), "Should not be eligible at max attempts");
     }
@@ -1287,7 +1290,7 @@ mod tests {
             previous_status: "executing".to_string(),
             paused_at: "2026-02-15T09:00:00+00:00".to_string(),
             auto_resumable: true,
-            resume_attempts: ProviderErrorMetadata::MAX_RESUME_ATTEMPTS - 1,
+            resume_attempts: ProviderErrorMetadata::max_resume_attempts() - 1,
         };
         assert!(meta.is_retry_eligible(), "Should be eligible at MAX - 1 attempts");
     }

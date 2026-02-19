@@ -13,6 +13,7 @@ use tracing::info;
 use crate::application::question_state::QuestionState;
 use crate::application::team_events;
 use crate::application::team_state_tracker::TeammateStatus;
+use crate::infrastructure::agents::claude::stream_timeouts;
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
@@ -77,23 +78,24 @@ pub struct StreamTimeoutConfig {
 impl StreamTimeoutConfig {
     /// Returns timeout thresholds appropriate for the given context type.
     pub fn for_context(context_type: &ChatContextType) -> Self {
+        let cfg = stream_timeouts();
         match context_type {
             ChatContextType::Merge => Self {
-                line_read_timeout: Duration::from_secs(600),
-                parse_stall_timeout: Duration::from_secs(180),
+                line_read_timeout: Duration::from_secs(cfg.merge_line_read_secs),
+                parse_stall_timeout: Duration::from_secs(cfg.merge_parse_stall_secs),
                 teammate_name: None,
                 teammate_color: None,
             },
             ChatContextType::Review => Self {
-                line_read_timeout: Duration::from_secs(300),
-                parse_stall_timeout: Duration::from_secs(120),
+                line_read_timeout: Duration::from_secs(cfg.review_line_read_secs),
+                parse_stall_timeout: Duration::from_secs(cfg.review_parse_stall_secs),
                 teammate_name: None,
                 teammate_color: None,
             },
             // TaskExecution, Ideation, Task, Project — generous defaults
             _ => Self {
-                line_read_timeout: Duration::from_secs(600),
-                parse_stall_timeout: Duration::from_secs(180),
+                line_read_timeout: Duration::from_secs(cfg.default_line_read_secs),
+                parse_stall_timeout: Duration::from_secs(cfg.default_parse_stall_secs),
                 teammate_name: None,
                 teammate_color: None,
             },
@@ -160,10 +162,11 @@ pub async fn process_stream_background<R: Runtime>(
     running_agent_registry: Option<Arc<dyn RunningAgentRegistry>>,
 ) -> Result<StreamOutcome, StreamError> {
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
-    // Team leads wait long periods while teammates work — use 1-hour timeout
+    // Team leads wait long periods while teammates work — use team-specific timeout
     if team_mode {
-        timeout_config.line_read_timeout = Duration::from_secs(3600);
-        timeout_config.parse_stall_timeout = Duration::from_secs(3600);
+        let cfg = stream_timeouts();
+        timeout_config.line_read_timeout = Duration::from_secs(cfg.team_line_read_secs);
+        timeout_config.parse_stall_timeout = Duration::from_secs(cfg.team_parse_stall_secs);
     }
     tracing::debug!(
         conversation_id = conversation_id.as_str(),

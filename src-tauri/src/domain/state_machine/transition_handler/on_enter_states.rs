@@ -3,15 +3,6 @@
 // Extracted from side_effects.rs for maintainability. The `on_enter` method
 // signature stays in side_effects.rs and delegates here.
 
-/// Settle delay before `try_schedule_ready_tasks` in user-visible transitions (e.g. `on_enter(Ready)`).
-/// Long enough for the UI to render the task in the Ready column before it auto-advances to Executing.
-pub(crate) const READY_SETTLE_MS: u64 = 300;
-
-/// Settle delay before `try_schedule_ready_tasks` in internal, non-visible transitions
-/// (e.g. `on_enter(Merged)`, auto-complete path). No UI settle needed — 100ms is enough for
-/// the scheduling lock to be released before the next call.
-pub(crate) const MERGE_SETTLE_MS: u64 = 100;
-
 use std::path::Path;
 use std::sync::Arc;
 
@@ -25,6 +16,7 @@ use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::GitService;
 use crate::domain::entities::{ProjectId, TaskId, TaskStepStatus};
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::agents::claude::scheduler_config;
 
 impl<'a> super::TransitionHandler<'a> {
     /// Run pre-execution setup (worktree_setup + install), store log in metadata.
@@ -175,11 +167,12 @@ impl<'a> super::TransitionHandler<'a> {
                 }
 
                 // Delay auto-scheduling so UI sees task "settle" in Ready column
-                // before it potentially moves to Executing (user-visible → READY_SETTLE_MS)
+                // before it potentially moves to Executing (user-visible → ready_settle_ms)
                 if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
                     let scheduler = Arc::clone(scheduler);
+                    let ready_settle_ms = scheduler_config().ready_settle_ms;
                     tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(READY_SETTLE_MS))
+                        tokio::time::sleep(tokio::time::Duration::from_millis(ready_settle_ms))
                             .await;
                         scheduler.try_schedule_ready_tasks().await;
                     });
@@ -957,11 +950,12 @@ impl<'a> super::TransitionHandler<'a> {
                     .await;
 
                 // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
-                // Internal transition — no UI settle needed → MERGE_SETTLE_MS
+                // Internal transition — no UI settle needed → merge_settle_ms
                 if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
                     let scheduler = Arc::clone(scheduler);
+                    let merge_settle_ms = scheduler_config().merge_settle_ms;
                     tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(MERGE_SETTLE_MS))
+                        tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms))
                             .await;
                         scheduler.try_schedule_ready_tasks().await;
                     });

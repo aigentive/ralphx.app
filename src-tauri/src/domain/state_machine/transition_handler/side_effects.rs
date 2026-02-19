@@ -34,6 +34,7 @@ use tauri::Emitter;
 
 use super::super::machine::State;
 use crate::application::GitService;
+use crate::infrastructure::agents::claude::git_runtime_config;
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
@@ -803,9 +804,8 @@ impl<'a> super::TransitionHandler<'a> {
     ) {
         // --- index.lock removal ---
         // Remove a stale .git/index.lock left by a crashed git process.
-        // Age threshold: 5 seconds — any lock older than that is definitely stale.
-        const INDEX_LOCK_STALE_SECS: u64 = 5;
-        match GitService::remove_stale_index_lock(repo_path, INDEX_LOCK_STALE_SECS) {
+        let index_lock_stale_secs = git_runtime_config().index_lock_stale_secs;
+        match GitService::remove_stale_index_lock(repo_path, index_lock_stale_secs) {
             Ok(true) => {
                 tracing::info!(
                     task_id = task_id_str,
