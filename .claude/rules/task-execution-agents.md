@@ -80,7 +80,6 @@ paths:
 | Tool | Purpose | Required? |
 |------|---------|-----------|
 | `get_merge_target` | Get source/target branches | YES (always call first) |
-| `complete_merge` | Explicit success signal (with commit SHA) | Optional (auto-detected) |
 | `report_conflict` | Cannot resolve → `MergeConflict` | YES if stuck |
 | `report_incomplete` | Non-conflict failure → `MergeIncomplete` | YES if git error |
 | `get_task_context` | Task details + conflict files | As needed |

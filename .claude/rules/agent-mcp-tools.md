@@ -63,7 +63,6 @@ All of the above, plus:
 AgentConfig {
     name: "ralphx-merger",
     allowed_mcp_tools: &[
-        "complete_merge",
         "report_conflict",
         "report_incomplete",
         "get_merge_target",  // ← ADD
@@ -76,7 +75,6 @@ AgentConfig {
 ```typescript
 // Layer 2: tools.ts
 "ralphx-merger": [
-    "complete_merge",
     "report_conflict",
     "report_incomplete",
     "get_merge_target",  // ← ADD
@@ -87,7 +85,6 @@ AgentConfig {
 ```yaml
 # Layer 3: agents/merger.md frontmatter
 allowedTools:
-  - mcp__ralphx__complete_merge
   - mcp__ralphx__report_conflict
   - mcp__ralphx__report_incomplete
   - mcp__ralphx__get_merge_target  # ← ADD

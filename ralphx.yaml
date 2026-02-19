@@ -532,7 +532,6 @@ agents:
     tools: { extends: base_tools, include: [Edit, Task] }
     mcp_tools: [
         # merge tools
-        complete_merge,
         report_conflict,
         report_incomplete,
         get_merge_target,
