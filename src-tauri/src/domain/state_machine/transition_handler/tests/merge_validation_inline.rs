@@ -1,0 +1,69 @@
+// Tests extracted from merge_validation.rs #[cfg(test)] mod tests
+//
+// Covers: INSTALL_RETRY_DELAY_MS constant, run_install_phase retry behavior
+//
+// NOTE: These tests access private items from merge_validation.rs
+// (INSTALL_RETRY_DELAY_MS, run_install_phase, PreExecAnalysisEntry).
+// The source module's visibility must be adjusted to pub(super) or pub(crate)
+// for these tests to compile from the external test file.
+
+use super::super::merge_validation::{run_install_phase, INSTALL_RETRY_DELAY_MS};
+
+/// Analysis entry for pre-execution setup commands (local copy for test access).
+/// Mirrors merge_validation::PreExecAnalysisEntry.
+#[derive(Debug, Clone, serde::Deserialize)]
+struct PreExecAnalysisEntry {
+    path: String,
+    label: String,
+    #[serde(default)]
+    install: Option<String>,
+    #[serde(default)]
+    worktree_setup: Vec<String>,
+}
+
+/// INSTALL_RETRY_DELAY_MS must be 500ms — covers macOS filesystem lock window
+/// (Spotlight indexing, npm ENOTEMPTY) while cutting the original 2s delay by 75%.
+#[test]
+fn install_retry_delay_is_500ms() {
+    assert_eq!(INSTALL_RETRY_DELAY_MS, 500);
+}
+
+/// run_install_phase retries once on failure and reports success when retry succeeds.
+/// Uses a flag file: first call exits 1 (simulates transient ENOTEMPTY), second exits 0.
+/// The retry overwrites the log entry in-place, so one entry with status "success" is recorded.
+#[tokio::test]
+async fn install_retry_succeeds_after_transient_failure() {
+    let dir = tempfile::tempdir().unwrap();
+
+    // first call: if flag exists, remove it and exit 1; second call: flag absent, exit 0.
+    let flag = dir.path().join("fail_flag");
+    std::fs::write(&flag, "").unwrap();
+
+    let flag_path = flag.to_string_lossy().to_string();
+    let cmd = format!(
+        "if [ -f '{flag}' ]; then rm '{flag}'; exit 1; else exit 0; fi",
+        flag = flag_path
+    );
+
+    let entries = vec![PreExecAnalysisEntry {
+        path: ".".to_string(),
+        label: "Test".to_string(),
+        install: Some(cmd),
+        worktree_setup: vec![],
+    }];
+
+    let (log, had_failures) = run_install_phase(
+        &entries,
+        dir.path(),
+        "test-task-id",
+        None,
+        &|s: &str| s.to_string(),
+        "test",
+    )
+    .await;
+
+    // Retry succeeded → no failures overall; log has one entry replaced with "success"
+    assert!(!had_failures, "expected no failures after successful retry");
+    assert_eq!(log.len(), 1, "expected one log entry per command");
+    assert_eq!(log[0].status, "success", "retry should have overwritten status to success");
+}
