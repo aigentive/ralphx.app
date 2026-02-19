@@ -1,3 +1,4 @@
+pub mod runtime_config;
 pub mod team_config;
 
 use serde::Deserialize;
@@ -9,6 +10,11 @@ use std::sync::OnceLock;
 pub use team_config::{
     ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraints,
     TeamConstraintError, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
+};
+
+pub use runtime_config::{
+    AllRuntimeConfig, GitRuntimeConfig, LimitsConfig, ReconciliationConfig, SchedulerConfig,
+    StreamTimeoutsConfig, SupervisorRuntimeConfig,
 };
 
 const MEMORY_SKILLS: &[&str] = &[
@@ -132,6 +138,19 @@ struct RalphxConfig {
     /// If false, all merges proceed immediately without deferral.
     #[serde(default = "default_defer_merge_enabled")]
     defer_merge_enabled: bool,
+    // ── Runtime config sections ──────────────────────────────────────
+    #[serde(default)]
+    timeouts: runtime_config::TimeoutsWrapper,
+    #[serde(default)]
+    reconciliation: ReconciliationConfig,
+    #[serde(default)]
+    git: GitRuntimeConfig,
+    #[serde(default)]
+    scheduler: SchedulerConfig,
+    #[serde(default)]
+    supervisor: SupervisorRuntimeConfig,
+    #[serde(default)]
+    limits: LimitsConfig,
 }
 
 const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
@@ -146,6 +165,7 @@ struct LoadedConfig {
     process_mapping: ProcessMapping,
     team_constraints: TeamConstraintsConfig,
     defer_merge_enabled: bool,
+    runtime: AllRuntimeConfig,
 }
 
 static LOADED_CONFIG_CELL: OnceLock<LoadedConfig> = OnceLock::new();
@@ -363,12 +383,23 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
         settings: resolved_settings,
     };
 
+    let mut runtime = AllRuntimeConfig {
+        stream: parsed.timeouts.stream,
+        reconciliation: parsed.reconciliation,
+        git: parsed.git,
+        scheduler: parsed.scheduler,
+        supervisor: parsed.supervisor,
+        limits: parsed.limits,
+    };
+    runtime_config::apply_env_overrides(&mut runtime);
+
     Some(LoadedConfig {
         agents: resolved,
         claude,
         process_mapping: parsed.process_mapping,
         team_constraints: parsed.team_constraints,
         defer_merge_enabled: parsed.defer_merge_enabled,
+        runtime,
     })
 }
 
@@ -592,20 +623,32 @@ fn load_config() -> LoadedConfig {
         tracing::warn!(path = %path.display(), "ralphx.yaml not found/readable, using embedded config");
     }
 
-    parse_config(EMBEDDED_CONFIG).unwrap_or_else(|| LoadedConfig {
-        agents: Vec::new(),
-        claude: ClaudeRuntimeConfig {
-            mcp_server_name: "ralphx".to_string(),
-            setting_sources: None,
-            permission_mode: "default".to_string(),
-            dangerously_skip_permissions: false,
-            permission_prompt_tool: "mcp__ralphx__permission_request".to_string(),
-            use_append_system_prompt_file: true,
-            settings: None,
-        },
-        process_mapping: ProcessMapping::default(),
-        team_constraints: TeamConstraintsConfig::default(),
-        defer_merge_enabled: true,
+    parse_config(EMBEDDED_CONFIG).unwrap_or_else(|| {
+        let mut runtime = AllRuntimeConfig {
+            stream: StreamTimeoutsConfig::default(),
+            reconciliation: ReconciliationConfig::default(),
+            git: GitRuntimeConfig::default(),
+            scheduler: SchedulerConfig::default(),
+            supervisor: SupervisorRuntimeConfig::default(),
+            limits: LimitsConfig::default(),
+        };
+        runtime_config::apply_env_overrides(&mut runtime);
+        LoadedConfig {
+            agents: Vec::new(),
+            claude: ClaudeRuntimeConfig {
+                mcp_server_name: "ralphx".to_string(),
+                setting_sources: None,
+                permission_mode: "default".to_string(),
+                dangerously_skip_permissions: false,
+                permission_prompt_tool: "mcp__ralphx__permission_request".to_string(),
+                use_append_system_prompt_file: true,
+                settings: None,
+            },
+            process_mapping: ProcessMapping::default(),
+            team_constraints: TeamConstraintsConfig::default(),
+            defer_merge_enabled: true,
+            runtime,
+        }
     })
 }
 
@@ -658,6 +701,30 @@ pub fn team_constraints_config() -> &'static TeamConstraintsConfig {
 
 pub fn defer_merge_enabled() -> bool {
     LOADED_CONFIG_CELL.get_or_init(load_config).defer_merge_enabled
+}
+
+pub fn stream_timeouts() -> &'static StreamTimeoutsConfig {
+    &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.stream
+}
+
+pub fn reconciliation_config() -> &'static ReconciliationConfig {
+    &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.reconciliation
+}
+
+pub fn git_runtime_config() -> &'static GitRuntimeConfig {
+    &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.git
+}
+
+pub fn scheduler_config() -> &'static SchedulerConfig {
+    &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.scheduler
+}
+
+pub fn supervisor_runtime_config() -> &'static SupervisorRuntimeConfig {
+    &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.supervisor
+}
+
+pub fn limits_config() -> &'static LimitsConfig {
+    &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.limits
 }
 
 pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {

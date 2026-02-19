@@ -30,35 +30,7 @@ use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::transition_handler::{
     has_branch_missing_metadata, set_trigger_origin,
 };
-
-/// Merger agent timeout. After this many seconds without a completion signal,
-/// the reconciler marks the task as MergeIncomplete so it surfaces to the user
-/// and can be auto-retried. Configurable via RALPHX_MERGER_TIMEOUT_SECS env var
-/// (default: 1200 seconds / 20 minutes — generous for conflict resolution + test runs).
-fn merging_timeout_seconds() -> i64 {
-    std::env::var("RALPHX_MERGER_TIMEOUT_SECS")
-        .ok()
-        .and_then(|v| v.parse::<i64>().ok())
-        .unwrap_or(1200)
-}
-const MERGING_MAX_AUTO_RETRIES: u32 = 3;
-const PENDING_MERGE_STALE_MINUTES: i64 = 5;
-const QA_STALE_MINUTES: i64 = 5;
-const MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS: i64 = 30;
-const MERGE_INCOMPLETE_AUTO_RETRY_MAX_SECONDS: i64 = 300;
-const MERGE_INCOMPLETE_MAX_AUTO_RETRIES: u32 = 5;
-/// Maximum number of validation-revert cycles before stopping auto-retry.
-/// After this many reverts, the reconciler surfaces the task to the user.
-const VALIDATION_REVERT_MAX_COUNT: u32 = 2;
-const MERGE_CONFLICT_AUTO_RETRY_BASE_SECONDS: i64 = 60;
-const MERGE_CONFLICT_AUTO_RETRY_MAX_SECONDS: i64 = 600;
-const MERGE_CONFLICT_MAX_AUTO_RETRIES: u32 = 3;
-const EXECUTING_MAX_AUTO_RETRIES: u32 = 5;
-const REVIEWING_MAX_AUTO_RETRIES: u32 = 3;
-const QA_MAX_AUTO_RETRIES: u32 = 3;
-const EXECUTING_MAX_WALL_CLOCK_MINUTES: i64 = 60;
-const REVIEWING_MAX_WALL_CLOCK_MINUTES: i64 = 30;
-const QA_MAX_WALL_CLOCK_MINUTES: i64 = 15;
+use crate::infrastructure::agents::claude::reconciliation_config;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum RecoveryContext {
@@ -701,7 +673,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         // C5: Wall-clock timeout for long-running executions
         if let Some(age) = self.latest_status_transition_age(task, status).await {
-            let max_minutes = EXECUTING_MAX_WALL_CLOCK_MINUTES;
+            let max_minutes = reconciliation_config().executing_max_wall_clock_minutes as i64;
             if age >= chrono::Duration::minutes(max_minutes) {
                 warn!(
                     task_id = task.id.as_str(),
@@ -734,11 +706,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // E7: Enforce retry limit for execution re-spawns
         if decision.action == RecoveryActionKind::ExecuteEntryActions {
             let retry_count = Self::auto_retry_count_for_status(task, status);
-            if retry_count >= EXECUTING_MAX_AUTO_RETRIES {
+            if retry_count >= reconciliation_config().executing_max_retries as u32 {
                 warn!(
                     task_id = task.id.as_str(),
                     retry_count = retry_count,
-                    max = EXECUTING_MAX_AUTO_RETRIES,
+                    max = reconciliation_config().executing_max_retries,
                     "Execution retry limit reached — escalating to Failed"
                 );
                 return self
@@ -786,7 +758,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         // C5: Wall-clock timeout for long-running reviews
         if let Some(age) = self.latest_status_transition_age(task, status).await {
-            let max_minutes = REVIEWING_MAX_WALL_CLOCK_MINUTES;
+            let max_minutes = reconciliation_config().reviewing_max_wall_clock_minutes as i64;
             if age >= chrono::Duration::minutes(max_minutes) {
                 warn!(
                     task_id = task.id.as_str(),
@@ -819,11 +791,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // E7: Enforce retry limit for review re-spawns
         if decision.action == RecoveryActionKind::ExecuteEntryActions {
             let retry_count = Self::auto_retry_count_for_status(task, status);
-            if retry_count >= REVIEWING_MAX_AUTO_RETRIES {
+            if retry_count >= reconciliation_config().reviewing_max_retries as u32 {
                 warn!(
                     task_id = task.id.as_str(),
                     retry_count = retry_count,
-                    max = REVIEWING_MAX_AUTO_RETRIES,
+                    max = reconciliation_config().reviewing_max_retries,
                     "Review retry limit reached — escalating to Escalated"
                 );
                 return self
@@ -880,7 +852,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let mut evidence = self
             .build_run_evidence(task, ChatContextType::Merge, run.as_ref())
             .await;
-        evidence.is_stale = effective_age >= chrono::Duration::seconds(merging_timeout_seconds());
+        evidence.is_stale = effective_age >= chrono::Duration::seconds(reconciliation_config().merger_timeout_secs as i64);
 
         // Agent is running, registered, and not stale — let it work
         if evidence.run_status == Some(AgentRunStatus::Running)
@@ -902,11 +874,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
             Err(_) => return false,
         };
         let retry_count = Self::merging_auto_retry_count(&updated_task);
-        if retry_count >= MERGING_MAX_AUTO_RETRIES {
+        if retry_count >= reconciliation_config().merging_max_retries as u32 {
             warn!(
                 task_id = task.id.as_str(),
                 retry_count = retry_count,
-                max = MERGING_MAX_AUTO_RETRIES,
+                max = reconciliation_config().merging_max_retries,
                 "Merging retry limit reached — transitioning to MergeIncomplete for user retry"
             );
             // Use MergeIncomplete (not MergeConflict) because timeout indicates a hung agent,
@@ -978,7 +950,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         };
 
         // C5: Wall-clock timeout for long-running QA
-        let max_qa_minutes = QA_MAX_WALL_CLOCK_MINUTES;
+        let max_qa_minutes = reconciliation_config().qa_max_wall_clock_minutes as i64;
         if age >= chrono::Duration::minutes(max_qa_minutes) {
             warn!(
                 task_id = task.id.as_str(),
@@ -1007,7 +979,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             run_status: None,
             registry_running: false,
             can_start: self.execution_state.can_start_task(),
-            is_stale: age >= chrono::Duration::minutes(QA_STALE_MINUTES),
+            is_stale: age >= chrono::Duration::minutes(reconciliation_config().qa_stale_minutes as i64),
             is_deferred: false,
         };
         let decision = self.policy.decide_reconciliation(context, evidence);
@@ -1015,11 +987,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // E7: Enforce retry limit for QA re-spawns
         if decision.action == RecoveryActionKind::ExecuteEntryActions {
             let retry_count = Self::auto_retry_count_for_status(task, status);
-            if retry_count >= QA_MAX_AUTO_RETRIES {
+            if retry_count >= reconciliation_config().qa_max_retries as u32 {
                 warn!(
                     task_id = task.id.as_str(),
                     retry_count = retry_count,
-                    max = QA_MAX_AUTO_RETRIES,
+                    max = reconciliation_config().qa_max_retries,
                     "QA retry limit reached — escalating to QaFailed"
                 );
                 return self
@@ -1126,7 +1098,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             run_status: None,
             registry_running: false,
             can_start: true,
-            is_stale: age >= chrono::Duration::minutes(PENDING_MERGE_STALE_MINUTES),
+            is_stale: age >= chrono::Duration::minutes(reconciliation_config().pending_merge_stale_minutes as i64),
             is_deferred,
         };
         let decision = self
@@ -1157,14 +1129,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
-        // Loop-breaking guard: if validation has reverted the merge >VALIDATION_REVERT_MAX_COUNT
+        // Loop-breaking guard: if validation has reverted the merge more than the configured max
         // times, stop auto-retrying and surface to user — the code changes must fix the failures.
         let revert_count = Self::validation_revert_count(task);
-        if revert_count > VALIDATION_REVERT_MAX_COUNT {
+        if revert_count > reconciliation_config().validation_revert_max_count as u32 {
             warn!(
                 task_id = task.id.as_str(),
                 revert_count = revert_count,
-                max = VALIDATION_REVERT_MAX_COUNT,
+                max = reconciliation_config().validation_revert_max_count,
                 "Stopping auto-retry of MergeIncomplete — validation revert loop detected (ValidationFailed)"
             );
             return false;
@@ -1176,7 +1148,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         };
 
         let retry_count = Self::merge_incomplete_auto_retry_count(task);
-        if retry_count >= MERGE_INCOMPLETE_MAX_AUTO_RETRIES {
+        if retry_count >= reconciliation_config().merge_incomplete_max_retries as u32 {
             return false;
         }
 
@@ -1253,7 +1225,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         };
 
         let retry_count = Self::merge_conflict_auto_retry_count(task);
-        if retry_count >= MERGE_CONFLICT_MAX_AUTO_RETRIES {
+        if retry_count >= reconciliation_config().merge_conflict_max_retries as u32 {
             return false;
         }
 
@@ -1380,11 +1352,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
 
         // Check if max resume attempts exceeded → transition to Failed
-        if resume_attempts >= ProviderErrorMetadata::MAX_RESUME_ATTEMPTS {
+        if resume_attempts >= ProviderErrorMetadata::max_resume_attempts() {
             warn!(
                 task_id = task.id.as_str(),
                 attempts = resume_attempts,
-                max = ProviderErrorMetadata::MAX_RESUME_ATTEMPTS,
+                max = ProviderErrorMetadata::max_resume_attempts(),
                 category = %category,
                 "Provider error auto-resume limit reached — transitioning to Failed"
             );
@@ -1525,7 +1497,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
-        if meta.resume_attempts >= ProviderErrorMetadata::MAX_RESUME_ATTEMPTS {
+        if meta.resume_attempts >= ProviderErrorMetadata::max_resume_attempts() {
             warn!(
                 task_id = task.id.as_str(),
                 attempts = meta.resume_attempts,
@@ -1949,8 +1921,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     fn merge_incomplete_retry_delay(retry_count: u32) -> chrono::Duration {
         let exponent = retry_count.min(6);
-        let scaled = MERGE_INCOMPLETE_AUTO_RETRY_BASE_SECONDS.saturating_mul(1_i64 << exponent);
-        chrono::Duration::seconds(scaled.min(MERGE_INCOMPLETE_AUTO_RETRY_MAX_SECONDS))
+        let scaled = (reconciliation_config().merge_incomplete_retry_base_secs as i64).saturating_mul(1_i64 << exponent);
+        chrono::Duration::seconds(scaled.min(reconciliation_config().merge_incomplete_retry_max_secs as i64))
     }
 
     fn merge_conflict_auto_retry_count(task: &Task) -> u32 {
@@ -1968,8 +1940,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     fn merge_conflict_retry_delay(retry_count: u32) -> chrono::Duration {
         let exponent = retry_count.min(6);
-        let scaled = MERGE_CONFLICT_AUTO_RETRY_BASE_SECONDS.saturating_mul(1_i64 << exponent);
-        chrono::Duration::seconds(scaled.min(MERGE_CONFLICT_AUTO_RETRY_MAX_SECONDS))
+        let scaled = (reconciliation_config().merge_conflict_retry_base_secs as i64).saturating_mul(1_i64 << exponent);
+        chrono::Duration::seconds(scaled.min(reconciliation_config().merge_conflict_retry_max_secs as i64))
     }
 
     /// Returns true if the task's failure was explicitly reported by the merger agent
@@ -2198,7 +2170,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             Err(_) => serde_json::json!({}),
         };
 
-        let timeout_secs = merging_timeout_seconds();
+        let timeout_secs = reconciliation_config().merger_timeout_secs as i64;
         if let Some(obj) = metadata.as_object_mut() {
             obj.insert(
                 "error".to_string(),

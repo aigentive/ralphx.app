@@ -70,7 +70,7 @@ pub use task_cleanup_service::{
 pub use task_context_service::TaskContextService;
 pub use resume_validator::{ResumeValidationResult, ResumeValidator};
 pub use task_scheduler_service::{
-    ReadyWatchdog, TaskSchedulerService, WATCHDOG_INTERVAL_SECS, WATCHDOG_STALE_THRESHOLD_SECS,
+    ReadyWatchdog, TaskSchedulerService,
 };
 pub use team_service::TeamService;
 pub use team_state_tracker::TeamStateTracker;

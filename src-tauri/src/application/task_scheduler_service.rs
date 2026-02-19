@@ -18,9 +18,7 @@ use std::sync::{
 use tauri::{AppHandle, Runtime};
 use tokio::sync::{Mutex as TokioMutex, RwLock};
 
-/// Maximum number of pending contention-retry spawns for try_schedule_ready_tasks().
-/// Prevents cascading retries if the scheduler is persistently held.
-const MAX_CONTENTION_RETRIES: u32 = 3;
+use crate::infrastructure::agents::claude::scheduler_config;
 
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -81,7 +79,7 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     scheduling_lock: TokioMutex<()>,
     /// Number of pending contention-retry spawns currently in flight.
     /// Wrapped in Arc so spawned retry closures can decrement it without downcasting.
-    /// Bounded by MAX_CONTENTION_RETRIES.
+    /// Bounded by scheduler_config().max_contention_retries.
     contention_retry_pending: Arc<AtomicU32>,
 }
 
@@ -268,8 +266,11 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             Ok(guard) => guard,
             Err(_) => {
                 // Limit concurrent retry spawns to avoid cascading if lock is persistently held.
+                let sched_cfg = scheduler_config();
+                let max_retries = sched_cfg.max_contention_retries as u32;
+                let retry_delay_ms = sched_cfg.contention_retry_delay_ms;
                 let pending = self.contention_retry_pending.load(Ordering::Relaxed);
-                if pending >= MAX_CONTENTION_RETRIES {
+                if pending >= max_retries {
                     tracing::debug!(
                         pending_retries = pending,
                         "Scheduling already in progress; retry limit reached, dropping attempt"
@@ -280,11 +281,11 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                     self.contention_retry_pending.fetch_add(1, Ordering::Relaxed);
                     tracing::debug!(
                         pending_retries = pending + 1,
-                        "Scheduling lock contention detected; queuing retry in 200ms"
+                        "Scheduling lock contention detected; queuing retry in {retry_delay_ms}ms"
                     );
                     let retry_counter = Arc::clone(&self.contention_retry_pending);
                     tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay_ms)).await;
                         // Decrement before the retry attempt so the slot is freed
                         // regardless of whether the retry succeeds or skips.
                         retry_counter.fetch_sub(1, Ordering::Relaxed);
@@ -746,12 +747,6 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
     }
 }
 
-/// Default interval between watchdog scan cycles (60 seconds).
-pub const WATCHDOG_INTERVAL_SECS: u64 = 60;
-
-/// Default staleness threshold: tasks in Ready state for longer than this are considered stale.
-pub const WATCHDOG_STALE_THRESHOLD_SECS: u64 = 30;
-
 /// Periodic watchdog that detects tasks stuck in Ready state and reschedules them.
 ///
 /// Safety net for scenarios S5, S6, S7, S8 where the primary scheduling trigger
@@ -766,23 +761,24 @@ pub const WATCHDOG_STALE_THRESHOLD_SECS: u64 = 30;
 pub struct ReadyWatchdog {
     scheduler: Arc<dyn TaskScheduler>,
     task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
-    /// How often to run the watchdog scan (default: 60s).
+    /// How often to run the watchdog scan.
     interval_secs: u64,
-    /// How long a task must be in Ready state before being considered stale (default: 30s).
+    /// How long a task must be in Ready state before being considered stale.
     stale_threshold_secs: u64,
 }
 
 impl ReadyWatchdog {
-    /// Create a new ReadyWatchdog with default configuration.
+    /// Create a new ReadyWatchdog with configuration from scheduler_config().
     pub fn new(
         scheduler: Arc<dyn TaskScheduler>,
         task_repo: Arc<dyn crate::domain::repositories::TaskRepository>,
     ) -> Self {
+        let sched_cfg = scheduler_config();
         Self {
             scheduler,
             task_repo,
-            interval_secs: WATCHDOG_INTERVAL_SECS,
-            stale_threshold_secs: WATCHDOG_STALE_THRESHOLD_SECS,
+            interval_secs: sched_cfg.watchdog_interval_secs,
+            stale_threshold_secs: sched_cfg.watchdog_stale_threshold_secs,
         }
     }
 
@@ -2013,9 +2009,10 @@ mod tests {
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
 
         // Pre-fill the retry counter to the maximum
+        let max_retries = scheduler_config().max_contention_retries as u32;
         scheduler
             .contention_retry_pending
-            .store(MAX_CONTENTION_RETRIES, Ordering::Relaxed);
+            .store(max_retries, Ordering::Relaxed);
 
         let _guard = scheduler.scheduling_lock.lock().await;
 
@@ -2030,8 +2027,8 @@ mod tests {
         // Counter must stay at MAX (not incremented further)
         assert_eq!(
             scheduler.contention_retry_pending.load(Ordering::Relaxed),
-            MAX_CONTENTION_RETRIES,
-            "Counter must not exceed MAX_CONTENTION_RETRIES"
+            max_retries,
+            "Counter must not exceed max_contention_retries"
         );
     }
 

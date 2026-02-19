@@ -1,23 +1,14 @@
 //! Async git command runner — single point of spawn_blocking for all git operations.
 //!
 //! All git commands are executed with:
-//! - A 60-second timeout to prevent hung processes from blocking threads forever.
-//! - Up to 3 retry attempts with exponential backoff (1s/2s/4s) for known transient errors.
+//! - A configurable timeout (from `git_runtime_config()`) to prevent hung processes.
+//! - Configurable retry attempts with backoff for known transient errors.
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::agents::claude::git_runtime_config;
 use std::path::Path;
 use std::process::{Command, Output, Stdio};
 use std::time::Duration;
 use tokio::time::timeout;
-
-/// Default timeout for git commands. Prevents hung git processes from blocking spawn_blocking
-/// threads indefinitely (e.g. waiting for a lock or network hang).
-const GIT_CMD_TIMEOUT_SECS: u64 = 60;
-
-/// Maximum number of retry attempts for transient git errors.
-const GIT_MAX_RETRIES: u32 = 3;
-
-/// Backoff delays (seconds) for successive retry attempts.
-const GIT_RETRY_BACKOFF_SECS: [u64; 3] = [1, 2, 4];
 
 // ── Transient error pattern constants ────────────────────────────────────────
 // Source: git stderr output on Linux/macOS. These are transient errors caused by
@@ -86,9 +77,12 @@ fn exec_with_retry(
     cwd: &std::path::PathBuf,
     env: Option<&[(String, String)]>,
 ) -> AppResult<Output> {
+    let git_cfg = git_runtime_config();
+    let max_retries = git_cfg.max_retries as u32;
+    let retry_backoff = &git_cfg.retry_backoff_secs;
     let mut last_err: Option<AppError> = None;
 
-    for attempt in 0..GIT_MAX_RETRIES {
+    for attempt in 0..max_retries {
         let result = match env {
             Some(e) => exec_git_with_env(args, cwd, e),
             None => exec_git(args, cwd),
@@ -102,13 +96,13 @@ fn exec_with_retry(
                     return Ok(output);
                 }
                 // Transient failure: record and retry after backoff.
-                let backoff = GIT_RETRY_BACKOFF_SECS
+                let backoff = retry_backoff
                     .get(attempt as usize)
                     .copied()
                     .unwrap_or(4);
                 tracing::warn!(
                     attempt = attempt + 1,
-                    max = GIT_MAX_RETRIES,
+                    max = max_retries,
                     backoff_secs = backoff,
                     stderr = %stderr.trim(),
                     args = %args.join(" "),
@@ -133,7 +127,7 @@ fn exec_with_retry(
         AppError::GitOperation(format!(
             "git {} failed after {} retries",
             args.join(" "),
-            GIT_MAX_RETRIES
+            max_retries
         ))
     }))
 }
@@ -142,23 +136,24 @@ fn exec_with_retry(
 
 /// Run a git command on the blocking threadpool, returning full Output.
 ///
-/// Applies a 60-second timeout and up to 3 retries for transient errors.
+/// Applies a configurable timeout and retries for transient errors.
 pub(crate) async fn run(args: &[&str], cwd: &Path) -> AppResult<Output> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let cwd = cwd.to_path_buf();
+    let timeout_secs = git_runtime_config().cmd_timeout_secs;
 
     timeout(
-        Duration::from_secs(GIT_CMD_TIMEOUT_SECS),
+        Duration::from_secs(timeout_secs),
         tokio::task::spawn_blocking(move || exec_with_retry(&args, &cwd, None)),
     )
     .await
-    .map_err(|_| AppError::GitOperation(format!("git command timed out after {GIT_CMD_TIMEOUT_SECS}s")))?
+    .map_err(|_| AppError::GitOperation(format!("git command timed out after {timeout_secs}s")))?
     .map_err(|e| AppError::GitOperation(format!("git task join error: {e}")))?
 }
 
 /// Run a git command with additional environment variables on the blocking threadpool.
 ///
-/// Applies a 60-second timeout and up to 3 retries for transient errors.
+/// Applies a configurable timeout and retries for transient errors.
 pub(crate) async fn run_with_env(
     args: &[&str],
     cwd: &Path,
@@ -170,26 +165,28 @@ pub(crate) async fn run_with_env(
         .iter()
         .map(|(k, v)| (k.to_string(), v.to_string()))
         .collect();
+    let timeout_secs = git_runtime_config().cmd_timeout_secs;
 
     timeout(
-        Duration::from_secs(GIT_CMD_TIMEOUT_SECS),
+        Duration::from_secs(timeout_secs),
         tokio::task::spawn_blocking(move || exec_with_retry(&args, &cwd, Some(&env))),
     )
     .await
-    .map_err(|_| AppError::GitOperation(format!("git command timed out after {GIT_CMD_TIMEOUT_SECS}s")))?
+    .map_err(|_| AppError::GitOperation(format!("git command timed out after {timeout_secs}s")))?
     .map_err(|e| AppError::GitOperation(format!("git task join error: {e}")))?
 }
 
 /// Run a git command returning just success/failure (for existence checks).
 ///
-/// Applies a 60-second timeout. Status checks are not retried (they should be fast and
+/// Applies a configurable timeout. Status checks are not retried (they should be fast and
 /// idempotent).
 pub(crate) async fn run_status(args: &[&str], cwd: &Path) -> AppResult<bool> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let cwd = cwd.to_path_buf();
+    let timeout_secs = git_runtime_config().cmd_timeout_secs;
 
     timeout(
-        Duration::from_secs(GIT_CMD_TIMEOUT_SECS),
+        Duration::from_secs(timeout_secs),
         tokio::task::spawn_blocking(move || {
             Command::new("git")
                 .args(&args)
@@ -202,7 +199,7 @@ pub(crate) async fn run_status(args: &[&str], cwd: &Path) -> AppResult<bool> {
         }),
     )
     .await
-    .map_err(|_| AppError::GitOperation(format!("git status check timed out after {GIT_CMD_TIMEOUT_SECS}s")))?
+    .map_err(|_| AppError::GitOperation(format!("git status check timed out after {timeout_secs}s")))?
     .map_err(|e| AppError::GitOperation(format!("git task join error: {e}")))
 }
 
@@ -311,10 +308,11 @@ mod tests {
     #[test]
     fn test_retry_backoff_array_length() {
         // Ensure backoff array covers all retry attempts
+        let git_cfg = git_runtime_config();
         assert_eq!(
-            GIT_RETRY_BACKOFF_SECS.len(),
-            GIT_MAX_RETRIES as usize,
-            "GIT_RETRY_BACKOFF_SECS must have one entry per retry attempt"
+            git_cfg.retry_backoff_secs.len(),
+            git_cfg.max_retries as usize,
+            "retry_backoff_secs must have one entry per retry attempt"
         );
     }
 

@@ -5,6 +5,7 @@ use crate::domain::entities::{
     AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InternalStatus, Project, Task, TaskId,
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
+use crate::infrastructure::agents::claude::reconciliation_config;
 use std::sync::Arc;
 
 fn build_reconciler(
@@ -607,15 +608,15 @@ async fn reconcile_merge_incomplete_retries_normally_without_branch_missing() {
 // ── Merging state retry cap tests (Gap 1) ──
 
 #[test]
-fn merging_timeout_default_is_600_seconds() {
-    // Default merger agent timeout is 10 minutes (600s); configurable via
-    // RALPHX_MERGER_TIMEOUT_SECS env var.
-    assert_eq!(super::merging_timeout_seconds(), 600);
+fn merging_timeout_default_is_1200_seconds() {
+    // Default merger agent timeout is 20 minutes (1200s); configurable via
+    // RALPHX_MERGER_TIMEOUT_SECS or RALPHX_RECONCILIATION_MERGER_TIMEOUT_SECS env var.
+    assert_eq!(reconciliation_config().merger_timeout_secs, 1200);
 }
 
 #[test]
 fn merging_max_auto_retries_is_3() {
-    assert_eq!(super::MERGING_MAX_AUTO_RETRIES, 3);
+    assert_eq!(reconciliation_config().merging_max_retries, 3);
 }
 
 #[test]
@@ -750,10 +751,10 @@ async fn merging_timeout_escalates_to_merge_incomplete_not_merge_conflict() {
     let mut task = Task::new(project.id.clone(), "Stuck Merging Task".to_string());
     task.internal_status = InternalStatus::Merging;
     task.updated_at = chrono::Utc::now()
-        - chrono::Duration::seconds(super::merging_timeout_seconds() + 60);
+        - chrono::Duration::seconds(reconciliation_config().merger_timeout_secs as i64 + 60);
 
     // Write MERGING_MAX_AUTO_RETRIES attempt_failed events to hit the retry cap
-    let events: Vec<serde_json::Value> = (0..super::MERGING_MAX_AUTO_RETRIES)
+    let events: Vec<serde_json::Value> = (0..reconciliation_config().merging_max_retries)
         .map(|i| {
             serde_json::json!({
                 "at": format!("2026-02-10T{:02}:00:00Z", i),
@@ -1330,7 +1331,7 @@ async fn reconcile_paused_task_at_max_attempts_transitions_to_failed() {
         previous_status: "executing".to_string(),
         paused_at: "2020-01-01T00:00:00+00:00".to_string(),
         auto_resumable: true,
-        resume_attempts: ProviderErrorMetadata::MAX_RESUME_ATTEMPTS, // At max
+        resume_attempts: ProviderErrorMetadata::max_resume_attempts(), // At max
     };
 
     let mut task = Task::new(project.id.clone(), "Max Attempts Task".to_string());
@@ -1480,7 +1481,7 @@ async fn reconcile_multiple_paused_tasks_in_single_cycle() {
         previous_status: "executing".to_string(),
         paused_at: "2020-01-01T00:00:00+00:00".to_string(),
         auto_resumable: true,
-        resume_attempts: ProviderErrorMetadata::MAX_RESUME_ATTEMPTS,
+        resume_attempts: ProviderErrorMetadata::max_resume_attempts(),
     };
     let mut task3 = Task::new(project.id.clone(), "Max Retries Task".to_string());
     task3.internal_status = InternalStatus::Paused;
@@ -1722,7 +1723,7 @@ async fn reconcile_paused_provider_error_new_format_max_attempts_fails() {
         previous_status: "executing".to_string(),
         paused_at: "2020-01-01T00:00:00+00:00".to_string(),
         auto_resumable: true,
-        resume_attempts: ProviderErrorMetadata::MAX_RESUME_ATTEMPTS,
+        resume_attempts: ProviderErrorMetadata::max_resume_attempts(),
     };
 
     let mut task = Task::new(project.id.clone(), "Max Attempts New Format".to_string());
@@ -2388,7 +2389,7 @@ async fn reconcile_merging_not_stale_when_heartbeat_is_recent() {
 
 #[tokio::test]
 async fn reconcile_merging_stale_when_heartbeat_is_old() {
-    // Task has an old heartbeat (>600s default timeout) — should be considered stale.
+    // Task has an old heartbeat (>1200s default timeout) — should be considered stale.
     // Staleness is confirmed by checking that record_merge_timeout_event fired
     // (writes merge_recovery metadata).
     let app_state = AppState::new_test();
@@ -2404,7 +2405,7 @@ async fn reconcile_merging_stale_when_heartbeat_is_old() {
     task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(10);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    // Register agent with an OLD heartbeat (700s ago — beyond 600s default timeout)
+    // Register agent with an OLD heartbeat (1300s ago — beyond 1200s default timeout)
     let merge_key = RunningAgentKey::new("merge", task.id.as_str());
     app_state
         .running_agent_registry
@@ -2417,7 +2418,7 @@ async fn reconcile_merging_stale_when_heartbeat_is_old() {
             None,
         )
         .await;
-    let old_heartbeat = chrono::Utc::now() - chrono::Duration::seconds(700);
+    let old_heartbeat = chrono::Utc::now() - chrono::Duration::seconds(1300);
     app_state
         .running_agent_registry
         .update_heartbeat(&merge_key, old_heartbeat)
@@ -2741,7 +2742,7 @@ async fn reconcile_merge_incomplete_retries_when_below_max_validation_reverts() 
 #[test]
 fn validation_revert_max_count_is_2() {
     assert_eq!(
-        super::VALIDATION_REVERT_MAX_COUNT,
+        reconciliation_config().validation_revert_max_count,
         2,
         "Max validation reverts before stopping should be 2"
     );
