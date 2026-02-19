@@ -7,6 +7,18 @@ tools:
   - Glob
   - Bash
   - Task
+  - TaskCreate
+  - TaskUpdate
+  - TaskGet
+  - TaskList
+  - TaskOutput
+  - KillShell
+  - MCPSearch
+  - LSP
+  - TaskStop
+  - TeamCreate
+  - TeamDelete
+  - SendMessage
 disallowedTools: Write, Edit, NotebookEdit
 allowedTools:
   - "mcp__ralphx__*"

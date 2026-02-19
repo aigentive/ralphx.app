@@ -11,6 +11,14 @@ tools:
   - WebFetch
   - WebSearch
   - Task
+  - TaskCreate
+  - TaskUpdate
+  - TaskGet
+  - TaskList
+  - TaskOutput
+  - KillShell
+  - MCPSearch
+  - LSP
 allowedTools:
   - mcp__ralphx__start_step
   - mcp__ralphx__complete_step

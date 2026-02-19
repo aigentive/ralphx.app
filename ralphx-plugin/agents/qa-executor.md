@@ -1,7 +1,7 @@
 ---
 name: ralphx-qa-executor
 description: Executes QA tests via agent-browser and evaluates results
-tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Task
+tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Task, TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, KillShell, MCPSearch
 disallowedTools: NotebookEdit
 allowedTools:
   - "Task(Explore)"

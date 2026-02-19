@@ -9,6 +9,13 @@ tools:
   - WebFetch
   - WebSearch
   - Task
+  - TaskCreate
+  - TaskUpdate
+  - TaskGet
+  - TaskList
+  - TaskOutput
+  - KillShell
+  - MCPSearch
 disallowedTools: Write, Edit, NotebookEdit
 allowedTools:
   - mcp__ralphx__list_session_proposals

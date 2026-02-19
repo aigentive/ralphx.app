@@ -9,6 +9,13 @@ tools:
   - WebFetch
   - WebSearch
   - Task
+  - TaskCreate
+  - TaskUpdate
+  - TaskGet
+  - TaskList
+  - TaskOutput
+  - KillShell
+  - MCPSearch
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"

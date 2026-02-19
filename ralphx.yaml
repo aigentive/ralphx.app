@@ -189,7 +189,7 @@ limits:
   max_resume_attempts: 5                 # Env: RALPHX_LIMITS_MAX_RESUME_ATTEMPTS
 
 tool_sets:
-  base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill]
+  base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, KillShell, MCPSearch]
 
 # process_mapping:
 #   Maps logical process slots to agent variants. Each slot has a `default`
@@ -457,7 +457,7 @@ agents:
   - name: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker.md
     model: claude-sonnet-4-6
-    tools: { extends: base_tools, include: [Write, Edit, Task] }
+    tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
         start_step,
@@ -504,7 +504,7 @@ agents:
   - name: ralphx-coder
     system_prompt_file: ralphx-plugin/agents/coder.md
     model: claude-sonnet-4-6
-    tools: { extends: base_tools, include: [Write, Edit, Task] }
+    tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
         start_step,
@@ -686,7 +686,8 @@ agents:
   - name: ideation-team-lead
     extends: orchestrator-ideation
     system_prompt_file: ralphx-plugin/agents/ideation-team-lead.md
-    # inherits: model (opus), tools, preapproved_cli_tools from orchestrator-ideation
+    tools: { extends: base_tools, include: [Task, TaskStop, TeamCreate, TeamDelete, SendMessage] }
+    # inherits: model (opus), preapproved_cli_tools from orchestrator-ideation
     # mcp_tools override: parent tools + team coordination tools
     mcp_tools: [
         # Team coordination tools (new)
@@ -722,4 +723,5 @@ agents:
     extends: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker-team.md
     model: claude-sonnet-4-6
-    # inherits: tools, mcp_tools, preapproved_cli_tools from ralphx-worker
+    tools: { extends: base_tools, include: [Write, Edit, Task, LSP, TaskStop, TeamCreate, TeamDelete, SendMessage] }
+    # inherits: mcp_tools, preapproved_cli_tools from ralphx-worker

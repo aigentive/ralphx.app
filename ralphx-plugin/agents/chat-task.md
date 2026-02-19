@@ -9,6 +9,13 @@ tools:
   - WebFetch
   - WebSearch
   - Task
+  - TaskCreate
+  - TaskUpdate
+  - TaskGet
+  - TaskList
+  - TaskOutput
+  - KillShell
+  - MCPSearch
   - mcp__ralphx__update_task
   - mcp__ralphx__add_task_note
   - mcp__ralphx__get_task_details
