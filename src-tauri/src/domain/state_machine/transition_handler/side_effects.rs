@@ -1383,6 +1383,7 @@ impl<'a> super::TransitionHandler<'a> {
                             // Start the actual merge in the worktree (leaves conflicts for agent)
                             let _ = git_cmd::run(&["merge", &source_branch, "--no-edit"], &merge_wt_path).await;
 
+                            task.worktree_path = Some(merge_wt_path.to_string_lossy().to_string());
                             task.internal_status = InternalStatus::Merging;
                             task.touch();
 
@@ -3016,6 +3017,7 @@ impl<'a> super::TransitionHandler<'a> {
                             ).await;
                             let _ = git_cmd::run(&["merge", &source_branch, "--no-edit"], &merge_wt_path).await;
 
+                            task.worktree_path = Some(merge_wt_path.to_string_lossy().to_string());
                             task.internal_status = InternalStatus::Merging;
                             task.touch();
                             let _ = task_repo.update(&task).await;
@@ -4017,6 +4019,15 @@ impl<'a> super::TransitionHandler<'a> {
                             "programmatic",
                         );
 
+                        // Create temp worktree for conflict resolution
+                        let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
+                        let target_sha = GitService::get_branch_sha(repo_path, &target_branch).await.unwrap_or_default();
+                        let resolve_branch = format!("merge-resolve/{}", task_id_str);
+                        let _ = GitService::create_branch_at(repo_path, &resolve_branch, &target_sha).await;
+                        let _ = GitService::checkout_existing_branch_worktree(repo_path, &merge_wt_path, &resolve_branch).await;
+                        let _ = git_cmd::run(&["merge", &source_branch, "--no-edit"], &merge_wt_path).await;
+
+                        task.worktree_path = Some(merge_wt_path.to_string_lossy().to_string());
                         task.internal_status = InternalStatus::Merging;
                         task.touch();
 
@@ -4799,6 +4810,7 @@ impl<'a> super::TransitionHandler<'a> {
                             ).await;
                             let _ = git_cmd::run(&["merge", &source_branch, "--no-edit"], &merge_wt_path).await;
 
+                            task.worktree_path = Some(merge_wt_path.to_string_lossy().to_string());
                             task.internal_status = InternalStatus::Merging;
                             task.touch();
                             let _ = task_repo.update(&task).await;
