@@ -25,7 +25,6 @@ use super::merge_helpers::{
     is_task_in_merge_workflow, task_targets_branch, truncate_str, validate_plan_merge_preconditions,
 };
 use super::merge_outcome_handler::MergeHandlerOptions;
-use super::merge_strategies::MergeOutcome;
 use super::merge_validation::{emit_merge_progress, ValidationFailure};
 
 use std::path::{Path, PathBuf};
@@ -34,8 +33,7 @@ use std::sync::Arc;
 use tauri::Emitter;
 
 use super::super::machine::State;
-use crate::application::git_service::checkout_free::{self, CheckoutFreeMergeResult};
-use crate::application::{GitService, MergeAttemptResult};
+use crate::application::GitService;
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
@@ -968,56 +966,9 @@ impl<'a> super::TransitionHandler<'a> {
         };
         match project.merge_strategy {
             MergeStrategy::Merge => {
-                let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
-                let target_is_checked_out = current_branch == target_branch;
-
-                let outcome = if target_is_checked_out {
-                    tracing::info!(task_id = task_id_str, target_branch = %target_branch, "Target branch is checked out, using checkout-free merge");
-
-                    if !GitService::branch_exists(repo_path, &source_branch).await {
-                        MergeOutcome::BranchNotFound { branch: source_branch.clone() }
-                    } else if !GitService::branch_exists(repo_path, &target_branch).await {
-                        MergeOutcome::BranchNotFound { branch: target_branch.clone() }
-                    } else {
-                        match checkout_free::try_merge_checkout_free(repo_path, &source_branch, &target_branch).await {
-                            Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
-                                if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
-                                    tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free merge");
-                                }
-                                MergeOutcome::Success { commit_sha, merge_path: repo_path.to_path_buf() }
-                            }
-                            Ok(CheckoutFreeMergeResult::Conflict { files }) => {
-                                MergeOutcome::NeedsAgent { conflict_files: files, merge_worktree: None }
-                            }
-                            Err(e) => MergeOutcome::GitError(e),
-                        }
-                    }
-                } else {
-                    let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
-                    tracing::info!(task_id = task_id_str, merge_worktree_path = %merge_wt_path.display(), "Creating merge worktree for isolated merge");
-
-                    match GitService::try_merge_in_worktree(repo_path, &source_branch, &target_branch, &merge_wt_path).await {
-                        Ok(MergeAttemptResult::Success { commit_sha }) => {
-                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
-                                tracing::warn!(error = %e, task_id = task_id_str, "Failed to delete merge worktree after success (non-fatal)");
-                            }
-                            MergeOutcome::Success { commit_sha, merge_path: merge_wt_path }
-                        }
-                        Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                            MergeOutcome::NeedsAgent { conflict_files, merge_worktree: Some(merge_wt_path) }
-                        }
-                        Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                            MergeOutcome::BranchNotFound { branch }
-                        }
-                        Err(e) => {
-                            if merge_wt_path.exists() {
-                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path).await;
-                            }
-                            MergeOutcome::GitError(e)
-                        }
-                    }
-                };
-
+                let outcome = self.merge_worktree_strategy(
+                    repo_path, &source_branch, &target_branch, &project, task_id_str,
+                ).await;
                 let opts = MergeHandlerOptions::merge();
                 self.handle_merge_outcome(
                     outcome, &mut task, &task_id, task_id_str,
@@ -1026,67 +977,9 @@ impl<'a> super::TransitionHandler<'a> {
                 ).await;
             }
             MergeStrategy::Rebase => {
-                let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
-                let target_is_checked_out = current_branch == target_branch;
-
-                let outcome = if target_is_checked_out {
-                    tracing::info!(task_id = task_id_str, target_branch = %target_branch, "Target branch is checked out, using checkout-free fast-forward/merge");
-
-                    if !GitService::branch_exists(repo_path, &source_branch).await {
-                        MergeOutcome::BranchNotFound { branch: source_branch.clone() }
-                    } else if !GitService::branch_exists(repo_path, &target_branch).await {
-                        MergeOutcome::BranchNotFound { branch: target_branch.clone() }
-                    } else {
-                        match checkout_free::try_fast_forward_checkout_free(repo_path, &source_branch, &target_branch).await {
-                            Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
-                                if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
-                                    tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free rebase merge");
-                                }
-                                MergeOutcome::Success { commit_sha, merge_path: repo_path.to_path_buf() }
-                            }
-                            Ok(CheckoutFreeMergeResult::Conflict { files }) => {
-                                MergeOutcome::NeedsAgent { conflict_files: files, merge_worktree: None }
-                            }
-                            Err(e) => MergeOutcome::GitError(e),
-                        }
-                    }
-                } else {
-                    let rebase_wt_path = PathBuf::from(compute_rebase_worktree_path(&project, task_id_str));
-                    let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
-
-                    // Clean up stale rebase worktree from prior attempt
-                    if rebase_wt_path.exists() {
-                        tracing::info!(task_id = task_id_str, rebase_worktree_path = %rebase_wt_path.display(), "Cleaning up stale rebase worktree from previous attempt");
-                        let _ = GitService::delete_worktree(repo_path, &rebase_wt_path).await;
-                    }
-
-                    tracing::info!(task_id = task_id_str, rebase_worktree_path = %rebase_wt_path.display(), merge_worktree_path = %merge_wt_path.display(), "Using rebase-and-merge in worktrees");
-
-                    match GitService::try_rebase_and_merge_in_worktree(repo_path, &source_branch, &target_branch, &rebase_wt_path, &merge_wt_path).await {
-                        Ok(MergeAttemptResult::Success { commit_sha }) => {
-                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
-                                tracing::warn!(error = %e, task_id = task_id_str, "Failed to delete merge worktree after rebase success (non-fatal)");
-                            }
-                            MergeOutcome::Success { commit_sha, merge_path: merge_wt_path }
-                        }
-                        Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                            MergeOutcome::NeedsAgent { conflict_files, merge_worktree: Some(rebase_wt_path) }
-                        }
-                        Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                            MergeOutcome::BranchNotFound { branch }
-                        }
-                        Err(e) => {
-                            if rebase_wt_path.exists() {
-                                let _ = GitService::delete_worktree(repo_path, &rebase_wt_path).await;
-                            }
-                            if merge_wt_path.exists() {
-                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path).await;
-                            }
-                            MergeOutcome::GitError(e)
-                        }
-                    }
-                };
-
+                let outcome = self.rebase_worktree_strategy(
+                    repo_path, &source_branch, &target_branch, &project, task_id_str,
+                ).await;
                 let opts = MergeHandlerOptions::rebase();
                 self.handle_merge_outcome(
                     outcome, &mut task, &task_id, task_id_str,
@@ -1095,51 +988,9 @@ impl<'a> super::TransitionHandler<'a> {
                 ).await;
             }
             MergeStrategy::Squash => {
-                let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
-                let target_is_checked_out = current_branch == target_branch;
-
-                let outcome = if target_is_checked_out {
-                    tracing::info!(task_id = task_id_str, target_branch = %target_branch, "Target branch is checked out, using checkout-free squash merge");
-
-                    if !GitService::branch_exists(repo_path, &source_branch).await {
-                        MergeOutcome::BranchNotFound { branch: source_branch.clone() }
-                    } else if !GitService::branch_exists(repo_path, &target_branch).await {
-                        MergeOutcome::BranchNotFound { branch: target_branch.clone() }
-                    } else {
-                        match checkout_free::try_squash_merge_checkout_free(repo_path, &source_branch, &target_branch, &squash_commit_msg).await {
-                            Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
-                                if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
-                                    tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free squash merge");
-                                }
-                                MergeOutcome::Success { commit_sha, merge_path: repo_path.to_path_buf() }
-                            }
-                            Ok(CheckoutFreeMergeResult::Conflict { files }) => {
-                                MergeOutcome::NeedsAgent { conflict_files: files, merge_worktree: None }
-                            }
-                            Err(e) => MergeOutcome::GitError(e),
-                        }
-                    }
-                } else {
-                    let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
-                    tracing::info!(task_id = task_id_str, merge_worktree = %merge_wt_path.display(), "Squash merging in isolated worktree");
-
-                    match GitService::try_squash_merge_in_worktree(repo_path, &source_branch, &target_branch, &merge_wt_path, &squash_commit_msg).await {
-                        Ok(MergeAttemptResult::Success { commit_sha }) => {
-                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
-                                tracing::warn!(error = %e, task_id = task_id_str, "Failed to delete merge worktree after squash success (non-fatal)");
-                            }
-                            MergeOutcome::Success { commit_sha, merge_path: merge_wt_path }
-                        }
-                        Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                            MergeOutcome::NeedsAgent { conflict_files, merge_worktree: Some(merge_wt_path) }
-                        }
-                        Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                            MergeOutcome::BranchNotFound { branch }
-                        }
-                        Err(e) => MergeOutcome::GitError(e),
-                    }
-                };
-
+                let outcome = self.squash_worktree_strategy(
+                    repo_path, &source_branch, &target_branch, &squash_commit_msg, &project, task_id_str,
+                ).await;
                 let opts = MergeHandlerOptions::squash();
                 self.handle_merge_outcome(
                     outcome, &mut task, &task_id, task_id_str,
@@ -1148,61 +999,9 @@ impl<'a> super::TransitionHandler<'a> {
                 ).await;
             }
             MergeStrategy::RebaseSquash => {
-                let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
-                let target_is_checked_out = current_branch == target_branch;
-
-                let outcome = if target_is_checked_out {
-                    tracing::info!(task_id = task_id_str, target_branch = %target_branch, "Target branch is checked out, using checkout-free squash merge");
-
-                    if !GitService::branch_exists(repo_path, &source_branch).await {
-                        MergeOutcome::BranchNotFound { branch: source_branch.clone() }
-                    } else if !GitService::branch_exists(repo_path, &target_branch).await {
-                        MergeOutcome::BranchNotFound { branch: target_branch.clone() }
-                    } else {
-                        match checkout_free::try_squash_merge_checkout_free(repo_path, &source_branch, &target_branch, &squash_commit_msg).await {
-                            Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
-                                if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
-                                    tracing::error!(error = %e, task_id = task_id_str, "Failed to sync working tree after checkout-free rebase+squash");
-                                }
-                                MergeOutcome::Success { commit_sha, merge_path: repo_path.to_path_buf() }
-                            }
-                            Ok(CheckoutFreeMergeResult::Conflict { files }) => {
-                                MergeOutcome::NeedsAgent { conflict_files: files, merge_worktree: None }
-                            }
-                            Err(e) => MergeOutcome::GitError(e),
-                        }
-                    }
-                } else {
-                    let rebase_wt_path = PathBuf::from(compute_rebase_worktree_path(&project, task_id_str));
-                    let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
-
-                    tracing::info!(task_id = task_id_str, rebase_worktree = %rebase_wt_path.display(), merge_worktree = %merge_wt_path.display(), "Rebase+squash in isolated worktrees");
-
-                    match GitService::try_rebase_squash_merge_in_worktree(repo_path, &source_branch, &target_branch, &rebase_wt_path, &merge_wt_path, &squash_commit_msg).await {
-                        Ok(MergeAttemptResult::Success { commit_sha }) => {
-                            if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
-                                tracing::warn!(error = %e, task_id = task_id_str, "Failed to delete merge worktree (non-fatal)");
-                            }
-                            MergeOutcome::Success { commit_sha, merge_path: merge_wt_path }
-                        }
-                        Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                            MergeOutcome::NeedsAgent { conflict_files, merge_worktree: Some(rebase_wt_path) }
-                        }
-                        Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                            MergeOutcome::BranchNotFound { branch }
-                        }
-                        Err(e) => {
-                            if rebase_wt_path.exists() {
-                                let _ = GitService::delete_worktree(repo_path, &rebase_wt_path).await;
-                            }
-                            if merge_wt_path.exists() {
-                                let _ = GitService::delete_worktree(repo_path, &merge_wt_path).await;
-                            }
-                            MergeOutcome::GitError(e)
-                        }
-                    }
-                };
-
+                let outcome = self.rebase_squash_worktree_strategy(
+                    repo_path, &source_branch, &target_branch, &squash_commit_msg, &project, task_id_str,
+                ).await;
                 let opts = MergeHandlerOptions::rebase_squash();
                 self.handle_merge_outcome(
                     outcome, &mut task, &task_id, task_id_str,
