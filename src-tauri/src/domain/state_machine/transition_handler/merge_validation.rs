@@ -6,7 +6,7 @@
 /// Delay before retrying a failed install command (ms).
 /// Covers macOS filesystem lock recovery window (Spotlight indexing, npm `ENOTEMPTY` errors).
 /// 500ms is sufficient for the realistic lock window while keeping latency low.
-const INSTALL_RETRY_DELAY_MS: u64 = 500;
+pub(super) const INSTALL_RETRY_DELAY_MS: u64 = 500;
 
 use std::path::Path;
 use std::process::Command;
@@ -38,13 +38,13 @@ struct MergeAnalysisEntry {
 /// Analysis entry for pre-execution setup commands.
 /// Includes the `install` field (unlike MergeAnalysisEntry which omits it).
 #[derive(Debug, Clone, serde::Deserialize)]
-struct PreExecAnalysisEntry {
-    path: String,
-    label: String,
+pub(super) struct PreExecAnalysisEntry {
+    pub(super) path: String,
+    pub(super) label: String,
     #[serde(default)]
-    install: Option<String>,
+    pub(super) install: Option<String>,
     #[serde(default)]
-    worktree_setup: Vec<String>,
+    pub(super) worktree_setup: Vec<String>,
 }
 
 /// A single validation command execution record for streaming + storage.
@@ -834,7 +834,7 @@ pub(super) fn extract_cached_validation(
 
 /// Run install commands for pre-execution setup.
 /// Returns (log_entries, had_failures).
-async fn run_install_phase(
+pub(super) async fn run_install_phase(
     entries: &[PreExecAnalysisEntry],
     exec_cwd: &Path,
     task_id_str: &str,
@@ -1204,56 +1204,4 @@ pub(crate) async fn run_pre_execution_setup(
     );
 
     Some(PreExecSetupResult { success, log })
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// INSTALL_RETRY_DELAY_MS must be 500ms — covers macOS filesystem lock window
-    /// (Spotlight indexing, npm ENOTEMPTY) while cutting the original 2s delay by 75%.
-    #[test]
-    fn install_retry_delay_is_500ms() {
-        assert_eq!(INSTALL_RETRY_DELAY_MS, 500);
-    }
-
-    /// run_install_phase retries once on failure and reports success when retry succeeds.
-    /// Uses a flag file: first call exits 1 (simulates transient ENOTEMPTY), second exits 0.
-    /// The retry overwrites the log entry in-place, so one entry with status "success" is recorded.
-    #[tokio::test]
-    async fn install_retry_succeeds_after_transient_failure() {
-        let dir = tempfile::tempdir().unwrap();
-
-        // first call: if flag exists, remove it and exit 1; second call: flag absent, exit 0.
-        let flag = dir.path().join("fail_flag");
-        std::fs::write(&flag, "").unwrap();
-
-        let flag_path = flag.to_string_lossy().to_string();
-        let cmd = format!(
-            "if [ -f '{flag}' ]; then rm '{flag}'; exit 1; else exit 0; fi",
-            flag = flag_path
-        );
-
-        let entries = vec![PreExecAnalysisEntry {
-            path: ".".to_string(),
-            label: "Test".to_string(),
-            install: Some(cmd),
-            worktree_setup: vec![],
-        }];
-
-        let (log, had_failures) = run_install_phase(
-            &entries,
-            dir.path(),
-            "test-task-id",
-            None,
-            &|s: &str| s.to_string(),
-            "test",
-        )
-        .await;
-
-        // Retry succeeded → no failures overall; log has one entry replaced with "success"
-        assert!(!had_failures, "expected no failures after successful retry");
-        assert_eq!(log.len(), 1, "expected one log entry per command");
-        assert_eq!(log[0].status, "success", "retry should have overwritten status to success");
-    }
 }

@@ -3,20 +3,20 @@
 // Consolidated from side_effects.rs and tests.rs test infrastructure.
 // All test files should `use super::helpers::*;` to access these.
 
-use crate::application::{ChatService, MockChatService};
+pub use crate::application::{ChatService, MockChatService};
 use crate::domain::entities::types::IdeationSessionId;
 use crate::domain::entities::{
     ArtifactId, IdeationSession, IdeationSessionStatus, InternalStatus, PlanBranch,
     PlanBranchStatus, Project, ProjectId, Task, TaskCategory, TaskId,
 };
-use crate::domain::state_machine::context::{TaskContext, TaskServices};
-use crate::domain::state_machine::mocks::{
+pub use crate::domain::state_machine::context::{TaskContext, TaskServices};
+pub use crate::domain::state_machine::mocks::{
     MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter,
 };
-use crate::domain::state_machine::services::{
+pub use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter,
 };
-use std::sync::Arc;
+pub use std::sync::Arc;
 
 // ==================
 // Entity factories (from side_effects.rs tests)

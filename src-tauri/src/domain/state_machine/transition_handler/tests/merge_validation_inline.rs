@@ -7,19 +7,9 @@
 // The source module's visibility must be adjusted to pub(super) or pub(crate)
 // for these tests to compile from the external test file.
 
-use super::super::merge_validation::{run_install_phase, INSTALL_RETRY_DELAY_MS};
-
-/// Analysis entry for pre-execution setup commands (local copy for test access).
-/// Mirrors merge_validation::PreExecAnalysisEntry.
-#[derive(Debug, Clone, serde::Deserialize)]
-struct PreExecAnalysisEntry {
-    path: String,
-    label: String,
-    #[serde(default)]
-    install: Option<String>,
-    #[serde(default)]
-    worktree_setup: Vec<String>,
-}
+use super::super::merge_validation::{
+    run_install_phase, PreExecAnalysisEntry, INSTALL_RETRY_DELAY_MS,
+};
 
 /// INSTALL_RETRY_DELAY_MS must be 500ms — covers macOS filesystem lock window
 /// (Spotlight indexing, npm ENOTEMPTY) while cutting the original 2s delay by 75%.

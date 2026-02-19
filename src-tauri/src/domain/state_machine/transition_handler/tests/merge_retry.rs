@@ -2,7 +2,7 @@
 
 use super::helpers::*;
 use crate::domain::state_machine::{
-    State, TaskEvent, TaskStateMachine, TransitionHandler, TransitionResult,
+    State, TaskEvent, TaskStateMachine, TransitionHandler,
 };
 use std::sync::Arc;
 
