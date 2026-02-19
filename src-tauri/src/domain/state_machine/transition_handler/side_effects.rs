@@ -40,130 +40,16 @@ use crate::domain::entities::{
         MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
         MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     },
-    IdeationSessionId, InternalStatus, MergeStrategy, MergeValidationMode,
-    PlanBranchStatus, ProjectId, Task, TaskCategory, TaskId,
+    InternalStatus, MergeStrategy, MergeValidationMode,
+    ProjectId, Task, TaskCategory, TaskId,
 };
 use crate::domain::repositories::{
-    IdeationSessionRepository, PlanBranchRepository, TaskRepository,
+    PlanBranchRepository, TaskRepository,
 };
 use crate::error::AppResult;
-use crate::infrastructure::agents::claude::defer_merge_enabled;
-
 pub(super) const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
 
-/// Map a TaskCategory to its conventional commit type prefix.
-///
-/// | Category | Commit Type |
-/// |---|---|
-/// | Regular | `feat` |
-/// | PlanMerge | `feat` |
-pub(super) fn category_to_commit_type(category: &TaskCategory) -> &'static str {
-    match category {
-        TaskCategory::Regular => "feat",
-        TaskCategory::PlanMerge => "feat",
-    }
-}
-
-/// Derive the conventional commit type via majority-wins across task categories.
-///
-/// Maps each task's category to a commit type, counts votes, and returns the type
-/// with the most votes. Ties are broken by variant priority:
-/// feat > fix > refactor > docs > test > perf > chore.
-/// Falls back to `"feat"` if the task list is empty.
-pub(super) fn derive_commit_type(tasks: &[crate::domain::entities::Task]) -> &'static str {
-    use std::collections::HashMap;
-
-    // Priority order for tie-breaking (lower index = higher priority)
-    const PRIORITY: &[&str] = &[
-        "feat", "fix", "refactor", "docs", "test", "perf", "chore",
-    ];
-
-    let mut votes: HashMap<&'static str, usize> = HashMap::new();
-    for task in tasks {
-        let commit_type = category_to_commit_type(&task.category);
-        *votes.entry(commit_type).or_insert(0) += 1;
-    }
-
-    if votes.is_empty() {
-        return "feat";
-    }
-
-    let max_votes = *votes.values().max().unwrap_or(&0);
-
-    // Among types with max votes, pick the highest-priority one
-    PRIORITY
-        .iter()
-        .find(|&&t| votes.get(t).copied().unwrap_or(0) == max_votes)
-        .copied()
-        .unwrap_or("feat")
-}
-
-/// Build a descriptive squash commit message for plan merge tasks.
-///
-/// Fetches the live session title and sibling tasks to construct:
-/// `$derived_type: $session_title\n\nPlan branch: {branch}\nTasks ({n}):\n- ...`
-///
-/// Fallback chain for subject:
-/// 1. `session.title` (live fetch) — set by session-namer or user rename
-/// 2. First sibling task title — if session title is NULL
-/// 3. `"Merge plan into {base_branch}"` — no session title, no tasks
-///
-/// Task list is capped at 20 entries with `(+N more)` overflow.
-pub(super) async fn build_plan_merge_commit_msg(
-    ideation_session_id: &IdeationSessionId,
-    source_branch: &str,
-    task_repo: &dyn TaskRepository,
-    session_repo: &dyn IdeationSessionRepository,
-) -> String {
-    // Fetch sibling tasks for this ideation session
-    let sibling_tasks = task_repo
-        .get_by_ideation_session(ideation_session_id)
-        .await
-        .unwrap_or_default();
-
-    // Fetch live session title
-    let session_title = session_repo
-        .get_by_id(ideation_session_id)
-        .await
-        .ok()
-        .flatten()
-        .and_then(|s| s.title);
-
-    // Derive commit type from sibling task categories
-    let commit_type = derive_commit_type(&sibling_tasks);
-
-    // Determine subject with fallback chain
-    let subject = session_title
-        .as_deref()
-        .map(str::to_owned)
-        .or_else(|| sibling_tasks.first().map(|t| t.title.clone()))
-        .unwrap_or_else(|| "Merge plan into main".to_string());
-
-    // Build task list body (capped at 20)
-    let task_count = sibling_tasks.len();
-    let mut body = format!("Plan branch: {}", source_branch);
-
-    if task_count > 0 {
-        body.push_str(&format!("\nTasks ({}):", task_count));
-        let display_count = task_count.min(20);
-        for task in sibling_tasks.iter().take(display_count) {
-            body.push_str(&format!("\n- {}", task.title));
-        }
-        if task_count > 20 {
-            body.push_str(&format!("\n(+{} more)", task_count - 20));
-        }
-    }
-
-    format!("{}: {}\n\n{}", commit_type, subject, body)
-}
-
-/// Build a squash commit message for regular (non-plan-merge) tasks.
-///
-/// Format: `$category_commit_type: {branch} ({title})`
-pub(super) fn build_squash_commit_msg(category: &TaskCategory, title: &str, source_branch: &str) -> String {
-    let commit_type = category_to_commit_type(category);
-    format!("{}: {} ({})", commit_type, source_branch, title)
-}
+use super::commit_messages::{build_plan_merge_commit_msg, build_squash_commit_msg};
 
 impl<'a> super::TransitionHandler<'a> {
     /// Execute on-enter action for a state
@@ -306,41 +192,14 @@ impl<'a> super::TransitionHandler<'a> {
                 "Pre-merge validation failed for plan_merge task — transitioning to MergeIncomplete"
             );
 
-            task.metadata = Some(
-                serde_json::json!({
-                    "error": error_msg,
-                    "error_code": error_code,
-                    "category": task.category,
-                })
-                .to_string(),
-            );
-            task.internal_status = InternalStatus::MergeIncomplete;
-            task.touch();
-
-            if let Err(e) = task_repo.update(&task).await {
-                tracing::error!(error = %e, "Failed to update task to MergeIncomplete after pre-merge validation failure");
-                return;
-            }
-
-            if let Err(e) = task_repo
-                .persist_status_change(
-                    &task_id,
-                    InternalStatus::PendingMerge,
-                    InternalStatus::MergeIncomplete,
-                    "merge_incomplete",
-                )
-                .await
-            {
-                tracing::warn!(error = %e, "Failed to record merge_incomplete transition (non-fatal)");
-            }
-
-            self.machine
-                .context
-                .services
-                .event_emitter
-                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                .await;
-
+            let metadata = serde_json::json!({
+                "error": error_msg,
+                "error_code": error_code,
+                "category": task.category,
+            });
+            self.transition_to_merge_incomplete(
+                &mut task, &task_id, task_id_str, metadata, task_repo, false,
+            ).await;
             return;
         }
 
@@ -358,179 +217,38 @@ impl<'a> super::TransitionHandler<'a> {
                  transitioning to MergeIncomplete"
             );
 
-            task.metadata = Some(
-                serde_json::json!({
-                    "error": "Empty source branch resolved. This typically means plan_branch_repo \
-                              was unavailable when resolving merge branches for a plan_merge task.",
-                    "source_branch": source_branch,
-                    "target_branch": target_branch,
-                    "category": task.category,
-                })
-                .to_string(),
-            );
-            task.internal_status = InternalStatus::MergeIncomplete;
-            task.touch();
-
-            if let Err(e) = task_repo.update(&task).await {
-                tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                return;
-            }
-
-            if let Err(e) = task_repo
-                .persist_status_change(
-                    &task_id,
-                    InternalStatus::PendingMerge,
-                    InternalStatus::MergeIncomplete,
-                    "merge_incomplete",
-                )
-                .await
-            {
-                tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-            }
-
-            self.machine
-                .context
-                .services
-                .event_emitter
-                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                .await;
-
-            // Route through TransitionHandler exit to trigger deferred merge retry
-            // and ensure all side effects (e.g. try_retry_deferred_merges) fire.
-            self.on_exit(&State::PendingMerge, &State::MergeIncomplete)
-                .await;
-
+            let metadata = serde_json::json!({
+                "error": "Empty source branch resolved. This typically means plan_branch_repo \
+                          was unavailable when resolving merge branches for a plan_merge task.",
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+                "category": task.category,
+            });
+            self.transition_to_merge_incomplete(
+                &mut task, &task_id, task_id_str, metadata, task_repo, true,
+            ).await;
             return;
         }
 
         // --- Main-merge deferral check ---
-        // If target is main/base branch, defer unless ALL sibling plan tasks are terminal
-        // AND no agents are running. Prevents premature retry while siblings still active.
-        // Skip this entire check if defer_merge_enabled is false.
         let base_branch = project.base_branch.as_deref().unwrap_or("main");
-        if target_branch == base_branch && defer_merge_enabled() {
-            // Plan-level guard: all sibling tasks must be terminal before merging to main
-            if let Some(ref session_id) = task.ideation_session_id {
-                let siblings = task_repo
-                    .get_by_ideation_session(session_id)
-                    .await
-                    .unwrap_or_default();
-                let all_siblings_terminal = siblings.iter().all(|t| {
-                    t.id == task.id
-                        || t.internal_status == InternalStatus::PendingMerge
-                        || t.is_terminal()
-                });
-                if !all_siblings_terminal {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        session_id = %session_id,
-                        "Deferring main-branch merge: sibling plan tasks not yet terminal"
-                    );
-
-                    super::merge_helpers::set_main_merge_deferred_metadata(&mut task);
-                    task.touch();
-
-                    if let Err(e) = task_repo.update(&task).await {
-                        tracing::error!(error = %e, "Failed to set main_merge_deferred metadata");
-                        return;
-                    }
-
-                    emit_merge_progress(
-                        self.machine.context.services.app_handle.as_ref(),
-                        task_id_str,
-                        MergePhase::ProgrammaticMerge,
-                        MergePhaseStatus::Started,
-                        format!(
-                            "Deferred merge to {} — waiting for sibling tasks to complete",
-                            target_branch,
-                        ),
-                    );
-
-                    return;
-                }
-            }
-
-            if let Some(ref execution_state) = self.machine.context.services.execution_state {
-                if execution_state.running_count() > 0 {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        source_branch = %source_branch,
-                        target_branch = %target_branch,
-                        running_count = execution_state.running_count(),
-                        "Deferring main-branch merge: {} agents still running — \
-                         merge will be retried when all agents complete",
-                        execution_state.running_count()
-                    );
-
-                    // Set main_merge_deferred metadata flag
-                    super::merge_helpers::set_main_merge_deferred_metadata(&mut task);
-                    task.touch();
-
-                    if let Err(e) = task_repo.update(&task).await {
-                        tracing::error!(error = %e, "Failed to set main_merge_deferred metadata");
-                        return;
-                    }
-
-                    // Emit merge progress event for UI visibility
-                    emit_merge_progress(
-                        self.machine.context.services.app_handle.as_ref(),
-                        task_id_str,
-                        MergePhase::ProgrammaticMerge,
-                        MergePhaseStatus::Started,
-                        format!(
-                            "Deferred merge to {} — waiting for {} agent(s) to complete",
-                            target_branch,
-                            execution_state.running_count()
-                        ),
-                    );
-
-                    return;
-                }
-            }
+        let running_count = self.machine.context.services.execution_state
+            .as_ref()
+            .map(|s| s.running_count());
+        if super::merge_coordination::check_main_merge_deferral(
+            &mut task, task_id_str, &source_branch, &target_branch, base_branch,
+            task_repo, running_count,
+            self.machine.context.services.app_handle.as_ref(),
+        ).await {
+            return;
         }
 
         let repo_path = Path::new(&project.working_directory);
 
-        // Ensure plan branch exists as git ref (lazy creation for merge target).
-        // Handles the case where the plan branch DB record exists but the git branch
-        // was never created (e.g., lazy creation failed at execution time).
-        if let Some(ref session_id) = task.ideation_session_id {
-            if let Some(ref pb_repo) = plan_branch_repo {
-                if let Ok(Some(pb)) = pb_repo.get_by_session_id(session_id).await {
-                    if pb.status == PlanBranchStatus::Active
-                        && pb.branch_name == target_branch
-                        && !GitService::branch_exists(repo_path, &target_branch).await
-                    {
-                        match GitService::create_feature_branch(
-                            repo_path,
-                            &pb.branch_name,
-                            &pb.source_branch,
-                        ).await {
-                            Ok(_) => {
-                                tracing::info!(
-                                    task_id = task_id_str,
-                                    branch = %pb.branch_name,
-                                    source = %pb.source_branch,
-                                    "Lazily created plan branch for merge target"
-                                );
-                            }
-                            Err(e) if GitService::branch_exists(repo_path, &pb.branch_name).await => {
-                                // Race: concurrent task created it between check and create
-                                let _ = e;
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    task_id = task_id_str,
-                                    error = %e,
-                                    branch = %pb.branch_name,
-                                    "Failed to lazily create plan branch for merge"
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // Ensure plan branch exists as git ref (lazy creation for merge target)
+        super::merge_coordination::ensure_plan_branch_exists(
+            &task, repo_path, &target_branch, plan_branch_repo,
+        ).await;
 
         // --- "Already merged" early exit ---
         // If the source branch is already an ancestor of the target branch, the merge
@@ -1010,6 +728,53 @@ impl<'a> super::TransitionHandler<'a> {
                 ).await;
             }
         } // end match
+    }
+
+    /// Transition a task to MergeIncomplete with the given metadata JSON.
+    ///
+    /// Handles the full transition: update metadata -> persist status change -> emit event.
+    /// Optionally triggers on_exit (needed when the caller wants deferred-merge retry).
+    async fn transition_to_merge_incomplete(
+        &self,
+        task: &mut Task,
+        task_id: &TaskId,
+        task_id_str: &str,
+        metadata: serde_json::Value,
+        task_repo: &Arc<dyn TaskRepository>,
+        trigger_on_exit: bool,
+    ) {
+        task.metadata = Some(metadata.to_string());
+        task.internal_status = InternalStatus::MergeIncomplete;
+        task.touch();
+
+        if let Err(e) = task_repo.update(task).await {
+            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+            return;
+        }
+
+        if let Err(e) = task_repo
+            .persist_status_change(
+                task_id,
+                InternalStatus::PendingMerge,
+                InternalStatus::MergeIncomplete,
+                "merge_incomplete",
+            )
+            .await
+        {
+            tracing::warn!(error = %e, "Failed to record merge_incomplete transition (non-fatal)");
+        }
+
+        self.machine
+            .context
+            .services
+            .event_emitter
+            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+            .await;
+
+        if trigger_on_exit {
+            self.on_exit(&State::PendingMerge, &State::MergeIncomplete)
+                .await;
+        }
     }
 
     /// Pre-merge cleanup: remove debris from any prior failed attempts and stale locks.

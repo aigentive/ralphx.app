@@ -8,7 +8,9 @@ use crate::application::GitService;
 use crate::domain::entities::{ProjectId, TaskId};
 use std::sync::Arc;
 
+mod commit_messages;
 mod merge_completion;
+mod merge_coordination;
 mod merge_helpers;
 mod merge_outcome_handler;
 mod merge_strategies;

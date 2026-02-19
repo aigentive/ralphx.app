@@ -7,7 +7,7 @@
 // to pub(super) in a later step.
 
 use super::helpers::*;
-use super::super::side_effects::{
+use super::super::commit_messages::{
     category_to_commit_type, derive_commit_type, build_squash_commit_msg,
     build_plan_merge_commit_msg,
 };
