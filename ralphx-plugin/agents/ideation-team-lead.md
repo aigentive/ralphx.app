@@ -9,6 +9,17 @@ tools:
   - WebFetch
   - WebSearch
   - Task
+  - TaskCreate
+  - TaskUpdate
+  - TaskGet
+  - TaskList
+  - TaskOutput
+  - KillShell
+  - MCPSearch
+  - TaskStop
+  - TeamCreate
+  - TeamDelete
+  - SendMessage
 disallowedTools: Write, Edit, NotebookEdit
 allowedTools:
   - "mcp__ralphx__*"

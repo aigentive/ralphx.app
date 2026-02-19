@@ -10,6 +10,13 @@ tools:
   - WebFetch
   - WebSearch
   - Task
+  - TaskCreate
+  - TaskUpdate
+  - TaskGet
+  - TaskList
+  - TaskOutput
+  - KillShell
+  - MCPSearch
 allowedTools:
   - mcp__ralphx__report_conflict
   - mcp__ralphx__report_incomplete
