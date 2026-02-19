@@ -472,6 +472,10 @@ pub fn run() {
                 )
                 .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo));
 
+                // One-shot startup recovery: re-queue timeout-failed tasks (attempt_count < 3).
+                // Must run before reconcile_stuck_tasks so recovered tasks are visible immediately.
+                reconcile_runner.recover_timeout_failures().await;
+
                 reconcile_runner.reconcile_stuck_tasks().await;
 
                 tauri::async_runtime::spawn(async move {

@@ -25,26 +25,28 @@ import {
   type TaskStep,
   type StepProgressSummary,
 } from "@/types/task-step";
-import { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+import { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw, UnblockTaskResponseSchemaRaw } from "./tasks.schemas";
 import {
   transformBulkCancelResponse,
   transformCleanupReport,
   transformInjectTaskResponse,
   transformStateTransition,
+  transformUnblockTaskResponse,
   type BulkCancelResponse,
   type CleanupReport,
   type InjectTaskResponse,
   type StateTransition,
+  type UnblockTaskResponse,
 } from "./tasks.transforms";
 
 // Re-export types for convenience
-export type { BulkCancelResponse, CleanupReport, InjectTaskResponse, StateTransition } from "./tasks.transforms";
+export type { BulkCancelResponse, CleanupReport, InjectTaskResponse, StateTransition, UnblockTaskResponse } from "./tasks.transforms";
 
 // Re-export schemas for consumers that need validation
-export { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw } from "./tasks.schemas";
+export { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw, UnblockTaskResponseSchemaRaw } from "./tasks.schemas";
 
 // Re-export transforms for consumers that need manual transformation
-export { transformBulkCancelResponse, transformCleanupReport, transformInjectTaskResponse, transformStateTransition } from "./tasks.transforms";
+export { transformBulkCancelResponse, transformCleanupReport, transformInjectTaskResponse, transformStateTransition, transformUnblockTaskResponse } from "./tasks.transforms";
 
 // ============================================================================
 // Input Types
@@ -333,11 +335,13 @@ export const tasksApi = {
   /**
    * Unblock a task
    * Transitions the task back to 'ready' status and clears the blocked_reason field.
+   * Returns an optional warning when the task has failed dependencies — the unblock
+   * still succeeds (manual override), but callers should surface the warning to the user.
    * @param taskId The task ID
-   * @returns The updated task
+   * @returns { task, warning } — task is the updated task; warning is non-null when failed deps exist
    */
-  unblock: (taskId: string): Promise<Task> =>
-    typedInvokeWithTransform("unblock_task", { taskId }, TaskSchema, transformTask),
+  unblock: (taskId: string): Promise<UnblockTaskResponse> =>
+    typedInvokeWithTransform("unblock_task", { taskId }, UnblockTaskResponseSchemaRaw, transformUnblockTaskResponse),
 
   /**
    * Get historical state transitions for a task

@@ -21,6 +21,7 @@ import {
   TwoColumnLayout,
 } from "./shared";
 import { ValidationProgress } from "./shared/ValidationProgress";
+import { DurationDisplay } from "./shared/DurationDisplay";
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { reviewIssuesApi } from "@/api/review-issues";
@@ -377,6 +378,17 @@ export function ExecutionTaskDetail({ task, isHistorical }: ExecutionTaskDetailP
           />
         }
       />
+
+      {/* Duration — live ticker while executing, static once done */}
+      {task.startedAt && (
+        <div data-testid="execution-duration">
+          <DurationDisplay
+            mode={isHistorical ? "static" : "live"}
+            startedAt={task.startedAt}
+            completedAt={isHistorical ? task.completedAt : null}
+          />
+        </div>
+      )}
 
       {/* Agent Error Banner - shows last_agent_error in historical mode */}
       {isHistorical && agentError && (

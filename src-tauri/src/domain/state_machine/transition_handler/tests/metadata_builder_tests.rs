@@ -58,6 +58,7 @@ fn test_build_failed_metadata_produces_correct_keys() {
         details: Some("Test details".to_string()),
         is_timeout: true,
         notified: false,
+        attempt_count: 0,
     };
 
     let update = build_failed_metadata(&data);
@@ -82,6 +83,7 @@ fn test_build_failed_metadata_without_details() {
         details: None,
         is_timeout: false,
         notified: false,
+        attempt_count: 0,
     };
 
     let update = build_failed_metadata(&data);
@@ -425,4 +427,47 @@ fn test_with_null_on_nonexistent_key_is_noop() {
     let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
     assert_eq!(parsed.len(), 1);
     assert!(parsed.contains_key("existing_key"));
+}
+
+#[test]
+fn test_build_failed_metadata_includes_attempt_count() {
+    let data = FailedData::new("Error").with_attempt_count(3);
+    let result = build_failed_metadata(&data).merge_into(None);
+    let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
+    assert_eq!(
+        parsed.get("attempt_count").unwrap(),
+        &Value::Number(3.into())
+    );
+}
+
+#[test]
+fn test_build_failed_metadata_attempt_count_zero_by_default() {
+    let data = FailedData::new("Error");
+    let result = build_failed_metadata(&data).merge_into(None);
+    let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
+    assert_eq!(
+        parsed.get("attempt_count").unwrap(),
+        &Value::Number(0.into())
+    );
+}
+
+#[test]
+fn test_with_u32_adds_numeric_value() {
+    let update = MetadataUpdate::new().with_u32("retry_count", 42);
+    let result = update.merge_into(None);
+
+    let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
+    assert_eq!(
+        parsed.get("retry_count").unwrap().as_u64().unwrap(),
+        42u64
+    );
+}
+
+#[test]
+fn test_with_u32_zero_value() {
+    let update = MetadataUpdate::new().with_u32("count", 0);
+    let result = update.merge_into(None);
+
+    let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
+    assert_eq!(parsed.get("count").unwrap().as_u64().unwrap(), 0u64);
 }

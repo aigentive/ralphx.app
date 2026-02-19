@@ -7,7 +7,7 @@
 
 import type { Task, TaskListResponse, CreateTask, UpdateTask, InternalStatus } from "@/types/task";
 import type { TaskStep, StepProgressSummary } from "@/types/task-step";
-import type { CleanupReport, InjectTaskResponse, InjectTaskInput, StateTransition } from "@/api/tasks";
+import type { CleanupReport, InjectTaskResponse, InjectTaskInput, StateTransition, UnblockTaskResponse } from "@/api/tasks";
 import { AGENT_WORKER } from "@/constants/agents";
 import { createMockTask, generateTestUuid } from "@/test/mock-data";
 import { getStore } from "./store";
@@ -297,17 +297,20 @@ export const mockTasksApi = {
     };
   },
 
-  unblock: async (taskId: string): Promise<Task> => {
+  unblock: async (taskId: string): Promise<UnblockTaskResponse> => {
     const store = getStore();
     const task = store.tasks.get(taskId);
     if (!task) {
       throw new Error(`Task not found: ${taskId}`);
     }
     return {
-      ...task,
-      internalStatus: "ready",
-      blockedReason: null,
-      updatedAt: new Date().toISOString(),
+      task: {
+        ...task,
+        internalStatus: "ready",
+        blockedReason: null,
+        updatedAt: new Date().toISOString(),
+      },
+      warning: null,
     };
   },
 

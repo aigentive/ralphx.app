@@ -515,3 +515,192 @@ fn test_with_team_mode_overrides_previous_value() {
         "Second with_team_mode call should override the first"
     );
 }
+
+// ============================================================================
+// Hard-block dependents when a blocker fails
+// ============================================================================
+
+/// When a blocker fails, dependents must stay Blocked — not unblocked to Ready.
+/// This prevents cascade execution against broken output.
+#[tokio::test]
+async fn test_failed_blocker_keeps_dependent_blocked() {
+    let app_state = AppState::new_test();
+    let manager = build_dependency_manager(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+
+    // Blocker fails during execution
+    let mut blocker = Task::new(project.id.clone(), "Setup DB".to_string());
+    blocker.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    // Dependent was blocked waiting for the blocker
+    let mut dependent = Task::new(project.id.clone(), "Run Migrations".to_string());
+    dependent.internal_status = InternalStatus::Blocked;
+    dependent.blocked_reason = Some(format!("Waiting for: {}", blocker.title));
+    app_state
+        .task_repo
+        .create(dependent.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&dependent.id, &blocker.id)
+        .await
+        .unwrap();
+
+    // Simulate on_enter(Failed) calling unblock_dependents
+    manager.unblock_dependents(blocker.id.as_str()).await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&dependent.id)
+        .await
+        .unwrap()
+        .expect("Dependent should still exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Dependent should remain Blocked when blocker fails"
+    );
+}
+
+/// When a blocker fails, the dependent's blocked_reason must mention the failed dependency.
+#[tokio::test]
+async fn test_failed_blocker_sets_blocked_reason_with_failure_message() {
+    let app_state = AppState::new_test();
+    let manager = build_dependency_manager(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+
+    let mut blocker = Task::new(project.id.clone(), "Setup DB".to_string());
+    blocker.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    let mut dependent = Task::new(project.id.clone(), "Run Migrations".to_string());
+    dependent.internal_status = InternalStatus::Blocked;
+    app_state
+        .task_repo
+        .create(dependent.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&dependent.id, &blocker.id)
+        .await
+        .unwrap();
+
+    manager.unblock_dependents(blocker.id.as_str()).await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&dependent.id)
+        .await
+        .unwrap()
+        .expect("Dependent should still exist");
+
+    let reason = updated
+        .blocked_reason
+        .expect("blocked_reason should be set when blocker fails");
+    assert!(
+        reason.contains("Setup DB") && reason.to_lowercase().contains("fail"),
+        "blocked_reason should mention the failed dependency name and failure, got: {reason}"
+    );
+}
+
+/// Mixed scenario: one blocker failed, another is still running — dependent stays Blocked.
+#[tokio::test]
+async fn test_mixed_failed_and_running_blockers_keeps_dependent_blocked() {
+    let app_state = AppState::new_test();
+    let manager = build_dependency_manager(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+
+    let mut failed_blocker = Task::new(project.id.clone(), "Setup DB".to_string());
+    failed_blocker.internal_status = InternalStatus::Failed;
+    app_state
+        .task_repo
+        .create(failed_blocker.clone())
+        .await
+        .unwrap();
+
+    let mut running_blocker = Task::new(project.id.clone(), "Build Assets".to_string());
+    running_blocker.internal_status = InternalStatus::Executing;
+    app_state
+        .task_repo
+        .create(running_blocker.clone())
+        .await
+        .unwrap();
+
+    let mut dependent = Task::new(project.id.clone(), "Deploy".to_string());
+    dependent.internal_status = InternalStatus::Blocked;
+    app_state
+        .task_repo
+        .create(dependent.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&dependent.id, &failed_blocker.id)
+        .await
+        .unwrap();
+    app_state
+        .task_dependency_repo
+        .add_dependency(&dependent.id, &running_blocker.id)
+        .await
+        .unwrap();
+
+    manager.unblock_dependents(failed_blocker.id.as_str()).await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&dependent.id)
+        .await
+        .unwrap()
+        .expect("Dependent should still exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Dependent should remain Blocked when both failed and running blockers exist"
+    );
+}
+
+/// A Failed blocker treated as incomplete — has_unresolved_blockers returns true.
+#[tokio::test]
+async fn test_has_unresolved_blockers_treats_failed_as_unresolved() {
+    let app_state = AppState::new_test();
+    let manager = build_dependency_manager(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+
+    let mut blocker = Task::new(project.id.clone(), "Build Step".to_string());
+    blocker.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    let mut dependent = Task::new(project.id.clone(), "Deploy Step".to_string());
+    dependent.internal_status = InternalStatus::Blocked;
+    app_state
+        .task_repo
+        .create(dependent.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&dependent.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let has_blockers = manager
+        .has_unresolved_blockers(dependent.id.as_str())
+        .await;
+    assert!(
+        has_blockers,
+        "Failed blockers must be treated as unresolved (hard-block)"
+    );
+}

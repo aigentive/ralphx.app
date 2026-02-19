@@ -228,6 +228,12 @@ pub struct FailedData {
 
     /// Whether user has been notified of this failure
     pub notified: bool,
+
+    /// Number of execution attempts before reaching Failed state.
+    /// Populated from `auto_retry_count_executing` metadata at transition time.
+    /// Display-only — no policy enforcement.
+    #[serde(default)]
+    pub attempt_count: u32,
 }
 
 impl FailedData {
@@ -238,6 +244,7 @@ impl FailedData {
             details: None,
             is_timeout: false,
             notified: false,
+            attempt_count: 0,
         }
     }
 
@@ -248,12 +255,19 @@ impl FailedData {
             details: None,
             is_timeout: true,
             notified: false,
+            attempt_count: 0,
         }
     }
 
     /// Adds details to the failure
     pub fn with_details(mut self, details: impl Into<String>) -> Self {
         self.details = Some(details.into());
+        self
+    }
+
+    /// Sets the attempt count (number of execution attempts before failure)
+    pub fn with_attempt_count(mut self, count: u32) -> Self {
+        self.attempt_count = count;
         self
     }
 
@@ -730,5 +744,75 @@ mod tests {
         let d3 = FailedData::new("Different");
         assert_eq!(d1, d2);
         assert_ne!(d1, d3);
+    }
+
+    #[test]
+    fn test_failed_data_attempt_count_defaults_to_zero() {
+        let data = FailedData::new("Build failed");
+        assert_eq!(data.attempt_count, 0);
+    }
+
+    #[test]
+    fn test_failed_data_with_attempt_count_sets_count() {
+        let data = FailedData::new("Build failed").with_attempt_count(3);
+        assert_eq!(data.attempt_count, 3);
+    }
+
+    #[test]
+    fn test_failed_data_default_attempt_count_is_zero() {
+        let data = FailedData::default();
+        assert_eq!(data.attempt_count, 0);
+    }
+
+    #[test]
+    fn test_failed_data_serde_default_when_field_missing() {
+        // Legacy JSON without attempt_count field should deserialize to 0
+        let json = r#"{"error":"Parse error","details":null,"is_timeout":false,"notified":false}"#;
+        let data: FailedData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.attempt_count, 0, "Missing field should default to 0");
+    }
+
+    #[test]
+    fn test_failed_data_serde_roundtrip_with_attempt_count() {
+        let data = FailedData::new("Timeout").with_attempt_count(5);
+        let json = serde_json::to_string(&data).unwrap();
+        let restored: FailedData = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.attempt_count, 5);
+        assert_eq!(restored.error, "Timeout");
+    }
+
+    #[test]
+    fn test_failed_data_attempt_count_populates_from_metadata() {
+        // Simulate the on_enter(Failed) handler reading auto_retry_count_executing
+        let task_metadata = r#"{"auto_retry_count_executing": 3, "other_key": "value"}"#;
+        let attempt_count = serde_json::from_str::<serde_json::Value>(task_metadata)
+            .ok()
+            .and_then(|v| v.get("auto_retry_count_executing").and_then(|c| c.as_u64()))
+            .unwrap_or(0) as u32;
+        let data = FailedData::new("Error").with_attempt_count(attempt_count);
+        assert_eq!(data.attempt_count, 3);
+    }
+
+    #[test]
+    fn test_failed_data_attempt_count_zero_when_metadata_key_absent() {
+        // Task metadata exists but has no auto_retry_count_executing key
+        let task_metadata = r#"{"trigger_origin": "scheduler"}"#;
+        let attempt_count = serde_json::from_str::<serde_json::Value>(task_metadata)
+            .ok()
+            .and_then(|v| v.get("auto_retry_count_executing").and_then(|c| c.as_u64()))
+            .unwrap_or(0) as u32;
+        assert_eq!(attempt_count, 0);
+        let data = FailedData::new("Error").with_attempt_count(attempt_count);
+        assert_eq!(data.attempt_count, 0);
+    }
+
+    #[test]
+    fn test_failed_data_attempt_count_zero_when_no_metadata() {
+        // No metadata at all
+        let attempt_count = (None::<&str>)
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| v.get("auto_retry_count_executing").and_then(|c| c.as_u64()))
+            .unwrap_or(0) as u32;
+        assert_eq!(attempt_count, 0);
     }
 }
