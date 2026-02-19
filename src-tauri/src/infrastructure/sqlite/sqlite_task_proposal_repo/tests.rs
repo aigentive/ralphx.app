@@ -3,8 +3,8 @@ mod tests {
     use super::*;
     use crate::domain::entities::{
         BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor, DependencyFactor,
-        Priority, PriorityAssessmentFactors, ProposalStatus, TaskCategory,
-        UserHintFactor, ProjectId,
+        Priority, PriorityAssessmentFactors, ProposalCategory, ProposalStatus, UserHintFactor,
+        ProjectId,
     };
     use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
 
@@ -36,7 +36,7 @@ mod tests {
         TaskProposal::new(
             session_id.clone(),
             title,
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         )
     }
@@ -328,7 +328,7 @@ mod tests {
 
         proposal.title = "Updated Title".to_string();
         proposal.description = Some("Updated description".to_string());
-        proposal.category = TaskCategory::Fix;
+        proposal.category = ProposalCategory::Fix;
         proposal.status = ProposalStatus::Accepted;
 
         repo.update(&proposal).await.unwrap();
@@ -336,7 +336,7 @@ mod tests {
         let found = repo.get_by_id(&proposal.id).await.unwrap().unwrap();
         assert_eq!(found.title, "Updated Title");
         assert_eq!(found.description, Some("Updated description".to_string()));
-        assert_eq!(found.category, TaskCategory::Fix);
+        assert_eq!(found.category, ProposalCategory::Fix);
         assert_eq!(found.status, ProposalStatus::Accepted);
     }
 

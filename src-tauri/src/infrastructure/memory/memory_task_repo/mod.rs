@@ -500,6 +500,29 @@ impl TaskRepository for MemoryTaskRepository {
         Ok(ready_tasks)
     }
 
+    async fn get_stale_ready_tasks(&self, threshold_secs: u64) -> AppResult<Vec<Task>> {
+        use chrono::{Duration, Utc};
+
+        let cutoff = Utc::now() - Duration::seconds(threshold_secs as i64);
+        let tasks = self.tasks.read().await;
+
+        // Find Ready tasks not archived and with updated_at before the cutoff
+        let mut stale_tasks: Vec<Task> = tasks
+            .values()
+            .filter(|t| {
+                t.internal_status == InternalStatus::Ready
+                    && t.archived_at.is_none()
+                    && t.updated_at < cutoff
+            })
+            .cloned()
+            .collect();
+
+        // Sort by updated_at ASC (oldest first)
+        stale_tasks.sort_by(|a, b| a.updated_at.cmp(&b.updated_at));
+
+        Ok(stale_tasks)
+    }
+
     async fn update_latest_state_history_metadata(
         &self,
         _task_id: &TaskId,

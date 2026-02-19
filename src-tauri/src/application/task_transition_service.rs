@@ -142,22 +142,21 @@ impl<R: Runtime> RepoBackedDependencyManager<R> {
         }
     }
 
-    /// Check if a blocking task is complete (Merged, Failed, or Cancelled).
-    /// Note: Approved is NOT complete - task still needs to merge successfully.
-    /// Paused/Stopped are NOT treated as complete blockers.
+    /// Check if a blocking task is complete (terminal for dependency purposes).
+    /// Delegates to InternalStatus::is_terminal() as the single source of truth.
+    /// Terminal states: Merged, Failed, Cancelled, Stopped, MergeIncomplete.
+    /// If the task doesn't exist, consider it "complete" (not blocking).
     async fn is_blocker_complete(&self, blocker_id: &TaskId) -> bool {
         if let Ok(Some(task)) = self.task_repo.get_by_id(blocker_id).await {
-            matches!(
-                task.internal_status,
-                InternalStatus::Merged | InternalStatus::Failed | InternalStatus::Cancelled
-            )
+            task.internal_status.is_terminal()
         } else {
             // If task doesn't exist, consider it "complete" (not blocking)
             true
         }
     }
 
-    /// Get names of incomplete blockers for a task (for blocked_reason message)
+    /// Get names of incomplete blockers for a task (for blocked_reason message).
+    /// Delegates to InternalStatus::is_terminal() as the single source of truth.
     async fn get_incomplete_blocker_names(&self, task_id: &TaskId) -> Vec<String> {
         let blockers = match self.task_dep_repo.get_blockers(task_id).await {
             Ok(b) => b,
@@ -167,10 +166,7 @@ impl<R: Runtime> RepoBackedDependencyManager<R> {
         let mut incomplete_names = Vec::new();
         for blocker_id in blockers {
             if let Ok(Some(task)) = self.task_repo.get_by_id(&blocker_id).await {
-                if !matches!(
-                    task.internal_status,
-                    InternalStatus::Merged | InternalStatus::Failed | InternalStatus::Cancelled
-                ) {
+                if !task.internal_status.is_terminal() {
                     incomplete_names.push(task.title);
                 }
             }
