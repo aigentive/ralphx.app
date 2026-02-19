@@ -17,6 +17,7 @@ import {
 } from "./shared";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useTaskStateHistory } from "@/hooks/useReviews";
+import { DurationDisplay } from "./shared/DurationDisplay";
 import { useQuery } from "@tanstack/react-query";
 import { reviewIssuesApi } from "@/api/review-issues";
 import { IssueList } from "@/components/reviews/IssueList";
@@ -159,6 +160,17 @@ export function RevisionTaskDetail({ task }: RevisionTaskDetailProps) {
           />
         }
       />
+
+      {/* Duration (static — shows elapsed from start) */}
+      {task.startedAt && (
+        <div data-testid="revision-task-duration">
+          <DurationDisplay
+            mode="static"
+            startedAt={task.startedAt}
+            completedAt={task.completedAt}
+          />
+        </div>
+      )}
 
       {/* Review Feedback */}
       {historyLoading ? (

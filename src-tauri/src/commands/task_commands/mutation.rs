@@ -3,7 +3,7 @@
 use super::helpers::{emit_queue_changed, emit_task_lifecycle_event};
 use super::types::{
     AnswerUserQuestionInput, AnswerUserQuestionResponse, CreateTaskInput, InjectTaskInput,
-    InjectTaskResponse, TaskResponse, UpdateTaskInput,
+    InjectTaskResponse, TaskResponse, UnblockTaskResponse, UpdateTaskInput,
 };
 use crate::application::task_cleanup_service::{StopMode, TaskCleanupService};
 use crate::application::AppState;
@@ -704,13 +704,15 @@ pub async fn block_task(
 /// Unblock a task
 ///
 /// Transitions the task from Blocked to Ready status and clears the blocked reason.
+/// If the task has dependencies in Failed status, the operation still succeeds but
+/// the response includes a `warning` field so the caller can prompt the user.
 ///
 /// # Arguments
 /// * `task_id` - The task ID to unblock
 /// * `app` - Tauri app handle for event emission
 ///
 /// # Returns
-/// * `TaskResponse` - The unblocked task with Ready status
+/// * `UnblockTaskResponse` - The unblocked task with Ready status, plus an optional warning
 ///
 /// # Errors
 /// * Task not found
@@ -721,7 +723,7 @@ pub async fn unblock_task(
     state: State<'_, AppState>,
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
-) -> Result<TaskResponse, String> {
+) -> Result<UnblockTaskResponse, String> {
     use crate::application::{TaskSchedulerService, TaskTransitionService};
     use crate::domain::state_machine::services::TaskScheduler;
 
@@ -745,6 +747,42 @@ pub async fn unblock_task(
     }
 
     let project_id = task.project_id.clone();
+
+    // Check for failed dependencies and prepare a warning if any exist.
+    // The unblock still proceeds — this is a manual override — but the caller
+    // should surface the warning so the user knows they may be building on broken output.
+    let failed_dep_warning = {
+        let blockers = state
+            .task_dependency_repo
+            .get_blockers(&task_id_obj)
+            .await
+            .unwrap_or_default();
+        let mut failed_titles: Vec<String> = Vec::new();
+        for blocker_id in blockers {
+            if let Ok(Some(blocker)) = state.task_repo.get_by_id(&blocker_id).await {
+                if blocker.internal_status == InternalStatus::Failed {
+                    failed_titles.push(blocker.title);
+                }
+            }
+        }
+        if failed_titles.is_empty() {
+            None
+        } else {
+            let names = failed_titles
+                .iter()
+                .map(|n| format!("\"{}\"", n))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let dep_word = if failed_titles.len() == 1 {
+                "dependency"
+            } else {
+                "dependencies"
+            };
+            Some(format!(
+                "Task has failed {dep_word}: {names}. Proceeding may produce broken output."
+            ))
+        }
+    };
 
     // Create the task scheduler for auto-scheduling Ready tasks
     let scheduler_concrete = Arc::new(
@@ -808,7 +846,10 @@ pub async fn unblock_task(
     // Emit queue_changed since we're adding a task to Ready status
     emit_queue_changed(&state, &project_id, &app).await;
 
-    Ok(TaskResponse::from(unblocked_task))
+    Ok(UnblockTaskResponse {
+        task: TaskResponse::from(unblocked_task),
+        warning: failed_dep_warning,
+    })
 }
 
 /// Clean delete a single task: force-stop agent if active, cleanup branch/worktree, delete from DB, emit events

@@ -142,14 +142,16 @@ impl<R: Runtime> RepoBackedDependencyManager<R> {
         }
     }
 
-    /// Check if a blocking task is complete (Merged, Failed, or Cancelled).
+    /// Check if a blocking task is complete (Merged or Cancelled).
     /// Note: Approved is NOT complete - task still needs to merge successfully.
     /// Paused/Stopped are NOT treated as complete blockers.
+    /// Failed is NOT treated as complete — dependents stay Blocked to prevent
+    /// cascade execution against broken output. Users must manually unblock.
     async fn is_blocker_complete(&self, blocker_id: &TaskId) -> bool {
         if let Ok(Some(task)) = self.task_repo.get_by_id(blocker_id).await {
             matches!(
                 task.internal_status,
-                InternalStatus::Merged | InternalStatus::Failed | InternalStatus::Cancelled
+                InternalStatus::Merged | InternalStatus::Cancelled
             )
         } else {
             // If task doesn't exist, consider it "complete" (not blocking)
@@ -157,25 +159,35 @@ impl<R: Runtime> RepoBackedDependencyManager<R> {
         }
     }
 
-    /// Get names of incomplete blockers for a task (for blocked_reason message)
-    async fn get_incomplete_blocker_names(&self, task_id: &TaskId) -> Vec<String> {
+    /// Get names of incomplete blockers for a task (for blocked_reason message).
+    /// Returns (waiting_names, failed_names) so callers can produce specific messages.
+    async fn get_incomplete_blocker_names(
+        &self,
+        task_id: &TaskId,
+    ) -> (Vec<String>, Vec<String>) {
         let blockers = match self.task_dep_repo.get_blockers(task_id).await {
             Ok(b) => b,
-            Err(_) => return Vec::new(),
+            Err(_) => return (Vec::new(), Vec::new()),
         };
 
-        let mut incomplete_names = Vec::new();
+        let mut waiting_names = Vec::new();
+        let mut failed_names = Vec::new();
         for blocker_id in blockers {
             if let Ok(Some(task)) = self.task_repo.get_by_id(&blocker_id).await {
-                if !matches!(
-                    task.internal_status,
-                    InternalStatus::Merged | InternalStatus::Failed | InternalStatus::Cancelled
-                ) {
-                    incomplete_names.push(task.title);
+                match task.internal_status {
+                    InternalStatus::Merged | InternalStatus::Cancelled => {
+                        // complete — not included
+                    }
+                    InternalStatus::Failed => {
+                        failed_names.push(task.title);
+                    }
+                    _ => {
+                        waiting_names.push(task.title);
+                    }
                 }
             }
         }
-        incomplete_names
+        (waiting_names, failed_names)
     }
 }
 
@@ -276,14 +288,41 @@ impl<R: Runtime> DependencyManager for RepoBackedDependencyManager<R> {
                 }
             } else {
                 // Some blockers still incomplete - update blocked_reason with remaining names
-                let incomplete_names = self.get_incomplete_blocker_names(&dependent_id).await;
-                if !incomplete_names.is_empty() {
-                    let new_reason = format!("Waiting for: {}", incomplete_names.join(", "));
-                    if dependent_task.blocked_reason.as_ref() != Some(&new_reason) {
-                        dependent_task.blocked_reason = Some(new_reason);
-                        dependent_task.touch();
-                        let _ = self.task_repo.update(&dependent_task).await;
+                let (waiting_names, failed_names) =
+                    self.get_incomplete_blocker_names(&dependent_id).await;
+                let new_reason = if !failed_names.is_empty() && waiting_names.is_empty() {
+                    // All remaining blockers have failed
+                    let names = failed_names
+                        .iter()
+                        .map(|n| format!("\"{}\"", n))
+                        .collect::<Vec<_>>()
+                        .join(", ");
+                    if failed_names.len() == 1 {
+                        format!("Dependency {} failed", names)
+                    } else {
+                        format!("Dependencies {} failed", names)
                     }
+                } else if !failed_names.is_empty() {
+                    // Mix of failed and still-running blockers
+                    let failed = failed_names
+                        .iter()
+                        .map(|n| format!("\"{}\" (failed)", n))
+                        .collect::<Vec<_>>();
+                    let waiting = waiting_names
+                        .iter()
+                        .map(|n| format!("\"{}\"", n))
+                        .collect::<Vec<_>>();
+                    let all: Vec<String> = failed.into_iter().chain(waiting).collect();
+                    format!("Waiting for: {}", all.join(", "))
+                } else if !waiting_names.is_empty() {
+                    format!("Waiting for: {}", waiting_names.join(", "))
+                } else {
+                    return;
+                };
+                if dependent_task.blocked_reason.as_ref() != Some(&new_reason) {
+                    dependent_task.blocked_reason = Some(new_reason);
+                    dependent_task.touch();
+                    let _ = self.task_repo.update(&dependent_task).await;
                 }
             }
         }
