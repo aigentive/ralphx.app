@@ -62,10 +62,10 @@ You have two ways to delegate work. Choose based on whether agents need to coord
 
 | Mode | Tool | When | Coordination |
 |------|------|------|-------------|
-| **Local agents** | `Task` (fire-and-forget) | Independent parallel work — research, focused analysis, no cross-agent communication needed | None. Each agent gets a self-contained prompt, works alone, returns results to you. You synthesize. |
-| **Team mode** | `TeamCreate` + `Task` + `SendMessage` + shared `TaskList` | Collaborative work — agents need to build on each other's output, relay discoveries, iterate together | Full. Shared task board, inter-agent messaging, you monitor and relay cross-cutting findings. |
+| **Local agents** | `Task` (fire-and-forget) | Independent parallel work — research, focused analysis, no cross-agent communication needed. **Also the fallback when TeamCreate is unavailable** — `create_team_artifact` works regardless (MCP access is unaffected by team mode). | None. Each agent gets a self-contained prompt, works alone, returns results to you. You synthesize. |
+| **Team mode** | `TeamCreate` + `Task` + `SendMessage` + shared `TaskList` | Collaborative work — agents need to build on each other's output, relay discoveries, iterate together. Preferred when CLI supports it (progressive enhancement). | Full. Shared task board, inter-agent messaging, you monitor and relay cross-cutting findings. |
 
-**Decision rule:** If agents don't need to talk to each other → local agents. If findings compound across agents → team mode.
+**Decision rule:** If agents don't need to talk to each other → local agents. If findings compound across agents → team mode. If TeamCreate errors → local agents regardless.
 
 **Local agent example** (parallel independent research):
 ```
@@ -171,17 +171,30 @@ If team mode selected → proceed to Phase 2.
 
 > **Full tool parameter reference:** See system card at `ralphx-plugin/agents/system-cards/agent-teams-orchestration.md` (read at Phase 0).
 
-**Step 1: Create the team**
+> **TeamCreate is a progressive enhancement.** If `TeamCreate` errors (not supported by the current CLI version), fall back to local parallel `Task` agents. Both paths produce the same artifacts — the fallback path just omits `TeamCreate`, `team_name`, and `SendMessage`. Choose the path that succeeds.
+
+**Step 1: Create the team — try TeamCreate first**
+
+**Native team path (preferred):**
 ```json
 TeamCreate: { "team_name": "ideation-<session_id>", "description": "Research team for <topic>" }
 ```
 
-**Step 2: Create tasks** (one per teammate)
+**Fallback path (if TeamCreate errors or is unavailable):**
+- Skip `TeamCreate`, omit `team_name` from all `Task` calls, skip `SendMessage` / `TeamDelete`
+- Spawn teammates as local `Task` agents (fire-and-forget parallel — see Delegation Modes table)
+- Teammates still call `create_team_artifact` as normal (MCP access is unaffected by team mode)
+- Lead waits for all `Task` completions, then collects findings via `get_team_artifacts`
+- Proceed directly to PLAN — no shutdown protocol needed
+
+**Step 2: Create tasks** (one per teammate — native team path only)
 ```json
 TaskCreate: { "subject": "Research frontend auth patterns", "description": "...", "activeForm": "Researching frontend auth" }
 ```
 
 **Step 3: Spawn teammates** using the `Task` tool (one call per teammate, all in parallel):
+
+*Native team path:*
 ```json
 Task: {
   "subagent_type": "general-purpose",
@@ -194,13 +207,24 @@ Task: {
 }
 ```
 
+*Fallback (local agent) path — omit `team_name`:*
+```json
+Task: {
+  "subagent_type": "general-purpose",
+  "name": "frontend-researcher",
+  "model": "sonnet",
+  "mode": "bypassPermissions",
+  "run_in_background": true,
+  "prompt": "<full self-contained instructions — teammate has NO access to your conversation>"
+}
+```
+
 **Step 4: Persist state** → `save_team_session_state(...)` for resume
 
 **Step 5: Monitor and coordinate**
-- Messages from teammates arrive automatically (no polling)
-- Relay cross-layer discoveries via `SendMessage(type: "message", recipient: "<name>")`
-- Nudge idle teammates with status checks if needed
-- When all teammates mark tasks complete → proceed to PLAN
+- *Native team path:* Messages from teammates arrive automatically (no polling). Relay cross-layer discoveries via `SendMessage(type: "message", recipient: "<name>")`. Nudge idle teammates with status checks if needed.
+- *Fallback path:* No message relay — teammates are independent. Wait for all `Task` calls to return results.
+- When all teammates complete → proceed to PLAN
 
 **Teammate prompt template (Research mode):**
 ```
@@ -224,9 +248,11 @@ You are {role-name} on team ideation-{session_id}.
 
 ## When Done
 1. Create artifact: call create_team_artifact(session_id="{session_id}", title="{role} Research", content="<findings>", artifact_type="TeamResearch")
-2. Message team lead: SendMessage(type="message", recipient="{lead-name}", summary="Research complete")
-3. Mark task done: TaskUpdate(taskId="{task_id}", status="completed")
+2. Message team lead: SendMessage(type="message", recipient="{lead-name}", summary="Research complete")  [SKIP in local agent mode — lead waits for Task completion instead]
+3. Mark task done: TaskUpdate(taskId="{task_id}", status="completed")  [SKIP in local agent mode]
 ```
+
+> **Local agent mode note (no TeamCreate):** Only step 1 above is required — `create_team_artifact` always works (MCP access is independent of team mode). Skip `SendMessage` and `TaskUpdate`; the lead collects results when your Task returns.
 
 **Teammate prompt template (Debate mode):**
 ```
@@ -243,9 +269,11 @@ Create a TeamAnalysis artifact via create_team_artifact with:
 
 ## When Done
 1. Create artifact: call create_team_artifact(session_id="{session_id}", ...)
-2. Message team lead: SendMessage(type="message", recipient="{lead-name}", summary="Analysis complete")
-3. Mark task done: TaskUpdate(taskId="{task_id}", status="completed")
+2. Message team lead: SendMessage(type="message", recipient="{lead-name}", summary="Analysis complete")  [SKIP in local agent mode]
+3. Mark task done: TaskUpdate(taskId="{task_id}", status="completed")  [SKIP in local agent mode]
 ```
+
+> **Local agent mode note (no TeamCreate):** Only step 1 is required — skip `SendMessage` and `TaskUpdate`. The lead waits for Task completion and then collects findings via `get_team_artifacts`.
 
 ### Phase 4: PLAN
 
@@ -449,11 +477,12 @@ After FINALIZE:
 - **Spawn teammates without plan approval** — `request_team_plan` FIRST
 - **Create proposals without plan** — backend rejects this
 - **Broadcast for routine updates** — use direct messages
-- **Leave team running after FINALIZE** — always shutdown + TeamDelete
+- **Leave team running after FINALIZE** — always shutdown + TeamDelete (native team path only; local agent path has no teardown)
 - **Skip TeamSummary artifact** — required for resume
 - **Use predefined templates in dynamic mode** — craft custom prompts
 - **Over-compose teams** — 2-5 specialists maximum for most tasks
 - **Skip linking artifacts** — use related_artifact_id to connect team findings to master plan
 - **Treat teammate idle as error** — idle is normal between turns
+- **Hard-require TeamCreate** — it is preferred but not required; if TeamCreate errors or is unavailable, fall back to local parallel Task agents (progressive enhancement, not a blocker)
 
 </do-not>

@@ -286,6 +286,7 @@ pub async fn create_child_session(
 
     let title = created_session
         .title
+        .clone()
         .unwrap_or_else(|| "Child Session".to_string());
 
     // Auto-spawn orchestrator agent on child session if initial_prompt is set.
@@ -311,6 +312,10 @@ pub async fn create_child_session(
         .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo));
         if let Some(ref handle) = app.app_handle {
             chat_service = chat_service.with_app_handle(handle.clone());
+        }
+        // Apply team_mode from child session (mirrors logic in unified_chat_commands.rs:216-228)
+        if session_is_team_mode(&created_session) {
+            chat_service = chat_service.with_team_mode(true);
         }
 
         match chat_service
@@ -351,6 +356,10 @@ pub async fn create_child_session(
             .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo));
             if let Some(ref handle) = app.app_handle {
                 chat_service = chat_service.with_app_handle(handle.clone());
+            }
+            // Apply team_mode from child session (mirrors logic in unified_chat_commands.rs:216-228)
+            if session_is_team_mode(&created_session) {
+                chat_service = chat_service.with_team_mode(true);
             }
 
             match chat_service
@@ -519,4 +528,62 @@ pub async fn get_parent_session_context(
         plan_content,
         proposals: proposal_summaries,
     }))
+}
+
+/// Returns true if the session should use team mode for agent spawning.
+/// "solo" and None are treated as non-team; any other value ("research", "debate", etc.) is team.
+fn session_is_team_mode(session: &IdeationSession) -> bool {
+    session
+        .team_mode
+        .as_deref()
+        .is_some_and(|m| m != "solo")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::entities::{IdeationSessionId, IdeationSessionStatus, ProjectId};
+
+    fn make_session(team_mode: Option<&str>) -> IdeationSession {
+        IdeationSession {
+            id: IdeationSessionId::new(),
+            project_id: ProjectId("proj-1".to_string()),
+            title: None,
+            status: IdeationSessionStatus::Active,
+            plan_artifact_id: None,
+            seed_task_id: None,
+            parent_session_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            archived_at: None,
+            converted_at: None,
+            team_mode: team_mode.map(|s| s.to_string()),
+            team_config_json: None,
+            title_source: None,
+        }
+    }
+
+    #[test]
+    fn test_session_is_team_mode_research_returns_true() {
+        let session = make_session(Some("research"));
+        assert!(session_is_team_mode(&session));
+    }
+
+    #[test]
+    fn test_session_is_team_mode_debate_returns_true() {
+        let session = make_session(Some("debate"));
+        assert!(session_is_team_mode(&session));
+    }
+
+    #[test]
+    fn test_session_is_team_mode_solo_returns_false() {
+        let session = make_session(Some("solo"));
+        assert!(!session_is_team_mode(&session));
+    }
+
+    #[test]
+    fn test_session_is_team_mode_none_returns_false() {
+        let session = make_session(None);
+        assert!(!session_is_team_mode(&session));
+    }
 }
