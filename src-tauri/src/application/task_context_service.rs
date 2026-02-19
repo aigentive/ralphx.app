@@ -320,7 +320,7 @@ mod tests {
     use super::*;
     use crate::domain::entities::{
         Artifact, ArtifactId, ArtifactRelation, ArtifactRelationType, ArtifactType, InternalStatus,
-        Priority, ProjectId, TaskCategory, TaskProposal, TaskProposalId, TaskStep, TaskStepId,
+        Priority, ProjectId, ProposalCategory, TaskProposal, TaskProposalId, TaskStep, TaskStepId,
     };
     use crate::domain::repositories::{
         ArtifactRepository, StateHistoryMetadata, TaskProposalRepository, TaskRepository,
@@ -512,6 +512,10 @@ mod tests {
         }
 
         async fn get_oldest_ready_tasks(&self, _limit: u32) -> AppResult<Vec<Task>> {
+            Ok(vec![])
+        }
+
+        async fn get_stale_ready_tasks(&self, _threshold_secs: u64) -> AppResult<Vec<Task>> {
             Ok(vec![])
         }
 
@@ -909,7 +913,7 @@ mod tests {
         let mut proposal = TaskProposal::new(
             crate::domain::entities::IdeationSessionId::new(),
             "Test Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         proposal.id = proposal_id;

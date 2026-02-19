@@ -3,7 +3,7 @@
 #[cfg(test)]
 use super::*;
 use crate::application::AppState;
-use crate::domain::entities::{InternalStatus, Project, ProjectId, Task, TaskId};
+use crate::domain::entities::{InternalStatus, Project, ProjectId, Task, TaskCategory, TaskId};
 use crate::domain::repositories::ProjectRepository;
 use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 use chrono::Utc;
@@ -40,7 +40,7 @@ async fn test_create_task_with_defaults() {
 
     let created = state.task_repo.create(task).await.unwrap();
     assert_eq!(created.title, "Test Task");
-    assert_eq!(created.category, "feature");
+    assert_eq!(created.category, TaskCategory::Regular);
     assert_eq!(created.priority, 0);
 }
 
@@ -52,7 +52,7 @@ async fn test_create_task_with_all_fields() {
     let mut task = Task::new_with_category(
         project_id.clone(),
         "Full Task".to_string(),
-        "bug".to_string(),
+        TaskCategory::Regular,
     );
     task.description = Some("A description".to_string());
     task.priority = 10;
@@ -60,7 +60,7 @@ async fn test_create_task_with_all_fields() {
     let created = state.task_repo.create(task).await.unwrap();
 
     assert_eq!(created.title, "Full Task");
-    assert_eq!(created.category, "bug");
+    assert_eq!(created.category, TaskCategory::Regular);
     assert_eq!(created.description, Some("A description".to_string()));
     assert_eq!(created.priority, 10);
 }
@@ -344,7 +344,7 @@ async fn test_inject_task_to_backlog_creates_backlog_task() {
     let mut task = Task::new_with_category(
         project_id.clone(),
         "Backlog Task".to_string(),
-        "feature".to_string(),
+        TaskCategory::Regular,
     );
     task.internal_status = InternalStatus::Backlog;
     task.priority = 0;
@@ -364,7 +364,7 @@ async fn test_inject_task_to_planned_creates_ready_task() {
     let mut task = Task::new_with_category(
         project_id.clone(),
         "Planned Task".to_string(),
-        "feature".to_string(),
+        TaskCategory::Regular,
     );
     task.internal_status = InternalStatus::Ready;
     task.priority = 0;
@@ -457,12 +457,12 @@ async fn test_inject_task_with_custom_category() {
     let task = Task::new_with_category(
         project_id.clone(),
         "Bug Task".to_string(),
-        "bug".to_string(),
+        TaskCategory::Regular,
     );
 
     let created = state.task_repo.create(task).await.unwrap();
 
-    assert_eq!(created.category, "bug");
+    assert_eq!(created.category, TaskCategory::Regular);
 }
 
 #[tokio::test]

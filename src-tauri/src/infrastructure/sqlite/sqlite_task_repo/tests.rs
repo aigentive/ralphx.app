@@ -1,4 +1,4 @@
-use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskId};
+use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory, TaskId};
 use crate::domain::repositories::TaskRepository;
 use crate::infrastructure::sqlite::SqliteTaskRepository;
 use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
@@ -23,7 +23,7 @@ fn create_test_task(title: &str) -> Task {
     Task::new_with_category(
         ProjectId::from_string("test-project".to_string()),
         title.to_string(),
-        "feature".to_string(),
+        TaskCategory::Regular,
     )
 }
 
@@ -58,7 +58,8 @@ async fn test_get_by_id_retrieves_task_correctly() {
     let found_task = found.unwrap();
     assert_eq!(found_task.id, task.id);
     assert_eq!(found_task.title, "Test Task");
-    assert_eq!(found_task.category, "feature");
+    // Default category is Regular (legacy "feature" value maps to Regular via FromStr fallback)
+    assert_eq!(found_task.category, TaskCategory::Regular);
 }
 
 #[tokio::test]
@@ -193,7 +194,7 @@ async fn test_get_by_project_only_returns_matching_project() {
         let task2 = Task::new_with_category(
             ProjectId::from_string("other-project".to_string()),
             "Task 2".to_string(),
-            "feature".to_string(),
+            TaskCategory::Regular,
         );
 
         repo.create(task1).await.unwrap();

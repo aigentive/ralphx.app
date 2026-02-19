@@ -1,6 +1,6 @@
 use super::*;
 use crate::application::AppState;
-use crate::domain::entities::{ChatContextType, InternalStatus, Project, Task};
+use crate::domain::entities::{ChatContextType, InternalStatus, Project, Task, TaskCategory};
 use crate::domain::repositories::AppStateRepository;
 use crate::domain::state_machine::mocks::MockTaskScheduler;
 
@@ -1060,8 +1060,9 @@ async fn test_blocked_task_remains_blocked_when_blocker_paused() {
     );
 }
 
+/// Stopped is now terminal — a blocked task should be unblocked when its blocker is Stopped.
 #[tokio::test]
-async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
+async fn test_all_blockers_complete_treats_stopped_as_terminal() {
     let (execution_state, app_state) = setup_test_state().await;
 
     // Create a project
@@ -1098,15 +1099,12 @@ async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
         .await
         .unwrap();
 
-    // Pause execution to skip agent resumption (we only want to test unblocking)
-    execution_state.pause();
-
     let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
 
     // Run startup
     runner.run().await;
 
-    // Verify the blocked task is still Blocked
+    // Verify the blocked task is now Ready (Stopped blocker is terminal)
     let updated_task = app_state
         .task_repo
         .get_by_id(&blocked_task.id)
@@ -1115,12 +1113,69 @@ async fn test_blocked_task_remains_blocked_when_blocker_stopped() {
         .unwrap();
     assert_eq!(
         updated_task.internal_status,
-        InternalStatus::Blocked,
-        "Blocked task should remain blocked when blocker is Stopped"
+        InternalStatus::Ready,
+        "Blocked task should become Ready when blocker is Stopped (Stopped is terminal)"
     );
-    assert!(
-        updated_task.blocked_reason.is_some(),
-        "blocked_reason should be preserved"
+}
+
+/// MergeIncomplete is terminal — a blocked task should be unblocked when its blocker is MergeIncomplete.
+#[tokio::test]
+async fn test_all_blockers_complete_treats_merge_incomplete_as_terminal() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create a project
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a blocker task in MergeIncomplete state
+    let mut blocker_task = Task::new(project.id.clone(), "MergeIncomplete Blocker".to_string());
+    blocker_task.internal_status = InternalStatus::MergeIncomplete;
+    app_state
+        .task_repo
+        .create(blocker_task.clone())
+        .await
+        .unwrap();
+
+    // Create a blocked task
+    let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
+    blocked_task.internal_status = InternalStatus::Blocked;
+    blocked_task.blocked_reason = Some("Waiting for: MergeIncomplete Blocker".to_string());
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
+
+    // Add the dependency relationship
+    app_state
+        .task_dependency_repo
+        .add_dependency(&blocked_task.id, &blocker_task.id)
+        .await
+        .unwrap();
+
+    // Pause execution to skip agent resumption (we only want to test unblocking)
+    execution_state.pause();
+
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
+
+    // Run startup
+    runner.run().await;
+
+    // Verify the blocked task is now Ready (MergeIncomplete blocker is terminal)
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Ready,
+        "Blocked task should become Ready when blocker is MergeIncomplete (terminal)"
     );
 }
 
@@ -2018,5 +2073,239 @@ async fn test_phase1_guard_skips_main_merge_deferred_tasks() {
         retry_calls.len(),
         1,
         "try_retry_main_merges should be called once to handle deferred tasks in serialized order"
+    );
+}
+
+// ============================================================
+// Startup Recovery: Blocked tasks with all-terminal blockers
+// ============================================================
+
+/// Scenario: a plan_merge task is Blocked, with 3 blocker tasks all in Merged state.
+/// Expected: startup recovery transitions the plan_merge task to Ready.
+#[tokio::test]
+async fn test_startup_recovers_blocked_tasks_with_all_terminal_blockers() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create 3 blocker tasks, all in Merged state
+    let mut blocker1 = Task::new(project.id.clone(), "Feature Task 1".to_string());
+    blocker1.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(blocker1.clone()).await.unwrap();
+
+    let mut blocker2 = Task::new(project.id.clone(), "Feature Task 2".to_string());
+    blocker2.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(blocker2.clone()).await.unwrap();
+
+    let mut blocker3 = Task::new(project.id.clone(), "Feature Task 3".to_string());
+    blocker3.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(blocker3.clone()).await.unwrap();
+
+    // Create the plan_merge task in Blocked state
+    let mut plan_merge_task = Task::new(project.id.clone(), "Merge Plan to Main".to_string());
+    plan_merge_task.internal_status = InternalStatus::Blocked;
+    plan_merge_task.category = TaskCategory::PlanMerge;
+    plan_merge_task.blocked_reason =
+        Some("Waiting for: Feature Task 1, Feature Task 2, Feature Task 3".to_string());
+    let plan_merge_id = plan_merge_task.id.clone();
+    app_state
+        .task_repo
+        .create(plan_merge_task.clone())
+        .await
+        .unwrap();
+
+    // Add dependencies: plan_merge blocked by all 3 features
+    app_state
+        .task_dependency_repo
+        .add_dependency(&plan_merge_task.id, &blocker1.id)
+        .await
+        .unwrap();
+    app_state
+        .task_dependency_repo
+        .add_dependency(&plan_merge_task.id, &blocker2.id)
+        .await
+        .unwrap();
+    app_state
+        .task_dependency_repo
+        .add_dependency(&plan_merge_task.id, &blocker3.id)
+        .await
+        .unwrap();
+
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
+
+    // Run startup recovery
+    runner.run().await;
+
+    // Verify the plan_merge task transitions to Ready
+    let updated = app_state
+        .task_repo
+        .get_by_id(&plan_merge_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "plan_merge task should be unblocked when all 3 blocker tasks are Merged"
+    );
+    assert!(
+        updated.blocked_reason.is_none(),
+        "blocked_reason should be cleared when task is unblocked"
+    );
+}
+
+/// Scenario: a plan_merge task is Blocked, with 1 Merged and 1 Executing blocker.
+/// Expected: startup recovery leaves the plan_merge task as Blocked (not all blockers terminal).
+#[tokio::test]
+async fn test_startup_skips_blocked_tasks_with_non_terminal_blockers() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // One blocker Merged (terminal), one Executing (non-terminal)
+    let mut blocker_merged = Task::new(project.id.clone(), "Feature Task 1".to_string());
+    blocker_merged.internal_status = InternalStatus::Merged;
+    app_state
+        .task_repo
+        .create(blocker_merged.clone())
+        .await
+        .unwrap();
+
+    let mut blocker_executing = Task::new(project.id.clone(), "Feature Task 2".to_string());
+    blocker_executing.internal_status = InternalStatus::Executing;
+    app_state
+        .task_repo
+        .create(blocker_executing.clone())
+        .await
+        .unwrap();
+
+    // Create the plan_merge task in Blocked state
+    let mut plan_merge_task = Task::new(project.id.clone(), "Merge Plan to Main".to_string());
+    plan_merge_task.internal_status = InternalStatus::Blocked;
+    plan_merge_task.category = TaskCategory::PlanMerge;
+    plan_merge_task.blocked_reason =
+        Some("Waiting for: Feature Task 2".to_string());
+    let plan_merge_id = plan_merge_task.id.clone();
+    app_state
+        .task_repo
+        .create(plan_merge_task.clone())
+        .await
+        .unwrap();
+
+    // Add both dependencies
+    app_state
+        .task_dependency_repo
+        .add_dependency(&plan_merge_task.id, &blocker_merged.id)
+        .await
+        .unwrap();
+    app_state
+        .task_dependency_repo
+        .add_dependency(&plan_merge_task.id, &blocker_executing.id)
+        .await
+        .unwrap();
+
+    // Pause execution to isolate unblock logic from agent resumption
+    execution_state.pause();
+
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
+
+    // Run startup recovery
+    runner.run().await;
+
+    // Verify the plan_merge task stays Blocked (Executing is not terminal)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&plan_merge_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "plan_merge task should remain Blocked when any blocker is still Executing"
+    );
+    assert!(
+        updated.blocked_reason.is_some(),
+        "blocked_reason should be preserved when task stays Blocked"
+    );
+}
+
+/// Scenario: a plan_merge task is Blocked, with one blocker in Stopped state.
+/// Stopped is a terminal state (task was intentionally stopped, it won't restart).
+/// Expected: startup recovery transitions the plan_merge task to Ready.
+///
+/// This is a safety net for tasks that got stuck due to Stopped blockers before
+/// the terminal state fix (is_blocker_complete previously omitted Stopped).
+#[tokio::test]
+async fn test_startup_recovers_blocked_tasks_with_stopped_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a blocker task in Stopped state (terminal — should unblock dependents)
+    let mut blocker_stopped = Task::new(project.id.clone(), "Stopped Feature Task".to_string());
+    blocker_stopped.internal_status = InternalStatus::Stopped;
+    app_state
+        .task_repo
+        .create(blocker_stopped.clone())
+        .await
+        .unwrap();
+
+    // Create the plan_merge task in Blocked state
+    let mut plan_merge_task = Task::new(project.id.clone(), "Merge Plan to Main".to_string());
+    plan_merge_task.internal_status = InternalStatus::Blocked;
+    plan_merge_task.category = TaskCategory::PlanMerge;
+    plan_merge_task.blocked_reason =
+        Some("Waiting for: Stopped Feature Task".to_string());
+    let plan_merge_id = plan_merge_task.id.clone();
+    app_state
+        .task_repo
+        .create(plan_merge_task.clone())
+        .await
+        .unwrap();
+
+    // Add the dependency
+    app_state
+        .task_dependency_repo
+        .add_dependency(&plan_merge_task.id, &blocker_stopped.id)
+        .await
+        .unwrap();
+
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
+
+    // Run startup recovery
+    runner.run().await;
+
+    // Verify the plan_merge task transitions to Ready
+    // Stopped is terminal — the blocker will never restart, so the dependent should unblock
+    let updated = app_state
+        .task_repo
+        .get_by_id(&plan_merge_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "plan_merge task should be unblocked when blocker is Stopped (terminal state)"
+    );
+    assert!(
+        updated.blocked_reason.is_none(),
+        "blocked_reason should be cleared when task is unblocked"
     );
 }

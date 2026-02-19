@@ -9,6 +9,56 @@ use super::super::entities::artifact::ArtifactId;
 use super::super::entities::types::TaskProposalId;
 use super::{IdeationSessionId, InternalStatus, ProjectId, TaskId};
 
+/// Category of a task in the execution pipeline
+/// Determines routing behavior in the scheduler and merge handler
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TaskCategory {
+    /// Standard task executed by an AI agent
+    Regular,
+    /// System-managed task that merges a plan branch into main
+    PlanMerge,
+}
+
+impl serde::Serialize for TaskCategory {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl<'de> serde::Deserialize<'de> for TaskCategory {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
+        Ok(s.parse().unwrap_or(TaskCategory::Regular))
+    }
+}
+
+impl Default for TaskCategory {
+    fn default() -> Self {
+        Self::Regular
+    }
+}
+
+impl std::fmt::Display for TaskCategory {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            TaskCategory::Regular => write!(f, "regular"),
+            TaskCategory::PlanMerge => write!(f, "plan_merge"),
+        }
+    }
+}
+
+impl std::str::FromStr for TaskCategory {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "plan_merge" => Ok(TaskCategory::PlanMerge),
+            // Treat all other strings (including legacy categories like "feature", "bug", etc.) as Regular
+            _ => Ok(TaskCategory::Regular),
+        }
+    }
+}
+
 /// A task managed by RalphX
 /// Tasks belong to a project and have an internal status that follows the state machine
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -17,8 +67,8 @@ pub struct Task {
     pub id: TaskId,
     /// The project this task belongs to
     pub project_id: ProjectId,
-    /// Category of the task (e.g., "feature", "bug", "setup", "testing")
-    pub category: String,
+    /// Category of the task (Regular or PlanMerge)
+    pub category: TaskCategory,
     /// Short title describing the task
     pub title: String,
     /// Optional longer description with details
@@ -78,7 +128,7 @@ pub struct Task {
 impl Task {
     /// Creates a new task with the given project_id and title
     /// Uses sensible defaults:
-    /// - category: "feature"
+    /// - category: TaskCategory::Regular
     /// - internal_status: Backlog
     /// - priority: 0
     /// - needs_review_point: false
@@ -88,7 +138,7 @@ impl Task {
         Self {
             id: TaskId::new(),
             project_id,
-            category: "feature".to_string(),
+            category: TaskCategory::Regular,
             title,
             description: None,
             priority: 0,
@@ -111,7 +161,7 @@ impl Task {
     }
 
     /// Creates a new task with a specific category
-    pub fn new_with_category(project_id: ProjectId, title: String, category: String) -> Self {
+    pub fn new_with_category(project_id: ProjectId, title: String, category: TaskCategory) -> Self {
         let mut task = Self::new(project_id, title);
         task.category = category;
         task
@@ -140,18 +190,12 @@ impl Task {
         self.touch();
     }
 
-    /// Returns true if this task is in a terminal state
-    /// Terminal: Approved, Merged, Failed, Cancelled, Stopped
-    /// NOT terminal: Paused (can resume to previous state)
+    /// Returns true if this task is in a terminal state.
+    /// Delegates to InternalStatus::is_terminal() as the single source of truth.
+    /// Terminal: Merged, Failed, Cancelled, Stopped, MergeIncomplete.
+    /// NOT terminal: Approved (→ PendingMerge), Paused (can resume).
     pub fn is_terminal(&self) -> bool {
-        matches!(
-            self.internal_status,
-            InternalStatus::Approved
-                | InternalStatus::Merged
-                | InternalStatus::Failed
-                | InternalStatus::Cancelled
-                | InternalStatus::Stopped
-        )
+        self.internal_status.is_terminal()
     }
 
     /// Returns true if this task is currently being worked on
@@ -173,7 +217,9 @@ impl Task {
         Ok(Self {
             id: TaskId::from_string(row.get("id")?),
             project_id: ProjectId::from_string(row.get("project_id")?),
-            category: row.get("category")?,
+            category: row.get::<_, String>("category")?
+                .parse()
+                .unwrap_or(TaskCategory::Regular),
             title: row.get("title")?,
             description: row.get("description")?,
             priority: row.get("priority")?,
@@ -243,7 +289,7 @@ mod tests {
 
         assert_eq!(task.title, "Test Task");
         assert_eq!(task.project_id, project_id);
-        assert_eq!(task.category, "feature");
+        assert_eq!(task.category, TaskCategory::Regular);
         assert!(task.description.is_none());
         assert_eq!(task.priority, 0);
         assert_eq!(task.internal_status, InternalStatus::Backlog);
@@ -283,9 +329,9 @@ mod tests {
     #[test]
     fn task_new_with_category_sets_category() {
         let task =
-            Task::new_with_category(ProjectId::new(), "Bug Fix".to_string(), "bug".to_string());
+            Task::new_with_category(ProjectId::new(), "Bug Fix".to_string(), TaskCategory::Regular);
 
-        assert_eq!(task.category, "bug");
+        assert_eq!(task.category, TaskCategory::Regular);
         assert_eq!(task.title, "Bug Fix");
         assert_eq!(task.internal_status, InternalStatus::Backlog);
     }
@@ -352,11 +398,12 @@ mod tests {
 
     // ===== Task State Helper Tests =====
 
+    /// Approved is NOT terminal — it transitions to PendingMerge (still needs merging).
     #[test]
-    fn task_is_terminal_for_approved() {
+    fn task_is_not_terminal_for_approved() {
         let mut task = Task::new(ProjectId::new(), "Test".to_string());
         task.internal_status = InternalStatus::Approved;
-        assert!(task.is_terminal());
+        assert!(!task.is_terminal(), "Approved should NOT be terminal — it must merge to be done");
     }
 
     #[test]
@@ -378,6 +425,13 @@ mod tests {
         let mut task = Task::new(ProjectId::new(), "Test".to_string());
         task.internal_status = InternalStatus::Stopped;
         assert!(task.is_terminal());
+    }
+
+    #[test]
+    fn task_is_terminal_for_merge_incomplete() {
+        let mut task = Task::new(ProjectId::new(), "Test".to_string());
+        task.internal_status = InternalStatus::MergeIncomplete;
+        assert!(task.is_terminal(), "MergeIncomplete should be terminal for dependency unblocking");
     }
 
     #[test]
@@ -459,7 +513,7 @@ mod tests {
 
         assert!(json.contains("\"title\":\"JSON Test\""));
         assert!(json.contains("\"project_id\":\"proj-123\""));
-        assert!(json.contains("\"category\":\"feature\""));
+        assert!(json.contains("\"category\":\"regular\""));
         assert!(json.contains("\"internal_status\":\"backlog\""));
         assert!(json.contains("\"priority\":0"));
         assert!(json.contains("\"needs_review_point\":false"));
@@ -485,7 +539,8 @@ mod tests {
 
         assert_eq!(task.id.as_str(), "task-id-123");
         assert_eq!(task.project_id.as_str(), "proj-id-456");
-        assert_eq!(task.category, "bug");
+        // "bug" is a legacy string — maps to Regular via FromStr fallback
+        assert_eq!(task.category, TaskCategory::Regular);
         assert_eq!(task.title, "Fix the bug");
         assert_eq!(
             task.description,
@@ -532,7 +587,7 @@ mod tests {
 
         assert_eq!(original.id, restored.id);
         assert_eq!(original.project_id, restored.project_id);
-        assert_eq!(original.category, restored.category);
+        assert_eq!(original.category, restored.category); // TaskCategory::Regular roundtrips correctly
         assert_eq!(original.title, restored.title);
         assert_eq!(original.description, restored.description);
         assert_eq!(original.priority, restored.priority);
@@ -568,16 +623,22 @@ mod tests {
     #[test]
     fn task_supports_various_categories() {
         let project_id = ProjectId::new();
-        let categories = ["feature", "bug", "setup", "testing", "refactor", "docs"];
 
-        for category in &categories {
-            let task = Task::new_with_category(
-                project_id.clone(),
-                format!("{} task", category),
-                category.to_string(),
-            );
-            assert_eq!(task.category, *category);
-        }
+        // Regular category (default)
+        let task = Task::new_with_category(
+            project_id.clone(),
+            "Regular task".to_string(),
+            TaskCategory::Regular,
+        );
+        assert_eq!(task.category, TaskCategory::Regular);
+
+        // PlanMerge category (system-managed)
+        let task = Task::new_with_category(
+            project_id.clone(),
+            "Plan merge task".to_string(),
+            TaskCategory::PlanMerge,
+        );
+        assert_eq!(task.category, TaskCategory::PlanMerge);
     }
 
     // ===== Debug Format Test =====
@@ -589,7 +650,7 @@ mod tests {
 
         assert!(debug.contains("Task"));
         assert!(debug.contains("Debug Test"));
-        assert!(debug.contains("feature"));
+        assert!(debug.contains("Regular"));
         assert!(debug.contains("Backlog"));
     }
 
@@ -690,7 +751,8 @@ mod tests {
 
         assert_eq!(task.id.as_str(), "task-123");
         assert_eq!(task.project_id.as_str(), "proj-456");
-        assert_eq!(task.category, "bug");
+        // "bug" is a legacy string — maps to Regular via FromStr fallback
+        assert_eq!(task.category, TaskCategory::Regular);
         assert_eq!(task.title, "Fix crash");
         assert_eq!(task.description, Some("Critical bug fix".to_string()));
         assert_eq!(task.priority, 10);

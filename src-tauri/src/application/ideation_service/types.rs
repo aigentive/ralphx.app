@@ -1,6 +1,6 @@
 // Type definitions for IdeationService
 
-use crate::domain::entities::{ChatMessage, IdeationSession, Priority, TaskCategory, TaskProposal};
+use crate::domain::entities::{ChatMessage, IdeationSession, Priority, ProposalCategory, TaskProposal};
 
 /// Configuration for plan artifacts in ideation flow
 #[derive(Debug, Clone)]
@@ -30,7 +30,7 @@ pub struct CreateProposalOptions {
     /// Optional description
     pub description: Option<String>,
     /// Task category
-    pub category: TaskCategory,
+    pub category: ProposalCategory,
     /// Suggested priority
     pub suggested_priority: Priority,
     /// Optional implementation steps (JSON array)
@@ -47,7 +47,7 @@ pub struct UpdateProposalOptions {
     /// New description (if provided)
     pub description: Option<Option<String>>,
     /// New category (if provided)
-    pub category: Option<TaskCategory>,
+    pub category: Option<ProposalCategory>,
     /// New steps (if provided)
     pub steps: Option<Option<String>>,
     /// New acceptance criteria (if provided)

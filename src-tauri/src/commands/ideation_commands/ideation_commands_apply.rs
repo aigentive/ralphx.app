@@ -7,8 +7,8 @@ use tauri::{Manager, State};
 use crate::application::{AppState, TaskSchedulerService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    ArtifactId, IdeationSessionId, IdeationSessionStatus, InternalStatus, PlanBranch, Task, TaskId,
-    TaskProposal, TaskProposalId,
+    ArtifactId, IdeationSessionId, IdeationSessionStatus, InternalStatus, PlanBranch, Task,
+    TaskCategory, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -79,7 +79,8 @@ pub async fn apply_proposals_to_kanban(
         // Create task from proposal
         let mut task = Task::new(session.project_id.clone(), proposal.title.clone());
         task.description = proposal.description.clone();
-        task.category = proposal.category.to_string();
+        // All tasks created from proposals are Regular (not system-managed PlanMerge tasks)
+        task.category = TaskCategory::Regular;
         // Initial status - will be updated after dependencies are created
         task.internal_status = InternalStatus::Backlog;
         task.ideation_session_id = Some(session_id.clone());
@@ -247,7 +248,7 @@ pub async fn apply_proposals_to_kanban(
             let mut merge_task = Task::new_with_category(
                 session.project_id.clone(),
                 plan_title,
-                "plan_merge".to_string(),
+                TaskCategory::PlanMerge,
             );
             merge_task.description = Some(format!(
                 "Auto-created merge task: merges feature branch into {}",

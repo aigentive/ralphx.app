@@ -34,6 +34,11 @@ pub(crate) use side_effects::has_merge_deferred_metadata;
 pub(crate) use merge_helpers::clear_main_merge_deferred_metadata;
 pub(crate) use merge_helpers::has_main_merge_deferred_metadata;
 
+// Re-export deferred merge timeout helpers for forced retry after timeout
+pub(crate) use merge_helpers::is_main_merge_deferred_timed_out;
+pub(crate) use merge_helpers::is_merge_deferred_timed_out;
+pub(crate) use merge_helpers::DEFERRED_MERGE_TIMEOUT_SECONDS;
+
 // Re-export trigger origin metadata helpers for execution tracking
 pub(crate) use side_effects::clear_trigger_origin;
 pub(crate) use side_effects::get_trigger_origin;

@@ -8,7 +8,7 @@ use super::types::{
 use crate::application::task_cleanup_service::{StopMode, TaskCleanupService};
 use crate::application::AppState;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskId};
+use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskCategory, TaskId};
 use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
 use crate::domain::state_machine::transition_handler::metadata_builder::build_restart_metadata;
 use std::sync::Arc;
@@ -21,7 +21,12 @@ pub async fn create_task(
     state: State<'_, AppState>,
 ) -> Result<TaskResponse, String> {
     let project_id = ProjectId::from_string(input.project_id);
-    let category = input.category.unwrap_or_else(|| "feature".to_string());
+    let category: TaskCategory = input
+        .category
+        .as_deref()
+        .unwrap_or("regular")
+        .parse()
+        .unwrap_or(TaskCategory::Regular);
 
     let mut task = Task::new_with_category(project_id, input.title, category);
 
@@ -93,8 +98,8 @@ pub async fn update_task(
     if let Some(desc) = input.description {
         task.description = Some(desc);
     }
-    if let Some(category) = input.category {
-        task.category = category;
+    if let Some(category_str) = input.category {
+        task.category = category_str.parse().unwrap_or(TaskCategory::Regular);
     }
     if let Some(priority) = input.priority {
         task.priority = priority;
@@ -317,7 +322,12 @@ pub async fn inject_task(
     app: tauri::AppHandle,
 ) -> Result<InjectTaskResponse, String> {
     let project_id = ProjectId::from_string(input.project_id.clone());
-    let category = input.category.unwrap_or_else(|| "feature".to_string());
+    let category: TaskCategory = input
+        .category
+        .as_deref()
+        .unwrap_or("regular")
+        .parse()
+        .unwrap_or(TaskCategory::Regular);
 
     // Create the new task
     let mut task = Task::new_with_category(project_id.clone(), input.title, category);

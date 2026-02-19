@@ -4,7 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, Priority, ProjectId, TaskCategory, TaskProposal,
+    IdeationSession, IdeationSessionId, Priority, ProjectId, ProposalCategory, TaskProposal,
 };
 use crate::domain::repositories::ProposalDependencyRepository;
 use crate::infrastructure::sqlite::{
@@ -51,7 +51,7 @@ fn create_test_proposal(
     let proposal = TaskProposal::new(
         session_id.clone(),
         title,
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     );
 
