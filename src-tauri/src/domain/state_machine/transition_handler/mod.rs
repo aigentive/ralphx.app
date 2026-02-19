@@ -4,8 +4,10 @@
 
 use super::events::TaskEvent;
 use super::machine::{Response, State, TaskStateMachine};
+use super::types::FailedData;
 use crate::application::GitService;
 use crate::domain::entities::{ProjectId, TaskId};
+use crate::domain::review::config::ReviewSettings;
 use std::sync::Arc;
 
 mod commit_messages;
@@ -152,7 +154,17 @@ impl<'a> TransitionHandler<'a> {
                 }
 
                 // Check for auto-transitions
-                if let Some(auto_state) = self.check_auto_transition(&new_state) {
+                if let Some(mut auto_state) = self.check_auto_transition(&new_state) {
+                    // Revision cap check: before auto-transitioning RevisionNeeded → ReExecuting,
+                    // verify the task hasn't exceeded max_revision_cycles.
+                    if matches!(new_state, State::RevisionNeeded)
+                        && matches!(auto_state, State::ReExecuting)
+                    {
+                        auto_state = self
+                            .check_revision_cap_or_fail(auto_state)
+                            .await;
+                    }
+
                     // Execute on-exit for intermediate state
                     self.on_exit(&new_state, &auto_state).await;
                     // Execute on-enter for final state
@@ -372,6 +384,71 @@ impl<'a> TransitionHandler<'a> {
             );
             scheduler.try_retry_main_merges().await;
         }
+    }
+
+    /// Check if the revision cap has been exceeded for a RevisionNeeded → ReExecuting auto-transition.
+    ///
+    /// If the task has exceeded `max_revision_cycles` (from ReviewSettings::default()),
+    /// returns `State::Failed` instead of `State::ReExecuting`. Also increments the
+    /// revision count in task metadata when proceeding with re-execution.
+    async fn check_revision_cap_or_fail(&self, default_state: State) -> State {
+        let task_id_str = &self.machine.context.task_id;
+
+        let Some(ref task_repo) = self.machine.context.services.task_repo else {
+            tracing::debug!(
+                task_id = task_id_str,
+                "Skipping revision cap check: task_repo not available"
+            );
+            return default_state;
+        };
+
+        let task_id = TaskId::from_string(task_id_str.clone());
+        let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await else {
+            tracing::warn!(
+                task_id = task_id_str,
+                "Skipping revision cap check: failed to fetch task"
+            );
+            return default_state;
+        };
+
+        let settings = ReviewSettings::default();
+        let revision_count = merge_helpers::get_revision_count(&task);
+
+        if settings.exceeded_max_revisions(revision_count) {
+            let max = settings.max_revision_cycles;
+            tracing::warn!(
+                task_id = task_id_str,
+                revision_count = revision_count,
+                max_revision_cycles = max,
+                "Revision cap exceeded, transitioning to Failed instead of ReExecuting"
+            );
+            return State::Failed(FailedData::new(format!(
+                "Exceeded maximum revision cycles ({}/{}). Task has been through too many review-revise loops.",
+                revision_count, max
+            )));
+        }
+
+        // Increment revision count for this cycle
+        let new_count = merge_helpers::increment_revision_count(&mut task);
+        if let Err(e) = task_repo
+            .update_metadata(&task_id, task.metadata.clone())
+            .await
+        {
+            tracing::error!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to update revision_count in metadata"
+            );
+        } else {
+            tracing::info!(
+                task_id = task_id_str,
+                revision_count = new_count,
+                max_revision_cycles = settings.max_revision_cycles,
+                "Incremented revision count for re-execution cycle"
+            );
+        }
+
+        default_state
     }
 
     /// Auto-commit on execution completion (Phase 66 - Task 7)

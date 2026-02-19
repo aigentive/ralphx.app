@@ -420,6 +420,33 @@ pub(crate) fn set_conflict_metadata(
     task.metadata = Some(meta.to_string());
 }
 
+/// Get the `revision_count` from a task's metadata.
+///
+/// Returns the current revision cycle count, or 0 if not set.
+pub(crate) fn get_revision_count(task: &Task) -> u32 {
+    parse_metadata(task)
+        .and_then(|v| v.get("revision_count")?.as_u64())
+        .unwrap_or(0) as u32
+}
+
+/// Increment the `revision_count` in a task's metadata.
+///
+/// Mutates the task in-place, creating metadata if it doesn't exist.
+/// Returns the new revision count after incrementing.
+pub(crate) fn increment_revision_count(task: &mut Task) -> u32 {
+    let mut meta = parse_metadata(task).unwrap_or_else(|| serde_json::json!({}));
+    let current = meta
+        .get("revision_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    let new_count = current + 1;
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("revision_count".to_string(), serde_json::json!(new_count));
+    }
+    task.metadata = Some(meta.to_string());
+    new_count
+}
+
 /// Resolve the base branch for a task's working branch.
 ///
 /// If the task belongs to a plan with an active feature branch, returns the feature
