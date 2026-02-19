@@ -99,7 +99,10 @@ After fixing all issues, proceed through state EXECUTE (VALIDATE + COMPLETE phas
 3. If `plan_artifact` present: `get_artifact(plan_artifact.id)`
    - Extract ONLY your task's section from the plan — ignore all other tasks' sections
 4. `get_task_steps(task_id)` — see the execution plan; create steps with `add_step` if none exist
-5. Call `get_project_analysis(project_id, task_id)` → run `worktree_setup` → run `validate` commands
+5. **Early exit**: If ALL steps are already in completed status, output a brief summary
+   (e.g. "All N steps already completed from previous execution. No further work needed.") and stop.
+   Do NOT call any additional tools or proceed to further phases.
+6. Call `get_project_analysis(project_id, task_id)` → run `worktree_setup` → run `validate` commands
    - All validate commands must pass before writing code (pre-existing failures: note and proceed)
 </phase>
 
