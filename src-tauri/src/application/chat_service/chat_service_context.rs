@@ -447,11 +447,9 @@ pub async fn build_command(
         spawnable.env("RALPHX_PROJECT_ID", pid);
     }
 
-    // Enable agent teams feature for team lead. Both vars are required: CLAUDECODE=1 enables
-    // TeamCreate/SendMessage/TeamDelete native tools; CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-    // activates the multi-agent orchestration feature flag.
+    // Enable agent teams feature for team lead (without CLAUDECODE which triggers nesting protection).
+    // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
     if team_mode {
-        spawnable.env("CLAUDECODE", "1");
         spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
         // TODO: restore --permission-mode delegate once supported again.
         // Removed because newer Claude CLI versions no longer accept 'delegate' as a valid value.
@@ -553,11 +551,9 @@ pub async fn build_resume_command(
         spawnable.env("RALPHX_PROJECT_ID", pid);
     }
 
-    // Enable agent teams feature for team lead. Both vars are required: CLAUDECODE=1 enables
-    // TeamCreate/SendMessage/TeamDelete native tools; CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
-    // activates the multi-agent orchestration feature flag.
+    // Enable agent teams feature for team lead (without CLAUDECODE which triggers nesting protection).
+    // CLAUDECODE=1 is only set on teammate processes spawned via spawn_teammate_interactive().
     if team_mode {
-        spawnable.env("CLAUDECODE", "1");
         spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
         // TODO: restore --permission-mode delegate once supported again.
         // Removed because newer Claude CLI versions no longer accept 'delegate' as a valid value.
