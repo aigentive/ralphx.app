@@ -57,6 +57,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
 ) {
     let task_id = TaskId::from_string(task_id_str.to_string());
 
+    // TODO: Add merges_in_flight guard here to skip if programmatic merge is already in flight.
+    // merges_in_flight lives in TaskServices/TaskTransitionService, not ExecutionState.
+    // Would require adding it to the function signature or moving it to ExecutionState.
+
     // 1. Get task - if not in Merging state, agent already handled it
     let mut task = match task_repo.get_by_id(&task_id).await {
         Ok(Some(task)) => task,
