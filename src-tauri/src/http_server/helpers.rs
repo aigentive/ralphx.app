@@ -1079,8 +1079,11 @@ mod tests {
     fn test_summarize_truncates_to_1500_chars() {
         // Build a long input with many headings
         let long_input: String = (1..=100)
-            .map(|i| format!("## Phase {}: Some very long phase title with lots of words here\n", i))
-            .collect();
+            .fold(String::new(), |mut acc, i| {
+                use std::fmt::Write;
+                write!(acc, "## Phase {}: Some very long phase title with lots of words here\n", i).unwrap();
+                acc
+            });
         let result = summarize_plan_for_dependencies(&long_input);
         // Result (including "Plan Structure:\n" prefix) should be bounded
         // 1500 chars of body + "Plan Structure:\n" prefix (16 chars) = ~1516 max

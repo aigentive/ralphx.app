@@ -8,7 +8,7 @@
 //! Used by the restart_task command before resuming to Validated states
 //! (Merging, PendingMerge, MergeConflict, MergeIncomplete).
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -287,7 +287,7 @@ impl ResumeValidator {
     }
 
     /// Get git status --porcelain output for a path.
-    async fn get_git_status(&self, path: &PathBuf) -> std::io::Result<String> {
+    async fn get_git_status(&self, path: &Path) -> std::io::Result<String> {
         let output = git_cmd::run(&["status", "--porcelain"], path)
             .await
             .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
@@ -297,7 +297,7 @@ impl ResumeValidator {
     /// Check if base branch has commits not on the task branch.
     async fn has_base_branch_moved_ahead(
         &self,
-        repo_path: &PathBuf,
+        repo_path: &Path,
         task_branch: &str,
         base_branch: &str,
     ) -> AppResult<bool> {
