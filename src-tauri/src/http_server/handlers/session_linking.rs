@@ -187,6 +187,7 @@ pub async fn create_child_session(
         converted_at: None,
         team_mode,
         team_config_json,
+        title_source: None,
     };
 
     let child_id = child_session.id.clone();

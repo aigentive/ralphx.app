@@ -431,6 +431,10 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Passed to TaskServices so TransitionHandler can fail in-progress steps.
     step_repo: Option<Arc<dyn TaskStepRepository>>,
 
+    /// Ideation session repository for fetching live session titles.
+    /// Passed to TaskServices so TransitionHandler can build descriptive plan merge commit messages.
+    ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
+
     /// Per-task team mode override. When `Some(true)`, the chat service uses
     /// team-mode agent names (e.g., orchestrator-execution instead of worker).
     /// `Some(false)` means solo was explicitly chosen (skip metadata fallback).
@@ -533,6 +537,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             task_scheduler: None,
             plan_branch_repo: None,
             step_repo: None,
+            ideation_session_repo: Some(ideation_session_repo),
             team_mode: None,
             merge_lock: Arc::new(tokio::sync::Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
@@ -819,6 +824,11 @@ impl<R: Runtime> TaskTransitionService<R> {
         // Pass shared merges_in_flight set for self-dedup across concurrent calls
         services = services.with_merges_in_flight(Arc::clone(&self.merges_in_flight));
 
+        // Pass ideation session repository for plan merge commit message generation
+        if let Some(ref session_repo) = self.ideation_session_repo {
+            services = services.with_ideation_session_repo(Arc::clone(session_repo));
+        }
+
         // Create TaskContext
         let context = TaskContext::new(task_id.as_str(), task.project_id.as_str(), services);
 
@@ -990,6 +1000,11 @@ impl<R: Runtime> TaskTransitionService<R> {
         // Pass step repository for updating step statuses on task failure
         if let Some(ref step_repo) = self.step_repo {
             services = services.with_step_repo(Arc::clone(step_repo));
+        }
+
+        // Pass ideation session repository for plan merge commit message generation
+        if let Some(ref session_repo) = self.ideation_session_repo {
+            services = services.with_ideation_session_repo(Arc::clone(session_repo));
         }
 
         // Create TaskContext

@@ -892,7 +892,7 @@ mod tests {
         async fn update_status(&self, _id: &IdeationSessionId, _status: IdeationSessionStatus) -> AppResult<()> {
             unimplemented!()
         }
-        async fn update_title(&self, _id: &IdeationSessionId, _title: Option<String>) -> AppResult<()> {
+        async fn update_title(&self, _id: &IdeationSessionId, _title: Option<String>, _title_source: &str) -> AppResult<()> {
             unimplemented!()
         }
         async fn delete(&self, _id: &IdeationSessionId) -> AppResult<()> {
