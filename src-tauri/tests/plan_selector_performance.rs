@@ -53,6 +53,7 @@ async fn create_accepted_session(
         converted_at: Some(converted_at),
         team_mode: None,
         team_config_json: None,
+        title_source: None,
     };
 
     state

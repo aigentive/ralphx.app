@@ -27,7 +27,7 @@ use crate::application::team_state_tracker::{
 };
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation,
-    ArtifactRelationId, ArtifactRelationType, ArtifactType, GitMode, TaskId,
+    ArtifactRelationId, ArtifactRelationType, ArtifactType, TaskId,
 };
 use crate::http_server::types::{
     ApproveTeamPlanRequest, ApproveTeamPlanResponse, CreateTeamArtifactRequest,
@@ -790,7 +790,7 @@ async fn resolve_teammate_working_dir(
         }
     };
 
-    let project = match state.app_state.project_repo.get_by_id(&task.project_id).await {
+    let _project = match state.app_state.project_repo.get_by_id(&task.project_id).await {
         Ok(Some(project)) => project,
         Ok(None) => {
             warn!(
@@ -809,27 +809,22 @@ async fn resolve_teammate_working_dir(
         }
     };
 
-    match project.git_mode {
-        GitMode::Worktree => {
-            if let Some(ref wt_path) = task.worktree_path {
-                info!(
-                    task_id = context_id,
-                    worktree_path = wt_path,
-                    "Teammate working dir: using task worktree path"
-                );
-                PathBuf::from(wt_path)
-            } else {
-                warn!(
-                    task_id = context_id,
-                    project_id = %task.project_id,
-                    "Safety net: Worktree mode but worktree_path is None — \
-                     refusing to use project directory (main branch). \
-                     Falling back to default."
-                );
-                default_working_dir()
-            }
-        }
-        _ => PathBuf::from(&project.working_directory),
+    if let Some(ref wt_path) = task.worktree_path {
+        info!(
+            task_id = context_id,
+            worktree_path = wt_path,
+            "Teammate working dir: using task worktree path"
+        );
+        PathBuf::from(wt_path)
+    } else {
+        warn!(
+            task_id = context_id,
+            project_id = %task.project_id,
+            "Safety net: Worktree mode but worktree_path is None — \
+             refusing to use project directory (main branch). \
+             Falling back to default."
+        );
+        default_working_dir()
     }
 }
 

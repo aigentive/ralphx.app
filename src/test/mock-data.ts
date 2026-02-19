@@ -159,7 +159,7 @@ export function createMockProject(overrides: Partial<Project> = {}): Project {
     id,
     name: "Test Project",
     workingDirectory: "/path/to/project",
-    gitMode: "local" as GitMode,
+    gitMode: "worktree" as GitMode,
     baseBranch: null,
     worktreeParentDirectory: null,
     useFeatureBranches: true,

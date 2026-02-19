@@ -1,8 +1,11 @@
 // Merge strategy methods extracted from attempt_programmatic_merge
 //
 // Each strategy method handles the unique merge logic for a specific
-// (MergeStrategy, GitMode) combination. They return a MergeOutcome which
+// MergeStrategy using worktree isolation. They return a MergeOutcome which
 // is then handled uniformly by the shared post-merge handler.
+//
+// NOTE: These methods are not yet wired into side_effects.rs (Pass 1-3 will do that).
+#![allow(dead_code)]
 
 use std::path::{Path, PathBuf};
 
@@ -30,7 +33,7 @@ pub(super) enum MergeOutcome {
     /// Merge conflicts detected, needs agent intervention
     NeedsAgent {
         conflict_files: Vec<PathBuf>,
-        /// Worktree path for conflict resolution (empty for Local mode)
+        /// Worktree path for conflict resolution (None for checkout-free merges)
         merge_worktree: Option<PathBuf>,
     },
 
@@ -126,7 +129,7 @@ impl<'a> super::TransitionHandler<'a> {
 
                     return MergeOutcome::NeedsAgent {
                         conflict_files: files,
-                        merge_worktree: None, // Local mode for checkout-free
+                        merge_worktree: None, // checkout-free merge, no worktree
                     };
                 }
                 Err(e) => {
@@ -217,120 +220,6 @@ impl<'a> super::TransitionHandler<'a> {
                     task_id = task_id_str,
                     error = %e,
                     "Worktree merge failed"
-                );
-                MergeOutcome::GitError(e)
-            }
-        }
-    }
-
-    /// Strategy: (Merge, Local)
-    ///
-    /// Direct merge in main repo without rebase.
-    ///
-    /// Line count: ~283 lines in original match arm
-    pub(super) async fn merge_local_strategy(
-        &self,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
-        task_id_str: &str,
-    ) -> MergeOutcome {
-        tracing::info!(
-            task_id = task_id_str,
-            source = %source_branch,
-            target = %target_branch,
-            "Attempting local merge"
-        );
-
-        match GitService::try_merge(repo_path, source_branch, target_branch).await {
-            Ok(MergeAttemptResult::Success { commit_sha }) => {
-                tracing::info!(
-                    task_id = task_id_str,
-                    commit_sha = %commit_sha,
-                    "Local merge succeeded"
-                );
-                MergeOutcome::Success {
-                    commit_sha,
-                    merge_path: repo_path.to_path_buf(),
-                }
-            }
-            Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    conflict_count = conflict_files.len(),
-                    "Local merge detected conflicts"
-                );
-                MergeOutcome::NeedsAgent {
-                    conflict_files,
-                    merge_worktree: None, // Local mode
-                }
-            }
-            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found");
-                MergeOutcome::BranchNotFound { branch }
-            }
-            Err(e) => {
-                tracing::error!(
-                    task_id = task_id_str,
-                    error = %e,
-                    "Local merge failed"
-                );
-                MergeOutcome::GitError(e)
-            }
-        }
-    }
-
-    /// Strategy: (Rebase, Local)
-    ///
-    /// Rebase task branch onto target, then merge.
-    ///
-    /// Line count: ~425 lines in original match arm
-    pub(super) async fn rebase_local_strategy(
-        &self,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
-        task_id_str: &str,
-    ) -> MergeOutcome {
-        tracing::info!(
-            task_id = task_id_str,
-            source = %source_branch,
-            target = %target_branch,
-            "Attempting local rebase and merge"
-        );
-
-        match GitService::try_rebase_and_merge(repo_path, source_branch, target_branch).await {
-            Ok(MergeAttemptResult::Success { commit_sha }) => {
-                tracing::info!(
-                    task_id = task_id_str,
-                    commit_sha = %commit_sha,
-                    "Local rebase and merge succeeded"
-                );
-                MergeOutcome::Success {
-                    commit_sha,
-                    merge_path: repo_path.to_path_buf(),
-                }
-            }
-            Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    conflict_count = conflict_files.len(),
-                    "Local rebase detected conflicts"
-                );
-                MergeOutcome::NeedsAgent {
-                    conflict_files,
-                    merge_worktree: None, // Local mode
-                }
-            }
-            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found");
-                MergeOutcome::BranchNotFound { branch }
-            }
-            Err(e) => {
-                tracing::error!(
-                    task_id = task_id_str,
-                    error = %e,
-                    "Local rebase and merge failed"
                 );
                 MergeOutcome::GitError(e)
             }
@@ -493,60 +382,6 @@ impl<'a> super::TransitionHandler<'a> {
         }
     }
 
-    /// Strategy: (Squash, Local)
-    ///
-    /// Squash merge in main repo.
-    ///
-    /// Line count: ~274 lines in original match arm
-    pub(super) async fn squash_local_strategy(
-        &self,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
-        squash_commit_msg: &str,
-        task_id_str: &str,
-    ) -> MergeOutcome {
-        tracing::info!(
-            task_id = task_id_str,
-            source = %source_branch,
-            target = %target_branch,
-            "Attempting local squash merge"
-        );
-
-        match GitService::try_squash_merge(repo_path, source_branch, target_branch, squash_commit_msg).await {
-            Ok(MergeAttemptResult::Success { commit_sha }) => {
-                tracing::info!(
-                    task_id = task_id_str,
-                    commit_sha = %commit_sha,
-                    "Local squash merge succeeded"
-                );
-                MergeOutcome::Success {
-                    commit_sha,
-                    merge_path: repo_path.to_path_buf(),
-                }
-            }
-            Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    conflict_count = conflict_files.len(),
-                    "Local squash merge detected conflicts"
-                );
-                MergeOutcome::NeedsAgent {
-                    conflict_files,
-                    merge_worktree: None,
-                }
-            }
-            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found");
-                MergeOutcome::BranchNotFound { branch }
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "Local squash merge failed");
-                MergeOutcome::GitError(e)
-            }
-        }
-    }
-
     /// Strategy: (Squash, Worktree)
     ///
     /// Squash merge in worktree, or use checkout-free if target checked out.
@@ -643,60 +478,6 @@ impl<'a> super::TransitionHandler<'a> {
                 MergeOutcome::BranchNotFound { branch }
             }
             Err(e) => MergeOutcome::GitError(e),
-        }
-    }
-
-    /// Strategy: (RebaseSquash, Local)
-    ///
-    /// Rebase then squash merge in main repo.
-    ///
-    /// Line count: ~275 lines in original match arm
-    pub(super) async fn rebase_squash_local_strategy(
-        &self,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
-        squash_commit_msg: &str,
-        task_id_str: &str,
-    ) -> MergeOutcome {
-        tracing::info!(
-            task_id = task_id_str,
-            source = %source_branch,
-            target = %target_branch,
-            "Attempting local rebase-squash merge"
-        );
-
-        match GitService::try_rebase_squash_merge(repo_path, source_branch, target_branch, squash_commit_msg).await {
-            Ok(MergeAttemptResult::Success { commit_sha }) => {
-                tracing::info!(
-                    task_id = task_id_str,
-                    commit_sha = %commit_sha,
-                    "Local rebase-squash succeeded"
-                );
-                MergeOutcome::Success {
-                    commit_sha,
-                    merge_path: repo_path.to_path_buf(),
-                }
-            }
-            Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    conflict_count = conflict_files.len(),
-                    "Local rebase-squash detected conflicts"
-                );
-                MergeOutcome::NeedsAgent {
-                    conflict_files,
-                    merge_worktree: None,
-                }
-            }
-            Ok(MergeAttemptResult::BranchNotFound { branch }) => {
-                tracing::error!(task_id = task_id_str, branch = %branch, "Branch not found");
-                MergeOutcome::BranchNotFound { branch }
-            }
-            Err(e) => {
-                tracing::error!(error = %e, "Local rebase-squash failed");
-                MergeOutcome::GitError(e)
-            }
         }
     }
 

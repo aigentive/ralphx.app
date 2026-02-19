@@ -5,7 +5,7 @@
 use super::events::TaskEvent;
 use super::machine::{Response, State, TaskStateMachine};
 use crate::application::GitService;
-use crate::domain::entities::{GitMode, ProjectId, TaskId};
+use crate::domain::entities::{ProjectId, TaskId};
 use std::sync::Arc;
 
 mod merge_completion;
@@ -461,25 +461,15 @@ impl<'a> TransitionHandler<'a> {
     }
 }
 
-/// Resolve the working directory for a task based on git mode.
+/// Resolve the working directory for a task.
 ///
-/// - Local mode: Always returns project's working directory (branch switching)
-/// - Worktree mode: Returns task's worktree path if available, else project's working directory
+/// Returns task's worktree path if available, else project's working directory.
 fn resolve_working_directory(
     task: &crate::domain::entities::Task,
     project: &crate::domain::entities::Project,
 ) -> std::path::PathBuf {
-    match project.git_mode {
-        GitMode::Local => {
-            // Local mode: always use main repo (branch switches handle isolation)
-            std::path::PathBuf::from(&project.working_directory)
-        }
-        GitMode::Worktree => {
-            // Worktree mode: use task's worktree if exists
-            task.worktree_path
-                .as_ref()
-                .map(std::path::PathBuf::from)
-                .unwrap_or_else(|| std::path::PathBuf::from(&project.working_directory))
-        }
-    }
+    task.worktree_path
+        .as_ref()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(&project.working_directory))
 }

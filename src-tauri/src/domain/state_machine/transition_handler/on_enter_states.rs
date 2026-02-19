@@ -23,7 +23,7 @@ use super::merge_helpers::{
 };
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::GitService;
-use crate::domain::entities::{GitMode, ProjectId, TaskId, TaskStepStatus};
+use crate::domain::entities::{ProjectId, TaskId, TaskStepStatus};
 use crate::error::{AppError, AppResult};
 
 impl<'a> super::TransitionHandler<'a> {
@@ -217,106 +217,61 @@ impl<'a> super::TransitionHandler<'a> {
                             // Attempt branch/worktree setup. Git isolation failures MUST
                             // block execution to prevent agents from writing to main branch.
                             // All git errors return ExecutionBlocked to fail the task.
-                            let git_result: AppResult<Option<(String, Option<String>)>> =
-                                match project.git_mode {
-                                    GitMode::Local => {
-                                        // Block if uncommitted changes exist
-                                        match GitService::has_uncommitted_changes(repo_path).await {
-                                            Ok(true) => {
-                                                return Err(AppError::ExecutionBlocked(
-                                                "Cannot execute task: uncommitted changes in working directory. \
-                                                 Please commit or stash your changes first.".to_string()
-                                            ));
-                                            }
-                                            Ok(false) => {
-                                                // Create and checkout branch in main repo
-                                                match GitService::create_branch(
-                                                    repo_path,
-                                                    &branch,
-                                                    base_branch,
-                                                )
-                                                .await
-                                                {
-                                                    Ok(_) => {
-                                                        match GitService::checkout_branch(repo_path, &branch).await {
-                                                            Ok(_) => Ok(Some((branch.clone(), None))),
-                                                            Err(e) => {
-                                                                return Err(AppError::ExecutionBlocked(
-                                                                    format!("Git isolation failed: could not create/checkout branch '{}': {}", branch, e)
-                                                                ));
-                                                            }
-                                                        }
-                                                    }
-                                                    Err(e) => {
-                                                        return Err(AppError::ExecutionBlocked(
-                                                            format!("Git isolation failed: could not create/checkout branch '{}': {}", branch, e)
-                                                        ));
-                                                    }
-                                                }
-                                            }
-                                            Err(e) => {
-                                                return Err(AppError::ExecutionBlocked(
-                                                    format!("Git isolation failed: could not check working directory for uncommitted changes: {}", e)
-                                                ));
-                                            }
-                                        }
-                                    }
-                                    GitMode::Worktree => {
-                                        // Build worktree path
-                                        let worktree_parent = project
-                                            .worktree_parent_directory
-                                            .as_deref()
-                                            .unwrap_or("~/ralphx-worktrees");
-                                        let expanded_parent = expand_home(worktree_parent);
+                            let git_result: AppResult<Option<(String, Option<String>)>> = {
+                                // Build worktree path
+                                let worktree_parent = project
+                                    .worktree_parent_directory
+                                    .as_deref()
+                                    .unwrap_or("~/ralphx-worktrees");
+                                let expanded_parent = expand_home(worktree_parent);
 
-                                        let worktree_path = format!(
-                                            "{}/{}/task-{}",
-                                            expanded_parent,
-                                            slugify(&project.name),
-                                            task_id_str
-                                        );
-                                        let worktree_path_buf =
-                                            std::path::PathBuf::from(&worktree_path);
+                                let worktree_path = format!(
+                                    "{}/{}/task-{}",
+                                    expanded_parent,
+                                    slugify(&project.name),
+                                    task_id_str
+                                );
+                                let worktree_path_buf =
+                                    std::path::PathBuf::from(&worktree_path);
 
-                                        // Check if branch already exists from a previous execution attempt
-                                        let branch_exists =
-                                            GitService::branch_exists(repo_path, &branch).await;
+                                // Check if branch already exists from a previous execution attempt
+                                let branch_exists =
+                                    GitService::branch_exists(repo_path, &branch).await;
 
-                                        // Create worktree - use existing branch if it exists, create new one otherwise
-                                        let result = if branch_exists {
-                                            tracing::info!(
-                                                task_id = task_id_str,
-                                                branch = %branch,
-                                                "Branch already exists, checking out existing branch into worktree"
-                                            );
-                                            GitService::checkout_existing_branch_worktree(
-                                                repo_path,
-                                                &worktree_path_buf,
-                                                &branch,
-                                            )
-                                            .await
-                                        } else {
-                                            GitService::create_worktree(
-                                                repo_path,
-                                                &worktree_path_buf,
-                                                &branch,
-                                                base_branch,
-                                            )
-                                            .await
-                                        };
-
-                                        match result {
-                                            Ok(_) => {
-                                                Ok(Some((branch.clone(), Some(worktree_path))))
-                                            }
-                                            Err(e) => {
-                                                return Err(AppError::ExecutionBlocked(
-                                                    format!("Git isolation failed: could not create worktree at '{}': {}", worktree_path, e)
-                                                ));
-                                            }
-                                        }
-                                    }
+                                // Create worktree - use existing branch if it exists, create new one otherwise
+                                let result = if branch_exists {
+                                    tracing::info!(
+                                        task_id = task_id_str,
+                                        branch = %branch,
+                                        "Branch already exists, checking out existing branch into worktree"
+                                    );
+                                    GitService::checkout_existing_branch_worktree(
+                                        repo_path,
+                                        &worktree_path_buf,
+                                        &branch,
+                                    )
+                                    .await
+                                } else {
+                                    GitService::create_worktree(
+                                        repo_path,
+                                        &worktree_path_buf,
+                                        &branch,
+                                        base_branch,
+                                    )
+                                    .await
                                 };
+
+                                match result {
+                                    Ok(_) => {
+                                        Ok(Some((branch.clone(), Some(worktree_path))))
+                                    }
+                                    Err(e) => {
+                                        return Err(AppError::ExecutionBlocked(
+                                            format!("Git isolation failed: could not create worktree at '{}': {}", worktree_path, e)
+                                        ));
+                                    }
+                                }
+                            };
 
                             // If git setup succeeded, persist the branch info
                             if let Ok(Some((branch_name, worktree_path_opt))) = git_result {
@@ -327,13 +282,7 @@ impl<'a> super::TransitionHandler<'a> {
                                         task_id = task_id_str,
                                         branch = %branch_name,
                                         worktree_path = %wt_path,
-                                        "Created worktree with task branch (Worktree mode)"
-                                    );
-                                } else {
-                                    tracing::info!(
-                                        task_id = task_id_str,
-                                        branch = %branch_name,
-                                        "Created and checked out task branch (Local mode)"
+                                        "Created worktree with task branch"
                                     );
                                 }
                                 task.touch();
@@ -344,11 +293,6 @@ impl<'a> super::TransitionHandler<'a> {
                         }
                     }
                 }
-
-                // Ensure task branch is checked out for resumed tasks (Local mode).
-                // Fresh execution: branch was just created+checked out above, this is a no-op.
-                // Resume after restart: branch exists but may not be checked out — this fixes it.
-                self.checkout_task_branch_if_needed("Executing").await;
 
                 // Run pre-execution setup (worktree_setup + install) before spawning agent
                 self.run_and_store_pre_execution_setup(
@@ -592,10 +536,6 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             State::Reviewing => {
-                // For Local mode: checkout task branch before spawning reviewer
-                // (Worktree mode already has isolated directory)
-                self.checkout_task_branch_if_needed("Reviewing").await;
-
                 // Run pre-execution setup before reviewing
                 let project_id_str = &self.machine.context.project_id;
                 let task_id = &self.machine.context.task_id;
@@ -679,10 +619,6 @@ impl<'a> super::TransitionHandler<'a> {
                     .await;
             }
             State::ReExecuting => {
-                // For Local mode: checkout task branch before spawning worker
-                // (Worktree mode already has isolated directory)
-                self.checkout_task_branch_if_needed("ReExecuting").await;
-
                 // Run pre-execution setup before re-executing
                 let task_id_str = &self.machine.context.task_id;
                 let project_id_str = &self.machine.context.project_id;
@@ -1025,75 +961,6 @@ impl<'a> super::TransitionHandler<'a> {
         Ok(())
     }
 
-    /// For Local mode: checkout task branch if current branch differs.
-    /// This is needed when re-entering execution states (ReExecuting, Reviewing)
-    /// where the task already has a branch but we may be on a different branch.
-    /// Worktree mode doesn't need this as each task has its own isolated directory.
-    pub(super) async fn checkout_task_branch_if_needed(&self, state_name: &str) {
-        let task_id_str = &self.machine.context.task_id;
-        let project_id_str = &self.machine.context.project_id;
-
-        if let (Some(ref task_repo), Some(ref project_repo)) = (
-            &self.machine.context.services.task_repo,
-            &self.machine.context.services.project_repo,
-        ) {
-            let task_id = TaskId::from_string(task_id_str.clone());
-            let project_id = ProjectId::from_string(project_id_str.clone());
-
-            let task_result = task_repo.get_by_id(&task_id).await;
-            let project_result = project_repo.get_by_id(&project_id).await;
-
-            if let (Ok(Some(task)), Ok(Some(project))) = (task_result, project_result) {
-                // Only checkout for Local mode - Worktree mode already has isolated directory
-                if project.git_mode == GitMode::Local {
-                    if let Some(branch) = &task.task_branch {
-                        let repo_path = Path::new(&project.working_directory);
-                        match GitService::get_current_branch(repo_path).await {
-                            Ok(current) if current != *branch => {
-                                match GitService::checkout_branch(repo_path, branch).await {
-                                    Ok(_) => {
-                                        tracing::info!(
-                                            task_id = task_id_str,
-                                            branch = %branch,
-                                            from_branch = %current,
-                                            state = state_name,
-                                            "Checked out task branch (Local mode)"
-                                        );
-                                    }
-                                    Err(e) => {
-                                        tracing::warn!(
-                                            error = %e,
-                                            task_id = task_id_str,
-                                            branch = %branch,
-                                            state = state_name,
-                                            "Failed to checkout task branch (Local mode)"
-                                        );
-                                    }
-                                }
-                            }
-                            Ok(_) => {
-                                // Already on correct branch
-                                tracing::debug!(
-                                    task_id = task_id_str,
-                                    branch = %branch,
-                                    state = state_name,
-                                    "Already on task branch (Local mode)"
-                                );
-                            }
-                            Err(e) => {
-                                tracing::warn!(
-                                    error = %e,
-                                    task_id = task_id_str,
-                                    state = state_name,
-                                    "Failed to get current branch"
-                                );
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
 }
 
 /// Extract `restart_note` from task metadata JSON.

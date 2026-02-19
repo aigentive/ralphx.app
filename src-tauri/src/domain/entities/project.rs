@@ -12,22 +12,20 @@ use super::ProjectId;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum GitMode {
-    /// Work directly in the local repository
-    Local,
     /// Use git worktrees for isolated development
+    #[serde(alias = "local")]
     Worktree,
 }
 
 impl Default for GitMode {
     fn default() -> Self {
-        Self::Local
+        Self::Worktree
     }
 }
 
 impl std::fmt::Display for GitMode {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            GitMode::Local => write!(f, "local"),
             GitMode::Worktree => write!(f, "worktree"),
         }
     }
@@ -52,8 +50,7 @@ impl FromStr for GitMode {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "local" => Ok(GitMode::Local),
-            "worktree" => Ok(GitMode::Worktree),
+            "local" | "worktree" => Ok(GitMode::Worktree),
             _ => Err(ParseGitModeError {
                 value: s.to_string(),
             }),
@@ -154,7 +151,7 @@ pub struct Project {
     pub name: String,
     /// Absolute path to the project's working directory
     pub working_directory: String,
-    /// Git workflow mode (local or worktree)
+    /// Git workflow mode (worktree)
     pub git_mode: GitMode,
     /// Base branch for comparisons (e.g., "main" or "master")
     pub base_branch: Option<String>,
@@ -183,7 +180,7 @@ pub struct Project {
 
 impl Project {
     /// Creates a new project with the given name and working directory
-    /// Uses sensible defaults for git mode (Local) and timestamps (now)
+    /// Uses sensible defaults for git mode (Worktree) and timestamps (now)
     pub fn new(name: String, working_directory: String) -> Self {
         let now = Utc::now();
         Self {
@@ -241,7 +238,7 @@ impl Project {
             git_mode: row
                 .get::<_, String>("git_mode")?
                 .parse()
-                .unwrap_or(GitMode::Local),
+                .unwrap_or(GitMode::Worktree),
             base_branch: row.get("base_branch")?,
             worktree_parent_directory: row.get("worktree_parent_directory")?,
             use_feature_branches: row.get::<_, i64>("use_feature_branches").unwrap_or(1) != 0,
@@ -286,13 +283,8 @@ mod tests {
     // ===== GitMode Tests =====
 
     #[test]
-    fn git_mode_default_is_local() {
-        assert_eq!(GitMode::default(), GitMode::Local);
-    }
-
-    #[test]
-    fn git_mode_display_local() {
-        assert_eq!(format!("{}", GitMode::Local), "local");
+    fn git_mode_default_is_worktree() {
+        assert_eq!(GitMode::default(), GitMode::Worktree);
     }
 
     #[test]
@@ -302,20 +294,24 @@ mod tests {
 
     #[test]
     fn git_mode_serializes_to_snake_case() {
-        let local_json = serde_json::to_string(&GitMode::Local).expect("Should serialize");
         let worktree_json = serde_json::to_string(&GitMode::Worktree).expect("Should serialize");
 
-        assert_eq!(local_json, "\"local\"");
         assert_eq!(worktree_json, "\"worktree\"");
     }
 
     #[test]
     fn git_mode_deserializes_from_snake_case() {
-        let local: GitMode = serde_json::from_str("\"local\"").expect("Should deserialize");
         let worktree: GitMode = serde_json::from_str("\"worktree\"").expect("Should deserialize");
 
-        assert_eq!(local, GitMode::Local);
         assert_eq!(worktree, GitMode::Worktree);
+    }
+
+    #[test]
+    fn git_mode_deserializes_local_as_worktree() {
+        // Backward compat: "local" in DB/JSON maps to Worktree
+        let local: GitMode = serde_json::from_str("\"local\"").expect("Should deserialize");
+
+        assert_eq!(local, GitMode::Worktree);
     }
 
     #[test]
@@ -327,9 +323,7 @@ mod tests {
 
     #[test]
     fn git_mode_equality_works() {
-        assert_eq!(GitMode::Local, GitMode::Local);
         assert_eq!(GitMode::Worktree, GitMode::Worktree);
-        assert_ne!(GitMode::Local, GitMode::Worktree);
     }
 
     // ===== Project Creation Tests =====
@@ -340,7 +334,7 @@ mod tests {
 
         assert_eq!(project.name, "My Project");
         assert_eq!(project.working_directory, "/path/to/project");
-        assert_eq!(project.git_mode, GitMode::Local);
+        assert_eq!(project.git_mode, GitMode::Worktree);
         assert!(project.base_branch.is_none());
         assert!(project.worktree_parent_directory.is_none());
     }
@@ -390,10 +384,10 @@ mod tests {
     }
 
     #[test]
-    fn project_is_worktree_returns_false_for_local_mode() {
-        let project = Project::new("Local".to_string(), "/repo".to_string());
+    fn project_new_defaults_to_worktree_mode() {
+        let project = Project::new("Test".to_string(), "/repo".to_string());
 
-        assert!(!project.is_worktree());
+        assert!(project.is_worktree());
     }
 
     #[test]
@@ -420,7 +414,7 @@ mod tests {
 
         assert!(json.contains("\"name\":\"JSON Test\""));
         assert!(json.contains("\"working_directory\":\"/json/path\""));
-        assert!(json.contains("\"git_mode\":\"local\""));
+        assert!(json.contains("\"git_mode\":\"worktree\""));
     }
 
     #[test]
@@ -452,7 +446,7 @@ mod tests {
             "id": "test-id",
             "name": "Minimal",
             "working_directory": "/path",
-            "git_mode": "local",
+            "git_mode": "worktree",
             "base_branch": null,
             "created_at": "2025-01-24T12:00:00Z",
             "updated_at": "2025-01-24T12:00:00Z"
@@ -616,9 +610,10 @@ mod tests {
     // ===== GitMode FromStr Tests =====
 
     #[test]
-    fn git_mode_from_str_local() {
+    fn git_mode_from_str_local_maps_to_worktree() {
+        // Backward compat: "local" parses to Worktree
         let mode: GitMode = "local".parse().unwrap();
-        assert_eq!(mode, GitMode::Local);
+        assert_eq!(mode, GitMode::Worktree);
     }
 
     #[test]
@@ -691,7 +686,7 @@ mod tests {
     }
 
     #[test]
-    fn project_from_row_local_mode() {
+    fn project_from_row_local_mode_maps_to_worktree() {
         let conn = setup_test_db();
         conn.execute(
             r#"INSERT INTO projects (id, name, working_directory, git_mode,
@@ -711,7 +706,8 @@ mod tests {
         assert_eq!(project.id.as_str(), "proj-123");
         assert_eq!(project.name, "My Project");
         assert_eq!(project.working_directory, "/path/to/project");
-        assert_eq!(project.git_mode, GitMode::Local);
+        // "local" in DB now maps to Worktree (backward compat)
+        assert_eq!(project.git_mode, GitMode::Worktree);
         assert!(project.base_branch.is_none());
         assert!(project.worktree_parent_directory.is_none());
     }
@@ -740,7 +736,7 @@ mod tests {
     }
 
     #[test]
-    fn project_from_row_unknown_git_mode_defaults_to_local() {
+    fn project_from_row_unknown_git_mode_defaults_to_worktree() {
         let conn = setup_test_db();
         conn.execute(
             r#"INSERT INTO projects (id, name, working_directory, git_mode,
@@ -757,8 +753,8 @@ mod tests {
             })
             .unwrap();
 
-        // Unknown git mode should default to Local
-        assert_eq!(project.git_mode, GitMode::Local);
+        // Unknown git mode should default to Worktree
+        assert_eq!(project.git_mode, GitMode::Worktree);
     }
 
     #[test]
@@ -767,7 +763,7 @@ mod tests {
         conn.execute(
             r#"INSERT INTO projects (id, name, working_directory, git_mode,
                worktree_path, worktree_branch, base_branch, created_at, updated_at)
-               VALUES ('proj-sql', 'SQL Datetime', '/path', 'local',
+               VALUES ('proj-sql', 'SQL Datetime', '/path', 'worktree',
                NULL, NULL, NULL, '2026-01-24 12:00:00', '2026-01-24 14:30:00')"#,
             [],
         )
