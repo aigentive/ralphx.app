@@ -171,6 +171,7 @@ fn create_chat_service(
     .with_execution_state(Arc::clone(execution_state))
     .with_plan_branch_repo(state.plan_branch_repo.clone())
     .with_task_proposal_repo(state.task_proposal_repo.clone())
+    .with_task_step_repo(state.task_step_repo.clone())
     .with_streaming_state_cache(state.streaming_state_cache.clone());
     if let Some(svc) = team_service {
         service = service.with_team_service(svc);
