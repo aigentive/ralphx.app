@@ -23,7 +23,7 @@ use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskRepository,
+    TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use tokio_util::sync::CancellationToken;
@@ -43,6 +43,7 @@ pub(super) struct BackgroundRunRepos {
     pub memory_event_repo: Arc<dyn MemoryEventRepository>,
     pub message_queue: Arc<MessageQueue>,
     pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    pub task_step_repo: Option<Arc<dyn TaskStepRepository>>,
 }
 
 /// Full context for a background agent run, replacing 29 individual parameters.
@@ -172,6 +173,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             memory_event_repo,
             message_queue,
             running_agent_registry,
+            task_step_repo,
         } = repos;
 
         tracing::debug!("send_background start");
@@ -341,6 +343,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &running_agent_registry,
                     &memory_event_repo,
                     &plan_branch_repo,
+                    &task_step_repo,
                     &app_handle,
                 )
                 .await;

@@ -17,13 +17,13 @@ use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
-    InternalStatus, TaskId,
+    InternalStatus, TaskId, TaskStepStatus,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskRepository,
+    TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
@@ -79,6 +79,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     running_agent_registry: &Arc<dyn RunningAgentRegistry>,
     memory_event_repo: &Arc<dyn MemoryEventRepository>,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
     app_handle: &Option<AppHandle<R>>,
 ) {
     // Handle task state transition (only for TaskExecution)
@@ -148,46 +149,88 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             );
                         }
                     } else {
-                        // Store last_agent_error for empty-output failure
-                        let mut metadata_obj = task
-                            .metadata
-                            .as_deref()
-                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                            .unwrap_or_else(|| serde_json::json!({}));
-                        if let Some(obj) = metadata_obj.as_object_mut() {
-                            obj.insert(
-                                "last_agent_error".to_string(),
-                                serde_json::json!("Agent completed with no output"),
-                            );
-                            obj.insert(
-                                "last_agent_error_context".to_string(),
-                                serde_json::json!("execution"),
-                            );
-                            obj.insert(
-                                "last_agent_error_at".to_string(),
-                                serde_json::json!(chrono::Utc::now().to_rfc3339()),
-                            );
-                        }
-                        let mut updated_task = task.clone();
-                        updated_task.metadata =
-                            Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
-                        updated_task.touch();
-                        let _ = task_repo.update(&updated_task).await;
-
-                        if let Err(e) = transition_service
-                            .transition_task(&task_id, InternalStatus::Failed)
-                            .await
-                        {
-                            tracing::error!(
-                                "Failed to transition empty-output task {} to Failed: {}",
-                                task_id.as_str(),
-                                e
-                            );
+                        // Check if all steps are completed — worker found all work
+                        // already done and exited cleanly with no output.
+                        let all_steps_done = if let Some(ref step_repo) = task_step_repo {
+                            match step_repo.get_by_task(&task_id).await {
+                                Ok(steps) => {
+                                    !steps.is_empty()
+                                        && steps.iter().all(|s| {
+                                            s.status == TaskStepStatus::Completed
+                                                || s.status == TaskStepStatus::Skipped
+                                        })
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        task_id = task_id.as_str(),
+                                        error = %e,
+                                        "Failed to query steps for all-complete check"
+                                    );
+                                    false
+                                }
+                            }
                         } else {
-                            tracing::warn!(
+                            false
+                        };
+
+                        if all_steps_done {
+                            tracing::info!(
                                 task_id = task_id.as_str(),
-                                "Task execution produced no output; transitioned to Failed"
+                                "Worker exited with no output but all steps completed; \
+                                 transitioning to PendingReview"
                             );
+                            if let Err(e) = transition_service
+                                .transition_task(&task_id, InternalStatus::PendingReview)
+                                .await
+                            {
+                                tracing::error!(
+                                    "Failed to transition all-steps-done task {} to PendingReview: {}",
+                                    task_id.as_str(),
+                                    e
+                                );
+                            }
+                        } else {
+                            // Store last_agent_error for empty-output failure
+                            let mut metadata_obj = task
+                                .metadata
+                                .as_deref()
+                                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                                .unwrap_or_else(|| serde_json::json!({}));
+                            if let Some(obj) = metadata_obj.as_object_mut() {
+                                obj.insert(
+                                    "last_agent_error".to_string(),
+                                    serde_json::json!("Agent completed with no output"),
+                                );
+                                obj.insert(
+                                    "last_agent_error_context".to_string(),
+                                    serde_json::json!("execution"),
+                                );
+                                obj.insert(
+                                    "last_agent_error_at".to_string(),
+                                    serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                                );
+                            }
+                            let mut updated_task = task.clone();
+                            updated_task.metadata =
+                                Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
+                            updated_task.touch();
+                            let _ = task_repo.update(&updated_task).await;
+
+                            if let Err(e) = transition_service
+                                .transition_task(&task_id, InternalStatus::Failed)
+                                .await
+                            {
+                                tracing::error!(
+                                    "Failed to transition empty-output task {} to Failed: {}",
+                                    task_id.as_str(),
+                                    e
+                                );
+                            } else {
+                                tracing::warn!(
+                                    task_id = task_id.as_str(),
+                                    "Task execution produced no output; transitioned to Failed"
+                                );
+                            }
                         }
                     }
                 }
@@ -554,6 +597,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             running_agent_registry: Arc::clone(
                                                 running_agent_registry,
                                             ),
+                                            task_step_repo: None,
                                         },
                                         execution_state: execution_state.clone(),
                                         question_state: question_state.clone(),
