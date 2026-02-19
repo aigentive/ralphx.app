@@ -5,21 +5,13 @@
 // is then handled uniformly by the shared post-merge handler.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use crate::application::{GitService, MergeAttemptResult};
 use crate::application::git_service::checkout_free::{self, CheckoutFreeMergeResult};
-use crate::domain::entities::{
-    task_metadata::{
-        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-        MergeRecoverySource,
-    },
-    GitMode, MergeStrategy, Project, Task, TaskId,
-};
-use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
-use crate::error::{AppError, AppResult};
+use crate::domain::entities::{Project, Task, TaskId};
+use crate::error::AppError;
 
-use super::{compute_merge_worktree_path, compute_rebase_worktree_path};
+use super::merge_helpers::{compute_merge_worktree_path, compute_rebase_worktree_path};
 
 /// Outcome of a merge strategy execution.
 ///
@@ -37,13 +29,16 @@ pub(super) enum MergeOutcome {
 
     /// Merge conflicts detected, needs agent intervention
     NeedsAgent {
-        conflict_files: Vec<String>,
+        conflict_files: Vec<PathBuf>,
         /// Worktree path for conflict resolution (empty for Local mode)
         merge_worktree: Option<PathBuf>,
     },
 
     /// Source or target branch not found
     BranchNotFound { branch: String },
+
+    /// Merge deferred (e.g., branch lock held by another task, sibling tasks still running)
+    Deferred { reason: String },
 
     /// Git operation or other error
     GitError(AppError),
@@ -65,8 +60,8 @@ impl<'a> super::TransitionHandler<'a> {
         source_branch: &str,
         target_branch: &str,
         project: &Project,
-        task: &mut Task,
-        task_id: &TaskId,
+        _task: &mut Task,
+        _task_id: &TaskId,
         task_id_str: &str,
     ) -> MergeOutcome {
         // Detect if the target branch is already checked out in the primary repo.

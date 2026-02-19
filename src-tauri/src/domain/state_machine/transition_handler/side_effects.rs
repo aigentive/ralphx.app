@@ -2698,48 +2698,185 @@ impl<'a> super::TransitionHandler<'a> {
                             .await;
                     }
                     Err(e) => {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            error = %e,
-                            source_branch = %source_branch,
-                            target_branch = %target_branch,
-                            "Direct merge failed, transitioning to MergeIncomplete"
-                        );
+                        // Classify error: deferrable (branch lock) vs terminal (true failure)
+                        if GitService::is_branch_lock_error(&e) {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                error = %e,
+                                source_branch = %source_branch,
+                                target_branch = %target_branch,
+                                "Direct merge failed due to branch lock (deferrable), staying in PendingMerge"
+                            );
 
-                        task.metadata = Some(
-                            serde_json::json!({
-                                "error": e.to_string(),
-                                "source_branch": source_branch,
-                                "target_branch": target_branch,
-                            })
-                            .to_string(),
-                        );
-                        task.internal_status = InternalStatus::MergeIncomplete;
-                        task.touch();
-
-                        if let Err(e) = task_repo.update(&task).await {
-                            tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
-                            return;
-                        }
-
-                        if let Err(e) = task_repo
-                            .persist_status_change(
-                                &task_id,
-                                InternalStatus::PendingMerge,
-                                InternalStatus::MergeIncomplete,
-                                "merge_incomplete",
+                            // Get or create merge recovery metadata
+                            let mut recovery = MergeRecoveryMetadata::from_task_metadata(
+                                task.metadata.as_deref(),
                             )
-                            .await
-                        {
-                            tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
-                        }
+                            .unwrap_or(None)
+                            .unwrap_or_else(MergeRecoveryMetadata::new);
 
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                            .await;
+                            // Create deferred event for branch lock
+                            let event = MergeRecoveryEvent::new(
+                                MergeRecoveryEventKind::Deferred,
+                                MergeRecoverySource::System,
+                                MergeRecoveryReasonCode::GitError,
+                                format!("Merge deferred due to branch lock: {}", e),
+                            )
+                            .with_target_branch(&target_branch)
+                            .with_source_branch(&source_branch);
+
+                            // Append event and update state
+                            recovery
+                                .append_event_with_state(event, MergeRecoveryState::Deferred);
+
+                            // Update task metadata
+                            match recovery.update_task_metadata(task.metadata.as_deref()) {
+                                Ok(updated_json) => {
+                                    task.metadata = Some(updated_json);
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        task_id = task_id_str,
+                                        error = %e,
+                                        "Failed to serialize merge recovery metadata, falling back to legacy"
+                                    );
+                                    // Fallback to legacy metadata
+                                    task.metadata = Some(
+                                        serde_json::json!({
+                                            "merge_deferred": true,
+                                            "error": e.to_string(),
+                                            "source_branch": source_branch,
+                                            "target_branch": target_branch,
+                                            "reason": "branch_lock",
+                                        })
+                                        .to_string(),
+                                    );
+                                }
+                            }
+
+                            task.touch();
+
+                            if let Err(e) = task_repo.update(&task).await {
+                                tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
+                            }
+
+                            // Task remains in pending_merge, will be retried when blocker exits
+                        } else {
+                            // Non-deferrable error: transition to merge_incomplete
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                source_branch = %source_branch,
+                                target_branch = %target_branch,
+                                "Direct merge failed, transitioning to MergeIncomplete"
+                            );
+
+                            // Append attempt_failed event
+                            let mut recovery = MergeRecoveryMetadata::from_task_metadata(
+                                task.metadata.as_deref(),
+                            )
+                            .unwrap_or(None)
+                            .unwrap_or_else(MergeRecoveryMetadata::new);
+
+                            let attempt_count = recovery
+                                .events
+                                .iter()
+                                .filter(|ev| {
+                                    matches!(
+                                        ev.kind,
+                                        MergeRecoveryEventKind::AutoRetryTriggered
+                                    )
+                                })
+                                .count()
+                                as u32
+                                + 1;
+
+                            let failed_event = MergeRecoveryEvent::new(
+                                MergeRecoveryEventKind::AttemptFailed,
+                                MergeRecoverySource::System,
+                                MergeRecoveryReasonCode::GitError,
+                                format!("Merge attempt failed (local): {}", e),
+                            )
+                            .with_target_branch(&target_branch)
+                            .with_source_branch(&source_branch)
+                            .with_attempt(attempt_count);
+
+                            recovery.append_event_with_state(
+                                failed_event,
+                                MergeRecoveryState::Failed,
+                            );
+
+                            // Update task metadata with both recovery data and legacy error fields
+                            match recovery.update_task_metadata(task.metadata.as_deref()) {
+                                Ok(updated_json) => {
+                                    // Also preserve legacy error metadata
+                                    if let Ok(mut meta) =
+                                        serde_json::from_str::<serde_json::Value>(&updated_json)
+                                    {
+                                        if let Some(obj) = meta.as_object_mut() {
+                                            obj.insert(
+                                                "error".to_string(),
+                                                serde_json::json!(e.to_string()),
+                                            );
+                                            obj.insert(
+                                                "source_branch".to_string(),
+                                                serde_json::json!(source_branch),
+                                            );
+                                            obj.insert(
+                                                "target_branch".to_string(),
+                                                serde_json::json!(target_branch),
+                                            );
+                                        }
+                                        task.metadata = Some(meta.to_string());
+                                    } else {
+                                        task.metadata = Some(updated_json);
+                                    }
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        task_id = task_id_str,
+                                        error = %e,
+                                        "Failed to serialize merge recovery metadata on failure"
+                                    );
+                                    // Fallback to legacy metadata
+                                    task.metadata = Some(
+                                        serde_json::json!({
+                                            "error": e.to_string(),
+                                            "source_branch": source_branch,
+                                            "target_branch": target_branch,
+                                        })
+                                        .to_string(),
+                                    );
+                                }
+                            }
+
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            if let Err(e) = task_repo.update(&task).await {
+                                tracing::error!(error = %e, "Failed to update task to MergeIncomplete status");
+                                return;
+                            }
+
+                            if let Err(e) = task_repo
+                                .persist_status_change(
+                                    &task_id,
+                                    InternalStatus::PendingMerge,
+                                    InternalStatus::MergeIncomplete,
+                                    "merge_incomplete",
+                                )
+                                .await
+                            {
+                                tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
+                            }
+
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                                .await;
+                        }
                     }
                 }
             }
@@ -3742,39 +3879,103 @@ impl<'a> super::TransitionHandler<'a> {
                             .await;
                     }
                     Err(e) => {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Squash merge failed, transitioning to MergeIncomplete"
-                        );
+                        // Classify error: deferrable (branch lock) vs terminal (true failure)
+                        if GitService::is_branch_lock_error(&e) {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                error = %e,
+                                source_branch = %source_branch,
+                                target_branch = %target_branch,
+                                "Squash merge (local) failed due to branch lock (deferrable), staying in PendingMerge"
+                            );
 
-                        task.metadata = Some(
-                            serde_json::json!({
-                                "error": e.to_string(),
-                                "source_branch": source_branch,
-                                "target_branch": target_branch,
-                            })
-                            .to_string(),
-                        );
-                        task.internal_status = InternalStatus::MergeIncomplete;
-                        task.touch();
-
-                        let _ = task_repo.update(&task).await;
-                        let _ = task_repo
-                            .persist_status_change(
-                                &task_id,
-                                InternalStatus::PendingMerge,
-                                InternalStatus::MergeIncomplete,
-                                "merge_incomplete",
+                            // Get or create merge recovery metadata
+                            let mut recovery = MergeRecoveryMetadata::from_task_metadata(
+                                task.metadata.as_deref(),
                             )
-                            .await;
+                            .unwrap_or(None)
+                            .unwrap_or_else(MergeRecoveryMetadata::new);
 
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                            .await;
+                            // Create deferred event for branch lock
+                            let event = MergeRecoveryEvent::new(
+                                MergeRecoveryEventKind::Deferred,
+                                MergeRecoverySource::System,
+                                MergeRecoveryReasonCode::GitError,
+                                format!("Squash merge deferred due to branch lock: {}", e),
+                            )
+                            .with_target_branch(&target_branch)
+                            .with_source_branch(&source_branch);
+
+                            // Append event and update state
+                            recovery
+                                .append_event_with_state(event, MergeRecoveryState::Deferred);
+
+                            // Update task metadata
+                            match recovery.update_task_metadata(task.metadata.as_deref()) {
+                                Ok(updated_json) => {
+                                    task.metadata = Some(updated_json);
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        task_id = task_id_str,
+                                        error = %e,
+                                        "Failed to serialize merge recovery metadata, falling back to legacy"
+                                    );
+                                    task.metadata = Some(
+                                        serde_json::json!({
+                                            "merge_deferred": true,
+                                            "error": e.to_string(),
+                                            "source_branch": source_branch,
+                                            "target_branch": target_branch,
+                                            "reason": "branch_lock",
+                                        })
+                                        .to_string(),
+                                    );
+                                }
+                            }
+
+                            task.touch();
+
+                            if let Err(e) = task_repo.update(&task).await {
+                                tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
+                            }
+
+                            // Task remains in pending_merge, will be retried when blocker exits
+                        } else {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Squash merge failed, transitioning to MergeIncomplete"
+                            );
+
+                            task.metadata = Some(
+                                serde_json::json!({
+                                    "error": e.to_string(),
+                                    "source_branch": source_branch,
+                                    "target_branch": target_branch,
+                                })
+                                .to_string(),
+                            );
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            let _ = task_repo.update(&task).await;
+                            let _ = task_repo
+                                .persist_status_change(
+                                    &task_id,
+                                    InternalStatus::PendingMerge,
+                                    InternalStatus::MergeIncomplete,
+                                    "merge_incomplete",
+                                )
+                                .await;
+
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                                .await;
+                        }
                     }
                 }
             }
@@ -4500,39 +4701,103 @@ impl<'a> super::TransitionHandler<'a> {
                             .await;
                     }
                     Err(e) => {
-                        tracing::error!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Rebase+squash failed, transitioning to MergeIncomplete"
-                        );
+                        // Classify error: deferrable (branch lock) vs terminal (true failure)
+                        if GitService::is_branch_lock_error(&e) {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                error = %e,
+                                source_branch = %source_branch,
+                                target_branch = %target_branch,
+                                "Rebase+squash (local) failed due to branch lock (deferrable), staying in PendingMerge"
+                            );
 
-                        task.metadata = Some(
-                            serde_json::json!({
-                                "error": e.to_string(),
-                                "source_branch": source_branch,
-                                "target_branch": target_branch,
-                            })
-                            .to_string(),
-                        );
-                        task.internal_status = InternalStatus::MergeIncomplete;
-                        task.touch();
-
-                        let _ = task_repo.update(&task).await;
-                        let _ = task_repo
-                            .persist_status_change(
-                                &task_id,
-                                InternalStatus::PendingMerge,
-                                InternalStatus::MergeIncomplete,
-                                "merge_incomplete",
+                            // Get or create merge recovery metadata
+                            let mut recovery = MergeRecoveryMetadata::from_task_metadata(
+                                task.metadata.as_deref(),
                             )
-                            .await;
+                            .unwrap_or(None)
+                            .unwrap_or_else(MergeRecoveryMetadata::new);
 
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
-                            .await;
+                            // Create deferred event for branch lock
+                            let event = MergeRecoveryEvent::new(
+                                MergeRecoveryEventKind::Deferred,
+                                MergeRecoverySource::System,
+                                MergeRecoveryReasonCode::GitError,
+                                format!("Rebase+squash merge deferred due to branch lock: {}", e),
+                            )
+                            .with_target_branch(&target_branch)
+                            .with_source_branch(&source_branch);
+
+                            // Append event and update state
+                            recovery
+                                .append_event_with_state(event, MergeRecoveryState::Deferred);
+
+                            // Update task metadata
+                            match recovery.update_task_metadata(task.metadata.as_deref()) {
+                                Ok(updated_json) => {
+                                    task.metadata = Some(updated_json);
+                                }
+                                Err(e) => {
+                                    tracing::error!(
+                                        task_id = task_id_str,
+                                        error = %e,
+                                        "Failed to serialize merge recovery metadata, falling back to legacy"
+                                    );
+                                    task.metadata = Some(
+                                        serde_json::json!({
+                                            "merge_deferred": true,
+                                            "error": e.to_string(),
+                                            "source_branch": source_branch,
+                                            "target_branch": target_branch,
+                                            "reason": "branch_lock",
+                                        })
+                                        .to_string(),
+                                    );
+                                }
+                            }
+
+                            task.touch();
+
+                            if let Err(e) = task_repo.update(&task).await {
+                                tracing::error!(error = %e, "Failed to update task with merge_deferred metadata");
+                            }
+
+                            // Task remains in pending_merge, will be retried when blocker exits
+                        } else {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Rebase+squash failed, transitioning to MergeIncomplete"
+                            );
+
+                            task.metadata = Some(
+                                serde_json::json!({
+                                    "error": e.to_string(),
+                                    "source_branch": source_branch,
+                                    "target_branch": target_branch,
+                                })
+                                .to_string(),
+                            );
+                            task.internal_status = InternalStatus::MergeIncomplete;
+                            task.touch();
+
+                            let _ = task_repo.update(&task).await;
+                            let _ = task_repo
+                                .persist_status_change(
+                                    &task_id,
+                                    InternalStatus::PendingMerge,
+                                    InternalStatus::MergeIncomplete,
+                                    "merge_incomplete",
+                                )
+                                .await;
+
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+                                .await;
+                        }
                     }
                 }
             }
