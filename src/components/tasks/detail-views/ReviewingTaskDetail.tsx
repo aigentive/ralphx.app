@@ -21,6 +21,7 @@ import {
   TwoColumnLayout,
 } from "./shared";
 import { ValidationProgress } from "./shared/ValidationProgress";
+import { DurationDisplay } from "./shared/DurationDisplay";
 import type { Task } from "@/types/task";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useValidationEvents } from "@/hooks/useValidationEvents";
@@ -247,6 +248,17 @@ export function ReviewingTaskDetail({
           />
         }
       />
+
+      {/* Duration — live while reviewing, static in historical mode */}
+      {task.startedAt && (
+        <div data-testid="reviewing-task-duration">
+          <DurationDisplay
+            mode={isHistorical ? "static" : "live"}
+            startedAt={task.startedAt}
+            completedAt={isHistorical ? task.completedAt : null}
+          />
+        </div>
+      )}
 
       {/* Setup/Install Progress (live validation events) */}
       <ValidationProgress

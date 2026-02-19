@@ -2969,6 +2969,123 @@ async fn test_on_enter_qa_refining_writes_when_not_present() {
     );
 }
 
+/// Test that on_enter(Failed) populates attempt_count from auto_retry_count_executing metadata
+#[tokio::test]
+async fn test_on_enter_failed_populates_attempt_count_from_metadata() {
+    use crate::domain::entities::{Project, Task};
+    use crate::domain::state_machine::types::FailedData;
+    use crate::infrastructure::memory::MemoryTaskRepository;
+
+    let project = Project::new("test-project".to_string(), "/test/path".to_string());
+    let mut task = Task::new(project.id.clone(), "Test task".to_string());
+    task.metadata = Some(r#"{"auto_retry_count_executing": 3}"#.to_string());
+
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    task_repo.create(task.clone()).await.unwrap();
+
+    let mut services = TaskServices::new_mock();
+    services.task_repo = Some(task_repo.clone());
+
+    let context = create_context_with_services(task.id.as_str(), project.id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let failed_data = FailedData::new("Agent error");
+    let _ = handler.on_enter(&State::Failed(failed_data)).await;
+
+    let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let metadata_json = updated_task.metadata.expect("Metadata should be written");
+    let parsed: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&metadata_json).unwrap();
+
+    assert_eq!(
+        parsed.get("attempt_count").unwrap().as_u64().unwrap(),
+        3u64,
+        "attempt_count should be populated from auto_retry_count_executing"
+    );
+}
+
+/// Test that on_enter(Failed) sets attempt_count to 0 when auto_retry_count_executing is absent
+#[tokio::test]
+async fn test_on_enter_failed_attempt_count_zero_when_metadata_absent() {
+    use crate::domain::entities::{Project, Task};
+    use crate::domain::state_machine::types::FailedData;
+    use crate::infrastructure::memory::MemoryTaskRepository;
+
+    let project = Project::new("test-project".to_string(), "/test/path".to_string());
+    let task = Task::new(project.id.clone(), "Test task".to_string());
+
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    task_repo.create(task.clone()).await.unwrap();
+
+    let mut services = TaskServices::new_mock();
+    services.task_repo = Some(task_repo.clone());
+
+    let context = create_context_with_services(task.id.as_str(), project.id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let failed_data = FailedData::new("Agent error");
+    let _ = handler.on_enter(&State::Failed(failed_data)).await;
+
+    let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let metadata_json = updated_task.metadata.expect("Metadata should be written");
+    let parsed: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&metadata_json).unwrap();
+
+    assert_eq!(
+        parsed.get("attempt_count").unwrap().as_u64().unwrap(),
+        0u64,
+        "attempt_count should be 0 when auto_retry_count_executing is absent"
+    );
+}
+
+/// Test that on_enter(Failed) writes attempt_count in the pre-computed path without overwriting failure_error
+#[tokio::test]
+async fn test_on_enter_failed_writes_attempt_count_in_precomputed_path() {
+    use crate::domain::entities::{Project, Task};
+    use crate::domain::state_machine::types::FailedData;
+    use crate::infrastructure::memory::MemoryTaskRepository;
+
+    let project = Project::new("test-project".to_string(), "/test/path".to_string());
+    let mut task = Task::new(project.id.clone(), "Test task".to_string());
+    task.metadata = Some(
+        r#"{"failure_error":"Pre-computed error","is_timeout":false,"auto_retry_count_executing":2}"#
+            .to_string(),
+    );
+
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    task_repo.create(task.clone()).await.unwrap();
+
+    let mut services = TaskServices::new_mock();
+    services.task_repo = Some(task_repo.clone());
+
+    let context = create_context_with_services(task.id.as_str(), project.id.as_str(), services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let failed_data = FailedData::new("New error");
+    let _ = handler.on_enter(&State::Failed(failed_data)).await;
+
+    let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let metadata_json = updated_task.metadata.expect("Metadata should still exist");
+    let parsed: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&metadata_json).unwrap();
+
+    assert_eq!(
+        parsed.get("failure_error").unwrap().as_str().unwrap(),
+        "Pre-computed error",
+        "failure_error should NOT be overwritten in pre-computed path"
+    );
+    assert_eq!(
+        parsed.get("attempt_count").unwrap().as_u64().unwrap(),
+        2u64,
+        "attempt_count should be written from auto_retry_count_executing even in pre-computed path"
+    );
+}
 /// Test that on_enter(QaTesting) skips metadata write when trigger_origin is already present
 #[tokio::test]
 async fn test_on_enter_qa_testing_skips_when_trigger_origin_already_present() {
