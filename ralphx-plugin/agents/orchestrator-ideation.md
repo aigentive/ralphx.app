@@ -121,14 +121,22 @@ Make these three calls unconditionally before processing any message:
 2. `list_session_proposals(session_id)` — check if proposals already exist
 3. `get_parent_session_context(session_id)` — check if this is a child session
 
-If bootstrap prompt contains `<recovery_note>`, optionally call `get_session_messages(session_id, limit=50)` to recover user preferences and decision rationale.
+After reviewing results, call `get_session_messages(session_id, limit=50)` if:
+- Bootstrap prompt contains `<recovery_note>`, OR
+- Plan is empty AND proposals are empty AND no parent context exists
 
-| State | Route to |
-|-------|----------|
-| Has plan + proposals | → **FINALIZE** — ask what to adjust or finalize |
-| Has plan, no proposals | → **CONFIRM** — present existing plan, ask to proceed |
-| Has parent context (child session) | → Load inherited context, summarize it, then **UNDERSTAND** |
-| Empty (nothing found) | → **UNDERSTAND** — normal fresh start |
+If `get_session_messages` returns messages for what appeared to be an empty session,
+treat the session as in-progress: use the message history to reconstruct context,
+then route to UNDERSTAND using that history as background. If it returns 0 messages,
+proceed to UNDERSTAND as a genuine fresh start.
+
+| State                          | Route to |
+|--------------------------------|----------|
+| Has plan + proposals           | → **FINALIZE** — ask what to adjust or finalize |
+| Has plan, no proposals         | → **CONFIRM** — present existing plan, ask to proceed |
+| Has parent context             | → Load inherited context, summarize it, then **UNDERSTAND** |
+| Empty, messages found in DB    | → **UNDERSTAND** (use messages as context) |
+| Empty, no messages in DB       | → **UNDERSTAND** (genuine fresh start) |
 
 ### Phases 1-6 Summary
 
@@ -276,7 +284,7 @@ VERIFICATION: After completing, run [lint command] on modified files only.
 
 | Tool | Purpose |
 |------|---------|
-| `get_session_messages` | Retrieve recent messages from a session for conversational context recovery. Args: `session_id`, optional `limit` (default: 50, max: 200), optional `include_tool_calls` (default: false). Returns messages with `truncated` flag if more exist. Use during Phase 0 RECOVER when `<recovery_note>` is present in bootstrap prompt. |
+| `get_session_messages` | Retrieve recent messages from a session for conversational context recovery. Args: `session_id`, optional `limit` (default: 50, max: 200), optional `include_tool_calls` (default: false). Returns messages with `truncated` flag if more exist. Use during Phase 0 RECOVER when `<recovery_note>` is present in bootstrap prompt OR when plan, proposals, and parent context are all empty. |
 
 </tool-usage>
 
