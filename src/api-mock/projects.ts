@@ -35,7 +35,7 @@ export const mockProjectsApi = {
       id: generateTestUuid(),
       name: input.name,
       workingDirectory: input.workingDirectory,
-      gitMode: input.gitMode ?? "local",
+      gitMode: input.gitMode ?? "worktree",
     });
     return project;
   },
@@ -62,22 +62,6 @@ export const mockProjectsApi = {
 
   delete: async (_projectId: string): Promise<boolean> => {
     return true;
-  },
-
-  changeGitMode: async (
-    projectId: string,
-    gitMode: "local" | "worktree",
-    worktreeParentDirectory?: string
-  ): Promise<void> => {
-    const store = getStore();
-    const project = store.projects.get(projectId);
-    if (project) {
-      project.gitMode = gitMode;
-      if (worktreeParentDirectory !== undefined) {
-        project.worktreeParentDirectory = worktreeParentDirectory;
-      }
-      store.projects.set(projectId, project);
-    }
   },
 
   updateCustomAnalysis: async (projectId: string, customAnalysis: string | null): Promise<Project> => {

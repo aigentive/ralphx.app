@@ -114,17 +114,12 @@ pub async fn get_task_commits(
         .as_ref()
         .ok_or_else(|| "Task has no branch assigned".to_string())?;
 
-    // Determine working path based on git mode
-    // For worktree mode, the worktree is already checked out to the task branch
-    // For local mode, the repo should be on the task branch when executing
-    let working_path = match project.git_mode {
-        GitMode::Worktree => task
-            .worktree_path
-            .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(&project.working_directory)),
-        GitMode::Local => PathBuf::from(&project.working_directory),
-    };
+    // Determine working path — worktree path if available, else project dir
+    let working_path = task
+        .worktree_path
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     // Get commits since base (from HEAD of the working path)
     let commits =
@@ -164,15 +159,12 @@ pub async fn get_task_diff_stats(
 
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
-    // Determine working path based on git mode
-    let working_path = match project.git_mode {
-        GitMode::Worktree => task
-            .worktree_path
-            .as_ref()
-            .map(PathBuf::from)
-            .unwrap_or_else(|| PathBuf::from(&project.working_directory)),
-        GitMode::Local => PathBuf::from(&project.working_directory),
-    };
+    // Determine working path — worktree path if available, else project dir
+    let working_path = task
+        .worktree_path
+        .as_ref()
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     // Get diff stats
     let stats =
@@ -224,15 +216,12 @@ pub async fn resolve_merge_conflict(
         .ok_or_else(|| format!("Project not found: {}", task.project_id.as_str()))?;
 
     // Determine working path (prefer existing worktree, fallback to project repo)
-    let working_path = match project.git_mode {
-        GitMode::Worktree => task
-            .worktree_path
-            .as_ref()
-            .map(PathBuf::from)
-            .filter(|path| path.exists())
-            .unwrap_or_else(|| PathBuf::from(&project.working_directory)),
-        GitMode::Local => PathBuf::from(&project.working_directory),
-    };
+    let working_path = task
+        .worktree_path
+        .as_ref()
+        .map(PathBuf::from)
+        .filter(|path| path.exists())
+        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     // Only enforce marker checks while merge/rebase is still in progress.
     // If git history is already complete, marker-like literals in unrelated files
@@ -590,9 +579,9 @@ pub struct ChangeGitModeInput {
     pub worktree_parent_directory: Option<String>,
 }
 
-/// Change project git mode between Local and Worktree
+/// Change project git mode
 ///
-/// Allows switching modes after project creation.
+/// Validates and updates git mode settings.
 /// In-progress tasks continue in their current mode.
 #[tauri::command]
 pub async fn change_project_git_mode(
@@ -635,7 +624,7 @@ pub async fn change_project_git_mode(
     // Parse git mode
     let new_mode: GitMode = input.git_mode.parse().map_err(|_| {
         format!(
-            "Invalid git mode: {}. Valid values: 'local', 'worktree'",
+            "Invalid git mode: {}. Valid values: 'worktree'",
             input.git_mode
         )
     })?;
@@ -646,19 +635,17 @@ pub async fn change_project_git_mode(
         project.worktree_parent_directory = Some(worktree_parent);
     }
 
-    // Ensure defaults when switching to worktree mode
-    if new_mode == GitMode::Worktree {
-        if project.base_branch.as_deref().unwrap_or("").is_empty() {
-            project.base_branch = Some("main".to_string());
-        }
-        if project
-            .worktree_parent_directory
-            .as_deref()
-            .unwrap_or("")
-            .is_empty()
-        {
-            project.worktree_parent_directory = Some("~/ralphx-worktrees".to_string());
-        }
+    // Ensure defaults for worktree mode
+    if project.base_branch.as_deref().unwrap_or("").is_empty() {
+        project.base_branch = Some("main".to_string());
+    }
+    if project
+        .worktree_parent_directory
+        .as_deref()
+        .unwrap_or("")
+        .is_empty()
+    {
+        project.worktree_parent_directory = Some("~/ralphx-worktrees".to_string());
     }
     project.touch();
 
@@ -739,38 +726,28 @@ async fn cleanup_task_git_resources(
         None => return Ok(()), // Nothing to clean up
     };
 
-    match project.git_mode {
-        GitMode::Worktree => {
-            // Delete worktree first if it exists
-            if let Some(worktree_path) = &task.worktree_path {
-                let worktree_path_buf = PathBuf::from(worktree_path);
-                if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path_buf).await {
-                    warn!(
-                        "Failed to delete worktree {}: {} (non-fatal)",
-                        worktree_path, e
-                    );
-                }
-            }
-
-            // Checkout base branch in main repo before deleting the task branch
-            if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
-                warn!(
-                    "Failed to checkout base branch {} after merge: {} (non-fatal)",
-                    base_branch, e
-                );
-            }
-
-            // Delete task branch
-            if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
-                warn!("Failed to delete branch {}: {} (non-fatal)", task_branch, e);
-            }
+    // Delete worktree first if it exists
+    if let Some(worktree_path) = &task.worktree_path {
+        let worktree_path_buf = PathBuf::from(worktree_path);
+        if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path_buf).await {
+            warn!(
+                "Failed to delete worktree {}: {} (non-fatal)",
+                worktree_path, e
+            );
         }
-        GitMode::Local => {
-            // For local mode, just delete the branch (already on base after merge)
-            if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
-                warn!("Failed to delete branch {}: {} (non-fatal)", task_branch, e);
-            }
-        }
+    }
+
+    // Checkout base branch in main repo before deleting the task branch
+    if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
+        warn!(
+            "Failed to checkout base branch {} after merge: {} (non-fatal)",
+            base_branch, e
+        );
+    }
+
+    // Delete task branch
+    if let Err(e) = GitService::delete_branch(&repo_path, &task_branch, true).await {
+        warn!("Failed to delete branch {}: {} (non-fatal)", task_branch, e);
     }
 
     Ok(())

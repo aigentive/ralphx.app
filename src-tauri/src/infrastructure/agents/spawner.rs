@@ -12,7 +12,7 @@ use tauri::{AppHandle, Emitter, Wry};
 
 use crate::commands::ExecutionState;
 use crate::domain::agents::{AgentConfig, AgentHandle, AgentRole, AgenticClient};
-use crate::domain::entities::{GitMode, TaskId};
+use crate::domain::entities::TaskId;
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::state_machine::AgentSpawner;
 use crate::domain::supervisor::{ErrorInfo, SupervisorEvent, ToolCallInfo};
@@ -151,30 +151,26 @@ impl AgenticClientSpawner {
     }
 
     /// Resolve the working directory for a given task.
-    /// Uses task's worktree_path when project is in Worktree mode,
-    /// falls back to project working_directory, then self.working_directory.
+    /// Uses task's worktree_path, falls back to spawner default.
     async fn resolve_working_directory(&self, task_id: &str) -> PathBuf {
         if let (Some(task_repo), Some(project_repo)) = (&self.task_repo, &self.project_repo) {
             let task_id_typed = TaskId(task_id.to_string());
             if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
                 let project_id = &task.project_id;
-                if let Ok(Some(project)) = project_repo.get_by_id(project_id).await {
-                    return match project.git_mode {
-                        GitMode::Worktree => task
-                            .worktree_path
-                            .as_ref()
-                            .map(|p| PathBuf::from(p))
-                            .unwrap_or_else(|| {
-                                tracing::error!(
-                                    task_id = %task.id.0,
-                                    "Safety net: Worktree mode but worktree_path is None — \
-                                     refusing to use project directory (main branch). \
-                                     Falling back to spawner default."
-                                );
-                                self.working_directory.clone()
-                            }),
-                        _ => PathBuf::from(&project.working_directory),
-                    };
+                if let Ok(Some(_project)) = project_repo.get_by_id(project_id).await {
+                    return task
+                        .worktree_path
+                        .as_ref()
+                        .map(|p| PathBuf::from(p))
+                        .unwrap_or_else(|| {
+                            tracing::error!(
+                                task_id = %task.id.0,
+                                "Safety net: worktree_path is None — \
+                                 refusing to use project directory (main branch). \
+                                 Falling back to spawner default."
+                            );
+                            self.working_directory.clone()
+                        });
                 }
             }
         }

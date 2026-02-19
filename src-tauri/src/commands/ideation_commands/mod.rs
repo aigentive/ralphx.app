@@ -29,7 +29,7 @@ mod tests {
     use crate::commands::ideation_commands::ideation_commands_apply::should_create_feature_branch;
     use crate::domain::entities::{
         ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority,
-        ProjectId, TaskCategory, TaskProposal, TaskProposalId,
+        ProjectId, ProposalCategory, TaskProposal, TaskProposalId,
     };
     use crate::domain::ideation::IdeationSettings;
 
@@ -223,7 +223,7 @@ mod tests {
         let proposal = TaskProposal::new(
             created_session.id.clone(),
             "Test Proposal",
-            crate::domain::entities::TaskCategory::Feature,
+            crate::domain::entities::ProposalCategory::Feature,
             crate::domain::entities::Priority::High,
         );
         state
@@ -262,7 +262,7 @@ mod tests {
         let proposal = TaskProposal::new(
             session_id,
             "Test Proposal",
-            crate::domain::entities::TaskCategory::Feature,
+            crate::domain::entities::ProposalCategory::Feature,
             crate::domain::entities::Priority::High,
         );
         let response = TaskProposalResponse::from(proposal);
@@ -313,7 +313,7 @@ mod tests {
         let proposal = TaskProposal::new(
             created_session.id.clone(),
             "Test Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::High,
         );
         let created = state
@@ -323,7 +323,7 @@ mod tests {
             .expect("Failed to create task proposal in test");
 
         assert_eq!(created.title, "Test Proposal");
-        assert_eq!(created.category, TaskCategory::Feature);
+        assert_eq!(created.category, ProposalCategory::Feature);
         assert_eq!(created.suggested_priority, Priority::High);
     }
 
@@ -358,7 +358,7 @@ mod tests {
             let proposal = TaskProposal::new(
                 created_session.id.clone(),
                 format!("Proposal {}", i),
-                TaskCategory::Feature,
+                ProposalCategory::Feature,
                 Priority::Medium,
             );
             state
@@ -392,7 +392,7 @@ mod tests {
         let proposal = TaskProposal::new(
             created_session.id.clone(),
             "Original Title",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Low,
         );
         let created = state
@@ -438,7 +438,7 @@ mod tests {
         let proposal = TaskProposal::new(
             created_session.id.clone(),
             "To Delete",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         let created = state
@@ -478,7 +478,7 @@ mod tests {
         let proposal = TaskProposal::new(
             created_session.id.clone(),
             "Test Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         let created = state
@@ -525,7 +525,7 @@ mod tests {
             let proposal = TaskProposal::new(
                 created_session.id.clone(),
                 format!("Proposal {}", i),
-                TaskCategory::Feature,
+                ProposalCategory::Feature,
                 Priority::Medium,
             );
             let created = state
@@ -561,7 +561,7 @@ mod tests {
         let proposal = TaskProposal::new(
             session_id,
             "Test Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Critical,
         );
 
@@ -600,13 +600,13 @@ mod tests {
         let proposal1 = TaskProposal::new(
             created_session.id.clone(),
             "Proposal 1",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         let proposal2 = TaskProposal::new(
             created_session.id.clone(),
             "Proposal 2",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
 
@@ -654,13 +654,13 @@ mod tests {
         let proposal1 = TaskProposal::new(
             created_session.id.clone(),
             "Proposal 1",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         let proposal2 = TaskProposal::new(
             created_session.id.clone(),
             "Proposal 2",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
 
@@ -712,13 +712,13 @@ mod tests {
         let proposal1 = TaskProposal::new(
             created_session.id.clone(),
             "Proposal 1",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         let proposal2 = TaskProposal::new(
             created_session.id.clone(),
             "Proposal 2",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
 
@@ -1466,7 +1466,7 @@ mod tests {
         let proposal = TaskProposal::new(
             created_session.id.clone(),
             "Solo Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         let p1 = state

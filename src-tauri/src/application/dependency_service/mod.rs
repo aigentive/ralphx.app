@@ -337,13 +337,13 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
         // Find setup tasks
         let setup_tasks: Vec<&TaskProposal> = proposals
             .iter()
-            .filter(|p| p.category == crate::domain::entities::TaskCategory::Setup)
+            .filter(|p| p.category == crate::domain::entities::ProposalCategory::Setup)
             .collect();
 
         // Find non-setup tasks
         let other_tasks: Vec<&TaskProposal> = proposals
             .iter()
-            .filter(|p| p.category != crate::domain::entities::TaskCategory::Setup)
+            .filter(|p| p.category != crate::domain::entities::ProposalCategory::Setup)
             .collect();
 
         // Suggest that non-setup tasks depend on setup tasks
@@ -359,13 +359,13 @@ impl<P: TaskProposalRepository, D: ProposalDependencyRepository> DependencyServi
         // Find testing tasks
         let testing_tasks: Vec<&TaskProposal> = proposals
             .iter()
-            .filter(|p| p.category == crate::domain::entities::TaskCategory::Test)
+            .filter(|p| p.category == crate::domain::entities::ProposalCategory::Test)
             .collect();
 
         // Find feature tasks
         let feature_tasks: Vec<&TaskProposal> = proposals
             .iter()
-            .filter(|p| p.category == crate::domain::entities::TaskCategory::Feature)
+            .filter(|p| p.category == crate::domain::entities::ProposalCategory::Feature)
             .collect();
 
         // Suggest that testing tasks depend on feature tasks

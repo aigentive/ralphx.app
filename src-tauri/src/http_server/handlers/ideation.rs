@@ -296,11 +296,11 @@ pub async fn update_session_title(
 ) -> Result<Json<SuccessResponse>, StatusCode> {
     let session_id = IdeationSessionId::from_string(req.session_id.clone());
 
-    // Update title in database
+    // Update title in database (MCP agent calls = auto-generated title)
     state
         .app_state
         .ideation_session_repo
-        .update_title(&session_id, Some(req.title.clone()))
+        .update_title(&session_id, Some(req.title.clone()), "auto")
         .await
         .map_err(|e| {
             error!("Failed to update session title: {}", e);

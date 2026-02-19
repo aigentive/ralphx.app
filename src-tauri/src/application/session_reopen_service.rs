@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     use crate::application::AppState;
     use crate::domain::entities::{
-        IdeationSession, IdeationSessionStatus, Priority, ProjectId, Task, TaskCategory,
+        IdeationSession, IdeationSessionStatus, Priority, ProjectId, ProposalCategory, Task,
         TaskProposal,
     };
 
@@ -154,7 +154,7 @@ mod tests {
         let mut proposal = TaskProposal::new(
             created.id.clone(),
             "Test Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         );
         proposal.created_task_id = Some(crate::domain::entities::TaskId::new());

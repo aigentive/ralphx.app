@@ -12,7 +12,8 @@ use super::types::Blocker;
 use crate::application::ChatService;
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
-    PlanBranchRepository, ProjectRepository, TaskRepository, TaskStepRepository,
+    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskRepository,
+    TaskStepRepository,
 };
 use std::any::Any;
 use std::collections::HashSet;
@@ -82,6 +83,10 @@ pub struct TaskServices {
     /// Prevents double-click / double-trigger from spawning two merge attempts for the same task.
     /// Uses std::sync::Mutex (not tokio) so Drop impls can clean up synchronously.
     pub merges_in_flight: Arc<std::sync::Mutex<HashSet<String>>>,
+
+    /// Ideation session repository for fetching live session titles.
+    /// Used by TransitionHandler to build descriptive plan merge commit messages.
+    pub ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
 }
 
 impl TaskServices {
@@ -110,6 +115,7 @@ impl TaskServices {
             step_repo: None,
             merge_lock: Arc::new(Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
+            ideation_session_repo: None,
         }
     }
 
@@ -185,6 +191,12 @@ impl TaskServices {
         self
     }
 
+    /// Set the ideation session repository (builder pattern)
+    pub fn with_ideation_session_repo(mut self, repo: Arc<dyn IdeationSessionRepository>) -> Self {
+        self.ideation_session_repo = Some(repo);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -205,6 +217,7 @@ impl TaskServices {
             step_repo: None,
             merge_lock: Arc::new(Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
+            ideation_session_repo: None,
         }
     }
 }
@@ -247,6 +260,13 @@ impl std::fmt::Debug for TaskServices {
             )
             .field("merge_lock", &"<Mutex<()>>")
             .field("merges_in_flight", &"<Mutex<HashSet<String>>>")
+            .field(
+                "ideation_session_repo",
+                &self
+                    .ideation_session_repo
+                    .as_ref()
+                    .map(|_| "<IdeationSessionRepository>"),
+            )
             .finish()
     }
 }

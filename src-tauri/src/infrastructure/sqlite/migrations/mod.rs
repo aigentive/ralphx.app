@@ -61,6 +61,8 @@ mod v39_conversation_parent_id;
 mod v40_dependency_source;
 mod v41_activity_events_merge_index;
 mod v42_running_agent_heartbeat;
+mod v43_session_title_source;
+mod v44_remove_local_git_mode;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
 mod v5_add_review_summary_issues;
@@ -128,6 +130,10 @@ mod v39_conversation_parent_id_tests;
 #[cfg(test)]
 mod v40_dependency_source_tests;
 #[cfg(test)]
+mod v43_session_title_source_tests;
+#[cfg(test)]
+mod v44_remove_local_git_mode_tests;
+#[cfg(test)]
 mod v3_add_activity_events_tests;
 #[cfg(test)]
 mod v4_add_blocked_reason_tests;
@@ -141,7 +147,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 42;
+pub const SCHEMA_VERSION: i32 = 44;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -365,6 +371,16 @@ const MIGRATIONS: &[Migration] = &[
         version: 42,
         name: "running_agent_heartbeat",
         migrate: v42_running_agent_heartbeat::migrate,
+    },
+    Migration {
+        version: 43,
+        name: "session_title_source",
+        migrate: v43_session_title_source::migrate,
+    },
+    Migration {
+        version: 44,
+        name: "remove_local_git_mode",
+        migrate: v44_remove_local_git_mode::migrate,
     },
 ];
 

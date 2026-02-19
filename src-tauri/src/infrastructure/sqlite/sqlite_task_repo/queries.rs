@@ -44,6 +44,18 @@ pub(super) const GET_OLDEST_READY_TASKS: &str =
      ORDER BY created_at ASC
      LIMIT ?1";
 
+/// Get Ready tasks older than a threshold (watchdog query)
+/// Returns tasks where updated_at is before (now - threshold_secs) seconds ago,
+/// ordered by updated_at ASC (oldest first). Used by the Ready-task watchdog.
+/// Parameter ?1 is an ISO-8601 datetime cutoff (tasks with updated_at < ?1 are returned).
+pub(super) const GET_STALE_READY_TASKS: &str =
+    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata
+     FROM tasks
+     WHERE internal_status = 'ready'
+       AND archived_at IS NULL
+       AND updated_at < ?1
+     ORDER BY updated_at ASC";
+
 /// Clear FK references to a task before deletion (defense-in-depth)
 /// Sets created_task_id to NULL in task_proposals table
 pub(super) const CLEAR_TASK_PROPOSAL_REFERENCES: &str =

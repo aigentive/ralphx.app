@@ -13,7 +13,7 @@ use ralphx_lib::application::plan_ranking::{
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{
     IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus, ProjectId,
-    SelectionSource, Task, TaskId,
+    SelectionSource, Task, TaskCategory, TaskId,
 };
 use std::time::Instant;
 
@@ -53,6 +53,7 @@ async fn create_accepted_session(
         converted_at: Some(converted_at),
         team_mode: None,
         team_config_json: None,
+        title_source: None,
     };
 
     state
@@ -74,7 +75,7 @@ async fn create_test_task(
     let task = Task {
         id: task_id.clone(),
         project_id: project_id.clone(),
-        category: "feature".to_string(),
+        category: TaskCategory::Regular,
         title: "Test Task".to_string(),
         description: Some("Test description".to_string()),
         priority: 50,

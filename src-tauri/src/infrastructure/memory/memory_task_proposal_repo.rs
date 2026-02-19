@@ -181,13 +181,13 @@ impl TaskProposalRepository for MemoryTaskProposalRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::entities::{Priority, TaskCategory};
+    use crate::domain::entities::{Priority, ProposalCategory};
 
     fn create_test_proposal(session_id: &IdeationSessionId) -> TaskProposal {
         TaskProposal::new(
             session_id.clone(),
             "Test Proposal",
-            TaskCategory::Feature,
+            ProposalCategory::Feature,
             Priority::Medium,
         )
     }

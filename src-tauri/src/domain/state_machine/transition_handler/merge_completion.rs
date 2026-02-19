@@ -14,7 +14,7 @@ use crate::domain::entities::{
         MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
         MergeRecoverySource, MergeRecoveryState,
     },
-    GitMode, InternalStatus, Project, Task,
+    InternalStatus, Project, Task,
 };
 use crate::domain::repositories::TaskRepository;
 use crate::error::{AppError, AppResult};
@@ -237,70 +237,46 @@ pub(super) async fn cleanup_branch_and_worktree_internal(
 
     let repo_path = Path::new(&project.working_directory);
 
-    match project.git_mode {
-        GitMode::Local => {
-            // For Local mode: already on base branch (from merge), just delete task branch
-            match GitService::delete_branch(repo_path, task_branch, true).await {
-                Ok(_) => {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        branch = %task_branch,
-                        "Deleted task branch after merge (Local mode)"
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        task_id = task_id_str,
-                        branch = %task_branch,
-                        "Failed to delete task branch (non-fatal)"
-                    );
-                }
+    // Delete worktree first, then branch
+    if let Some(ref worktree_path) = task.worktree_path.clone() {
+        let worktree_path_buf = PathBuf::from(worktree_path);
+        match GitService::delete_worktree(repo_path, &worktree_path_buf).await {
+            Ok(_) => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    worktree = %worktree_path,
+                    "Deleted worktree after merge"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    error = %e,
+                    task_id = task_id_str,
+                    worktree = %worktree_path,
+                    "Failed to delete worktree (non-fatal)"
+                );
             }
         }
-        GitMode::Worktree => {
-            // For Worktree mode: delete worktree first, then branch
-            if let Some(ref worktree_path) = task.worktree_path.clone() {
-                let worktree_path_buf = PathBuf::from(worktree_path);
-                match GitService::delete_worktree(repo_path, &worktree_path_buf).await {
-                    Ok(_) => {
-                        tracing::info!(
-                            task_id = task_id_str,
-                            worktree = %worktree_path,
-                            "Deleted worktree after merge"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            error = %e,
-                            task_id = task_id_str,
-                            worktree = %worktree_path,
-                            "Failed to delete worktree (non-fatal)"
-                        );
-                    }
-                }
-            }
+    }
 
-            // Delete the branch from main repo.
-            // The branch is no longer checked out in any worktree, so force-delete works
-            // without needing to checkout a different branch in the main repo.
-            match GitService::delete_branch(repo_path, task_branch, true).await {
-                Ok(_) => {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        branch = %task_branch,
-                        "Deleted task branch after merge (Worktree mode)"
-                    );
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        error = %e,
-                        task_id = task_id_str,
-                        branch = %task_branch,
-                        "Failed to delete task branch (non-fatal)"
-                    );
-                }
-            }
+    // Delete the branch from main repo.
+    // The branch is no longer checked out in any worktree, so force-delete works
+    // without needing to checkout a different branch in the main repo.
+    match GitService::delete_branch(repo_path, task_branch, true).await {
+        Ok(_) => {
+            tracing::info!(
+                task_id = task_id_str,
+                branch = %task_branch,
+                "Deleted task branch after merge"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                task_id = task_id_str,
+                branch = %task_branch,
+                "Failed to delete task branch (non-fatal)"
+            );
         }
     }
 

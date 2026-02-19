@@ -156,7 +156,7 @@ pub async fn create_project(
 
     let mut project = Project::new(input.name, input.working_directory);
     if let Some(git_mode_str) = input.git_mode {
-        project.git_mode = git_mode_str.parse().unwrap_or(GitMode::Local);
+        project.git_mode = git_mode_str.parse().unwrap_or(GitMode::Worktree);
     }
     if let Some(base_branch) = input.base_branch {
         project.base_branch = Some(base_branch);
@@ -206,7 +206,7 @@ pub async fn update_project(
         project.working_directory = working_directory;
     }
     if let Some(git_mode_str) = input.git_mode {
-        project.git_mode = git_mode_str.parse().unwrap_or(GitMode::Local);
+        project.git_mode = git_mode_str.parse().unwrap_or(GitMode::Worktree);
     }
     if let Some(base_branch) = input.base_branch {
         project.base_branch = Some(base_branch);
@@ -526,7 +526,7 @@ mod tests {
 
         assert_eq!(created.name, "Test Project");
         assert_eq!(created.working_directory, "/test/path");
-        assert_eq!(created.git_mode, GitMode::Local);
+        assert_eq!(created.git_mode, GitMode::Worktree);
     }
 
     #[tokio::test]
@@ -620,13 +620,13 @@ mod tests {
         assert!(!response.id.is_empty());
         assert_eq!(response.name, "Test Project");
         assert_eq!(response.working_directory, "/test/path");
-        assert_eq!(response.git_mode, "local");
+        assert_eq!(response.git_mode, "worktree");
 
         // Verify it serializes to JSON with snake_case (Rust default)
         let json = serde_json::to_string(&response).unwrap();
         assert!(json.contains("\"name\":\"Test Project\""));
         assert!(json.contains("\"working_directory\":\"/test/path\""));
-        assert!(json.contains("\"git_mode\":\"local\""));
+        assert!(json.contains("\"git_mode\":\"worktree\""));
     }
 
     // ===== get_git_default_branch tests =====

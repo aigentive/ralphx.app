@@ -319,6 +319,8 @@ export interface TaskMetadata {
   diagnostic_info?: string;
   /** Validation failures (legacy field) */
   validation_failures?: unknown[];
+  /** Machine-readable error code (e.g. "plan_branch_repo_not_wired", "feature_branch_missing") */
+  error_code?: string;
   /** Structured merge recovery timeline */
   merge_recovery?: MergeRecoveryState;
   /** Stop metadata for smart resume */

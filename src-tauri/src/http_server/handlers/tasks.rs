@@ -103,7 +103,7 @@ pub fn task_to_response(task: &Task) -> TaskResponse {
         description: task.description.clone(),
         status: format!("{:?}", task.internal_status),
         priority: task.priority.to_string(),
-        category: task.category.clone(),
+        category: task.category.to_string(),
         created_at: task.created_at.to_rfc3339(),
         updated_at: task.updated_at.to_rfc3339(),
     }

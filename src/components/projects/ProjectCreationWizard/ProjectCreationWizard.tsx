@@ -1,9 +1,7 @@
 /**
- * ProjectCreationWizard - Modal for creating a new project with Git Mode selection
+ * ProjectCreationWizard - Modal for creating a new project
  *
- * Supports two Git modes:
- * - Local: Work directly in the user's current branch
- * - Worktree: Create an isolated worktree for RalphX to work in
+ * Uses Isolated Worktrees: each task gets a separate working directory.
  */
 
 import { useState, useEffect, useCallback, useMemo } from "react";
@@ -40,7 +38,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
-import { RadioOption } from "./ProjectCreationWizard.components";
 import {
   type FormState,
   generateWorktreePath,
@@ -92,7 +89,7 @@ export function ProjectCreationWizard({
   const [form, setForm] = useState<FormState>({
     name: "",
     workingDirectory: "",
-    gitMode: "local",
+    gitMode: "worktree",
     baseBranch: "main",
     worktreeParentDirectory: "",
   });
@@ -171,7 +168,7 @@ export function ProjectCreationWizard({
       setForm({
         name: "",
         workingDirectory: "",
-        gitMode: "local",
+        gitMode: "worktree",
         baseBranch: "main",
         worktreeParentDirectory: "",
       });
@@ -239,15 +236,13 @@ export function ProjectCreationWizard({
     const project: CreateProject = {
       name: projectName,
       workingDirectory: form.workingDirectory.trim(),
-      gitMode: form.gitMode,
+      gitMode: "worktree",
+      baseBranch: form.baseBranch.trim(),
     };
 
-    if (form.gitMode === "worktree") {
-      project.baseBranch = form.baseBranch.trim();
-      // Only include custom parent directory if user provided one
-      if (form.worktreeParentDirectory.trim()) {
-        project.worktreeParentDirectory = form.worktreeParentDirectory.trim();
-      }
+    // Only include custom parent directory if user provided one
+    if (form.worktreeParentDirectory.trim()) {
+      project.worktreeParentDirectory = form.worktreeParentDirectory.trim();
     }
 
     onCreate(project);
@@ -373,150 +368,128 @@ export function ProjectCreationWizard({
 
           <Separator className="bg-[var(--border-subtle)]" />
 
-          {/* Git Mode Selection */}
+          {/* Git Settings */}
           <div className="space-y-3">
             <Label className="text-sm font-medium text-[var(--text-secondary)]">
-              Git Mode
+              Git Settings
             </Label>
 
-            {/* Worktree Mode (Default) */}
-            <RadioOption
-              value="worktree"
-              selected={form.gitMode === "worktree"}
-              onSelect={(value) => setForm((prev) => ({ ...prev, gitMode: value }))}
-              label="Isolated Worktrees (Recommended)"
-              description="Creates separate worktree for each task. Enables parallel task execution."
-              testId="git-mode-worktree"
-            >
-              {/* Worktree-specific fields */}
-              <div className="space-y-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                <div className="space-y-1.5">
-                  <Label
-                    htmlFor="base-branch-select"
-                    className="text-sm font-medium text-[var(--text-secondary)]"
-                  >
-                    Base branch
-                  </Label>
-                  <Select
-                    value={form.baseBranch}
-                    onValueChange={(value) =>
-                      setForm((prev) => ({ ...prev, baseBranch: value }))
-                    }
-                    disabled={isCreating || loadingBranches}
-                  >
-                    <SelectTrigger
-                      data-testid="base-branch-select"
-                      className={cn(
-                        "h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
-                        (touched.baseBranch || submitted) && errors.baseBranch
-                          ? "border-[var(--status-error)]"
-                          : "border-[var(--border-subtle)]",
-                        (isCreating || loadingBranches) && "opacity-50"
-                      )}
-                    >
-                      <SelectValue
-                        placeholder={
-                          loadingBranches ? "Loading branches..." : "Select base branch"
-                        }
-                      />
-                    </SelectTrigger>
-                    <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-subtle)]">
-                      {branches.length === 0 ? (
-                        <SelectItem value="_none" disabled>
-                          No branches available
-                        </SelectItem>
-                      ) : (
-                        branches.map((branch) => (
-                          <SelectItem key={branch} value={branch}>
-                            {branch}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                  {(touched.baseBranch || submitted) && errors.baseBranch && (
-                    <p
-                      data-testid="base-branch-select-error"
-                      className="text-xs text-[var(--status-error)]"
-                    >
-                      {errors.baseBranch}
-                    </p>
-                  )}
-                </div>
-
-                {/* Worktree Path Display */}
-                <div
-                  data-testid="worktree-path-display"
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-base)]"
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label
+                  htmlFor="base-branch-select"
+                  className="text-sm font-medium text-[var(--text-secondary)]"
                 >
-                  <GitBranch className="h-3.5 w-3.5 text-[var(--text-muted)]" />
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-medium text-[var(--text-muted)]">
-                      Worktree location
-                    </div>
-                    <div className="text-sm truncate text-[var(--text-primary)]">
-                      {worktreePath}
-                    </div>
+                  Base branch
+                </Label>
+                <Select
+                  value={form.baseBranch}
+                  onValueChange={(value) =>
+                    setForm((prev) => ({ ...prev, baseBranch: value }))
+                  }
+                  disabled={isCreating || loadingBranches}
+                >
+                  <SelectTrigger
+                    data-testid="base-branch-select"
+                    className={cn(
+                      "h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border text-[var(--text-primary)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
+                      (touched.baseBranch || submitted) && errors.baseBranch
+                        ? "border-[var(--status-error)]"
+                        : "border-[var(--border-subtle)]",
+                      (isCreating || loadingBranches) && "opacity-50"
+                    )}
+                  >
+                    <SelectValue
+                      placeholder={
+                        loadingBranches ? "Loading branches..." : "Select base branch"
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent className="bg-[var(--bg-elevated)] border-[var(--border-subtle)]">
+                    {branches.length === 0 ? (
+                      <SelectItem value="_none" disabled>
+                        No branches available
+                      </SelectItem>
+                    ) : (
+                      branches.map((branch) => (
+                        <SelectItem key={branch} value={branch}>
+                          {branch}
+                        </SelectItem>
+                      ))
+                    )}
+                  </SelectContent>
+                </Select>
+                {(touched.baseBranch || submitted) && errors.baseBranch && (
+                  <p
+                    data-testid="base-branch-select-error"
+                    className="text-xs text-[var(--status-error)]"
+                  >
+                    {errors.baseBranch}
+                  </p>
+                )}
+              </div>
+
+              {/* Worktree Path Display */}
+              <div
+                data-testid="worktree-path-display"
+                className="flex items-center gap-2 px-3 py-2 rounded-lg bg-[var(--bg-base)]"
+              >
+                <GitBranch className="h-3.5 w-3.5 text-[var(--text-muted)]" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-[var(--text-muted)]">
+                    Worktree location
+                  </div>
+                  <div className="text-sm truncate text-[var(--text-primary)]">
+                    {worktreePath}
                   </div>
                 </div>
+              </div>
 
-                {/* Advanced Settings */}
-                <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
-                  <CollapsibleTrigger
-                    data-testid="advanced-settings-trigger"
-                    className="flex items-center gap-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
-                  >
-                    <Settings className="h-3 w-3" />
-                    <span>Advanced Settings</span>
-                    <ChevronDown
+              {/* Advanced Settings */}
+              <Collapsible open={showAdvanced} onOpenChange={setShowAdvanced}>
+                <CollapsibleTrigger
+                  data-testid="advanced-settings-trigger"
+                  className="flex items-center gap-2 text-xs text-[var(--text-muted)] hover:text-[var(--text-secondary)] transition-colors"
+                >
+                  <Settings className="h-3 w-3" />
+                  <span>Advanced Settings</span>
+                  <ChevronDown
+                    className={cn(
+                      "h-3 w-3 transition-transform",
+                      showAdvanced && "rotate-180"
+                    )}
+                  />
+                </CollapsibleTrigger>
+                <CollapsibleContent className="mt-3 space-y-3 animate-in slide-in-from-top-2 fade-in duration-200">
+                  <div className="space-y-1.5">
+                    <Label
+                      htmlFor="worktree-parent-input"
+                      className="text-sm font-medium text-[var(--text-secondary)]"
+                    >
+                      Worktree Parent Directory
+                    </Label>
+                    <Input
+                      id="worktree-parent-input"
+                      data-testid="worktree-parent-input"
+                      type="text"
+                      value={form.worktreeParentDirectory}
+                      onChange={(e) =>
+                        setForm((prev) => ({ ...prev, worktreeParentDirectory: e.target.value }))
+                      }
+                      placeholder="~/ralphx-worktrees"
+                      disabled={isCreating}
                       className={cn(
-                        "h-3 w-3 transition-transform",
-                        showAdvanced && "rotate-180"
+                        "h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
+                        isCreating && "opacity-50"
                       )}
                     />
-                  </CollapsibleTrigger>
-                  <CollapsibleContent className="mt-3 space-y-3 animate-in slide-in-from-top-2 fade-in duration-200">
-                    <div className="space-y-1.5">
-                      <Label
-                        htmlFor="worktree-parent-input"
-                        className="text-sm font-medium text-[var(--text-secondary)]"
-                      >
-                        Worktree Parent Directory
-                      </Label>
-                      <Input
-                        id="worktree-parent-input"
-                        data-testid="worktree-parent-input"
-                        type="text"
-                        value={form.worktreeParentDirectory}
-                        onChange={(e) =>
-                          setForm((prev) => ({ ...prev, worktreeParentDirectory: e.target.value }))
-                        }
-                        placeholder="~/ralphx-worktrees"
-                        disabled={isCreating}
-                        className={cn(
-                          "h-10 px-3 py-2 rounded-lg text-sm bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:ring-2 focus:ring-[var(--accent-primary)] focus:border-[var(--accent-primary)]",
-                          isCreating && "opacity-50"
-                        )}
-                      />
-                      <p className="text-xs text-[var(--text-muted)]">
-                        Default: ~/ralphx-worktrees. Task worktrees will be created inside this directory.
-                      </p>
-                    </div>
-                  </CollapsibleContent>
-                </Collapsible>
-              </div>
-            </RadioOption>
-
-            {/* Local Mode */}
-            <RadioOption
-              value="local"
-              selected={form.gitMode === "local"}
-              onSelect={(value) => setForm((prev) => ({ ...prev, gitMode: value }))}
-              label="Local Branches"
-              description="Work directly in your current branch. Not recommended for concurrent tasks."
-              warning="Only one task can execute at a time. Your uncommitted changes may be affected."
-              testId="git-mode-local"
-            />
+                    <p className="text-xs text-[var(--text-muted)]">
+                      Default: ~/ralphx-worktrees. Task worktrees will be created inside this directory.
+                    </p>
+                  </div>
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
           </div>
 
           {/* Error Message */}

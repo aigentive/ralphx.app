@@ -1,8 +1,8 @@
 use super::{ApplyProposalsOptions, ApplyService, TargetColumn};
 use crate::domain::entities::{
     ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, InternalStatus,
-    Priority, PriorityAssessment, ProjectId, Task, TaskCategory, TaskId, TaskProposal,
-    TaskProposalId, TaskStep,
+    Priority, PriorityAssessment, ProjectId, ProposalCategory, Task, TaskCategory, TaskId,
+    TaskProposal, TaskProposalId, TaskStep,
 };
 use crate::domain::repositories::{
     IdeationSessionRepository, ProposalDependencyRepository, StateHistoryMetadata,
@@ -74,7 +74,7 @@ impl IdeationSessionRepository for MockSessionRepository {
         Ok(())
     }
 
-    async fn update_title(&self, id: &IdeationSessionId, title: Option<String>) -> AppResult<()> {
+    async fn update_title(&self, id: &IdeationSessionId, title: Option<String>, _title_source: &str) -> AppResult<()> {
         if let Some(session) = self.sessions.lock().unwrap().get_mut(&id.to_string()) {
             session.title = title;
         }
@@ -736,6 +736,10 @@ impl TaskRepository for MockTaskRepository {
         Ok(vec![])
     }
 
+    async fn get_stale_ready_tasks(&self, _threshold_secs: u64) -> AppResult<Vec<Task>> {
+        Ok(vec![])
+    }
+
     async fn update_latest_state_history_metadata(
         &self,
         _task_id: &TaskId,
@@ -1009,7 +1013,7 @@ fn create_test_proposal(session_id: &IdeationSessionId, title: &str) -> TaskProp
     TaskProposal::new(
         session_id.clone(),
         title,
-        TaskCategory::Feature,
+        ProposalCategory::Feature,
         Priority::Medium,
     )
 }
@@ -1345,7 +1349,7 @@ async fn test_apply_proposals_copies_fields_correctly() {
     let mut p1 = create_test_proposal(&session_id, "My Task");
     p1.description = Some("This is a description".to_string());
     p1.priority_score = 75;
-    p1.category = TaskCategory::Fix;
+    p1.category = ProposalCategory::Fix;
 
     let service = create_service(session.clone(), vec![p1.clone()], vec![]);
 
@@ -1365,7 +1369,8 @@ async fn test_apply_proposals_copies_fields_correctly() {
     assert_eq!(task.title, "My Task");
     assert_eq!(task.description, Some("This is a description".to_string()));
     assert_eq!(task.priority, 75);
-    assert_eq!(task.category, "fix");
+    // The proposal category "Fix" maps to TaskCategory::Regular for Task entities
+    assert_eq!(task.category, TaskCategory::Regular);
 }
 
 // ========================================================================

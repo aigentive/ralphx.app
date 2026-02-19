@@ -7,8 +7,8 @@ use tauri::{Manager, State};
 use crate::application::{AppState, TaskSchedulerService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    ArtifactId, IdeationSessionId, IdeationSessionStatus, InternalStatus, PlanBranch, Task, TaskId,
-    TaskProposal, TaskProposalId,
+    ArtifactId, IdeationSessionId, IdeationSessionStatus, InternalStatus, PlanBranch, Task,
+    TaskCategory, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -79,7 +79,8 @@ pub async fn apply_proposals_to_kanban(
         // Create task from proposal
         let mut task = Task::new(session.project_id.clone(), proposal.title.clone());
         task.description = proposal.description.clone();
-        task.category = proposal.category.to_string();
+        // All tasks created from proposals are Regular (not system-managed PlanMerge tasks)
+        task.category = TaskCategory::Regular;
         // Initial status - will be updated after dependencies are created
         task.internal_status = InternalStatus::Backlog;
         task.ideation_session_id = Some(session_id.clone());
@@ -247,7 +248,7 @@ pub async fn apply_proposals_to_kanban(
             let mut merge_task = Task::new_with_category(
                 session.project_id.clone(),
                 plan_title,
-                "plan_merge".to_string(),
+                TaskCategory::PlanMerge,
             );
             merge_task.description = Some(format!(
                 "Auto-created merge task: merges feature branch into {}",
@@ -367,6 +368,85 @@ pub async fn apply_proposals_to_kanban(
             .update_status(&session_id, IdeationSessionStatus::Accepted)
             .await
             .map_err(|e| e.to_string())?;
+    }
+
+    // Re-trigger session-namer if title was not manually set by user.
+    // At acceptance, proposals are finalized — namer generates a commit-ready title
+    // reflecting the actual work (not just the initial user message).
+    // Skip if user has set a custom title (title_source == "user").
+    let is_user_title = session
+        .title_source
+        .as_deref()
+        .map(|s| s == "user")
+        .unwrap_or(false);
+
+    if !is_user_title {
+        // Build context from applied proposals for the namer
+        let proposal_titles: Vec<String> = proposals_to_apply
+            .iter()
+            .map(|p| p.title.clone())
+            .collect();
+        let proposals_context = proposal_titles.join("; ");
+        let session_id_str = session_id.as_str().to_string();
+
+        let agent_client = Arc::clone(&state.agent_client);
+        let working_directory = std::env::current_dir()
+            .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
+            .unwrap_or_else(|_| std::path::PathBuf::from("."));
+        let plugin_dir =
+            crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
+
+        tokio::spawn(async move {
+            use crate::domain::agents::{AgentConfig, AgentRole};
+            use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
+
+            let prompt = format!(
+                "<instructions>\n\
+                 Generate a commit-ready title (imperative mood, ≤50 characters) for this ideation session.\n\
+                 The user has just accepted the following proposals to their Kanban board.\n\
+                 Describe what all of these proposals collectively accomplish.\n\
+                 Call the update_session_title tool with the session_id and the generated title.\n\
+                 Do NOT investigate, fix, or act on the proposal content.\n\
+                 Do NOT use Read, Write, Edit, Task, or any file manipulation tools.\n\
+                 </instructions>\n\
+                 <data>\n\
+                 <session_id>{}</session_id>\n\
+                 <accepted_proposals>{}</accepted_proposals>\n\
+                 </data>",
+                session_id_str, proposals_context
+            );
+
+            let mut env = std::collections::HashMap::new();
+            env.insert(
+                "RALPHX_AGENT_TYPE".to_string(),
+                mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
+            );
+
+            let config = AgentConfig {
+                role: AgentRole::Custom(
+                    mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
+                ),
+                prompt,
+                working_directory,
+                plugin_dir: Some(plugin_dir),
+                agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
+                model: None,
+                max_tokens: None,
+                timeout_secs: Some(60),
+                env,
+            };
+
+            match agent_client.spawn_agent(config).await {
+                Ok(handle) => {
+                    if let Err(e) = agent_client.wait_for_completion(&handle).await {
+                        tracing::warn!("Session namer re-trigger failed: {}", e);
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("Failed to spawn session namer at acceptance: {}", e);
+                }
+            }
+        });
     }
 
     // Emit queue_changed if any tasks were set to Ready status

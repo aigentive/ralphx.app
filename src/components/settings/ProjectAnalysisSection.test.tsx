@@ -71,7 +71,6 @@ describe("ProjectAnalysisSection", () => {
       reanalyzeProject: vi.fn().mockResolvedValue(undefined),
       updateCustomAnalysis: vi.fn().mockResolvedValue(mockProject),
       update: vi.fn().mockResolvedValue(mockProject),
-      changeGitMode: vi.fn().mockResolvedValue(undefined),
     } as Record<string, unknown>;
   });
 
