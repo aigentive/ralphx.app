@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::application::AppState;
-use crate::domain::entities::{InternalStatus, Project, Task};
+use crate::domain::entities::{InternalStatus, Project, Task, TaskCategory};
 
 /// Available test data profiles
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -173,7 +173,7 @@ async fn seed_kanban(state: State<'_, AppState>) -> Result<SeedDataResponse, Str
     let mut executing_task = Task::new_with_category(
         project_id.clone(),
         "Add keyboard shortcuts".to_string(),
-        "feature".to_string(),
+        TaskCategory::Regular,
     );
     executing_task.description = Some("Implement Cmd+K for quick actions".to_string());
     executing_task.priority = 15;
@@ -190,7 +190,7 @@ async fn seed_kanban(state: State<'_, AppState>) -> Result<SeedDataResponse, Str
     let mut completed_task = Task::new_with_category(
         project_id.clone(),
         "Setup project structure".to_string(),
-        "setup".to_string(),
+        TaskCategory::Regular,
     );
     completed_task.description = Some("Initial Tauri + React setup".to_string());
     completed_task.priority = 5;
@@ -262,8 +262,9 @@ async fn create_task(
     priority: i32,
     status: InternalStatus,
 ) -> Result<usize, String> {
+    let task_category: TaskCategory = category.parse().unwrap_or(TaskCategory::Regular);
     let mut task =
-        Task::new_with_category(project_id.clone(), title.to_string(), category.to_string());
+        Task::new_with_category(project_id.clone(), title.to_string(), task_category);
     task.description = Some(description.to_string());
     task.priority = priority;
     task.internal_status = status;

@@ -7,9 +7,115 @@ use std::sync::Arc;
 
 use crate::application::GitService;
 use crate::domain::entities::InternalStatus;
-use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskId};
+use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskCategory, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::AppResult;
+
+// ===== Pre-merge validation =====
+
+/// Errors surfaced when pre-merge preconditions fail for a `plan_merge` task.
+///
+/// Each variant carries a human-readable message suitable for storing in task metadata
+/// and displaying in the UI as an actionable error.
+#[derive(Debug, PartialEq)]
+pub(crate) enum PreMergeValidationError {
+    /// `plan_branch_repo` is not wired in the service context.
+    PlanBranchRepoNotWired,
+    /// The `PlanBranch` record for this task's session has `status != Active`.
+    PlanBranchNotActive { status: String },
+    /// The feature branch does not exist in the git repository.
+    FeatureBranchMissing { branch_name: String },
+}
+
+impl PreMergeValidationError {
+    /// A short, human-readable error message for UI display.
+    pub(crate) fn message(&self) -> String {
+        match self {
+            PreMergeValidationError::PlanBranchRepoNotWired => {
+                "Plan branch repository is not configured. \
+                 This is a server configuration error — please restart the application."
+                    .to_string()
+            }
+            PreMergeValidationError::PlanBranchNotActive { status } => {
+                format!(
+                    "The plan branch is not active (current status: {status}). \
+                     It may have already been merged or was abandoned. \
+                     Check the plan branch status before retrying."
+                )
+            }
+            PreMergeValidationError::FeatureBranchMissing { branch_name } => {
+                format!(
+                    "Feature branch '{branch_name}' does not exist in git. \
+                     It may have been deleted. Re-create the branch or reset the plan to retry."
+                )
+            }
+        }
+    }
+
+    /// A short machine-readable error code for metadata storage.
+    pub(crate) fn error_code(&self) -> &'static str {
+        match self {
+            PreMergeValidationError::PlanBranchRepoNotWired => "plan_branch_repo_not_wired",
+            PreMergeValidationError::PlanBranchNotActive { .. } => "plan_branch_not_active",
+            PreMergeValidationError::FeatureBranchMissing { .. } => "feature_branch_missing",
+        }
+    }
+}
+
+/// Validate preconditions required before attempting a `plan_merge` task merge.
+///
+/// Checks:
+/// 1. `plan_branch_repo` is wired (Some) in the context
+/// 2. The `PlanBranch` record for this task has `status == Active`
+/// 3. The feature branch referenced by the `PlanBranch` exists in git
+///
+/// Returns `Ok(())` when all checks pass, `Err(PreMergeValidationError)` on first failure.
+/// Callers should transition the task to `MergeIncomplete` with the error's `message()` on failure.
+///
+/// Non-`plan_merge` tasks always pass (returns `Ok(())`).
+pub(crate) async fn validate_plan_merge_preconditions(
+    task: &Task,
+    project: &Project,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+) -> Result<(), PreMergeValidationError> {
+    // Only validate plan_merge category tasks
+    if task.category != TaskCategory::PlanMerge {
+        return Ok(());
+    }
+
+    // Check 1: plan_branch_repo must be wired
+    let Some(ref pb_repo) = plan_branch_repo else {
+        return Err(PreMergeValidationError::PlanBranchRepoNotWired);
+    };
+
+    // Check 2: PlanBranch must exist and have Active status
+    let plan_branch = pb_repo.get_by_merge_task_id(&task.id).await
+        .ok()
+        .flatten();
+
+    let Some(pb) = plan_branch else {
+        // No PlanBranch record for this merge task — treat as not active
+        return Err(PreMergeValidationError::PlanBranchNotActive {
+            status: "not_found".to_string(),
+        });
+    };
+
+    if pb.status != PlanBranchStatus::Active {
+        return Err(PreMergeValidationError::PlanBranchNotActive {
+            status: pb.status.to_string(),
+        });
+    }
+
+    // Check 3: Feature branch must exist in git
+    let repo_path = Path::new(&project.working_directory);
+    if !GitService::branch_exists(repo_path, &pb.branch_name).await {
+        return Err(PreMergeValidationError::FeatureBranchMissing {
+            branch_name: pb.branch_name.clone(),
+        });
+    }
+
+    Ok(())
+}
 
 /// Convert project name to a URL-safe slug for branch naming
 pub(super) fn slugify(name: &str) -> String {
@@ -200,6 +306,50 @@ pub(crate) fn clear_merge_deferred_metadata(task: &mut Task) {
             task.metadata = Some(meta.to_string());
         }
     }
+}
+
+/// Default timeout in seconds after which a deferred merge is forced to retry.
+pub(crate) const DEFERRED_MERGE_TIMEOUT_SECONDS: i64 = 120;
+
+/// Check if a `merge_deferred` task has exceeded the configured timeout.
+///
+/// Returns true if the `merge_deferred_at` timestamp in metadata is older than
+/// `DEFERRED_MERGE_TIMEOUT_SECONDS`. Returns false if the timestamp is missing or unparseable
+/// (no timeout enforcement in that case — the reconciliation watchdog handles it instead).
+pub(crate) fn is_merge_deferred_timed_out(task: &Task) -> bool {
+    let deferred_at = parse_metadata(task)
+        .and_then(|v| v.get("merge_deferred_at")?.as_str().map(String::from));
+
+    let Some(deferred_at_str) = deferred_at else {
+        return false;
+    };
+
+    let Ok(deferred_at) = chrono::DateTime::parse_from_rfc3339(&deferred_at_str) else {
+        return false;
+    };
+
+    let elapsed = chrono::Utc::now().signed_duration_since(deferred_at.with_timezone(&chrono::Utc));
+    elapsed.num_seconds() >= DEFERRED_MERGE_TIMEOUT_SECONDS
+}
+
+/// Check if a `main_merge_deferred` task has exceeded the configured timeout.
+///
+/// Returns true if the `main_merge_deferred_at` timestamp in metadata is older than
+/// `DEFERRED_MERGE_TIMEOUT_SECONDS`. Returns false if the timestamp is missing or unparseable.
+pub(crate) fn is_main_merge_deferred_timed_out(task: &Task) -> bool {
+    let deferred_at = parse_metadata(task)
+        .and_then(|v| v.get("main_merge_deferred_at")?.as_str().map(String::from));
+
+    let Some(deferred_at_str) = deferred_at else {
+        return false;
+    };
+
+    let Ok(deferred_at) = chrono::DateTime::parse_from_rfc3339(&deferred_at_str) else {
+        return false;
+    };
+
+    let elapsed = chrono::Utc::now().signed_duration_since(deferred_at.with_timezone(&chrono::Utc));
+    elapsed.num_seconds() >= DEFERRED_MERGE_TIMEOUT_SECONDS
 }
 
 /// Set the `trigger_origin` field in a task's metadata.
@@ -423,7 +573,7 @@ pub async fn resolve_merge_branches(
     );
 
     let Some(ref plan_branch_repo) = plan_branch_repo else {
-        if task.category == "plan_merge" {
+        if task.category == TaskCategory::PlanMerge {
             tracing::warn!(
                 task_id = task.id.as_str(),
                 "resolve_merge_branches: plan_branch_repo is None for plan_merge task — \
@@ -1122,5 +1272,328 @@ mod tests {
         let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
 
         assert_eq!(result, "main", "No session_id should fall back to default");
+    }
+
+    // ===== Pre-merge validation tests =====
+
+    /// Helper: create a plan_merge task (category = "plan_merge")
+    fn create_plan_merge_task(project_id: ProjectId) -> Task {
+        let mut task = Task::new(project_id, "Merge plan to main".to_string());
+        task.category = TaskCategory::PlanMerge;
+        task
+    }
+
+    /// Helper: create a PlanBranch with a specific merge_task_id and status
+    fn make_plan_branch_with_merge_task(
+        task_id: &TaskId,
+        project_id: &ProjectId,
+        branch_name: &str,
+        status: PlanBranchStatus,
+    ) -> PlanBranch {
+        let session_id = IdeationSessionId::from_string("session-pre-merge-test");
+        let mut pb = PlanBranch::new(
+            ArtifactId::from_string("artifact-pre-merge-test"),
+            session_id,
+            project_id.clone(),
+            branch_name.to_string(),
+            "main".to_string(),
+        );
+        pb.status = status;
+        pb.merge_task_id = Some(task_id.clone());
+        pb
+    }
+
+    #[tokio::test]
+    async fn test_validate_plan_merge_passes_when_all_conditions_met() {
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test-pre-merge", repo_path.to_string_lossy().to_string());
+        let task = create_plan_merge_task(project.id.clone());
+
+        let feature_branch = "ralphx/test-pre-merge/plan-session-pre-merge-test";
+        // Create the feature branch in git
+        Command::new("git")
+            .args(["branch", feature_branch])
+            .current_dir(&repo_path)
+            .output()
+            .unwrap();
+
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch_with_merge_task(
+            &task.id,
+            &project.id,
+            feature_branch,
+            PlanBranchStatus::Active,
+        );
+        plan_branch_repo.create(pb).await.unwrap();
+
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
+            Some(plan_branch_repo as Arc<dyn PlanBranchRepository>);
+
+        let result = validate_plan_merge_preconditions(&task, &project, &plan_branch_repo_opt).await;
+
+        assert!(result.is_ok(), "Validation should pass when all conditions are met");
+    }
+
+    #[tokio::test]
+    async fn test_validate_plan_merge_passes_for_non_plan_merge_task() {
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test", repo_path.to_string_lossy().to_string());
+        // Regular task, not plan_merge
+        let task = create_test_task(project.id.clone());
+
+        // No repo wired — but should pass because task is not plan_merge
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> = None;
+
+        let result = validate_plan_merge_preconditions(&task, &project, &plan_branch_repo_opt).await;
+
+        assert!(result.is_ok(), "Non-plan_merge tasks should always pass validation");
+    }
+
+    #[tokio::test]
+    async fn test_validate_plan_merge_fails_when_repo_not_wired() {
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test", repo_path.to_string_lossy().to_string());
+        let task = create_plan_merge_task(project.id.clone());
+
+        // No plan_branch_repo wired
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> = None;
+
+        let result = validate_plan_merge_preconditions(&task, &project, &plan_branch_repo_opt).await;
+
+        assert_eq!(
+            result,
+            Err(PreMergeValidationError::PlanBranchRepoNotWired),
+            "Should fail with PlanBranchRepoNotWired when repo is None"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_validate_plan_merge_fails_when_no_plan_branch_record() {
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test", repo_path.to_string_lossy().to_string());
+        let task = create_plan_merge_task(project.id.clone());
+
+        // Repo wired but no PlanBranch record for this task's merge_task_id
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
+            Some(plan_branch_repo as Arc<dyn PlanBranchRepository>);
+
+        let result = validate_plan_merge_preconditions(&task, &project, &plan_branch_repo_opt).await;
+
+        assert_eq!(
+            result,
+            Err(PreMergeValidationError::PlanBranchNotActive { status: "not_found".to_string() }),
+            "Should fail with PlanBranchNotActive when no PlanBranch record exists"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_validate_plan_merge_fails_when_plan_branch_not_active() {
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test", repo_path.to_string_lossy().to_string());
+        let task = create_plan_merge_task(project.id.clone());
+
+        let feature_branch = "ralphx/test/plan-inactive";
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch_with_merge_task(
+            &task.id,
+            &project.id,
+            feature_branch,
+            PlanBranchStatus::Merged, // Not Active!
+        );
+        plan_branch_repo.create(pb).await.unwrap();
+
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
+            Some(plan_branch_repo as Arc<dyn PlanBranchRepository>);
+
+        let result = validate_plan_merge_preconditions(&task, &project, &plan_branch_repo_opt).await;
+
+        assert_eq!(
+            result,
+            Err(PreMergeValidationError::PlanBranchNotActive { status: "merged".to_string() }),
+            "Should fail with PlanBranchNotActive when branch status is Merged"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_validate_plan_merge_fails_when_feature_branch_missing_in_git() {
+        let (_temp_dir, repo_path) = create_temp_git_repo();
+        let project = create_test_project("test", repo_path.to_string_lossy().to_string());
+        let task = create_plan_merge_task(project.id.clone());
+
+        let feature_branch = "ralphx/test/plan-deleted-branch";
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let pb = make_plan_branch_with_merge_task(
+            &task.id,
+            &project.id,
+            feature_branch,
+            PlanBranchStatus::Active,
+        );
+        plan_branch_repo.create(pb).await.unwrap();
+
+        // Do NOT create the branch in git — it's missing
+
+        let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
+            Some(plan_branch_repo as Arc<dyn PlanBranchRepository>);
+
+        let result = validate_plan_merge_preconditions(&task, &project, &plan_branch_repo_opt).await;
+
+        assert_eq!(
+            result,
+            Err(PreMergeValidationError::FeatureBranchMissing {
+                branch_name: feature_branch.to_string()
+            }),
+            "Should fail with FeatureBranchMissing when git branch does not exist"
+        );
+    }
+
+    #[test]
+    fn test_pre_merge_error_message_not_empty() {
+        // Ensure all error variants produce non-empty messages
+        let errors = vec![
+            PreMergeValidationError::PlanBranchRepoNotWired,
+            PreMergeValidationError::PlanBranchNotActive { status: "merged".to_string() },
+            PreMergeValidationError::FeatureBranchMissing { branch_name: "feature/foo".to_string() },
+        ];
+        for err in &errors {
+            assert!(!err.message().is_empty(), "Error message should not be empty: {err:?}");
+            assert!(!err.error_code().is_empty(), "Error code should not be empty: {err:?}");
+        }
+    }
+
+    #[test]
+    fn test_pre_merge_error_message_contains_actionable_info() {
+        let status_err = PreMergeValidationError::PlanBranchNotActive { status: "abandoned".to_string() };
+        assert!(
+            status_err.message().contains("abandoned"),
+            "Error message should include the actual status"
+        );
+
+        let branch_err = PreMergeValidationError::FeatureBranchMissing {
+            branch_name: "ralphx/my-project/plan-abc".to_string(),
+        };
+        assert!(
+            branch_err.message().contains("ralphx/my-project/plan-abc"),
+            "Error message should include the missing branch name"
+        );
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // Deferred Merge Timeout Tests
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_false_when_no_metadata() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let task = Task::new(project.id, "Test task".to_string());
+        assert!(!is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_false_when_timestamp_missing() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"merge_deferred": true}"#.to_string());
+        // No merge_deferred_at → returns false (no enforcement without timestamp)
+        assert!(!is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_false_when_timestamp_invalid() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"merge_deferred": true, "merge_deferred_at": "not-a-timestamp"}"#.to_string());
+        assert!(!is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_false_when_recent() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        // 10 seconds ago — well within the 120s default timeout
+        let recent = (chrono::Utc::now() - chrono::Duration::seconds(10)).to_rfc3339();
+        task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, recent));
+        assert!(!is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_returns_true_when_expired() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        // 300 seconds ago — past the 120s default timeout
+        let old = (chrono::Utc::now() - chrono::Duration::seconds(300)).to_rfc3339();
+        task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, old));
+        assert!(is_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_main_merge_deferred_timed_out_returns_false_when_no_metadata() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let task = Task::new(project.id, "Test task".to_string());
+        assert!(!is_main_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_main_merge_deferred_timed_out_returns_false_when_timestamp_missing() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        task.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+        assert!(!is_main_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_main_merge_deferred_timed_out_returns_false_when_recent() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        let recent = (chrono::Utc::now() - chrono::Duration::seconds(5)).to_rfc3339();
+        task.metadata = Some(format!(r#"{{"main_merge_deferred": true, "main_merge_deferred_at": "{}"}}"#, recent));
+        assert!(!is_main_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_is_main_merge_deferred_timed_out_returns_true_when_expired() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        let old = (chrono::Utc::now() - chrono::Duration::seconds(200)).to_rfc3339();
+        task.metadata = Some(format!(r#"{{"main_merge_deferred": true, "main_merge_deferred_at": "{}"}}"#, old));
+        assert!(is_main_merge_deferred_timed_out(&task));
+    }
+
+    #[test]
+    fn test_deferred_merge_timeout_constant_is_positive() {
+        assert!(
+            DEFERRED_MERGE_TIMEOUT_SECONDS > 0,
+            "DEFERRED_MERGE_TIMEOUT_SECONDS must be a positive number"
+        );
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_boundary_just_before_timeout() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        // One second before the timeout
+        let just_before = (chrono::Utc::now()
+            - chrono::Duration::seconds(DEFERRED_MERGE_TIMEOUT_SECONDS - 1))
+        .to_rfc3339();
+        task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, just_before));
+        assert!(
+            !is_merge_deferred_timed_out(&task),
+            "Task just before timeout should not be considered timed out"
+        );
+    }
+
+    #[test]
+    fn test_is_merge_deferred_timed_out_boundary_at_timeout() {
+        let project = Project::new("test".to_string(), "/tmp".to_string());
+        let mut task = Task::new(project.id, "Test task".to_string());
+        // Exactly at the timeout boundary
+        let at_timeout = (chrono::Utc::now()
+            - chrono::Duration::seconds(DEFERRED_MERGE_TIMEOUT_SECONDS))
+        .to_rfc3339();
+        task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, at_timeout));
+        assert!(
+            is_merge_deferred_timed_out(&task),
+            "Task exactly at timeout boundary should be considered timed out"
+        );
     }
 }

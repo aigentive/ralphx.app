@@ -7,8 +7,8 @@ use crate::application::AppState;
 use crate::domain::entities::{
     BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor, DependencyFactor,
     DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSessionId,
-    IdeationSessionStatus, Priority, PriorityAssessment, PriorityAssessmentFactors, TaskCategory,
-    TaskProposal, TaskProposalId, UserHintFactor,
+    IdeationSessionStatus, Priority, PriorityAssessment, PriorityAssessmentFactors,
+    ProposalCategory, TaskProposal, TaskProposalId, UserHintFactor,
 };
 use crate::http_server::helpers::{assert_session_mutable, maybe_trigger_dependency_analysis};
 
@@ -56,7 +56,7 @@ pub async fn create_task_proposal(
         .ok_or_else(|| format!("Plan artifact {} not found", plan_artifact_id))?;
 
     // Parse category
-    let category: TaskCategory = input
+    let category: ProposalCategory = input
         .category
         .parse()
         .map_err(|_| format!("Invalid category: {}", input.category))?;
@@ -173,7 +173,7 @@ pub async fn update_task_proposal(
         proposal.user_modified = true;
     }
     if let Some(category_str) = input.category {
-        if let Ok(category) = category_str.parse::<TaskCategory>() {
+        if let Ok(category) = category_str.parse::<ProposalCategory>() {
             proposal.category = category;
             proposal.user_modified = true;
         }

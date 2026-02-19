@@ -1063,6 +1063,7 @@ mod tests {
         async fn get_oldest_ready_tasks(&self, _: u32) -> AppResult<Vec<Task>> { Ok(vec![]) }
         async fn update_latest_state_history_metadata(&self, _: &TaskId, _: &StateHistoryMetadata) -> AppResult<()> { Ok(()) }
         async fn has_task_in_states(&self, _: &ProjectId, _: &[InternalStatus]) -> AppResult<bool> { Ok(false) }
+        async fn get_stale_ready_tasks(&self, _threshold_secs: u64) -> AppResult<Vec<Task>> { Ok(vec![]) }
     }
 
     fn make_task(status: InternalStatus) -> Task {

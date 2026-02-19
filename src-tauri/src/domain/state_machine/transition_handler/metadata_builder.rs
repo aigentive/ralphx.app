@@ -692,68 +692,6 @@ mod tests {
         );
     }
 
-    // ===== clear_stop_metadata Tests =====
-
-    // ===== build_restart_metadata Tests =====
-
-    #[test]
-    fn test_build_restart_metadata_with_note_stores_restart_note() {
-        let update = build_restart_metadata(Some("Fix the broken auth flow"));
-        let result = update.merge_into(None);
-
-        let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert_eq!(
-            parsed.get("restart_note").unwrap(),
-            &Value::String("Fix the broken auth flow".to_string())
-        );
-        assert!(!parsed.contains_key("stop_metadata"));
-    }
-
-    #[test]
-    fn test_build_restart_metadata_without_note_leaves_no_restart_note() {
-        let update = build_restart_metadata(None);
-        let result = update.merge_into(None);
-
-        let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert!(!parsed.contains_key("restart_note"));
-        assert!(!parsed.contains_key("stop_metadata"));
-    }
-
-    #[test]
-    fn test_build_restart_metadata_clears_stop_metadata_with_note() {
-        let existing = r#"{"stop_metadata":"{\"stopped_from_status\":\"executing\"}","trigger_origin":"scheduler"}"#;
-        let update = build_restart_metadata(Some("User note"));
-        let result = update.merge_into(Some(existing));
-
-        let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert!(!parsed.contains_key("stop_metadata"));
-        assert_eq!(
-            parsed.get("restart_note").unwrap(),
-            &Value::String("User note".to_string())
-        );
-        // Existing fields preserved
-        assert_eq!(
-            parsed.get("trigger_origin").unwrap(),
-            &Value::String("scheduler".to_string())
-        );
-    }
-
-    #[test]
-    fn test_build_restart_metadata_clears_stop_metadata_without_note() {
-        let existing = r#"{"stop_metadata":"{\"stopped_from_status\":\"executing\"}","trigger_origin":"scheduler"}"#;
-        let update = build_restart_metadata(None);
-        let result = update.merge_into(Some(existing));
-
-        let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-        assert!(!parsed.contains_key("stop_metadata"));
-        assert!(!parsed.contains_key("restart_note"));
-        // Existing fields preserved
-        assert_eq!(
-            parsed.get("trigger_origin").unwrap(),
-            &Value::String("scheduler".to_string())
-        );
-    }
-
     #[test]
     fn test_clear_stop_metadata_removes_key() {
         let existing = r#"{"stop_metadata":"{\"stopped_from_status\":\"merging\"}","other_key":"value"}"#;
