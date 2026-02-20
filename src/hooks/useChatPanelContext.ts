@@ -240,6 +240,16 @@ export function useChatPanelContext({
   ) => {
     const isAgentContext = isMergeMode || isExecutionMode || isReviewMode;
 
+    // Agent contexts (merge/execution) always create fresh conversations per attempt.
+    // Sort by createdAt so the newest conversation wins even before it has messages.
+    // Non-agent contexts sort by lastMessageAt to surface the most active conversation.
+    const sortConversations = (items: ConversationData[]) =>
+      [...items].sort((a, b) => {
+        const aTime = isAgentContext ? a.createdAt : (a.lastMessageAt || a.createdAt);
+        const bTime = isAgentContext ? b.createdAt : (b.lastMessageAt || b.createdAt);
+        return new Date(bTime).getTime() - new Date(aTime).getTime();
+      });
+
     // Wait for conversations to load before any validation/selection
     if (conversations.isLoading) {
       return;
@@ -268,11 +278,7 @@ export function useChatPanelContext({
         // Current conversation is stale
         if (conversations.data.length > 0) {
           // New context has conversations - directly select most recent
-          const sorted = [...conversations.data].sort((a, b) => {
-            const aTime = a.lastMessageAt || a.createdAt;
-            const bTime = b.lastMessageAt || b.createdAt;
-            return new Date(bTime).getTime() - new Date(aTime).getTime();
-          });
+          const sorted = sortConversations(conversations.data);
           const mostRecent = sorted[0];
           if (mostRecent) {
             hasAutoSelectedRef.current = true;
@@ -290,11 +296,7 @@ export function useChatPanelContext({
     }
 
     if (isAgentContext && conversations.data && conversations.data.length > 0) {
-      const sorted = [...conversations.data].sort((a, b) => {
-        const aTime = a.lastMessageAt || a.createdAt;
-        const bTime = b.lastMessageAt || b.createdAt;
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
-      });
+      const sorted = sortConversations(conversations.data);
       const mostRecent = sorted[0];
       if (mostRecent && mostRecent.id !== currentActiveId) {
         hasAutoSelectedRef.current = true;
@@ -314,12 +316,7 @@ export function useChatPanelContext({
     }
 
     if (!currentActiveId && conversations.data && conversations.data.length > 0) {
-      // Sort by most recent activity
-      const sorted = [...conversations.data].sort((a, b) => {
-        const aTime = a.lastMessageAt || a.createdAt;
-        const bTime = b.lastMessageAt || b.createdAt;
-        return new Date(bTime).getTime() - new Date(aTime).getTime();
-      });
+      const sorted = sortConversations(conversations.data);
       const mostRecent = sorted[0];
 
       if (mostRecent) {
