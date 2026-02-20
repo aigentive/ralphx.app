@@ -482,7 +482,7 @@ mod tests {
         let old_token = CancellationToken::new();
 
         // Spawn a real process so is_process_alive returns true
-        let child = std::process::Command::new("sleep")
+        let mut child = std::process::Command::new("sleep")
             .arg("60")
             .spawn()
             .expect("spawn sleep");
@@ -517,8 +517,8 @@ mod tests {
         // Old token should be cancelled
         assert!(old_token.is_cancelled());
 
-        // Old process should be killed (give a moment for SIGTERM)
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        // Reap the zombie (SIGTERM was sent, wait collects exit status)
+        let _ = child.wait();
         assert!(!is_process_alive(old_pid));
 
         // New registration should be active
