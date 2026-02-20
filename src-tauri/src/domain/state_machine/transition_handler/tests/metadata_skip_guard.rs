@@ -361,32 +361,27 @@ async fn test_empty_source_branch_triggers_deferred_merge_retry() {
     // Call on_enter(PendingMerge) which runs attempt_programmatic_merge
     let _ = handler.on_enter(&State::PendingMerge).await;
 
-    // Wait for spawned tasks to complete
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // Verify: on_exit(PendingMerge → MergeIncomplete) fired, triggering deferred retry
-    let calls = scheduler.get_calls();
-    let retry_calls: Vec<_> = calls
-        .iter()
-        .filter(|c| c.method == "try_retry_deferred_merges")
-        .collect();
-
+    // Wait for spawned task to call try_retry_deferred_merges
+    let sched = Arc::clone(&scheduler);
     assert!(
-        !retry_calls.is_empty(),
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            5000
+        ).await,
         "Empty-source-branch path must call on_exit to trigger try_retry_deferred_merges, \
          preventing deferred merges from being blocked"
     );
 }
 
-/// Test: Repos-unavailable path calls on_exit(PendingMerge → MergeIncomplete).
-///
-/// When task_repo or project_repo is None during PendingMerge entry, the system
-/// cannot update the DB but must still call on_exit so that deferred merge retries
-/// for other tasks are not blocked.
-///
-// Intentionally tests the no-repos early-return guard — validates on_exit fires without repos
+// Tests early-return guard — does not reach merge strategy dispatch
+/// Without repos, on_enter(PendingMerge) still fires on_exit to unblock deferred retries.
 #[tokio::test]
-async fn test_repos_unavailable_triggers_deferred_merge_retry() {
+async fn test_guard_no_repos_fires_on_exit_for_deferred_retry() {
     use crate::domain::state_machine::mocks::MockTaskScheduler;
 
     let scheduler = Arc::new(MockTaskScheduler::new());
@@ -408,18 +403,18 @@ async fn test_repos_unavailable_triggers_deferred_merge_retry() {
     // Call on_enter(PendingMerge) — repos unavailable path fires
     let _ = handler.on_enter(&State::PendingMerge).await;
 
-    // Wait for spawned tasks to complete
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
-
-    // Verify: on_exit fired despite repos being unavailable
-    let calls = scheduler.get_calls();
-    let retry_calls: Vec<_> = calls
-        .iter()
-        .filter(|c| c.method == "try_retry_deferred_merges")
-        .collect();
-
+    // Wait for spawned task to call try_retry_deferred_merges
+    let sched = Arc::clone(&scheduler);
     assert!(
-        !retry_calls.is_empty(),
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            5000
+        ).await,
         "Repos-unavailable path must still call on_exit to trigger try_retry_deferred_merges"
     );
 }

@@ -160,6 +160,8 @@ git:
   index_lock_stale_secs: 5           # Env: RALPHX_GIT_INDEX_LOCK_STALE_SECS
   # merge_coordination.rs — settle time after SIGTERM before worktree deletion
   agent_kill_settle_secs: 1          # Env: RALPHX_GIT_AGENT_KILL_SETTLE_SECS
+  # merge_coordination.rs — timeout for each stop_agent() call in pre-merge cleanup step 0
+  agent_stop_timeout_secs: 10       # Env: RALPHX_GIT_AGENT_STOP_TIMEOUT_SECS
   # merge_coordination.rs — timeout for task worktree deletion during pre-merge cleanup
   cleanup_worktree_timeout_secs: 10  # Env: RALPHX_GIT_CLEANUP_WORKTREE_TIMEOUT_SECS
   # merge_coordination.rs — timeout for merge/rebase worktree deletion and git clean

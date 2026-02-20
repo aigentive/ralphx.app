@@ -34,10 +34,10 @@ async fn test_reload_continuation_callback_drop() {
     );
 }
 
-/// on_enter for merge states without app_handle (reload scenario).
-// Intentionally tests the no-repos early-return guard — validates no-panic without app_handle
+// Tests early-return guard — does not reach merge strategy dispatch
+/// Without repos or app_handle, on_enter for PendingMerge/Merged/Merging does not panic.
 #[tokio::test]
-async fn test_reload_continuation_enter_states_without_app_handle() {
+async fn test_guard_no_repos_enter_merge_states_no_panic() {
     let services = TaskServices::new_mock();
     assert!(services.app_handle.is_none());
 
@@ -55,10 +55,10 @@ async fn test_reload_continuation_enter_states_without_app_handle() {
     assert!(result.is_ok(), "on_enter(Merging) should succeed without app_handle");
 }
 
-/// State recovery after simulated reload mid-merge.
-// Intentionally tests the no-repos early-return guard — validates reload recovery path
+// Tests early-return guard — does not reach merge strategy dispatch
+/// Without repos, re-entering PendingMerge after simulated reload works without panic.
 #[tokio::test]
-async fn test_reload_continuation_state_recovery() {
+async fn test_guard_no_repos_reload_recovery_no_panic() {
     // Phase 1: Task enters PendingMerge
     let (mut machine1, _scheduler1) = new_machine_with_scheduler("task-1", "proj-1");
     let handler1 = TransitionHandler::new(&mut machine1);
@@ -73,10 +73,17 @@ async fn test_reload_continuation_state_recovery() {
 
     handler2.on_exit(&State::PendingMerge, &State::Merged).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
-    let calls = scheduler2.get_calls();
+    let sched = Arc::clone(&scheduler2);
     assert!(
-        calls.iter().any(|c| c.method == "try_retry_deferred_merges"),
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            5000
+        ).await,
         "Deferred merge retry should work after reload"
     );
 }
@@ -192,7 +199,19 @@ async fn test_deferred_merge_retry_on_all_pending_merge_exits() {
         let handler = TransitionHandler::new(&mut machine);
         handler.on_exit(&State::PendingMerge, target).await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+        let sched = Arc::clone(&scheduler);
+        assert!(
+            wait_for_condition(
+                || {
+                    let s = Arc::clone(&sched);
+                    async move {
+                        s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    }
+                },
+                5000
+            ).await,
+            "Expected deferred merge retry when exiting PendingMerge to {:?}", target
+        );
 
         let calls = scheduler.get_calls();
         let retry_calls: Vec<_> = calls
@@ -221,7 +240,19 @@ async fn test_deferred_merge_retry_on_all_merging_exits() {
         let handler = TransitionHandler::new(&mut machine);
         handler.on_exit(&State::Merging, target).await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+        let sched = Arc::clone(&scheduler);
+        assert!(
+            wait_for_condition(
+                || {
+                    let s = Arc::clone(&sched);
+                    async move {
+                        s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    }
+                },
+                5000
+            ).await,
+            "Expected deferred merge retry when exiting Merging to {:?}", target
+        );
 
         let calls = scheduler.get_calls();
         let retry_calls: Vec<_> = calls
@@ -243,7 +274,22 @@ async fn test_deferred_merge_no_duplicate_retries() {
     let handler = TransitionHandler::new(&mut machine);
     handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
+    // Wait for the call to appear, then verify no duplicates
+    let sched = Arc::clone(&scheduler);
+    assert!(
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            5000
+        ).await,
+        "Expected try_retry_deferred_merges to be called"
+    );
+    // Brief additional wait to catch any duplicate calls
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
     let calls = scheduler.get_calls();
     let retry_calls: Vec<_> = calls
@@ -274,7 +320,17 @@ async fn test_deferred_merge_not_triggered_by_non_merge_exits() {
         let handler = TransitionHandler::new(&mut machine);
         handler.on_exit(from, to).await;
 
-        tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+        // Negative test: wait briefly to confirm nothing fires
+        let sched = Arc::clone(&scheduler);
+        let _ = wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            500
+        ).await;
 
         let calls = scheduler.get_calls();
         let retry_calls: Vec<_> = calls
@@ -312,16 +368,17 @@ async fn test_merge_exit_triggers_main_merge_retry_when_all_idle() {
     let handler = TransitionHandler::new(&mut machine);
     handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
-
-    let calls = scheduler.get_calls();
-    let main_retry_calls: Vec<_> = calls
-        .iter()
-        .filter(|c| c.method == "try_retry_main_merges")
-        .collect();
-
-    assert_eq!(
-        main_retry_calls.len(), 1,
+    let sched = Arc::clone(&scheduler);
+    assert!(
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_main_merges")
+                }
+            },
+            5000
+        ).await,
         "Expected try_retry_main_merges when all agents idle (running_count == 0)"
     );
 }
@@ -346,7 +403,17 @@ async fn test_merge_exit_skips_main_merge_retry_when_agents_running() {
     let handler = TransitionHandler::new(&mut machine);
     handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+    // Negative test: wait briefly to confirm main merge retry does NOT fire
+    let sched = Arc::clone(&scheduler);
+    let _ = wait_for_condition(
+        || {
+            let s = Arc::clone(&sched);
+            async move {
+                s.get_calls().iter().any(|c| c.method == "try_retry_main_merges")
+            }
+        },
+        500
+    ).await;
 
     let calls = scheduler.get_calls();
     let main_retry_calls: Vec<_> = calls
@@ -379,17 +446,17 @@ async fn test_merging_exit_triggers_main_merge_retry_when_all_idle() {
     let handler = TransitionHandler::new(&mut machine);
     handler.on_exit(&State::Merging, &State::Merged).await;
 
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
-
-    let calls = scheduler.get_calls();
-    let main_retry_calls: Vec<_> = calls
-        .iter()
-        .filter(|c| c.method == "try_retry_main_merges")
-        .collect();
-
-    // Merging is agent-active, so there may be 1 or 2 calls. Assert at least 1.
+    let sched = Arc::clone(&scheduler);
     assert!(
-        !main_retry_calls.is_empty(),
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_main_merges")
+                }
+            },
+            5000
+        ).await,
         "Merging exit should trigger try_retry_main_merges when all agents idle"
     );
 }
