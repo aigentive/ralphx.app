@@ -12,6 +12,7 @@ use std::path::Path;
 use crate::application::git_service::checkout_free::{self, CheckoutFreeMergeResult};
 use crate::application::GitService;
 use crate::error::AppError;
+use crate::infrastructure::agents::claude::git_runtime_config;
 
 use super::merge_strategies::MergeOutcome;
 
@@ -176,7 +177,7 @@ pub(super) async fn pre_delete_worktree(
     let rp = repo_path.to_path_buf();
     super::cleanup_helpers::run_cleanup_step(
         &label,
-        10,
+        git_runtime_config().cleanup_worktree_timeout_secs,
         task_id,
         async move { GitService::delete_worktree(&rp, &wt).await },
     ).await;
