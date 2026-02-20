@@ -2357,3 +2357,345 @@ async fn test_startup_recovers_blocked_tasks_with_stopped_blocker() {
         "blocked_reason should be cleared when task is unblocked"
     );
 }
+
+// ============================================================
+// Dependency Reconciliation Tests (TDD — tests written first)
+// ============================================================
+// These test `reconcile_dependency_violations()` which detects tasks in
+// non-Blocked states that have unsatisfied dependencies and moves them
+// back to Blocked (or Stopped for states where Blocked is not a valid target).
+
+/// Ready task with a Failed blocker should be re-blocked.
+/// Failed does NOT satisfy dependencies (is_dependency_satisfied() returns false).
+#[tokio::test]
+async fn test_reconcile_reblocks_ready_task_with_failed_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Blocker is Failed — does NOT satisfy dependency
+    let mut blocker = Task::new(project.id.clone(), "Failed Blocker".to_string());
+    blocker.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    // Dependent is Ready — should be re-blocked because blocker is Failed
+    let mut ready_task = Task::new(project.id.clone(), "Ready Dependent".to_string());
+    ready_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(ready_task.clone())
+        .await
+        .unwrap();
+
+    // Add dependency: ready_task depends on blocker
+    app_state
+        .task_dependency_repo
+        .add_dependency(&ready_task.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let (runner, _) = build_runner(&app_state, &execution_state);
+
+    // This method doesn't exist yet — TDD red phase
+    runner.reconcile_dependency_violations().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&ready_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Ready task with Failed blocker should be re-blocked"
+    );
+    assert!(
+        updated.blocked_reason.is_some(),
+        "blocked_reason should be set when task is re-blocked"
+    );
+}
+
+/// Executing task with a Failed blocker should be re-blocked.
+/// Executing → Blocked is a valid state machine transition (status.rs line 78).
+#[tokio::test]
+async fn test_reconcile_reblocks_executing_task_with_failed_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Blocker is Failed
+    let mut blocker = Task::new(project.id.clone(), "Failed Blocker".to_string());
+    blocker.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    // Dependent is Executing — should be re-blocked
+    let mut executing_task = Task::new(project.id.clone(), "Executing Dependent".to_string());
+    executing_task.internal_status = InternalStatus::Executing;
+    app_state
+        .task_repo
+        .create(executing_task.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&executing_task.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let (runner, _) = build_runner(&app_state, &execution_state);
+    runner.reconcile_dependency_violations().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&executing_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Executing task with Failed blocker should be re-blocked"
+    );
+}
+
+/// Reviewing task with a Failed blocker should be Stopped (not Blocked).
+/// Reviewing → Blocked is NOT a valid transition, but Reviewing → Stopped IS.
+#[tokio::test]
+async fn test_reconcile_stops_reviewing_task_with_failed_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut blocker = Task::new(project.id.clone(), "Failed Blocker".to_string());
+    blocker.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    // Reviewing → Blocked is invalid, so should go to Stopped
+    let mut reviewing_task = Task::new(project.id.clone(), "Reviewing Dependent".to_string());
+    reviewing_task.internal_status = InternalStatus::Reviewing;
+    app_state
+        .task_repo
+        .create(reviewing_task.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&reviewing_task.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let (runner, _) = build_runner(&app_state, &execution_state);
+    runner.reconcile_dependency_violations().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&reviewing_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Stopped,
+        "Reviewing task with Failed blocker should be Stopped (Blocked not valid from Reviewing)"
+    );
+}
+
+/// Ready task with a Merged blocker should NOT be re-blocked.
+/// Merged satisfies dependencies (is_dependency_satisfied() returns true).
+#[tokio::test]
+async fn test_reconcile_leaves_ready_task_with_merged_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Blocker is Merged — satisfies dependency
+    let mut blocker = Task::new(project.id.clone(), "Merged Blocker".to_string());
+    blocker.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    let mut ready_task = Task::new(project.id.clone(), "Ready Dependent".to_string());
+    ready_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(ready_task.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&ready_task.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let (runner, _) = build_runner(&app_state, &execution_state);
+    runner.reconcile_dependency_violations().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&ready_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Ready task with Merged blocker should stay Ready"
+    );
+}
+
+/// Ready task with no dependencies should not be touched.
+#[tokio::test]
+async fn test_reconcile_leaves_task_with_no_blockers() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut ready_task = Task::new(project.id.clone(), "Standalone Ready Task".to_string());
+    ready_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(ready_task.clone())
+        .await
+        .unwrap();
+
+    // No dependencies added
+
+    let (runner, _) = build_runner(&app_state, &execution_state);
+    runner.reconcile_dependency_violations().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&ready_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Task with no dependencies should remain Ready"
+    );
+}
+
+/// Ready task whose blocker is still Blocked should be re-blocked.
+/// Blocked is NOT a satisfied dependency state.
+#[tokio::test]
+async fn test_reconcile_reblocks_task_with_blocked_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Blocker is Blocked — does NOT satisfy dependency
+    let mut blocker = Task::new(project.id.clone(), "Blocked Blocker".to_string());
+    blocker.internal_status = InternalStatus::Blocked;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    let mut ready_task = Task::new(project.id.clone(), "Ready Dependent".to_string());
+    ready_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(ready_task.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&ready_task.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let (runner, _) = build_runner(&app_state, &execution_state);
+    runner.reconcile_dependency_violations().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&ready_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Ready task with Blocked blocker should be re-blocked"
+    );
+}
+
+/// Verify blocked_reason includes the failed blocker's title.
+#[tokio::test]
+async fn test_reconcile_sets_blocked_reason_with_failed_blocker_title() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut blocker = Task::new(project.id.clone(), "Auth Service Setup".to_string());
+    blocker.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    let mut ready_task = Task::new(project.id.clone(), "User Login Feature".to_string());
+    ready_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(ready_task.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&ready_task.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let (runner, _) = build_runner(&app_state, &execution_state);
+    runner.reconcile_dependency_violations().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&ready_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Blocked);
+    let reason = updated.blocked_reason.expect("blocked_reason should be set");
+    assert!(
+        reason.contains("Auth Service Setup"),
+        "blocked_reason should contain the failed blocker's title, got: {}",
+        reason
+    );
+}
