@@ -850,11 +850,11 @@ impl<'a> super::TransitionHandler<'a> {
             return false;
         }
 
-        let from_str = serde_json::to_value(&from_status)
+        let from_str = serde_json::to_value(from_status)
             .ok()
             .and_then(|v| v.as_str().map(String::from))
             .unwrap_or_else(|| format!("{:?}", from_status));
-        let to_str = serde_json::to_value(&to_status)
+        let to_str = serde_json::to_value(to_status)
             .ok()
             .and_then(|v| v.as_str().map(String::from))
             .unwrap_or_else(|| format!("{:?}", to_status));
