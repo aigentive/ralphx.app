@@ -1,50 +1,38 @@
 use super::*;
 
 #[test]
-fn merge_phase_serializes_to_snake_case() {
+fn merge_phase_serializes_as_string() {
     assert_eq!(
-        serde_json::to_string(&MergePhase::WorktreeSetup).unwrap(),
+        serde_json::to_string(&MergePhase::worktree_setup()).unwrap(),
         "\"worktree_setup\""
     );
     assert_eq!(
-        serde_json::to_string(&MergePhase::ProgrammaticMerge).unwrap(),
+        serde_json::to_string(&MergePhase::programmatic_merge()).unwrap(),
         "\"programmatic_merge\""
     );
     assert_eq!(
-        serde_json::to_string(&MergePhase::Typecheck).unwrap(),
-        "\"typecheck\""
-    );
-    assert_eq!(
-        serde_json::to_string(&MergePhase::Lint).unwrap(),
-        "\"lint\""
-    );
-    assert_eq!(
-        serde_json::to_string(&MergePhase::Clippy).unwrap(),
-        "\"clippy\""
-    );
-    assert_eq!(
-        serde_json::to_string(&MergePhase::Test).unwrap(),
-        "\"test\""
-    );
-    assert_eq!(
-        serde_json::to_string(&MergePhase::Finalize).unwrap(),
+        serde_json::to_string(&MergePhase::finalize()).unwrap(),
         "\"finalize\""
+    );
+    assert_eq!(
+        serde_json::to_string(&MergePhase::new("npm_run_typecheck")).unwrap(),
+        "\"npm_run_typecheck\""
     );
 }
 
 #[test]
-fn merge_phase_deserializes_from_snake_case() {
+fn merge_phase_deserializes_from_string() {
     assert_eq!(
         serde_json::from_str::<MergePhase>("\"worktree_setup\"").unwrap(),
-        MergePhase::WorktreeSetup
+        MergePhase::worktree_setup()
     );
     assert_eq!(
         serde_json::from_str::<MergePhase>("\"programmatic_merge\"").unwrap(),
-        MergePhase::ProgrammaticMerge
+        MergePhase::programmatic_merge()
     );
     assert_eq!(
-        serde_json::from_str::<MergePhase>("\"typecheck\"").unwrap(),
-        MergePhase::Typecheck
+        serde_json::from_str::<MergePhase>("\"cargo_clippy\"").unwrap(),
+        MergePhase::new("cargo_clippy")
     );
 }
 
@@ -72,13 +60,13 @@ fn merge_phase_status_serializes() {
 fn merge_progress_event_new_sets_fields() {
     let event = MergeProgressEvent::new(
         "task-123".to_string(),
-        MergePhase::Typecheck,
+        MergePhase::new("npm_run_typecheck"),
         MergePhaseStatus::Started,
         "Running type check".to_string(),
     );
 
     assert_eq!(event.task_id, "task-123");
-    assert_eq!(event.phase, MergePhase::Typecheck);
+    assert_eq!(event.phase, MergePhase::new("npm_run_typecheck"));
     assert_eq!(event.status, MergePhaseStatus::Started);
     assert_eq!(event.message, "Running type check");
 }
@@ -88,7 +76,7 @@ fn merge_progress_event_sets_timestamp() {
     let before = Utc::now();
     let event = MergeProgressEvent::new(
         "task-123".to_string(),
-        MergePhase::Test,
+        MergePhase::new("cargo_test"),
         MergePhaseStatus::Passed,
         "Tests passed".to_string(),
     );
@@ -102,30 +90,33 @@ fn merge_progress_event_sets_timestamp() {
 fn merge_progress_event_serializes() {
     let event = MergeProgressEvent::new(
         "task-456".to_string(),
-        MergePhase::Clippy,
+        MergePhase::new("cargo_clippy"),
         MergePhaseStatus::Failed,
         "Clippy errors found".to_string(),
     );
 
     let json = serde_json::to_string(&event).unwrap();
     assert!(json.contains("\"task_id\":\"task-456\""));
-    assert!(json.contains("\"phase\":\"clippy\""));
+    assert!(json.contains("\"phase\":\"cargo_clippy\""));
     assert!(json.contains("\"status\":\"failed\""));
     assert!(json.contains("\"message\":\"Clippy errors found\""));
 }
 
 #[test]
 fn merge_phase_display() {
-    assert_eq!(format!("{}", MergePhase::WorktreeSetup), "worktree_setup");
     assert_eq!(
-        format!("{}", MergePhase::ProgrammaticMerge),
+        format!("{}", MergePhase::worktree_setup()),
+        "worktree_setup"
+    );
+    assert_eq!(
+        format!("{}", MergePhase::programmatic_merge()),
         "programmatic_merge"
     );
-    assert_eq!(format!("{}", MergePhase::Typecheck), "typecheck");
-    assert_eq!(format!("{}", MergePhase::Lint), "lint");
-    assert_eq!(format!("{}", MergePhase::Clippy), "clippy");
-    assert_eq!(format!("{}", MergePhase::Test), "test");
-    assert_eq!(format!("{}", MergePhase::Finalize), "finalize");
+    assert_eq!(format!("{}", MergePhase::finalize()), "finalize");
+    assert_eq!(
+        format!("{}", MergePhase::new("cargo_test")),
+        "cargo_test"
+    );
 }
 
 #[test]
@@ -138,8 +129,14 @@ fn merge_phase_status_display() {
 
 #[test]
 fn merge_phase_equality() {
-    assert_eq!(MergePhase::Typecheck, MergePhase::Typecheck);
-    assert_ne!(MergePhase::Typecheck, MergePhase::Lint);
+    assert_eq!(
+        MergePhase::new("npm_run_typecheck"),
+        MergePhase::new("npm_run_typecheck")
+    );
+    assert_ne!(
+        MergePhase::new("npm_run_typecheck"),
+        MergePhase::new("npm_run_lint")
+    );
 }
 
 #[test]
@@ -148,76 +145,220 @@ fn merge_phase_status_equality() {
     assert_ne!(MergePhaseStatus::Started, MergePhaseStatus::Passed);
 }
 
-// Phase mapper tests
+// derive_phase_id tests
+#[test]
+fn derive_phase_id_npm_typecheck() {
+    assert_eq!(derive_phase_id("npm run typecheck"), "npm_run_typecheck");
+}
+
+#[test]
+fn derive_phase_id_npx_tsc() {
+    assert_eq!(derive_phase_id("npx tsc --noEmit"), "npx_tsc");
+}
+
+#[test]
+fn derive_phase_id_npm_lint() {
+    assert_eq!(derive_phase_id("npm run lint"), "npm_run_lint");
+}
+
+#[test]
+fn derive_phase_id_cargo_clippy() {
+    assert_eq!(
+        derive_phase_id("cargo clippy --all-targets --all-features -- -D warnings"),
+        "cargo_clippy"
+    );
+}
+
+#[test]
+fn derive_phase_id_cargo_test() {
+    assert_eq!(derive_phase_id("cargo test"), "cargo_test");
+}
+
+#[test]
+fn derive_phase_id_npm_test() {
+    assert_eq!(derive_phase_id("npm run test"), "npm_run_test");
+}
+
+#[test]
+fn derive_phase_id_npm_test_run() {
+    assert_eq!(derive_phase_id("npm run test:run"), "npm_run_test:run");
+}
+
+#[test]
+fn derive_phase_id_unknown() {
+    assert_eq!(derive_phase_id("some unknown command"), "some_unknown_command");
+}
+
+#[test]
+fn derive_phase_id_empty() {
+    assert_eq!(derive_phase_id(""), "unknown");
+}
+
+#[test]
+fn derive_phase_id_only_flags() {
+    assert_eq!(derive_phase_id("--flag -v"), "unknown");
+}
+
+// derive_phase_label tests
+#[test]
+fn derive_phase_label_npm_typecheck() {
+    assert_eq!(derive_phase_label("npm run typecheck"), "Type Check");
+}
+
+#[test]
+fn derive_phase_label_npx_tsc() {
+    assert_eq!(derive_phase_label("npx tsc --noEmit"), "Type Check");
+}
+
+#[test]
+fn derive_phase_label_npm_lint() {
+    assert_eq!(derive_phase_label("npm run lint"), "Lint");
+}
+
+#[test]
+fn derive_phase_label_cargo_clippy() {
+    assert_eq!(
+        derive_phase_label("cargo clippy --all-targets --all-features -- -D warnings"),
+        "Clippy"
+    );
+}
+
+#[test]
+fn derive_phase_label_cargo_test() {
+    assert_eq!(derive_phase_label("cargo test"), "Test");
+}
+
+#[test]
+fn derive_phase_label_npm_test() {
+    assert_eq!(derive_phase_label("npm run test"), "Test");
+}
+
+#[test]
+fn derive_phase_label_unknown_fallback() {
+    // mypy is a known type checker
+    assert_eq!(derive_phase_label("mypy src/"), "Type Check");
+}
+
+#[test]
+fn derive_phase_label_truly_unknown() {
+    // Unknown commands get title-cased phase ID
+    assert_eq!(derive_phase_label("custom-tool run"), "Custom-tool Run");
+}
+
+#[test]
+fn derive_phase_label_go_test() {
+    assert_eq!(derive_phase_label("go test ./..."), "Test");
+}
+
+#[test]
+fn derive_phase_label_ruff_lint() {
+    assert_eq!(derive_phase_label("ruff check ."), "Lint");
+}
+
+#[test]
+fn derive_phase_label_eslint() {
+    assert_eq!(derive_phase_label("eslint src/"), "Lint");
+}
+
+#[test]
+fn derive_phase_label_cargo_fmt() {
+    assert_eq!(derive_phase_label("cargo fmt --check"), "Format");
+}
+
+// map_command_to_phase tests (new behavior: returns MergePhase with dynamic ID)
 #[test]
 fn map_command_npm_typecheck() {
     assert_eq!(
         map_command_to_phase("npm run typecheck"),
-        MergePhase::Typecheck
+        MergePhase::new("npm_run_typecheck")
     );
-}
-
-#[test]
-fn map_command_npx_tsc() {
-    assert_eq!(
-        map_command_to_phase("npx tsc --noEmit"),
-        MergePhase::Typecheck
-    );
-}
-
-#[test]
-fn map_command_npm_lint() {
-    assert_eq!(map_command_to_phase("npm run lint"), MergePhase::Lint);
 }
 
 #[test]
 fn map_command_cargo_clippy() {
     assert_eq!(
         map_command_to_phase("cargo clippy --all-targets --all-features -- -D warnings"),
-        MergePhase::Clippy
+        MergePhase::new("cargo_clippy")
     );
 }
 
 #[test]
 fn map_command_cargo_test() {
-    assert_eq!(map_command_to_phase("cargo test"), MergePhase::Test);
-}
-
-#[test]
-fn map_command_npm_test() {
-    assert_eq!(map_command_to_phase("npm run test"), MergePhase::Test);
-}
-
-#[test]
-fn map_command_npm_test_run() {
-    assert_eq!(map_command_to_phase("npm run test:run"), MergePhase::Test);
-}
-
-#[test]
-fn map_command_unknown() {
     assert_eq!(
-        map_command_to_phase("some unknown command"),
-        MergePhase::Finalize
+        map_command_to_phase("cargo test"),
+        MergePhase::new("cargo_test")
     );
 }
 
+// derive_phases_from_analysis tests
 #[test]
-fn map_command_case_insensitive() {
-    assert_eq!(
-        map_command_to_phase("NPM RUN TYPECHECK"),
-        MergePhase::Typecheck
-    );
-    assert_eq!(map_command_to_phase("CARGO CLIPPY"), MergePhase::Clippy);
+fn derive_phases_from_analysis_basic() {
+    let entries = vec![
+        PhaseAnalysisEntry {
+            validate: vec![
+                "npm run typecheck".to_string(),
+                "npm run lint".to_string(),
+            ],
+        },
+        PhaseAnalysisEntry {
+            validate: vec![
+                "cargo clippy --all-targets --all-features -- -D warnings".to_string(),
+                "cargo test".to_string(),
+            ],
+        },
+    ];
+
+    let phases = derive_phases_from_analysis(&entries);
+
+    // worktree_setup + programmatic_merge + 4 validate + finalize = 7
+    assert_eq!(phases.len(), 7);
+    assert_eq!(phases[0].id, "worktree_setup");
+    assert_eq!(phases[0].label, "Worktree Setup");
+    assert_eq!(phases[1].id, "programmatic_merge");
+    assert_eq!(phases[1].label, "Merge");
+    assert_eq!(phases[2].id, "npm_run_typecheck");
+    assert_eq!(phases[2].label, "Type Check");
+    assert_eq!(phases[3].id, "npm_run_lint");
+    assert_eq!(phases[3].label, "Lint");
+    assert_eq!(phases[4].id, "cargo_clippy");
+    assert_eq!(phases[4].label, "Clippy");
+    assert_eq!(phases[5].id, "cargo_test");
+    assert_eq!(phases[5].label, "Test");
+    assert_eq!(phases[6].id, "finalize");
+    assert_eq!(phases[6].label, "Finalize");
 }
 
 #[test]
-fn map_command_with_extra_flags() {
-    assert_eq!(
-        map_command_to_phase("npm run typecheck -- --strict"),
-        MergePhase::Typecheck
-    );
-    assert_eq!(
-        map_command_to_phase("cargo test --lib --release"),
-        MergePhase::Test
-    );
+fn derive_phases_from_analysis_empty() {
+    let entries: Vec<PhaseAnalysisEntry> = vec![];
+    let phases = derive_phases_from_analysis(&entries);
+
+    // Just structural phases
+    assert_eq!(phases.len(), 3);
+    assert_eq!(phases[0].id, "worktree_setup");
+    assert_eq!(phases[1].id, "programmatic_merge");
+    assert_eq!(phases[2].id, "finalize");
+}
+
+#[test]
+fn derive_phases_from_analysis_single_entry() {
+    let entries = vec![PhaseAnalysisEntry {
+        validate: vec!["npx tsc --noEmit".to_string()],
+    }];
+
+    let phases = derive_phases_from_analysis(&entries);
+    assert_eq!(phases.len(), 4);
+    assert_eq!(phases[2].id, "npx_tsc");
+    assert_eq!(phases[2].label, "Type Check");
+}
+
+#[test]
+fn merge_phase_info_serializes() {
+    let info = MergePhaseInfo {
+        id: "cargo_test".to_string(),
+        label: "Test".to_string(),
+    };
+    let json = serde_json::to_string(&info).unwrap();
+    assert!(json.contains("\"id\":\"cargo_test\""));
+    assert!(json.contains("\"label\":\"Test\""));
 }

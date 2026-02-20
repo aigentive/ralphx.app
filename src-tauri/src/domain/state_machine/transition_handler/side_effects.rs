@@ -217,7 +217,7 @@ impl<'a> super::TransitionHandler<'a> {
         emit_merge_progress(
             self.machine.context.services.app_handle.as_ref(),
             task_id_str,
-            MergePhase::ProgrammaticMerge,
+            MergePhase::programmatic_merge(),
             MergePhaseStatus::Started,
             format!("Merging {} into {}", source_branch, target_branch),
         );

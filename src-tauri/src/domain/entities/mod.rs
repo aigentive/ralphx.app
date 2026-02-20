@@ -68,7 +68,7 @@ pub use memory_archive_job::{MemoryArchiveJobStatus, MemoryArchiveJobType};
 pub use memory_entry::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
 pub use memory_event::{MemoryActorType, MemoryEvent, MemoryEventId, ParseMemoryActorTypeError};
 pub use memory_rule_binding::MemoryRuleBinding;
-pub use merge_progress_event::{MergePhase, MergePhaseStatus, MergeProgressEvent};
+pub use merge_progress_event::{MergePhase, MergePhaseInfo, MergePhaseStatus, MergeProgressEvent};
 pub use methodology::{
     MethodologyExtension, MethodologyId, MethodologyPhase, MethodologyPlanArtifactConfig,
     MethodologyPlanTemplate, MethodologyStatus, MethodologyTemplate, ParseMethodologyStatusError,

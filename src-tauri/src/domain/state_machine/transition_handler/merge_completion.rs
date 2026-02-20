@@ -106,7 +106,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     emit_merge_progress(
         app_handle,
         task_id_str,
-        MergePhase::Finalize,
+        MergePhase::finalize(),
         MergePhaseStatus::Started,
         "Finalizing merge and cleaning up".to_string(),
     );
@@ -200,7 +200,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     emit_merge_progress(
         app_handle,
         task_id_str,
-        MergePhase::Finalize,
+        MergePhase::finalize(),
         MergePhaseStatus::Passed,
         format!("Merge finalized successfully: {}", commit_sha),
     );

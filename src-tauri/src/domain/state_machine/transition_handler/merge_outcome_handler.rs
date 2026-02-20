@@ -170,7 +170,7 @@ impl<'a> super::TransitionHandler<'a> {
 
         emit_merge_progress(
             self.machine.context.services.app_handle.as_ref(), task_id_str,
-            MergePhase::ProgrammaticMerge, MergePhaseStatus::Passed,
+            MergePhase::programmatic_merge(), MergePhaseStatus::Passed,
             format!("{} completed: {}", capitalize(opts.strategy_label), commit_sha),
         );
 
@@ -293,7 +293,7 @@ impl<'a> super::TransitionHandler<'a> {
 
         emit_merge_progress(
             self.machine.context.services.app_handle.as_ref(), task_id_str,
-            MergePhase::ProgrammaticMerge, MergePhaseStatus::Failed,
+            MergePhase::programmatic_merge(), MergePhaseStatus::Failed,
             format!("{} conflicts in {} files", capitalize(opts.strategy_label), conflict_files.len()),
         );
 

@@ -302,8 +302,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
   // Live validation events (only meaningful during active pending_merge)
   const liveSteps = useMergeValidationEvents(task.id);
 
-  // High-level merge progress phases
-  const mergePhases = useMergeProgressEvents(task.id);
+  // High-level merge progress phases (dynamic from project analysis)
+  const { phases: mergePhases, phaseList } = useMergeProgressEvents(task.id);
 
   // Parse conflict files from task metadata (for historical view or fallback)
   const metadataConflicts: string[] = useMemo(() => {
@@ -456,7 +456,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       {/* Phase-level progress timeline (live, during programmatic merge) */}
       {!isHistorical && isProgrammaticPhase && (
         mergePhases.length > 0 ? (
-          <MergePhaseTimeline phases={mergePhases} />
+          <MergePhaseTimeline phases={mergePhases} phaseList={phaseList} />
         ) : (
           <section data-testid="merge-resuming-section">
             <SectionTitle>Merge Progress</SectionTitle>

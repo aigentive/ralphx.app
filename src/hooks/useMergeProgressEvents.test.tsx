@@ -49,9 +49,10 @@ describe("useMergeProgressEvents", () => {
     mockListeners.clear();
   });
 
-  it("subscribes to task:merge_progress on mount", () => {
+  it("subscribes to task:merge_progress and task:merge_phases on mount", () => {
     renderHook(() => useMergeProgressEvents("task-123"));
     expect(mockListeners.has("task:merge_progress")).toBe(true);
+    expect(mockListeners.has("task:merge_phases")).toBe(true);
   });
 
   it("unsubscribes on unmount", () => {
@@ -60,11 +61,13 @@ describe("useMergeProgressEvents", () => {
 
     unmount();
     expect(mockListeners.has("task:merge_progress")).toBe(false);
+    expect(mockListeners.has("task:merge_phases")).toBe(false);
   });
 
-  it("returns empty array initially", () => {
+  it("returns empty phases and null phaseList initially", () => {
     const { result } = renderHook(() => useMergeProgressEvents("task-123"));
-    expect(result.current).toEqual([]);
+    expect(result.current.phases).toEqual([]);
+    expect(result.current.phaseList).toBeNull();
   });
 
   it("accumulates progress events for matching task", () => {
@@ -77,9 +80,9 @@ describe("useMergeProgressEvents", () => {
       );
     });
 
-    expect(result.current).toHaveLength(1);
-    expect(result.current[0].phase).toBe("worktree_setup");
-    expect(result.current[0].status).toBe("started");
+    expect(result.current.phases).toHaveLength(1);
+    expect(result.current.phases[0].phase).toBe("worktree_setup");
+    expect(result.current.phases[0].status).toBe("started");
 
     act(() => {
       emitEvent(
@@ -88,8 +91,8 @@ describe("useMergeProgressEvents", () => {
       );
     });
 
-    expect(result.current).toHaveLength(2);
-    expect(result.current[1].phase).toBe("programmatic_merge");
+    expect(result.current.phases).toHaveLength(2);
+    expect(result.current.phases[1].phase).toBe("programmatic_merge");
   });
 
   it("updates existing phase when same phase event arrives", () => {
@@ -99,21 +102,21 @@ describe("useMergeProgressEvents", () => {
       emitEvent(
         "task:merge_progress",
         makeProgressEvent({
-          phase: "typecheck",
+          phase: "npm_run_typecheck",
           status: "started",
           message: "Running typecheck",
         })
       );
     });
 
-    expect(result.current).toHaveLength(1);
-    expect(result.current[0].status).toBe("started");
+    expect(result.current.phases).toHaveLength(1);
+    expect(result.current.phases[0].status).toBe("started");
 
     act(() => {
       emitEvent(
         "task:merge_progress",
         makeProgressEvent({
-          phase: "typecheck",
+          phase: "npm_run_typecheck",
           status: "passed",
           message: "Typecheck passed",
         })
@@ -121,9 +124,9 @@ describe("useMergeProgressEvents", () => {
     });
 
     // Same length — updated in-place, not appended
-    expect(result.current).toHaveLength(1);
-    expect(result.current[0].status).toBe("passed");
-    expect(result.current[0].message).toBe("Typecheck passed");
+    expect(result.current.phases).toHaveLength(1);
+    expect(result.current.phases[0].status).toBe("passed");
+    expect(result.current.phases[0].message).toBe("Typecheck passed");
   });
 
   it("ignores events for a different task", () => {
@@ -132,11 +135,11 @@ describe("useMergeProgressEvents", () => {
     act(() => {
       emitEvent(
         "task:merge_progress",
-        makeProgressEvent({ task_id: "task-999", phase: "lint" })
+        makeProgressEvent({ task_id: "task-999", phase: "npm_run_lint" })
       );
     });
 
-    expect(result.current).toHaveLength(0);
+    expect(result.current.phases).toHaveLength(0);
   });
 
   it("ignores invalid event payloads", () => {
@@ -146,10 +149,10 @@ describe("useMergeProgressEvents", () => {
       emitEvent("task:merge_progress", { invalid: "data" });
     });
 
-    expect(result.current).toHaveLength(0);
+    expect(result.current.phases).toHaveLength(0);
   });
 
-  it("resets phases when taskId changes", () => {
+  it("resets phases and phaseList when taskId changes", () => {
     const { result, rerender } = renderHook(
       ({ taskId }) => useMergeProgressEvents(taskId),
       { initialProps: { taskId: "task-123" } }
@@ -162,29 +165,30 @@ describe("useMergeProgressEvents", () => {
       );
     });
 
-    expect(result.current).toHaveLength(1);
+    expect(result.current.phases).toHaveLength(1);
 
     // Change taskId — phases should reset
     rerender({ taskId: "task-456" });
 
-    expect(result.current).toHaveLength(0);
+    expect(result.current.phases).toHaveLength(0);
+    expect(result.current.phaseList).toBeNull();
   });
 
   it("handles full phase sequence: started then passed/failed", () => {
     const { result } = renderHook(() => useMergeProgressEvents("task-123"));
 
     const phases: Array<{
-      phase: MergeProgressEvent["phase"];
+      phase: string;
       status: MergeProgressEvent["status"];
     }> = [
       { phase: "worktree_setup", status: "started" },
       { phase: "worktree_setup", status: "passed" },
       { phase: "programmatic_merge", status: "started" },
       { phase: "programmatic_merge", status: "passed" },
-      { phase: "typecheck", status: "started" },
-      { phase: "typecheck", status: "passed" },
-      { phase: "lint", status: "started" },
-      { phase: "lint", status: "failed" },
+      { phase: "npm_run_typecheck", status: "started" },
+      { phase: "npm_run_typecheck", status: "passed" },
+      { phase: "npm_run_lint", status: "started" },
+      { phase: "npm_run_lint", status: "failed" },
     ];
 
     for (const { phase, status } of phases) {
@@ -197,14 +201,51 @@ describe("useMergeProgressEvents", () => {
     }
 
     // 4 distinct phases
-    expect(result.current).toHaveLength(4);
-    expect(result.current[0].phase).toBe("worktree_setup");
-    expect(result.current[0].status).toBe("passed");
-    expect(result.current[1].phase).toBe("programmatic_merge");
-    expect(result.current[1].status).toBe("passed");
-    expect(result.current[2].phase).toBe("typecheck");
-    expect(result.current[2].status).toBe("passed");
-    expect(result.current[3].phase).toBe("lint");
-    expect(result.current[3].status).toBe("failed");
+    expect(result.current.phases).toHaveLength(4);
+    expect(result.current.phases[0].phase).toBe("worktree_setup");
+    expect(result.current.phases[0].status).toBe("passed");
+    expect(result.current.phases[1].phase).toBe("programmatic_merge");
+    expect(result.current.phases[1].status).toBe("passed");
+    expect(result.current.phases[2].phase).toBe("npm_run_typecheck");
+    expect(result.current.phases[2].status).toBe("passed");
+    expect(result.current.phases[3].phase).toBe("npm_run_lint");
+    expect(result.current.phases[3].status).toBe("failed");
+  });
+
+  it("captures dynamic phase list from task:merge_phases event", () => {
+    const { result } = renderHook(() => useMergeProgressEvents("task-123"));
+
+    expect(result.current.phaseList).toBeNull();
+
+    act(() => {
+      emitEvent("task:merge_phases", {
+        task_id: "task-123",
+        phases: [
+          { id: "worktree_setup", label: "Worktree Setup" },
+          { id: "programmatic_merge", label: "Merge" },
+          { id: "npm_run_typecheck", label: "Type Check" },
+          { id: "cargo_test", label: "Test" },
+          { id: "finalize", label: "Finalize" },
+        ],
+      });
+    });
+
+    expect(result.current.phaseList).toHaveLength(5);
+    expect(result.current.phaseList![0].id).toBe("worktree_setup");
+    expect(result.current.phaseList![2].id).toBe("npm_run_typecheck");
+    expect(result.current.phaseList![2].label).toBe("Type Check");
+  });
+
+  it("ignores phase list for different task", () => {
+    const { result } = renderHook(() => useMergeProgressEvents("task-123"));
+
+    act(() => {
+      emitEvent("task:merge_phases", {
+        task_id: "task-999",
+        phases: [{ id: "worktree_setup", label: "Setup" }],
+      });
+    });
+
+    expect(result.current.phaseList).toBeNull();
   });
 });
