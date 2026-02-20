@@ -1569,3 +1569,268 @@ async fn test_retry_main_merges_retries_when_no_session_and_timed_out() {
         "Timed-out main merge without session should be retried"
     );
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// Dependency Gate Tests (Scheduler should skip Ready tasks with unsatisfied deps)
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Ready task whose sole blocker is Failed should NOT be scheduled.
+/// The scheduler should re-block it to Blocked with a reason instead.
+#[tokio::test]
+async fn test_scheduler_skips_ready_task_with_failed_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a blocker task in Failed state
+    let mut blocker = Task::new(project.id.clone(), "Blocker Task".to_string());
+    blocker.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    // Create a Ready task that depends on the Failed blocker
+    let mut dependent = Task::new(project.id.clone(), "Dependent Task".to_string());
+    dependent.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(dependent.clone())
+        .await
+        .unwrap();
+
+    // Wire up the dependency: dependent depends on blocker
+    app_state
+        .task_dependency_repo
+        .add_dependency(&dependent.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Dependent should NOT have been scheduled — it should be re-blocked
+    let updated = app_state
+        .task_repo
+        .get_by_id(&dependent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Ready task with Failed blocker should be moved to Blocked, not scheduled"
+    );
+    assert!(
+        updated.blocked_reason.is_some(),
+        "Re-blocked task should have a blocked_reason set"
+    );
+}
+
+/// Ready task whose blocker is still Blocked (not satisfied) should NOT be scheduled.
+#[tokio::test]
+async fn test_scheduler_skips_ready_task_with_blocked_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a blocker task still in Blocked state
+    let mut blocker = Task::new(project.id.clone(), "Blocked Blocker".to_string());
+    blocker.internal_status = InternalStatus::Blocked;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    // Create a Ready task that depends on the Blocked blocker
+    let mut dependent = Task::new(project.id.clone(), "Dependent Task".to_string());
+    dependent.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(dependent.clone())
+        .await
+        .unwrap();
+
+    // Wire up the dependency
+    app_state
+        .task_dependency_repo
+        .add_dependency(&dependent.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Dependent should NOT have been scheduled
+    let updated = app_state
+        .task_repo
+        .get_by_id(&dependent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Ready task with Blocked blocker should be moved to Blocked, not scheduled"
+    );
+}
+
+/// Ready task whose sole blocker is Merged (satisfied) SHOULD be scheduled normally.
+/// This is the control test confirming satisfied deps don't block scheduling.
+#[tokio::test]
+async fn test_scheduler_schedules_ready_task_with_merged_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a blocker task that is Merged (dependency satisfied)
+    let mut blocker = Task::new(project.id.clone(), "Merged Blocker".to_string());
+    blocker.internal_status = InternalStatus::Merged;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    // Create a Ready task that depends on the Merged blocker
+    let mut dependent = Task::new(project.id.clone(), "Dependent Task".to_string());
+    dependent.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(dependent.clone())
+        .await
+        .unwrap();
+
+    // Wire up the dependency
+    app_state
+        .task_dependency_repo
+        .add_dependency(&dependent.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Dependent SHOULD be scheduled (blocker is Merged = satisfied)
+    // In tests without a real agent, this transitions to Failed (ExecutionBlocked)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&dependent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Ready task with Merged blocker should be scheduled (moved out of Ready)"
+    );
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Ready task with Merged blocker should NOT be re-blocked"
+    );
+}
+
+/// Standalone Ready task (no dependencies at all) SHOULD be scheduled normally.
+#[tokio::test]
+async fn test_scheduler_schedules_ready_task_with_no_blockers() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a standalone Ready task with NO dependencies
+    let mut task = Task::new(project.id.clone(), "Standalone Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Task SHOULD be scheduled (no blockers = no gate)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Standalone task with no blockers should be scheduled"
+    );
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Standalone task should NOT be moved to Blocked"
+    );
+}
+
+/// Ready task whose sole blocker is Cancelled (dependency satisfied) SHOULD be scheduled.
+#[tokio::test]
+async fn test_scheduler_schedules_ready_task_with_cancelled_blocker() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a blocker task that is Cancelled (dependency satisfied per is_dependency_satisfied)
+    let mut blocker = Task::new(project.id.clone(), "Cancelled Blocker".to_string());
+    blocker.internal_status = InternalStatus::Cancelled;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    // Create a Ready task that depends on the Cancelled blocker
+    let mut dependent = Task::new(project.id.clone(), "Dependent Task".to_string());
+    dependent.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(dependent.clone())
+        .await
+        .unwrap();
+
+    // Wire up the dependency
+    app_state
+        .task_dependency_repo
+        .add_dependency(&dependent.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Dependent SHOULD be scheduled (Cancelled = satisfied)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&dependent.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Ready task with Cancelled blocker should be scheduled"
+    );
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Blocked,
+        "Ready task with Cancelled blocker should NOT be re-blocked"
+    );
+}
