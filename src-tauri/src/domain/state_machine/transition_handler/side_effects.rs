@@ -42,7 +42,6 @@ use crate::domain::repositories::{
     PlanBranchRepository, TaskRepository,
 };
 use crate::error::AppResult;
-pub(super) const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
 
 use super::commit_messages::{build_plan_merge_commit_msg, build_squash_commit_msg};
 

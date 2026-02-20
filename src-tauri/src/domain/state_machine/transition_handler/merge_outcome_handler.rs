@@ -27,7 +27,6 @@ use super::merge_validation::{
     emit_merge_progress, extract_cached_validation, format_validation_warn_metadata,
     run_validation_commands, take_skip_validation_flag,
 };
-use super::side_effects::TEMP_SKIP_POST_MERGE_VALIDATION;
 
 /// Per-arm options that vary between merge strategies.
 pub(super) struct MergeHandlerOptions {
@@ -168,35 +167,31 @@ impl<'a> super::TransitionHandler<'a> {
         );
 
         // Post-merge validation gate
-        if TEMP_SKIP_POST_MERGE_VALIDATION {
-            tracing::warn!(task_id = task_id_str, strategy = opts.strategy_label, "Post-merge validation temporarily disabled");
-        } else {
-            let skip_validation = take_skip_validation_flag(task);
-            let validation_mode = &project.merge_validation_mode;
-            if !skip_validation && *validation_mode != MergeValidationMode::Off {
-                let source_sha = GitService::get_branch_sha(repo_path, source_branch).await.ok();
-                let cached_log = source_sha.as_deref().and_then(|sha| extract_cached_validation(task, sha));
-                if let Some(validation) = run_validation_commands(
-                    project, task, repo_path, task_id_str,
-                    self.machine.context.services.app_handle.as_ref(), cached_log.as_deref(),
-                ).await {
-                    if !validation.all_passed {
-                        if *validation_mode == MergeValidationMode::Warn {
-                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode, proceeding");
-                            task.metadata = Some(format_validation_warn_metadata(&validation.log, source_branch, target_branch));
-                        } else {
-                            self.handle_validation_failure(
-                                task, task_id, task_id_str, task_repo, &validation.failures, &validation.log,
-                                source_branch, target_branch, repo_path, opts.strategy_label, validation_mode,
-                            ).await;
-                            return;
-                        }
+        let skip_validation = take_skip_validation_flag(task);
+        let validation_mode = &project.merge_validation_mode;
+        if !skip_validation && *validation_mode != MergeValidationMode::Off {
+            let source_sha = GitService::get_branch_sha(repo_path, source_branch).await.ok();
+            let cached_log = source_sha.as_deref().and_then(|sha| extract_cached_validation(task, sha));
+            if let Some(validation) = run_validation_commands(
+                project, task, repo_path, task_id_str,
+                self.machine.context.services.app_handle.as_ref(), cached_log.as_deref(),
+            ).await {
+                if !validation.all_passed {
+                    if *validation_mode == MergeValidationMode::Warn {
+                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode, proceeding");
+                        task.metadata = Some(format_validation_warn_metadata(&validation.log, source_branch, target_branch));
                     } else {
-                        task.metadata = Some(serde_json::json!({
-                            "validation_log": validation.log, "validation_source_sha": source_sha,
-                            "source_branch": source_branch, "target_branch": target_branch,
-                        }).to_string());
+                        self.handle_validation_failure(
+                            task, task_id, task_id_str, task_repo, &validation.failures, &validation.log,
+                            source_branch, target_branch, repo_path, opts.strategy_label, validation_mode,
+                        ).await;
+                        return;
                     }
+                } else {
+                    task.metadata = Some(serde_json::json!({
+                        "validation_log": validation.log, "validation_source_sha": source_sha,
+                        "source_branch": source_branch, "target_branch": target_branch,
+                    }).to_string());
                 }
             }
         }
