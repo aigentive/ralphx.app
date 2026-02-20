@@ -257,8 +257,8 @@ async fn resolve_merge_branches_merge_task_with_merged_branch_returns_default() 
 
     let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
     let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
-    // Merged branch is not Active, so falls through to default
-    assert_eq!(source, "ralphx/test/task-merge");
+    // Merged branch is not Active, but still used as source to avoid incorrect merge direction
+    assert_eq!(source, "ralphx/test/plan-def456");
     assert_eq!(target, "main");
 }
 
@@ -283,9 +283,9 @@ async fn resolve_merge_branches_plan_task_with_abandoned_branch_returns_default(
 
     let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
     let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
-    // Abandoned branch is not Active, so falls through to default
+    // Abandoned branch is not Active, but still used as target to avoid incorrect task→main merge
     assert_eq!(source, "ralphx/test/task-abandoned");
-    assert_eq!(target, "main");
+    assert_eq!(target, "ralphx/test/plan-ghi789");
 }
 
 #[tokio::test]
