@@ -2,7 +2,8 @@ use super::*;
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InternalStatus, Project, Task, TaskId,
+    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InternalStatus, MergeFailureSource,
+    Project, Task, TaskId,
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::reconciliation_config;
