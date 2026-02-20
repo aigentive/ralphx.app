@@ -10,6 +10,7 @@ use crate::domain::entities::{ProjectId, TaskId};
 use crate::domain::review::config::ReviewSettings;
 use std::sync::Arc;
 
+pub(crate) mod cleanup_helpers;
 mod commit_messages;
 mod merge_completion;
 mod merge_coordination;

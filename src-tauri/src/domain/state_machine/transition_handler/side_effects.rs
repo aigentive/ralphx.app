@@ -50,6 +50,7 @@ use crate::domain::repositories::{
 use crate::error::AppResult;
 pub(super) const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
 
+use super::cleanup_helpers::{run_cleanup_step, spawn_schedule_after_settle};
 use super::commit_messages::{build_plan_merge_commit_msg, build_squash_commit_msg};
 
 impl<'a> super::TransitionHandler<'a> {
@@ -931,29 +932,13 @@ impl<'a> super::TransitionHandler<'a> {
                         worktree_path = %worktree_path,
                         "Deleting task worktree before programmatic merge to unlock branch"
                     );
-                    match tokio::time::timeout(
-                        std::time::Duration::from_secs(10),
+                    run_cleanup_step(
+                        "step 2 task worktree deletion",
+                        10,
+                        task_id_str,
                         GitService::delete_worktree(repo_path, &worktree_path_buf),
                     )
-                    .await
-                    {
-                        Ok(Ok(())) => {}
-                        Ok(Err(e)) => {
-                            tracing::error!(
-                                task_id = task_id_str,
-                                error = %e,
-                                worktree_path = %worktree_path,
-                                "Failed to delete task worktree before merge (non-fatal, continuing)"
-                            );
-                        }
-                        Err(_elapsed) => {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                worktree_path = %worktree_path,
-                                "pre_merge_cleanup: step 2 worktree deletion timed out after 10s (non-fatal, continuing)"
-                            );
-                        }
-                    }
+                    .await;
                 }
             }
 
@@ -981,31 +966,13 @@ impl<'a> super::TransitionHandler<'a> {
                         "Cleaning up stale {} worktree from previous attempt",
                         wt_label
                     );
-                    match tokio::time::timeout(
-                        std::time::Duration::from_secs(30),
+                    run_cleanup_step(
+                        &format!("step 4 {} worktree deletion", wt_label),
+                        30,
+                        task_id_str,
                         GitService::delete_worktree(repo_path, &own_wt_path),
                     )
-                    .await
-                    {
-                        Ok(Ok(())) => {}
-                        Ok(Err(e)) => {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                error = %e,
-                                worktree_path = %own_wt,
-                                "Failed to delete stale {} worktree (non-fatal)",
-                                wt_label
-                            );
-                        }
-                        Err(_elapsed) => {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                worktree_path = %own_wt,
-                                "pre_merge_cleanup: step 4 {} worktree deletion timed out after 30s (non-fatal)",
-                                wt_label
-                            );
-                        }
-                    }
+                    .await;
                 }
             }
 
@@ -1075,23 +1042,13 @@ impl<'a> super::TransitionHandler<'a> {
 
         // --- Step 6: Clean working tree ---
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 6 — cleaning working tree (git clean)");
-        match tokio::time::timeout(
-            std::time::Duration::from_secs(30),
+        run_cleanup_step(
+            "step 6 git clean",
+            30,
+            task_id_str,
             GitService::clean_working_tree(repo_path),
         )
-        .await
-        {
-            Ok(Ok(())) => tracing::debug!(
-                task_id = task_id_str,
-                "Pre-merge working tree clean succeeded"
-            ),
-            Ok(Err(e)) => {
-                tracing::warn!(task_id = task_id_str, error = %e, "Pre-merge clean failed (non-fatal)")
-            }
-            Err(_elapsed) => {
-                tracing::warn!(task_id = task_id_str, "pre_merge_cleanup: step 6 git clean timed out after 30s (non-fatal)")
-            }
-        }
+        .await;
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: complete");
     }
 
@@ -1162,12 +1119,10 @@ impl<'a> super::TransitionHandler<'a> {
         // Without this, unblocked tasks rely on the ReadyWatchdog (60s interval) to be
         // scheduled, causing up to 90s delay. This mirrors on_enter(Merged) in on_enter_states.rs.
         if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
-            let scheduler = Arc::clone(scheduler);
-            let merge_settle_ms = scheduler_config().merge_settle_ms;
-            tokio::spawn(async move {
-                tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms)).await;
-                scheduler.try_schedule_ready_tasks().await;
-            });
+            spawn_schedule_after_settle(
+                Arc::clone(scheduler),
+                scheduler_config().merge_settle_ms,
+            );
         }
 
     }
