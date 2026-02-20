@@ -16,11 +16,9 @@ import {
   Bot,
   FileWarning,
   CheckCircle2,
-  XCircle,
   ChevronDown,
   ChevronRight,
   Wrench,
-  Terminal,
 } from "lucide-react";
 import { useConflictDiff } from "@/hooks/useConflictDiff";
 import { ConflictDiffViewer } from "@/components/diff/ConflictDiffViewer";
@@ -129,91 +127,6 @@ function ConflictFilesList({
           )}
         </div>
       ))}
-    </div>
-  );
-}
-
-interface ValidationFailureEntry {
-  command: string;
-  path?: string;
-  exit_code?: number;
-  stderr?: string;
-}
-
-/**
- * Parse validation recovery state from task metadata.
- */
-function parseValidationRecovery(metadata: string | Record<string, unknown> | null | undefined): {
-  isRecovery: boolean;
-  failures: ValidationFailureEntry[];
-} {
-  if (!metadata) return { isRecovery: false, failures: [] };
-  try {
-    const parsed = typeof metadata === "string" ? JSON.parse(metadata) : metadata;
-    const isRecovery = parsed?.validation_recovery === true;
-    if (!isRecovery) return { isRecovery: false, failures: [] };
-    const failures = Array.isArray(parsed?.validation_failures)
-      ? (parsed.validation_failures as ValidationFailureEntry[])
-      : [];
-    return { isRecovery: true, failures };
-  } catch {
-    return { isRecovery: false, failures: [] };
-  }
-}
-
-/**
- * ValidationFailuresList - Shows validation command failures that triggered recovery
- */
-function ValidationFailuresList({ failures }: { failures: ValidationFailureEntry[] }) {
-  const [expandedIndex, setExpandedIndex] = useState<number | null>(null);
-
-  if (failures.length === 0) return null;
-
-  return (
-    <div className="space-y-1.5">
-      {failures.map((failure, index) => {
-        const hasStderr = failure.stderr && failure.stderr.trim().length > 0;
-        const expanded = expandedIndex === index;
-
-        return (
-          <div
-            key={index}
-            className="rounded-lg overflow-hidden"
-            style={{ backgroundColor: "rgba(255, 69, 58, 0.08)" }}
-          >
-            <button
-              type="button"
-              className="w-full flex items-center gap-2 py-2 px-3 text-left"
-              onClick={() => hasStderr && setExpandedIndex(expanded ? null : index)}
-              style={{ cursor: hasStderr ? "pointer" : "default" }}
-            >
-              <XCircle className="w-4 h-4 shrink-0" style={{ color: "#ff453a" }} />
-              <Terminal className="w-3.5 h-3.5 shrink-0 text-white/30" />
-              <span className="text-[12px] font-mono text-white/70 truncate flex-1" title={failure.command}>
-                {failure.command}
-              </span>
-              {failure.exit_code != null && (
-                <span className="text-[10px] text-white/30 shrink-0">exit {failure.exit_code}</span>
-              )}
-              {hasStderr && (
-                expanded
-                  ? <ChevronDown className="w-3.5 h-3.5 text-white/30 shrink-0" />
-                  : <ChevronRight className="w-3.5 h-3.5 text-white/30 shrink-0" />
-              )}
-            </button>
-            {expanded && hasStderr && (
-              <div
-                className="px-3 pb-3 max-h-[200px] overflow-y-auto"
-                style={{ scrollbarWidth: "thin" }}
-              >
-                <pre className="text-[11px] font-mono whitespace-pre-wrap break-all leading-relaxed" style={{ color: "#ff6961" }}>
-                  {failure.stderr}
-                </pre>
-              </div>
-            )}
-          </div>
-        );
-      })}
     </div>
   );
 }
@@ -376,10 +289,15 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     : undefined;
 
   // Detect validation recovery mode from task metadata
-  const { isRecovery: isValidationRecovery, failures: validationFailures } = useMemo(
-    () => parseValidationRecovery(task.metadata),
-    [task.metadata],
-  );
+  const isValidationRecovery = useMemo(() => {
+    if (!task.metadata) return false;
+    try {
+      const parsed = typeof task.metadata === "string" ? JSON.parse(task.metadata) : task.metadata;
+      return parsed?.validation_recovery === true;
+    } catch {
+      return false;
+    }
+  }, [task.metadata]);
 
   // Live validation events (only meaningful during active pending_merge)
   const liveSteps = useMergeValidationEvents(task.id);
@@ -414,9 +332,6 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     : (isConflictDetectionEnabled && liveConflicts.length > 0 ? liveConflicts : metadataConflicts);
 
   const branchName = task.taskBranch ?? "task branch";
-
-  // Determine labels/icons based on validation recovery vs conflict resolution
-  const isRecoveryAgent = isAgentPhase && isValidationRecovery;
 
   const statusLabel = historicalOutcome
     ? historicalOutcome === "merged"
@@ -557,21 +472,11 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         )
       )}
 
-      {/* Validation Failures (only in recovery mode during agent phase) */}
-      {isRecoveryAgent && validationFailures.length > 0 && (
-        <section data-testid="validation-failures-section">
-          <SectionTitle>Validation Failures ({validationFailures.length})</SectionTitle>
-          <DetailCard variant="warning">
-            <ValidationFailuresList failures={validationFailures} />
-          </DetailCard>
-        </section>
-      )}
-
-      {/* Validation Progress (live or historical) */}
+      {/* Validation Progress — live events in live mode, metadata fallback in historical mode */}
       <ValidationProgress
         taskId={task.id}
-        metadata={task.metadata}
-        liveSteps={liveSteps}
+        metadata={isHistorical ? task.metadata : null}
+        liveSteps={isHistorical ? undefined : liveSteps}
       />
 
       {/* Conflict Files (only for agent phase, non-recovery) */}

@@ -199,18 +199,18 @@ pub(super) fn try_handle_symlink_idempotent(
             }
 
             if existing_target == source {
-                // Correct symlink already exists — skip
+                // Correct symlink already exists — report as cached (no action needed)
                 tracing::info!(
                     command = %cmd,
                     target = %target_path.display(),
-                    "Worktree setup: symlink already correct, skipping"
+                    "Worktree setup: symlink already correct, cached"
                 );
                 return Some(ValidationLogEntry {
                     phase: "setup".to_string(),
                     command: cmd.to_string(),
                     path: resolved_path.to_string(),
                     label: label.to_string(),
-                    status: "skipped".to_string(),
+                    status: "cached".to_string(),
                     exit_code: Some(0),
                     stdout: String::new(),
                     stderr: "Symlink already exists and is correct".to_string(),
