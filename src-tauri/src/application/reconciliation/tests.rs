@@ -6,6 +6,7 @@ use crate::domain::entities::{
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::reconciliation_config;
+use std::collections::HashSet;
 use std::sync::Arc;
 
 fn build_reconciler(
@@ -287,22 +288,19 @@ fn pending_merge_deferred_waits_when_not_stale() {
 
 #[test]
 fn merge_incomplete_retry_delay_uses_exponential_backoff_and_cap() {
-    assert_eq!(
-        ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(0),
-        chrono::Duration::seconds(30)
-    );
-    assert_eq!(
-        ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(1),
-        chrono::Duration::seconds(60)
-    );
-    assert_eq!(
-        ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(2),
-        chrono::Duration::seconds(120)
-    );
-    assert_eq!(
-        ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(10),
-        chrono::Duration::seconds(300)
-    );
+    // With jitter, delay is in [base, base + base/4]. Check bounds.
+    let d0 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(0).num_seconds();
+    assert!(d0 >= 30 && d0 <= 30 + 30 / 4, "retry 0: got {d0}");
+
+    let d1 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(1).num_seconds();
+    assert!(d1 >= 60 && d1 <= 60 + 60 / 4, "retry 1: got {d1}");
+
+    let d2 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(2).num_seconds();
+    assert!(d2 >= 120 && d2 <= 120 + 120 / 4, "retry 2: got {d2}");
+
+    // At high retry counts, base_delay caps at merge_incomplete_retry_max_secs (1800)
+    let d10 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(10).num_seconds();
+    assert!(d10 >= 1800 && d10 <= 1800 + 1800 / 4, "retry 10: got {d10}");
 }
 
 #[test]
@@ -811,27 +809,22 @@ async fn merging_timeout_escalates_to_merge_incomplete_not_merge_conflict() {
 
 #[test]
 fn merge_conflict_retry_delay_exponential_backoff() {
-    assert_eq!(
-        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(0),
-        chrono::Duration::seconds(60)
-    );
-    assert_eq!(
-        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(1),
-        chrono::Duration::seconds(120)
-    );
-    assert_eq!(
-        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(2),
-        chrono::Duration::seconds(240)
-    );
-    assert_eq!(
-        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(3),
-        chrono::Duration::seconds(480)
-    );
-    // Verify cap at 600s
-    assert_eq!(
-        ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(10),
-        chrono::Duration::seconds(600)
-    );
+    // With jitter, delay is in [base, base + base/4]. Check bounds.
+    let d0 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(0).num_seconds();
+    assert!(d0 >= 60 && d0 <= 60 + 60 / 4, "retry 0: got {d0}");
+
+    let d1 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(1).num_seconds();
+    assert!(d1 >= 120 && d1 <= 120 + 120 / 4, "retry 1: got {d1}");
+
+    let d2 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(2).num_seconds();
+    assert!(d2 >= 240 && d2 <= 240 + 240 / 4, "retry 2: got {d2}");
+
+    let d3 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(3).num_seconds();
+    assert!(d3 >= 480 && d3 <= 480 + 480 / 4, "retry 3: got {d3}");
+
+    // Verify cap at 600s (base), with jitter up to 600/4=150
+    let d10 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(10).num_seconds();
+    assert!(d10 >= 600 && d10 <= 600 + 600 / 4, "retry 10: got {d10}");
 }
 
 #[tokio::test]
@@ -2822,5 +2815,360 @@ fn validation_revert_count_returns_zero_for_no_metadata() {
     assert_eq!(
         ReconciliationRunner::<tauri::Wry>::validation_revert_count(&task),
         0
+    );
+}
+
+// ── Retry delay jitter + cap tests ──────────────────────────────────
+
+#[test]
+fn merge_incomplete_retry_delay_includes_jitter() {
+    // Call delay function many times with same retry_count.
+    // With jitter, results should not all be identical.
+    let delays: HashSet<i64> = (0..20)
+        .map(|_| {
+            ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(3)
+                .num_seconds()
+        })
+        .collect();
+    assert!(
+        delays.len() > 1,
+        "Expected jitter to produce varying delays, but got a single value: {:?}",
+        delays
+    );
+}
+
+#[test]
+fn merge_incomplete_retry_delay_caps_at_configured_max() {
+    let cfg = reconciliation_config();
+    let max_secs = cfg.merge_incomplete_retry_max_secs as i64;
+    // At high retry counts, base delay saturates at max.
+    // Jitter adds up to base_delay/4, but total must not exceed max + max/4.
+    for _ in 0..20 {
+        let delay = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(100)
+            .num_seconds();
+        assert!(
+            delay <= max_secs + max_secs / 4,
+            "Delay {} exceeded max {} + jitter ceiling {}",
+            delay,
+            max_secs,
+            max_secs / 4,
+        );
+        assert!(
+            delay >= max_secs,
+            "Delay {} should be at least the base max {}",
+            delay,
+            max_secs,
+        );
+    }
+}
+
+#[test]
+fn merge_conflict_retry_delay_includes_jitter() {
+    let delays: HashSet<i64> = (0..20)
+        .map(|_| {
+            ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(3)
+                .num_seconds()
+        })
+        .collect();
+    assert!(
+        delays.len() > 1,
+        "Expected jitter to produce varying delays, but got a single value: {:?}",
+        delays
+    );
+}
+
+#[test]
+fn merge_conflict_retry_delay_caps_at_configured_max() {
+    let cfg = reconciliation_config();
+    let max_secs = cfg.merge_conflict_retry_max_secs as i64;
+    for _ in 0..20 {
+        let delay = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(100)
+            .num_seconds();
+        assert!(
+            delay <= max_secs + max_secs / 4,
+            "Delay {} exceeded max {} + jitter ceiling {}",
+            delay,
+            max_secs,
+            max_secs / 4,
+        );
+        assert!(
+            delay >= max_secs,
+            "Delay {} should be at least the base max {}",
+            delay,
+            max_secs,
+        );
+    }
+}
+
+#[test]
+fn merge_incomplete_max_retries_is_at_least_50() {
+    let cfg = reconciliation_config();
+    assert!(
+        cfg.merge_incomplete_max_retries >= 50,
+        "merge_incomplete_max_retries should be >= 50, got {}",
+        cfg.merge_incomplete_max_retries,
+    );
+}
+
+#[test]
+fn merge_incomplete_retry_max_secs_is_at_least_1800() {
+    let cfg = reconciliation_config();
+    assert!(
+        cfg.merge_incomplete_retry_max_secs >= 1800,
+        "merge_incomplete_retry_max_secs should be >= 1800, got {}",
+        cfg.merge_incomplete_retry_max_secs,
+    );
+}
+
+// ── Rate limit guard in reconcile_merge_incomplete_task ──
+
+#[tokio::test]
+async fn reconcile_merge_incomplete_skips_retry_when_rate_limit_active() {
+    use crate::domain::entities::{
+        MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
+        MergeRecoverySource, MergeRecoveryState, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a task in MergeIncomplete with rate_limit_retry_after set to the future
+    let mut task = Task::new(
+        project.id.clone(),
+        "Rate Limited Merge Task".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+
+    let mut recovery = MergeRecoveryMetadata::new();
+    recovery.rate_limit_retry_after = Some("2099-12-31T23:59:59+00:00".to_string());
+    recovery.last_state = MergeRecoveryState::RateLimited;
+    recovery.append_event(
+        crate::domain::entities::MergeRecoveryEvent::new(
+            MergeRecoveryEventKind::AttemptFailed,
+            MergeRecoverySource::System,
+            MergeRecoveryReasonCode::ProviderRateLimited,
+            "Rate limit hit during merge",
+        ),
+    );
+    task.metadata = Some(recovery.update_task_metadata(None).unwrap());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record status history
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "merge_incomplete",
+        )
+        .await
+        .unwrap();
+
+    // Reconciler should skip retry because rate limit is active (future timestamp)
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled,
+        "Reconciler should skip retry when rate limit is active"
+    );
+
+    // Verify task stayed in MergeIncomplete
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Task should remain in MergeIncomplete while rate-limited"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_merge_incomplete_proceeds_after_rate_limit_expired() {
+    use crate::domain::entities::{
+        MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
+        MergeRecoverySource, MergeRecoveryState, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a task with rate_limit_retry_after set to the PAST (expired)
+    let mut task = Task::new(
+        project.id.clone(),
+        "Expired Rate Limit Task".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+    // Set updated_at far in past so age > retry delay (fallback when no status history)
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(7200);
+
+    let mut recovery = MergeRecoveryMetadata::new();
+    recovery.rate_limit_retry_after = Some("2020-01-01T00:00:00+00:00".to_string());
+    recovery.last_state = MergeRecoveryState::RateLimited;
+    task.metadata = Some(recovery.update_task_metadata(None).unwrap());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // No persist_status_change — reconciler falls back to updated_at (7200s ago)
+
+    // Reconciler should proceed because rate limit is expired
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    // After rate limit clears, reconciler should either retry (PendingMerge)
+    // or pass through normally. The rate limit guard should NOT block.
+    assert!(
+        reconciled || updated.internal_status == InternalStatus::PendingMerge,
+        "Should proceed after rate limit expired; got status={:?}, reconciled={}",
+        updated.internal_status,
+        reconciled,
+    );
+
+    // Verify rate_limit_retry_after was cleared from metadata
+    let restored_meta = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+        .unwrap_or(None);
+    if let Some(meta) = restored_meta {
+        assert_eq!(
+            meta.rate_limit_retry_after, None,
+            "rate_limit_retry_after should be cleared after expiry"
+        );
+    }
+}
+
+#[tokio::test]
+async fn rate_limited_skips_dont_count_toward_max_retries() {
+    use crate::domain::entities::{MergeRecoveryMetadata, MergeRecoveryState, Project};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a task with rate limit set to FUTURE — reconciler should skip
+    let mut task = Task::new(
+        project.id.clone(),
+        "Rate Limit Budget Task".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+
+    let mut recovery = MergeRecoveryMetadata::new();
+    recovery.rate_limit_retry_after = Some("2099-12-31T23:59:59+00:00".to_string());
+    recovery.last_state = MergeRecoveryState::RateLimited;
+    task.metadata = Some(recovery.update_task_metadata(None).unwrap());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "merge_incomplete",
+        )
+        .await
+        .unwrap();
+
+    // Call reconciler multiple times while rate-limited — should all skip silently
+    for _ in 0..5 {
+        let reconciled = reconciler
+            .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+            .await;
+        assert!(!reconciled, "Should skip while rate-limited");
+    }
+
+    // Verify that NO AutoRetryTriggered events were added (rate-limited skips don't count)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    let retry_count =
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_auto_retry_count(&updated);
+    assert_eq!(
+        retry_count, 0,
+        "Rate-limited skips should NOT count toward max retries (got {} retries)",
+        retry_count
+    );
+}
+
+#[test]
+fn get_rate_limit_retry_after_reads_from_metadata() {
+    use crate::domain::entities::{MergeRecoveryMetadata, MergeRecoveryState};
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Rate Limit Read Task".to_string(),
+    );
+
+    // No metadata → None
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::get_rate_limit_retry_after(&task).is_none(),
+        "Should return None when no metadata"
+    );
+
+    // With rate_limit_retry_after set
+    let mut recovery = MergeRecoveryMetadata::new();
+    recovery.rate_limit_retry_after = Some("2026-02-20T15:00:00+00:00".to_string());
+    recovery.last_state = MergeRecoveryState::RateLimited;
+    task.metadata = Some(recovery.update_task_metadata(None).unwrap());
+
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::get_rate_limit_retry_after(&task),
+        Some("2026-02-20T15:00:00+00:00".to_string()),
+        "Should read rate_limit_retry_after from merge recovery metadata"
+    );
+}
+
+#[test]
+fn get_rate_limit_retry_after_returns_none_when_not_set() {
+    use crate::domain::entities::MergeRecoveryMetadata;
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No Rate Limit Task".to_string(),
+    );
+
+    // Metadata with merge_recovery but no rate_limit_retry_after
+    let recovery = MergeRecoveryMetadata::new();
+    task.metadata = Some(recovery.update_task_metadata(None).unwrap());
+
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::get_rate_limit_retry_after(&task).is_none(),
+        "Should return None when rate_limit_retry_after is not set"
     );
 }
