@@ -17,7 +17,8 @@ use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
-    InternalStatus, TaskId, TaskStepStatus,
+    InternalStatus, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
+    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, TaskId, TaskStepStatus,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
@@ -931,31 +932,102 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
 
     // Handle merge auto-completion even on agent error
     if context_type == ChatContextType::Merge {
-        if let Some(ref exec_state) = execution_state {
-            super::chat_service_merge::attempt_merge_auto_complete(
-                context_id,
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                exec_state,
-                plan_branch_repo,
-                app_handle.as_ref(),
-            )
-            .await;
+        // Check for provider rate limit errors BEFORE attempting auto-complete.
+        // If rate-limited, store retry_after in MergeRecoveryMetadata so the reconciler
+        // can skip retries until the limit clears (without burning retry budget).
+        let is_rate_limited = if let Some(se) = stream_error {
+            if se.is_provider_error() {
+                let task_id = TaskId::from_string(context_id.to_string());
+                if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                    let retry_after = match se {
+                        StreamError::ProviderError { retry_after, .. } => retry_after.clone(),
+                        _ => None,
+                    };
+
+                    let mut recovery = MergeRecoveryMetadata::from_task_metadata(
+                        task.metadata.as_deref(),
+                    )
+                    .unwrap_or(None)
+                    .unwrap_or_default();
+
+                    recovery.rate_limit_retry_after = retry_after.clone();
+                    recovery.append_event_with_state(
+                        MergeRecoveryEvent::new(
+                            MergeRecoveryEventKind::AttemptFailed,
+                            MergeRecoverySource::System,
+                            MergeRecoveryReasonCode::ProviderRateLimited,
+                            format!("Merge agent hit provider rate limit: {}", error),
+                        ),
+                        MergeRecoveryState::RateLimited,
+                    );
+
+                    let mut updated_task = task.clone();
+                    match recovery.update_task_metadata(updated_task.metadata.as_deref()) {
+                        Ok(metadata_json) => {
+                            updated_task.metadata = Some(metadata_json);
+                            updated_task.touch();
+                            if let Err(e) = task_repo.update(&updated_task).await {
+                                tracing::error!(
+                                    task_id = context_id,
+                                    error = %e,
+                                    "Failed to store merge rate limit metadata"
+                                );
+                            } else {
+                                tracing::info!(
+                                    task_id = context_id,
+                                    retry_after = ?retry_after,
+                                    "Stored rate limit in merge recovery metadata"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = context_id,
+                                error = %e,
+                                "Failed to serialize merge rate limit metadata"
+                            );
+                        }
+                    }
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
         } else {
-            tracing::warn!(
-                "Cannot auto-complete merge for task {} on error - no execution_state available",
-                context_id
-            );
+            false
+        };
+
+        // Only attempt merge auto-complete if NOT rate limited
+        // (rate-limited merges should wait for reconciler to retry after cooldown)
+        if !is_rate_limited {
+            if let Some(ref exec_state) = execution_state {
+                super::chat_service_merge::attempt_merge_auto_complete(
+                    context_id,
+                    task_repo,
+                    task_dependency_repo,
+                    project_repo,
+                    chat_message_repo,
+                    chat_attachment_repo,
+                    conversation_repo,
+                    agent_run_repo,
+                    ideation_session_repo,
+                    activity_event_repo,
+                    message_queue,
+                    running_agent_registry,
+                    memory_event_repo,
+                    exec_state,
+                    plan_branch_repo,
+                    app_handle.as_ref(),
+                )
+                .await;
+            } else {
+                tracing::warn!(
+                    "Cannot auto-complete merge for task {} on error - no execution_state available",
+                    context_id
+                );
+            }
         }
     }
 

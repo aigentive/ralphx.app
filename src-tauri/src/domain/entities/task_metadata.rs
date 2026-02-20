@@ -16,6 +16,9 @@ pub struct MergeRecoveryMetadata {
     pub events: Vec<MergeRecoveryEvent>,
     /// Current recovery state
     pub last_state: MergeRecoveryState,
+    /// ISO 8601 timestamp: do not retry merge until this time (provider rate limit)
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub rate_limit_retry_after: Option<String>,
 }
 
 impl MergeRecoveryMetadata {
@@ -25,6 +28,7 @@ impl MergeRecoveryMetadata {
             version: 1,
             events: Vec::new(),
             last_state: MergeRecoveryState::Succeeded,
+            rate_limit_retry_after: None,
         }
     }
 
@@ -265,6 +269,8 @@ pub enum MergeRecoveryReasonCode {
     AgentsRunning,
     /// Deferred merge forced retry after timeout expired
     DeferredTimeout,
+    /// Provider rate limit hit during merge agent run
+    ProviderRateLimited,
     /// Unknown/unclassified reason
     Unknown,
 }
@@ -281,6 +287,8 @@ pub enum MergeRecoveryState {
     Failed,
     /// Recovery succeeded
     Succeeded,
+    /// Waiting for provider rate limit to clear
+    RateLimited,
 }
 
 #[cfg(test)]
@@ -516,6 +524,10 @@ mod tests {
             (MergeRecoveryReasonCode::BranchNotFound, "branch_not_found"),
             (MergeRecoveryReasonCode::AgentsRunning, "agents_running"),
             (MergeRecoveryReasonCode::DeferredTimeout, "deferred_timeout"),
+            (
+                MergeRecoveryReasonCode::ProviderRateLimited,
+                "provider_rate_limited",
+            ),
             (MergeRecoveryReasonCode::Unknown, "unknown"),
         ];
 
@@ -532,6 +544,7 @@ mod tests {
             (MergeRecoveryState::Retrying, "retrying"),
             (MergeRecoveryState::Failed, "failed"),
             (MergeRecoveryState::Succeeded, "succeeded"),
+            (MergeRecoveryState::RateLimited, "rate_limited"),
         ];
 
         for (state, expected) in &states {
@@ -823,5 +836,120 @@ mod tests {
 
         let parsed: MergeRecoveryReasonCode = serde_json::from_str(&json).unwrap();
         assert_eq!(parsed, MergeRecoveryReasonCode::BranchNotFound);
+    }
+
+    // ===== Rate limit metadata tests =====
+
+    #[test]
+    fn provider_rate_limited_reason_code_serializes() {
+        let code = MergeRecoveryReasonCode::ProviderRateLimited;
+        let json = serde_json::to_string(&code).unwrap();
+        assert_eq!(json, "\"provider_rate_limited\"");
+
+        let parsed: MergeRecoveryReasonCode = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, MergeRecoveryReasonCode::ProviderRateLimited);
+    }
+
+    #[test]
+    fn rate_limited_state_serializes() {
+        let state = MergeRecoveryState::RateLimited;
+        let json = serde_json::to_string(&state).unwrap();
+        assert_eq!(json, "\"rate_limited\"");
+
+        let parsed: MergeRecoveryState = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, MergeRecoveryState::RateLimited);
+    }
+
+    #[test]
+    fn rate_limit_retry_after_stored_in_metadata() {
+        let mut meta = MergeRecoveryMetadata::new();
+        meta.rate_limit_retry_after = Some("2026-02-20T15:00:00+00:00".to_string());
+        meta.append_event_with_state(
+            MergeRecoveryEvent::new(
+                MergeRecoveryEventKind::AttemptFailed,
+                MergeRecoverySource::System,
+                MergeRecoveryReasonCode::ProviderRateLimited,
+                "Rate limit hit during merge",
+            ),
+            MergeRecoveryState::RateLimited,
+        );
+
+        let json = meta.update_task_metadata(None).unwrap();
+        let restored = MergeRecoveryMetadata::from_task_metadata(Some(&json))
+            .unwrap()
+            .unwrap();
+
+        assert_eq!(
+            restored.rate_limit_retry_after,
+            Some("2026-02-20T15:00:00+00:00".to_string())
+        );
+        assert_eq!(restored.last_state, MergeRecoveryState::RateLimited);
+        assert_eq!(
+            restored.events[0].reason_code,
+            MergeRecoveryReasonCode::ProviderRateLimited
+        );
+    }
+
+    #[test]
+    fn rate_limit_retry_after_none_not_serialized() {
+        let meta = MergeRecoveryMetadata::new();
+        let json = serde_json::to_string(&meta).unwrap();
+        assert!(
+            !json.contains("rate_limit_retry_after"),
+            "None rate_limit_retry_after should be skipped in serialization"
+        );
+    }
+
+    #[test]
+    fn rate_limit_retry_after_backward_compat_deserialize() {
+        // Old metadata without rate_limit_retry_after field should deserialize fine
+        let json = r#"{
+            "version": 1,
+            "events": [],
+            "last_state": "succeeded"
+        }"#;
+        let meta: MergeRecoveryMetadata = serde_json::from_str(json).unwrap();
+        assert_eq!(meta.rate_limit_retry_after, None);
+    }
+
+    #[test]
+    fn rate_limit_retry_after_roundtrip_through_task_metadata() {
+        let mut meta = MergeRecoveryMetadata::new();
+        meta.rate_limit_retry_after = Some("2026-02-20T15:00:00+00:00".to_string());
+
+        // Write to task metadata with existing keys
+        let existing = r#"{"error": "some error"}"#;
+        let json = meta.update_task_metadata(Some(existing)).unwrap();
+
+        // Read back
+        let restored = MergeRecoveryMetadata::from_task_metadata(Some(&json))
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            restored.rate_limit_retry_after,
+            Some("2026-02-20T15:00:00+00:00".to_string())
+        );
+
+        // Verify other keys preserved
+        let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed["error"], "some error");
+    }
+
+    #[test]
+    fn rate_limit_cleared_after_expiry() {
+        let mut meta = MergeRecoveryMetadata::new();
+        meta.rate_limit_retry_after = Some("2026-02-20T15:00:00+00:00".to_string());
+        meta.last_state = MergeRecoveryState::RateLimited;
+
+        // Simulate clearing after expiry
+        meta.rate_limit_retry_after = None;
+        meta.last_state = MergeRecoveryState::Retrying;
+
+        let json = meta.update_task_metadata(None).unwrap();
+        let restored = MergeRecoveryMetadata::from_task_metadata(Some(&json))
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.rate_limit_retry_after, None);
+        assert_eq!(restored.last_state, MergeRecoveryState::Retrying);
     }
 }
