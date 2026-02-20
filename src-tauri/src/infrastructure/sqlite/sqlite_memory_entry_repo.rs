@@ -435,7 +435,5 @@ impl MemoryEntryRepository for SqliteMemoryEntryRepository {
 }
 
 #[cfg(test)]
-mod tests {
-    // Note: Tests would require full schema setup including memory_entries table
-    // These are integration tests that would run against a migrated test database
-}
+#[path = "sqlite_memory_entry_repo_tests.rs"]
+mod tests;
