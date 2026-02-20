@@ -33,12 +33,7 @@
 
 use super::helpers::*;
 use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
-use crate::domain::repositories::{ProjectRepository, TaskRepository};
-use crate::domain::state_machine::context::TaskServices;
-use crate::domain::state_machine::mocks::{MockDependencyManager, MockEventEmitter};
-use crate::domain::state_machine::services::{DependencyManager, EventEmitter};
 use crate::domain::state_machine::{State, TaskStateMachine, TransitionHandler};
-use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 
 // ==================
 // A. Call order recorder pattern
@@ -57,51 +52,25 @@ use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepositor
 /// and that the task ends in a defined state (not silently stuck).
 #[tokio::test]
 async fn test_stop_agent_called_on_pending_merge_entry_with_repos() {
-    let task_repo = Arc::new(MemoryTaskRepository::new());
-    let project_repo = Arc::new(MemoryProjectRepository::new());
-    let emitter = Arc::new(MockEventEmitter::new());
-    let chat_service = Arc::new(crate::application::MockChatService::new());
+    let setup = setup_pending_merge_repos("Test merge task", Some("feature/test")).await;
 
-    // Create task in PendingMerge
-    let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "Test merge task".to_string());
-    task.internal_status = InternalStatus::PendingMerge;
-    task.task_branch = Some("feature/test".to_string());
-    let task_id = task.id.clone();
-    task_repo.create(task).await.unwrap();
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>);
 
-    // Create project
-    let mut project = Project::new("test-project".to_string(), "/tmp/nonexistent-test-dir".to_string());
-    project.id = project_id.clone();
-    project.base_branch = Some("main".to_string());
-    project_repo.create(project).await.unwrap();
-
-    let services = TaskServices::new(
-        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
-        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
-        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
-        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
-        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::clone(&chat_service) as Arc<dyn crate::application::ChatService>,
-    )
-    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
-    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>);
-
-    let context = create_context_with_services("task-1", "proj-1", services);
+    let context = create_context_with_services(setup.task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
     // Enter PendingMerge — this will call attempt_programmatic_merge
     // which calls pre_merge_cleanup (step 0 = stop_agent) then tries to merge
-    // but will fail since /tmp/nonexistent-test-dir doesn't exist as a git repo
+    // but will fail since the path doesn't exist as a git repo
     let _ = handler.on_enter(&State::PendingMerge).await;
 
     // The task should not be silently stuck — it should have transitioned
     // to MergeIncomplete or emitted a status change event
-    let updated_task = task_repo.get_by_id(&task_id).await.unwrap();
+    let updated_task = setup.task_repo.get_by_id(&setup.task_id).await.unwrap();
     if let Some(t) = updated_task {
-        // Task should be in a terminal merge state (MergeIncomplete) or still
-        // PendingMerge with error metadata — NOT silently hanging
         assert!(
             t.internal_status == InternalStatus::MergeIncomplete
                 || t.internal_status == InternalStatus::PendingMerge,
@@ -120,45 +89,20 @@ async fn test_stop_agent_called_on_pending_merge_entry_with_repos() {
 /// rather than silently hanging.
 #[tokio::test]
 async fn test_merge_with_nonexistent_repo_path_transitions_to_defined_state() {
-    let task_repo = Arc::new(MemoryTaskRepository::new());
-    let project_repo = Arc::new(MemoryProjectRepository::new());
-    let emitter = Arc::new(MockEventEmitter::new());
+    let setup = setup_pending_merge_repos("Test task", Some("feature/test")).await;
 
-    // Create task
-    let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "Test task".to_string());
-    task.internal_status = InternalStatus::PendingMerge;
-    task.task_branch = Some("feature/test".to_string());
-    let task_id = task.id.clone();
-    task_repo.create(task).await.unwrap();
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>);
 
-    // Create project with non-existent path
-    let mut project = Project::new("test".to_string(), "/tmp/definitely-nonexistent-path-12345".to_string());
-    project.id = project_id;
-    project.base_branch = Some("main".to_string());
-    project_repo.create(project).await.unwrap();
-
-    let services = TaskServices::new(
-        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
-        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
-        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
-        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
-        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
-    )
-    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
-    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>);
-
-    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let context = create_context_with_services(setup.task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
     let _ = handler.on_enter(&State::PendingMerge).await;
 
     // Verify task is in a defined state, not silently stuck
-    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
-    // When the source branch is empty or git operations fail, the task should
-    // transition to MergeIncomplete (not hang)
+    let updated_task = setup.task_repo.get_by_id(&setup.task_id).await.unwrap().unwrap();
     assert!(
         updated_task.internal_status == InternalStatus::MergeIncomplete
             || updated_task.internal_status == InternalStatus::PendingMerge,
@@ -171,40 +115,20 @@ async fn test_merge_with_nonexistent_repo_path_transitions_to_defined_state() {
 /// an empty source branch and transitions to MergeIncomplete.
 #[tokio::test]
 async fn test_merge_with_no_task_branch_transitions_to_merge_incomplete() {
-    let task_repo = Arc::new(MemoryTaskRepository::new());
-    let project_repo = Arc::new(MemoryProjectRepository::new());
-    let emitter = Arc::new(MockEventEmitter::new());
+    // Deliberately pass None for task_branch
+    let setup = setup_pending_merge_repos("No branch task", None).await;
 
-    let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "No branch task".to_string());
-    task.internal_status = InternalStatus::PendingMerge;
-    // Deliberately NOT setting task_branch
-    let task_id = task.id.clone();
-    task_repo.create(task).await.unwrap();
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>);
 
-    let mut project = Project::new("test".to_string(), "/tmp/nonexistent".to_string());
-    project.id = project_id;
-    project.base_branch = Some("main".to_string());
-    project_repo.create(project).await.unwrap();
-
-    let services = TaskServices::new(
-        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
-        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
-        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
-        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
-        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
-    )
-    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
-    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>);
-
-    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let context = create_context_with_services(setup.task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
     let _ = handler.on_enter(&State::PendingMerge).await;
 
-    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated_task = setup.task_repo.get_by_id(&setup.task_id).await.unwrap().unwrap();
     assert_eq!(
         updated_task.internal_status,
         InternalStatus::MergeIncomplete,
@@ -806,33 +730,13 @@ fn test_pending_merge_stale_minutes_remains_at_2() {
 /// ensures the entire operation is bounded.
 #[tokio::test]
 async fn test_pending_merge_with_repos_completes_in_bounded_time() {
-    let task_repo = Arc::new(MemoryTaskRepository::new());
-    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let setup = setup_pending_merge_repos("Bounded time test", Some("feature/test")).await;
 
-    let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "Bounded time test".to_string());
-    task.internal_status = InternalStatus::PendingMerge;
-    task.task_branch = Some("feature/test".to_string());
-    let task_id = task.id.clone();
-    task_repo.create(task).await.unwrap();
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>);
 
-    let mut project = Project::new("test".to_string(), "/tmp/nonexistent-bounded-test".to_string());
-    project.id = project_id;
-    project.base_branch = Some("main".to_string());
-    project_repo.create(project).await.unwrap();
-
-    let services = TaskServices::new(
-        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
-        Arc::new(MockEventEmitter::new()) as Arc<dyn EventEmitter>,
-        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
-        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
-        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
-    )
-    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
-    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>);
-
-    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let context = create_context_with_services(setup.task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
@@ -850,7 +754,7 @@ async fn test_pending_merge_with_repos_completes_in_bounded_time() {
     );
 
     // Verify task is in a defined state
-    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated = setup.task_repo.get_by_id(&setup.task_id).await.unwrap().unwrap();
     assert!(
         updated.internal_status == InternalStatus::MergeIncomplete
             || updated.internal_status == InternalStatus::PendingMerge,

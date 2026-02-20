@@ -181,3 +181,40 @@ pub fn create_context_with_services(
     TaskContext::new(task_id, project_id, services)
 }
 
+/// Return type for `setup_pending_merge_repos`.
+pub struct PendingMergeSetup {
+    pub task_id: TaskId,
+    pub task_repo: Arc<MemoryTaskRepository>,
+    pub project_repo: Arc<MemoryProjectRepository>,
+}
+
+/// Create in-memory repos pre-loaded with a task in PendingMerge and a project
+/// pointing to a nonexistent git directory. Use `.with_task_repo()` and
+/// `.with_project_repo()` on `TaskServices::new_mock()` to wire them in.
+///
+/// This eliminates the 15-line boilerplate repeated in every merge-path test.
+pub async fn setup_pending_merge_repos(
+    title: &str,
+    task_branch: Option<&str>,
+) -> PendingMergeSetup {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), title.to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = task_branch.map(|s| s.to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new(
+        "test-project".to_string(),
+        "/tmp/nonexistent-merge-test".to_string(),
+    );
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project_repo.create(project).await.unwrap();
+
+    PendingMergeSetup { task_id, task_repo, project_repo }
+}
+

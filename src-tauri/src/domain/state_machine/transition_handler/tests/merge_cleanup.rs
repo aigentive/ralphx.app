@@ -21,28 +21,13 @@ use crate::domain::state_machine::{
 /// (no agent running), which should be handled gracefully.
 #[tokio::test]
 async fn test_step0_agent_kill_executes_without_error() {
-    use crate::domain::entities::{Project, ProjectId, Task};
-    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
-
-    let task_repo = Arc::new(MemoryTaskRepository::new());
-    let project_repo = Arc::new(MemoryProjectRepository::new());
-
-    let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "Step 0 test".to_string());
-    task.internal_status = crate::domain::entities::InternalStatus::PendingMerge;
-    task.task_branch = Some("feature/test".to_string());
-    task_repo.create(task.clone()).await.unwrap();
-
-    let mut project = Project::new("test-project".to_string(), "/tmp/nonexistent-step0-test".to_string());
-    project.id = project_id;
-    project.base_branch = Some("main".to_string());
-    project_repo.create(project).await.unwrap();
+    let setup = setup_pending_merge_repos("Step 0 test", Some("feature/test")).await;
 
     let services = TaskServices::new_mock()
-        .with_task_repo(Arc::clone(&task_repo) as Arc<dyn crate::domain::repositories::TaskRepository>)
-        .with_project_repo(Arc::clone(&project_repo) as Arc<dyn crate::domain::repositories::ProjectRepository>);
+        .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>);
 
-    let context = create_context_with_services(task.id.as_str(), "proj-1", services);
+    let context = create_context_with_services(setup.task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
@@ -157,29 +142,13 @@ async fn test_merge_incomplete_transition_works_without_repos() {
 /// by the reconciler instead.
 #[tokio::test]
 async fn test_timeout_wrappers_dont_break_existing_workflow() {
-    use crate::domain::entities::{Project, ProjectId, Task};
-    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
-
-    let task_repo = Arc::new(MemoryTaskRepository::new());
-    let project_repo = Arc::new(MemoryProjectRepository::new());
-
-    let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "Timeout wrapper test".to_string());
-    task.internal_status = crate::domain::entities::InternalStatus::PendingMerge;
-    task.task_branch = Some("feature/test".to_string());
-    let task_id = task.id.clone();
-    task_repo.create(task).await.unwrap();
-
-    let mut project = Project::new("test-project".to_string(), "/tmp/nonexistent-timeout-test".to_string());
-    project.id = project_id;
-    project.base_branch = Some("main".to_string());
-    project_repo.create(project).await.unwrap();
+    let setup = setup_pending_merge_repos("Timeout wrapper test", Some("feature/test")).await;
 
     let services = TaskServices::new_mock()
-        .with_task_repo(Arc::clone(&task_repo) as Arc<dyn crate::domain::repositories::TaskRepository>)
-        .with_project_repo(Arc::clone(&project_repo) as Arc<dyn crate::domain::repositories::ProjectRepository>);
+        .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>);
 
-    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let context = create_context_with_services(setup.task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
@@ -198,7 +167,7 @@ async fn test_timeout_wrappers_dont_break_existing_workflow() {
     );
 
     // Verify the task transitioned to MergeIncomplete (not stuck in PendingMerge)
-    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let updated = setup.task_repo.get_by_id(&setup.task_id).await.unwrap().unwrap();
     assert_eq!(
         updated.internal_status,
         crate::domain::entities::InternalStatus::MergeIncomplete,
