@@ -687,7 +687,8 @@ impl<R: Runtime> StartupJobRunner<R> {
     }
 
     /// Check if all blocker tasks satisfy the dependency (allow unblocking).
-    /// Delegates to InternalStatus::is_dependency_satisfied() — excludes Failed.
+    /// Delegates to InternalStatus::is_dependency_satisfied() — only Merged|Cancelled.
+    /// MergeIncomplete, Failed, and Stopped are terminal but do NOT satisfy dependencies.
     /// If a blocker doesn't exist (was deleted), it's considered satisfied.
     async fn all_blockers_complete(&self, blocker_ids: &[crate::domain::entities::TaskId]) -> bool {
         for blocker_id in blocker_ids {
