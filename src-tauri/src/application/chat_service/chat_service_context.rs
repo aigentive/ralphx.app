@@ -80,7 +80,7 @@ pub async fn resolve_working_directory(
     task_repo: Arc<dyn TaskRepository>,
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     default_working_directory: &Path,
-) -> PathBuf {
+) -> Result<PathBuf, String> {
     match context_type {
         ChatContextType::Project => {
             // Project context: use project's working directory
@@ -88,7 +88,7 @@ pub async fn resolve_working_directory(
                 .get_by_id(&ProjectId::from_string(context_id.to_string()))
                 .await
             {
-                return PathBuf::from(&project.working_directory);
+                return Ok(PathBuf::from(&project.working_directory));
             }
         }
         ChatContextType::Task | ChatContextType::TaskExecution | ChatContextType::Review => {
@@ -103,7 +103,7 @@ pub async fn resolve_working_directory(
                         if let Some(worktree_path) = &task.worktree_path {
                             let path = PathBuf::from(worktree_path);
                             if path.exists() {
-                                return path;
+                                return Ok(path);
                             }
                         }
                     }
@@ -117,7 +117,7 @@ pub async fn resolve_working_directory(
                              Agent may run git operations in the user's checkout."
                         );
                     }
-                    return PathBuf::from(&project.working_directory);
+                    return Ok(PathBuf::from(&project.working_directory));
                 }
             }
         }
@@ -141,25 +141,46 @@ pub async fn resolve_working_directory(
                                     .map(|name| name.starts_with("merge-"))
                                     .unwrap_or(false);
 
-                                if is_primary_repo || is_merge_worktree {
-                                    return path;
+                                if is_merge_worktree {
+                                    return Ok(path);
+                                }
+
+                                // Hard error: worktree_path points to main repo. Something
+                                // went wrong upstream (checkout-free merge didn't create a
+                                // dedicated worktree). Refuse to spawn agent in user's checkout.
+                                if is_primary_repo {
+                                    tracing::error!(
+                                        context_id = context_id,
+                                        "BUG: Merge agent worktree_path points to main repo — \
+                                         refusing to spawn agent in user's checkout. \
+                                         This indicates a failure in checkout-free worktree creation."
+                                    );
+                                    return Err(format!(
+                                        "Merge context {} has worktree_path pointing to main repo — \
+                                         refusing to spawn fixer agent in user's checkout",
+                                        context_id
+                                    ));
                                 }
                             }
                         }
 
-                        // Merge context with no valid merge worktree — falling back to main repo.
-                        // This is expected for checkout-free validation recovery (merge_path == repo_path),
-                        // but dangerous if the agent needs to run git checkout/merge in the main repo.
-                        tracing::warn!(
+                        // Hard error: Merge context has no valid merge worktree.
+                        // After the checkout-free fix, this should never happen.
+                        tracing::error!(
                             context_id = context_id,
                             worktree_path = task.worktree_path.as_deref().unwrap_or("None"),
-                            "Merge agent CWD falling back to main repo — no valid merge worktree. \
-                             If the agent runs git checkout, it will disrupt the user's local checkout."
+                            "BUG: Merge agent has no valid merge worktree — \
+                             refusing to spawn agent without isolated worktree."
                         );
-                        return project_path;
+                        return Err(format!(
+                            "Merge context {} has no valid merge worktree (worktree_path={}) — \
+                             refusing to spawn fixer agent",
+                            context_id,
+                            task.worktree_path.as_deref().unwrap_or("None"),
+                        ));
                     }
 
-                    return PathBuf::from(&project.working_directory);
+                    return Ok(PathBuf::from(&project.working_directory));
                 }
             }
         }
@@ -170,13 +191,13 @@ pub async fn resolve_working_directory(
                 .await
             {
                 if let Ok(Some(project)) = project_repo.get_by_id(&session.project_id).await {
-                    return PathBuf::from(&project.working_directory);
+                    return Ok(PathBuf::from(&project.working_directory));
                 }
             }
         }
     }
 
-    default_working_directory.to_path_buf()
+    Ok(default_working_directory.to_path_buf())
 }
 
 /// Build the initial prompt for a context

@@ -207,6 +207,7 @@ impl<'a> super::TransitionHandler<'a> {
                     self.handle_validation_failure(
                         task, task_id, task_id_str, task_repo, &[timeout_failure], &[],
                         source_branch, target_branch, merge_path, opts.strategy_label, validation_mode,
+                        repo_path, project,
                     ).await;
                     // Clean up merge worktree after Block mode failure
                     // (AutoFix keeps worktree for the fixer agent)
@@ -226,6 +227,7 @@ impl<'a> super::TransitionHandler<'a> {
                             self.handle_validation_failure(
                                 task, task_id, task_id_str, task_repo, &validation.failures, &validation.log,
                                 source_branch, target_branch, merge_path, opts.strategy_label, validation_mode,
+                                repo_path, project,
                             ).await;
                             // Clean up merge worktree after Block mode failure
                             // (AutoFix keeps worktree for the fixer agent)

@@ -225,6 +225,8 @@ Sometimes you are spawned not because of git conflicts, but because post-merge v
 
 **How to detect:** Your initial message will say "Fix validation failures" instead of "Resolve merge conflicts". The task metadata will contain `validation_recovery: true` and `validation_failures` with error details.
 
+**CRITICAL: Do NOT use `git checkout` to switch branches. You are already on the correct branch in your worktree. Switching branches would corrupt the merge state.**
+
 **Workflow:**
 1. Call `get_task_context(task_id)` — read validation failures from metadata
 2. Call `get_project_analysis(project_id)` — get validation commands
