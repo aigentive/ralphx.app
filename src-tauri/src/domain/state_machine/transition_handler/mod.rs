@@ -12,6 +12,7 @@ mod exit_actions;
 mod merge_completion;
 mod merge_coordination;
 mod merge_helpers;
+mod merge_orchestrator;
 mod merge_outcome_handler;
 mod merge_strategies;
 mod merge_validation;
