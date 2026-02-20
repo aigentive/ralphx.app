@@ -219,6 +219,11 @@ impl<R: Runtime> StartupJobRunner<R> {
         // This runs before pause check since unblocking doesn't spawn agents
         self.unblock_ready_tasks().await;
 
+        // Re-block tasks whose dependencies are no longer satisfied (reverse of above).
+        // Catches Ready/Executing/etc. tasks with Failed blockers that weren't caught
+        // before app shutdown.
+        self.reconcile_dependency_violations().await;
+
         // Check if execution is paused - skip resumption if so
         if self.execution_state.is_paused() {
             info!("Execution paused, skipping task resumption");
@@ -707,6 +712,185 @@ impl<R: Runtime> StartupJobRunner<R> {
             }
         }
         true
+    }
+
+    /// Detect tasks in non-Blocked states that have unsatisfied dependencies and
+    /// move them back to Blocked (or Stopped for states where Blocked is invalid).
+    ///
+    /// This is the reverse of `unblock_ready_tasks()`: it catches tasks that ended
+    /// up in Ready/Executing/Reviewing/etc. despite having a Failed or otherwise
+    /// unsatisfied blocker. This can happen when a blocker fails while a dependent
+    /// task is already past the Blocked state, and the app crashes before the
+    /// dependency manager can react.
+    ///
+    /// State machine mapping:
+    /// - Ready/Executing/ReExecuting → Blocked (valid transition)
+    /// - QaRefining/QaTesting/Reviewing → Stopped (Blocked not valid from these)
+    pub async fn reconcile_dependency_violations(&self) {
+        let projects = match self.project_repo.get_all().await {
+            Ok(p) => p,
+            Err(e) => {
+                tracing::error!(error = %e, "Failed to fetch projects for dependency reconciliation");
+                return;
+            }
+        };
+
+        /// States to scan for dependency violations, mapped to their recovery target.
+        /// Returns Some(target) if the state should be checked, None otherwise.
+        fn violation_target(status: InternalStatus) -> Option<InternalStatus> {
+            match status {
+                InternalStatus::Ready
+                | InternalStatus::Executing
+                | InternalStatus::ReExecuting => Some(InternalStatus::Blocked),
+                InternalStatus::QaRefining
+                | InternalStatus::QaTesting
+                | InternalStatus::Reviewing => Some(InternalStatus::Stopped),
+                _ => None,
+            }
+        }
+
+        const SCAN_STATUSES: &[InternalStatus] = &[
+            InternalStatus::Ready,
+            InternalStatus::Executing,
+            InternalStatus::ReExecuting,
+            InternalStatus::QaRefining,
+            InternalStatus::QaTesting,
+            InternalStatus::Reviewing,
+        ];
+
+        let mut reblocked = 0u32;
+        let mut stopped = 0u32;
+
+        for project in &projects {
+            for &status in SCAN_STATUSES {
+                let tasks = match self.task_repo.get_by_status(&project.id, status).await {
+                    Ok(t) => t,
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            project_id = project.id.as_str(),
+                            ?status,
+                            "Failed to fetch tasks for dependency reconciliation"
+                        );
+                        continue;
+                    }
+                };
+
+                for mut task in tasks {
+                    if task.archived_at.is_some() {
+                        continue;
+                    }
+
+                    // Get blockers for this task
+                    let blockers = match self.task_dep_repo.get_blockers(&task.id).await {
+                        Ok(b) => b,
+                        Err(_) => continue,
+                    };
+
+                    if blockers.is_empty() {
+                        continue;
+                    }
+
+                    // Check if any blocker is unsatisfied
+                    let mut unsatisfied_names: Vec<String> = Vec::new();
+                    for blocker_id in &blockers {
+                        match self.task_repo.get_by_id(blocker_id).await {
+                            Ok(Some(blocker)) => {
+                                if !blocker.internal_status.is_dependency_satisfied() {
+                                    let label = if blocker.internal_status == InternalStatus::Failed
+                                    {
+                                        format!("\"{}\" (failed)", blocker.title)
+                                    } else {
+                                        format!("\"{}\" ({})", blocker.title, blocker.internal_status)
+                                    };
+                                    unsatisfied_names.push(label);
+                                }
+                            }
+                            Ok(None) => {} // deleted blocker = satisfied
+                            Err(_) => {}   // fail-open on repo errors
+                        }
+                    }
+
+                    if unsatisfied_names.is_empty() {
+                        continue;
+                    }
+
+                    let Some(target) = violation_target(status) else {
+                        continue;
+                    };
+
+                    let reason = format!("Waiting for: {}", unsatisfied_names.join(", "));
+                    let from_status = task.internal_status;
+                    task.internal_status = target;
+                    task.blocked_reason = Some(reason);
+                    task.touch();
+
+                    if let Err(e) = self.task_repo.update(&task).await {
+                        tracing::error!(
+                            error = %e,
+                            task_id = task.id.as_str(),
+                            "Failed to reconcile dependency violation"
+                        );
+                        continue;
+                    }
+
+                    // Record state transition for timeline
+                    let _ = self
+                        .task_repo
+                        .persist_status_change(
+                            &task.id,
+                            from_status,
+                            target,
+                            "dep_reconciliation",
+                        )
+                        .await;
+
+                    // Emit event for UI
+                    if let Some(ref handle) = self.app_handle {
+                        let _ = handle.emit(
+                            "task:event",
+                            serde_json::json!({
+                                "type": "status_changed",
+                                "taskId": task.id.as_str(),
+                                "from": from_status.as_str(),
+                                "to": target.as_str(),
+                                "changedBy": "dep_reconciliation",
+                            }),
+                        );
+                    }
+
+                    match target {
+                        InternalStatus::Blocked => {
+                            reblocked += 1;
+                            info!(
+                                task_id = task.id.as_str(),
+                                from = from_status.as_str(),
+                                "Re-blocked task with unsatisfied dependencies"
+                            );
+                        }
+                        InternalStatus::Stopped => {
+                            stopped += 1;
+                            info!(
+                                task_id = task.id.as_str(),
+                                from = from_status.as_str(),
+                                "Stopped task with unsatisfied dependencies (Blocked not valid)"
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if reblocked > 0 || stopped > 0 {
+            info!(
+                reblocked,
+                stopped,
+                "Startup dependency reconciliation complete"
+            );
+        } else {
+            debug!("No dependency violations found on startup");
+        }
     }
 
     /// Abort stale rebase/merge operations on project repos.
