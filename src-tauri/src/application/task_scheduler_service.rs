@@ -207,11 +207,111 @@ impl<R: Runtime> TaskSchedulerService<R> {
                 }
             }
 
+            // Dependency gate: skip tasks whose blockers are not satisfied.
+            // Re-block the task so it doesn't sit in Ready with unsatisfied deps.
+            if self.has_unsatisfied_dependencies(&task).await {
+                self.reblock_task(&task).await;
+                continue;
+            }
+
             // This task is schedulable
             return Some(task);
         }
 
         None
+    }
+
+    /// Check if a task has any blocker whose status is not dependency-satisfied.
+    /// Returns true if the task should NOT be scheduled. Fail-open on errors.
+    async fn has_unsatisfied_dependencies(&self, task: &Task) -> bool {
+        let blocker_ids = match self.task_dependency_repo.get_blockers(&task.id).await {
+            Ok(ids) => ids,
+            Err(_) => return false,
+        };
+        if blocker_ids.is_empty() {
+            return false;
+        }
+        for blocker_id in &blocker_ids {
+            match self.task_repo.get_by_id(blocker_id).await {
+                Ok(Some(blocker)) => {
+                    if !blocker.internal_status.is_dependency_satisfied() {
+                        return true;
+                    }
+                }
+                Ok(None) => {} // deleted blocker = satisfied
+                Err(_) => {}   // fail-open
+            }
+        }
+        false
+    }
+
+    /// Re-block a Ready task that has unsatisfied dependencies.
+    /// Sets status to Blocked with a descriptive reason listing unsatisfied blocker titles.
+    async fn reblock_task(&self, task: &Task) {
+        let blocker_ids = self
+            .task_dependency_repo
+            .get_blockers(&task.id)
+            .await
+            .unwrap_or_default();
+
+        let mut reasons = Vec::new();
+        for bid in &blocker_ids {
+            if let Ok(Some(b)) = self.task_repo.get_by_id(bid).await {
+                if !b.internal_status.is_dependency_satisfied() {
+                    let label = if b.internal_status == InternalStatus::Failed {
+                        format!("\"{}\" (failed)", b.title)
+                    } else {
+                        format!("\"{}\" ({})", b.title, b.internal_status)
+                    };
+                    reasons.push(label);
+                }
+            }
+        }
+
+        let mut updated = task.clone();
+        updated.internal_status = InternalStatus::Blocked;
+        updated.blocked_reason = if reasons.is_empty() {
+            Some("Dependency check failed".to_string())
+        } else {
+            Some(format!("Waiting for: {}", reasons.join(", ")))
+        };
+        updated.touch();
+
+        // Use optimistic lock — if task already moved out of Ready, this is a no-op
+        match self
+            .task_repo
+            .update_with_expected_status(&updated, InternalStatus::Ready)
+            .await
+        {
+            Ok(true) => {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    "Scheduler: re-blocked Ready task with unsatisfied dependencies"
+                );
+                let _ = self
+                    .task_repo
+                    .persist_status_change(
+                        &task.id,
+                        InternalStatus::Ready,
+                        InternalStatus::Blocked,
+                        "scheduler_dep_gate",
+                    )
+                    .await;
+            }
+            Ok(false) => {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    "Scheduler: task already moved from Ready, skipping re-block"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    task_id = task.id.as_str(),
+                    "Failed to re-block task with unsatisfied dependencies"
+                );
+            }
+        }
     }
 
     /// Build a TaskTransitionService for transitioning tasks.
