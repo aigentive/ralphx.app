@@ -98,6 +98,41 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .policy
             .decide_reconciliation(RecoveryContext::Merge, evidence);
 
+        // Auto-recover merge conflicts instead of prompting the user.
+        // When DB run state disagrees with registry (has_conflict), the agent likely died
+        // silently. Instead of bothering the user, auto-restart within the retry budget.
+        let decision = if decision.action == RecoveryActionKind::Prompt {
+            // Grace period: if the agent run was created < 30s ago, the PID may not
+            // have been registered yet — skip this cycle and let registration catch up.
+            let within_grace_period = run.as_ref().map_or(false, |r| {
+                let age = chrono::Utc::now() - r.started_at;
+                age < chrono::Duration::seconds(30)
+            });
+
+            if within_grace_period {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    "Merge conflict detection within 30s grace period — skipping"
+                );
+                return false;
+            }
+
+            // Within retry budget: auto-restart the merger agent
+            warn!(
+                task_id = task.id.as_str(),
+                retry_count = retry_count,
+                "Auto-recovering merge conflict: restarting merger agent (run state vs registry mismatch)"
+            );
+            RecoveryDecision {
+                action: RecoveryActionKind::ExecuteEntryActions,
+                reason: Some(
+                    "Auto-recovering merge run state conflict — restarting merger agent.".to_string(),
+                ),
+            }
+        } else {
+            decision
+        };
+
         // Gap 2: Don't re-spawn agent if one is still running in registry
         if decision.action == RecoveryActionKind::ExecuteEntryActions && evidence.registry_running {
             warn!(
