@@ -401,6 +401,39 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .policy
             .decide_reconciliation(RecoveryContext::Execution, evidence);
 
+        // Auto-recover execution conflicts instead of prompting the user.
+        // When DB run state disagrees with registry (has_conflict), the agent likely died
+        // silently. Instead of bothering the user, auto-restart within the retry budget.
+        let decision = if decision.action == RecoveryActionKind::Prompt {
+            // Grace period: if the agent run was created < 30s ago, the PID may not
+            // have been registered yet — skip this cycle and let registration catch up.
+            let within_grace_period = run.as_ref().map_or(false, |r| {
+                let age = chrono::Utc::now() - r.started_at;
+                age < chrono::Duration::seconds(30)
+            });
+
+            if within_grace_period {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    "Execution conflict detection within 30s grace period — skipping"
+                );
+                return false;
+            }
+
+            warn!(
+                task_id = task.id.as_str(),
+                "Auto-recovering execution conflict: restarting agent (run state vs registry mismatch)"
+            );
+            RecoveryDecision {
+                action: RecoveryActionKind::ExecuteEntryActions,
+                reason: Some(
+                    "Auto-recovering execution run state conflict — restarting agent.".to_string(),
+                ),
+            }
+        } else {
+            decision
+        };
+
         // E7: Enforce retry limit for execution re-spawns
         if decision.action == RecoveryActionKind::ExecuteEntryActions {
             let retry_count = Self::auto_retry_count_for_status(task, status);
@@ -489,6 +522,39 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let decision = self
             .policy
             .decide_reconciliation(RecoveryContext::Review, evidence);
+
+        // Auto-recover review conflicts instead of prompting the user.
+        // When DB run state disagrees with registry (has_conflict), the agent likely died
+        // silently. Instead of bothering the user, auto-restart within the retry budget.
+        let decision = if decision.action == RecoveryActionKind::Prompt {
+            // Grace period: if the agent run was created < 30s ago, the PID may not
+            // have been registered yet — skip this cycle and let registration catch up.
+            let within_grace_period = run.as_ref().map_or(false, |r| {
+                let age = chrono::Utc::now() - r.started_at;
+                age < chrono::Duration::seconds(30)
+            });
+
+            if within_grace_period {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    "Review conflict detection within 30s grace period — skipping"
+                );
+                return false;
+            }
+
+            warn!(
+                task_id = task.id.as_str(),
+                "Auto-recovering review conflict: restarting agent (run state vs registry mismatch)"
+            );
+            RecoveryDecision {
+                action: RecoveryActionKind::ExecuteEntryActions,
+                reason: Some(
+                    "Auto-recovering review run state conflict — restarting agent.".to_string(),
+                ),
+            }
+        } else {
+            decision
+        };
 
         // E7: Enforce retry limit for review re-spawns
         if decision.action == RecoveryActionKind::ExecuteEntryActions {
