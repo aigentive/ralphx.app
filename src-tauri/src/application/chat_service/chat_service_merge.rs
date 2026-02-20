@@ -5,7 +5,7 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use tauri::{AppHandle, Runtime};
+use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::application::git_service::{GitService, StaleRebaseResult};
 use crate::application::task_scheduler_service::TaskSchedulerService;
@@ -394,6 +394,27 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             "attempt_merge_auto_complete: validation recovery mode — re-running validation"
         );
 
+        // Clear stale validation data from metadata so the UI doesn't show old results
+        // while the new validation is running
+        if let Some(ref meta_str) = task.metadata {
+            if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(meta_str) {
+                if let Some(obj) = val.as_object_mut() {
+                    obj.remove("validation_log");
+                    obj.remove("validation_failures");
+                    task.metadata = Some(val.to_string());
+                    task.touch();
+                    let _ = task_repo.update(&task).await;
+                }
+            }
+        }
+
+        // Emit validation_start event so the frontend clears stale live steps
+        if let Some(handle) = app_handle {
+            let _ = handle.emit("merge:validation_start", serde_json::json!({
+                "task_id": task_id_str,
+            }));
+        }
+
         // Re-run validation commands on the merge path
         match run_validation_commands(&project, &task, worktree, task_id_str, None, None, &project.merge_validation_mode).await {
             Some(result) if !result.all_passed => {
@@ -470,11 +491,23 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 .await;
                 return;
             }
-            Some(_) => {
+            Some(result) => {
                 tracing::info!(
                     task_id = task_id_str,
                     "attempt_merge_auto_complete: re-validation passed — proceeding to complete merge"
                 );
+                // Update metadata with fresh validation_log so the UI shows the new results
+                let mut merged_meta = task
+                    .metadata
+                    .as_deref()
+                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Some(obj) = merged_meta.as_object_mut() {
+                    obj.insert("validation_log".to_string(), serde_json::json!(result.log));
+                }
+                task.metadata = Some(merged_meta.to_string());
+                task.touch();
+                let _ = task_repo.update(&task).await;
             }
             None => {
                 // No validation commands configured — proceed normally
