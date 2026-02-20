@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn team_session_id_generates_unique() {
     let id1 = TeamSessionId::new();

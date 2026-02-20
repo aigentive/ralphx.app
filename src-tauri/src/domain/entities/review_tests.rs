@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 // ===== ReviewId Tests =====
 
 #[test]

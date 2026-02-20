@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn activity_event_id_generates_unique_ids() {
     let id1 = ActivityEventId::new();

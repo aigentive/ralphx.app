@@ -1,6 +1,4 @@
 use super::*;
-
-use super::*;
 use crate::domain::qa::{AcceptanceCriterion, QAStepResult, QATestStep};
 
 #[test]

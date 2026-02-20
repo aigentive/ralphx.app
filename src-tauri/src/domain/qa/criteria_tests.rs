@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 // ----------------
 // AcceptanceCriteriaType Tests
 // ----------------
@@ -196,155 +194,157 @@ fn test_criteria_from_prd_format() {
     // QATestStep Tests
     // ----------------
 
-    #[test]
-    fn test_step_new() {
-        let step = QATestStep::new(
-            "QA1",
-            "AC1",
-            "Verify board renders",
-            vec!["agent-browser open http://localhost:1420".to_string()],
-            "Board visible",
-        );
-        assert_eq!(step.id, "QA1");
-        assert_eq!(step.criteria_id, "AC1");
-        assert_eq!(step.description, "Verify board renders");
-        assert_eq!(step.commands.len(), 1);
-        assert_eq!(step.expected, "Board visible");
-    }
-
-    #[test]
-    fn test_step_has_commands() {
-        let step = QATestStep::new("QA1", "AC1", "Test", vec![], "Expected");
-        assert!(!step.has_commands());
-
-        let step2 = QATestStep::new("QA2", "AC1", "Test", vec!["cmd".to_string()], "Expected");
-        assert!(step2.has_commands());
-    }
-
-    #[test]
-    fn test_step_command_count() {
-        let step = QATestStep::new(
-            "QA1",
-            "AC1",
-            "Test",
-            vec!["cmd1".to_string(), "cmd2".to_string(), "cmd3".to_string()],
-            "Expected",
-        );
-        assert_eq!(step.command_count(), 3);
-    }
-
-    #[test]
-    fn test_step_serialize() {
-        let step = QATestStep::new("QA1", "AC1", "Test", vec!["cmd".to_string()], "Expected");
-        let json = serde_json::to_string(&step).unwrap();
-        assert!(json.contains("\"id\":\"QA1\""));
-        assert!(json.contains("\"criteria_id\":\"AC1\""));
-        assert!(json.contains("\"commands\":[\"cmd\"]"));
-    }
-
-    #[test]
-    fn test_step_deserialize() {
-        let json = r#"{"id":"QA1","criteria_id":"AC1","description":"Test","commands":["cmd"],"expected":"Result"}"#;
-        let step: QATestStep = serde_json::from_str(json).unwrap();
-        assert_eq!(step.id, "QA1");
-        assert_eq!(step.criteria_id, "AC1");
-    }
-
-    // ----------------
-    // QATestSteps Tests
-    // ----------------
-
-    #[test]
-    fn test_steps_new_empty() {
-        let s = QATestSteps::new();
-        assert!(s.is_empty());
-        assert_eq!(s.len(), 0);
-    }
-
-    #[test]
-    fn test_steps_from_steps() {
-        let steps = vec![
-            QATestStep::new("QA1", "AC1", "Step 1", vec![], ""),
-            QATestStep::new("QA2", "AC2", "Step 2", vec![], ""),
-        ];
-        let s = QATestSteps::from_steps(steps);
-        assert_eq!(s.len(), 2);
-    }
-
-    #[test]
-    fn test_steps_add() {
-        let mut s = QATestSteps::new();
-        s.add(QATestStep::new("QA1", "AC1", "Test", vec![], ""));
-        assert_eq!(s.len(), 1);
-    }
-
-    #[test]
-    fn test_steps_for_criterion() {
-        let steps = vec![
-            QATestStep::new("QA1", "AC1", "Step 1", vec![], ""),
-            QATestStep::new("QA2", "AC2", "Step 2", vec![], ""),
-            QATestStep::new("QA3", "AC1", "Step 3", vec![], ""),
-        ];
-        let s = QATestSteps::from_steps(steps);
-        assert_eq!(s.for_criterion("AC1").count(), 2);
-        assert_eq!(s.for_criterion("AC2").count(), 1);
-        assert_eq!(s.for_criterion("AC3").count(), 0);
-    }
-
-    #[test]
-    fn test_steps_total_commands() {
-        let steps = vec![
-            QATestStep::new("QA1", "AC1", "Step 1", vec!["c1".into(), "c2".into()], ""),
-            QATestStep::new("QA2", "AC2", "Step 2", vec!["c3".into()], ""),
-        ];
-        let s = QATestSteps::from_steps(steps);
-        assert_eq!(s.total_commands(), 3);
-    }
-
-    #[test]
-    fn test_steps_json_roundtrip() {
-        let steps = vec![QATestStep::new(
-            "QA1",
-            "AC1",
-            "Verify board",
-            vec!["agent-browser open http://localhost:1420".into()],
-            "Board visible",
-        )];
-        let s = QATestSteps::from_steps(steps);
-
-        let json = s.to_json().unwrap();
-        let parsed = QATestSteps::from_json(&json).unwrap();
-
-        assert_eq!(s, parsed);
-    }
-
-    #[test]
-    fn test_steps_from_prd_format() {
-        // Test parsing the exact format from the PRD
-        let json = r#"{
-            "qa_steps": [
-                {
-                    "id": "QA1",
-                    "criteria_id": "AC1",
-                    "description": "Verify task board renders with correct columns",
-                    "commands": [
-                        "agent-browser open http://localhost:1420",
-                        "agent-browser wait --load",
-                        "agent-browser snapshot -i -c",
-                        "agent-browser is visible [data-testid='column-draft']",
-                        "agent-browser is visible [data-testid='column-planned']",
-                        "agent-browser screenshot screenshots/task-board-columns.png"
-                    ],
-                    "expected": "All 7 columns visible"
-                }
-            ]
-        }"#;
-
-        let s = QATestSteps::from_json(json).unwrap();
-        assert_eq!(s.len(), 1);
-        assert_eq!(s.qa_steps[0].id, "QA1");
-        assert_eq!(s.qa_steps[0].criteria_id, "AC1");
-        assert_eq!(s.qa_steps[0].commands.len(), 6);
-        assert_eq!(s.qa_steps[0].expected, "All 7 columns visible");
-    }
 }
+
+#[test]
+fn test_step_new() {
+    let step = QATestStep::new(
+        "QA1",
+        "AC1",
+        "Verify board renders",
+        vec!["agent-browser open http://localhost:1420".to_string()],
+        "Board visible",
+    );
+    assert_eq!(step.id, "QA1");
+    assert_eq!(step.criteria_id, "AC1");
+    assert_eq!(step.description, "Verify board renders");
+    assert_eq!(step.commands.len(), 1);
+    assert_eq!(step.expected, "Board visible");
+}
+
+#[test]
+fn test_step_has_commands() {
+    let step = QATestStep::new("QA1", "AC1", "Test", vec![], "Expected");
+    assert!(!step.has_commands());
+
+    let step2 = QATestStep::new("QA2", "AC1", "Test", vec!["cmd".to_string()], "Expected");
+    assert!(step2.has_commands());
+}
+
+#[test]
+fn test_step_command_count() {
+    let step = QATestStep::new(
+        "QA1",
+        "AC1",
+        "Test",
+        vec!["cmd1".to_string(), "cmd2".to_string(), "cmd3".to_string()],
+        "Expected",
+    );
+    assert_eq!(step.command_count(), 3);
+}
+
+#[test]
+fn test_step_serialize() {
+    let step = QATestStep::new("QA1", "AC1", "Test", vec!["cmd".to_string()], "Expected");
+    let json = serde_json::to_string(&step).unwrap();
+    assert!(json.contains("\"id\":\"QA1\""));
+    assert!(json.contains("\"criteria_id\":\"AC1\""));
+    assert!(json.contains("\"commands\":[\"cmd\"]"));
+}
+
+#[test]
+fn test_step_deserialize() {
+    let json = r#"{"id":"QA1","criteria_id":"AC1","description":"Test","commands":["cmd"],"expected":"Result"}"#;
+    let step: QATestStep = serde_json::from_str(json).unwrap();
+    assert_eq!(step.id, "QA1");
+    assert_eq!(step.criteria_id, "AC1");
+}
+
+// ----------------
+// QATestSteps Tests
+// ----------------
+
+#[test]
+fn test_steps_new_empty() {
+    let s = QATestSteps::new();
+    assert!(s.is_empty());
+    assert_eq!(s.len(), 0);
+}
+
+#[test]
+fn test_steps_from_steps() {
+    let steps = vec![
+        QATestStep::new("QA1", "AC1", "Step 1", vec![], ""),
+        QATestStep::new("QA2", "AC2", "Step 2", vec![], ""),
+    ];
+    let s = QATestSteps::from_steps(steps);
+    assert_eq!(s.len(), 2);
+}
+
+#[test]
+fn test_steps_add() {
+    let mut s = QATestSteps::new();
+    s.add(QATestStep::new("QA1", "AC1", "Test", vec![], ""));
+    assert_eq!(s.len(), 1);
+}
+
+#[test]
+fn test_steps_for_criterion() {
+    let steps = vec![
+        QATestStep::new("QA1", "AC1", "Step 1", vec![], ""),
+        QATestStep::new("QA2", "AC2", "Step 2", vec![], ""),
+        QATestStep::new("QA3", "AC1", "Step 3", vec![], ""),
+    ];
+    let s = QATestSteps::from_steps(steps);
+    assert_eq!(s.for_criterion("AC1").count(), 2);
+    assert_eq!(s.for_criterion("AC2").count(), 1);
+    assert_eq!(s.for_criterion("AC3").count(), 0);
+}
+
+#[test]
+fn test_steps_total_commands() {
+    let steps = vec![
+        QATestStep::new("QA1", "AC1", "Step 1", vec!["c1".into(), "c2".into()], ""),
+        QATestStep::new("QA2", "AC2", "Step 2", vec!["c3".into()], ""),
+    ];
+    let s = QATestSteps::from_steps(steps);
+    assert_eq!(s.total_commands(), 3);
+}
+
+#[test]
+fn test_steps_json_roundtrip() {
+    let steps = vec![QATestStep::new(
+        "QA1",
+        "AC1",
+        "Verify board",
+        vec!["agent-browser open http://localhost:1420".into()],
+        "Board visible",
+    )];
+    let s = QATestSteps::from_steps(steps);
+
+    let json = s.to_json().unwrap();
+    let parsed = QATestSteps::from_json(&json).unwrap();
+
+    assert_eq!(s, parsed);
+}
+
+#[test]
+fn test_steps_from_prd_format() {
+    // Test parsing the exact format from the PRD
+    let json = r#"{
+        "qa_steps": [
+            {
+                "id": "QA1",
+                "criteria_id": "AC1",
+                "description": "Verify task board renders with correct columns",
+                "commands": [
+                    "agent-browser open http://localhost:1420",
+                    "agent-browser wait --load",
+                    "agent-browser snapshot -i -c",
+                    "agent-browser is visible [data-testid='column-draft']",
+                    "agent-browser is visible [data-testid='column-planned']",
+                    "agent-browser screenshot screenshots/task-board-columns.png"
+                ],
+                "expected": "All 7 columns visible"
+            }
+        ]
+    }"#;
+
+    let s = QATestSteps::from_json(json).unwrap();
+    assert_eq!(s.len(), 1);
+    assert_eq!(s.qa_steps[0].id, "QA1");
+    assert_eq!(s.qa_steps[0].criteria_id, "AC1");
+    assert_eq!(s.qa_steps[0].commands.len(), 6);
+    assert_eq!(s.qa_steps[0].expected, "All 7 columns visible");
+}
+

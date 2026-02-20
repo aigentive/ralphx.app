@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn plan_branch_id_new_generates_valid_uuid() {
     let id = PlanBranchId::new();

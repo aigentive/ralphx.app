@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_classify_architecture_pattern() {
     let title = "State Machine Design";

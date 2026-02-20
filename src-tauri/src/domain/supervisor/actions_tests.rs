@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_severity_display() {
     assert_eq!(Severity::Low.to_string(), "low");

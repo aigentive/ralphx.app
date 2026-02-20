@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_ideation_plan_mode_default() {
     assert_eq!(IdeationPlanMode::default(), IdeationPlanMode::Optional);

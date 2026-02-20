@@ -1,6 +1,4 @@
 use super::*;
-
-use super::*;
 use std::io::{Error as IoError, ErrorKind};
 
 #[test]

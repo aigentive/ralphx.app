@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn context_proposal_summary_serializes_to_json() {
     let summary = ContextProposalSummary {

@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_attachment_id_creation() {
     let id1 = ChatAttachmentId::new();

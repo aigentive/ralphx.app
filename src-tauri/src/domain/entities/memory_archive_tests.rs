@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_archive_job_type_serialization() {
     assert_eq!(

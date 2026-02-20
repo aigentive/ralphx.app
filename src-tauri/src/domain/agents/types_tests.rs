@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 // AgentRole tests
 #[test]
 fn test_agent_role_worker() {

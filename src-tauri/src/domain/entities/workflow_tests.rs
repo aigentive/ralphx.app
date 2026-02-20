@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 // ===== WorkflowId Tests =====
 
 #[test]

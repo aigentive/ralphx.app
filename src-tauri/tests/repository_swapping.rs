@@ -16,7 +16,6 @@ use std::sync::Arc;
 
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{GitMode, InternalStatus, Project, Task};
-use ralphx_lib::domain::repositories::TaskDependencyRepository;
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, SqliteProjectRepository, SqliteTaskRepository,
 };

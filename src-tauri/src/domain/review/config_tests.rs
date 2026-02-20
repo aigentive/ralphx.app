@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_review_settings_default() {
     let settings = ReviewSettings::default();
@@ -124,51 +122,53 @@ fn test_review_settings_deserialize() {
     assert_eq!(settings.max_fix_attempts, 5);
     assert_eq!(settings.max_revision_cycles, 8);
 
-    #[test]
-    fn test_review_settings_roundtrip() {
-        let original = ReviewSettings {
-            ai_review_enabled: true,
-            ai_review_auto_fix: false,
-            require_fix_approval: true,
-            require_human_review: false,
-            max_fix_attempts: 7,
-            max_revision_cycles: 8,
-        };
-        let json = serde_json::to_string(&original).unwrap();
-        let deserialized: ReviewSettings = serde_json::from_str(&json).unwrap();
-        assert_eq!(original, deserialized);
-    }
-
-    #[test]
-    fn test_review_settings_partial_json_with_defaults() {
-        // Test that serde can handle partial JSON with defaults
-        let json = r#"{
-            "ai_review_enabled": true,
-            "ai_review_auto_fix": true,
-            "require_fix_approval": false,
-            "require_human_review": false,
-            "max_fix_attempts": 3,
-            "max_revision_cycles": 5
-        }"#;
-        let settings: ReviewSettings = serde_json::from_str(json).unwrap();
-        assert_eq!(settings, ReviewSettings::default());
-    }
-
-    #[test]
-    fn test_exceeded_max_revisions() {
-        let settings = ReviewSettings::default();
-        assert!(!settings.exceeded_max_revisions(0));
-        assert!(!settings.exceeded_max_revisions(1));
-        assert!(!settings.exceeded_max_revisions(4));
-        assert!(settings.exceeded_max_revisions(5));
-        assert!(settings.exceeded_max_revisions(10));
-
-        let settings = ReviewSettings {
-            max_revision_cycles: 2,
-            ..Default::default()
-        };
-        assert!(!settings.exceeded_max_revisions(0));
-        assert!(!settings.exceeded_max_revisions(1));
-        assert!(settings.exceeded_max_revisions(2));
-    }
 }
+
+#[test]
+fn test_review_settings_roundtrip() {
+    let original = ReviewSettings {
+        ai_review_enabled: true,
+        ai_review_auto_fix: false,
+        require_fix_approval: true,
+        require_human_review: false,
+        max_fix_attempts: 7,
+        max_revision_cycles: 8,
+    };
+    let json = serde_json::to_string(&original).unwrap();
+    let deserialized: ReviewSettings = serde_json::from_str(&json).unwrap();
+    assert_eq!(original, deserialized);
+}
+
+#[test]
+fn test_review_settings_partial_json_with_defaults() {
+    // Test that serde can handle partial JSON with defaults
+    let json = r#"{
+        "ai_review_enabled": true,
+        "ai_review_auto_fix": true,
+        "require_fix_approval": false,
+        "require_human_review": false,
+        "max_fix_attempts": 3,
+        "max_revision_cycles": 5
+    }"#;
+    let settings: ReviewSettings = serde_json::from_str(json).unwrap();
+    assert_eq!(settings, ReviewSettings::default());
+}
+
+#[test]
+fn test_exceeded_max_revisions() {
+    let settings = ReviewSettings::default();
+    assert!(!settings.exceeded_max_revisions(0));
+    assert!(!settings.exceeded_max_revisions(1));
+    assert!(!settings.exceeded_max_revisions(4));
+    assert!(settings.exceeded_max_revisions(5));
+    assert!(settings.exceeded_max_revisions(10));
+
+    let settings = ReviewSettings {
+        max_revision_cycles: 2,
+        ..Default::default()
+    };
+    assert!(!settings.exceeded_max_revisions(0));
+    assert!(!settings.exceeded_max_revisions(1));
+    assert!(settings.exceeded_max_revisions(2));
+}
+

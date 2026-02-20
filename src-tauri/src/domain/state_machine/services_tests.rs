@@ -1,6 +1,4 @@
 use super::*;
-
-use super::*;
 use std::sync::Arc;
 
 // Test that traits are object-safe
