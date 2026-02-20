@@ -17,7 +17,8 @@ use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
-    InternalStatus, TaskId, TaskStepStatus,
+    InternalStatus, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
+    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, TaskId, TaskStepStatus,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
@@ -34,6 +35,32 @@ use super::chat_service_errors::{classify_agent_error, StreamError};
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::AgentErrorPayload;
 use super::EventContextPayload;
+
+/// Parse an ISO 8601 retry_after string and set the global provider rate limit gate
+/// on ExecutionState. Called from all agent error contexts (TaskExecution, Merge, Review)
+/// so a single rate limit detection blocks ALL subsequent spawns.
+fn apply_global_rate_limit_backpressure(
+    execution_state: &Option<Arc<ExecutionState>>,
+    retry_after: &Option<String>,
+    context: &str,
+    context_id: &str,
+) {
+    if let Some(retry_after_str) = retry_after {
+        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(retry_after_str) {
+            let epoch_secs = dt.timestamp() as u64;
+            if let Some(ref exec) = execution_state {
+                exec.set_provider_blocked_until(epoch_secs);
+                tracing::info!(
+                    context = context,
+                    context_id = context_id,
+                    retry_after = %retry_after_str,
+                    epoch_secs = epoch_secs,
+                    "Global rate limit backpressure set — all spawns blocked until retry_after"
+                );
+            }
+        }
+    }
+}
 
 /// Read existing message content and tool_calls from the database.
 ///
@@ -819,6 +846,14 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         }),
                                     );
                                 }
+
+                                // Set global rate limit backpressure so ALL spawns are blocked
+                                apply_global_rate_limit_backpressure(
+                                    execution_state,
+                                    &meta.retry_after,
+                                    "task_execution",
+                                    context_id,
+                                );
                             }
                         }
                     }
@@ -931,31 +966,111 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
 
     // Handle merge auto-completion even on agent error
     if context_type == ChatContextType::Merge {
-        if let Some(ref exec_state) = execution_state {
-            super::chat_service_merge::attempt_merge_auto_complete(
-                context_id,
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                exec_state,
-                plan_branch_repo,
-                app_handle.as_ref(),
-            )
-            .await;
+        // Check for provider rate limit errors BEFORE attempting auto-complete.
+        // If rate-limited, store retry_after in MergeRecoveryMetadata so the reconciler
+        // can skip retries until the limit clears (without burning retry budget).
+        let is_rate_limited = if let Some(se) = stream_error {
+            if se.is_provider_error() {
+                let task_id = TaskId::from_string(context_id.to_string());
+                if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                    let retry_after = match se {
+                        StreamError::ProviderError { retry_after, .. } => retry_after.clone(),
+                        _ => None,
+                    };
+
+                    let mut recovery = MergeRecoveryMetadata::from_task_metadata(
+                        task.metadata.as_deref(),
+                    )
+                    .unwrap_or(None)
+                    .unwrap_or_default();
+
+                    recovery.rate_limit_retry_after = retry_after.clone();
+                    recovery.append_event_with_state(
+                        MergeRecoveryEvent::new(
+                            MergeRecoveryEventKind::AttemptFailed,
+                            MergeRecoverySource::System,
+                            MergeRecoveryReasonCode::ProviderRateLimited,
+                            format!("Merge agent hit provider rate limit: {}", error),
+                        ),
+                        MergeRecoveryState::RateLimited,
+                    );
+
+                    let mut updated_task = task.clone();
+                    match recovery.update_task_metadata(updated_task.metadata.as_deref()) {
+                        Ok(metadata_json) => {
+                            updated_task.metadata = Some(metadata_json);
+                            updated_task.touch();
+                            if let Err(e) = task_repo.update(&updated_task).await {
+                                tracing::error!(
+                                    task_id = context_id,
+                                    error = %e,
+                                    "Failed to store merge rate limit metadata"
+                                );
+                            } else {
+                                tracing::info!(
+                                    task_id = context_id,
+                                    retry_after = ?retry_after,
+                                    "Stored rate limit in merge recovery metadata"
+                                );
+                            }
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = context_id,
+                                error = %e,
+                                "Failed to serialize merge rate limit metadata"
+                            );
+                        }
+                    }
+
+                    // Set global rate limit backpressure so ALL spawns are blocked
+                    apply_global_rate_limit_backpressure(
+                        execution_state,
+                        &retry_after,
+                        "merge",
+                        context_id,
+                    );
+
+                    true
+                } else {
+                    false
+                }
+            } else {
+                false
+            }
         } else {
-            tracing::warn!(
-                "Cannot auto-complete merge for task {} on error - no execution_state available",
-                context_id
-            );
+            false
+        };
+
+        // Only attempt merge auto-complete if NOT rate limited
+        // (rate-limited merges should wait for reconciler to retry after cooldown)
+        if !is_rate_limited {
+            if let Some(ref exec_state) = execution_state {
+                super::chat_service_merge::attempt_merge_auto_complete(
+                    context_id,
+                    task_repo,
+                    task_dependency_repo,
+                    project_repo,
+                    chat_message_repo,
+                    chat_attachment_repo,
+                    conversation_repo,
+                    agent_run_repo,
+                    ideation_session_repo,
+                    activity_event_repo,
+                    message_queue,
+                    running_agent_registry,
+                    memory_event_repo,
+                    exec_state,
+                    plan_branch_repo,
+                    app_handle.as_ref(),
+                )
+                .await;
+            } else {
+                tracing::warn!(
+                    "Cannot auto-complete merge for task {} on error - no execution_state available",
+                    context_id
+                );
+            }
         }
     }
 
@@ -990,6 +1105,24 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         Some(serde_json::to_string(&metadata_obj).unwrap_or_default());
                     updated_task.touch();
                     let _ = task_repo.update(&updated_task).await;
+
+                    // If this is a provider error, set global backpressure
+                    if let Some(se) = stream_error {
+                        if se.is_provider_error() {
+                            let retry_after = match se {
+                                StreamError::ProviderError { retry_after, .. } => {
+                                    retry_after.clone()
+                                }
+                                _ => None,
+                            };
+                            apply_global_rate_limit_backpressure(
+                                execution_state,
+                                &retry_after,
+                                "review",
+                                context_id,
+                            );
+                        }
+                    }
 
                     // Transition to Escalated
                     let transition_service = TaskTransitionService::new(
@@ -1176,5 +1309,60 @@ mod tests {
         let task_id = TaskId::new();
         let repo: Arc<dyn TaskRepository> = Arc::new(StubTaskRepo { task: None });
         assert!(!task_still_needs_execution_recovery(&task_id, &repo).await);
+    }
+
+    // ========================================
+    // Global Rate Limit Backpressure Integration Tests
+    // ========================================
+
+    #[test]
+    fn test_apply_global_rate_limit_backpressure_sets_gate() {
+        let exec = Arc::new(ExecutionState::new());
+        let execution_state = Some(exec.clone());
+
+        // Provide a future retry_after timestamp
+        let future = (chrono::Utc::now() + chrono::Duration::seconds(300)).to_rfc3339();
+        let retry_after = Some(future);
+
+        assert!(!exec.is_provider_blocked());
+        apply_global_rate_limit_backpressure(&execution_state, &retry_after, "test", "task-1");
+        assert!(exec.is_provider_blocked());
+        assert!(!exec.can_start_task());
+    }
+
+    #[test]
+    fn test_apply_global_rate_limit_backpressure_noop_without_retry_after() {
+        let exec = Arc::new(ExecutionState::new());
+        let execution_state = Some(exec.clone());
+
+        // No retry_after → should not set backpressure
+        apply_global_rate_limit_backpressure(&execution_state, &None, "test", "task-1");
+        assert!(!exec.is_provider_blocked());
+        assert!(exec.can_start_task());
+    }
+
+    #[test]
+    fn test_apply_global_rate_limit_backpressure_noop_without_execution_state() {
+        let execution_state: Option<Arc<ExecutionState>> = None;
+        let future = (chrono::Utc::now() + chrono::Duration::seconds(300)).to_rfc3339();
+        let retry_after = Some(future);
+
+        // Should not panic when execution_state is None
+        apply_global_rate_limit_backpressure(&execution_state, &retry_after, "test", "task-1");
+    }
+
+    #[test]
+    fn test_apply_global_rate_limit_backpressure_expired_does_not_block() {
+        let exec = Arc::new(ExecutionState::new());
+        let execution_state = Some(exec.clone());
+
+        // Provide a past retry_after timestamp
+        let past = (chrono::Utc::now() - chrono::Duration::seconds(60)).to_rfc3339();
+        let retry_after = Some(past);
+
+        apply_global_rate_limit_backpressure(&execution_state, &retry_after, "test", "task-1");
+        // Epoch was set, but it's in the past, so is_provider_blocked returns false
+        assert!(!exec.is_provider_blocked());
+        assert!(exec.can_start_task());
     }
 }

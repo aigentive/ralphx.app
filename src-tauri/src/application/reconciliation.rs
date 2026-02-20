@@ -1119,6 +1119,29 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // Rate limit guard: if a provider rate limit is active, skip retry until it expires.
+        // Rate-limited skips do NOT count toward max retries — the retry budget is preserved.
+        if let Some(retry_after) = Self::get_rate_limit_retry_after(task) {
+            if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&retry_after) {
+                if chrono::Utc::now() < dt {
+                    tracing::debug!(
+                        task_id = task.id.as_str(),
+                        retry_after = %retry_after,
+                        "Skipping MergeIncomplete retry — provider rate limit active"
+                    );
+                    return false; // Don't retry, don't count toward budget
+                }
+                // Rate limit expired — clear it and proceed with normal retry logic
+                if let Err(e) = self.clear_rate_limit_retry_after(task).await {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to clear expired rate_limit_retry_after"
+                    );
+                }
+            }
+        }
+
         // Smart retry guard: if the incomplete was explicitly reported by the agent,
         // it was a deliberate decision — do NOT auto-retry without human intervention.
         if Self::is_agent_reported_failure(task) {
@@ -1920,9 +1943,13 @@ impl<R: Runtime> ReconciliationRunner<R> {
     }
 
     fn merge_incomplete_retry_delay(retry_count: u32) -> chrono::Duration {
+        use rand::Rng;
         let exponent = retry_count.min(6);
-        let scaled = (reconciliation_config().merge_incomplete_retry_base_secs as i64).saturating_mul(1_i64 << exponent);
-        chrono::Duration::seconds(scaled.min(reconciliation_config().merge_incomplete_retry_max_secs as i64))
+        let scaled = (reconciliation_config().merge_incomplete_retry_base_secs as i64)
+            .saturating_mul(1_i64 << exponent);
+        let base_delay = scaled.min(reconciliation_config().merge_incomplete_retry_max_secs as i64);
+        let jitter = rand::thread_rng().gen_range(0..=base_delay / 4);
+        chrono::Duration::seconds(base_delay + jitter)
     }
 
     fn merge_conflict_auto_retry_count(task: &Task) -> u32 {
@@ -1939,9 +1966,13 @@ impl<R: Runtime> ReconciliationRunner<R> {
     }
 
     fn merge_conflict_retry_delay(retry_count: u32) -> chrono::Duration {
+        use rand::Rng;
         let exponent = retry_count.min(6);
-        let scaled = (reconciliation_config().merge_conflict_retry_base_secs as i64).saturating_mul(1_i64 << exponent);
-        chrono::Duration::seconds(scaled.min(reconciliation_config().merge_conflict_retry_max_secs as i64))
+        let scaled = (reconciliation_config().merge_conflict_retry_base_secs as i64)
+            .saturating_mul(1_i64 << exponent);
+        let base_delay = scaled.min(reconciliation_config().merge_conflict_retry_max_secs as i64);
+        let jitter = rand::thread_rng().gen_range(0..=base_delay / 4);
+        chrono::Duration::seconds(base_delay + jitter)
     }
 
     /// Returns true if the task's failure was explicitly reported by the merger agent
@@ -1965,6 +1996,39 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
             .and_then(|v| v.get("validation_revert_count").and_then(|c| c.as_u64()).map(|c| c as u32))
             .unwrap_or(0)
+    }
+
+    /// Get rate_limit_retry_after from merge recovery metadata, if set.
+    fn get_rate_limit_retry_after(task: &Task) -> Option<String> {
+        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .and_then(|meta| meta.rate_limit_retry_after)
+    }
+
+    /// Clear the rate_limit_retry_after field from merge recovery metadata (after expiry).
+    async fn clear_rate_limit_retry_after(&self, task: &Task) -> Result<(), String> {
+        let mut updated = task.clone();
+        let mut recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .unwrap_or(None)
+            .unwrap_or_default();
+
+        recovery.rate_limit_retry_after = None;
+        if recovery.last_state == MergeRecoveryState::RateLimited {
+            recovery.last_state = MergeRecoveryState::Retrying;
+        }
+
+        updated.metadata = Some(
+            recovery
+                .update_task_metadata(updated.metadata.as_deref())
+                .map_err(|e| e.to_string())?,
+        );
+        updated.touch();
+
+        self.task_repo
+            .update(&updated)
+            .await
+            .map_err(|e| e.to_string())
     }
 
     /// Get the last stored source branch SHA from merge recovery events.

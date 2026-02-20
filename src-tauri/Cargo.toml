@@ -45,6 +45,7 @@ tauri-plugin-updater = "2"
 sha2 = "0.10"
 tokio-util = "0.7"
 dotenvy = "0.15.7"
+rand = "0.8"
 
 [dev-dependencies]
 tempfile = "3"
