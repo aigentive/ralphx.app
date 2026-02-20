@@ -177,6 +177,20 @@ pub(super) fn compute_rebase_worktree_path(project: &Project, task_id: &str) -> 
     format!("{}/{}/rebase-{}", expanded, slugify(&project.name), task_id)
 }
 
+/// Compute the worktree path for a plan-update operation (merging main into plan branch).
+///
+/// Convention: `{worktree_parent}/{slug}/plan-update-{task_id}`
+/// This is a short-lived worktree used only to bring the plan branch up-to-date with main
+/// before the actual task→plan merge runs.
+pub(super) fn compute_plan_update_worktree_path(project: &Project, task_id: &str) -> String {
+    let worktree_parent = project
+        .worktree_parent_directory
+        .as_deref()
+        .unwrap_or("~/ralphx-worktrees");
+    let expanded = expand_home(worktree_parent);
+    format!("{}/{}/plan-update-{}", expanded, slugify(&project.name), task_id)
+}
+
 /// Extract a task ID from a merge worktree path.
 ///
 /// Merge worktree paths follow the convention: `{parent}/{slug}/merge-{task_id}`
@@ -621,28 +635,64 @@ pub async fn resolve_merge_branches(
 
     // Check if this task IS the merge task for a plan branch
     if let Ok(Some(pb)) = plan_branch_repo.get_by_merge_task_id(&task.id).await {
-        if pb.status == PlanBranchStatus::Active {
-            tracing::debug!(
+        if pb.status != PlanBranchStatus::Active {
+            tracing::warn!(
                 task_id = task.id.as_str(),
                 feature_branch = %pb.branch_name,
-                base_branch = %base_branch,
-                "Merge task: merging feature branch into base"
+                plan_branch_status = ?pb.status,
+                "Merge task: plan branch is not Active, but still using it as source \
+                 to avoid incorrect merge direction"
             );
-            return (pb.branch_name, base_branch);
         }
+        tracing::debug!(
+            task_id = task.id.as_str(),
+            feature_branch = %pb.branch_name,
+            base_branch = %base_branch,
+            "Merge task: merging feature branch into base"
+        );
+        return (pb.branch_name, base_branch);
     }
 
     // Check if this task belongs to a plan with a feature branch
     if let Some(ref session_id) = task.ideation_session_id {
-        if let Ok(Some(pb)) = plan_branch_repo.get_by_session_id(session_id).await {
-            if pb.status == PlanBranchStatus::Active {
-                tracing::debug!(
+        match plan_branch_repo.get_by_session_id(session_id).await {
+            Ok(Some(pb)) => {
+                if pb.status == PlanBranchStatus::Active {
+                    tracing::debug!(
+                        task_id = task.id.as_str(),
+                        task_branch = %task_branch,
+                        feature_branch = %pb.branch_name,
+                        "Plan task: merging task branch into feature branch"
+                    );
+                    return (task_branch, pb.branch_name);
+                }
+                // Plan branch exists but isn't Active — still use it as the target.
+                // Falling through to base_branch would merge task→main instead of task→plan,
+                // which is incorrect for tasks that belong to a plan.
+                tracing::warn!(
                     task_id = task.id.as_str(),
                     task_branch = %task_branch,
                     feature_branch = %pb.branch_name,
-                    "Plan task: merging task branch into feature branch"
+                    plan_branch_status = ?pb.status,
+                    "Plan task: plan branch is not Active, but still using it as merge target \
+                     to avoid incorrect task→main merge"
                 );
                 return (task_branch, pb.branch_name);
+            }
+            Ok(None) => {
+                tracing::warn!(
+                    task_id = task.id.as_str(),
+                    session_id = session_id.as_str(),
+                    "Plan task: no plan branch found for session_id — falling back to base branch"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    task_id = task.id.as_str(),
+                    session_id = session_id.as_str(),
+                    error = %e,
+                    "Plan task: failed to look up plan branch — falling back to base branch"
+                );
             }
         }
     }

@@ -32,6 +32,9 @@ mod test_quality_overhaul;
 // Real git repo integration tests: merge strategy dispatch with actual git operations
 mod real_git_integration;
 
+// Tests for update_plan_from_main: bringing plan branches up-to-date before task merge
+mod plan_update_from_main;
+
 // Tests extracted from inline #[cfg(test)] blocks in production modules
 mod merge_helpers_inline;
 mod merge_helpers_inline_2;
