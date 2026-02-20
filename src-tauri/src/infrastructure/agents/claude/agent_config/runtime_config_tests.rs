@@ -12,7 +12,7 @@ fn test_all_defaults_are_sensible() {
     };
     assert_eq!(cfg.stream.merge_line_read_secs, 600);
     assert_eq!(cfg.reconciliation.merger_timeout_secs, 1200);
-    assert_eq!(cfg.reconciliation.validation_deadline_secs, 600);
+    assert_eq!(cfg.reconciliation.validation_deadline_secs, 1200);
     assert_eq!(cfg.git.cmd_timeout_secs, 60);
     assert_eq!(cfg.git.retry_backoff_secs, vec![1, 2, 4]);
     assert_eq!(cfg.scheduler.watchdog_interval_secs, 60);
@@ -45,7 +45,7 @@ fn test_env_overrides_apply() {
     assert_eq!(cfg.stream.merge_line_read_secs, 999);
     assert_eq!(cfg.reconciliation.merger_timeout_secs, 2400);
     // validation_deadline_secs not overridden — should keep default
-    assert_eq!(cfg.reconciliation.validation_deadline_secs, 600);
+    assert_eq!(cfg.reconciliation.validation_deadline_secs, 1200);
     assert_eq!(cfg.git.cmd_timeout_secs, 120);
     assert_eq!(cfg.git.retry_backoff_secs, vec![2, 4, 8, 16]);
     assert_eq!(cfg.scheduler.ready_settle_ms, 500);
