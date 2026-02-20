@@ -919,21 +919,26 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
 
-                // Check task metadata for validation_recovery flag (Phase 113: AutoFix mode)
-                let is_validation_recovery =
+                // Check task metadata for merger prompt context flags
+                let (is_validation_recovery, is_plan_update_conflict) =
                     if let Some(ref task_repo) = self.machine.context.services.task_repo {
                         let tid = TaskId::from_string(task_id.clone());
                         if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
-                            task.metadata
+                            let meta = task.metadata
                                 .as_ref()
-                                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
+                            let validation = meta.as_ref()
                                 .and_then(|v| v.get("validation_recovery")?.as_bool())
-                                .unwrap_or(false)
+                                .unwrap_or(false);
+                            let plan_conflict = meta.as_ref()
+                                .and_then(|v| v.get("plan_update_conflict")?.as_bool())
+                                .unwrap_or(false);
+                            (validation, plan_conflict)
                         } else {
-                            false
+                            (false, false)
                         }
                     } else {
-                        false
+                        (false, false)
                     };
 
                 let prompt = if is_validation_recovery {
@@ -944,6 +949,14 @@ impl<'a> super::TransitionHandler<'a> {
                          to confirm, then commit your fixes.",
                         task_id
                     )
+                } else if is_plan_update_conflict {
+                    format!(
+                        "Resolve conflicts between main and the plan branch for task: {}. \
+                         Main was updated with fixes that conflict with the plan branch. \
+                         Resolve the conflicts on the plan branch, then commit. \
+                         After resolution, the task merge will be retried automatically.",
+                        task_id
+                    )
                 } else {
                     format!("Resolve merge conflicts for task: {}", task_id)
                 };
@@ -951,6 +964,7 @@ impl<'a> super::TransitionHandler<'a> {
                 tracing::info!(
                     task_id = task_id,
                     is_validation_recovery = is_validation_recovery,
+                    is_plan_update_conflict = is_plan_update_conflict,
                     "on_enter(Merging): Spawning merger agent via ChatService"
                 );
 
