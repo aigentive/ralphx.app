@@ -757,6 +757,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 .update_agent_process(
                     &registry_key,
                     pid,
+                    &agent_run_id,
                     Some(registry_worktree.clone()),
                     Some(cancellation_token.clone()),
                 )

@@ -343,14 +343,16 @@ async fn test_try_register_then_update_agent_process() {
         .update_agent_process(
             &key,
             54321,
+            "run-real",
             Some("/tmp/worktree".to_string()),
             Some(token.clone()),
         )
         .await;
 
-    // Should now have real PID and worktree
+    // Should now have real PID, agent_run_id, and worktree
     let info = registry.get(&key).await.unwrap();
     assert_eq!(info.pid, 54321);
+    assert_eq!(info.agent_run_id, "run-real");
     assert_eq!(info.worktree_path.as_deref(), Some("/tmp/worktree"));
     assert!(info.cancellation_token.is_some());
 }
