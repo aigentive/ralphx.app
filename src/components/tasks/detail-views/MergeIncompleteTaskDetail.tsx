@@ -53,6 +53,22 @@ interface MergeErrorContext {
   metadata: TaskMetadata | null;
 }
 
+/** Abbreviate long git branch names for display.
+ *  "ralphx/ralphx/task-9f7d52f0-..." → "task-9f7d52f0"
+ *  "ralphx/ralphx/plan-c785dcd0" → "plan-c785dcd0"
+ *  "main" → "main" (unchanged)
+ */
+function abbreviateBranch(branch: string): string {
+  // Strip leading "ralphx/<slug>/" prefix (e.g., "ralphx/ralphx/")
+  const parts = branch.split("/");
+  const name = parts.length >= 3 ? parts.slice(2).join("/") : branch;
+  // Truncate long UUIDs in task branch names: "task-9f7d52f0-9ce9-4c33-..." → "task-9f7d52f0"
+  return name.replace(
+    /^(task-[a-f0-9]{8})-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
+    "$1",
+  );
+}
+
 function parseMergeError(metadata?: string | null): MergeErrorContext | null {
   if (!metadata) return null;
   try {
@@ -105,9 +121,13 @@ function ErrorContextCard({ mergeError }: { mergeError: MergeErrorContext | null
       )}
       {(mergeError.sourceBranch || mergeError.targetBranch) && (
         <div className="flex items-center gap-2 text-[13px] text-white/60">
-          <span className="font-mono text-white/70">{mergeError.sourceBranch ?? "unknown"}</span>
+          <span className="font-mono text-white/70" title={mergeError.sourceBranch ?? undefined}>
+            {abbreviateBranch(mergeError.sourceBranch ?? "unknown")}
+          </span>
           <span className="text-white/40">&rarr;</span>
-          <span className="font-mono text-white/70">{mergeError.targetBranch ?? "unknown"}</span>
+          <span className="font-mono text-white/70" title={mergeError.targetBranch ?? undefined}>
+            {abbreviateBranch(mergeError.targetBranch ?? "unknown")}
+          </span>
         </div>
       )}
       {mergeError.diagnosticInfo && (
