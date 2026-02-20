@@ -389,7 +389,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         );
 
         // Re-run validation commands on the merge path
-        match run_validation_commands(&project, &task, worktree, task_id_str, None, None).await {
+        match run_validation_commands(&project, &task, worktree, task_id_str, None, None, &project.merge_validation_mode).await {
             Some(result) if !result.all_passed => {
                 // Agent didn't fix it — revert and fall back to MergeIncomplete
                 tracing::warn!(

@@ -12,6 +12,7 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
+  SkipForward,
 } from "lucide-react";
 import { SectionTitle, DetailCard } from "./shared";
 import type { MergeProgressEvent } from "@/types/events";
@@ -27,7 +28,7 @@ const PHASE_CONFIG: { phase: MergeProgressEvent["phase"]; label: string }[] = [
   { phase: "finalize", label: "Finalize" },
 ];
 
-function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "pending" }) {
+function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "skipped" | "pending" }) {
   if (status === "started") {
     return (
       <div className="relative">
@@ -41,6 +42,9 @@ function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "pend
   if (status === "failed") {
     return <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />;
   }
+  if (status === "skipped") {
+    return <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />;
+  }
   return (
     <div
       className="w-4 h-4 rounded-full border-2"
@@ -49,7 +53,7 @@ function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "pend
   );
 }
 
-function phaseTextColor(status: "started" | "passed" | "failed" | "pending"): string {
+function phaseTextColor(status: "started" | "passed" | "failed" | "skipped" | "pending"): string {
   switch (status) {
     case "started":
       return "#0a84ff";
@@ -57,6 +61,8 @@ function phaseTextColor(status: "started" | "passed" | "failed" | "pending"): st
       return "rgba(255, 255, 255, 0.6)";
     case "failed":
       return "#ff453a";
+    case "skipped":
+      return "rgba(255, 255, 255, 0.3)";
     default:
       return "rgba(255, 255, 255, 0.25)";
   }
@@ -127,6 +133,11 @@ export function MergePhaseTimeline({ phases }: MergePhaseTimelineProps) {
                 {status === "failed" && event?.message && (
                   <span className="text-[11px] truncate max-w-[200px]" style={{ color: "#ff6961" }}>
                     {event.message}
+                  </span>
+                )}
+                {status === "skipped" && (
+                  <span className="text-[11px] text-white/25 truncate max-w-[200px]">
+                    skipped
                   </span>
                 )}
               </div>

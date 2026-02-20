@@ -48,6 +48,8 @@ pub enum MergePhaseStatus {
     Passed,
     /// Phase failed
     Failed,
+    /// Phase skipped (fail-fast: prior step failed)
+    Skipped,
 }
 
 impl std::fmt::Display for MergePhaseStatus {
@@ -56,6 +58,7 @@ impl std::fmt::Display for MergePhaseStatus {
             MergePhaseStatus::Started => write!(f, "started"),
             MergePhaseStatus::Passed => write!(f, "passed"),
             MergePhaseStatus::Failed => write!(f, "failed"),
+            MergePhaseStatus::Skipped => write!(f, "skipped"),
         }
     }
 }

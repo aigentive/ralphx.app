@@ -2,7 +2,7 @@
 //
 // Extracted from side_effects.rs — tests for run_validation_commands,
 // format_validation_error/warn_metadata, take_skip_validation_flag,
-// extract_cached_validation, and validation caching integration.
+// extract_cached_validation, validation caching, and fail-fast behavior.
 
 use std::path::Path;
 
@@ -22,7 +22,7 @@ async fn run_validation_returns_none_when_no_analysis() {
     let project = make_project(Some("main"));
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
     assert!(result.is_none());
 }
 
@@ -32,7 +32,7 @@ async fn run_validation_returns_none_when_empty_entries() {
     project.detected_analysis = Some("[]".to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
     assert!(result.is_none());
 }
 
@@ -43,7 +43,7 @@ async fn run_validation_returns_none_when_no_validate_commands() {
         Some(r#"[{"path": ".", "label": "Test", "validate": []}]"#.to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
     assert!(result.is_none());
 }
 
@@ -58,7 +58,7 @@ async fn run_validation_prefers_custom_over_detected() {
         Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
     assert!(result.is_some());
     assert!(result.unwrap().all_passed);
 }
@@ -70,7 +70,7 @@ async fn run_validation_succeeds_with_passing_command() {
         Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(r.all_passed);
@@ -88,7 +88,7 @@ async fn run_validation_fails_with_failing_command() {
         Some(r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -108,7 +108,7 @@ async fn run_validation_resolves_template_vars() {
     let mut task = make_task(None, None);
     task.worktree_path = Some("/tmp/wt".to_string());
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
     assert!(result.is_some());
     assert!(result.unwrap().all_passed);
 }
@@ -119,7 +119,7 @@ async fn run_validation_returns_none_for_invalid_json() {
     project.detected_analysis = Some("not valid json".to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
     assert!(result.is_none());
 }
 
@@ -345,7 +345,7 @@ async fn run_validation_skips_passed_when_cached() {
     ];
 
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, Some(&cached))
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, Some(&cached), &MergeValidationMode::Block)
             .await;
     assert!(result.is_some());
     let r = result.unwrap();
@@ -368,10 +368,106 @@ async fn run_validation_reruns_all_when_no_cache() {
     let task = make_task(None, None);
 
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(r.all_passed);
     assert_eq!(r.log.len(), 1);
     assert_eq!(r.log[0].status, "success"); // actually ran, not "cached"
+}
+
+// ==================
+// Fail-fast tests
+// ==================
+
+#[tokio::test]
+async fn fail_fast_block_mode_skips_remaining_on_first_failure() {
+    let mut project = make_project(Some("main"));
+    // Two commands: "false" fails, "true" should be skipped in Block mode
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Test", "validate": ["false", "true"]}]"#.to_string(),
+    );
+    let task = make_task(None, None);
+
+    let result =
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+    assert!(result.is_some());
+    let r = result.unwrap();
+    assert!(!r.all_passed);
+    assert_eq!(r.failures.len(), 1);
+    assert_eq!(r.failures[0].command, "false");
+    // Should have 2 log entries: 1 failed + 1 skipped
+    assert_eq!(r.log.len(), 2);
+    assert_eq!(r.log[0].status, "failed");
+    assert_eq!(r.log[0].command, "false");
+    assert_eq!(r.log[1].status, "skipped");
+    assert_eq!(r.log[1].command, "true");
+    assert_eq!(r.log[1].duration_ms, 0);
+}
+
+#[tokio::test]
+async fn fail_fast_autofix_mode_skips_remaining_on_first_failure() {
+    let mut project = make_project(Some("main"));
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Test", "validate": ["false", "true"]}]"#.to_string(),
+    );
+    let task = make_task(None, None);
+
+    let result =
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::AutoFix).await;
+    assert!(result.is_some());
+    let r = result.unwrap();
+    assert!(!r.all_passed);
+    assert_eq!(r.failures.len(), 1);
+    assert_eq!(r.log.len(), 2);
+    assert_eq!(r.log[1].status, "skipped");
+}
+
+#[tokio::test]
+async fn warn_mode_runs_all_commands_even_after_failure() {
+    let mut project = make_project(Some("main"));
+    // "false" fails, "true" should still run in Warn mode
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Test", "validate": ["false", "true"]}]"#.to_string(),
+    );
+    let task = make_task(None, None);
+
+    let result =
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Warn).await;
+    assert!(result.is_some());
+    let r = result.unwrap();
+    assert!(!r.all_passed);
+    assert_eq!(r.failures.len(), 1);
+    // Should have 2 log entries: 1 failed + 1 success (NOT skipped)
+    assert_eq!(r.log.len(), 2);
+    assert_eq!(r.log[0].status, "failed");
+    assert_eq!(r.log[0].command, "false");
+    assert_eq!(r.log[1].status, "success");
+    assert_eq!(r.log[1].command, "true");
+}
+
+#[tokio::test]
+async fn fail_fast_skips_across_multiple_entries() {
+    let mut project = make_project(Some("main"));
+    // Two entries: first has a failing command, second entry's commands should be skipped
+    project.detected_analysis = Some(
+        r#"[
+            {"path": ".", "label": "Rust", "validate": ["false"]},
+            {"path": ".", "label": "Node", "validate": ["true"]}
+        ]"#.to_string(),
+    );
+    let task = make_task(None, None);
+
+    let result =
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+    assert!(result.is_some());
+    let r = result.unwrap();
+    assert!(!r.all_passed);
+    assert_eq!(r.failures.len(), 1);
+    // 1 failed (from Rust entry) + 1 skipped (from Node entry)
+    assert_eq!(r.log.len(), 2);
+    assert_eq!(r.log[0].status, "failed");
+    assert_eq!(r.log[0].label, "Rust");
+    assert_eq!(r.log[1].status, "skipped");
+    assert_eq!(r.log[1].label, "Node");
 }

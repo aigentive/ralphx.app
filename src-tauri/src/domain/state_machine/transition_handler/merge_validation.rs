@@ -331,7 +331,87 @@ async fn run_setup_phase(
     (log, setup_had_failures)
 }
 
+/// Emit `Skipped` progress events and log entries for all validate commands
+/// that were not yet executed (fail-fast abort).
+///
+/// Iterates through all entries/commands and skips those already in the log,
+/// emitting `MergePhaseStatus::Skipped` for the remainder.
+fn emit_skipped_for_remaining(
+    entries: &[MergeAnalysisEntry],
+    _merge_cwd: &Path,
+    task_id_str: &str,
+    app_handle: Option<&tauri::AppHandle>,
+    resolve: &(dyn Fn(&str) -> String + Send + Sync),
+    log: &mut Vec<ValidationLogEntry>,
+    failed_path: &str,
+    failed_cmd: &str,
+) {
+    use crate::domain::entities::merge_progress_event::{
+        map_command_to_phase, MergePhaseStatus,
+    };
+
+    let mut past_failure = false;
+    for entry in entries {
+        let resolved_path = resolve(&entry.path);
+        for cmd_str in &entry.validate {
+            let resolved_cmd = resolve(cmd_str);
+
+            // Skip commands we already ran (they're already in the log)
+            if !past_failure {
+                if resolved_cmd == failed_cmd && resolved_path == failed_path {
+                    past_failure = true;
+                }
+                continue;
+            }
+
+            // Emit high-level skipped event
+            let phase = map_command_to_phase(&resolved_cmd);
+            emit_merge_progress(
+                app_handle,
+                task_id_str,
+                phase,
+                MergePhaseStatus::Skipped,
+                format!("{} skipped (fail-fast)", resolved_cmd),
+            );
+
+            // Emit step-level skipped event
+            if let Some(handle) = app_handle {
+                let _ = handle.emit(
+                    "merge:validation_step",
+                    serde_json::json!({
+                        "task_id": task_id_str,
+                        "phase": "validate",
+                        "command": resolved_cmd,
+                        "path": resolved_path,
+                        "label": entry.label,
+                        "status": "skipped",
+                        "exit_code": null,
+                        "stdout": "",
+                        "stderr": "Skipped due to prior validation failure (fail-fast)",
+                        "duration_ms": 0,
+                    }),
+                );
+            }
+
+            log.push(ValidationLogEntry {
+                phase: "validate".to_string(),
+                command: resolved_cmd,
+                path: resolved_path.clone(),
+                label: entry.label.clone(),
+                status: "skipped".to_string(),
+                exit_code: None,
+                stdout: String::new(),
+                stderr: "Skipped due to prior validation failure (fail-fast)".to_string(),
+                duration_ms: 0,
+            });
+        }
+    }
+}
+
 /// Run validate-phase commands, checking cache where possible.
+///
+/// When `validation_mode` is `Block` or `AutoFix`, aborts on first failure (fail-fast)
+/// and emits `Skipped` events for remaining commands. In `Warn` mode, runs all commands.
 ///
 /// Returns (log_entries, failures, ran_any).
 async fn run_validate_phase(
@@ -341,6 +421,7 @@ async fn run_validate_phase(
     app_handle: Option<&tauri::AppHandle>,
     cached_log: Option<&[ValidationLogEntry]>,
     resolve: &(dyn Fn(&str) -> String + Send + Sync),
+    validation_mode: &crate::domain::entities::MergeValidationMode,
 ) -> (Vec<ValidationLogEntry>, Vec<ValidationFailure>, bool) {
     let mut log: Vec<ValidationLogEntry> = Vec::new();
     let mut failures = Vec::new();
@@ -534,7 +615,7 @@ async fn run_validate_phase(
                     };
                     let entry = ValidationLogEntry {
                         phase: "validate".to_string(),
-                        command: resolved_cmd,
+                        command: resolved_cmd.clone(),
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
                         status: status.to_string(),
@@ -567,7 +648,7 @@ async fn run_validate_phase(
 
                     let entry = ValidationLogEntry {
                         phase: "validate".to_string(),
-                        command: resolved_cmd,
+                        command: resolved_cmd.clone(),
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
                         status: STATUS_FAILED.to_string(),
@@ -596,7 +677,7 @@ async fn run_validate_phase(
 
                     let entry = ValidationLogEntry {
                         phase: "validate".to_string(),
-                        command: resolved_cmd,
+                        command: resolved_cmd.clone(),
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
                         status: STATUS_FAILED.to_string(),
@@ -630,6 +711,44 @@ async fn run_validate_phase(
             log.push(log_entry);
             if let Some(f) = failure {
                 failures.push(f);
+
+                // Fail-fast: in Block/AutoFix mode, abort remaining commands on first failure
+                use crate::domain::entities::MergeValidationMode;
+                if matches!(
+                    validation_mode,
+                    MergeValidationMode::Block | MergeValidationMode::AutoFix
+                ) {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        failed_command = %resolved_cmd,
+                        "Fail-fast: aborting remaining validation commands (mode={validation_mode})"
+                    );
+
+                    // Emit Skipped events for all remaining commands
+                    emit_skipped_for_remaining(
+                        entries,
+                        merge_cwd,
+                        task_id_str,
+                        app_handle,
+                        resolve,
+                        &mut log,
+                        &resolved_path,
+                        &resolved_cmd,
+                    );
+
+                    // Break out of both loops (entry + command)
+                    // We return early — the outer loop won't continue
+                    let validate_duration_ms =
+                        validate_phase_start.elapsed().as_millis() as u64;
+                    tracing::info!(
+                        task_id = task_id_str,
+                        duration_ms = validate_duration_ms,
+                        command_count = validate_count,
+                        failure_count = failures.len(),
+                        "run_validation_commands: completed validate phase (fail-fast)"
+                    );
+                    return (log, failures, ran_any);
+                }
             }
         }
     }
@@ -666,6 +785,7 @@ pub(crate) async fn run_validation_commands(
     task_id_str: &str,
     app_handle: Option<&tauri::AppHandle>,
     cached_log: Option<&[ValidationLogEntry]>,
+    validation_mode: &crate::domain::entities::MergeValidationMode,
 ) -> Option<ValidationResult> {
     let overall_start = std::time::Instant::now();
     tracing::info!(
@@ -719,6 +839,7 @@ pub(crate) async fn run_validation_commands(
         app_handle,
         cached_log,
         &resolve,
+        validation_mode,
     )
     .await;
 
