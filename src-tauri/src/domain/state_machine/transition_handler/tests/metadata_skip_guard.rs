@@ -383,6 +383,8 @@ async fn test_empty_source_branch_triggers_deferred_merge_retry() {
 /// When task_repo or project_repo is None during PendingMerge entry, the system
 /// cannot update the DB but must still call on_exit so that deferred merge retries
 /// for other tasks are not blocked.
+///
+// Intentionally tests the no-repos early-return guard — validates on_exit fires without repos
 #[tokio::test]
 async fn test_repos_unavailable_triggers_deferred_merge_retry() {
     use crate::domain::state_machine::mocks::MockTaskScheduler;

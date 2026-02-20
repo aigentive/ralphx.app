@@ -36,6 +36,7 @@ async fn test_reload_continuation_callback_drop() {
 }
 
 /// on_enter for merge states without app_handle (reload scenario).
+// Intentionally tests the no-repos early-return guard — validates no-panic without app_handle
 #[tokio::test]
 async fn test_reload_continuation_enter_states_without_app_handle() {
     let services = TaskServices::new_mock();
@@ -56,6 +57,7 @@ async fn test_reload_continuation_enter_states_without_app_handle() {
 }
 
 /// State recovery after simulated reload mid-merge.
+// Intentionally tests the no-repos early-return guard — validates reload recovery path
 #[tokio::test]
 async fn test_reload_continuation_state_recovery() {
     use crate::domain::state_machine::mocks::MockTaskScheduler;

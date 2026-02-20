@@ -218,6 +218,8 @@ async fn test_no_scheduler_does_not_panic_on_exit() {
 /// for PendingMerge delegates heavy work (attempt_programmatic_merge) which,
 /// without repos, returns immediately. This validates the structural non-blocking
 /// property: the command handler can return while background work continues.
+///
+// Intentionally tests the no-repos early-return guard — validates non-blocking structural property
 #[tokio::test]
 async fn test_retry_merge_command_latency() {
     use std::time::Instant;
@@ -256,6 +258,8 @@ async fn test_retry_merge_command_latency() {
 ///
 /// Validates that when repos are not available, the merge attempt is a no-op
 /// and the handler returns quickly, preventing any app-wide hang.
+///
+// Intentionally tests the no-repos early-return guard — not merge behavior
 #[tokio::test]
 async fn test_pending_merge_entry_without_repos_returns_immediately() {
     use std::time::Instant;

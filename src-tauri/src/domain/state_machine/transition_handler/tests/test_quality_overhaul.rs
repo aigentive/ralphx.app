@@ -644,6 +644,8 @@ async fn test_self_dedup_guard_prevents_double_merge() {
 ///
 /// Verifies the RAII guard pattern: even if attempt_programmatic_merge returns
 /// early (e.g., no repos), the task ID is removed from merges_in_flight.
+///
+// Intentionally tests the no-repos early-return guard — validates RAII cleanup
 #[tokio::test]
 async fn test_in_flight_guard_cleanup_on_early_return() {
     use std::collections::HashSet;

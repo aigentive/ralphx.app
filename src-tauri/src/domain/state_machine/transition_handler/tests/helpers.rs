@@ -16,6 +16,8 @@ pub use crate::domain::state_machine::mocks::{
 pub use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter,
 };
+pub use crate::domain::repositories::{ProjectRepository, TaskRepository};
+pub use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 pub use std::sync::Arc;
 
 // ==================
@@ -178,3 +180,4 @@ pub fn create_context_with_services(
 ) -> TaskContext {
     TaskContext::new(task_id, project_id, services)
 }
+
