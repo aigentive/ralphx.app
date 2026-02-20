@@ -181,6 +181,8 @@ pub fn create_context_with_services(
     TaskContext::new(task_id, project_id, services)
 }
 
+pub use crate::domain::state_machine::TaskStateMachine;
+
 /// Return type for `setup_pending_merge_repos`.
 pub struct PendingMergeSetup {
     pub task_id: TaskId,
@@ -188,11 +190,39 @@ pub struct PendingMergeSetup {
     pub project_repo: Arc<MemoryProjectRepository>,
 }
 
+impl PendingMergeSetup {
+    /// Build a `TaskStateMachine` with repos wired into default mock services.
+    ///
+    /// Returns (machine, task_repo, task_id) so callers can query post-test state.
+    /// Most merge-path tests just need `let handler = TransitionHandler::new(&mut machine)`.
+    pub fn into_machine(self) -> (TaskStateMachine, Arc<MemoryTaskRepository>, TaskId) {
+        let task_id = self.task_id.clone();
+        let services = TaskServices::new_mock()
+            .with_task_repo(Arc::clone(&self.task_repo) as Arc<dyn TaskRepository>)
+            .with_project_repo(Arc::clone(&self.project_repo) as Arc<dyn ProjectRepository>);
+        let context = TaskContext::new(self.task_id.as_str(), "proj-1", services);
+        (TaskStateMachine::new(context), self.task_repo, task_id)
+    }
+}
+
 /// Create in-memory repos pre-loaded with a task in PendingMerge and a project
-/// pointing to a nonexistent git directory. Use `.with_task_repo()` and
-/// `.with_project_repo()` on `TaskServices::new_mock()` to wire them in.
+/// pointing to a nonexistent git directory.
 ///
-/// This eliminates the 15-line boilerplate repeated in every merge-path test.
+/// For the common case (default mock services), call `.into_machine()`:
+/// ```ignore
+/// let (mut machine, task_repo) = setup_pending_merge_repos("test", Some("feature/x"))
+///     .await.into_machine();
+/// let handler = TransitionHandler::new(&mut machine);
+/// ```
+///
+/// For custom services (e.g. wiring a scheduler), use the fields directly:
+/// ```ignore
+/// let setup = setup_pending_merge_repos("test", Some("feature/x")).await;
+/// let services = TaskServices::new_mock()
+///     .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
+///     .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>)
+///     .with_task_scheduler(scheduler);
+/// ```
 pub async fn setup_pending_merge_repos(
     title: &str,
     task_branch: Option<&str>,

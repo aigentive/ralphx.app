@@ -5,9 +5,7 @@
 // when an agent still holds files open in the worktree.
 
 use super::helpers::*;
-use crate::domain::state_machine::{
-    State, TaskStateMachine, TransitionHandler,
-};
+use crate::domain::state_machine::{State, TransitionHandler};
 
 // ==================
 // Step 0: Agent kill before worktree deletion
@@ -21,14 +19,8 @@ use crate::domain::state_machine::{
 /// (no agent running), which should be handled gracefully.
 #[tokio::test]
 async fn test_step0_agent_kill_executes_without_error() {
-    let setup = setup_pending_merge_repos("Step 0 test", Some("feature/test")).await;
-
-    let services = TaskServices::new_mock()
-        .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
-        .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>);
-
-    let context = create_context_with_services(setup.task_id.as_str(), "proj-1", services);
-    let mut machine = TaskStateMachine::new(context);
+    let (mut machine, _, _) = setup_pending_merge_repos("Step 0 test", Some("feature/test"))
+        .await.into_machine();
     let handler = TransitionHandler::new(&mut machine);
 
     // With repos wired, on_enter(PendingMerge) proceeds past the guard and actually
@@ -142,14 +134,8 @@ async fn test_merge_incomplete_transition_works_without_repos() {
 /// by the reconciler instead.
 #[tokio::test]
 async fn test_timeout_wrappers_dont_break_existing_workflow() {
-    let setup = setup_pending_merge_repos("Timeout wrapper test", Some("feature/test")).await;
-
-    let services = TaskServices::new_mock()
-        .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
-        .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>);
-
-    let context = create_context_with_services(setup.task_id.as_str(), "proj-1", services);
-    let mut machine = TaskStateMachine::new(context);
+    let (mut machine, task_repo, task_id) = setup_pending_merge_repos("Timeout wrapper test", Some("feature/test"))
+        .await.into_machine();
     let handler = TransitionHandler::new(&mut machine);
 
     // Enter PendingMerge — with repos, this runs pre_merge_cleanup (timeout-wrapped steps)
@@ -167,7 +153,7 @@ async fn test_timeout_wrappers_dont_break_existing_workflow() {
     );
 
     // Verify the task transitioned to MergeIncomplete (not stuck in PendingMerge)
-    let updated = setup.task_repo.get_by_id(&setup.task_id).await.unwrap().unwrap();
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
     assert_eq!(
         updated.internal_status,
         crate::domain::entities::InternalStatus::MergeIncomplete,
