@@ -6,18 +6,13 @@
 // - merge_completion: finalize merge and cleanup branch/worktree
 // - merge_validation: post-merge validation gate (setup + validate phases)
 
-// Re-export public/crate items so transition_handler/mod.rs re-exports still resolve
-pub use super::merge_completion::complete_merge_internal;
-pub use super::merge_helpers::resolve_merge_branches;
-
-pub(crate) use super::merge_helpers::{
-    clear_merge_deferred_metadata, clear_trigger_origin,
-    get_trigger_origin, has_branch_missing_metadata,
-    has_merge_deferred_metadata, parse_metadata, set_trigger_origin,
+// Imports from sibling modules used by code in this file
+use super::merge_completion::complete_merge_internal;
+use super::merge_helpers::{
+    clear_merge_deferred_metadata, has_merge_deferred_metadata, parse_metadata,
+    resolve_merge_branches,
 };
-pub(crate) use super::merge_validation::{
-    format_validation_error_metadata, run_validation_commands, ValidationLogEntry,
-};
+use super::merge_validation::{format_validation_error_metadata, ValidationLogEntry};
 
 // Internal imports used by code remaining in this file
 use super::merge_helpers::{

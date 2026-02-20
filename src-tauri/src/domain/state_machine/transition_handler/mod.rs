@@ -4,15 +4,11 @@
 
 use super::events::TaskEvent;
 use super::machine::{Response, State, TaskStateMachine};
-use super::types::FailedData;
-use crate::application::GitService;
-use crate::domain::entities::{ProjectId, TaskId};
-use crate::domain::review::config::ReviewSettings;
-use std::sync::Arc;
 
 pub(crate) mod cleanup_helpers;
 mod checkout_free_strategy;
 mod commit_messages;
+mod exit_actions;
 mod merge_completion;
 mod merge_coordination;
 mod merge_helpers;
@@ -25,39 +21,21 @@ mod side_effects;
 #[cfg(test)]
 mod tests;
 
-// Re-export shared merge completion logic for use by HTTP handlers and auto-completion
-pub use side_effects::complete_merge_internal;
-pub use side_effects::resolve_merge_branches;
-
-// Re-export validation helpers for auto-completion re-validation (Phase 113)
-pub(crate) use side_effects::format_validation_error_metadata;
-pub(crate) use side_effects::run_validation_commands;
-
-// Re-export merge deferred metadata helpers for scheduler retry (concurrent merge guard)
-pub(crate) use side_effects::clear_merge_deferred_metadata;
-pub(crate) use side_effects::has_branch_missing_metadata;
-pub(crate) use side_effects::has_merge_deferred_metadata;
-
-// Re-export main merge deferred metadata helpers for global idle retry
-pub(crate) use merge_helpers::clear_main_merge_deferred_metadata;
-pub(crate) use merge_helpers::has_main_merge_deferred_metadata;
-
-// Re-export deferred merge timeout helpers for forced retry after timeout
-pub(crate) use merge_helpers::is_main_merge_deferred_timed_out;
-pub(crate) use merge_helpers::is_merge_deferred_timed_out;
-pub(crate) use merge_helpers::DEFERRED_MERGE_TIMEOUT_SECONDS;
-
-// Re-export trigger origin metadata helpers for execution tracking
-pub(crate) use side_effects::clear_trigger_origin;
-pub(crate) use side_effects::get_trigger_origin;
-pub(crate) use side_effects::parse_metadata;
-pub(crate) use side_effects::set_trigger_origin;
-
-// Re-export conflict metadata helpers for conflict snapshot persistence
-pub(crate) use merge_helpers::set_conflict_metadata;
-
-// Re-export metadata builder for atomic metadata writes (Wave 1)
+// -- Public re-exports --
+pub use merge_completion::complete_merge_internal;
+pub use merge_helpers::resolve_merge_branches;
 pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata, MetadataUpdate};
+
+// -- Crate-visible re-exports (merge_helpers) --
+pub(crate) use merge_helpers::{
+    clear_main_merge_deferred_metadata, clear_merge_deferred_metadata, get_trigger_origin,
+    has_branch_missing_metadata, has_main_merge_deferred_metadata, has_merge_deferred_metadata,
+    is_main_merge_deferred_timed_out, is_merge_deferred_timed_out, parse_metadata,
+    set_conflict_metadata, set_trigger_origin, DEFERRED_MERGE_TIMEOUT_SECONDS,
+};
+
+// -- Crate-visible re-exports (merge_validation) --
+pub(crate) use merge_validation::{format_validation_error_metadata, run_validation_commands};
 
 /// Result of handling a transition
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -71,7 +49,6 @@ pub enum TransitionResult {
 }
 
 impl TransitionResult {
-    /// Get the final state if transition was successful
     pub fn state(&self) -> Option<&State> {
         match self {
             TransitionResult::Success(s) | TransitionResult::AutoTransition(s) => Some(s),
@@ -79,7 +56,6 @@ impl TransitionResult {
         }
     }
 
-    /// Check if the transition resulted in a new state
     pub fn is_success(&self) -> bool {
         matches!(
             self,
@@ -94,14 +70,25 @@ pub struct TransitionHandler<'a> {
 }
 
 impl<'a> TransitionHandler<'a> {
-    /// Create a new transition handler wrapping a state machine
     pub fn new(machine: &'a mut TaskStateMachine) -> Self {
         Self { machine }
     }
 
+    /// Build an ExitContext snapshot from the current machine context.
+    fn exit_context(&self) -> exit_actions::ExitContext {
+        let ctx = &self.machine.context;
+        exit_actions::ExitContext {
+            task_id: ctx.task_id.clone(),
+            project_id: ctx.project_id.clone(),
+            task_repo: ctx.services.task_repo.clone(),
+            project_repo: ctx.services.project_repo.clone(),
+            task_scheduler: ctx.services.task_scheduler.clone(),
+            execution_state: ctx.services.execution_state.clone(),
+        }
+    }
+
     /// Handle a state transition with side effects
     ///
-    /// This method:
     /// 1. Dispatches the event to the state machine
     /// 2. Executes entry actions for the new state (if applicable)
     /// 3. Handles auto-transitions (e.g., ExecutionDone -> QaRefining when QA enabled)
@@ -110,77 +97,41 @@ impl<'a> TransitionHandler<'a> {
         current_state: &State,
         event: &TaskEvent,
     ) -> TransitionResult {
-        // Dispatch event to state machine
         let response = self.machine.dispatch(current_state, event);
 
         match response {
             Response::Transition(new_state) => {
-                // Execute on-exit action for old state
                 self.on_exit(current_state, &new_state).await;
 
-                // Execute on-enter action for new state
                 if let Err(e) = self.on_enter(&new_state).await {
-                    // Emit error event for UI visibility before logging
-                    self.machine
-                        .context
-                        .services
-                        .event_emitter
-                        .emit_with_payload(
-                            "task:on_enter_error",
-                            &self.machine.context.task_id,
-                            &format!(r#"{{"state":"{:?}","error":"{}"}}"#, new_state, e),
-                        )
-                        .await;
+                    self.emit_on_enter_error(&new_state, &e).await;
                     tracing::error!(error = %e, "on_enter failed for state {:?}", new_state);
 
-                    // If ExecutionBlocked, directly dispatch ExecutionFailed to transition to Failed
                     if matches!(e, crate::error::AppError::ExecutionBlocked(_)) {
                         let error_msg = e.to_string();
                         tracing::warn!("ExecutionBlocked detected, dispatching ExecutionFailed to transition to Failed");
-
-                        // Dispatch the event directly to avoid recursion
                         let failed_event = TaskEvent::ExecutionFailed { error: error_msg };
                         let failed_response = self.machine.dispatch(&new_state, &failed_event);
-
                         if let Response::Transition(failed_state) = failed_response {
-                            // Execute on-exit for the intermediate state
                             self.on_exit(&new_state, &failed_state).await;
-                            // Execute on-enter for Failed state (should not fail)
                             let _ = self.on_enter(&failed_state).await;
                             return TransitionResult::Success(failed_state);
                         }
                     }
-
-                    // Note: For other errors, we still return Success as the transition happened,
-                    // but side effects may not have completed
                 }
 
-                // Check for auto-transitions
                 if let Some(mut auto_state) = self.check_auto_transition(&new_state) {
-                    // Revision cap check: before auto-transitioning RevisionNeeded → ReExecuting,
-                    // verify the task hasn't exceeded max_revision_cycles.
                     if matches!(new_state, State::RevisionNeeded)
                         && matches!(auto_state, State::ReExecuting)
                     {
-                        auto_state = self
-                            .check_revision_cap_or_fail(auto_state)
-                            .await;
+                        let ctx = self.exit_context();
+                        auto_state =
+                            exit_actions::check_revision_cap_or_fail(&ctx, auto_state).await;
                     }
 
-                    // Execute on-exit for intermediate state
                     self.on_exit(&new_state, &auto_state).await;
-                    // Execute on-enter for final state
                     if let Err(e) = self.on_enter(&auto_state).await {
-                        self.machine
-                            .context
-                            .services
-                            .event_emitter
-                            .emit_with_payload(
-                                "task:on_enter_error",
-                                &self.machine.context.task_id,
-                                &format!(r#"{{"state":"{:?}","error":"{}"}}"#, auto_state, e),
-                            )
-                            .await;
+                        self.emit_on_enter_error(&auto_state, &e).await;
                         tracing::error!(error = %e, "on_enter failed for auto-transition state {:?}", auto_state);
                     }
                     return TransitionResult::AutoTransition(auto_state);
@@ -193,15 +144,26 @@ impl<'a> TransitionHandler<'a> {
         }
     }
 
-    /// Execute on-exit action for a state
+    /// Emit a task:on_enter_error event for UI visibility.
+    async fn emit_on_enter_error(&self, state: &State, error: &crate::error::AppError) {
+        self.machine
+            .context
+            .services
+            .event_emitter
+            .emit_with_payload(
+                "task:on_enter_error",
+                &self.machine.context.task_id,
+                &format!(r#"{{"state":"{:?}","error":"{}"}}"#, state, error),
+            )
+            .await;
+    }
+
+    /// Execute on-exit action for a state.
     ///
-    /// This method is public to allow `TaskTransitionService` to trigger exit actions
-    /// for direct status changes (e.g., stop command) without going through the
-    /// full event-based transition flow. This ensures running count is properly
-    /// decremented when tasks exit agent-active states.
-    pub async fn on_exit(&self, from: &State, _to: &State) {
+    /// Public so `TaskTransitionService` can trigger exit actions for direct status
+    /// changes (e.g., stop command) without the full event-based transition flow.
+    pub async fn on_exit(&self, from: &State, to: &State) {
         // Decrement running count for agent-active states
-        // This ensures ExecutionState tracks concurrency accurately
         match from {
             State::Executing
             | State::QaRefining
@@ -219,12 +181,10 @@ impl<'a> TransitionHandler<'a> {
                         "Decremented running count on state exit"
                     );
 
-                    // Emit real-time status update event to frontend
                     if let Some(ref handle) = self.machine.context.services.app_handle {
                         exec.emit_status_changed(handle, "task_completed");
                     }
 
-                    // If all agents are now idle, retry any main-merge-deferred tasks
                     if new_count == 0 {
                         tracing::info!(
                             task_id = %self.machine.context.task_id,
@@ -233,28 +193,11 @@ impl<'a> TransitionHandler<'a> {
                         self.try_retry_main_merges().await;
                     }
 
-                    // Try to schedule next Ready task now that a slot is free
                     self.try_schedule_ready_tasks().await;
                 }
 
-                // Clear trigger_origin when exiting agent-active states (using update_metadata for targeted write)
-                use crate::domain::state_machine::transition_handler::clear_trigger_origin;
-                if let Some(ref task_repo) = self.machine.context.services.task_repo {
-                    let task_id = TaskId::from_string(self.machine.context.task_id.clone());
-                    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
-                        clear_trigger_origin(&mut task);
-                        if let Err(e) = task_repo
-                            .update_metadata(&task_id, task.metadata.clone())
-                            .await
-                        {
-                            tracing::error!(
-                                task_id = %self.machine.context.task_id,
-                                error = %e,
-                                "Failed to clear trigger_origin in metadata on state exit"
-                            );
-                        }
-                    }
-                }
+                let ctx = self.exit_context();
+                exit_actions::clear_trigger_origin_on_exit(&ctx).await;
             }
             _ => {}
         }
@@ -262,16 +205,11 @@ impl<'a> TransitionHandler<'a> {
         // State-specific exit actions
         match from {
             State::Executing | State::ReExecuting => {
-                // Auto-commit on execution completion (Phase 66 - Task 7)
-                // Commit any uncommitted changes with message: {prefix}{task_title}
-                self.auto_commit_on_execution_done().await;
+                let ctx = self.exit_context();
+                exit_actions::auto_commit_on_execution_done(&ctx).await;
             }
-            State::QaTesting => {
-                // Stop QA tester if transitioning away
-            }
+            State::QaTesting => {}
             State::Reviewing => {
-                // Log review duration (could add timing metrics here)
-                // For now, just emit an event that review exited
                 self.machine
                     .context
                     .services
@@ -280,49 +218,8 @@ impl<'a> TransitionHandler<'a> {
                     .await;
             }
             State::PendingMerge | State::Merging => {
-                // Retry deferred merges whenever a task exits merge workflow
-                // This ensures deferred tasks resume promptly regardless of how
-                // the blocker ended (merged, merge_incomplete, etc.)
-                if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
-                    let scheduler = Arc::clone(scheduler);
-                    let project_id = self.machine.context.project_id.clone();
-                    let from_state = format!("{:?}", from);
-                    let to_state = format!("{:?}", _to);
-                    let execution_state_clone = self
-                        .machine
-                        .context
-                        .services
-                        .execution_state
-                        .as_ref()
-                        .map(Arc::clone);
-
-                    tracing::info!(
-                        task_id = %self.machine.context.task_id,
-                        from = %from_state,
-                        to = %to_state,
-                        "Task exiting merge workflow, triggering deferred merge retry"
-                    );
-
-                    tokio::spawn(async move {
-                        // No sleep needed: scheduling_lock mutex in task_scheduler_service.rs
-                        // serializes concurrent calls via try_lock(), and has_merge_deferred_metadata
-                        // is the actual safety guard.
-                        scheduler.try_retry_deferred_merges(&project_id).await;
-                        // Also retry main merges if all agents are idle.
-                        // Handles two stuck cases:
-                        // 1. Late-arriving task: entered pending_merge after all agents
-                        //    finished, so the agent-exit trigger already fired and missed it.
-                        // 2. Cascading merges: try_retry_main_merges processes one task at a
-                        //    time (break); each merge-exit must trigger the next retry.
-                        if execution_state_clone
-                            .as_ref()
-                            .map(|s| s.running_count() == 0)
-                            .unwrap_or(false)
-                        {
-                            scheduler.try_retry_main_merges().await;
-                        }
-                    });
-                }
+                let ctx = self.exit_context();
+                exit_actions::spawn_deferred_merge_retry(&ctx, from, to);
             }
             _ => {}
         }
@@ -331,36 +228,15 @@ impl<'a> TransitionHandler<'a> {
     /// Check for auto-transitions from the given state
     pub fn check_auto_transition(&self, state: &State) -> Option<State> {
         match state {
-            State::QaPassed => {
-                // Auto-transition to PendingReview
-                Some(State::PendingReview)
-            }
-            State::RevisionNeeded => {
-                // Auto-transition to ReExecuting (revision work)
-                Some(State::ReExecuting)
-            }
-            State::PendingReview => {
-                // Auto-transition to Reviewing (spawn reviewer)
-                Some(State::Reviewing)
-            }
-            State::Approved => {
-                // Auto-transition to PendingMerge (Phase 66 - merge workflow)
-                // NOTE: PendingMerge does NOT auto-transition - side effect determines next state
-                Some(State::PendingMerge)
-            }
+            State::QaPassed => Some(State::PendingReview),
+            State::RevisionNeeded => Some(State::ReExecuting),
+            State::PendingReview => Some(State::Reviewing),
+            State::Approved => Some(State::PendingMerge),
             _ => None,
         }
     }
 
     /// Try to schedule Ready tasks if execution slots are available.
-    ///
-    /// This method delegates to the TaskScheduler service if available.
-    /// Called from:
-    /// - on_exit() when exiting agent-active states (slot freed)
-    /// - on_enter(Ready) when a task becomes Ready
-    ///
-    /// The scheduler will check capacity and start the oldest Ready task
-    /// across all projects if a slot is available.
     pub async fn try_schedule_ready_tasks(&self) {
         if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
             tracing::debug!(
@@ -372,12 +248,6 @@ impl<'a> TransitionHandler<'a> {
     }
 
     /// Retry main-branch merges that were deferred because agents were running.
-    ///
-    /// This method delegates to the TaskScheduler service if available.
-    /// Called from on_exit() when running_count transitions to 0 (all agents idle).
-    ///
-    /// The scheduler will find tasks with main_merge_deferred metadata and
-    /// re-invoke their entry actions to retry the main-branch merge.
     pub async fn try_retry_main_merges(&self) {
         if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
             tracing::debug!(
@@ -387,171 +257,4 @@ impl<'a> TransitionHandler<'a> {
             scheduler.try_retry_main_merges().await;
         }
     }
-
-    /// Check if the revision cap has been exceeded for a RevisionNeeded → ReExecuting auto-transition.
-    ///
-    /// If the task has exceeded `max_revision_cycles` (from ReviewSettings::default()),
-    /// returns `State::Failed` instead of `State::ReExecuting`. Also increments the
-    /// revision count in task metadata when proceeding with re-execution.
-    async fn check_revision_cap_or_fail(&self, default_state: State) -> State {
-        let task_id_str = &self.machine.context.task_id;
-
-        let Some(ref task_repo) = self.machine.context.services.task_repo else {
-            tracing::debug!(
-                task_id = task_id_str,
-                "Skipping revision cap check: task_repo not available"
-            );
-            return default_state;
-        };
-
-        let task_id = TaskId::from_string(task_id_str.clone());
-        let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await else {
-            tracing::warn!(
-                task_id = task_id_str,
-                "Skipping revision cap check: failed to fetch task"
-            );
-            return default_state;
-        };
-
-        let settings = ReviewSettings::default();
-        let revision_count = merge_helpers::get_revision_count(&task);
-
-        if settings.exceeded_max_revisions(revision_count) {
-            let max = settings.max_revision_cycles;
-            tracing::warn!(
-                task_id = task_id_str,
-                revision_count = revision_count,
-                max_revision_cycles = max,
-                "Revision cap exceeded, transitioning to Failed instead of ReExecuting"
-            );
-            return State::Failed(FailedData::new(format!(
-                "Exceeded maximum revision cycles ({}/{}). Task has been through too many review-revise loops.",
-                revision_count, max
-            )));
-        }
-
-        // Increment revision count for this cycle
-        let new_count = merge_helpers::increment_revision_count(&mut task);
-        if let Err(e) = task_repo
-            .update_metadata(&task_id, task.metadata.clone())
-            .await
-        {
-            tracing::error!(
-                task_id = task_id_str,
-                error = %e,
-                "Failed to update revision_count in metadata"
-            );
-        } else {
-            tracing::info!(
-                task_id = task_id_str,
-                revision_count = new_count,
-                max_revision_cycles = settings.max_revision_cycles,
-                "Incremented revision count for re-execution cycle"
-            );
-        }
-
-        default_state
-    }
-
-    /// Auto-commit on execution completion (Phase 66 - Task 7)
-    ///
-    /// When a task exits Executing or ReExecuting state, commit any uncommitted
-    /// changes with message format: {prefix}{task_title}
-    ///
-    /// Default prefix: "feat: "
-    /// TODO: Make configurable via ExecutionSettings when that infrastructure exists
-    async fn auto_commit_on_execution_done(&self) {
-        let task_id_str = &self.machine.context.task_id;
-        let project_id_str = &self.machine.context.project_id;
-
-        // Only proceed if task_repo and project_repo are available
-        let (Some(ref task_repo), Some(ref project_repo)) = (
-            &self.machine.context.services.task_repo,
-            &self.machine.context.services.project_repo,
-        ) else {
-            tracing::debug!(
-                task_id = task_id_str,
-                "Skipping auto-commit: repos not available"
-            );
-            return;
-        };
-
-        let task_id = TaskId::from_string(task_id_str.clone());
-        let project_id = ProjectId::from_string(project_id_str.clone());
-
-        // Fetch task and project
-        let task_result = task_repo.get_by_id(&task_id).await;
-        let project_result = project_repo.get_by_id(&project_id).await;
-
-        let (Ok(Some(task)), Ok(Some(project))) = (task_result, project_result) else {
-            tracing::warn!(
-                task_id = task_id_str,
-                "Skipping auto-commit: failed to fetch task or project"
-            );
-            return;
-        };
-
-        // Resolve working directory based on git mode
-        let working_path = resolve_working_directory(&task, &project);
-
-        // Check for uncommitted changes
-        match GitService::has_uncommitted_changes(&working_path).await {
-            Ok(true) => {
-                // Build commit message: {prefix}{task_title}
-                // Default prefix: "feat: " (configurable in future)
-                let prefix = "feat: ";
-                let message = format!("{}{}", prefix, task.title);
-
-                match GitService::commit_all(&working_path, &message).await {
-                    Ok(Some(sha)) => {
-                        tracing::info!(
-                            task_id = task_id_str,
-                            commit_sha = %sha,
-                            message = %message,
-                            "Auto-committed changes on execution completion"
-                        );
-                    }
-                    Ok(None) => {
-                        tracing::debug!(
-                            task_id = task_id_str,
-                            "Auto-commit: no staged changes to commit"
-                        );
-                    }
-                    Err(e) => {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Auto-commit failed (non-fatal)"
-                        );
-                    }
-                }
-            }
-            Ok(false) => {
-                tracing::debug!(
-                    task_id = task_id_str,
-                    "No uncommitted changes to auto-commit"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    error = %e,
-                    "Failed to check uncommitted changes (non-fatal)"
-                );
-            }
-        }
-    }
-}
-
-/// Resolve the working directory for a task.
-///
-/// Returns task's worktree path if available, else project's working directory.
-fn resolve_working_directory(
-    task: &crate::domain::entities::Task,
-    project: &crate::domain::entities::Project,
-) -> std::path::PathBuf {
-    task.worktree_path
-        .as_ref()
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(&project.working_directory))
 }
