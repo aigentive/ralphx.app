@@ -171,14 +171,36 @@ pub(super) async fn pre_delete_worktree(
     worktree: &Path,
     task_id: &str,
 ) {
+    use super::cleanup_helpers::CleanupStepResult;
+
     let wt_display = worktree.display().to_string();
     let label = format!("delete_stale_worktree({})", wt_display);
     let wt = worktree.to_path_buf();
     let rp = repo_path.to_path_buf();
-    super::cleanup_helpers::run_cleanup_step(
+    match super::cleanup_helpers::run_cleanup_step(
         &label,
         git_runtime_config().cleanup_worktree_timeout_secs,
         task_id,
         async move { GitService::delete_worktree(&rp, &wt).await },
-    ).await;
+    )
+    .await
+    {
+        CleanupStepResult::Ok => {}
+        CleanupStepResult::TimedOut { elapsed } => {
+            tracing::warn!(
+                task_id = task_id,
+                worktree_path = %wt_display,
+                elapsed_ms = elapsed.as_millis() as u64,
+                "Stale worktree deletion timed out — merge worktree may fail to create"
+            );
+        }
+        CleanupStepResult::Error { ref message } => {
+            tracing::warn!(
+                task_id = task_id,
+                worktree_path = %wt_display,
+                error = %message,
+                "Stale worktree deletion failed — merge worktree may fail to create"
+            );
+        }
+    }
 }
