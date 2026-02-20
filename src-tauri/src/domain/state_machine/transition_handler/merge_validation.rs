@@ -800,7 +800,7 @@ pub(crate) async fn run_validation_commands(
         .as_ref()
         .or(project.detected_analysis.as_ref())?;
 
-    let entries: Vec<MergeAnalysisEntry> = match serde_json::from_str(analysis_json) {
+    let mut entries: Vec<MergeAnalysisEntry> = match serde_json::from_str(analysis_json) {
         Ok(e) => e,
         Err(e) => {
             tracing::warn!(error = %e, "Failed to parse project analysis JSON, skipping validation");
@@ -810,6 +810,29 @@ pub(crate) async fn run_validation_commands(
 
     if entries.is_empty() {
         return None;
+    }
+
+    // Hardening: if custom_analysis has entries with empty worktree_setup,
+    // merge in worktree_setup from detected_analysis (which has the correct symlink commands)
+    if project.custom_analysis.is_some() {
+        if let Some(detected_json) = project.detected_analysis.as_ref() {
+            if let Ok(detected_entries) = serde_json::from_str::<Vec<MergeAnalysisEntry>>(detected_json) {
+                for entry in &mut entries {
+                    if entry.worktree_setup.is_empty() {
+                        if let Some(detected) = detected_entries.iter().find(|d| d.path == entry.path) {
+                            if !detected.worktree_setup.is_empty() {
+                                tracing::info!(
+                                    path = %entry.path,
+                                    setup_count = detected.worktree_setup.len(),
+                                    "Merging worktree_setup from detected_analysis into custom_analysis entry"
+                                );
+                                entry.worktree_setup = detected.worktree_setup.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Build template resolver
@@ -1259,7 +1282,7 @@ pub(crate) async fn run_pre_execution_setup(
         .as_ref()
         .or(project.detected_analysis.as_ref())?;
 
-    let entries: Vec<PreExecAnalysisEntry> = match serde_json::from_str(analysis_json) {
+    let mut entries: Vec<PreExecAnalysisEntry> = match serde_json::from_str(analysis_json) {
         Ok(e) => e,
         Err(e) => {
             tracing::warn!(error = %e, "Failed to parse project analysis JSON, skipping pre-execution setup");
@@ -1269,6 +1292,29 @@ pub(crate) async fn run_pre_execution_setup(
 
     if entries.is_empty() {
         return None;
+    }
+
+    // Hardening: if custom_analysis has entries with empty worktree_setup,
+    // merge in worktree_setup from detected_analysis (which has the correct symlink commands)
+    if project.custom_analysis.is_some() {
+        if let Some(detected_json) = project.detected_analysis.as_ref() {
+            if let Ok(detected_entries) = serde_json::from_str::<Vec<PreExecAnalysisEntry>>(detected_json) {
+                for entry in &mut entries {
+                    if entry.worktree_setup.is_empty() {
+                        if let Some(detected) = detected_entries.iter().find(|d| d.path == entry.path) {
+                            if !detected.worktree_setup.is_empty() {
+                                tracing::info!(
+                                    path = %entry.path,
+                                    setup_count = detected.worktree_setup.len(),
+                                    "Merging worktree_setup from detected_analysis into custom_analysis entry (pre-exec)"
+                                );
+                                entry.worktree_setup = detected.worktree_setup.clone();
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // Build template resolver

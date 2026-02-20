@@ -277,7 +277,13 @@ impl<'a> super::TransitionHandler<'a> {
             tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 2 — deleting task worktree");
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
-                if worktree_path_buf.exists() {
+                if worktree_path_buf == repo_path {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        worktree_path = %worktree_path,
+                        "Skipping task worktree deletion — path is the main working tree"
+                    );
+                } else if worktree_path_buf.exists() {
                     tracing::info!(
                         task_id = task_id_str,
                         worktree_path = %worktree_path,
