@@ -34,7 +34,7 @@ use tauri::Emitter;
 
 use super::super::machine::State;
 use crate::application::GitService;
-use crate::infrastructure::agents::claude::{git_runtime_config, scheduler_config};
+use crate::infrastructure::agents::claude::{git_runtime_config, reconciliation_config, scheduler_config};
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
@@ -49,6 +49,16 @@ use crate::domain::repositories::{
 };
 use crate::error::AppResult;
 pub(super) const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
+
+/// Seconds to wait after SIGTERM for process tree cleanup before worktree deletion.
+/// Prevents TOCTOU race where git operations fail because agent processes still hold files.
+const AGENT_KILL_SETTLE_SECS: u64 = 1;
+
+/// Timeout in seconds for deleting the task worktree (step 2 of pre_merge_cleanup).
+const CLEANUP_TASK_WORKTREE_TIMEOUT_SECS: u64 = 10;
+
+/// Timeout in seconds for merge/rebase worktree deletion and git clean (steps 4, 5, 6).
+const CLEANUP_GIT_OP_TIMEOUT_SECS: u64 = 30;
 
 use super::cleanup_helpers::run_cleanup_step;
 use super::commit_messages::{build_plan_merge_commit_msg, build_squash_commit_msg};
@@ -638,9 +648,10 @@ impl<'a> super::TransitionHandler<'a> {
 
         // --- Overall merge deadline ---
         // Track wall-clock time so we can bail to MergeIncomplete if the entire
-        // cleanup + strategy dispatch exceeds 120s, rather than leaving the task
-        // silently stuck in PendingMerge for 5+ minutes.
-        let merge_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(120);
+        // cleanup + strategy dispatch exceeds the configured deadline, rather than
+        // leaving the task silently stuck in PendingMerge for 5+ minutes.
+        let deadline_secs = reconciliation_config().attempt_merge_deadline_secs;
+        let merge_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(deadline_secs);
 
         // Run pre-merge cleanup unconditionally on every attempt (first or retry).
         // Removes stale worktrees, locks, and in-progress git operations from prior runs.
@@ -658,10 +669,11 @@ impl<'a> super::TransitionHandler<'a> {
         if tokio::time::Instant::now() >= merge_deadline {
             tracing::error!(
                 task_id = task_id_str,
-                "Programmatic merge exceeded 120s deadline during cleanup — transitioning to MergeIncomplete"
+                deadline_secs = deadline_secs,
+                "Programmatic merge exceeded deadline during cleanup — transitioning to MergeIncomplete"
             );
             let metadata = serde_json::json!({
-                "error": "Merge attempt timed out after 120s (cleanup phase exceeded deadline)",
+                "error": format!("Merge attempt timed out after {}s (cleanup phase exceeded deadline)", deadline_secs),
                 "source_branch": source_branch,
                 "target_branch": target_branch,
             });
@@ -773,10 +785,11 @@ impl<'a> super::TransitionHandler<'a> {
         if strategy_completed.is_err() {
             tracing::error!(
                 task_id = task_id_str,
-                "Programmatic merge exceeded 120s deadline during strategy dispatch — transitioning to MergeIncomplete"
+                deadline_secs = deadline_secs,
+                "Programmatic merge exceeded deadline during strategy dispatch — transitioning to MergeIncomplete"
             );
             let metadata = serde_json::json!({
-                "error": "Merge attempt timed out after 120s (strategy dispatch exceeded deadline)",
+                "error": format!("Merge attempt timed out after {}s (strategy dispatch exceeded deadline)", deadline_secs),
                 "source_branch": source_branch,
                 "target_branch": target_branch,
                 "strategy": format!("{:?}", project.merge_strategy),
@@ -899,7 +912,7 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
         // Brief settle time for process tree cleanup after SIGTERM
-        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        tokio::time::sleep(std::time::Duration::from_secs(AGENT_KILL_SETTLE_SECS)).await;
 
         // --- Step 1: Remove stale index.lock ---
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 1 — removing stale index.lock");
@@ -934,7 +947,7 @@ impl<'a> super::TransitionHandler<'a> {
                     );
                     run_cleanup_step(
                         "step 2 task worktree deletion",
-                        10,
+                        CLEANUP_TASK_WORKTREE_TIMEOUT_SECS,
                         task_id_str,
                         GitService::delete_worktree(repo_path, &worktree_path_buf),
                     )
@@ -968,7 +981,7 @@ impl<'a> super::TransitionHandler<'a> {
                     );
                     run_cleanup_step(
                         &format!("step 4 {} worktree deletion", wt_label),
-                        30,
+                        CLEANUP_GIT_OP_TIMEOUT_SECS,
                         task_id_str,
                         GitService::delete_worktree(repo_path, &own_wt_path),
                     )
@@ -979,7 +992,7 @@ impl<'a> super::TransitionHandler<'a> {
             // --- Step 5: Scan for orphaned merge worktrees ---
             tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 5 — scanning for orphaned merge worktrees");
             let worktrees_result = tokio::time::timeout(
-                std::time::Duration::from_secs(30),
+                std::time::Duration::from_secs(CLEANUP_GIT_OP_TIMEOUT_SECS),
                 GitService::list_worktrees(repo_path),
             )
             .await;
@@ -1034,7 +1047,8 @@ impl<'a> super::TransitionHandler<'a> {
                 Err(_elapsed) => {
                     tracing::warn!(
                         task_id = task_id_str,
-                        "pre_merge_cleanup: step 5 worktree list timed out after 30s (non-fatal)"
+                        timeout_secs = CLEANUP_GIT_OP_TIMEOUT_SECS,
+                        "pre_merge_cleanup: step 5 worktree list timed out (non-fatal)"
                     );
                 }
             }
@@ -1044,7 +1058,7 @@ impl<'a> super::TransitionHandler<'a> {
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 6 — cleaning working tree (git clean)");
         run_cleanup_step(
             "step 6 git clean",
-            30,
+            CLEANUP_GIT_OP_TIMEOUT_SECS,
             task_id_str,
             GitService::clean_working_tree(repo_path),
         )

@@ -123,6 +123,10 @@ Example: "ServiceExtraction Pattern: business logic in *_service.rs, commands ju
 
 **Git Modes & Merge Workflow:** Two modes (Local/Worktree), two-level branch hierarchy (plan→task), programmatic+agent merge — see task-git-branching.md.
 
+**PreMergeCleanup Ordering:** Always kill agents + kill_worktree_processes before git worktree ops to prevent TOCTOU race where agent holds worktree files.
+
+**MergeDeadline Pattern:** `attempt_programmatic_merge` wraps cleanup + strategy dispatch in a bounded configurable deadline (`attempt_merge_deadline_secs` in reconciliation config).
+
 ## Code Quality
 
 ### Multi-Stream Workflow
