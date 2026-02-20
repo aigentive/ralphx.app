@@ -112,6 +112,23 @@ impl MessageQueue {
         message
     }
 
+    /// Queue a message at the front of the queue (high priority).
+    ///
+    /// Used by session swap recovery to inject conversation history before
+    /// any pending user messages in the queue.
+    pub fn queue_front(
+        &self,
+        context_type: ChatContextType,
+        context_id: impl Into<String>,
+        content: String,
+    ) -> QueuedMessage {
+        let key = QueueKey::new(context_type, context_id);
+        let message = QueuedMessage::new(content);
+        let mut queues = self.queues.lock().unwrap();
+        queues.entry(key).or_default().insert(0, message.clone());
+        message
+    }
+
     /// Queue a message using a QueueKey
     pub fn queue_with_key(&self, key: QueueKey, content: String) -> QueuedMessage {
         let message = QueuedMessage::new(content);
@@ -543,6 +560,41 @@ mod tests {
                 .len(),
             0
         );
+    }
+
+    #[test]
+    fn test_queue_front_inserts_before_existing() {
+        let queue = MessageQueue::new();
+
+        // Queue two regular messages
+        queue.queue(ChatContextType::Ideation, "sess-1", "User msg 1".to_string());
+        queue.queue(ChatContextType::Ideation, "sess-1", "User msg 2".to_string());
+
+        // Insert priority message at front
+        queue.queue_front(ChatContextType::Ideation, "sess-1", "Recovery context".to_string());
+
+        // Pop should return the front-inserted message first
+        let first = queue.pop(ChatContextType::Ideation, "sess-1").unwrap();
+        assert_eq!(first.content, "Recovery context");
+
+        let second = queue.pop(ChatContextType::Ideation, "sess-1").unwrap();
+        assert_eq!(second.content, "User msg 1");
+
+        let third = queue.pop(ChatContextType::Ideation, "sess-1").unwrap();
+        assert_eq!(third.content, "User msg 2");
+
+        assert!(queue.pop(ChatContextType::Ideation, "sess-1").is_none());
+    }
+
+    #[test]
+    fn test_queue_front_on_empty_queue() {
+        let queue = MessageQueue::new();
+
+        queue.queue_front(ChatContextType::Task, "task-1", "Priority msg".to_string());
+
+        let queued = queue.get_queued(ChatContextType::Task, "task-1");
+        assert_eq!(queued.len(), 1);
+        assert_eq!(queued[0].content, "Priority msg");
     }
 
     #[test]
