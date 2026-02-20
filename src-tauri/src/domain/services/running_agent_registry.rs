@@ -88,6 +88,29 @@ pub trait RunningAgentRegistry: Send + Sync {
     async fn update_heartbeat(&self, key: &RunningAgentKey, at: chrono::DateTime<chrono::Utc>);
 }
 
+/// Check if a process with the given PID is still alive.
+///
+/// Uses `kill -0` on Unix to probe without sending a signal.
+/// Returns false if the process does not exist or we lack permissions.
+pub fn is_process_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        let output = std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .output();
+        matches!(output, Ok(result) if result.status.success())
+    }
+
+    #[cfg(windows)]
+    {
+        let output = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+            .output();
+        matches!(output, Ok(result) if result.status.success()
+            && !String::from_utf8_lossy(&result.stdout).contains("No tasks"))
+    }
+}
+
 /// Send SIGTERM to a process and all its children (process tree kill).
 ///
 /// On Unix: first kills children via `pkill -TERM -P <pid>`, then kills the parent.
@@ -272,6 +295,25 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             last_active_at: None,
         };
         let mut agents = self.agents.lock().await;
+
+        // Stop orphaned agent if one already exists for this key
+        if let Some(existing) = agents.get(&key) {
+            let old_pid = existing.pid;
+            if old_pid != pid && is_process_alive(old_pid) {
+                tracing::warn!(
+                    old_pid,
+                    new_pid = pid,
+                    context_type = %key.context_type,
+                    context_id = %key.context_id,
+                    "Detected orphaned agent process — stopping before re-registration"
+                );
+                if let Some(ref token) = existing.cancellation_token {
+                    token.cancel();
+                }
+                kill_process(old_pid);
+            }
+        }
+
         agents.insert(key, info);
     }
 

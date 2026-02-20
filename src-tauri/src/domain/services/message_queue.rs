@@ -112,6 +112,23 @@ impl MessageQueue {
         message
     }
 
+    /// Queue a message at the front of the queue (high priority).
+    ///
+    /// Used by session swap recovery to inject conversation history before
+    /// any pending user messages in the queue.
+    pub fn queue_front(
+        &self,
+        context_type: ChatContextType,
+        context_id: impl Into<String>,
+        content: String,
+    ) -> QueuedMessage {
+        let key = QueueKey::new(context_type, context_id);
+        let message = QueuedMessage::new(content);
+        let mut queues = self.queues.lock().unwrap();
+        queues.entry(key).or_default().insert(0, message.clone());
+        message
+    }
+
     /// Queue a message using a QueueKey
     pub fn queue_with_key(&self, key: QueueKey, content: String) -> QueuedMessage {
         let message = QueuedMessage::new(content);

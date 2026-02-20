@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_queue_and_pop() {
     let queue = MessageQueue::new();
@@ -284,6 +282,41 @@ fn test_clone_safety() {
             .len(),
         0
     );
+}
+
+#[test]
+fn test_queue_front_inserts_before_existing() {
+    let queue = MessageQueue::new();
+
+    // Queue two regular messages
+    queue.queue(ChatContextType::Ideation, "sess-1", "User msg 1".to_string());
+    queue.queue(ChatContextType::Ideation, "sess-1", "User msg 2".to_string());
+
+    // Insert priority message at front
+    queue.queue_front(ChatContextType::Ideation, "sess-1", "Recovery context".to_string());
+
+    // Pop should return the front-inserted message first
+    let first = queue.pop(ChatContextType::Ideation, "sess-1").unwrap();
+    assert_eq!(first.content, "Recovery context");
+
+    let second = queue.pop(ChatContextType::Ideation, "sess-1").unwrap();
+    assert_eq!(second.content, "User msg 1");
+
+    let third = queue.pop(ChatContextType::Ideation, "sess-1").unwrap();
+    assert_eq!(third.content, "User msg 2");
+
+    assert!(queue.pop(ChatContextType::Ideation, "sess-1").is_none());
+}
+
+#[test]
+fn test_queue_front_on_empty_queue() {
+    let queue = MessageQueue::new();
+
+    queue.queue_front(ChatContextType::Task, "task-1", "Priority msg".to_string());
+
+    let queued = queue.get_queued(ChatContextType::Task, "task-1");
+    assert_eq!(queued.len(), 1);
+    assert_eq!(queued[0].content, "Priority msg");
 }
 
 #[test]

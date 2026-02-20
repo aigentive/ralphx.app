@@ -98,6 +98,58 @@ async fn test_unregister() {
 }
 
 #[tokio::test]
+async fn test_register_stops_orphaned_process() {
+    let registry = MemoryRunningAgentRegistry::new();
+    let key = RunningAgentKey::new("task", "task-orphan");
+    let old_token = CancellationToken::new();
+
+    // Spawn a real process so is_process_alive returns true
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("spawn sleep");
+    let old_pid = child.id();
+
+    registry
+        .register(
+            key.clone(),
+            old_pid,
+            "conv-old".to_string(),
+            "run-old".to_string(),
+            None,
+            Some(old_token.clone()),
+        )
+        .await;
+
+    assert!(!old_token.is_cancelled());
+    assert!(is_process_alive(old_pid));
+
+    // Re-register with a new PID — should stop the old process
+    registry
+        .register(
+            key.clone(),
+            99999,
+            "conv-new".to_string(),
+            "run-new".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    // Old token should be cancelled
+    assert!(old_token.is_cancelled());
+
+    // Reap the zombie (SIGTERM was sent, wait collects exit status)
+    let _ = child.wait();
+    assert!(!is_process_alive(old_pid));
+
+    // New registration should be active
+    let info = registry.get(&key).await.unwrap();
+    assert_eq!(info.pid, 99999);
+    assert_eq!(info.conversation_id, "conv-new");
+}
+
+#[tokio::test]
 async fn test_list_all() {
     let registry = MemoryRunningAgentRegistry::new();
 
