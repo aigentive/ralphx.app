@@ -471,3 +471,68 @@ async fn fail_fast_skips_across_multiple_entries() {
     assert_eq!(r.log[1].status, "skipped");
     assert_eq!(r.log[1].label, "Node");
 }
+
+// ==================
+// Layer 1: Skip setup when merge_cwd == project_root
+// ==================
+
+#[tokio::test]
+async fn run_validation_skips_setup_when_merge_cwd_equals_project_root() {
+    // When merge_cwd == project.working_directory, worktree_setup commands
+    // should be skipped (they'd create circular symlinks) but validate commands
+    // should still run.
+    let dir = tempfile::tempdir().unwrap();
+    let dir_path = dir.path().to_str().unwrap().to_string();
+    let mut project = make_project(Some("main"));
+    project.working_directory = dir_path.clone();
+    project.detected_analysis = Some(
+        r#"[{
+            "path": ".",
+            "label": "Frontend",
+            "validate": ["true"],
+            "worktree_setup": ["ln -s {project_root}/node_modules {worktree_path}/node_modules"]
+        }]"#.to_string(),
+    );
+    let task = make_task(None, None);
+
+    // Pass project root as merge_cwd — triggers the skip guard
+    let result = run_validation_commands(
+        &project, &task, dir.path(), "", None, None, &MergeValidationMode::Block,
+    ).await;
+
+    // Validation commands should still run (setup is skipped, not validate)
+    assert!(result.is_some(), "validation should still run even when setup is skipped");
+    let r = result.unwrap();
+    // Only validate entries in log, no setup entries
+    assert!(r.log.iter().all(|e| e.phase != "setup"), "no setup entries should appear in log");
+    assert!(r.all_passed, "validate command 'true' should pass");
+}
+
+#[tokio::test]
+async fn run_validation_runs_setup_when_merge_cwd_differs_from_project_root() {
+    // When merge_cwd != project.working_directory, worktree_setup should run normally
+    let dir = tempfile::tempdir().unwrap();
+    let worktree_dir = tempfile::tempdir().unwrap();
+    let mut project = make_project(Some("main"));
+    project.working_directory = dir.path().to_str().unwrap().to_string();
+    project.detected_analysis = Some(
+        r#"[{
+            "path": ".",
+            "label": "Frontend",
+            "validate": ["true"],
+            "worktree_setup": ["echo setting_up_worktree"]
+        }]"#.to_string(),
+    );
+    let task = make_task(None, None);
+
+    // Use a different path than project root — setup should run
+    let result = run_validation_commands(
+        &project, &task, worktree_dir.path(), "", None, None, &MergeValidationMode::Block,
+    ).await;
+
+    assert!(result.is_some());
+    let r = result.unwrap();
+    // Should have setup entries in the log
+    let setup_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "setup").collect();
+    assert!(!setup_entries.is_empty(), "setup entries should be present when merge_cwd != project_root");
+}

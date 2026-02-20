@@ -117,7 +117,9 @@ pub(super) fn emit_merge_progress<R: tauri::Runtime>(
 /// Idempotent symlink handling for worktree setup commands.
 ///
 /// Parses `ln -s[f] <source> <target>` commands and handles existing targets:
+/// - Source == target (circular) → returns `Some(log_entry)` (skip, prevents damage)
 /// - Correct symlink already exists → returns `Some(log_entry)` (skip)
+/// - Circular self-symlink exists → removes it, returns `None` (re-run command)
 /// - Wrong symlink or real file/dir → removes target, returns `None` (re-run command)
 /// - Target doesn't exist → returns `None` (run normally)
 /// - Non-symlink commands → returns `None` (pass through)
@@ -155,8 +157,47 @@ pub(super) fn try_handle_symlink_idempotent(
         cwd.join(args[1])
     };
 
+    // Layer 2: Prevent circular symlinks where source == target.
+    // This happens when {worktree_path} resolves to the main repo path
+    // (e.g., merge succeeded without creating a worktree).
+    let resolved_source = if source.is_absolute() {
+        source.clone()
+    } else {
+        cwd.join(&source)
+    };
+    if resolved_source == target_path {
+        tracing::warn!(
+            command = %cmd,
+            source = %resolved_source.display(),
+            target = %target_path.display(),
+            "Worktree setup: skipping circular symlink (source == target)"
+        );
+        return Some(ValidationLogEntry {
+            phase: "setup".to_string(),
+            command: cmd.to_string(),
+            path: resolved_path.to_string(),
+            label: label.to_string(),
+            status: "skipped".to_string(),
+            exit_code: Some(0),
+            stdout: String::new(),
+            stderr: "Skipped: circular symlink (source == target)".to_string(),
+            duration_ms: 0,
+        });
+    }
+
     if target_path.is_symlink() {
         if let Ok(existing_target) = std::fs::read_link(&target_path) {
+            // Layer 3: Detect and remove circular self-symlinks left by previous runs.
+            if existing_target == target_path || existing_target == PathBuf::from(args[1]) {
+                tracing::warn!(
+                    command = %cmd,
+                    target = %target_path.display(),
+                    "Worktree setup: removing circular self-symlink from previous run"
+                );
+                let _ = std::fs::remove_file(&target_path);
+                return None; // Proceed with normal command execution
+            }
+
             if existing_target == source {
                 // Correct symlink already exists — skip
                 tracing::info!(
@@ -971,9 +1012,19 @@ pub(crate) async fn run_validation_commands(
             .replace("{task_branch}", &task_branch_owned)
     };
 
-    // Phase 1: Setup
-    let (mut log, _setup_had_failures) =
-        run_setup_phase(&entries, merge_cwd, task_id_str, app_handle, &resolve, None).await;
+    // Phase 1: Setup — skip when merge_cwd == project_root (no worktree created).
+    // Running symlink setup with {worktree_path} == {project_root} would create
+    // circular symlinks (source == target), potentially destroying node_modules/target.
+    let skip_setup = worktree_path == project_root.as_str();
+    let (mut log, _setup_had_failures) = if skip_setup {
+        tracing::info!(
+            task_id = task_id_str,
+            "Skipping worktree setup phase: merge_cwd equals project_root (no worktree)"
+        );
+        (Vec::new(), false)
+    } else {
+        run_setup_phase(&entries, merge_cwd, task_id_str, app_handle, &resolve, None).await
+    };
 
     // Phase 2: Validate
     let (validate_log, failures, ran_any) = run_validate_phase(
@@ -1465,15 +1516,27 @@ pub(crate) async fn run_pre_execution_setup(
         })
         .collect();
 
-    let (mut log, _setup_had_failures) = run_setup_phase(
-        &merge_entries,
-        exec_cwd,
-        task_id_str,
-        app_handle,
-        &resolve,
-        Some(context),
-    )
-    .await;
+    // Skip worktree setup when exec_cwd == project_root (no worktree created).
+    // Running symlink setup with {worktree_path} == {project_root} would create
+    // circular symlinks (source == target), potentially destroying node_modules/target.
+    let skip_setup = worktree_path == project_root.as_str();
+    let (mut log, _setup_had_failures) = if skip_setup {
+        tracing::info!(
+            task_id = task_id_str,
+            "Skipping worktree setup phase (pre-exec): exec_cwd equals project_root (no worktree)"
+        );
+        (Vec::new(), false)
+    } else {
+        run_setup_phase(
+            &merge_entries,
+            exec_cwd,
+            task_id_str,
+            app_handle,
+            &resolve,
+            Some(context),
+        )
+        .await
+    };
 
     // Phase 2: Install (fatal based on merge_validation_mode)
     let (install_log, install_had_failures) = run_install_phase(
