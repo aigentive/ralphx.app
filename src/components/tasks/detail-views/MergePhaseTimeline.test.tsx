@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { MergePhaseTimeline } from "./MergePhaseTimeline";
-import type { MergeProgressEvent } from "@/types/events";
+import type { MergeProgressEvent, MergePhaseInfo } from "@/types/events";
 
 function makePhase(
   overrides: Partial<MergeProgressEvent> = {}
@@ -21,6 +21,16 @@ function makePhase(
   };
 }
 
+const DYNAMIC_PHASES: MergePhaseInfo[] = [
+  { id: "worktree_setup", label: "Worktree Setup" },
+  { id: "programmatic_merge", label: "Merge" },
+  { id: "npm_run_typecheck", label: "Type Check" },
+  { id: "npm_run_lint", label: "Lint" },
+  { id: "cargo_clippy", label: "Clippy" },
+  { id: "cargo_test", label: "Test" },
+  { id: "finalize", label: "Finalize" },
+];
+
 describe("MergePhaseTimeline", () => {
   it("renders nothing when phases array is empty", () => {
     const { container } = render(<MergePhaseTimeline phases={[]} />);
@@ -28,12 +38,12 @@ describe("MergePhaseTimeline", () => {
   });
 
   it("renders timeline container with testid", () => {
-    render(<MergePhaseTimeline phases={[makePhase()]} />);
+    render(<MergePhaseTimeline phases={[makePhase()]} phaseList={DYNAMIC_PHASES} />);
     expect(screen.getByTestId("merge-phase-timeline")).toBeInTheDocument();
   });
 
   it("shows 'Merge Progress' section title", () => {
-    render(<MergePhaseTimeline phases={[makePhase()]} />);
+    render(<MergePhaseTimeline phases={[makePhase()]} phaseList={DYNAMIC_PHASES} />);
     expect(screen.getByText("Merge Progress")).toBeInTheDocument();
   });
 
@@ -41,6 +51,7 @@ describe("MergePhaseTimeline", () => {
     render(
       <MergePhaseTimeline
         phases={[makePhase({ phase: "worktree_setup", status: "started" })]}
+        phaseList={DYNAMIC_PHASES}
       />
     );
     expect(screen.getByText("Worktree Setup")).toBeInTheDocument();
@@ -50,25 +61,25 @@ describe("MergePhaseTimeline", () => {
     const phases = [
       makePhase({ phase: "worktree_setup", status: "passed" }),
       makePhase({ phase: "programmatic_merge", status: "passed" }),
-      makePhase({ phase: "typecheck", status: "started" }),
+      makePhase({ phase: "npm_run_typecheck", status: "started" }),
     ];
-    render(<MergePhaseTimeline phases={phases} />);
+    render(<MergePhaseTimeline phases={phases} phaseList={DYNAMIC_PHASES} />);
 
     expect(screen.getByText("Worktree Setup")).toBeInTheDocument();
     expect(screen.getByText("Merge")).toBeInTheDocument();
     expect(screen.getByText("Type Check")).toBeInTheDocument();
   });
 
-  it("shows pending phases between received phases based on PHASE_CONFIG order", () => {
-    // If we receive worktree_setup and typecheck, phases in between
+  it("shows pending phases between received phases based on phase config order", () => {
+    // If we receive worktree_setup and npm_run_typecheck, phases in between
     // (programmatic_merge) should appear as pending
     const phases = [
       makePhase({ phase: "worktree_setup", status: "passed" }),
-      makePhase({ phase: "typecheck", status: "started" }),
+      makePhase({ phase: "npm_run_typecheck", status: "started" }),
     ];
-    render(<MergePhaseTimeline phases={phases} />);
+    render(<MergePhaseTimeline phases={phases} phaseList={DYNAMIC_PHASES} />);
 
-    // programmatic_merge is between them in PHASE_CONFIG, should show as pending
+    // programmatic_merge is between them in config, should show as pending
     expect(screen.getByText("Merge")).toBeInTheDocument();
   });
 
@@ -77,11 +88,12 @@ describe("MergePhaseTimeline", () => {
       <MergePhaseTimeline
         phases={[
           makePhase({
-            phase: "typecheck",
+            phase: "npm_run_typecheck",
             status: "started",
             message: "Running type checker...",
           }),
         ]}
+        phaseList={DYNAMIC_PHASES}
       />
     );
     expect(screen.getByText("Running type checker...")).toBeInTheDocument();
@@ -92,11 +104,12 @@ describe("MergePhaseTimeline", () => {
       <MergePhaseTimeline
         phases={[
           makePhase({
-            phase: "lint",
+            phase: "npm_run_lint",
             status: "failed",
             message: "Lint errors found",
           }),
         ]}
+        phaseList={DYNAMIC_PHASES}
       />
     );
     expect(screen.getByText("Lint errors found")).toBeInTheDocument();
@@ -107,11 +120,12 @@ describe("MergePhaseTimeline", () => {
       <MergePhaseTimeline
         phases={[
           makePhase({
-            phase: "typecheck",
+            phase: "npm_run_typecheck",
             status: "passed",
             message: "Typecheck passed",
           }),
         ]}
+        phaseList={DYNAMIC_PHASES}
       />
     );
     // Message should NOT appear for passed phases
@@ -122,13 +136,13 @@ describe("MergePhaseTimeline", () => {
     const phases = [
       makePhase({ phase: "worktree_setup", status: "passed" }),
       makePhase({ phase: "programmatic_merge", status: "passed" }),
-      makePhase({ phase: "typecheck", status: "passed" }),
-      makePhase({ phase: "lint", status: "passed" }),
-      makePhase({ phase: "clippy", status: "passed" }),
-      makePhase({ phase: "test", status: "passed" }),
+      makePhase({ phase: "npm_run_typecheck", status: "passed" }),
+      makePhase({ phase: "npm_run_lint", status: "passed" }),
+      makePhase({ phase: "cargo_clippy", status: "passed" }),
+      makePhase({ phase: "cargo_test", status: "passed" }),
       makePhase({ phase: "finalize", status: "started" }),
     ];
-    render(<MergePhaseTimeline phases={phases} />);
+    render(<MergePhaseTimeline phases={phases} phaseList={DYNAMIC_PHASES} />);
 
     expect(screen.getByText("Worktree Setup")).toBeInTheDocument();
     expect(screen.getByText("Merge")).toBeInTheDocument();
@@ -140,7 +154,40 @@ describe("MergePhaseTimeline", () => {
   });
 
   it("displays (live) indicator", () => {
-    render(<MergePhaseTimeline phases={[makePhase()]} />);
+    render(<MergePhaseTimeline phases={[makePhase()]} phaseList={DYNAMIC_PHASES} />);
     expect(screen.getByText("(live)")).toBeInTheDocument();
+  });
+
+  it("uses default config when phaseList is null", () => {
+    const phases = [
+      makePhase({ phase: "worktree_setup", status: "passed" }),
+      makePhase({ phase: "programmatic_merge", status: "started" }),
+    ];
+    render(<MergePhaseTimeline phases={phases} phaseList={null} />);
+
+    expect(screen.getByText("Worktree Setup")).toBeInTheDocument();
+    expect(screen.getByText("Merge")).toBeInTheDocument();
+  });
+
+  it("uses custom dynamic phases from phaseList", () => {
+    const customPhases: MergePhaseInfo[] = [
+      { id: "worktree_setup", label: "Worktree Setup" },
+      { id: "programmatic_merge", label: "Merge" },
+      { id: "go_test", label: "Go Test" },
+      { id: "golangci-lint_run", label: "Lint" },
+      { id: "finalize", label: "Finalize" },
+    ];
+
+    const phases = [
+      makePhase({ phase: "worktree_setup", status: "passed" }),
+      makePhase({ phase: "programmatic_merge", status: "passed" }),
+      makePhase({ phase: "go_test", status: "started" }),
+    ];
+
+    render(<MergePhaseTimeline phases={phases} phaseList={customPhases} />);
+
+    expect(screen.getByText("Go Test")).toBeInTheDocument();
+    // Lint should show as pending (it's after the current phase in the list)
+    expect(screen.queryByText("Lint")).not.toBeInTheDocument();
   });
 });

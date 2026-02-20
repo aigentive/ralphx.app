@@ -19,7 +19,8 @@ use tauri::{AppHandle, Emitter};
 
 use crate::domain::entities::{
     merge_progress_event::{
-        map_command_to_phase, MergePhase, MergePhaseStatus, MergeProgressEvent,
+        derive_phases_from_analysis, map_command_to_phase, MergePhase, MergePhaseStatus,
+        MergeProgressEvent, PhaseAnalysisEntry,
     },
     Project, Task,
 };
@@ -257,7 +258,7 @@ async fn run_setup_phase(
         emit_merge_progress(
             app_handle,
             task_id_str,
-            MergePhase::WorktreeSetup,
+            MergePhase::worktree_setup(),
             MergePhaseStatus::Started,
             "Setting up worktree environment".to_string(),
         );
@@ -475,7 +476,7 @@ async fn run_setup_phase(
         emit_merge_progress(
             app_handle,
             task_id_str,
-            MergePhase::WorktreeSetup,
+            MergePhase::worktree_setup(),
             MergePhaseStatus::Failed,
             "Worktree setup completed with warnings (non-fatal)".to_string(),
         );
@@ -483,7 +484,7 @@ async fn run_setup_phase(
         emit_merge_progress(
             app_handle,
             task_id_str,
-            MergePhase::WorktreeSetup,
+            MergePhase::worktree_setup(),
             MergePhaseStatus::Passed,
             if has_setup_commands {
                 "Worktree setup completed successfully".to_string()
@@ -677,7 +678,7 @@ async fn run_validate_phase(
             emit_merge_progress(
                 app_handle,
                 task_id_str,
-                phase,
+                phase.clone(),
                 MergePhaseStatus::Started,
                 format!("Running {}", resolved_cmd),
             );
@@ -977,6 +978,25 @@ pub(crate) async fn run_validation_commands(
         return None;
     }
 
+    // Emit dynamic phase list to frontend for timeline rendering.
+    // Convert MergeAnalysisEntry → PhaseAnalysisEntry (only validate commands needed).
+    if let Some(handle) = app_handle {
+        let phase_entries: Vec<PhaseAnalysisEntry> = entries
+            .iter()
+            .map(|e| PhaseAnalysisEntry {
+                validate: e.validate.clone(),
+            })
+            .collect();
+        let phases = derive_phases_from_analysis(&phase_entries);
+        let _ = handle.emit(
+            "task:merge_phases",
+            serde_json::json!({
+                "task_id": task_id_str,
+                "phases": phases,
+            }),
+        );
+    }
+
     // Hardening: if custom_analysis has entries with empty worktree_setup,
     // merge in worktree_setup from detected_analysis (which has the correct symlink commands)
     if project.custom_analysis.is_some() {
@@ -1028,7 +1048,7 @@ pub(crate) async fn run_validation_commands(
         emit_merge_progress(
             app_handle,
             task_id_str,
-            MergePhase::WorktreeSetup,
+            MergePhase::worktree_setup(),
             MergePhaseStatus::Passed,
             "Worktree setup skipped (no worktree needed)".to_string(),
         );

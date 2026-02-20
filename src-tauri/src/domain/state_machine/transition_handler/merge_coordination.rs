@@ -159,7 +159,7 @@ pub(super) async fn update_plan_from_main(
     emit_merge_progress(
         app_handle,
         task_id_str,
-        MergePhase::ProgrammaticMerge,
+        MergePhase::programmatic_merge(),
         MergePhaseStatus::Started,
         format!("Updating {} from {} before merge", target_branch, base_branch),
     );
@@ -310,7 +310,7 @@ pub(super) async fn check_main_merge_deferral(
             emit_merge_progress(
                 app_handle,
                 task_id_str,
-                MergePhase::ProgrammaticMerge,
+                MergePhase::programmatic_merge(),
                 MergePhaseStatus::Started,
                 format!(
                     "Deferred merge to {} — waiting for sibling tasks to complete",
@@ -345,7 +345,7 @@ pub(super) async fn check_main_merge_deferral(
             emit_merge_progress(
                 app_handle,
                 task_id_str,
-                MergePhase::ProgrammaticMerge,
+                MergePhase::programmatic_merge(),
                 MergePhaseStatus::Started,
                 format!(
                     "Deferred merge to {} — waiting for {} agent(s) to complete",

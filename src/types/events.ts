@@ -343,25 +343,34 @@ export type MergeValidationStepEvent = z.infer<typeof MergeValidationStepEventSc
 
 /**
  * Schema for high-level merge progress events
- * Emitted during merge/validation to provide user-friendly phase-level updates
+ * Emitted during merge/validation to provide user-friendly phase-level updates.
+ * Phase is a dynamic string ID (not a fixed enum) — derived from project analysis.
  */
 export const MergeProgressEventSchema = z.object({
   task_id: z.string(),
-  phase: z.enum([
-    "worktree_setup",
-    "programmatic_merge",
-    "typecheck",
-    "lint",
-    "clippy",
-    "test",
-    "finalize",
-  ]),
+  phase: z.string().min(1),
   status: z.enum(["started", "passed", "failed", "skipped"]),
   message: z.string(),
   timestamp: z.string(),
 });
 
 export type MergeProgressEvent = z.infer<typeof MergeProgressEventSchema>;
+
+/** Single phase definition in the dynamic phase list */
+export const MergePhaseInfoSchema = z.object({
+  id: z.string().min(1),
+  label: z.string().min(1),
+});
+
+export type MergePhaseInfo = z.infer<typeof MergePhaseInfoSchema>;
+
+/** Schema for the task:merge_phases event — emitted at start of validation */
+export const MergePhaseListEventSchema = z.object({
+  task_id: z.string(),
+  phases: z.array(MergePhaseInfoSchema),
+});
+
+export type MergePhaseListEvent = z.infer<typeof MergePhaseListEventSchema>;
 
 // ============================================================================
 // Team Event Payload Types

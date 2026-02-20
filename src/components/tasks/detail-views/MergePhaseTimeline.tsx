@@ -6,6 +6,9 @@
  * - passed → green check (success)
  * - failed → red X (error)
  * - pending → gray circle (not started)
+ *
+ * Supports dynamic phase lists derived from project analysis.
+ * Falls back to a hardcoded default if no dynamic list is provided.
  */
 
 import {
@@ -15,17 +18,17 @@ import {
   SkipForward,
 } from "lucide-react";
 import { SectionTitle, DetailCard } from "./shared";
-import type { MergeProgressEvent } from "@/types/events";
+import type { MergeProgressEvent, MergePhaseInfo } from "@/types/events";
 
-/** Ordered list of all possible merge phases with display labels */
-const PHASE_CONFIG: { phase: MergeProgressEvent["phase"]; label: string }[] = [
-  { phase: "worktree_setup", label: "Worktree Setup" },
-  { phase: "programmatic_merge", label: "Merge" },
-  { phase: "typecheck", label: "Type Check" },
-  { phase: "lint", label: "Lint" },
-  { phase: "clippy", label: "Clippy" },
-  { phase: "test", label: "Test" },
-  { phase: "finalize", label: "Finalize" },
+/** Default phase config — used as fallback when no dynamic phase list is received */
+const DEFAULT_PHASE_CONFIG: MergePhaseInfo[] = [
+  { id: "worktree_setup", label: "Worktree Setup" },
+  { id: "programmatic_merge", label: "Merge" },
+  { id: "npm_run_typecheck", label: "Type Check" },
+  { id: "npm_run_lint", label: "Lint" },
+  { id: "cargo_clippy", label: "Clippy" },
+  { id: "cargo_test", label: "Test" },
+  { id: "finalize", label: "Finalize" },
 ];
 
 function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "skipped" | "pending" }) {
@@ -70,29 +73,33 @@ function phaseTextColor(status: "started" | "passed" | "failed" | "skipped" | "p
 
 interface MergePhaseTimelineProps {
   phases: MergeProgressEvent[];
+  /** Dynamic phase list from project analysis. Falls back to DEFAULT_PHASE_CONFIG if null. */
+  phaseList?: MergePhaseInfo[] | null;
 }
 
-export function MergePhaseTimeline({ phases }: MergePhaseTimelineProps) {
+export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProps) {
   if (phases.length === 0) return null;
+
+  const phaseConfig = phaseList ?? DEFAULT_PHASE_CONFIG;
 
   // Build a lookup of received phase events
   const phaseMap = new Map(phases.map((p) => [p.phase, p]));
 
   // Determine which phases to display: only phases we've received events for,
-  // plus phases from PHASE_CONFIG up to and including the last received one
+  // plus phases from config up to and including the last received one
   const receivedPhases = new Set(phases.map((p) => p.phase));
   let lastReceivedIdx = -1;
-  for (let i = PHASE_CONFIG.length - 1; i >= 0; i--) {
-    const cfg = PHASE_CONFIG[i];
-    if (cfg && receivedPhases.has(cfg.phase)) {
+  for (let i = phaseConfig.length - 1; i >= 0; i--) {
+    const cfg = phaseConfig[i];
+    if (cfg && receivedPhases.has(cfg.id)) {
       lastReceivedIdx = i;
       break;
     }
   }
 
   // Show all phases up to the last received one, plus any beyond if received
-  const visiblePhases = PHASE_CONFIG.filter((cfg, i) => {
-    return i <= lastReceivedIdx || receivedPhases.has(cfg.phase);
+  const visiblePhases = phaseConfig.filter((cfg, i) => {
+    return i <= lastReceivedIdx || receivedPhases.has(cfg.id);
   });
 
   return (
@@ -104,12 +111,12 @@ export function MergePhaseTimeline({ phases }: MergePhaseTimelineProps) {
       <DetailCard>
         <div className="space-y-0.5">
           {visiblePhases.map((config, index) => {
-            const event = phaseMap.get(config.phase);
+            const event = phaseMap.get(config.id);
             const status = event?.status ?? "pending";
 
             return (
               <div
-                key={config.phase}
+                key={config.id}
                 className="flex items-center gap-2.5 py-1.5"
                 style={{
                   borderTop:

@@ -133,13 +133,26 @@ describe("MergingTaskDetail", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
       renderWithProviders(<MergingTaskDetail task={task} />);
 
+      // Emit dynamic phase list first (as backend does)
+      act(() => {
+        emitEvent("task:merge_phases", {
+          task_id: "task-123",
+          phases: [
+            { id: "worktree_setup", label: "Worktree Setup" },
+            { id: "programmatic_merge", label: "Merge" },
+            { id: "npm_run_typecheck", label: "Type Check" },
+            { id: "finalize", label: "Finalize" },
+          ],
+        });
+      });
+
       // Emit full sequence
-      const phases: Array<{ phase: MergeProgressEvent["phase"]; status: MergeProgressEvent["status"]; message: string }> = [
+      const phases: Array<{ phase: string; status: MergeProgressEvent["status"]; message: string }> = [
         { phase: "worktree_setup", status: "started", message: "Setting up worktree" },
         { phase: "worktree_setup", status: "passed", message: "" },
         { phase: "programmatic_merge", status: "started", message: "Merging branches" },
         { phase: "programmatic_merge", status: "passed", message: "" },
-        { phase: "typecheck", status: "started", message: "Running type checker..." },
+        { phase: "npm_run_typecheck", status: "started", message: "Running type checker..." },
       ];
 
       for (const { phase, status, message } of phases) {
@@ -204,7 +217,7 @@ describe("MergingTaskDetail", () => {
 
       act(() => {
         emitEvent("task:merge_progress", makeProgressEvent({
-          phase: "typecheck",
+          phase: "npm_run_typecheck",
           status: "failed",
           message: "Type errors found in 3 files",
         }));
@@ -217,13 +230,29 @@ describe("MergingTaskDetail", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
       renderWithProviders(<MergingTaskDetail task={task} />);
 
-      const fullSequence: Array<{ phase: MergeProgressEvent["phase"]; status: MergeProgressEvent["status"] }> = [
+      // Emit dynamic phase list first
+      act(() => {
+        emitEvent("task:merge_phases", {
+          task_id: "task-123",
+          phases: [
+            { id: "worktree_setup", label: "Worktree Setup" },
+            { id: "programmatic_merge", label: "Merge" },
+            { id: "npm_run_typecheck", label: "Type Check" },
+            { id: "npm_run_lint", label: "Lint" },
+            { id: "cargo_clippy", label: "Clippy" },
+            { id: "cargo_test", label: "Test" },
+            { id: "finalize", label: "Finalize" },
+          ],
+        });
+      });
+
+      const fullSequence: Array<{ phase: string; status: MergeProgressEvent["status"] }> = [
         { phase: "worktree_setup", status: "passed" },
         { phase: "programmatic_merge", status: "passed" },
-        { phase: "typecheck", status: "passed" },
-        { phase: "lint", status: "passed" },
-        { phase: "clippy", status: "passed" },
-        { phase: "test", status: "passed" },
+        { phase: "npm_run_typecheck", status: "passed" },
+        { phase: "npm_run_lint", status: "passed" },
+        { phase: "cargo_clippy", status: "passed" },
+        { phase: "cargo_test", status: "passed" },
         { phase: "finalize", status: "started" },
       ];
 
@@ -323,7 +352,7 @@ describe("MergingTaskDetail", () => {
       // New events arrive after remount
       act(() => {
         emitEvent("task:merge_progress", makeProgressEvent({
-          phase: "typecheck",
+          phase: "npm_run_typecheck",
           status: "started",
           message: "Checking types...",
         }));
