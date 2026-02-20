@@ -292,6 +292,8 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
 
                 // Detect resume failure: if --resume was used but Claude returned a different session ID,
                 // it silently started a fresh session (original session likely expired).
+                // Instead of just logging, trigger recovery: rebuild conversation history and
+                // enqueue it as a priority message so Claude gets context before any pending user messages.
                 if session_changed_after_resume(
                     stored_session_id.as_deref(),
                     claude_session_id.as_deref(),
@@ -301,8 +303,60 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         new_session_id = %claude_session_id.as_deref().unwrap_or(""),
                         context_type = %context_type,
                         context_id = %context_id,
-                        "[RESUME] Session ID changed after --resume — Claude may have started a fresh session (stored session likely expired)"
+                        "[RESUME] Session ID changed after --resume — triggering context recovery"
                     );
+
+                    // Build conversation replay to inject history into the new session
+                    let replay_builder = super::chat_service_replay::ReplayBuilder::new(100_000);
+                    match replay_builder.build_replay(&chat_message_repo, &conversation_id).await {
+                        Ok(replay) if !replay.turns.is_empty() => {
+                            let rehydration_prompt = super::chat_service_replay::build_rehydration_prompt(
+                                &replay,
+                                context_type,
+                                &context_id,
+                                "[System] Your session was silently restarted. The conversation history above has been restored. Briefly confirm you have this context, then wait for the next user message.",
+                                None,
+                            );
+
+                            // Enqueue at front so history is sent before any pending user messages
+                            message_queue.queue_front(
+                                context_type,
+                                &context_id,
+                                rehydration_prompt,
+                            );
+
+                            tracing::info!(
+                                replay_turns = replay.turns.len(),
+                                estimated_tokens = replay.total_tokens,
+                                "[RESUME] Enqueued conversation history replay for silent session swap recovery"
+                            );
+                        }
+                        Ok(replay) => {
+                            tracing::info!(
+                                turns = replay.turns.len(),
+                                "[RESUME] No conversation turns to replay, skipping history injection"
+                            );
+                        }
+                        Err(e) => {
+                            tracing::error!(
+                                error = %e,
+                                "[RESUME] Failed to build conversation replay for session swap recovery"
+                            );
+                        }
+                    }
+
+                    // Emit event to frontend so UI can show recovery banner
+                    if let Some(ref handle) = app_handle {
+                        let _ = handle.emit(
+                            "agent:session_recovered",
+                            serde_json::json!({
+                                "conversation_id": conversation_id.as_str(),
+                                "context_type": context_type.to_string(),
+                                "context_id": context_id,
+                                "message": "Session silently restarted — conversation history restored"
+                            }),
+                        );
+                    }
                 }
 
                 // Update pre-created assistant message with final content
@@ -597,5 +651,34 @@ mod tests {
     #[test]
     fn session_changed_returns_false_when_both_none() {
         assert!(!session_changed_after_resume(None, None));
+    }
+
+    /// Verifies that session swap recovery enqueues rehydration at front of queue,
+    /// preserving ordering: recovery context → pending user messages.
+    #[test]
+    fn session_swap_recovery_enqueues_rehydration_before_user_messages() {
+        use crate::domain::entities::ChatContextType;
+        use crate::domain::services::MessageQueue;
+
+        let queue = MessageQueue::new();
+
+        // Simulate: user queued messages while agent was running
+        queue.queue(ChatContextType::Ideation, "ctx-1", "User follow-up 1".to_string());
+        queue.queue(ChatContextType::Ideation, "ctx-1", "User follow-up 2".to_string());
+
+        // Session swap detected → recovery enqueues rehydration at front
+        let rehydration_content = "<instructions>Your session was recovered</instructions>".to_string();
+        queue.queue_front(ChatContextType::Ideation, "ctx-1", rehydration_content.clone());
+
+        // Verify queue order: rehydration first, then user messages
+        let queued = queue.get_queued(ChatContextType::Ideation, "ctx-1");
+        assert_eq!(queued.len(), 3);
+        assert_eq!(queued[0].content, rehydration_content);
+        assert_eq!(queued[1].content, "User follow-up 1");
+        assert_eq!(queued[2].content, "User follow-up 2");
+
+        // Pop order should match: rehydration processed first via --resume
+        let first = queue.pop(ChatContextType::Ideation, "ctx-1").unwrap();
+        assert!(first.content.contains("session was recovered"));
     }
 }
