@@ -89,6 +89,7 @@
 defer_merge_enabled: false
 
 # ── Runtime timeouts & limits ──────────────────────────────────────────────
+# All fields required — no Rust serde defaults. Missing keys cause a deserialization error.
 # All values can be overridden by env: RALPHX_<SECTION>_<FIELD> (e.g. RALPHX_STREAM_MERGE_LINE_READ_SECS)
 
 timeouts:

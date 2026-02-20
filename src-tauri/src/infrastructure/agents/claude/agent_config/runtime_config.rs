@@ -23,242 +23,164 @@ pub(crate) struct TimeoutsWrapper {
 
 // ── Individual config structs ────────────────────────────────────────────
 
+/// All fields required in ralphx.yaml — no serde defaults.
+/// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct StreamTimeoutsConfig {
-    #[serde(default = "default_merge_line_read_secs")]
     pub merge_line_read_secs: u64,
-    #[serde(default = "default_merge_parse_stall_secs")]
     pub merge_parse_stall_secs: u64,
-    #[serde(default = "default_review_line_read_secs")]
     pub review_line_read_secs: u64,
-    #[serde(default = "default_review_parse_stall_secs")]
     pub review_parse_stall_secs: u64,
-    #[serde(default = "default_default_line_read_secs")]
     pub default_line_read_secs: u64,
-    #[serde(default = "default_default_parse_stall_secs")]
     pub default_parse_stall_secs: u64,
-    #[serde(default = "default_team_line_read_secs")]
     pub team_line_read_secs: u64,
-    #[serde(default = "default_team_parse_stall_secs")]
     pub team_parse_stall_secs: u64,
 }
-
-fn default_merge_line_read_secs() -> u64 { 600 }
-fn default_merge_parse_stall_secs() -> u64 { 180 }
-fn default_review_line_read_secs() -> u64 { 300 }
-fn default_review_parse_stall_secs() -> u64 { 120 }
-fn default_default_line_read_secs() -> u64 { 600 }
-fn default_default_parse_stall_secs() -> u64 { 180 }
-fn default_team_line_read_secs() -> u64 { 3600 }
-fn default_team_parse_stall_secs() -> u64 { 3600 }
 
 impl Default for StreamTimeoutsConfig {
     fn default() -> Self {
         Self {
-            merge_line_read_secs: default_merge_line_read_secs(),
-            merge_parse_stall_secs: default_merge_parse_stall_secs(),
-            review_line_read_secs: default_review_line_read_secs(),
-            review_parse_stall_secs: default_review_parse_stall_secs(),
-            default_line_read_secs: default_default_line_read_secs(),
-            default_parse_stall_secs: default_default_parse_stall_secs(),
-            team_line_read_secs: default_team_line_read_secs(),
-            team_parse_stall_secs: default_team_parse_stall_secs(),
+            merge_line_read_secs: 600,
+            merge_parse_stall_secs: 180,
+            review_line_read_secs: 300,
+            review_parse_stall_secs: 120,
+            default_line_read_secs: 600,
+            default_parse_stall_secs: 180,
+            team_line_read_secs: 3600,
+            team_parse_stall_secs: 3600,
         }
     }
 }
 
+/// All fields required in ralphx.yaml — no serde defaults.
+/// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReconciliationConfig {
-    #[serde(default = "default_merger_timeout_secs")]
     pub merger_timeout_secs: u64,
-    #[serde(default = "default_merging_max_retries")]
     pub merging_max_retries: u64,
-    #[serde(default = "default_pending_merge_stale_minutes")]
     pub pending_merge_stale_minutes: u64,
-    #[serde(default = "default_qa_stale_minutes")]
     pub qa_stale_minutes: u64,
-    #[serde(default = "default_merge_incomplete_retry_base_secs")]
     pub merge_incomplete_retry_base_secs: u64,
-    #[serde(default = "default_merge_incomplete_retry_max_secs")]
     pub merge_incomplete_retry_max_secs: u64,
-    #[serde(default = "default_merge_incomplete_max_retries")]
     pub merge_incomplete_max_retries: u64,
-    #[serde(default = "default_validation_revert_max_count")]
     pub validation_revert_max_count: u64,
-    #[serde(default = "default_merge_conflict_retry_base_secs")]
     pub merge_conflict_retry_base_secs: u64,
-    #[serde(default = "default_merge_conflict_retry_max_secs")]
     pub merge_conflict_retry_max_secs: u64,
-    #[serde(default = "default_merge_conflict_max_retries")]
     pub merge_conflict_max_retries: u64,
-    #[serde(default = "default_executing_max_retries")]
     pub executing_max_retries: u64,
-    #[serde(default = "default_reviewing_max_retries")]
     pub reviewing_max_retries: u64,
-    #[serde(default = "default_qa_max_retries")]
     pub qa_max_retries: u64,
-    #[serde(default = "default_executing_max_wall_clock_minutes")]
     pub executing_max_wall_clock_minutes: u64,
-    #[serde(default = "default_reviewing_max_wall_clock_minutes")]
     pub reviewing_max_wall_clock_minutes: u64,
-    #[serde(default = "default_qa_max_wall_clock_minutes")]
     pub qa_max_wall_clock_minutes: u64,
 }
-
-fn default_merger_timeout_secs() -> u64 { 1200 }
-fn default_merging_max_retries() -> u64 { 3 }
-fn default_pending_merge_stale_minutes() -> u64 { 2 }
-fn default_qa_stale_minutes() -> u64 { 5 }
-fn default_merge_incomplete_retry_base_secs() -> u64 { 30 }
-fn default_merge_incomplete_retry_max_secs() -> u64 { 300 }
-fn default_merge_incomplete_max_retries() -> u64 { 5 }
-fn default_validation_revert_max_count() -> u64 { 2 }
-fn default_merge_conflict_retry_base_secs() -> u64 { 60 }
-fn default_merge_conflict_retry_max_secs() -> u64 { 600 }
-fn default_merge_conflict_max_retries() -> u64 { 3 }
-fn default_executing_max_retries() -> u64 { 5 }
-fn default_reviewing_max_retries() -> u64 { 3 }
-fn default_qa_max_retries() -> u64 { 3 }
-fn default_executing_max_wall_clock_minutes() -> u64 { 60 }
-fn default_reviewing_max_wall_clock_minutes() -> u64 { 30 }
-fn default_qa_max_wall_clock_minutes() -> u64 { 15 }
 
 impl Default for ReconciliationConfig {
     fn default() -> Self {
         Self {
-            merger_timeout_secs: default_merger_timeout_secs(),
-            merging_max_retries: default_merging_max_retries(),
-            pending_merge_stale_minutes: default_pending_merge_stale_minutes(),
-            qa_stale_minutes: default_qa_stale_minutes(),
-            merge_incomplete_retry_base_secs: default_merge_incomplete_retry_base_secs(),
-            merge_incomplete_retry_max_secs: default_merge_incomplete_retry_max_secs(),
-            merge_incomplete_max_retries: default_merge_incomplete_max_retries(),
-            validation_revert_max_count: default_validation_revert_max_count(),
-            merge_conflict_retry_base_secs: default_merge_conflict_retry_base_secs(),
-            merge_conflict_retry_max_secs: default_merge_conflict_retry_max_secs(),
-            merge_conflict_max_retries: default_merge_conflict_max_retries(),
-            executing_max_retries: default_executing_max_retries(),
-            reviewing_max_retries: default_reviewing_max_retries(),
-            qa_max_retries: default_qa_max_retries(),
-            executing_max_wall_clock_minutes: default_executing_max_wall_clock_minutes(),
-            reviewing_max_wall_clock_minutes: default_reviewing_max_wall_clock_minutes(),
-            qa_max_wall_clock_minutes: default_qa_max_wall_clock_minutes(),
+            merger_timeout_secs: 1200,
+            merging_max_retries: 3,
+            pending_merge_stale_minutes: 2,
+            qa_stale_minutes: 5,
+            merge_incomplete_retry_base_secs: 30,
+            merge_incomplete_retry_max_secs: 300,
+            merge_incomplete_max_retries: 5,
+            validation_revert_max_count: 2,
+            merge_conflict_retry_base_secs: 60,
+            merge_conflict_retry_max_secs: 600,
+            merge_conflict_max_retries: 3,
+            executing_max_retries: 5,
+            reviewing_max_retries: 3,
+            qa_max_retries: 3,
+            executing_max_wall_clock_minutes: 60,
+            reviewing_max_wall_clock_minutes: 30,
+            qa_max_wall_clock_minutes: 15,
         }
     }
 }
 
+/// All fields required in ralphx.yaml — no serde defaults.
+/// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct GitRuntimeConfig {
-    #[serde(default = "default_cmd_timeout_secs")]
     pub cmd_timeout_secs: u64,
-    #[serde(default = "default_git_max_retries")]
     pub max_retries: u64,
-    #[serde(default = "default_retry_backoff_secs")]
     pub retry_backoff_secs: Vec<u64>,
-    #[serde(default = "default_index_lock_stale_secs")]
     pub index_lock_stale_secs: u64,
 }
-
-fn default_cmd_timeout_secs() -> u64 { 60 }
-fn default_git_max_retries() -> u64 { 3 }
-fn default_retry_backoff_secs() -> Vec<u64> { vec![1, 2, 4] }
-fn default_index_lock_stale_secs() -> u64 { 5 }
 
 impl Default for GitRuntimeConfig {
     fn default() -> Self {
         Self {
-            cmd_timeout_secs: default_cmd_timeout_secs(),
-            max_retries: default_git_max_retries(),
-            retry_backoff_secs: default_retry_backoff_secs(),
-            index_lock_stale_secs: default_index_lock_stale_secs(),
+            cmd_timeout_secs: 60,
+            max_retries: 3,
+            retry_backoff_secs: vec![1, 2, 4],
+            index_lock_stale_secs: 5,
         }
     }
 }
 
+/// All fields required in ralphx.yaml — no serde defaults.
+/// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SchedulerConfig {
-    #[serde(default = "default_watchdog_interval_secs")]
     pub watchdog_interval_secs: u64,
-    #[serde(default = "default_watchdog_stale_threshold_secs")]
     pub watchdog_stale_threshold_secs: u64,
-    #[serde(default = "default_max_contention_retries")]
     pub max_contention_retries: u64,
-    #[serde(default = "default_contention_retry_delay_ms")]
     pub contention_retry_delay_ms: u64,
-    #[serde(default = "default_ready_settle_ms")]
     pub ready_settle_ms: u64,
-    #[serde(default = "default_merge_settle_ms")]
     pub merge_settle_ms: u64,
 }
-
-fn default_watchdog_interval_secs() -> u64 { 60 }
-fn default_watchdog_stale_threshold_secs() -> u64 { 30 }
-fn default_max_contention_retries() -> u64 { 3 }
-fn default_contention_retry_delay_ms() -> u64 { 200 }
-fn default_ready_settle_ms() -> u64 { 300 }
-fn default_merge_settle_ms() -> u64 { 100 }
 
 impl Default for SchedulerConfig {
     fn default() -> Self {
         Self {
-            watchdog_interval_secs: default_watchdog_interval_secs(),
-            watchdog_stale_threshold_secs: default_watchdog_stale_threshold_secs(),
-            max_contention_retries: default_max_contention_retries(),
-            contention_retry_delay_ms: default_contention_retry_delay_ms(),
-            ready_settle_ms: default_ready_settle_ms(),
-            merge_settle_ms: default_merge_settle_ms(),
+            watchdog_interval_secs: 60,
+            watchdog_stale_threshold_secs: 30,
+            max_contention_retries: 3,
+            contention_retry_delay_ms: 200,
+            ready_settle_ms: 300,
+            merge_settle_ms: 100,
         }
     }
 }
 
+/// All fields required in ralphx.yaml — no serde defaults.
+/// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct SupervisorRuntimeConfig {
-    #[serde(default = "default_supervisor_time_threshold_secs")]
     pub time_threshold_secs: u64,
-    #[serde(default = "default_supervisor_token_threshold")]
     pub token_threshold: u64,
-    #[serde(default = "default_supervisor_max_tokens")]
     pub max_tokens: u64,
-    #[serde(default = "default_supervisor_progress_interval_secs")]
     pub progress_interval_secs: u64,
-    #[serde(default = "default_supervisor_loop_threshold")]
     pub loop_threshold: u64,
-    #[serde(default = "default_supervisor_stuck_threshold")]
     pub stuck_threshold: u64,
 }
-
-fn default_supervisor_time_threshold_secs() -> u64 { 600 }
-fn default_supervisor_token_threshold() -> u64 { 50000 }
-fn default_supervisor_max_tokens() -> u64 { 100000 }
-fn default_supervisor_progress_interval_secs() -> u64 { 30 }
-fn default_supervisor_loop_threshold() -> u64 { 3 }
-fn default_supervisor_stuck_threshold() -> u64 { 5 }
 
 impl Default for SupervisorRuntimeConfig {
     fn default() -> Self {
         Self {
-            time_threshold_secs: default_supervisor_time_threshold_secs(),
-            token_threshold: default_supervisor_token_threshold(),
-            max_tokens: default_supervisor_max_tokens(),
-            progress_interval_secs: default_supervisor_progress_interval_secs(),
-            loop_threshold: default_supervisor_loop_threshold(),
-            stuck_threshold: default_supervisor_stuck_threshold(),
+            time_threshold_secs: 600,
+            token_threshold: 50000,
+            max_tokens: 100000,
+            progress_interval_secs: 30,
+            loop_threshold: 3,
+            stuck_threshold: 5,
         }
     }
 }
 
+/// All fields required in ralphx.yaml — no serde defaults.
+/// `Default` impl retained only for fallback/test use.
 #[derive(Debug, Clone, Deserialize)]
 pub struct LimitsConfig {
-    #[serde(default = "default_max_resume_attempts")]
     pub max_resume_attempts: u64,
 }
-
-fn default_max_resume_attempts() -> u64 { 5 }
 
 impl Default for LimitsConfig {
     fn default() -> Self {
         Self {
-            max_resume_attempts: default_max_resume_attempts(),
+            max_resume_attempts: 5,
         }
     }
 }
@@ -462,12 +384,27 @@ mod tests {
     }
 
     #[test]
-    fn test_yaml_deserialization_with_defaults() {
-        let yaml = "merge_line_read_secs: 900";
+    fn test_yaml_deserialization_requires_all_fields() {
+        // Partial YAML should fail — all fields are required (no serde defaults)
+        let partial_yaml = "merge_line_read_secs: 900";
+        let result: Result<StreamTimeoutsConfig, _> = serde_yaml::from_str(partial_yaml);
+        assert!(result.is_err(), "partial YAML should fail without serde defaults");
+    }
+
+    #[test]
+    fn test_yaml_deserialization_with_all_fields() {
+        let yaml = r#"
+merge_line_read_secs: 900
+merge_parse_stall_secs: 180
+review_line_read_secs: 300
+review_parse_stall_secs: 120
+default_line_read_secs: 600
+default_parse_stall_secs: 180
+team_line_read_secs: 3600
+team_parse_stall_secs: 3600
+"#;
         let cfg: StreamTimeoutsConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(cfg.merge_line_read_secs, 900);
-        // Rest should be defaults
         assert_eq!(cfg.merge_parse_stall_secs, 180);
-        assert_eq!(cfg.review_line_read_secs, 300);
     }
 }
