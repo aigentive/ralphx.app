@@ -26,6 +26,9 @@ mod transitions_basic;
 // Tests for merge-hang fixes (step 0, deadline, timeouts, config)
 mod merge_cleanup;
 
+// Test quality overhaul: adversarial mocks, ordering assertions, outcome coverage
+mod test_quality_overhaul;
+
 // Tests extracted from inline #[cfg(test)] blocks in production modules
 mod merge_helpers_inline;
 mod merge_helpers_inline_2;
