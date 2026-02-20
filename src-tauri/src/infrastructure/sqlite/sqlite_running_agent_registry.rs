@@ -428,13 +428,14 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         &self,
         key: &RunningAgentKey,
         pid: u32,
+        agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
     ) {
         let conn = self.conn.lock().await;
         let _ = conn.execute(
-            "UPDATE running_agents SET pid = ?1, worktree_path = ?2 WHERE context_type = ?3 AND context_id = ?4",
-            rusqlite::params![pid, worktree_path, key.context_type, key.context_id],
+            "UPDATE running_agents SET pid = ?1, worktree_path = ?2, agent_run_id = ?3 WHERE context_type = ?4 AND context_id = ?5",
+            rusqlite::params![pid, worktree_path, agent_run_id, key.context_type, key.context_id],
         );
         drop(conn);
 

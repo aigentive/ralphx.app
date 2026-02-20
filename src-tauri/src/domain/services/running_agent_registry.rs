@@ -107,11 +107,12 @@ pub trait RunningAgentRegistry: Send + Sync {
     /// Update process details for an already-registered agent.
     ///
     /// Called after the CLI process has been spawned to fill in the real PID,
-    /// worktree path, and cancellation token.
+    /// agent_run_id, worktree path, and cancellation token.
     async fn update_agent_process(
         &self,
         key: &RunningAgentKey,
         pid: u32,
+        agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
     );
@@ -121,7 +122,12 @@ pub trait RunningAgentRegistry: Send + Sync {
 ///
 /// Uses `kill -0` on Unix to probe without sending a signal.
 /// Returns false if the process does not exist or we lack permissions.
+/// Returns false for PID 0, which refers to the process group on Unix
+/// and would incorrectly report as alive via `kill -0`.
 pub fn is_process_alive(pid: u32) -> bool {
+    if pid == 0 {
+        return false;
+    }
     #[cfg(unix)]
     {
         let output = std::process::Command::new("kill")
@@ -431,12 +437,14 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         &self,
         key: &RunningAgentKey,
         pid: u32,
+        agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
     ) {
         let mut agents = self.agents.lock().await;
         if let Some(info) = agents.get_mut(key) {
             info.pid = pid;
+            info.agent_run_id = agent_run_id.to_string();
             info.worktree_path = worktree_path;
             info.cancellation_token = cancellation_token;
         }

@@ -1692,6 +1692,12 @@ fn is_execution_context_type(context_type: &str) -> bool {
 }
 
 fn process_is_alive_for_gc(pid: u32) -> bool {
+    // PID 0 refers to the process group on macOS/Unix — `kill -0 0` succeeds
+    // but doesn't mean a real agent is alive. Placeholder PIDs from try_register
+    // use pid=0 before update_agent_process fills in the real PID.
+    if pid == 0 {
+        return false;
+    }
     #[cfg(unix)]
     {
         std::process::Command::new("kill")
