@@ -22,6 +22,7 @@ impl TaskRepository for StubTaskRepo {
     async fn create(&self, task: Task) -> AppResult<Task> { Ok(task) }
     async fn get_by_project(&self, _: &ProjectId) -> AppResult<Vec<Task>> { Ok(vec![]) }
     async fn update(&self, _: &Task) -> AppResult<()> { Ok(()) }
+    async fn update_with_expected_status(&self, _: &Task, _: InternalStatus) -> AppResult<bool> { Ok(true) }
     async fn update_metadata(&self, _: &TaskId, _: Option<String>) -> AppResult<()> { Ok(()) }
     async fn delete(&self, _: &TaskId) -> AppResult<()> { Ok(()) }
     async fn clear_task_references(&self, _: &TaskId) -> AppResult<()> { Ok(()) }

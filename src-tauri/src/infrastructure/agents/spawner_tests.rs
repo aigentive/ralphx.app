@@ -28,6 +28,9 @@ impl TaskRepository for MockTaskRepoForSpawner {
     async fn update(&self, _: &Task) -> AppResult<()> {
         Ok(())
     }
+    async fn update_with_expected_status(&self, _: &Task, _: crate::domain::entities::InternalStatus) -> AppResult<bool> {
+        Ok(true)
+    }
     async fn update_metadata(&self, _: &TaskId, _: Option<String>) -> AppResult<()> {
         Ok(())
     }

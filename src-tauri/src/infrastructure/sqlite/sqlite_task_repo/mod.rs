@@ -153,6 +153,44 @@ impl TaskRepository for SqliteTaskRepository {
         Ok(())
     }
 
+    async fn update_with_expected_status(
+        &self,
+        task: &Task,
+        expected_status: InternalStatus,
+    ) -> AppResult<bool> {
+        let conn = self.conn.lock().await;
+
+        let rows_affected = conn.execute(
+            "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, ideation_session_id = ?10, updated_at = ?11, started_at = ?12, completed_at = ?13, archived_at = ?14, blocked_reason = ?15, task_branch = ?16, worktree_path = ?17, merge_commit_sha = ?18, metadata = ?19
+             WHERE id = ?1 AND internal_status = ?20",
+            rusqlite::params![
+                task.id.as_str(),
+                task.project_id.as_str(),
+                task.category.to_string(),
+                task.title,
+                task.description,
+                task.priority,
+                task.internal_status.as_str(),
+                task.source_proposal_id.as_ref().map(|id| id.as_str()),
+                task.plan_artifact_id.as_ref().map(|id| id.as_str()),
+                task.ideation_session_id.as_ref().map(|id| id.as_str()),
+                task.updated_at.to_rfc3339(),
+                task.started_at.map(|dt| dt.to_rfc3339()),
+                task.completed_at.map(|dt| dt.to_rfc3339()),
+                task.archived_at.map(|dt| dt.to_rfc3339()),
+                task.blocked_reason,
+                task.task_branch,
+                task.worktree_path,
+                task.merge_commit_sha,
+                task.metadata,
+                expected_status.as_str(),
+            ],
+        )
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+        Ok(rows_affected > 0)
+    }
+
     async fn update_metadata(&self, id: &TaskId, metadata: Option<String>) -> AppResult<()> {
         let conn = self.conn.lock().await;
         let now = Utc::now();

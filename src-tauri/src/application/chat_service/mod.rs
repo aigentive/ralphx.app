@@ -495,10 +495,18 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             "chat_service.send_message conversation"
         );
 
-        // 1b. Guard: if an agent is already running for this context, queue
-        //     the message instead of spawning a second CLI process.
+        // 1b. Atomic guard: claim the agent slot to prevent TOCTOU race.
+        //     If an agent is already registered for this context, queue the message.
         let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
-        if self.running_agent_registry.is_running(&registry_key).await {
+        if let Err(_existing) = self
+            .running_agent_registry
+            .try_register(
+                registry_key.clone(),
+                conversation.id.as_str().to_string(),
+                String::new(), // agent_run_id filled in by update_agent_process
+            )
+            .await
+        {
             tracing::warn!(
                 %context_type,
                 context_id,
@@ -522,6 +530,28 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             )));
         }
 
+        // From here on, we hold the agent slot. Any early return must unregister.
+        let mut running_incremented = false;
+
+        // Cleanup macro: unregisters slot + decrements running count on failure.
+        // Uses textual expansion so `.await` works inside the async fn body.
+        macro_rules! cleanup_and_err {
+            ($err:expr) => {{
+                self.running_agent_registry
+                    .unregister(&registry_key)
+                    .await;
+                if running_incremented {
+                    if let Some(ref exec) = self.execution_state {
+                        exec.decrement_running();
+                        if let Some(ref handle) = self.app_handle {
+                            exec.emit_status_changed(handle, "slot_cleanup");
+                        }
+                    }
+                }
+                return Err($err);
+            }};
+        }
+
         let conversation_id = conversation.id;
         let is_new_conversation = conversation.claude_session_id.is_none();
         let stored_session_id = conversation.claude_session_id.clone();
@@ -530,10 +560,9 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let agent_run = AgentRun::new(conversation_id);
         let agent_run_id = agent_run.id.as_str().to_string();
         let run_chain_id = agent_run.run_chain_id.clone();
-        self.agent_run_repo
-            .create(agent_run)
-            .await
-            .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+        if let Err(e) = self.agent_run_repo.create(agent_run).await {
+            cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
+        }
         tracing::debug!(
             run_id = %agent_run_id,
             "chat_service.send_message agent_run created"
@@ -580,31 +609,38 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             conversation_id,
         );
         let user_msg_id = user_msg.id.as_str().to_string();
-        self.chat_message_repo
-            .create(user_msg)
-            .await
-            .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+        if let Err(e) = self.chat_message_repo.create(user_msg).await {
+            cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
+        }
         tracing::debug!(
             message_id = %user_msg_id,
             "chat_service.send_message user message stored"
         );
 
         // 4b. Link pending attachments to the user message
-        let pending_attachments = self
+        let pending_attachments = match self
             .chat_attachment_repo
             .find_by_conversation_id(&conversation_id)
             .await
-            .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?
-            .into_iter()
-            .filter(|a| a.message_id.is_none())
-            .collect::<Vec<_>>();
+        {
+            Ok(v) => v
+                .into_iter()
+                .filter(|a| a.message_id.is_none())
+                .collect::<Vec<_>>(),
+            Err(e) => {
+                cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
+            }
+        };
 
         if !pending_attachments.is_empty() {
             let attachment_ids: Vec<_> = pending_attachments.iter().map(|a| a.id.clone()).collect();
-            self.chat_attachment_repo
+            if let Err(e) = self
+                .chat_attachment_repo
                 .update_message_ids(&attachment_ids, &ChatMessageId::from_string(&user_msg_id))
                 .await
-                .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+            {
+                cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
+            }
             tracing::debug!(
                 message_id = %user_msg_id,
                 attachment_count = pending_attachments.len(),
@@ -663,6 +699,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         ) {
             if let Some(ref exec) = self.execution_state {
                 exec.increment_running();
+                running_incremented = true;
                 // Emit status_changed event to frontend for real-time UI update
                 if let Some(ref handle) = self.app_handle {
                     exec.emit_status_changed(handle, "task_started");
@@ -676,7 +713,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 cli_path = %self.cli_path.display(),
                 "chat_service.send_message missing Claude CLI"
             );
-            return Err(ChatServiceError::SpawnFailed(format!(
+            cleanup_and_err!(ChatServiceError::SpawnFailed(format!(
                 "Claude CLI not found at {}",
                 self.cli_path.display()
             )));
@@ -686,7 +723,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             cli_path = %self.cli_path.display(),
             "chat_service.send_message building command"
         );
-        let spawnable = self
+        let spawnable = match self
             .build_command(
                 &conversation,
                 message,
@@ -694,30 +731,32 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 entity_status.as_deref(),
                 project_id.as_deref(),
             )
-            .await?;
+            .await
+        {
+            Ok(s) => s,
+            Err(e) => {
+                cleanup_and_err!(e);
+            }
+        };
         tracing::info!(cmd = ?spawnable, "Spawning CLI agent");
         let child = match spawnable.spawn().await {
             Ok(child) => child,
             Err(e) => {
                 tracing::error!(error = %e, "chat_service.send_message spawn failed");
-                return Err(ChatServiceError::SpawnFailed(e.to_string()));
+                cleanup_and_err!(ChatServiceError::SpawnFailed(e.to_string()));
             }
         };
         tracing::debug!(pid = ?child.id(), "chat_service.send_message spawn ok");
 
         let registry_worktree = working_directory.to_string_lossy().to_string();
 
-        // 7b. Register the process in the running agent registry with cancellation token
+        // 7b. Update process details in registry now that spawn succeeded
         let cancellation_token = CancellationToken::new();
-        let child_pid = child.id();
-        if let Some(pid) = child_pid {
-            let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
+        if let Some(pid) = child.id() {
             self.running_agent_registry
-                .register(
-                    registry_key,
+                .update_agent_process(
+                    &registry_key,
                     pid,
-                    conversation_id.as_str().to_string(),
-                    agent_run_id.clone(),
                     Some(registry_worktree.clone()),
                     Some(cancellation_token.clone()),
                 )

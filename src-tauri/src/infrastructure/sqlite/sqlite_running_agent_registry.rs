@@ -364,6 +364,85 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             rusqlite::params![at_str, key.context_type, key.context_id],
         );
     }
+
+    async fn try_register(
+        &self,
+        key: RunningAgentKey,
+        conversation_id: String,
+        agent_run_id: String,
+    ) -> Result<(), RunningAgentInfo> {
+        // Hold conn mutex across check+insert for atomicity
+        let conn = self.conn.lock().await;
+
+        // Check for existing registration
+        let existing = conn
+            .query_row(
+                "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+                rusqlite::params![key.context_type, key.context_id],
+                |row| {
+                    let pid: u32 = row.get(0)?;
+                    let conv_id: String = row.get(1)?;
+                    let run_id: String = row.get(2)?;
+                    let started_at_str: String = row.get(3)?;
+                    let worktree_path: Option<String> = row.get(4)?;
+                    let last_active_at_str: Option<String> = row.get(5)?;
+                    let started_at = chrono::DateTime::parse_from_rfc3339(&started_at_str)
+                        .map(|dt| dt.with_timezone(&chrono::Utc))
+                        .unwrap_or_else(|_| chrono::Utc::now());
+                    let last_active_at = last_active_at_str.and_then(|s| {
+                        chrono::DateTime::parse_from_rfc3339(&s)
+                            .map(|dt| dt.with_timezone(&chrono::Utc))
+                            .ok()
+                    });
+                    Ok(RunningAgentInfo {
+                        pid,
+                        conversation_id: conv_id,
+                        agent_run_id: run_id,
+                        started_at,
+                        worktree_path,
+                        cancellation_token: None,
+                        last_active_at,
+                    })
+                },
+            )
+            .ok();
+
+        if let Some(mut info) = existing {
+            drop(conn);
+            let tokens = self.tokens.lock().await;
+            info.cancellation_token = tokens.get(&key).cloned();
+            return Err(info);
+        }
+
+        // Insert placeholder registration (pid=0, no worktree)
+        let started_at = chrono::Utc::now().to_rfc3339();
+        let _ = conn.execute(
+            "INSERT INTO running_agents (context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at) VALUES (?1, ?2, 0, ?3, ?4, ?5, NULL, NULL)",
+            rusqlite::params![key.context_type, key.context_id, conversation_id, agent_run_id, started_at],
+        );
+
+        Ok(())
+    }
+
+    async fn update_agent_process(
+        &self,
+        key: &RunningAgentKey,
+        pid: u32,
+        worktree_path: Option<String>,
+        cancellation_token: Option<CancellationToken>,
+    ) {
+        let conn = self.conn.lock().await;
+        let _ = conn.execute(
+            "UPDATE running_agents SET pid = ?1, worktree_path = ?2 WHERE context_type = ?3 AND context_id = ?4",
+            rusqlite::params![pid, worktree_path, key.context_type, key.context_id],
+        );
+        drop(conn);
+
+        if let Some(token) = cancellation_token {
+            let mut tokens = self.tokens.lock().await;
+            tokens.insert(key.clone(), token);
+        }
+    }
 }
 
 #[cfg(test)]

@@ -40,6 +40,14 @@ impl TaskRepository for MockTaskRepository {
         Ok(())
     }
 
+    async fn update_with_expected_status(
+        &self,
+        _task: &Task,
+        _expected_status: InternalStatus,
+    ) -> AppResult<bool> {
+        Ok(true)
+    }
+
     async fn update_metadata(&self, _id: &TaskId, _metadata: Option<String>) -> AppResult<()> {
         Ok(())
     }

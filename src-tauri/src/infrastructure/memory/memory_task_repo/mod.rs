@@ -101,6 +101,23 @@ impl TaskRepository for MemoryTaskRepository {
         Ok(())
     }
 
+    async fn update_with_expected_status(
+        &self,
+        task: &Task,
+        expected_status: InternalStatus,
+    ) -> AppResult<bool> {
+        let mut tasks = self.tasks.write().await;
+        if let Some(existing) = tasks.get(&task.id) {
+            if existing.internal_status != expected_status {
+                return Ok(false); // Another caller already transitioned
+            }
+        } else {
+            return Ok(false); // Task not found
+        }
+        tasks.insert(task.id.clone(), task.clone());
+        Ok(true)
+    }
+
     async fn update_metadata(&self, id: &TaskId, metadata: Option<String>) -> AppResult<()> {
         let mut tasks = self.tasks.write().await;
         if let Some(task) = tasks.get_mut(id) {

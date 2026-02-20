@@ -13,7 +13,7 @@ use super::merge_helpers::{
     compute_merge_worktree_path, expand_home, resolve_task_base_branch, slugify,
 };
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
-use crate::application::GitService;
+use crate::application::{ChatServiceError, GitService};
 use crate::domain::entities::{ProjectId, TaskId, TaskStepStatus};
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::scheduler_config;
@@ -351,6 +351,15 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                     .await
                 {
+                    // AgentAlreadyRunning means another caller successfully started the agent.
+                    // The task IS being executed — treat as a successful no-op.
+                    if matches!(&e, ChatServiceError::AgentAlreadyRunning(_)) {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            "Agent already running for this task — treating on_enter as no-op"
+                        );
+                        return Ok(());
+                    }
                     tracing::error!(
                         task_id = task_id_str,
                         error = %e,
@@ -668,6 +677,15 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                     .await
                 {
+                    // AgentAlreadyRunning means another caller successfully started the agent.
+                    // The task IS being executed — treat as a successful no-op.
+                    if matches!(&e, ChatServiceError::AgentAlreadyRunning(_)) {
+                        tracing::info!(
+                            task_id = task_id,
+                            "Agent already running for this task — treating on_enter as no-op"
+                        );
+                        return Ok(());
+                    }
                     tracing::error!(
                         task_id = task_id,
                         error = %e,
