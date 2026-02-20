@@ -96,16 +96,10 @@ impl<'a> super::TransitionHandler<'a> {
                     commit_sha = %commit_sha,
                     "Worktree merge succeeded"
                 );
-                if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt).await {
-                    tracing::warn!(
-                        task_id = task_id_str,
-                        error = %e,
-                        "Failed to delete merge worktree after success (non-fatal)"
-                    );
-                }
+                // Keep merge worktree alive for post-merge validation
                 MergeOutcome::Success {
                     commit_sha,
-                    merge_path: repo_path.to_path_buf(),
+                    merge_path: merge_wt,
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
@@ -188,12 +182,11 @@ impl<'a> super::TransitionHandler<'a> {
                     commit_sha = %commit_sha,
                     "Worktree rebase and merge succeeded"
                 );
-                // Best-effort cleanup: worktree deletion failure is non-fatal after success
+                // Clean up rebase worktree (no longer needed), keep merge worktree for validation
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
-                let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
                     commit_sha,
-                    merge_path: repo_path.to_path_buf(),
+                    merge_path: merge_wt,
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
@@ -257,11 +250,10 @@ impl<'a> super::TransitionHandler<'a> {
             squash_commit_msg,
         ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
-                // Best-effort cleanup: worktree deletion failure is non-fatal after success
-                let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
+                // Keep merge worktree alive for post-merge validation
                 MergeOutcome::Success {
                     commit_sha,
-                    merge_path: repo_path.to_path_buf(),
+                    merge_path: merge_wt,
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
@@ -331,12 +323,11 @@ impl<'a> super::TransitionHandler<'a> {
                     commit_sha = %commit_sha,
                     "Worktree rebase-squash succeeded"
                 );
-                // Best-effort cleanup: worktree deletion failure is non-fatal after success
+                // Clean up rebase worktree (no longer needed), keep merge worktree for validation
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
-                let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
                     commit_sha,
-                    merge_path: repo_path.to_path_buf(),
+                    merge_path: merge_wt,
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {

@@ -163,7 +163,7 @@ impl<'a> super::TransitionHandler<'a> {
         task_repo: &Arc<dyn TaskRepository>,
         plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
         commit_sha: &str,
-        _merge_path: &Path,
+        merge_path: &Path,
         opts: &MergeHandlerOptions,
     ) {
         tracing::info!(task_id = task_id_str, commit_sha = %commit_sha, strategy = opts.strategy_label, "Merge succeeded");
@@ -184,7 +184,7 @@ impl<'a> super::TransitionHandler<'a> {
             let cached_log = source_sha.as_deref().and_then(|sha| extract_cached_validation(task, sha));
 
             let validation_result = tokio::time::timeout(validation_timeout, run_validation_commands(
-                project, task, repo_path, task_id_str,
+                project, task, merge_path, task_id_str,
                 self.machine.context.services.app_handle.as_ref(), cached_log.as_deref(),
                 validation_mode,
             )).await;
@@ -206,8 +206,15 @@ impl<'a> super::TransitionHandler<'a> {
                     };
                     self.handle_validation_failure(
                         task, task_id, task_id_str, task_repo, &[timeout_failure], &[],
-                        source_branch, target_branch, repo_path, opts.strategy_label, validation_mode,
+                        source_branch, target_branch, merge_path, opts.strategy_label, validation_mode,
                     ).await;
+                    // Clean up merge worktree after Block mode failure
+                    // (AutoFix keeps worktree for the fixer agent)
+                    if *validation_mode != MergeValidationMode::AutoFix && merge_path != repo_path {
+                        if let Err(e) = GitService::delete_worktree(repo_path, merge_path).await {
+                            tracing::warn!(task_id = task_id_str, error = %e, "Failed to delete merge worktree after validation timeout (non-fatal)");
+                        }
+                    }
                     return;
                 }
                 Ok(Some(validation)) => {
@@ -218,8 +225,15 @@ impl<'a> super::TransitionHandler<'a> {
                         } else {
                             self.handle_validation_failure(
                                 task, task_id, task_id_str, task_repo, &validation.failures, &validation.log,
-                                source_branch, target_branch, repo_path, opts.strategy_label, validation_mode,
+                                source_branch, target_branch, merge_path, opts.strategy_label, validation_mode,
                             ).await;
+                            // Clean up merge worktree after Block mode failure
+                            // (AutoFix keeps worktree for the fixer agent)
+                            if *validation_mode != MergeValidationMode::AutoFix && merge_path != repo_path {
+                                if let Err(e) = GitService::delete_worktree(repo_path, merge_path).await {
+                                    tracing::warn!(task_id = task_id_str, error = %e, "Failed to delete merge worktree after validation failure (non-fatal)");
+                                }
+                            }
                             return;
                         }
                     } else {
@@ -248,6 +262,13 @@ impl<'a> super::TransitionHandler<'a> {
             ).await;
         } else {
             self.post_merge_cleanup(task_id_str, task_id, repo_path, plan_branch_repo).await;
+        }
+
+        // Clean up merge worktree after merge completion (success or failure)
+        if merge_path != repo_path {
+            if let Err(e) = GitService::delete_worktree(repo_path, merge_path).await {
+                tracing::warn!(task_id = task_id_str, error = %e, "Failed to delete merge worktree after merge completion (non-fatal)");
+            }
         }
     }
 

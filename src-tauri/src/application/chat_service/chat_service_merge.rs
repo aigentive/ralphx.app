@@ -412,15 +412,39 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     );
                 }
 
-                // Update task metadata with validation failure details
+                // Update task metadata with validation failure details,
+                // preserving merge_recovery history and incrementing validation_revert_count
                 let (source_branch, target_branch) =
                     resolve_merge_branches(&task, &project, plan_branch_repo).await;
-                task.metadata = Some(format_validation_error_metadata(
+                let error_metadata_str = format_validation_error_metadata(
                     &result.failures,
                     &result.log,
                     &source_branch,
                     &target_branch,
-                ));
+                );
+                // Merge error metadata into existing metadata to preserve revert count and recovery history
+                let mut merged = task
+                    .metadata
+                    .as_deref()
+                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Ok(error_obj) = serde_json::from_str::<serde_json::Value>(&error_metadata_str) {
+                    if let (Some(target), Some(source)) = (merged.as_object_mut(), error_obj.as_object()) {
+                        for (k, v) in source {
+                            target.insert(k.clone(), v.clone());
+                        }
+                    }
+                }
+                // Increment validation_revert_count (tracks how many times we've reverted after validation failure)
+                let prev_revert_count: u32 = merged
+                    .get("validation_revert_count")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0) as u32;
+                if let Some(obj) = merged.as_object_mut() {
+                    obj.insert("validation_revert_count".to_string(), serde_json::json!(prev_revert_count + 1));
+                    obj.insert("merge_failure_source".to_string(), serde_json::json!("ValidationFailed"));
+                }
+                task.metadata = Some(merged.to_string());
                 task.touch();
                 let _ = task_repo.update(&task).await;
 

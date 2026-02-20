@@ -470,16 +470,21 @@ impl<'a> super::TransitionHandler<'a> {
                 })
                 .collect();
 
-            task.metadata = Some(
-                serde_json::json!({
-                    "validation_recovery": true,
-                    "validation_failures": failure_details,
-                    "validation_log": log,
-                    "source_branch": source_branch,
-                    "target_branch": target_branch,
-                })
-                .to_string(),
-            );
+            // Merge new validation recovery metadata into existing metadata
+            // to preserve merge_recovery history and validation_revert_count
+            let mut metadata_obj = task
+                .metadata
+                .as_deref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+            if let Some(obj) = metadata_obj.as_object_mut() {
+                obj.insert("validation_recovery".to_string(), serde_json::json!(true));
+                obj.insert("validation_failures".to_string(), serde_json::json!(failure_details));
+                obj.insert("validation_log".to_string(), serde_json::json!(log));
+                obj.insert("source_branch".to_string(), serde_json::json!(source_branch));
+                obj.insert("target_branch".to_string(), serde_json::json!(target_branch));
+            }
+            task.metadata = Some(metadata_obj.to_string());
             task.worktree_path = Some(merge_path.to_string_lossy().to_string());
             task.internal_status = InternalStatus::Merging;
 
@@ -489,7 +494,13 @@ impl<'a> super::TransitionHandler<'a> {
                 "validation_auto_fix", task_repo,
             ).await;
 
-            let prompt = format!("Fix validation failures for task: {}", task_id_str);
+            let prompt = format!(
+                "Fix validation failures for task: {}. The merge succeeded but post-merge \
+                 validation commands failed. The failing code is on the target branch. \
+                 Read the validation failures from task context, fix the code, run validation \
+                 to confirm, then commit your fixes.",
+                task_id_str
+            );
             tracing::info!(
                 task_id = task_id_str,
                 "Spawning merger agent for validation recovery"
@@ -533,10 +544,13 @@ impl<'a> super::TransitionHandler<'a> {
                 );
             }
 
-            let prev_revert_count: u32 = task
+            // Read prior revert count and merge_recovery from existing metadata before overwriting
+            let existing_metadata = task
                 .metadata
                 .as_deref()
-                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
+            let prev_revert_count: u32 = existing_metadata
+                .as_ref()
                 .and_then(|v| v.get("validation_revert_count").and_then(|c| c.as_u64()).map(|c| c as u32))
                 .unwrap_or(0);
             let revert_count = prev_revert_count + 1;
@@ -550,6 +564,13 @@ impl<'a> super::TransitionHandler<'a> {
                             .unwrap_or(serde_json::json!("validation_failed")),
                     );
                     obj.insert("validation_revert_count".to_string(), serde_json::json!(revert_count));
+                    // Preserve merge_recovery history from prior metadata
+                    if let Some(recovery) = existing_metadata
+                        .as_ref()
+                        .and_then(|v| v.get("merge_recovery").cloned())
+                    {
+                        obj.insert("merge_recovery".to_string(), recovery);
+                    }
                 }
                 v.to_string()
             } else {

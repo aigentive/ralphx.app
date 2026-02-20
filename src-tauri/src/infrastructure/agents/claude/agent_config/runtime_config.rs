@@ -91,7 +91,7 @@ impl Default for ReconciliationConfig {
             qa_stale_minutes: 5,
             merge_incomplete_retry_base_secs: 30,
             merge_incomplete_retry_max_secs: 1800,
-            merge_incomplete_max_retries: 50,
+            merge_incomplete_max_retries: 5,
             validation_revert_max_count: 2,
             merge_conflict_retry_base_secs: 60,
             merge_conflict_retry_max_secs: 600,

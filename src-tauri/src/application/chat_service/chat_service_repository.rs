@@ -17,10 +17,14 @@ pub async fn get_or_create_conversation(
     context_type: ChatContextType,
     context_id: &str,
 ) -> Result<ChatConversation, ChatServiceError> {
-    // TaskExecution: ALWAYS create a fresh conversation — never reuse prior run context.
-    // Worker agents reconstruct context via MCP tools (get_task_context, get_review_notes).
-    // Mirrors is_fresh_review_cycle logic in chat_service_context.rs.
-    if context_type != ChatContextType::TaskExecution {
+    // TaskExecution + Merge: ALWAYS create a fresh conversation — never reuse prior run context.
+    // - TaskExecution: Worker agents reconstruct context via MCP tools (get_task_context, etc.).
+    // - Merge: Each merge attempt (conflict resolution or validation recovery) needs a fresh
+    //   Claude session. Reusing a stale session causes the agent to resume dead context.
+    //   Mirrors is_fresh_review_cycle logic in chat_service_context.rs.
+    let force_fresh =
+        context_type == ChatContextType::TaskExecution || context_type == ChatContextType::Merge;
+    if !force_fresh {
         // Try to get existing active conversation
         if let Some(conv) = conversation_repo
             .get_active_for_context(context_type, context_id)
@@ -31,8 +35,8 @@ pub async fn get_or_create_conversation(
         }
     }
 
-    // For TaskExecution, look up the most recent prior conversation to set as parent.
-    let parent_conversation_id = if context_type == ChatContextType::TaskExecution {
+    // For force-fresh contexts, look up the most recent prior conversation to set as parent.
+    let parent_conversation_id = if force_fresh {
         conversation_repo
             .get_active_for_context(context_type, context_id)
             .await
