@@ -1067,7 +1067,7 @@ mod tests {
             .expect("--tools flag must be present");
         assert_eq!(
             args[tools_idx + 1],
-            "Read,Grep,Glob,Bash,WebFetch,WebSearch,Skill,Task",
+            "Read,Grep,Glob,Bash,WebFetch,WebSearch,Skill,TaskCreate,TaskUpdate,TaskGet,TaskList,TaskOutput,KillShell,MCPSearch,Task",
             "orchestrator-ideation should have base tools + Task"
         );
     }
