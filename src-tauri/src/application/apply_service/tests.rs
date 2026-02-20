@@ -531,6 +531,23 @@ impl TaskRepository for MockTaskRepository {
         Ok(())
     }
 
+    async fn update_with_expected_status(
+        &self,
+        task: &Task,
+        expected_status: InternalStatus,
+    ) -> AppResult<bool> {
+        let mut tasks = self.tasks.lock().unwrap();
+        if let Some(existing) = tasks.get(&task.id.to_string()) {
+            if existing.internal_status != expected_status {
+                return Ok(false);
+            }
+        } else {
+            return Ok(false);
+        }
+        tasks.insert(task.id.to_string(), task.clone());
+        Ok(true)
+    }
+
     async fn update_metadata(&self, _id: &TaskId, _metadata: Option<String>) -> AppResult<()> {
         Ok(())
     }

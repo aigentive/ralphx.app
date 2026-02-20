@@ -39,6 +39,18 @@ pub trait TaskRepository: Send + Sync {
     /// Update a task
     async fn update(&self, task: &Task) -> AppResult<()>;
 
+    /// Update a task only if its current status matches `expected_status` (optimistic lock).
+    ///
+    /// Adds `AND internal_status = expected_status` to the WHERE clause so that
+    /// concurrent transitions of the same task are serialized at the DB level.
+    /// Returns `true` if the update was applied (status matched), `false` if
+    /// another caller already transitioned the task (0 rows affected).
+    async fn update_with_expected_status(
+        &self,
+        task: &Task,
+        expected_status: InternalStatus,
+    ) -> AppResult<bool>;
+
     /// Update only the metadata field of a task
     ///
     /// This method performs a targeted UPDATE of only the `metadata` and `updated_at`

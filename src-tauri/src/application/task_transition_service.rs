@@ -707,8 +707,26 @@ impl<R: Runtime> TaskTransitionService<R> {
             }
         }
 
-        // 4. Persist the update and record history (so UI can see the change)
-        self.task_repo.update(&task).await?;
+        // 4. Persist the update with optimistic locking (WHERE id = ? AND status = old_status)
+        //    If another caller already transitioned this task, rows_affected = 0 → no-op.
+        let updated = self
+            .task_repo
+            .update_with_expected_status(&task, old_status)
+            .await?;
+
+        if !updated {
+            tracing::info!(
+                task_id = task_id.as_str(),
+                from = old_status.as_str(),
+                to = new_status.as_str(),
+                "Optimistic lock: task already transitioned by another caller, skipping"
+            );
+            // Re-fetch to return current state
+            let current = self.task_repo.get_by_id(task_id).await?.ok_or_else(|| {
+                AppError::NotFound(format!("Task not found: {}", task_id.as_str()))
+            })?;
+            return Ok(current);
+        }
 
         // 4.1 Record state transition history for time-travel feature
         if let Err(e) = self
@@ -899,32 +917,44 @@ impl<R: Runtime> TaskTransitionService<R> {
                     failed_task.internal_status = InternalStatus::Failed;
                     failed_task.blocked_reason = Some(e.to_string());
                     failed_task.touch();
-                    if let Err(update_err) = self.task_repo.update(&failed_task).await {
-                        tracing::error!(error = %update_err, "Failed to persist Failed status after ExecutionBlocked");
-                    } else {
-                        // Record state history
-                        let _ = self
-                            .task_repo
-                            .persist_status_change(
-                                task_id,
-                                from_status,
-                                InternalStatus::Failed,
-                                "system",
-                            )
-                            .await;
-                        // Emit event for UI
-                        if let Some(ref handle) = self._app_handle {
-                            let _ = handle.emit(
-                                "task:event",
-                                serde_json::json!({
-                                    "type": "status_changed",
-                                    "taskId": task_id.as_str(),
-                                    "from": from_status.as_str(),
-                                    "to": "failed",
-                                    "changedBy": "system",
-                                    "reason": e.to_string(),
-                                }),
+                    // Use optimistic lock: only overwrite to Failed if task is still in the
+                    // expected state. Prevents clobbering if another caller already transitioned it.
+                    match self.task_repo.update_with_expected_status(&failed_task, from_status).await {
+                        Ok(false) => {
+                            tracing::info!(
+                                task_id = task_id.as_str(),
+                                from = from_status.as_str(),
+                                "Task already transitioned by another caller, skipping Failed overwrite"
                             );
+                        }
+                        Err(update_err) => {
+                            tracing::error!(error = %update_err, "Failed to persist Failed status after ExecutionBlocked");
+                        }
+                        Ok(true) => {
+                            // Record state history
+                            let _ = self
+                                .task_repo
+                                .persist_status_change(
+                                    task_id,
+                                    from_status,
+                                    InternalStatus::Failed,
+                                    "system",
+                                )
+                                .await;
+                            // Emit event for UI
+                            if let Some(ref handle) = self._app_handle {
+                                let _ = handle.emit(
+                                    "task:event",
+                                    serde_json::json!({
+                                        "type": "status_changed",
+                                        "taskId": task_id.as_str(),
+                                        "from": from_status.as_str(),
+                                        "to": "failed",
+                                        "changedBy": "system",
+                                        "reason": e.to_string(),
+                                    }),
+                                );
+                            }
                         }
                     }
                 }

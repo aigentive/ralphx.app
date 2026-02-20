@@ -270,6 +270,14 @@ impl TaskRepository for MockTaskRepo {
         Ok(())
     }
 
+    async fn update_with_expected_status(
+        &self,
+        _task: &crate::domain::entities::Task,
+        _expected_status: crate::domain::entities::InternalStatus,
+    ) -> AppResult<bool> {
+        Ok(true)
+    }
+
     async fn update_metadata(&self, _id: &TaskId, _metadata: Option<String>) -> AppResult<()> {
         Ok(())
     }

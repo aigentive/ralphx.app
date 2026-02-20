@@ -86,6 +86,35 @@ pub trait RunningAgentRegistry: Send + Sync {
     /// Update the last_active_at timestamp for a running agent (throttled heartbeat).
     /// Called from the streaming loop every ~5 seconds on any parsed event.
     async fn update_heartbeat(&self, key: &RunningAgentKey, at: chrono::DateTime<chrono::Utc>);
+
+    /// Atomically check-and-register an agent slot.
+    ///
+    /// If no agent is registered for this key, inserts a placeholder (pid=0) and
+    /// returns `Ok(())`. If an agent is already registered, returns `Err` with the
+    /// existing agent's info. This prevents the TOCTOU race between separate
+    /// `is_running()` + `register()` calls.
+    ///
+    /// After a successful `try_register`, call `update_agent_process()` once the
+    /// CLI process has been spawned. On spawn failure, call `unregister()` to
+    /// release the slot.
+    async fn try_register(
+        &self,
+        key: RunningAgentKey,
+        conversation_id: String,
+        agent_run_id: String,
+    ) -> Result<(), RunningAgentInfo>;
+
+    /// Update process details for an already-registered agent.
+    ///
+    /// Called after the CLI process has been spawned to fill in the real PID,
+    /// worktree path, and cancellation token.
+    async fn update_agent_process(
+        &self,
+        key: &RunningAgentKey,
+        pid: u32,
+        worktree_path: Option<String>,
+        cancellation_token: Option<CancellationToken>,
+    );
 }
 
 /// Check if a process with the given PID is still alive.
@@ -370,6 +399,46 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         let mut agents = self.agents.lock().await;
         if let Some(info) = agents.get_mut(key) {
             info.last_active_at = Some(at);
+        }
+    }
+
+    async fn try_register(
+        &self,
+        key: RunningAgentKey,
+        conversation_id: String,
+        agent_run_id: String,
+    ) -> Result<(), RunningAgentInfo> {
+        let mut agents = self.agents.lock().await;
+        if let Some(existing) = agents.get(&key) {
+            return Err(existing.clone());
+        }
+        agents.insert(
+            key,
+            RunningAgentInfo {
+                pid: 0,
+                conversation_id,
+                agent_run_id,
+                started_at: chrono::Utc::now(),
+                worktree_path: None,
+                cancellation_token: None,
+                last_active_at: None,
+            },
+        );
+        Ok(())
+    }
+
+    async fn update_agent_process(
+        &self,
+        key: &RunningAgentKey,
+        pid: u32,
+        worktree_path: Option<String>,
+        cancellation_token: Option<CancellationToken>,
+    ) {
+        let mut agents = self.agents.lock().await;
+        if let Some(info) = agents.get_mut(key) {
+            info.pid = pid;
+            info.worktree_path = worktree_path;
+            info.cancellation_token = cancellation_token;
         }
     }
 }
