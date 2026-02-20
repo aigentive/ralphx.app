@@ -469,25 +469,28 @@ async fn run_setup_phase(
         );
     }
 
-    // Emit worktree setup completion event
-    if has_setup_commands {
-        if setup_had_failures {
-            emit_merge_progress(
-                app_handle,
-                task_id_str,
-                MergePhase::WorktreeSetup,
-                MergePhaseStatus::Failed,
-                "Worktree setup completed with warnings (non-fatal)".to_string(),
-            );
-        } else {
-            emit_merge_progress(
-                app_handle,
-                task_id_str,
-                MergePhase::WorktreeSetup,
-                MergePhaseStatus::Passed,
-                "Worktree setup completed successfully".to_string(),
-            );
-        }
+    // Always emit worktree setup completion event so the frontend can show
+    // a checkmark (Passed) or skip indicator, even when there are no setup commands.
+    if setup_had_failures {
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::WorktreeSetup,
+            MergePhaseStatus::Failed,
+            "Worktree setup completed with warnings (non-fatal)".to_string(),
+        );
+    } else {
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::WorktreeSetup,
+            MergePhaseStatus::Passed,
+            if has_setup_commands {
+                "Worktree setup completed successfully".to_string()
+            } else {
+                "Worktree setup skipped (no commands)".to_string()
+            },
+        );
     }
 
     (log, setup_had_failures)
@@ -1020,6 +1023,14 @@ pub(crate) async fn run_validation_commands(
         tracing::info!(
             task_id = task_id_str,
             "Skipping worktree setup phase: merge_cwd equals project_root (no worktree)"
+        );
+        // Emit Passed event so the frontend shows a checkmark for WorktreeSetup
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::WorktreeSetup,
+            MergePhaseStatus::Passed,
+            "Worktree setup skipped (no worktree needed)".to_string(),
         );
         (Vec::new(), false)
     } else {
