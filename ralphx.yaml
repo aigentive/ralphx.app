@@ -123,9 +123,9 @@ reconciliation:
   # reconciliation.rs — initial backoff before retrying a MergeIncomplete task (exponential)
   merge_incomplete_retry_base_secs: 30         # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_RETRY_BASE_SECS
   # reconciliation.rs — cap on MergeIncomplete exponential backoff
-  merge_incomplete_retry_max_secs: 300         # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_RETRY_MAX_SECS
+  merge_incomplete_retry_max_secs: 1800        # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_RETRY_MAX_SECS
   # reconciliation.rs — max auto-retry attempts for MergeIncomplete before surfacing to user
-  merge_incomplete_max_retries: 5              # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_MAX_RETRIES
+  merge_incomplete_max_retries: 50             # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_MAX_RETRIES
   # reconciliation.rs — max validation-revert cycles before stopping auto-retry (prevents infinite loops)
   validation_revert_max_count: 2               # Env: RALPHX_RECONCILIATION_VALIDATION_REVERT_MAX_COUNT
   # reconciliation.rs — initial backoff before retrying a MergeConflict task
