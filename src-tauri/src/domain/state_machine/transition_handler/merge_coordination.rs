@@ -18,7 +18,7 @@ use crate::infrastructure::agents::claude::{defer_merge_enabled, git_runtime_con
 
 use super::cleanup_helpers::{run_cleanup_step, CleanupStepResult};
 use super::merge_helpers::{
-    compute_merge_worktree_path, compute_rebase_worktree_path,
+    compute_merge_worktree_path, compute_plan_update_worktree_path, compute_rebase_worktree_path,
     extract_task_id_from_merge_path, is_task_in_merge_workflow,
 };
 use super::merge_validation::emit_merge_progress;
@@ -71,6 +71,194 @@ pub(super) async fn ensure_plan_branch_exists(
             );
         }
     }
+}
+
+/// Result of attempting to update a plan branch from main.
+#[derive(Debug)]
+pub(super) enum PlanUpdateResult {
+    /// Plan branch was already up-to-date with main (no action needed).
+    AlreadyUpToDate,
+    /// Plan branch was updated (fast-forward or merge commit created).
+    Updated,
+    /// Plan branch is behind main but the target is main itself — skip update.
+    NotPlanBranch,
+    /// Merge main into plan branch produced conflicts — needs agent resolution.
+    Conflicts { conflict_files: Vec<PathBuf> },
+    /// Git error during the update attempt.
+    Error(String),
+}
+
+/// Update a plan branch from main before a task→plan merge.
+///
+/// When a task merges into a plan branch (not main), the plan branch may be behind
+/// main if fixes were committed to main after the plan branch was created. This causes
+/// false validation failures because the plan branch code doesn't have those fixes.
+///
+/// This function checks if the plan branch is behind main and, if so, merges main
+/// into the plan branch using an isolated worktree. On conflict, returns
+/// `PlanUpdateResult::Conflicts` so the caller can route to the merger agent.
+///
+/// Only runs when `target_branch != base_branch` (i.e., target is a plan branch).
+pub(super) async fn update_plan_from_main(
+    repo_path: &Path,
+    target_branch: &str,
+    base_branch: &str,
+    project: &crate::domain::entities::Project,
+    task_id_str: &str,
+    app_handle: Option<&tauri::AppHandle>,
+) -> PlanUpdateResult {
+    // Only update when merging to a plan branch (not main)
+    if target_branch == base_branch {
+        return PlanUpdateResult::NotPlanBranch;
+    }
+
+    // Check if main's HEAD is already an ancestor of the plan branch
+    // (i.e., the plan branch already has all of main's changes)
+    let main_sha = match GitService::get_branch_sha(repo_path, base_branch).await {
+        Ok(sha) => sha,
+        Err(e) => {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                base_branch = %base_branch,
+                "Failed to get SHA for base branch — skipping plan branch update"
+            );
+            return PlanUpdateResult::Error(format!("Failed to get SHA for {}: {}", base_branch, e));
+        }
+    };
+
+    match GitService::is_commit_on_branch(repo_path, &main_sha, target_branch).await {
+        Ok(true) => {
+            tracing::debug!(
+                task_id = task_id_str,
+                target_branch = %target_branch,
+                base_branch = %base_branch,
+                "Plan branch is up-to-date with main — no update needed"
+            );
+            return PlanUpdateResult::AlreadyUpToDate;
+        }
+        Ok(false) => {
+            tracing::info!(
+                task_id = task_id_str,
+                target_branch = %target_branch,
+                base_branch = %base_branch,
+                main_sha = %main_sha,
+                "Plan branch is behind main — updating before task merge"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to check if plan branch is up-to-date — skipping update"
+            );
+            return PlanUpdateResult::Error(format!("is_commit_on_branch check failed: {}", e));
+        }
+    }
+
+    emit_merge_progress(
+        app_handle,
+        task_id_str,
+        MergePhase::ProgrammaticMerge,
+        MergePhaseStatus::Started,
+        format!("Updating {} from {} before merge", target_branch, base_branch),
+    );
+
+    // Use checkout-free merge if target is already checked out
+    let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
+    if current_branch == target_branch {
+        // Target is checked out in main repo — merge main directly
+        match GitService::merge_branch(repo_path, base_branch, target_branch).await {
+            Ok(result) => {
+                let sha = match &result {
+                    crate::application::MergeResult::Success { commit_sha }
+                    | crate::application::MergeResult::FastForward { commit_sha } => commit_sha.clone(),
+                    crate::application::MergeResult::Conflict { files } => {
+                        // Abort the in-progress merge so the working tree is clean
+                        let _ = GitService::abort_merge(repo_path).await;
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            conflict_count = files.len(),
+                            "Conflicts detected updating plan branch from main (checkout-free)"
+                        );
+                        return PlanUpdateResult::Conflicts {
+                            conflict_files: files.iter().map(PathBuf::from).collect(),
+                        };
+                    }
+                };
+                tracing::info!(
+                    task_id = task_id_str,
+                    commit_sha = %sha,
+                    "Plan branch updated from main (checkout-free)"
+                );
+                return PlanUpdateResult::Updated;
+            }
+            Err(e) => {
+                return PlanUpdateResult::Error(format!("checkout-free merge failed: {}", e));
+            }
+        }
+    }
+
+    // Target not checked out — use isolated worktree
+    // try_merge_in_worktree merges base_branch (main) into target_branch (plan)
+    let wt_path_str = super::merge_helpers::compute_plan_update_worktree_path(project, task_id_str);
+    let wt_path = PathBuf::from(&wt_path_str);
+
+    // Clean up any stale worktree from a prior attempt
+    if wt_path.exists() {
+        if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to delete stale plan-update worktree (non-fatal)"
+            );
+        }
+    }
+
+    let result = match GitService::try_merge_in_worktree(
+        repo_path,
+        base_branch,      // source = main
+        target_branch,    // target = plan branch
+        &wt_path,
+    )
+    .await
+    {
+        Ok(crate::application::MergeAttemptResult::Success { commit_sha }) => {
+            tracing::info!(
+                task_id = task_id_str,
+                target_branch = %target_branch,
+                base_branch = %base_branch,
+                commit_sha = %commit_sha,
+                "Plan branch updated from main via worktree"
+            );
+            PlanUpdateResult::Updated
+        }
+        Ok(crate::application::MergeAttemptResult::NeedsAgent { conflict_files }) => {
+            tracing::warn!(
+                task_id = task_id_str,
+                conflict_count = conflict_files.len(),
+                "Conflicts detected updating plan branch from main via worktree"
+            );
+            PlanUpdateResult::Conflicts { conflict_files }
+        }
+        Ok(crate::application::MergeAttemptResult::BranchNotFound { branch }) => {
+            PlanUpdateResult::Error(format!("Branch not found during plan update: {}", branch))
+        }
+        Err(e) => PlanUpdateResult::Error(format!("Plan update merge failed: {}", e)),
+    };
+
+    // Clean up worktree (always, regardless of outcome)
+    if wt_path.exists() {
+        if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to clean up plan-update worktree (non-fatal)"
+            );
+        }
+    }
+
+    result
 }
 
 /// Check if a main-branch merge should be deferred.
@@ -333,6 +521,7 @@ impl<'a> super::TransitionHandler<'a> {
             for (wt_label, own_wt) in [
                 ("merge", compute_merge_worktree_path(project, task_id_str)),
                 ("rebase", compute_rebase_worktree_path(project, task_id_str)),
+                ("plan-update", compute_plan_update_worktree_path(project, task_id_str)),
             ] {
                 let own_wt_path = PathBuf::from(&own_wt);
                 if own_wt_path.exists() {

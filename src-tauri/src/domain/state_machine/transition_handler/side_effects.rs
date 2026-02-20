@@ -150,6 +150,53 @@ impl<'a> super::TransitionHandler<'a> {
             &task, repo_path, &target_branch, plan_branch_repo,
         ).await;
 
+        // Update plan branch from main if behind (prevents false validation failures)
+        match super::merge_coordination::update_plan_from_main(
+            repo_path,
+            &target_branch,
+            base_branch,
+            &project,
+            task_id_str,
+            self.machine.context.services.app_handle.as_ref(),
+        ).await {
+            super::merge_coordination::PlanUpdateResult::AlreadyUpToDate
+            | super::merge_coordination::PlanUpdateResult::Updated
+            | super::merge_coordination::PlanUpdateResult::NotPlanBranch => {
+                // Continue with merge
+            }
+            super::merge_coordination::PlanUpdateResult::Conflicts { conflict_files } => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    conflict_count = conflict_files.len(),
+                    "Plan branch update from main produced conflicts — routing to merger agent"
+                );
+                let metadata = serde_json::json!({
+                    "error": "Conflicts detected while updating plan branch from main. Merger agent needed.",
+                    "conflict_files": conflict_files.iter().map(|f| f.display().to_string()).collect::<Vec<_>>(),
+                    "source_branch": source_branch,
+                    "target_branch": target_branch,
+                    "plan_update_conflict": true,
+                });
+                task.metadata = Some(metadata.to_string());
+                task.internal_status = InternalStatus::Merging;
+                self.persist_merge_transition(
+                    &mut task, &task_id, task_id_str,
+                    InternalStatus::PendingMerge, InternalStatus::Merging,
+                    "plan_update_conflict", task_repo,
+                ).await;
+                return;
+            }
+            super::merge_coordination::PlanUpdateResult::Error(err) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %err,
+                    "Plan branch update from main failed (non-fatal) — proceeding with merge"
+                );
+                // Non-fatal: continue with merge anyway. The plan branch may still pass validation
+                // if the divergence doesn't affect the validation commands.
+            }
+        }
+
         // "Already merged" early exit
         if self.check_already_merged(
             &mut task, &task_id, task_id_str, &project, repo_path,
