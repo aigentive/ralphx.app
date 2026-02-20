@@ -2,9 +2,8 @@
 
 use super::helpers::*;
 use crate::domain::state_machine::{
-    State, TaskEvent, TaskStateMachine, TransitionHandler,
+    State, TaskEvent, TransitionHandler,
 };
-use std::sync::Arc;
 
 // ==================
 // Reload continuation tests
@@ -60,25 +59,13 @@ async fn test_reload_continuation_enter_states_without_app_handle() {
 // Intentionally tests the no-repos early-return guard — validates reload recovery path
 #[tokio::test]
 async fn test_reload_continuation_state_recovery() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
     // Phase 1: Task enters PendingMerge
-    let scheduler1 = Arc::new(MockTaskScheduler::new());
-    let services1 = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler1)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-    let context1 = create_context_with_services("task-1", "proj-1", services1);
-    let mut machine1 = TaskStateMachine::new(context1);
+    let (mut machine1, _scheduler1) = new_machine_with_scheduler("task-1", "proj-1");
     let handler1 = TransitionHandler::new(&mut machine1);
     let _ = handler1.on_enter(&State::PendingMerge).await;
 
     // Phase 2: Simulate "reload" — create fresh context for same task
-    let scheduler2 = Arc::new(MockTaskScheduler::new());
-    let services2 = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler2)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-    let context2 = create_context_with_services("task-1", "proj-1", services2);
-    let mut machine2 = TaskStateMachine::new(context2);
+    let (mut machine2, scheduler2) = new_machine_with_scheduler("task-1", "proj-1");
     let handler2 = TransitionHandler::new(&mut machine2);
 
     let result = handler2.on_enter(&State::PendingMerge).await;
@@ -198,17 +185,10 @@ async fn test_event_emission_full_merge_event_sequence() {
 /// Regression: deferred merge retry preserved on all PendingMerge exits.
 #[tokio::test]
 async fn test_deferred_merge_retry_on_all_pending_merge_exits() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
     let target_states = [State::Merged, State::MergeIncomplete, State::Merging];
 
     for target in &target_states {
-        let scheduler = Arc::new(MockTaskScheduler::new());
-        let services = TaskServices::new_mock().with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-
-        let context = create_context_with_services("task-1", "proj-1", services);
-        let mut machine = TaskStateMachine::new(context);
+        let (mut machine, scheduler) = new_machine_with_scheduler("task-1", "proj-1");
         let handler = TransitionHandler::new(&mut machine);
         handler.on_exit(&State::PendingMerge, target).await;
 
@@ -234,17 +214,10 @@ async fn test_deferred_merge_retry_on_all_pending_merge_exits() {
 /// Regression: deferred merge retry preserved on all Merging exits.
 #[tokio::test]
 async fn test_deferred_merge_retry_on_all_merging_exits() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
     let target_states = [State::Merged, State::MergeIncomplete, State::MergeConflict];
 
     for target in &target_states {
-        let scheduler = Arc::new(MockTaskScheduler::new());
-        let services = TaskServices::new_mock().with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-
-        let context = create_context_with_services("task-1", "proj-1", services);
-        let mut machine = TaskStateMachine::new(context);
+        let (mut machine, scheduler) = new_machine_with_scheduler("task-1", "proj-1");
         let handler = TransitionHandler::new(&mut machine);
         handler.on_exit(&State::Merging, target).await;
 
@@ -266,15 +239,7 @@ async fn test_deferred_merge_retry_on_all_merging_exits() {
 /// Regression: single on_exit produces exactly one deferred retry (no duplicates).
 #[tokio::test]
 async fn test_deferred_merge_no_duplicate_retries() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
-    let scheduler = Arc::new(MockTaskScheduler::new());
-    let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-
-    let context = create_context_with_services("task-1", "proj-1", services);
-    let mut machine = TaskStateMachine::new(context);
+    let (mut machine, scheduler) = new_machine_with_scheduler("task-1", "proj-1");
     let handler = TransitionHandler::new(&mut machine);
     handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
@@ -295,8 +260,6 @@ async fn test_deferred_merge_no_duplicate_retries() {
 /// Regression: non-merge state exits do NOT trigger deferred merge retry.
 #[tokio::test]
 async fn test_deferred_merge_not_triggered_by_non_merge_exits() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
     let non_merge_transitions = [
         (State::Executing, State::PendingReview),
         (State::Reviewing, State::ReviewPassed),
@@ -307,12 +270,7 @@ async fn test_deferred_merge_not_triggered_by_non_merge_exits() {
     ];
 
     for (from, to) in &non_merge_transitions {
-        let scheduler = Arc::new(MockTaskScheduler::new());
-        let services = TaskServices::new_mock().with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-
-        let context = create_context_with_services("task-1", "proj-1", services);
-        let mut machine = TaskStateMachine::new(context);
+        let (mut machine, scheduler) = new_machine_with_scheduler("task-1", "proj-1");
         let handler = TransitionHandler::new(&mut machine);
         handler.on_exit(from, to).await;
 
@@ -339,7 +297,6 @@ async fn test_deferred_merge_not_triggered_by_non_merge_exits() {
 #[tokio::test]
 async fn test_merge_exit_triggers_main_merge_retry_when_all_idle() {
     use crate::commands::ExecutionState;
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
 
     let scheduler = Arc::new(MockTaskScheduler::new());
     let execution_state = Arc::new(ExecutionState::new());
@@ -373,7 +330,6 @@ async fn test_merge_exit_triggers_main_merge_retry_when_all_idle() {
 #[tokio::test]
 async fn test_merge_exit_skips_main_merge_retry_when_agents_running() {
     use crate::commands::ExecutionState;
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
 
     let scheduler = Arc::new(MockTaskScheduler::new());
     let execution_state = Arc::new(ExecutionState::new());
@@ -408,7 +364,6 @@ async fn test_merge_exit_skips_main_merge_retry_when_agents_running() {
 #[tokio::test]
 async fn test_merging_exit_triggers_main_merge_retry_when_all_idle() {
     use crate::commands::ExecutionState;
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
 
     let scheduler = Arc::new(MockTaskScheduler::new());
     let execution_state = Arc::new(ExecutionState::new());
