@@ -176,17 +176,15 @@ impl InternalStatus {
     }
 
     /// Whether this status satisfies a dependency (unblocks dependents).
+    /// Only Merged and Cancelled satisfy — the task completed its purpose.
     /// Failed is NOT satisfied — dependents stay Blocked to prevent cascade
     /// execution against broken output. Users must manually unblock or cancel.
-    /// Stopped is NOT satisfied — the task was interrupted before completing its
-    /// work, so dependents should remain blocked until the task is restarted and
-    /// finishes or is explicitly cancelled.
-    /// Contrast with `is_terminal()` which includes Failed and Stopped.
+    /// Stopped is NOT satisfied — the task was interrupted before completing.
+    /// MergeIncomplete is NOT satisfied — the merge failed (conflict, validation
+    /// failure), code is not on the target branch, dependents should not proceed.
+    /// Contrast with `is_terminal()` which also includes Failed, Stopped, MergeIncomplete.
     pub fn is_dependency_satisfied(&self) -> bool {
-        matches!(
-            self,
-            Self::Merged | Self::Cancelled | Self::MergeIncomplete
-        )
+        matches!(self, Self::Merged | Self::Cancelled)
     }
 
     /// Returns the snake_case string representation (matches serde serialization)

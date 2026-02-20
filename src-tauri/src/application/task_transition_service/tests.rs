@@ -89,7 +89,8 @@ async fn test_is_blocker_complete_with_stopped_state() {
     );
 }
 
-/// MergeIncomplete is terminal — requires manual intervention, must not permanently block dependents.
+/// MergeIncomplete does NOT satisfy dependencies — merge failed, code not on target branch.
+/// A task with a MergeIncomplete blocker should remain blocked.
 #[tokio::test]
 async fn test_is_blocker_complete_with_merge_incomplete_state() {
     let app_state = AppState::new_test();
@@ -113,8 +114,8 @@ async fn test_is_blocker_complete_with_merge_incomplete_state() {
 
     let has_blockers = manager.has_unresolved_blockers(blocked.id.as_str()).await;
     assert!(
-        !has_blockers,
-        "MergeIncomplete blockers should be treated as terminal (no longer blocking)"
+        has_blockers,
+        "MergeIncomplete blockers should NOT satisfy dependencies (merge failed)"
     );
 }
 

@@ -1119,9 +1119,10 @@ async fn test_all_blockers_complete_treats_stopped_as_not_satisfied() {
     );
 }
 
-/// MergeIncomplete is terminal — a blocked task should be unblocked when its blocker is MergeIncomplete.
+/// MergeIncomplete does NOT satisfy dependencies — merge failed, code not on target branch.
+/// A blocked task should remain Blocked when its blocker is MergeIncomplete.
 #[tokio::test]
-async fn test_all_blockers_complete_treats_merge_incomplete_as_terminal() {
+async fn test_all_blockers_complete_treats_merge_incomplete_as_unsatisfied() {
     let (execution_state, app_state) = setup_test_state().await;
 
     // Create a project
@@ -1166,7 +1167,7 @@ async fn test_all_blockers_complete_treats_merge_incomplete_as_terminal() {
     // Run startup
     runner.run().await;
 
-    // Verify the blocked task is now Ready (MergeIncomplete blocker is terminal)
+    // Verify the blocked task is still Blocked (MergeIncomplete does not satisfy dependencies)
     let updated_task = app_state
         .task_repo
         .get_by_id(&blocked_task.id)
@@ -1175,8 +1176,8 @@ async fn test_all_blockers_complete_treats_merge_incomplete_as_terminal() {
         .unwrap();
     assert_eq!(
         updated_task.internal_status,
-        InternalStatus::Ready,
-        "Blocked task should become Ready when blocker is MergeIncomplete (terminal)"
+        InternalStatus::Blocked,
+        "Blocked task should remain Blocked when blocker is MergeIncomplete (merge failed)"
     );
 }
 

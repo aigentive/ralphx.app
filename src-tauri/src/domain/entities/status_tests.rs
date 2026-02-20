@@ -840,7 +840,7 @@ fn test_is_dependency_satisfied() {
     use InternalStatus::*;
 
     // These statuses satisfy dependencies (unblock dependents)
-    let satisfied = [Merged, Cancelled, MergeIncomplete];
+    let satisfied = [Merged, Cancelled];
     for status in &satisfied {
         assert!(
             status.is_dependency_satisfied(),
@@ -870,7 +870,18 @@ fn test_is_dependency_satisfied() {
         "Stopped should still be terminal"
     );
 
-    // All non-terminal statuses should also not satisfy dependencies
+    // MergeIncomplete is terminal but does NOT satisfy dependencies —
+    // the merge failed, code is not on the target branch
+    assert!(
+        !MergeIncomplete.is_dependency_satisfied(),
+        "MergeIncomplete should NOT satisfy dependencies"
+    );
+    assert!(
+        MergeIncomplete.is_terminal(),
+        "MergeIncomplete should still be terminal"
+    );
+
+    // All non-satisfied statuses should not satisfy dependencies
     let non_satisfied: Vec<&InternalStatus> = InternalStatus::all_variants()
         .iter()
         .filter(|s| !satisfied.contains(s))
@@ -888,11 +899,11 @@ fn test_is_dependency_satisfied() {
 #[test]
 fn test_is_dependency_satisfied_covers_all_variants() {
     use InternalStatus::*;
-    let satisfied = [Merged, Cancelled, MergeIncomplete];
+    let satisfied = [Merged, Cancelled];
     let not_satisfied = [
         Backlog, Ready, Blocked, Executing, QaRefining, QaTesting, QaPassed, QaFailed,
         PendingReview, Reviewing, ReviewPassed, Escalated, RevisionNeeded, ReExecuting,
-        Approved, PendingMerge, Merging, MergeConflict, Paused, Failed, Stopped,
+        Approved, PendingMerge, Merging, MergeConflict, MergeIncomplete, Paused, Failed, Stopped,
     ];
     assert_eq!(
         satisfied.len() + not_satisfied.len(),
