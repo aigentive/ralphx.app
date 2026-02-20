@@ -315,6 +315,8 @@ pub enum ChatServiceError {
     ConversationNotFound(String),
     RepositoryError(String),
     AgentRunFailed(String),
+    /// An agent is already running for this context. The message was auto-queued.
+    AgentAlreadyRunning(String),
 }
 
 impl std::fmt::Display for ChatServiceError {
@@ -328,6 +330,7 @@ impl std::fmt::Display for ChatServiceError {
             Self::ConversationNotFound(msg) => write!(f, "Conversation not found: {}", msg),
             Self::RepositoryError(msg) => write!(f, "Repository error: {}", msg),
             Self::AgentRunFailed(msg) => write!(f, "Agent run failed: {}", msg),
+            Self::AgentAlreadyRunning(msg) => write!(f, "Agent already running: {}", msg),
         }
     }
 }
