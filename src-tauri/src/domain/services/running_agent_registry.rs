@@ -88,6 +88,29 @@ pub trait RunningAgentRegistry: Send + Sync {
     async fn update_heartbeat(&self, key: &RunningAgentKey, at: chrono::DateTime<chrono::Utc>);
 }
 
+/// Check if a process with the given PID is still alive.
+///
+/// Uses `kill -0` on Unix to probe without sending a signal.
+/// Returns false if the process does not exist or we lack permissions.
+pub fn is_process_alive(pid: u32) -> bool {
+    #[cfg(unix)]
+    {
+        let output = std::process::Command::new("kill")
+            .args(["-0", &pid.to_string()])
+            .output();
+        matches!(output, Ok(result) if result.status.success())
+    }
+
+    #[cfg(windows)]
+    {
+        let output = std::process::Command::new("tasklist")
+            .args(["/FI", &format!("PID eq {}", pid), "/NH"])
+            .output();
+        matches!(output, Ok(result) if result.status.success()
+            && !String::from_utf8_lossy(&result.stdout).contains("No tasks"))
+    }
+}
+
 /// Send SIGTERM to a process and all its children (process tree kill).
 ///
 /// On Unix: first kills children via `pkill -TERM -P <pid>`, then kills the parent.
@@ -272,6 +295,25 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
             last_active_at: None,
         };
         let mut agents = self.agents.lock().await;
+
+        // Stop orphaned agent if one already exists for this key
+        if let Some(existing) = agents.get(&key) {
+            let old_pid = existing.pid;
+            if old_pid != pid && is_process_alive(old_pid) {
+                tracing::warn!(
+                    old_pid,
+                    new_pid = pid,
+                    context_type = %key.context_type,
+                    context_id = %key.context_id,
+                    "Detected orphaned agent process — stopping before re-registration"
+                );
+                if let Some(ref token) = existing.cancellation_token {
+                    token.cancel();
+                }
+                kill_process(old_pid);
+            }
+        }
+
         agents.insert(key, info);
     }
 
@@ -431,6 +473,58 @@ mod tests {
         // Double unregister should return None
         let info = registry.unregister(&key).await;
         assert!(info.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_register_stops_orphaned_process() {
+        let registry = MemoryRunningAgentRegistry::new();
+        let key = RunningAgentKey::new("task", "task-orphan");
+        let old_token = CancellationToken::new();
+
+        // Spawn a real process so is_process_alive returns true
+        let child = std::process::Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("spawn sleep");
+        let old_pid = child.id();
+
+        registry
+            .register(
+                key.clone(),
+                old_pid,
+                "conv-old".to_string(),
+                "run-old".to_string(),
+                None,
+                Some(old_token.clone()),
+            )
+            .await;
+
+        assert!(!old_token.is_cancelled());
+        assert!(is_process_alive(old_pid));
+
+        // Re-register with a new PID — should stop the old process
+        registry
+            .register(
+                key.clone(),
+                99999,
+                "conv-new".to_string(),
+                "run-new".to_string(),
+                None,
+                None,
+            )
+            .await;
+
+        // Old token should be cancelled
+        assert!(old_token.is_cancelled());
+
+        // Old process should be killed (give a moment for SIGTERM)
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!is_process_alive(old_pid));
+
+        // New registration should be active
+        let info = registry.get(&key).await.unwrap();
+        assert_eq!(info.pid, 99999);
+        assert_eq!(info.conversation_id, "conv-new");
     }
 
     #[tokio::test]

@@ -12,7 +12,8 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::services::{
-    kill_process, kill_worktree_processes, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
+    is_process_alive, kill_process, kill_worktree_processes, RunningAgentInfo, RunningAgentKey,
+    RunningAgentRegistry,
 };
 
 /// SQLite-backed implementation of RunningAgentRegistry.
@@ -43,6 +44,50 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
     ) {
+        // Check for existing agent and stop it if still alive
+        {
+            let conn = self.conn.lock().await;
+            let existing = conn
+                .query_row(
+                    "SELECT pid, worktree_path FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+                    rusqlite::params![key.context_type, key.context_id],
+                    |row| {
+                        let old_pid: u32 = row.get(0)?;
+                        let old_worktree: Option<String> = row.get(1)?;
+                        Ok((old_pid, old_worktree))
+                    },
+                )
+                .ok();
+            drop(conn);
+
+            if let Some((old_pid, old_worktree)) = existing {
+                if old_pid != pid && is_process_alive(old_pid) {
+                    tracing::warn!(
+                        old_pid,
+                        new_pid = pid,
+                        context_type = %key.context_type,
+                        context_id = %key.context_id,
+                        "Detected orphaned agent process — stopping before re-registration"
+                    );
+                    // Cancel old cancellation token
+                    {
+                        let mut tokens = self.tokens.lock().await;
+                        if let Some(old_token) = tokens.remove(&key) {
+                            old_token.cancel();
+                        }
+                    }
+                    // Kill worktree processes if applicable
+                    if let Some(ref path) = old_worktree {
+                        let worktree = PathBuf::from(path);
+                        if worktree.exists() {
+                            kill_worktree_processes(&worktree);
+                        }
+                    }
+                    kill_process(old_pid);
+                }
+            }
+        }
+
         let conn = self.conn.lock().await;
         let started_at = chrono::Utc::now().to_rfc3339();
         let _ = conn.execute(
@@ -528,6 +573,63 @@ mod tests {
 
         let info = registry.get(&key).await.unwrap();
         assert_eq!(info.pid, 200);
+        assert_eq!(info.conversation_id, "conv-new");
+
+        // Only one entry
+        let all = registry.list_all().await;
+        assert_eq!(all.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_register_stops_orphaned_process() {
+        let conn = setup_conn();
+        let registry = SqliteRunningAgentRegistry::new(conn);
+        let key = RunningAgentKey::new("task", "task-orphan");
+        let old_token = CancellationToken::new();
+
+        // Spawn a real process so is_process_alive returns true
+        let child = std::process::Command::new("sleep")
+            .arg("60")
+            .spawn()
+            .expect("spawn sleep");
+        let old_pid = child.id();
+
+        registry
+            .register(
+                key.clone(),
+                old_pid,
+                "conv-old".to_string(),
+                "run-old".to_string(),
+                None,
+                Some(old_token.clone()),
+            )
+            .await;
+
+        assert!(!old_token.is_cancelled());
+        assert!(is_process_alive(old_pid));
+
+        // Re-register with a new PID — should stop the old process
+        registry
+            .register(
+                key.clone(),
+                99999,
+                "conv-new".to_string(),
+                "run-new".to_string(),
+                None,
+                None,
+            )
+            .await;
+
+        // Old token should be cancelled
+        assert!(old_token.is_cancelled());
+
+        // Old process should be killed (give a moment for SIGTERM)
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(!is_process_alive(old_pid));
+
+        // New registration should be active
+        let info = registry.get(&key).await.unwrap();
+        assert_eq!(info.pid, 99999);
         assert_eq!(info.conversation_id, "conv-new");
 
         // Only one entry
