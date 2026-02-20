@@ -50,7 +50,7 @@ use crate::domain::repositories::{
 use crate::error::AppResult;
 pub(super) const TEMP_SKIP_POST_MERGE_VALIDATION: bool = true;
 
-use super::cleanup_helpers::{run_cleanup_step, spawn_schedule_after_settle};
+use super::cleanup_helpers::run_cleanup_step;
 use super::commit_messages::{build_plan_merge_commit_msg, build_squash_commit_msg};
 
 impl<'a> super::TransitionHandler<'a> {
@@ -1119,10 +1119,12 @@ impl<'a> super::TransitionHandler<'a> {
         // Without this, unblocked tasks rely on the ReadyWatchdog (60s interval) to be
         // scheduled, causing up to 90s delay. This mirrors on_enter(Merged) in on_enter_states.rs.
         if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
-            spawn_schedule_after_settle(
-                Arc::clone(scheduler),
-                scheduler_config().merge_settle_ms,
-            );
+            let scheduler = Arc::clone(scheduler);
+            let merge_settle_ms = scheduler_config().merge_settle_ms;
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms)).await;
+                scheduler.try_schedule_ready_tasks().await;
+            });
         }
 
     }
