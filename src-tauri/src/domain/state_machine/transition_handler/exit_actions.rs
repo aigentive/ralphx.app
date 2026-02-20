@@ -1,0 +1,222 @@
+// Exit-action helpers extracted from mod.rs to reduce file size.
+//
+// Contains: auto-commit on execution done, revision-cap enforcement,
+// deferred-merge retry trigger, and working-directory resolution.
+
+use std::sync::Arc;
+
+use crate::application::GitService;
+use crate::domain::entities::{ProjectId, TaskId};
+use crate::domain::review::config::ReviewSettings;
+use crate::domain::state_machine::machine::State;
+use crate::domain::state_machine::types::FailedData;
+
+use super::merge_helpers;
+use super::merge_helpers::clear_trigger_origin;
+
+/// Context bag passed from TransitionHandler to avoid leaking `machine` internals.
+pub(crate) struct ExitContext {
+    pub task_id: String,
+    pub project_id: String,
+    pub task_repo: Option<Arc<dyn crate::domain::repositories::TaskRepository>>,
+    pub project_repo: Option<Arc<dyn crate::domain::repositories::ProjectRepository>>,
+    pub task_scheduler: Option<Arc<dyn crate::domain::state_machine::services::TaskScheduler>>,
+    pub execution_state: Option<Arc<crate::commands::ExecutionState>>,
+}
+
+/// Clear trigger_origin metadata when exiting agent-active states.
+pub(crate) async fn clear_trigger_origin_on_exit(ctx: &ExitContext) {
+    let Some(ref task_repo) = ctx.task_repo else {
+        return;
+    };
+    let task_id = TaskId::from_string(ctx.task_id.clone());
+    if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
+        clear_trigger_origin(&mut task);
+        if let Err(e) = task_repo
+            .update_metadata(&task_id, task.metadata.clone())
+            .await
+        {
+            tracing::error!(
+                task_id = %ctx.task_id,
+                error = %e,
+                "Failed to clear trigger_origin in metadata on state exit"
+            );
+        }
+    }
+}
+
+/// Retry deferred merges when a task exits the merge workflow (PendingMerge | Merging).
+pub(crate) fn spawn_deferred_merge_retry(ctx: &ExitContext, from: &State, to: &State) {
+    let Some(ref scheduler) = ctx.task_scheduler else {
+        return;
+    };
+    let scheduler = Arc::clone(scheduler);
+    let project_id = ctx.project_id.clone();
+    let from_state = format!("{:?}", from);
+    let to_state = format!("{:?}", to);
+    let execution_state_clone = ctx.execution_state.as_ref().map(Arc::clone);
+
+    tracing::info!(
+        task_id = %ctx.task_id,
+        from = %from_state,
+        to = %to_state,
+        "Task exiting merge workflow, triggering deferred merge retry"
+    );
+
+    tokio::spawn(async move {
+        scheduler.try_retry_deferred_merges(&project_id).await;
+        if execution_state_clone
+            .as_ref()
+            .map(|s| s.running_count() == 0)
+            .unwrap_or(false)
+        {
+            scheduler.try_retry_main_merges().await;
+        }
+    });
+}
+
+/// Check if the revision cap has been exceeded for a RevisionNeeded -> ReExecuting auto-transition.
+///
+/// If the task has exceeded `max_revision_cycles`, returns `State::Failed`.
+/// Otherwise increments the revision count and returns `default_state`.
+pub(crate) async fn check_revision_cap_or_fail(ctx: &ExitContext, default_state: State) -> State {
+    let Some(ref task_repo) = ctx.task_repo else {
+        tracing::debug!(
+            task_id = %ctx.task_id,
+            "Skipping revision cap check: task_repo not available"
+        );
+        return default_state;
+    };
+
+    let task_id = TaskId::from_string(ctx.task_id.clone());
+    let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await else {
+        tracing::warn!(
+            task_id = %ctx.task_id,
+            "Skipping revision cap check: failed to fetch task"
+        );
+        return default_state;
+    };
+
+    let settings = ReviewSettings::default();
+    let revision_count = merge_helpers::get_revision_count(&task);
+
+    if settings.exceeded_max_revisions(revision_count) {
+        let max = settings.max_revision_cycles;
+        tracing::warn!(
+            task_id = %ctx.task_id,
+            revision_count = revision_count,
+            max_revision_cycles = max,
+            "Revision cap exceeded, transitioning to Failed instead of ReExecuting"
+        );
+        return State::Failed(FailedData::new(format!(
+            "Exceeded maximum revision cycles ({}/{}). Task has been through too many review-revise loops.",
+            revision_count, max
+        )));
+    }
+
+    // Increment revision count for this cycle
+    let new_count = merge_helpers::increment_revision_count(&mut task);
+    if let Err(e) = task_repo
+        .update_metadata(&task_id, task.metadata.clone())
+        .await
+    {
+        tracing::error!(
+            task_id = %ctx.task_id,
+            error = %e,
+            "Failed to update revision_count in metadata"
+        );
+    } else {
+        tracing::info!(
+            task_id = %ctx.task_id,
+            revision_count = new_count,
+            max_revision_cycles = settings.max_revision_cycles,
+            "Incremented revision count for re-execution cycle"
+        );
+    }
+
+    default_state
+}
+
+/// Auto-commit uncommitted changes when exiting Executing/ReExecuting.
+pub(crate) async fn auto_commit_on_execution_done(ctx: &ExitContext) {
+    let (Some(ref task_repo), Some(ref project_repo)) = (&ctx.task_repo, &ctx.project_repo) else {
+        tracing::debug!(
+            task_id = %ctx.task_id,
+            "Skipping auto-commit: repos not available"
+        );
+        return;
+    };
+
+    let task_id = TaskId::from_string(ctx.task_id.clone());
+    let project_id = ProjectId::from_string(ctx.project_id.clone());
+
+    let task_result = task_repo.get_by_id(&task_id).await;
+    let project_result = project_repo.get_by_id(&project_id).await;
+
+    let (Ok(Some(task)), Ok(Some(project))) = (task_result, project_result) else {
+        tracing::warn!(
+            task_id = %ctx.task_id,
+            "Skipping auto-commit: failed to fetch task or project"
+        );
+        return;
+    };
+
+    let working_path = resolve_working_directory(&task, &project);
+
+    match GitService::has_uncommitted_changes(&working_path).await {
+        Ok(true) => {
+            let prefix = "feat: ";
+            let message = format!("{}{}", prefix, task.title);
+
+            match GitService::commit_all(&working_path, &message).await {
+                Ok(Some(sha)) => {
+                    tracing::info!(
+                        task_id = %ctx.task_id,
+                        commit_sha = %sha,
+                        message = %message,
+                        "Auto-committed changes on execution completion"
+                    );
+                }
+                Ok(None) => {
+                    tracing::debug!(
+                        task_id = %ctx.task_id,
+                        "Auto-commit: no staged changes to commit"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = %ctx.task_id,
+                        error = %e,
+                        "Auto-commit failed (non-fatal)"
+                    );
+                }
+            }
+        }
+        Ok(false) => {
+            tracing::debug!(
+                task_id = %ctx.task_id,
+                "No uncommitted changes to auto-commit"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                task_id = %ctx.task_id,
+                error = %e,
+                "Failed to check uncommitted changes (non-fatal)"
+            );
+        }
+    }
+}
+
+/// Resolve the working directory for a task.
+///
+/// Returns task's worktree path if available, else project's working directory.
+fn resolve_working_directory(
+    task: &crate::domain::entities::Task,
+    project: &crate::domain::entities::Project,
+) -> std::path::PathBuf {
+    task.worktree_path
+        .as_ref()
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::path::PathBuf::from(&project.working_directory))
+}
