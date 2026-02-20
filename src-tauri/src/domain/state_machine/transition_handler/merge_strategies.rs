@@ -9,10 +9,13 @@
 use std::path::{Path, PathBuf};
 
 use crate::application::{GitService, MergeAttemptResult};
-use crate::application::git_service::checkout_free::{self, CheckoutFreeMergeResult};
 use crate::domain::entities::Project;
 use crate::error::AppError;
 
+use super::checkout_free_strategy::{
+    checkout_free_fast_forward, checkout_free_merge, checkout_free_squash_merge,
+    pre_delete_worktree, validate_branches,
+};
 use super::merge_helpers::{compute_merge_worktree_path, compute_rebase_worktree_path};
 
 /// Outcome of a merge strategy execution.
@@ -56,8 +59,6 @@ impl<'a> super::TransitionHandler<'a> {
     ///
     /// Merge task branch into target using worktree isolation, or use checkout-free
     /// merge if target is already checked out in the main repo.
-    ///
-    /// Line count: ~891 lines in original match arm
     pub(super) async fn merge_worktree_strategy(
         &self,
         repo_path: &Path,
@@ -66,96 +67,15 @@ impl<'a> super::TransitionHandler<'a> {
         project: &Project,
         task_id_str: &str,
     ) -> MergeOutcome {
-        // Detect if the target branch is already checked out in the primary repo.
-        // This happens for plan merge tasks (plan feature branch → main) because
-        // main is always checked out in the primary repo. Git forbids the same
-        // branch in multiple worktrees, so we merge directly in-repo instead.
         let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
-        let target_is_checked_out = current_branch == target_branch;
-
-        if target_is_checked_out {
-            // Target branch (e.g., main) is checked out in the primary repo.
-            // Use checkout-free merge (git plumbing) to avoid disrupting working tree.
-            tracing::info!(
-                task_id = task_id_str,
-                target_branch = %target_branch,
-                "Target branch is checked out, using checkout-free merge"
-            );
-
-            // Validate branches exist before merge
-            if !GitService::branch_exists(repo_path, source_branch).await {
-                tracing::error!(task_id = task_id_str, "Source branch '{}' does not exist", source_branch);
-                return MergeOutcome::BranchNotFound {
-                    branch: source_branch.to_string(),
-                };
-            }
-            if !GitService::branch_exists(repo_path, target_branch).await {
-                tracing::error!(task_id = task_id_str, "Target branch '{}' does not exist", target_branch);
-                return MergeOutcome::BranchNotFound {
-                    branch: target_branch.to_string(),
-                };
-            }
-
-            // Perform checkout-free merge
-            match checkout_free::try_merge_checkout_free(repo_path, source_branch, target_branch).await {
-                Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        commit_sha = %commit_sha,
-                        "Checkout-free merge succeeded"
-                    );
-
-                    // Ensure working tree is clean
-                    if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Failed to reset working tree after checkout-free merge (non-fatal)"
-                        );
-                    }
-
-                    return MergeOutcome::Success {
-                        commit_sha,
-                        merge_path: repo_path.to_path_buf(),
-                    };
-                }
-                Ok(CheckoutFreeMergeResult::Conflict { files }) => {
-                    tracing::warn!(
-                        task_id = task_id_str,
-                        conflict_count = files.len(),
-                        "Checkout-free merge detected conflicts"
-                    );
-
-                    return MergeOutcome::NeedsAgent {
-                        conflict_files: files,
-                        merge_worktree: None, // checkout-free merge, no worktree
-                    };
-                }
-                Err(e) => {
-                    tracing::error!(
-                        task_id = task_id_str,
-                        error = %e,
-                        "Checkout-free merge failed"
-                    );
-                    return MergeOutcome::GitError(e);
-                }
-            }
+        if current_branch == target_branch {
+            return checkout_free_merge(repo_path, source_branch, target_branch, task_id_str).await;
         }
 
         // Target not checked out — use isolated worktree
 
-        // Validate branches exist before creating worktree
-        if !GitService::branch_exists(repo_path, source_branch).await {
-            tracing::error!(task_id = task_id_str, "Source branch '{}' does not exist", source_branch);
-            return MergeOutcome::BranchNotFound {
-                branch: source_branch.to_string(),
-            };
-        }
-        if !GitService::branch_exists(repo_path, target_branch).await {
-            tracing::error!(task_id = task_id_str, "Target branch '{}' does not exist", target_branch);
-            return MergeOutcome::BranchNotFound {
-                branch: target_branch.to_string(),
-            };
+        if let Some(outcome) = validate_branches(repo_path, source_branch, target_branch, task_id_str).await {
+            return outcome;
         }
 
         let merge_wt_path = compute_merge_worktree_path(project, task_id_str);
@@ -167,17 +87,8 @@ impl<'a> super::TransitionHandler<'a> {
             "Attempting worktree merge"
         );
 
-        // Pre-delete stale worktree so try_merge_in_worktree gets a clean path
-        if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt).await {
-            tracing::debug!(
-                task_id = task_id_str,
-                error = %e,
-                "Failed to delete pre-existing merge worktree (non-fatal)"
-            );
-        }
+        pre_delete_worktree(repo_path, &merge_wt, task_id_str).await;
 
-        // try_merge_in_worktree creates the worktree, merges, and on conflict leaves
-        // the worktree in conflict state for agent resolution.
         match GitService::try_merge_in_worktree(repo_path, source_branch, target_branch, &merge_wt).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 tracing::info!(
@@ -185,7 +96,6 @@ impl<'a> super::TransitionHandler<'a> {
                     commit_sha = %commit_sha,
                     "Worktree merge succeeded"
                 );
-                // Clean up worktree on success
                 if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt).await {
                     tracing::warn!(
                         task_id = task_id_str,
@@ -204,7 +114,6 @@ impl<'a> super::TransitionHandler<'a> {
                     conflict_count = conflict_files.len(),
                     "Worktree merge detected conflicts — worktree left for agent"
                 );
-                // Worktree is left in conflict state by try_merge_in_worktree
                 MergeOutcome::NeedsAgent {
                     conflict_files,
                     merge_worktree: Some(merge_wt),
@@ -231,8 +140,6 @@ impl<'a> super::TransitionHandler<'a> {
     /// Strategy: (Rebase, Worktree)
     ///
     /// Rebase in worktree then fast-forward merge, or use checkout-free if target checked out.
-    ///
-    /// Line count: ~526 lines in original match arm
     pub(super) async fn rebase_worktree_strategy(
         &self,
         repo_path: &Path,
@@ -242,84 +149,14 @@ impl<'a> super::TransitionHandler<'a> {
         task_id_str: &str,
     ) -> MergeOutcome {
         let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
-        let target_is_checked_out = current_branch == target_branch;
-
-        if target_is_checked_out {
-            tracing::info!(
-                task_id = task_id_str,
-                target_branch = %target_branch,
-                "Target branch is checked out, using checkout-free rebase"
-            );
-
-            // Validate branches
-            if !GitService::branch_exists(repo_path, source_branch).await {
-                tracing::error!(task_id = task_id_str, "Source branch '{}' does not exist", source_branch);
-                return MergeOutcome::BranchNotFound {
-                    branch: source_branch.to_string(),
-                };
-            }
-            if !GitService::branch_exists(repo_path, target_branch).await {
-                tracing::error!(task_id = task_id_str, "Target branch '{}' does not exist", target_branch);
-                return MergeOutcome::BranchNotFound {
-                    branch: target_branch.to_string(),
-                };
-            }
-
-            match checkout_free::try_fast_forward_checkout_free(repo_path, source_branch, target_branch).await {
-                Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        commit_sha = %commit_sha,
-                        "Checkout-free fast-forward succeeded"
-                    );
-
-                    if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Failed to reset working tree (non-fatal)"
-                        );
-                    }
-
-                    return MergeOutcome::Success {
-                        commit_sha,
-                        merge_path: repo_path.to_path_buf(),
-                    };
-                }
-                Ok(CheckoutFreeMergeResult::Conflict { files }) => {
-                    tracing::warn!(
-                        task_id = task_id_str,
-                        conflict_count = files.len(),
-                        "Checkout-free rebase detected conflicts"
-                    );
-                    return MergeOutcome::NeedsAgent {
-                        conflict_files: files,
-                        merge_worktree: None,
-                    };
-                }
-                Err(e) => {
-                    tracing::error!(
-                        task_id = task_id_str,
-                        error = %e,
-                        "Checkout-free rebase failed"
-                    );
-                    return MergeOutcome::GitError(e);
-                }
-            }
+        if current_branch == target_branch {
+            return checkout_free_fast_forward(repo_path, source_branch, target_branch, task_id_str).await;
         }
 
         // Target not checked out — use worktree
 
-        // Validate branches
-        if !GitService::branch_exists(repo_path, source_branch).await {
-            return MergeOutcome::BranchNotFound {
-                branch: source_branch.to_string(),
-            };
-        }
-        if !GitService::branch_exists(repo_path, target_branch).await {
-            return MergeOutcome::BranchNotFound {
-                branch: target_branch.to_string(),
-            };
+        if let Some(outcome) = validate_branches(repo_path, source_branch, target_branch, task_id_str).await {
+            return outcome;
         }
 
         let rebase_wt_path = compute_rebase_worktree_path(project, task_id_str);
@@ -334,12 +171,9 @@ impl<'a> super::TransitionHandler<'a> {
             "Attempting worktree rebase-and-merge"
         );
 
-        // Pre-delete stale worktrees
-        let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
-        let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
+        pre_delete_worktree(repo_path, &rebase_wt, task_id_str).await;
+        pre_delete_worktree(repo_path, &merge_wt, task_id_str).await;
 
-        // try_rebase_and_merge_in_worktree creates its own worktrees internally.
-        // On conflict: leaves the rebase worktree in conflict state for agent resolution.
         match GitService::try_rebase_and_merge_in_worktree(
             repo_path,
             source_branch,
@@ -353,7 +187,6 @@ impl<'a> super::TransitionHandler<'a> {
                     commit_sha = %commit_sha,
                     "Worktree rebase and merge succeeded"
                 );
-                // Clean up both worktrees on success
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
@@ -367,7 +200,6 @@ impl<'a> super::TransitionHandler<'a> {
                     conflict_count = conflict_files.len(),
                     "Worktree rebase detected conflicts — rebase worktree left for agent"
                 );
-                // Rebase worktree is left in conflict state by try_rebase_and_merge_in_worktree
                 MergeOutcome::NeedsAgent {
                     conflict_files,
                     merge_worktree: Some(rebase_wt),
@@ -393,8 +225,6 @@ impl<'a> super::TransitionHandler<'a> {
     /// Strategy: (Squash, Worktree)
     ///
     /// Squash merge in worktree, or use checkout-free if target checked out.
-    ///
-    /// Line count: ~388 lines in original match arm
     pub(super) async fn squash_worktree_strategy(
         &self,
         repo_path: &Path,
@@ -405,61 +235,17 @@ impl<'a> super::TransitionHandler<'a> {
         task_id_str: &str,
     ) -> MergeOutcome {
         let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
-        let target_is_checked_out = current_branch == target_branch;
-
-        if target_is_checked_out {
-            tracing::info!(
-                task_id = task_id_str,
-                target_branch = %target_branch,
-                "Target checked out, using checkout-free squash"
-            );
-
-            if !GitService::branch_exists(repo_path, source_branch).await {
-                return MergeOutcome::BranchNotFound {
-                    branch: source_branch.to_string(),
-                };
-            }
-            if !GitService::branch_exists(repo_path, target_branch).await {
-                return MergeOutcome::BranchNotFound {
-                    branch: target_branch.to_string(),
-                };
-            }
-
-            match checkout_free::try_squash_merge_checkout_free(
-                repo_path,
-                source_branch,
-                target_branch,
-                squash_commit_msg,
-            ).await {
-                Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
-                    if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
-                        tracing::warn!(error = %e, "Failed to reset working tree (non-fatal)");
-                    }
-                    return MergeOutcome::Success {
-                        commit_sha,
-                        merge_path: repo_path.to_path_buf(),
-                    };
-                }
-                Ok(CheckoutFreeMergeResult::Conflict { files }) => {
-                    return MergeOutcome::NeedsAgent {
-                        conflict_files: files,
-                        merge_worktree: None,
-                    };
-                }
-                Err(e) => {
-                    return MergeOutcome::GitError(e);
-                }
-            }
+        if current_branch == target_branch {
+            return checkout_free_squash_merge(
+                repo_path, source_branch, target_branch, squash_commit_msg, task_id_str,
+            ).await;
         }
 
         let merge_wt_path = compute_merge_worktree_path(project, task_id_str);
         let merge_wt = PathBuf::from(&merge_wt_path);
 
-        // Pre-delete stale worktree
-        let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
+        pre_delete_worktree(repo_path, &merge_wt, task_id_str).await;
 
-        // try_squash_merge_in_worktree creates the worktree internally.
-        // On conflict: leaves worktree in conflict state for agent resolution.
         match GitService::try_squash_merge_in_worktree(
             repo_path,
             source_branch,
@@ -468,7 +254,6 @@ impl<'a> super::TransitionHandler<'a> {
             squash_commit_msg,
         ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
-                // Clean up worktree on success
                 let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
                     commit_sha,
@@ -476,7 +261,6 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                // Worktree is left in conflict state by try_squash_merge_in_worktree
                 MergeOutcome::NeedsAgent {
                     conflict_files,
                     merge_worktree: Some(merge_wt),
@@ -492,9 +276,6 @@ impl<'a> super::TransitionHandler<'a> {
     /// Strategy: (RebaseSquash, Worktree)
     ///
     /// Rebase in worktree, then squash merge. Uses checkout-free if target checked out.
-    /// Most complex strategy: manages dual worktrees for rebase + merge.
-    ///
-    /// Line count: ~486 lines in original match arm
     pub(super) async fn rebase_squash_worktree_strategy(
         &self,
         repo_path: &Path,
@@ -505,64 +286,16 @@ impl<'a> super::TransitionHandler<'a> {
         task_id_str: &str,
     ) -> MergeOutcome {
         let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
-        let target_is_checked_out = current_branch == target_branch;
-
-        if target_is_checked_out {
-            tracing::info!(
-                task_id = task_id_str,
-                target_branch = %target_branch,
-                "Target checked out, using checkout-free squash (skipping rebase to avoid conflicts)"
-            );
-
-            if !GitService::branch_exists(repo_path, source_branch).await {
-                return MergeOutcome::BranchNotFound {
-                    branch: source_branch.to_string(),
-                };
-            }
-            if !GitService::branch_exists(repo_path, target_branch).await {
-                return MergeOutcome::BranchNotFound {
-                    branch: target_branch.to_string(),
-                };
-            }
-
-            match checkout_free::try_squash_merge_checkout_free(
-                repo_path,
-                source_branch,
-                target_branch,
-                squash_commit_msg,
-            ).await {
-                Ok(CheckoutFreeMergeResult::Success { commit_sha }) => {
-                    if let Err(e) = GitService::hard_reset_to_head(repo_path).await {
-                        tracing::warn!(error = %e, "Failed to reset working tree (non-fatal)");
-                    }
-                    return MergeOutcome::Success {
-                        commit_sha,
-                        merge_path: repo_path.to_path_buf(),
-                    };
-                }
-                Ok(CheckoutFreeMergeResult::Conflict { files }) => {
-                    return MergeOutcome::NeedsAgent {
-                        conflict_files: files,
-                        merge_worktree: None,
-                    };
-                }
-                Err(e) => {
-                    return MergeOutcome::GitError(e);
-                }
-            }
+        if current_branch == target_branch {
+            return checkout_free_squash_merge(
+                repo_path, source_branch, target_branch, squash_commit_msg, task_id_str,
+            ).await;
         }
 
         // Dual-worktree strategy: rebase worktree first, then squash merge in separate worktree
 
-        if !GitService::branch_exists(repo_path, source_branch).await {
-            return MergeOutcome::BranchNotFound {
-                branch: source_branch.to_string(),
-            };
-        }
-        if !GitService::branch_exists(repo_path, target_branch).await {
-            return MergeOutcome::BranchNotFound {
-                branch: target_branch.to_string(),
-            };
+        if let Some(outcome) = validate_branches(repo_path, source_branch, target_branch, task_id_str).await {
+            return outcome;
         }
 
         let rebase_wt_path = compute_rebase_worktree_path(project, task_id_str);
@@ -577,12 +310,9 @@ impl<'a> super::TransitionHandler<'a> {
             "Attempting worktree rebase-squash"
         );
 
-        // Pre-delete stale worktrees
-        let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
-        let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
+        pre_delete_worktree(repo_path, &rebase_wt, task_id_str).await;
+        pre_delete_worktree(repo_path, &merge_wt, task_id_str).await;
 
-        // try_rebase_squash_merge_in_worktree creates its own worktrees internally.
-        // On conflict: leaves rebase worktree in conflict state for agent resolution.
         match GitService::try_rebase_squash_merge_in_worktree(
             repo_path,
             source_branch,
@@ -597,7 +327,6 @@ impl<'a> super::TransitionHandler<'a> {
                     commit_sha = %commit_sha,
                     "Worktree rebase-squash succeeded"
                 );
-                // Clean up both worktrees on success
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
@@ -611,7 +340,6 @@ impl<'a> super::TransitionHandler<'a> {
                     conflict_count = conflict_files.len(),
                     "Worktree rebase-squash detected conflicts — rebase worktree left for agent"
                 );
-                // Rebase worktree is left in conflict state by try_rebase_squash_merge_in_worktree
                 MergeOutcome::NeedsAgent {
                     conflict_files,
                     merge_worktree: Some(rebase_wt),
