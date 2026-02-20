@@ -76,6 +76,10 @@ pub struct ReconciliationConfig {
     /// Maximum wall-clock seconds for the entire programmatic merge attempt
     /// (cleanup + strategy dispatch). If exceeded, task transitions to MergeIncomplete.
     pub attempt_merge_deadline_secs: u64,
+    /// Maximum wall-clock seconds for post-merge validation commands.
+    /// Separate from `attempt_merge_deadline_secs` so git operations stay bounded
+    /// while long-running validation (e.g. `cargo test`) gets adequate time.
+    pub validation_deadline_secs: u64,
 }
 
 impl Default for ReconciliationConfig {
@@ -99,6 +103,7 @@ impl Default for ReconciliationConfig {
             reviewing_max_wall_clock_minutes: 30,
             qa_max_wall_clock_minutes: 15,
             attempt_merge_deadline_secs: 120,
+            validation_deadline_secs: 600,
         }
     }
 }
@@ -250,6 +255,7 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.reviewing_max_wall_clock_minutes, "RALPHX_RECONCILIATION_REVIEWING_MAX_WALL_CLOCK_MINUTES");
     env_u64!(cfg.reconciliation.qa_max_wall_clock_minutes, "RALPHX_RECONCILIATION_QA_MAX_WALL_CLOCK_MINUTES");
     env_u64!(cfg.reconciliation.attempt_merge_deadline_secs, "RALPHX_RECONCILIATION_ATTEMPT_MERGE_DEADLINE_SECS");
+    env_u64!(cfg.reconciliation.validation_deadline_secs, "RALPHX_RECONCILIATION_VALIDATION_DEADLINE_SECS");
 
     // Git
     env_u64!(cfg.git.cmd_timeout_secs, "RALPHX_GIT_CMD_TIMEOUT_SECS");

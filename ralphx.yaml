@@ -148,6 +148,8 @@ reconciliation:
   qa_max_wall_clock_minutes: 15                # Env: RALPHX_RECONCILIATION_QA_MAX_WALL_CLOCK_MINUTES
   # side_effects.rs — max wall-clock seconds for programmatic merge attempt (cleanup + strategy dispatch)
   attempt_merge_deadline_secs: 120             # Env: RALPHX_RECONCILIATION_ATTEMPT_MERGE_DEADLINE_SECS
+  # merge_outcome_handler.rs — max wall-clock seconds for post-merge validation commands (separate from git deadline)
+  validation_deadline_secs: 600                # Env: RALPHX_RECONCILIATION_VALIDATION_DEADLINE_SECS
 
 git:
   # git_service/git_cmd.rs — per-command timeout to prevent hung git processes

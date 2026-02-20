@@ -633,8 +633,10 @@ impl<'a> super::TransitionHandler<'a> {
 
     /// Dispatch the merge strategy with a timeout and handle the outcome.
     ///
-    /// Wraps the strategy dispatch in a deadline timeout. If the strategy hangs,
-    /// transitions to MergeIncomplete instead of leaving the task stuck.
+    /// The git strategy itself runs under the merge deadline timeout (fast, seconds).
+    /// Outcome handling (including post-merge validation) runs outside that timeout
+    /// so long-running validation commands (e.g. `cargo test`) don't compete with
+    /// the git operation deadline.
     pub(super) async fn dispatch_merge_strategy(
         &self,
         task: &mut Task,
@@ -658,7 +660,8 @@ impl<'a> super::TransitionHandler<'a> {
             "Dispatching merge strategy"
         );
 
-        let strategy_completed = tokio::time::timeout(remaining, async {
+        // Phase 1: Run git strategy under merge deadline (fast, seconds only)
+        let git_result = tokio::time::timeout(remaining, async {
             match project.merge_strategy {
                 MergeStrategy::Merge => {
                     let outcome = self
@@ -670,20 +673,7 @@ impl<'a> super::TransitionHandler<'a> {
                             task_id_str,
                         )
                         .await;
-                    let opts = MergeHandlerOptions::merge();
-                    let mut ctx = MergeContext {
-                        task,
-                        task_id,
-                        task_id_str,
-                        project,
-                        repo_path,
-                        source_branch,
-                        target_branch,
-                        task_repo,
-                        plan_branch_repo,
-                        opts: &opts,
-                    };
-                    self.handle_merge_outcome(outcome, &mut ctx).await;
+                    (outcome, MergeHandlerOptions::merge())
                 }
                 MergeStrategy::Rebase => {
                     let outcome = self
@@ -695,20 +685,7 @@ impl<'a> super::TransitionHandler<'a> {
                             task_id_str,
                         )
                         .await;
-                    let opts = MergeHandlerOptions::rebase();
-                    let mut ctx = MergeContext {
-                        task,
-                        task_id,
-                        task_id_str,
-                        project,
-                        repo_path,
-                        source_branch,
-                        target_branch,
-                        task_repo,
-                        plan_branch_repo,
-                        opts: &opts,
-                    };
-                    self.handle_merge_outcome(outcome, &mut ctx).await;
+                    (outcome, MergeHandlerOptions::rebase())
                 }
                 MergeStrategy::Squash => {
                     let outcome = self
@@ -721,20 +698,7 @@ impl<'a> super::TransitionHandler<'a> {
                             task_id_str,
                         )
                         .await;
-                    let opts = MergeHandlerOptions::squash();
-                    let mut ctx = MergeContext {
-                        task,
-                        task_id,
-                        task_id_str,
-                        project,
-                        repo_path,
-                        source_branch,
-                        target_branch,
-                        task_repo,
-                        plan_branch_repo,
-                        opts: &opts,
-                    };
-                    self.handle_merge_outcome(outcome, &mut ctx).await;
+                    (outcome, MergeHandlerOptions::squash())
                 }
                 MergeStrategy::RebaseSquash => {
                     let outcome = self
@@ -747,41 +711,46 @@ impl<'a> super::TransitionHandler<'a> {
                             task_id_str,
                         )
                         .await;
-                    let opts = MergeHandlerOptions::rebase_squash();
-                    let mut ctx = MergeContext {
-                        task,
-                        task_id,
-                        task_id_str,
-                        project,
-                        repo_path,
-                        source_branch,
-                        target_branch,
-                        task_repo,
-                        plan_branch_repo,
-                        opts: &opts,
-                    };
-                    self.handle_merge_outcome(outcome, &mut ctx).await;
+                    (outcome, MergeHandlerOptions::rebase_squash())
                 }
             }
         })
         .await;
 
-        if strategy_completed.is_err() {
-            tracing::error!(
-                task_id = task_id_str,
-                deadline_secs = deadline_secs,
-                "Programmatic merge exceeded deadline during strategy dispatch — transitioning to MergeIncomplete"
-            );
-            let metadata = serde_json::json!({
-                "error": format!("Merge attempt timed out after {}s (strategy dispatch exceeded deadline)", deadline_secs),
-                "source_branch": source_branch,
-                "target_branch": target_branch,
-                "strategy": format!("{:?}", project.merge_strategy),
-            });
-            self.transition_to_merge_incomplete(
-                task, task_id, task_id_str, metadata, task_repo, true,
-            )
-            .await;
+        // Phase 2: Handle outcome (incl. validation) — outside the git deadline
+        match git_result {
+            Ok((outcome, opts)) => {
+                let mut ctx = MergeContext {
+                    task,
+                    task_id,
+                    task_id_str,
+                    project,
+                    repo_path,
+                    source_branch,
+                    target_branch,
+                    task_repo,
+                    plan_branch_repo,
+                    opts: &opts,
+                };
+                self.handle_merge_outcome(outcome, &mut ctx).await;
+            }
+            Err(_) => {
+                tracing::error!(
+                    task_id = task_id_str,
+                    deadline_secs = deadline_secs,
+                    "Programmatic merge exceeded deadline during strategy dispatch — transitioning to MergeIncomplete"
+                );
+                let metadata = serde_json::json!({
+                    "error": format!("Merge attempt timed out after {}s (strategy dispatch exceeded deadline)", deadline_secs),
+                    "source_branch": source_branch,
+                    "target_branch": target_branch,
+                    "strategy": format!("{:?}", project.merge_strategy),
+                });
+                self.transition_to_merge_incomplete(
+                    task, task_id, task_id_str, metadata, task_repo, true,
+                )
+                .await;
+            }
         }
     }
 }
