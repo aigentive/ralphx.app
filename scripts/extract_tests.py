@@ -35,6 +35,83 @@ SKIP_FILES = {
 }
 
 
+def strip_string_literals(content: str) -> str:
+    """
+    Replace string literal contents with spaces so braces inside them
+    don't confuse the brace counter.
+
+    Handles: r#"..."# r##"..."## "..." '...' // line comments /* block */
+    """
+    result = list(content)
+    i = 0
+    n = len(content)
+    while i < n:
+        # Raw strings: r#"..."# or r##"..."##
+        if content[i] == 'r' and i + 1 < n and content[i + 1] == '#':
+            j = i + 1
+            hashes = 0
+            while j < n and content[j] == '#':
+                hashes += 1
+                j += 1
+            if j < n and content[j] == '"':
+                # Found raw string opener r###..."###
+                end_marker = '"' + '#' * hashes
+                end = content.find(end_marker, j + 1)
+                if end != -1:
+                    # blank out the interior
+                    for k in range(j + 1, end):
+                        if result[k] not in '\n':
+                            result[k] = ' '
+                    i = end + len(end_marker)
+                    continue
+        # Regular strings: "..."
+        if content[i] == '"':
+            j = i + 1
+            while j < n:
+                if content[j] == '\\':
+                    j += 2
+                    continue
+                if content[j] == '"':
+                    break
+                j += 1
+            for k in range(i + 1, min(j, n)):
+                if result[k] not in '\n':
+                    result[k] = ' '
+            i = j + 1
+            continue
+        # Char literals: '.'
+        if content[i] == "'":
+            j = i + 1
+            if j < n and content[j] == '\\':
+                j += 2
+            else:
+                j += 1
+            if j < n and content[j] == "'":
+                for k in range(i + 1, j):
+                    result[k] = ' '
+                i = j + 1
+                continue
+        # Line comments: //...
+        if content[i] == '/' and i + 1 < n and content[i + 1] == '/':
+            j = i + 2
+            while j < n and content[j] != '\n':
+                result[j] = ' '
+                j += 1
+            i = j
+            continue
+        # Block comments: /*...*/
+        if content[i] == '/' and i + 1 < n and content[i + 1] == '*':
+            end = content.find('*/', i + 2)
+            if end != -1:
+                for k in range(i + 2, end):
+                    if result[k] not in '\n':
+                        result[k] = ' '
+                i = end + 2
+                continue
+        i += 1
+    return ''.join(result)
+
+
 def find_cfg_test_block(content: str) -> tuple[int, int, int] | None:
     """
     Finds the outermost #[cfg(test)] mod block.
@@ -59,11 +136,15 @@ def find_cfg_test_block(content: str) -> tuple[int, int, int] | None:
     attr_start = m.start()
     open_brace = m.end() - 1  # position of '{'
 
+    # Use string-stripped content for brace counting to avoid
+    # counting braces inside raw strings, string literals, or comments
+    stripped = strip_string_literals(content)
+
     # Count braces from open_brace to find matching close
     depth = 1
     pos = open_brace + 1
-    while pos < len(content) and depth > 0:
-        ch = content[pos]
+    while pos < len(stripped) and depth > 0:
+        ch = stripped[pos]
         if ch == '{':
             depth += 1
         elif ch == '}':
