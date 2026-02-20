@@ -298,7 +298,7 @@ where
 #[allow(dead_code)]
 pub struct RealGitRepo {
     pub dir: tempfile::TempDir,
-    pub main_branch: String,
+    pub _main_branch: String,
     pub task_branch: String,
 }
 
@@ -370,7 +370,7 @@ pub fn setup_real_git_repo() -> RealGitRepo {
 
     RealGitRepo {
         dir,
-        main_branch: "main".to_string(),
+        _main_branch: "main".to_string(),
         task_branch,
     }
 }

@@ -146,7 +146,7 @@ async fn test_merge_with_no_task_branch_transitions_to_merge_incomplete() {
 #[tokio::test]
 async fn test_merge_outcome_branch_not_found_transitions_correctly() {
     use super::super::merge_strategies::MergeOutcome;
-    use super::super::merge_outcome_handler::MergeHandlerOptions;
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -177,22 +177,22 @@ async fn test_merge_outcome_branch_not_found_transitions_correctly() {
         branch: "feature/missing".to_string(),
     };
     let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
 
-    handler
-        .handle_merge_outcome(
-            outcome,
-            &mut task,
-            &task_id,
-            task_id.as_str(),
-            &project,
-            std::path::Path::new("/tmp/test"),
-            "feature/missing",
-            "main",
-            &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
-            &None,
-            &opts,
-        )
-        .await;
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/test"),
+        source_branch: "feature/missing",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
 
     // Task should be in MergeIncomplete
     assert_eq!(task.internal_status, InternalStatus::MergeIncomplete);
@@ -216,7 +216,7 @@ async fn test_merge_outcome_branch_not_found_transitions_correctly() {
 #[tokio::test]
 async fn test_merge_outcome_git_error_transitions_correctly() {
     use super::super::merge_strategies::MergeOutcome;
-    use super::super::merge_outcome_handler::MergeHandlerOptions;
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -247,22 +247,22 @@ async fn test_merge_outcome_git_error_transitions_correctly() {
         "fatal: not a git repository".to_string(),
     ));
     let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
 
-    handler
-        .handle_merge_outcome(
-            outcome,
-            &mut task,
-            &task_id,
-            task_id.as_str(),
-            &project,
-            std::path::Path::new("/tmp/test"),
-            "feature/test",
-            "main",
-            &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
-            &None,
-            &opts,
-        )
-        .await;
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/test"),
+        source_branch: "feature/test",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
 
     assert_eq!(task.internal_status, InternalStatus::MergeIncomplete);
 
@@ -279,7 +279,7 @@ async fn test_merge_outcome_git_error_transitions_correctly() {
 #[tokio::test]
 async fn test_merge_outcome_deferred_transitions_correctly() {
     use super::super::merge_strategies::MergeOutcome;
-    use super::super::merge_outcome_handler::MergeHandlerOptions;
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -310,22 +310,22 @@ async fn test_merge_outcome_deferred_transitions_correctly() {
         reason: "branch lock held by another task".to_string(),
     };
     let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
 
-    handler
-        .handle_merge_outcome(
-            outcome,
-            &mut task,
-            &task_id,
-            task_id.as_str(),
-            &project,
-            std::path::Path::new("/tmp/test"),
-            "feature/test",
-            "main",
-            &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
-            &None,
-            &opts,
-        )
-        .await;
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/test"),
+        source_branch: "feature/test",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
 
     // Task should remain in PendingMerge (deferred, not failed)
     assert_eq!(
@@ -348,7 +348,7 @@ async fn test_merge_outcome_deferred_transitions_correctly() {
 #[tokio::test]
 async fn test_merge_outcome_needs_agent_transitions_correctly() {
     use super::super::merge_strategies::MergeOutcome;
-    use super::super::merge_outcome_handler::MergeHandlerOptions;
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
     use std::path::PathBuf;
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
@@ -382,22 +382,22 @@ async fn test_merge_outcome_needs_agent_transitions_correctly() {
         merge_worktree: Some(PathBuf::from("/tmp/test/.worktrees/merge-task")),
     };
     let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
 
-    handler
-        .handle_merge_outcome(
-            outcome,
-            &mut task,
-            &task_id,
-            task_id.as_str(),
-            &project,
-            std::path::Path::new("/tmp/test"),
-            "feature/conflicts",
-            "main",
-            &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
-            &None,
-            &opts,
-        )
-        .await;
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/test"),
+        source_branch: "feature/conflicts",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
 
     // Task should transition to Merging
     assert_eq!(
@@ -433,7 +433,7 @@ async fn test_merge_outcome_needs_agent_transitions_correctly() {
 #[tokio::test]
 async fn test_merge_outcome_already_handled_is_noop() {
     use super::super::merge_strategies::MergeOutcome;
-    use super::super::merge_outcome_handler::MergeHandlerOptions;
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -462,25 +462,25 @@ async fn test_merge_outcome_already_handled_is_noop() {
 
     let outcome = MergeOutcome::AlreadyHandled;
     let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
 
     let original_status = task.internal_status;
     let original_metadata = task.metadata.clone();
 
-    handler
-        .handle_merge_outcome(
-            outcome,
-            &mut task,
-            &task_id,
-            task_id.as_str(),
-            &project,
-            std::path::Path::new("/tmp/test"),
-            "feature/test",
-            "main",
-            &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
-            &None,
-            &opts,
-        )
-        .await;
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/test"),
+        source_branch: "feature/test",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
 
     // Should be a complete no-op
     assert_eq!(task.internal_status, original_status);
@@ -598,7 +598,7 @@ async fn test_in_flight_guard_cleanup_on_early_return() {
 #[tokio::test]
 async fn test_merge_outcome_git_error_branch_lock_defers() {
     use super::super::merge_strategies::MergeOutcome;
-    use super::super::merge_outcome_handler::MergeHandlerOptions;
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -630,22 +630,22 @@ async fn test_merge_outcome_git_error_branch_lock_defers() {
         "fatal: 'main' is already checked out at '/tmp/worktree'".to_string(),
     ));
     let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
 
-    handler
-        .handle_merge_outcome(
-            outcome,
-            &mut task,
-            &task_id,
-            task_id.as_str(),
-            &project,
-            std::path::Path::new("/tmp/test"),
-            "feature/test",
-            "main",
-            &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
-            &None,
-            &opts,
-        )
-        .await;
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/test"),
+        source_branch: "feature/test",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
 
     // Branch lock errors should trigger deferral, keeping task in PendingMerge
     assert_eq!(
