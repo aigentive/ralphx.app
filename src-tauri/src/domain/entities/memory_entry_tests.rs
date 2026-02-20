@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_memory_bucket_serialization() {
     assert_eq!(

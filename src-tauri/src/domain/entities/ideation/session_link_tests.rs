@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn session_relationship_default_is_follow_on() {
     assert_eq!(

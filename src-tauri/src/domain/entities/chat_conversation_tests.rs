@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_conversation_id_creation() {
     let id1 = ChatConversationId::new();

@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 fn create_test_issue() -> ReviewIssue {
     ReviewIssue::new(
         ReviewNoteId::from_string("rn-1"),

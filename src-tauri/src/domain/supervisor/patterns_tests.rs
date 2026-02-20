@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_pattern_display() {
     assert_eq!(Pattern::InfiniteLoop.to_string(), "Infinite loop detected");

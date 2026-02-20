@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_execution_settings_default() {
     let settings = ExecutionSettings::default();

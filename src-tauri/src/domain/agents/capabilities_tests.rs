@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 // ModelInfo tests
 #[test]
 fn test_model_info_new() {

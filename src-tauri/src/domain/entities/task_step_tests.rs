@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn task_step_new_creates_with_defaults() {
     let task_id = TaskId::new();

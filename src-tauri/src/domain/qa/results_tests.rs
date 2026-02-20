@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 // ----------------
 // QAStepStatus Tests
 // ----------------
@@ -332,61 +330,63 @@ fn test_results_from_prd_format() {
         Some("screenshots/qa1-result.png".into())
     );
 
-    #[test]
-    fn test_wrapper_from_prd_format() {
-        // Test the wrapper format with qa_results key
-        let json = r#"{
-            "qa_results": {
-                "task_id": "task-123",
-                "overall_status": "passed",
-                "total_steps": 5,
-                "passed_steps": 5,
-                "failed_steps": 0,
-                "steps": [
-                    {
-                        "step_id": "QA1",
-                        "status": "passed",
-                        "screenshot": "screenshots/qa1-result.png",
-                        "actual": null,
-                        "expected": null,
-                        "error": null
-                    }
-                ]
-            }
-        }"#;
-
-        let w = QAResultsWrapper::from_json(json).unwrap();
-        assert_eq!(w.qa_results.task_id, "task-123");
-        assert_eq!(w.qa_results.overall_status, QAOverallStatus::Passed);
-    }
-
-    #[test]
-    fn test_results_is_complete() {
-        let r_pending = QAResults::new("task-1", vec!["QA1".into()]);
-        assert!(!r_pending.is_complete());
-
-        let r_passed = QAResults::from_results("task-2", vec![QAStepResult::passed("QA1", None)]);
-        assert!(r_passed.is_complete());
-        assert!(r_passed.is_passed());
-
-        let r_failed =
-            QAResults::from_results("task-3", vec![QAStepResult::failed("QA1", "Error", None)]);
-        assert!(r_failed.is_complete());
-        assert!(r_failed.is_failed());
-    }
-
-    #[test]
-    fn test_results_recalculate() {
-        let mut r = QAResults::new("task-123", vec!["QA1".into(), "QA2".into()]);
-
-        // Manually update steps
-        r.steps[0].status = QAStepStatus::Passed;
-        r.steps[1].status = QAStepStatus::Passed;
-
-        // Recalculate
-        r.recalculate();
-
-        assert_eq!(r.passed_steps, 2);
-        assert_eq!(r.overall_status, QAOverallStatus::Passed);
-    }
 }
+
+#[test]
+fn test_wrapper_from_prd_format() {
+    // Test the wrapper format with qa_results key
+    let json = r#"{
+        "qa_results": {
+            "task_id": "task-123",
+            "overall_status": "passed",
+            "total_steps": 5,
+            "passed_steps": 5,
+            "failed_steps": 0,
+            "steps": [
+                {
+                    "step_id": "QA1",
+                    "status": "passed",
+                    "screenshot": "screenshots/qa1-result.png",
+                    "actual": null,
+                    "expected": null,
+                    "error": null
+                }
+            ]
+        }
+    }"#;
+
+    let w = QAResultsWrapper::from_json(json).unwrap();
+    assert_eq!(w.qa_results.task_id, "task-123");
+    assert_eq!(w.qa_results.overall_status, QAOverallStatus::Passed);
+}
+
+#[test]
+fn test_results_is_complete() {
+    let r_pending = QAResults::new("task-1", vec!["QA1".into()]);
+    assert!(!r_pending.is_complete());
+
+    let r_passed = QAResults::from_results("task-2", vec![QAStepResult::passed("QA1", None)]);
+    assert!(r_passed.is_complete());
+    assert!(r_passed.is_passed());
+
+    let r_failed =
+        QAResults::from_results("task-3", vec![QAStepResult::failed("QA1", "Error", None)]);
+    assert!(r_failed.is_complete());
+    assert!(r_failed.is_failed());
+}
+
+#[test]
+fn test_results_recalculate() {
+    let mut r = QAResults::new("task-123", vec!["QA1".into(), "QA2".into()]);
+
+    // Manually update steps
+    r.steps[0].status = QAStepStatus::Passed;
+    r.steps[1].status = QAStepStatus::Passed;
+
+    // Recalculate
+    r.recalculate();
+
+    assert_eq!(r.passed_steps, 2);
+    assert_eq!(r.overall_status, QAOverallStatus::Passed);
+}
+

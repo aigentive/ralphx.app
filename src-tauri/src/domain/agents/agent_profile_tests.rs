@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 // ProfileRole tests
 #[test]
 fn test_profile_role_display() {

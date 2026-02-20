@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_tool_call_info_new() {
     let info = ToolCallInfo::new("Write", r#"{"path": "test.txt"}"#);
@@ -141,12 +139,14 @@ fn test_supervisor_event_deserialize() {
         serde_json::from_str(json).expect("Failed to deserialize SupervisorEvent");
     assert_eq!(event.task_id(), "task-123");
 
-    #[test]
-    fn test_supervisor_event_roundtrip() {
-        let original = SupervisorEvent::token_threshold("task-456", 75000, 50000);
-        let json = serde_json::to_string(&original).expect("Failed to serialize SupervisorEvent");
-        let restored: SupervisorEvent =
-            serde_json::from_str(&json).expect("Failed to deserialize SupervisorEvent");
-        assert_eq!(original.task_id(), restored.task_id());
-    }
 }
+
+#[test]
+fn test_supervisor_event_roundtrip() {
+    let original = SupervisorEvent::token_threshold("task-456", 75000, 50000);
+    let json = serde_json::to_string(&original).expect("Failed to serialize SupervisorEvent");
+    let restored: SupervisorEvent =
+        serde_json::from_str(&json).expect("Failed to deserialize SupervisorEvent");
+    assert_eq!(original.task_id(), restored.task_id());
+}
+

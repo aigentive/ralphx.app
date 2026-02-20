@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn test_task_context_creation() {
     let ctx = TaskContext::new_test("task-1", "proj-1");
