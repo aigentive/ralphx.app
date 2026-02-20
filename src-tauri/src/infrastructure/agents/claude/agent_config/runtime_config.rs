@@ -103,7 +103,7 @@ impl Default for ReconciliationConfig {
             reviewing_max_wall_clock_minutes: 30,
             qa_max_wall_clock_minutes: 15,
             attempt_merge_deadline_secs: 120,
-            validation_deadline_secs: 600,
+            validation_deadline_secs: 1200,
         }
     }
 }
