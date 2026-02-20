@@ -494,38 +494,20 @@ impl<'a> super::TransitionHandler<'a> {
                 "validation_auto_fix", task_repo,
             ).await;
 
-            let prompt = format!(
-                "Fix validation failures for task: {}. The merge succeeded but post-merge \
-                 validation commands failed. The failing code is on the target branch. \
-                 Read the validation failures from task context, fix the code, run validation \
-                 to confirm, then commit your fixes.",
-                task_id_str
-            );
+            // Delegate to on_enter(Merging) which handles symlink cleanup, stale
+            // rebase/merge abort, and spawns the merger agent with the correct prompt
+            // (reads validation_recovery from metadata). This avoids a dual spawn path
+            // where handle_validation_failure spawns one agent and reconciler spawns another.
             tracing::info!(
                 task_id = task_id_str,
-                "Spawning merger agent for validation recovery"
+                "Delegating to on_enter(Merging) for validation recovery agent spawn"
             );
-
-            let result = self
-                .machine
-                .context
-                .services
-                .chat_service
-                .send_message(
-                    crate::domain::entities::ChatContextType::Merge,
-                    task_id_str,
-                    &prompt,
-                )
-                .await;
-
-            match &result {
-                Ok(_) => tracing::info!(
+            if let Err(e) = Box::pin(self.on_enter_dispatch(&State::Merging)).await {
+                tracing::error!(
                     task_id = task_id_str,
-                    "Merger agent spawned for validation recovery"
-                ),
-                Err(e) => {
-                    tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent for validation recovery")
-                }
+                    error = %e,
+                    "on_enter(Merging) failed during validation recovery"
+                );
             }
         } else {
             // Block mode: revert merge and transition to MergeIncomplete

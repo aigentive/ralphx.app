@@ -91,15 +91,18 @@ impl<'a> super::TransitionHandler<'a> {
 
         match GitService::try_merge_in_worktree(repo_path, source_branch, target_branch, &merge_wt).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
+                // If inner function early-returned (e.g. branches_have_same_content)
+                // the worktree was never created — fall back to repo_path
+                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
+                    merge_path = %actual_path.display(),
                     "Worktree merge succeeded"
                 );
-                // Keep merge worktree alive for post-merge validation
                 MergeOutcome::Success {
                     commit_sha,
-                    merge_path: merge_wt,
+                    merge_path: actual_path,
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
@@ -177,16 +180,20 @@ impl<'a> super::TransitionHandler<'a> {
             &merge_wt,
         ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
+                // Clean up rebase worktree (no longer needed)
+                let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
+                // If inner function early-returned (e.g. base_commit_count <= 1 fallback)
+                // the merge worktree may not exist — fall back to repo_path
+                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
+                    merge_path = %actual_path.display(),
                     "Worktree rebase and merge succeeded"
                 );
-                // Clean up rebase worktree (no longer needed), keep merge worktree for validation
-                let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 MergeOutcome::Success {
                     commit_sha,
-                    merge_path: merge_wt,
+                    merge_path: actual_path,
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
@@ -250,10 +257,12 @@ impl<'a> super::TransitionHandler<'a> {
             squash_commit_msg,
         ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
-                // Keep merge worktree alive for post-merge validation
+                // If inner function early-returned (branches_have_same_content)
+                // the worktree was never created — fall back to repo_path
+                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
                 MergeOutcome::Success {
                     commit_sha,
-                    merge_path: merge_wt,
+                    merge_path: actual_path,
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
@@ -318,16 +327,21 @@ impl<'a> super::TransitionHandler<'a> {
             squash_commit_msg,
         ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
+                // Clean up rebase worktree (no longer needed)
+                let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
+                // If inner function early-returned (branches_have_same_content or
+                // base_commit_count <= 1 with identical branches) the merge worktree
+                // was never created — fall back to repo_path
+                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
+                    merge_path = %actual_path.display(),
                     "Worktree rebase-squash succeeded"
                 );
-                // Clean up rebase worktree (no longer needed), keep merge worktree for validation
-                let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 MergeOutcome::Success {
                     commit_sha,
-                    merge_path: merge_wt,
+                    merge_path: actual_path,
                 }
             }
             Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
