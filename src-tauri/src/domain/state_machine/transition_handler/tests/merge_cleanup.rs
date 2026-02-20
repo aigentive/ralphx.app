@@ -30,15 +30,10 @@ async fn test_step0_agent_kill_executes_without_error() {
     assert!(result.is_ok(), "on_enter(PendingMerge) should succeed even with step 0 agent kill");
 }
 
-/// on_enter(PendingMerge) remains fast even with the 1s settle time from step 0.
-///
-/// Without repos, the function should return before reaching the sleep
-/// (attempt_programmatic_merge bails early without task_repo/project_repo).
-/// This ensures the step 0 settle doesn't slow down the no-repos path.
-///
-// Intentionally tests the no-repos early-return guard — not merge behavior
+// Tests early-return guard — does not reach merge strategy dispatch
+/// Without repos, attempt_programmatic_merge bails before the step 0 settle sleep.
 #[tokio::test]
-async fn test_step0_no_repos_returns_before_settle() {
+async fn test_guard_no_repos_skips_step0_settle_sleep() {
     use std::time::Instant;
 
     let services = TaskServices::new_mock();
@@ -62,14 +57,10 @@ async fn test_step0_no_repos_returns_before_settle() {
 // 120s merge deadline
 // ==================
 
-/// The merge deadline structure exists: strategy dispatch is wrapped in tokio::time::timeout.
-///
-/// We validate this structurally by confirming that on_enter(PendingMerge)
-/// without repos doesn't hang indefinitely (the deadline prevents infinite waits).
-///
-// Intentionally tests the no-repos early-return guard — not merge behavior
+// Tests early-return guard — does not reach merge strategy dispatch
+/// Without repos, the no-repos guard returns before the deadline check is reached.
 #[tokio::test]
-async fn test_merge_deadline_prevents_infinite_hang() {
+async fn test_guard_no_repos_completes_within_deadline() {
     use std::time::Instant;
 
     // Use mock services without repos — this means attempt_programmatic_merge
@@ -92,15 +83,10 @@ async fn test_merge_deadline_prevents_infinite_hang() {
     );
 }
 
-/// MergeIncomplete transition is correctly triggered when deadline expires.
-///
-/// This is a structural test: without repos, we can't reach the strategy dispatch,
-/// but we verify the transition_to_merge_incomplete method is reachable from
-/// the deadline path by testing its sibling (the repos-not-available path).
-///
-// Intentionally tests the no-repos early-return guard — not merge behavior
+// Tests early-return guard — does not reach merge strategy dispatch
+/// Without repos, the repos-unavailable path fires on_exit(PendingMerge, MergeIncomplete).
 #[tokio::test]
-async fn test_merge_incomplete_transition_works_without_repos() {
+async fn test_guard_no_repos_fires_on_exit_to_merge_incomplete() {
     let emitter = Arc::new(MockEventEmitter::new());
     let mut services = TaskServices::new_mock();
     services.event_emitter = Arc::clone(&emitter) as Arc<dyn EventEmitter>;
@@ -208,12 +194,18 @@ async fn test_post_merge_cleanup_triggers_scheduler() {
     // Trigger on_enter(Merged) which calls unblock_dependents + try_schedule_ready_tasks
     let _ = handler.on_enter(&State::Merged).await;
 
-    // Wait for spawned tasks
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
-
-    let sched_calls = scheduler.get_calls();
+    // Wait for spawned tasks to call try_schedule_ready_tasks
+    let sched = Arc::clone(&scheduler);
     assert!(
-        sched_calls.iter().any(|c| c.method == "try_schedule_ready_tasks"),
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_schedule_ready_tasks")
+                }
+            },
+            5000
+        ).await,
         "Scheduler should be triggered after unblocking dependents"
     );
 

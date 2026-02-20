@@ -23,10 +23,21 @@ async fn test_exiting_pending_merge_triggers_retry_deferred_merges() {
     // Transition from PendingMerge to Merged (successful merge)
     handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
-    // Give the spawned task a moment to execute
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+    // Wait for spawned task to call try_retry_deferred_merges
+    let sched = Arc::clone(&scheduler);
+    assert!(
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            5000
+        ).await,
+        "Expected try_retry_deferred_merges to be called"
+    );
 
-    // Verify try_retry_deferred_merges was called
     let calls = scheduler.get_calls();
     let retry_calls: Vec<_> = calls
         .iter()
@@ -55,10 +66,21 @@ async fn test_exiting_pending_merge_to_merge_incomplete_triggers_retry() {
         .on_exit(&State::PendingMerge, &State::MergeIncomplete)
         .await;
 
-    // Give the spawned task a moment to execute
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+    // Wait for spawned task to call try_retry_deferred_merges
+    let sched = Arc::clone(&scheduler);
+    assert!(
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            5000
+        ).await,
+        "Expected retry even on merge_incomplete"
+    );
 
-    // Verify try_retry_deferred_merges was called even on failure
     let calls = scheduler.get_calls();
     let retry_calls: Vec<_> = calls
         .iter()
@@ -81,10 +103,21 @@ async fn test_exiting_merging_to_merged_triggers_retry() {
     // Transition from Merging to Merged (manual merge completion)
     handler.on_exit(&State::Merging, &State::Merged).await;
 
-    // Give the spawned task a moment to execute
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+    // Wait for spawned task to call try_retry_deferred_merges
+    let sched = Arc::clone(&scheduler);
+    assert!(
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            5000
+        ).await,
+        "Expected try_retry_deferred_merges to be called"
+    );
 
-    // Verify try_retry_deferred_merges was called
     let calls = scheduler.get_calls();
     let retry_calls: Vec<_> = calls
         .iter()
@@ -105,10 +138,21 @@ async fn test_exiting_merging_to_merge_incomplete_triggers_retry() {
         .on_exit(&State::Merging, &State::MergeIncomplete)
         .await;
 
-    // Give the spawned task a moment to execute
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+    // Wait for spawned task to call try_retry_deferred_merges
+    let sched = Arc::clone(&scheduler);
+    assert!(
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            5000
+        ).await,
+        "Expected try_retry_deferred_merges to be called"
+    );
 
-    // Verify try_retry_deferred_merges was called
     let calls = scheduler.get_calls();
     let retry_calls: Vec<_> = calls
         .iter()
@@ -127,8 +171,17 @@ async fn test_exiting_other_states_does_not_trigger_retry() {
     // Transition from Ready to Executing (normal execution start)
     handler.on_exit(&State::Ready, &State::Executing).await;
 
-    // Give potential spawned tasks time (though none should spawn)
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+    // Wait briefly to confirm no spawned tasks fire (negative test)
+    let sched = Arc::clone(&scheduler);
+    let _ = wait_for_condition(
+        || {
+            let s = Arc::clone(&sched);
+            async move {
+                s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+            }
+        },
+        500
+    ).await;
 
     // Verify try_retry_deferred_merges was NOT called for non-merge states
     let calls = scheduler.get_calls();
@@ -156,26 +209,19 @@ async fn test_no_scheduler_does_not_panic_on_exit() {
     // Should not panic when scheduler is None
     handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
-    // Wait a bit to ensure no panic from spawned task
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+    // Yield to runtime to ensure no panic from spawned task
+    tokio::task::yield_now().await;
 }
 
 // ==================
 // Non-blocking retry merge tests
 // ==================
 
-/// Test: retry_merge command returns quickly (on_enter(PendingMerge) is non-blocking
-/// at the transition handler level).
-///
-/// The state machine dispatches Approved → PendingMerge as an auto-transition.
-/// The handle_transition call should complete in bounded time because on_enter
-/// for PendingMerge delegates heavy work (attempt_programmatic_merge) which,
-/// without repos, returns immediately. This validates the structural non-blocking
-/// property: the command handler can return while background work continues.
-///
-// Intentionally tests the no-repos early-return guard — validates non-blocking structural property
+// Tests early-return guard — does not reach merge strategy dispatch
+/// Without repos, on_enter(PendingMerge) returns immediately.
+/// Validates the structural non-blocking property of the auto-transition chain.
 #[tokio::test]
-async fn test_retry_merge_command_latency() {
+async fn test_guard_no_repos_pending_merge_returns_quickly() {
     use std::time::Instant;
 
     let (_spawner, _emitter, _notifier, _dep_manager, _review_starter, services) =
@@ -208,14 +254,10 @@ async fn test_retry_merge_command_latency() {
     }
 }
 
-/// Test: on_enter(PendingMerge) without repos returns immediately without blocking.
-///
-/// Validates that when repos are not available, the merge attempt is a no-op
-/// and the handler returns quickly, preventing any app-wide hang.
-///
-// Intentionally tests the no-repos early-return guard — not merge behavior
+// Tests early-return guard — does not reach merge strategy dispatch
+/// Without repos, on_enter(PendingMerge) is a no-op and returns near-instantly.
 #[tokio::test]
-async fn test_pending_merge_entry_without_repos_returns_immediately() {
+async fn test_guard_no_repos_on_enter_pending_merge_is_instant() {
     use std::time::Instant;
 
     let services = TaskServices::new_mock(); // No task_repo or project_repo
@@ -316,7 +358,21 @@ async fn test_background_execution_merged_terminal_state() {
     );
 
     // Wait for spawned scheduling/retry tasks
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
+    let sched = Arc::clone(&scheduler);
+    assert!(
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    let calls = s.get_calls();
+                    calls.iter().any(|c| c.method == "try_schedule_ready_tasks")
+                        && calls.iter().any(|c| c.method == "try_retry_deferred_merges")
+                }
+            },
+            5000
+        ).await,
+        "Should trigger both ready task scheduling and deferred merge retry"
+    );
 
     let sched_calls = scheduler.get_calls();
 
@@ -365,13 +421,11 @@ async fn test_background_execution_retry_from_merge_incomplete() {
 // Blocking isolation tests
 // ==================
 
-/// Test: While in PendingMerge state, unrelated state machine operations
-/// remain responsive and do not degrade.
-///
-/// Validates runtime isolation: the merge workflow for one task does not
-/// block state machine operations for other tasks.
+// Tests early-return guard — does not reach merge strategy dispatch
+/// Task 1 enters PendingMerge with no repos (guard returns immediately).
+/// Validates that Task 2 is not blocked by the no-op merge path.
 #[tokio::test]
-async fn test_blocking_isolation_concurrent_operations() {
+async fn test_guard_no_repos_pending_merge_does_not_block_other_tasks() {
     use std::time::Instant;
 
     // Task 1: enters PendingMerge (merge workflow in progress)
