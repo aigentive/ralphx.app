@@ -142,21 +142,12 @@ impl<R: Runtime> RepoBackedDependencyManager<R> {
         }
     }
 
-    /// Check if a blocking task is complete (no longer blocking dependents).
-    /// Complete states: Merged, Cancelled, Stopped, MergeIncomplete.
-    /// Note: Approved is NOT complete — task still needs to merge successfully.
-    /// Paused is NOT complete — task may resume.
-    /// Failed is NOT complete — dependents stay Blocked to prevent cascade
-    /// execution against broken output. Users must manually unblock.
+    /// Check if a blocking task satisfies the dependency (no longer blocking dependents).
+    /// Delegates to InternalStatus::is_dependency_satisfied() as the single source of truth.
+    /// If task doesn't exist (deleted), consider it satisfied (not blocking).
     async fn is_blocker_complete(&self, blocker_id: &TaskId) -> bool {
         if let Ok(Some(task)) = self.task_repo.get_by_id(blocker_id).await {
-            matches!(
-                task.internal_status,
-                InternalStatus::Merged
-                    | InternalStatus::Cancelled
-                    | InternalStatus::Stopped
-                    | InternalStatus::MergeIncomplete
-            )
+            task.internal_status.is_dependency_satisfied()
         } else {
             // If task doesn't exist, consider it "complete" (not blocking)
             true

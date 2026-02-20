@@ -832,3 +832,66 @@ fn test_is_terminal_covers_all_variants() {
         assert!(!s.is_terminal(), "{:?} should NOT be terminal", s);
     }
 }
+
+// ===== is_dependency_satisfied Tests =====
+
+#[test]
+fn test_is_dependency_satisfied() {
+    use InternalStatus::*;
+
+    // These statuses satisfy dependencies (unblock dependents)
+    let satisfied = [Merged, Cancelled, Stopped, MergeIncomplete];
+    for status in &satisfied {
+        assert!(
+            status.is_dependency_satisfied(),
+            "{:?} should satisfy dependencies",
+            status
+        );
+    }
+
+    // Failed is terminal but does NOT satisfy dependencies
+    assert!(
+        !Failed.is_dependency_satisfied(),
+        "Failed should NOT satisfy dependencies"
+    );
+    assert!(
+        Failed.is_terminal(),
+        "Failed should still be terminal"
+    );
+
+    // All non-terminal statuses should also not satisfy dependencies
+    let non_satisfied: Vec<&InternalStatus> = InternalStatus::all_variants()
+        .iter()
+        .filter(|s| !satisfied.contains(s))
+        .collect();
+    for status in non_satisfied {
+        assert!(
+            !status.is_dependency_satisfied(),
+            "{:?} should NOT satisfy dependencies",
+            status
+        );
+    }
+}
+
+/// Exhaustive test: every variant must be explicitly satisfied or not.
+#[test]
+fn test_is_dependency_satisfied_covers_all_variants() {
+    use InternalStatus::*;
+    let satisfied = [Merged, Cancelled, Stopped, MergeIncomplete];
+    let not_satisfied = [
+        Backlog, Ready, Blocked, Executing, QaRefining, QaTesting, QaPassed, QaFailed,
+        PendingReview, Reviewing, ReviewPassed, Escalated, RevisionNeeded, ReExecuting,
+        Approved, PendingMerge, Merging, MergeConflict, Paused, Failed,
+    ];
+    assert_eq!(
+        satisfied.len() + not_satisfied.len(),
+        InternalStatus::all_variants().len(),
+        "is_dependency_satisfied coverage is incomplete — update this test when adding new variants"
+    );
+    for s in &satisfied {
+        assert!(s.is_dependency_satisfied(), "{:?} should satisfy", s);
+    }
+    for s in &not_satisfied {
+        assert!(!s.is_dependency_satisfied(), "{:?} should NOT satisfy", s);
+    }
+}

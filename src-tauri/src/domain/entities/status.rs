@@ -175,6 +175,17 @@ impl InternalStatus {
         )
     }
 
+    /// Whether this status satisfies a dependency (unblocks dependents).
+    /// Failed is NOT satisfied — dependents stay Blocked to prevent cascade
+    /// execution against broken output. Users must manually unblock or cancel.
+    /// Contrast with `is_terminal()` which includes Failed.
+    pub fn is_dependency_satisfied(&self) -> bool {
+        matches!(
+            self,
+            Self::Merged | Self::Cancelled | Self::Stopped | Self::MergeIncomplete
+        )
+    }
+
     /// Returns the snake_case string representation (matches serde serialization)
     pub fn as_str(&self) -> &'static str {
         match self {
