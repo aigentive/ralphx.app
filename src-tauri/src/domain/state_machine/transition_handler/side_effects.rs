@@ -18,7 +18,7 @@ use super::merge_validation::{format_validation_error_metadata, ValidationLogEnt
 use super::merge_helpers::{
     compute_merge_worktree_path, task_targets_branch, truncate_str, validate_plan_merge_preconditions,
 };
-use super::merge_outcome_handler::MergeHandlerOptions;
+use super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
 use super::merge_validation::{emit_merge_progress, ValidationFailure};
 
 use std::path::Path;
@@ -394,6 +394,17 @@ impl<'a> super::TransitionHandler<'a> {
                 .await
                 .unwrap_or(None);
 
+            // Snapshot in-flight merge task IDs so we can detect tasks that are
+            // past this lock and actively merging (cleanup/strategy phase).
+            let in_flight_ids: std::collections::HashSet<String> = self
+                .machine
+                .context
+                .services
+                .merges_in_flight
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone();
+
             let blocking_task_info = {
                 let mut blocker: Option<TaskId> = None;
                 for other in &all_tasks {
@@ -405,8 +416,13 @@ impl<'a> super::TransitionHandler<'a> {
                     if !merge_states.contains(&other.internal_status) {
                         continue;
                     }
-                    // Skip tasks that are themselves deferred
-                    if has_merge_deferred_metadata(other) {
+                    // Skip tasks that are themselves deferred — UNLESS they are
+                    // currently in-flight (past the lock, actively merging). A task
+                    // can be in-flight with a stale deferred flag if
+                    // try_retry_deferred_merges cleared the flag and re-entered
+                    // attempt_programmatic_merge before the DB update propagated.
+                    let other_in_flight = in_flight_ids.contains(other.id.as_str());
+                    if has_merge_deferred_metadata(other) && !other_in_flight {
                         continue;
                     }
                     // Skip archived tasks — they are dead, will never complete
@@ -417,6 +433,27 @@ impl<'a> super::TransitionHandler<'a> {
                     if !task_targets_branch(other, &project, plan_branch_repo, &target_branch).await
                     {
                         continue;
+                    }
+
+                    // If the other task is already in-flight (past this lock, actively
+                    // merging to the same branch), always defer to it regardless of
+                    // timestamp priority.  This closes the race where:
+                    //   1. Task B (later timestamp) passes check, releases lock, starts merging
+                    //   2. Task A (earlier timestamp, was deferred) gets retried
+                    //   3. Task A acquires lock, sees Task B with later timestamp
+                    //   4. Without this guard, Task A would NOT defer (earlier wins)
+                    //   5. Both tasks merge concurrently to the same branch
+                    if other_in_flight {
+                        tracing::info!(
+                            event = "merge_arbitration_decision",
+                            winner_task_id = other.id.as_str(),
+                            loser_task_id = task_id_str,
+                            target_branch = %target_branch,
+                            reason = "other_task_already_in_flight",
+                            "Merge arbitration: deferring — other task is actively merging"
+                        );
+                        blocker = Some(other.id.clone());
+                        break;
                     }
 
                     // Get other task's pending_merge entry timestamp
@@ -616,7 +653,13 @@ impl<'a> super::TransitionHandler<'a> {
 
                 clear_merge_deferred_metadata(&mut task);
                 task.touch();
-                let _ = task_repo.update(&task).await;
+                if let Err(e) = task_repo.update(&task).await {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "Failed to persist merge attempt_started metadata"
+                    );
+                }
 
                 tracing::info!(
                     event = "merge_arbitration_winner_retry",
@@ -722,44 +765,48 @@ impl<'a> super::TransitionHandler<'a> {
                         repo_path, &source_branch, &target_branch, &project, task_id_str,
                     ).await;
                     let opts = MergeHandlerOptions::merge();
-                    self.handle_merge_outcome(
-                        outcome, &mut task, &task_id, task_id_str,
-                        &project, repo_path, &source_branch, &target_branch,
-                        task_repo, plan_branch_repo, &opts,
-                    ).await;
+                    let mut ctx = MergeContext {
+                        task: &mut task, task_id: &task_id, task_id_str,
+                        project: &project, repo_path, source_branch: &source_branch,
+                        target_branch: &target_branch, task_repo, plan_branch_repo, opts: &opts,
+                    };
+                    self.handle_merge_outcome(outcome, &mut ctx).await;
                 }
                 MergeStrategy::Rebase => {
                     let outcome = self.rebase_worktree_strategy(
                         repo_path, &source_branch, &target_branch, &project, task_id_str,
                     ).await;
                     let opts = MergeHandlerOptions::rebase();
-                    self.handle_merge_outcome(
-                        outcome, &mut task, &task_id, task_id_str,
-                        &project, repo_path, &source_branch, &target_branch,
-                        task_repo, plan_branch_repo, &opts,
-                    ).await;
+                    let mut ctx = MergeContext {
+                        task: &mut task, task_id: &task_id, task_id_str,
+                        project: &project, repo_path, source_branch: &source_branch,
+                        target_branch: &target_branch, task_repo, plan_branch_repo, opts: &opts,
+                    };
+                    self.handle_merge_outcome(outcome, &mut ctx).await;
                 }
                 MergeStrategy::Squash => {
                     let outcome = self.squash_worktree_strategy(
                         repo_path, &source_branch, &target_branch, &squash_commit_msg, &project, task_id_str,
                     ).await;
                     let opts = MergeHandlerOptions::squash();
-                    self.handle_merge_outcome(
-                        outcome, &mut task, &task_id, task_id_str,
-                        &project, repo_path, &source_branch, &target_branch,
-                        task_repo, plan_branch_repo, &opts,
-                    ).await;
+                    let mut ctx = MergeContext {
+                        task: &mut task, task_id: &task_id, task_id_str,
+                        project: &project, repo_path, source_branch: &source_branch,
+                        target_branch: &target_branch, task_repo, plan_branch_repo, opts: &opts,
+                    };
+                    self.handle_merge_outcome(outcome, &mut ctx).await;
                 }
                 MergeStrategy::RebaseSquash => {
                     let outcome = self.rebase_squash_worktree_strategy(
                         repo_path, &source_branch, &target_branch, &squash_commit_msg, &project, task_id_str,
                     ).await;
                     let opts = MergeHandlerOptions::rebase_squash();
-                    self.handle_merge_outcome(
-                        outcome, &mut task, &task_id, task_id_str,
-                        &project, repo_path, &source_branch, &target_branch,
-                        task_repo, plan_branch_repo, &opts,
-                    ).await;
+                    let mut ctx = MergeContext {
+                        task: &mut task, task_id: &task_id, task_id_str,
+                        project: &project, repo_path, source_branch: &source_branch,
+                        target_branch: &target_branch, task_repo, plan_branch_repo, opts: &opts,
+                    };
+                    self.handle_merge_outcome(outcome, &mut ctx).await;
                 }
             }
         }).await;
@@ -898,6 +945,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
 
                 if let Some(handle) = app_handle {
+                    // Intentional: no frontend listeners is OK
                     let _ = handle.emit(
                         "plan:merge_complete",
                         serde_json::json!({
