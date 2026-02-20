@@ -892,33 +892,33 @@ fn test_full_yaml_roundtrip() {
     let yaml = r#"
 process_mapping:
   ideation:
-default: orchestrator-ideation
-readonly: orchestrator-ideation-readonly
-team: ideation-team-lead
+    default: orchestrator-ideation
+    readonly: orchestrator-ideation-readonly
+    team: ideation-team-lead
   execution:
-default: ralphx-worker
-team: ralphx-worker-team
+    default: ralphx-worker
+    team: ralphx-worker-team
   merge:
-default: ralphx-merger
+    default: ralphx-merger
 
 team_constraints:
   _defaults:
-max_teammates: 5
-model_cap: sonnet
-mode: dynamic
-timeout_minutes: 20
+    max_teammates: 5
+    model_cap: sonnet
+    mode: dynamic
+    timeout_minutes: 20
   execution:
-max_teammates: 5
-allowed_tools: [Read, Write, Edit, Bash]
-allowed_mcp_tools: [get_task_context, start_step]
-model_cap: sonnet
-mode: dynamic
-presets: [ralphx-coder]
-timeout_minutes: 30
+    max_teammates: 5
+    allowed_tools: [Read, Write, Edit, Bash]
+    allowed_mcp_tools: [get_task_context, start_step]
+    model_cap: sonnet
+    mode: dynamic
+    presets: [ralphx-coder]
+    timeout_minutes: 30
   review:
-max_teammates: 2
-mode: constrained
-presets: [ralphx-reviewer]
+    max_teammates: 2
+    mode: constrained
+    presets: [ralphx-reviewer]
 "#;
 
     #[derive(Debug, Deserialize)]

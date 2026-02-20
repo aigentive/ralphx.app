@@ -137,20 +137,20 @@ claude:
   permission_prompt_tool: permission_request
   settings_profile: default
   settings_profiles:
-default:
-  sandbox:
-    enabled: false
-z_ai:
-  env:
-    ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+    default:
+      sandbox:
+        enabled: false
+    z_ai:
+      env:
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 agents:
   - name: ralphx-worker
-tools:
-  extends: base_tools
-  include: [Write]
-mcp_tools: [get_task_context]
-preapproved_cli_tools: []
-system_prompt_file: ralphx-plugin/agents/worker.md
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(
@@ -210,28 +210,28 @@ claude:
   permission_prompt_tool: permission_request
   settings_profile: z_ai
   settings_profiles:
-default:
-  sandbox:
-    enabled: false
-z_ai:
-  env:
-    ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+    default:
+      sandbox:
+        enabled: false
+    z_ai:
+      env:
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 agents:
   - name: ralphx-worker
-settings_profile: default
-tools:
-  extends: base_tools
-  include: [Write]
-mcp_tools: [get_task_context]
-preapproved_cli_tools: []
-system_prompt_file: ralphx-plugin/agents/worker.md
+    settings_profile: default
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
   - name: ralphx-coder
-tools:
-  extends: base_tools
-  include: [Write]
-mcp_tools: [get_task_context]
-preapproved_cli_tools: []
-system_prompt_file: ralphx-plugin/agents/coder.md
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/coder.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
 
@@ -349,21 +349,21 @@ claude:
   permission_prompt_tool: permission_request
   settings_profile: z_ai
   settings_profile_defaults:
-permissions:
-  deny:
-    - Read(./.env)
+    permissions:
+      deny:
+        - Read(./.env)
   settings_profiles:
-z_ai:
-  env:
-    ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+    z_ai:
+      env:
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 agents:
   - name: ralphx-worker
-tools:
-  extends: base_tools
-  include: [Write]
-mcp_tools: [get_task_context]
-preapproved_cli_tools: []
-system_prompt_file: ralphx-plugin/agents/worker.md
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(
@@ -385,23 +385,23 @@ claude:
   permission_prompt_tool: permission_request
   settings_profile: z_ai
   settings_profiles:
-locked_down:
-  permissions:
-    deny:
-      - Read(./.env)
-      - Edit(./.env)
-z_ai:
-  extends: locked_down
-  env:
-    ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
+    locked_down:
+      permissions:
+        deny:
+          - Read(./.env)
+          - Edit(./.env)
+    z_ai:
+      extends: locked_down
+      env:
+        ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
 agents:
   - name: ralphx-worker
-tools:
-  extends: base_tools
-  include: [Write]
-mcp_tools: [get_task_context]
-preapproved_cli_tools: []
-system_prompt_file: ralphx-plugin/agents/worker.md
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(
@@ -645,15 +645,15 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: base-worker
-system_prompt_file: ralphx-plugin/agents/worker.md
-model: sonnet
-tools: { extends: base_tools, include: [Write, Edit, Task] }
-mcp_tools: [start_step, complete_step]
-preapproved_cli_tools: [Write, Edit, Bash]
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: sonnet
+    tools: { extends: base_tools, include: [Write, Edit, Task] }
+    mcp_tools: [start_step, complete_step]
+    preapproved_cli_tools: [Write, Edit, Bash]
   - name: worker-team
-extends: base-worker
-system_prompt_file: ralphx-plugin/agents/worker-team.md
-model: opus
+    extends: base-worker
+    system_prompt_file: ralphx-plugin/agents/worker-team.md
+    model: opus
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let team = parsed
@@ -687,14 +687,14 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: base-worker
-system_prompt_file: ralphx-plugin/agents/worker.md
-model: sonnet
-tools: { extends: base_tools, include: [Write] }
-mcp_tools: [start_step, complete_step]
-preapproved_cli_tools: [Write]
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: sonnet
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [start_step, complete_step]
+    preapproved_cli_tools: [Write]
   - name: custom-worker
-extends: base-worker
-mcp_tools: [get_task_context]
+    extends: base-worker
+    mcp_tools: [get_task_context]
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let custom = parsed
@@ -721,11 +721,11 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: agent-a
-extends: agent-b
-system_prompt_file: ralphx-plugin/agents/worker.md
+    extends: agent-b
+    system_prompt_file: ralphx-plugin/agents/worker.md
   - name: agent-b
-extends: agent-a
-system_prompt_file: ralphx-plugin/agents/worker.md
+    extends: agent-a
+    system_prompt_file: ralphx-plugin/agents/worker.md
 "#;
     // Should parse without panic (circular breaks with warning)
     let parsed = parse_config(yaml).expect("config should parse despite circular extends");
@@ -742,9 +742,9 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: orphan-agent
-extends: nonexistent-parent
-system_prompt_file: ralphx-plugin/agents/worker.md
-model: haiku
+    extends: nonexistent-parent
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: haiku
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let agent = parsed
@@ -765,17 +765,17 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: grandparent
-system_prompt_file: ralphx-plugin/agents/worker.md
-model: haiku
-mcp_tools: [tool_a]
-preapproved_cli_tools: [Bash]
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: haiku
+    mcp_tools: [tool_a]
+    preapproved_cli_tools: [Bash]
   - name: parent
-extends: grandparent
-model: sonnet
-mcp_tools: [tool_b]
+    extends: grandparent
+    model: sonnet
+    mcp_tools: [tool_b]
   - name: child
-extends: parent
-model: opus
+    extends: parent
+    model: opus
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let child = parsed
@@ -805,11 +805,11 @@ claude:
   permission_prompt_tool: permission_request
 agents:
   - name: standalone
-system_prompt_file: ralphx-plugin/agents/worker.md
-model: sonnet
-tools: { extends: base_tools, include: [Write] }
-mcp_tools: [get_task_context]
-preapproved_cli_tools: [Write, Bash]
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    model: sonnet
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: [Write, Bash]
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let agent = parsed
@@ -833,16 +833,16 @@ claude:
   permission_prompt_tool: permission_request
 process_mapping:
   execution:
-default: ralphx-worker
-team: ralphx-worker-team
+    default: ralphx-worker
+    team: ralphx-worker-team
   ideation:
-default: orchestrator-ideation
+    default: orchestrator-ideation
 agents:
   - name: ralphx-worker
-system_prompt_file: ralphx-plugin/agents/worker.md
-tools: { extends: base_tools, include: [Write] }
-mcp_tools: [get_task_context]
-preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     assert_eq!(parsed.process_mapping.slots.len(), 2);
@@ -869,18 +869,18 @@ claude:
   permission_prompt_tool: permission_request
 team_constraints:
   _defaults:
-max_teammates: 5
-model_cap: sonnet
+    max_teammates: 5
+    model_cap: sonnet
   execution:
-max_teammates: 3
-mode: dynamic
-timeout_minutes: 30
+    max_teammates: 3
+    mode: dynamic
+    timeout_minutes: 30
 agents:
   - name: ralphx-worker
-system_prompt_file: ralphx-plugin/agents/worker.md
-tools: { extends: base_tools, include: [Write] }
-mcp_tools: [get_task_context]
-preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+    tools: { extends: base_tools, include: [Write] }
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
 "#;
     let parsed = parse_config(yaml).expect("config should parse");
     let defaults = parsed.team_constraints.defaults.as_ref().unwrap();
