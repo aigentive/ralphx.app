@@ -121,20 +121,8 @@ pub trait TaskRepository: Send + Sync {
     // Query Operations
     // ═══════════════════════════════════════════════════════════════════════
 
-    /// Get next task ready for execution (READY status, no blockers)
+    /// Get next task ready for execution (READY status, no unsatisfied dependencies)
     async fn get_next_executable(&self, project_id: &ProjectId) -> AppResult<Option<Task>>;
-
-    /// Get tasks blocking a given task
-    async fn get_blockers(&self, id: &TaskId) -> AppResult<Vec<Task>>;
-
-    /// Get tasks blocked by a given task
-    async fn get_dependents(&self, id: &TaskId) -> AppResult<Vec<Task>>;
-
-    /// Add a blocker relationship
-    async fn add_blocker(&self, task_id: &TaskId, blocker_id: &TaskId) -> AppResult<()>;
-
-    /// Remove/resolve a blocker relationship
-    async fn resolve_blocker(&self, task_id: &TaskId, blocker_id: &TaskId) -> AppResult<()>;
 
     /// Get all tasks belonging to an ideation session
     ///

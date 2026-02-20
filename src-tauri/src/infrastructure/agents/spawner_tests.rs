@@ -69,18 +69,6 @@ impl TaskRepository for MockTaskRepoForSpawner {
     async fn get_next_executable(&self, _: &ProjectId) -> AppResult<Option<Task>> {
         Ok(None)
     }
-    async fn get_blockers(&self, _: &TaskId) -> AppResult<Vec<Task>> {
-        Ok(vec![])
-    }
-    async fn get_dependents(&self, _: &TaskId) -> AppResult<Vec<Task>> {
-        Ok(vec![])
-    }
-    async fn add_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
-    async fn resolve_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
     async fn get_by_ideation_session(
         &self,
         _: &crate::domain::entities::IdeationSessionId,

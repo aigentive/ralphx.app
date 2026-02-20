@@ -4,8 +4,8 @@ use crate::domain::entities::{
     Priority, ProjectId, ProposalCategory, TaskProposal, TaskProposalId, TaskStep, TaskStepId,
 };
 use crate::domain::repositories::{
-    ArtifactRepository, StateHistoryMetadata, TaskProposalRepository, TaskRepository,
-    TaskStepRepository,
+    ArtifactRepository, StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository,
+    TaskRepository, TaskStepRepository,
 };
 use async_trait::async_trait;
 use std::collections::HashMap;
@@ -95,22 +95,6 @@ impl TaskRepository for MockTaskRepository {
 
     async fn get_next_executable(&self, _project_id: &ProjectId) -> AppResult<Option<Task>> {
         Ok(None)
-    }
-
-    async fn get_blockers(&self, _id: &TaskId) -> AppResult<Vec<Task>> {
-        Ok(vec![])
-    }
-
-    async fn get_dependents(&self, _id: &TaskId) -> AppResult<Vec<Task>> {
-        Ok(vec![])
-    }
-
-    async fn add_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
-
-    async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
-        Ok(())
     }
 
     async fn get_by_ideation_session(
@@ -220,6 +204,53 @@ impl TaskRepository for MockTaskRepository {
         &self,
         _project_id: &ProjectId,
         _statuses: &[InternalStatus],
+    ) -> AppResult<bool> {
+        Ok(false)
+    }
+}
+
+struct MockTaskDependencyRepository;
+
+impl MockTaskDependencyRepository {
+    fn empty() -> Self {
+        Self
+    }
+}
+
+#[async_trait]
+impl TaskDependencyRepository for MockTaskDependencyRepository {
+    async fn add_dependency(&self, _task_id: &TaskId, _depends_on: &TaskId) -> AppResult<()> {
+        Ok(())
+    }
+    async fn remove_dependency(&self, _task_id: &TaskId, _depends_on: &TaskId) -> AppResult<()> {
+        Ok(())
+    }
+    async fn get_blockers(&self, _task_id: &TaskId) -> AppResult<Vec<TaskId>> {
+        Ok(vec![])
+    }
+    async fn get_blocked_by(&self, _task_id: &TaskId) -> AppResult<Vec<TaskId>> {
+        Ok(vec![])
+    }
+    async fn has_circular_dependency(
+        &self,
+        _task_id: &TaskId,
+        _potential_dep: &TaskId,
+    ) -> AppResult<bool> {
+        Ok(false)
+    }
+    async fn clear_dependencies(&self, _task_id: &TaskId) -> AppResult<()> {
+        Ok(())
+    }
+    async fn count_blockers(&self, _task_id: &TaskId) -> AppResult<u32> {
+        Ok(0)
+    }
+    async fn count_blocked_by(&self, _task_id: &TaskId) -> AppResult<u32> {
+        Ok(0)
+    }
+    async fn has_dependency(
+        &self,
+        _task_id: &TaskId,
+        _depends_on: &TaskId,
     ) -> AppResult<bool> {
         Ok(false)
     }
@@ -572,6 +603,7 @@ async fn test_get_task_context_basic() {
 
     let service = TaskContextService::new(
         Arc::new(MockTaskRepository::with_task(task.clone())),
+        Arc::new(MockTaskDependencyRepository::empty()),
         Arc::new(MockTaskProposalRepository::empty()),
         Arc::new(MockArtifactRepository::empty()),
         Arc::new(MockTaskStepRepository::empty()),
@@ -612,6 +644,7 @@ async fn test_get_task_context_with_proposal() {
 
     let service = TaskContextService::new(
         Arc::new(MockTaskRepository::with_task(task.clone())),
+        Arc::new(MockTaskDependencyRepository::empty()),
         Arc::new(MockTaskProposalRepository::with_proposal(proposal)),
         Arc::new(MockArtifactRepository::empty()),
         Arc::new(MockTaskStepRepository::empty()),
@@ -644,6 +677,7 @@ async fn test_get_task_context_with_plan_artifact() {
 
     let service = TaskContextService::new(
         Arc::new(MockTaskRepository::with_task(task.clone())),
+        Arc::new(MockTaskDependencyRepository::empty()),
         Arc::new(MockTaskProposalRepository::empty()),
         Arc::new(MockArtifactRepository::with_artifact(artifact)),
         Arc::new(MockTaskStepRepository::empty()),
@@ -684,6 +718,7 @@ async fn test_get_task_context_with_related_artifacts() {
 
     let service = TaskContextService::new(
         Arc::new(MockTaskRepository::with_task(task.clone())),
+        Arc::new(MockTaskDependencyRepository::empty()),
         Arc::new(MockTaskProposalRepository::empty()),
         Arc::new(MockArtifactRepository::with_related(
             artifact,
@@ -721,6 +756,7 @@ async fn test_content_preview_truncation() {
 async fn test_task_not_found() {
     let service = TaskContextService::new(
         Arc::new(MockTaskRepository { task: None }),
+        Arc::new(MockTaskDependencyRepository::empty()),
         Arc::new(MockTaskProposalRepository::empty()),
         Arc::new(MockArtifactRepository::empty()),
         Arc::new(MockTaskStepRepository::empty()),
@@ -739,6 +775,7 @@ async fn test_get_task_context_dependency_fields() {
 
     let service = TaskContextService::new(
         Arc::new(MockTaskRepository::with_task(task.clone())),
+        Arc::new(MockTaskDependencyRepository::empty()),
         Arc::new(MockTaskProposalRepository::empty()),
         Arc::new(MockArtifactRepository::empty()),
         Arc::new(MockTaskStepRepository::empty()),

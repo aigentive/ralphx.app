@@ -21,6 +21,7 @@ pub async fn get_task_context(
     // Create service with current repositories
     let service = TaskContextService::new(
         state.task_repo.clone(),
+        state.task_dependency_repo.clone(),
         state.task_proposal_repo.clone(),
         state.artifact_repo.clone(),
         state.task_step_repo.clone(),

@@ -76,22 +76,6 @@ impl TaskRepository for MockTaskRepository {
         Ok(None)
     }
 
-    async fn get_blockers(&self, _id: &TaskId) -> AppResult<Vec<Task>> {
-        Ok(vec![])
-    }
-
-    async fn get_dependents(&self, _id: &TaskId) -> AppResult<Vec<Task>> {
-        Ok(vec![])
-    }
-
-    async fn add_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
-
-    async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
-
     async fn get_by_ideation_session(
         &self,
         _session_id: &IdeationSessionId,
@@ -291,29 +275,6 @@ async fn test_mock_task_repository_get_next_executable() {
     let result = repo.get_next_executable(&project_id).await;
     assert!(result.is_ok());
     assert!(result.unwrap().is_none());
-}
-
-#[tokio::test]
-async fn test_mock_task_repository_blocker_operations() {
-    let repo = MockTaskRepository;
-    let task_id = TaskId::new();
-    let blocker_id = TaskId::new();
-
-    // Add blocker
-    let result = repo.add_blocker(&task_id, &blocker_id).await;
-    assert!(result.is_ok());
-
-    // Get blockers
-    let result = repo.get_blockers(&task_id).await;
-    assert!(result.is_ok());
-
-    // Get dependents
-    let result = repo.get_dependents(&blocker_id).await;
-    assert!(result.is_ok());
-
-    // Resolve blocker
-    let result = repo.resolve_blocker(&task_id, &blocker_id).await;
-    assert!(result.is_ok());
 }
 
 #[tokio::test]

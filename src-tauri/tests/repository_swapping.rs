@@ -16,6 +16,7 @@ use std::sync::Arc;
 
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{GitMode, InternalStatus, Project, Task};
+use ralphx_lib::domain::repositories::TaskDependencyRepository;
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, SqliteProjectRepository, SqliteTaskRepository,
 };
@@ -83,32 +84,32 @@ async fn test_task_workflow(state: &AppState) {
     assert!(next.is_some());
     assert_eq!(next.unwrap().id, task1.id);
 
-    // 8. Add blocker: task2 blocks task1
+    // 8. Add dependency: task1 depends on task2 (via task_dependency_repo)
     state
-        .task_repo
-        .add_blocker(&task1.id, &task2.id)
+        .task_dependency_repo
+        .add_dependency(&task1.id, &task2.id)
         .await
         .unwrap();
 
-    // 9. Get blockers for task1
-    let blockers = state.task_repo.get_blockers(&task1.id).await.unwrap();
+    // 9. Get blockers for task1 (via task_dependency_repo)
+    let blockers = state.task_dependency_repo.get_blockers(&task1.id).await.unwrap();
     assert_eq!(blockers.len(), 1);
-    assert_eq!(blockers[0].id, task2.id);
+    assert_eq!(blockers[0], task2.id);
 
-    // 10. Get dependents of task2
-    let dependents = state.task_repo.get_dependents(&task2.id).await.unwrap();
-    assert_eq!(dependents.len(), 1);
-    assert_eq!(dependents[0].id, task1.id);
+    // 10. Get tasks blocked by task2 (via task_dependency_repo)
+    let blocked = state.task_dependency_repo.get_blocked_by(&task2.id).await.unwrap();
+    assert_eq!(blocked.len(), 1);
+    assert_eq!(blocked[0], task1.id);
 
-    // 11. Resolve blocker
+    // 11. Remove dependency
     state
-        .task_repo
-        .resolve_blocker(&task1.id, &task2.id)
+        .task_dependency_repo
+        .remove_dependency(&task1.id, &task2.id)
         .await
         .unwrap();
 
-    // 12. Verify blocker is resolved
-    let blockers = state.task_repo.get_blockers(&task1.id).await.unwrap();
+    // 12. Verify dependency is resolved
+    let blockers = state.task_dependency_repo.get_blockers(&task1.id).await.unwrap();
     assert!(blockers.is_empty());
 
     // 13. Get status history for task1

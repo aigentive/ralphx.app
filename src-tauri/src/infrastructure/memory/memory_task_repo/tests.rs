@@ -462,14 +462,10 @@ async fn test_get_next_executable_excludes_blocked() {
     task.internal_status = InternalStatus::Ready;
     repo.create(task.clone()).await.unwrap();
 
-    let blocker = create_test_task(project.clone(), "Blocker", 1);
-    repo.create(blocker.clone()).await.unwrap();
-
-    // Block the high-priority task
-    repo.add_blocker(&task.id, &blocker.id).await.unwrap();
-
+    // Note: dependency checking is now done via TaskDependencyRepository.
+    // The in-memory TaskRepository.get_next_executable() no longer filters by blockers.
     let next = repo.get_next_executable(&project).await.unwrap();
-    assert!(next.is_none()); // Only blocked Ready task
+    assert!(next.is_some()); // Returns the ready task (blocker filtering is in TaskDependencyRepo)
 }
 
 #[tokio::test]
@@ -481,90 +477,8 @@ async fn test_get_next_executable_returns_none_when_empty() {
     assert!(next.is_none());
 }
 
-// ===== Blocker Operations Tests =====
-
-#[tokio::test]
-async fn test_add_blocker_creates_relationship() {
-    let repo = MemoryTaskRepository::new();
-    let project = ProjectId::new();
-
-    let task = create_test_task(project.clone(), "Task", 1);
-    let blocker = create_test_task(project.clone(), "Blocker", 2);
-    repo.create(task.clone()).await.unwrap();
-    repo.create(blocker.clone()).await.unwrap();
-
-    repo.add_blocker(&task.id, &blocker.id).await.unwrap();
-
-    let blockers = repo.get_blockers(&task.id).await.unwrap();
-    assert_eq!(blockers.len(), 1);
-    assert_eq!(blockers[0].title, "Blocker");
-}
-
-#[tokio::test]
-async fn test_get_blockers_returns_empty_for_unblocked() {
-    let repo = MemoryTaskRepository::new();
-    let project = ProjectId::new();
-
-    let task = create_test_task(project, "Task", 1);
-    repo.create(task.clone()).await.unwrap();
-
-    let blockers = repo.get_blockers(&task.id).await.unwrap();
-    assert!(blockers.is_empty());
-}
-
-#[tokio::test]
-async fn test_get_dependents_returns_blocked_tasks() {
-    let repo = MemoryTaskRepository::new();
-    let project = ProjectId::new();
-
-    let blocker = create_test_task(project.clone(), "Blocker", 1);
-    let dependent1 = create_test_task(project.clone(), "Dependent 1", 2);
-    let dependent2 = create_test_task(project.clone(), "Dependent 2", 3);
-
-    repo.create(blocker.clone()).await.unwrap();
-    repo.create(dependent1.clone()).await.unwrap();
-    repo.create(dependent2.clone()).await.unwrap();
-
-    repo.add_blocker(&dependent1.id, &blocker.id).await.unwrap();
-    repo.add_blocker(&dependent2.id, &blocker.id).await.unwrap();
-
-    let dependents = repo.get_dependents(&blocker.id).await.unwrap();
-    assert_eq!(dependents.len(), 2);
-}
-
-#[tokio::test]
-async fn test_resolve_blocker_removes_relationship() {
-    let repo = MemoryTaskRepository::new();
-    let project = ProjectId::new();
-
-    let task = create_test_task(project.clone(), "Task", 1);
-    let blocker = create_test_task(project.clone(), "Blocker", 2);
-    repo.create(task.clone()).await.unwrap();
-    repo.create(blocker.clone()).await.unwrap();
-
-    repo.add_blocker(&task.id, &blocker.id).await.unwrap();
-    repo.resolve_blocker(&task.id, &blocker.id).await.unwrap();
-
-    let blockers = repo.get_blockers(&task.id).await.unwrap();
-    assert!(blockers.is_empty());
-}
-
-#[tokio::test]
-async fn test_delete_removes_blocker_references() {
-    let repo = MemoryTaskRepository::new();
-    let project = ProjectId::new();
-
-    let task = create_test_task(project.clone(), "Task", 1);
-    let blocker = create_test_task(project.clone(), "Blocker", 2);
-    repo.create(task.clone()).await.unwrap();
-    repo.create(blocker.clone()).await.unwrap();
-
-    repo.add_blocker(&task.id, &blocker.id).await.unwrap();
-    repo.delete(&blocker.id).await.unwrap();
-
-    let blockers = repo.get_blockers(&task.id).await.unwrap();
-    assert!(blockers.is_empty());
-}
+// Note: blocker operation tests removed — blockers are now managed via TaskDependencyRepository.
+// See memory_task_dependency_repo_tests.rs for dependency tests.
 
 // ===== with_tasks Constructor Test =====
 

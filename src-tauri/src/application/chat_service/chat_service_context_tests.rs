@@ -324,22 +324,6 @@ impl TaskRepository for MockTaskRepo {
         Ok(None)
     }
 
-    async fn get_blockers(&self, _id: &TaskId) -> AppResult<Vec<crate::domain::entities::Task>> {
-        Ok(vec![])
-    }
-
-    async fn get_dependents(&self, _id: &TaskId) -> AppResult<Vec<crate::domain::entities::Task>> {
-        Ok(vec![])
-    }
-
-    async fn add_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
-
-    async fn resolve_blocker(&self, _task_id: &TaskId, _blocker_id: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
-
     async fn get_by_ideation_session(
         &self,
         _session_id: &crate::domain::entities::IdeationSessionId,
