@@ -16,6 +16,7 @@ use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::GitService;
 use crate::domain::entities::{ProjectId, TaskId, TaskStepStatus};
 use crate::error::{AppError, AppResult};
+use super::cleanup_helpers::spawn_schedule_after_settle;
 use crate::infrastructure::agents::claude::scheduler_config;
 
 impl<'a> super::TransitionHandler<'a> {
@@ -169,13 +170,10 @@ impl<'a> super::TransitionHandler<'a> {
                 // Delay auto-scheduling so UI sees task "settle" in Ready column
                 // before it potentially moves to Executing (user-visible → ready_settle_ms)
                 if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
-                    let scheduler = Arc::clone(scheduler);
-                    let ready_settle_ms = scheduler_config().ready_settle_ms;
-                    tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(ready_settle_ms))
-                            .await;
-                        scheduler.try_schedule_ready_tasks().await;
-                    });
+                    spawn_schedule_after_settle(
+                        Arc::clone(scheduler),
+                        scheduler_config().ready_settle_ms,
+                    );
                 }
             }
             State::Executing => {
@@ -952,13 +950,10 @@ impl<'a> super::TransitionHandler<'a> {
                 // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
                 // Internal transition — no UI settle needed → merge_settle_ms
                 if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
-                    let scheduler = Arc::clone(scheduler);
-                    let merge_settle_ms = scheduler_config().merge_settle_ms;
-                    tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms))
-                            .await;
-                        scheduler.try_schedule_ready_tasks().await;
-                    });
+                    spawn_schedule_after_settle(
+                        Arc::clone(scheduler),
+                        scheduler_config().merge_settle_ms,
+                    );
                 } else {
                     tracing::warn!(
                         task_id = self.machine.context.task_id.as_str(),
