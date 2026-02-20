@@ -59,7 +59,8 @@ async fn test_dependency_manager_treats_paused_blocker_as_incomplete() {
     );
 }
 
-/// Stopped is now terminal — a stopped blocker no longer blocks dependents.
+/// Stopped is terminal but does NOT satisfy dependencies — stopped tasks
+/// have incomplete work, so dependents should remain blocked.
 #[tokio::test]
 async fn test_is_blocker_complete_with_stopped_state() {
     let app_state = AppState::new_test();
@@ -83,8 +84,8 @@ async fn test_is_blocker_complete_with_stopped_state() {
 
     let has_blockers = manager.has_unresolved_blockers(blocked.id.as_str()).await;
     assert!(
-        !has_blockers,
-        "Stopped blockers should be treated as terminal (no longer blocking)"
+        has_blockers,
+        "Stopped blockers should still block dependents (incomplete work)"
     );
 }
 

@@ -163,10 +163,10 @@ impl InternalStatus {
         ]
     }
 
-    /// Returns true if this status is terminal for dependency-unblocking purposes.
+    /// Returns true if this status is terminal (no automatic progress possible).
     /// Terminal: Merged, Failed, Cancelled, Stopped, MergeIncomplete.
-    /// MergeIncomplete is terminal because it requires manual intervention — a blocker
-    /// stuck in MergeIncomplete must not permanently block dependents.
+    /// Note: terminal != dependency-satisfied. Failed and Stopped are terminal
+    /// but do NOT satisfy dependencies (see `is_dependency_satisfied()`).
     /// NOT terminal: Paused (can resume), MergeConflict (agent can retry), Approved (→ PendingMerge).
     pub fn is_terminal(&self) -> bool {
         matches!(
@@ -178,11 +178,14 @@ impl InternalStatus {
     /// Whether this status satisfies a dependency (unblocks dependents).
     /// Failed is NOT satisfied — dependents stay Blocked to prevent cascade
     /// execution against broken output. Users must manually unblock or cancel.
-    /// Contrast with `is_terminal()` which includes Failed.
+    /// Stopped is NOT satisfied — the task was interrupted before completing its
+    /// work, so dependents should remain blocked until the task is restarted and
+    /// finishes or is explicitly cancelled.
+    /// Contrast with `is_terminal()` which includes Failed and Stopped.
     pub fn is_dependency_satisfied(&self) -> bool {
         matches!(
             self,
-            Self::Merged | Self::Cancelled | Self::Stopped | Self::MergeIncomplete
+            Self::Merged | Self::Cancelled | Self::MergeIncomplete
         )
     }
 

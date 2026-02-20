@@ -1060,9 +1060,10 @@ async fn test_blocked_task_remains_blocked_when_blocker_paused() {
     );
 }
 
-/// Stopped is now terminal — a blocked task should be unblocked when its blocker is Stopped.
+/// Stopped is terminal but does NOT satisfy dependencies — a blocked task
+/// should remain Blocked when its blocker is Stopped (incomplete work).
 #[tokio::test]
-async fn test_all_blockers_complete_treats_stopped_as_terminal() {
+async fn test_all_blockers_complete_treats_stopped_as_not_satisfied() {
     let (execution_state, app_state) = setup_test_state().await;
 
     // Create a project
@@ -1073,7 +1074,7 @@ async fn test_all_blockers_complete_treats_stopped_as_terminal() {
         .await
         .unwrap();
 
-    // Create a blocker task that is stopped
+    // Create a blocker task that is stopped (incomplete work)
     let mut blocker_task = Task::new(project.id.clone(), "Blocker Task".to_string());
     blocker_task.internal_status = InternalStatus::Stopped;
     app_state
@@ -1104,7 +1105,7 @@ async fn test_all_blockers_complete_treats_stopped_as_terminal() {
     // Run startup
     runner.run().await;
 
-    // Verify the blocked task is now Ready (Stopped blocker is terminal)
+    // Verify the blocked task stays Blocked (Stopped blocker has incomplete work)
     let updated_task = app_state
         .task_repo
         .get_by_id(&blocked_task.id)
@@ -1113,8 +1114,8 @@ async fn test_all_blockers_complete_treats_stopped_as_terminal() {
         .unwrap();
     assert_eq!(
         updated_task.internal_status,
-        InternalStatus::Ready,
-        "Blocked task should become Ready when blocker is Stopped (Stopped is terminal)"
+        InternalStatus::Blocked,
+        "Blocked task should remain Blocked when blocker is Stopped (incomplete work)"
     );
 }
 
@@ -2289,13 +2290,10 @@ async fn test_startup_skips_blocked_tasks_with_non_terminal_blockers() {
 }
 
 /// Scenario: a plan_merge task is Blocked, with one blocker in Stopped state.
-/// Stopped is a terminal state (task was intentionally stopped, it won't restart).
-/// Expected: startup recovery transitions the plan_merge task to Ready.
-///
-/// This is a safety net for tasks that got stuck due to Stopped blockers before
-/// the terminal state fix (is_blocker_complete previously omitted Stopped).
+/// Stopped is terminal but does NOT satisfy dependencies (incomplete work).
+/// Expected: startup recovery leaves the plan_merge task Blocked.
 #[tokio::test]
-async fn test_startup_recovers_blocked_tasks_with_stopped_blocker() {
+async fn test_startup_keeps_blocked_tasks_with_stopped_blocker() {
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
@@ -2305,7 +2303,7 @@ async fn test_startup_recovers_blocked_tasks_with_stopped_blocker() {
         .await
         .unwrap();
 
-    // Create a blocker task in Stopped state (terminal — should unblock dependents)
+    // Create a blocker task in Stopped state (incomplete work — should NOT unblock dependents)
     let mut blocker_stopped = Task::new(project.id.clone(), "Stopped Feature Task".to_string());
     blocker_stopped.internal_status = InternalStatus::Stopped;
     app_state
@@ -2339,8 +2337,8 @@ async fn test_startup_recovers_blocked_tasks_with_stopped_blocker() {
     // Run startup recovery
     runner.run().await;
 
-    // Verify the plan_merge task transitions to Ready
-    // Stopped is terminal — the blocker will never restart, so the dependent should unblock
+    // Verify the plan_merge task stays Blocked
+    // Stopped does NOT satisfy dependencies — the blocker's work is incomplete
     let updated = app_state
         .task_repo
         .get_by_id(&plan_merge_id)
@@ -2349,12 +2347,12 @@ async fn test_startup_recovers_blocked_tasks_with_stopped_blocker() {
         .unwrap();
     assert_eq!(
         updated.internal_status,
-        InternalStatus::Ready,
-        "plan_merge task should be unblocked when blocker is Stopped (terminal state)"
+        InternalStatus::Blocked,
+        "plan_merge task should remain Blocked when blocker is Stopped (incomplete work)"
     );
     assert!(
-        updated.blocked_reason.is_none(),
-        "blocked_reason should be cleared when task is unblocked"
+        updated.blocked_reason.is_some(),
+        "blocked_reason should be preserved when task stays Blocked"
     );
 }
 
