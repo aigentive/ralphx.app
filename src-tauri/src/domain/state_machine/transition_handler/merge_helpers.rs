@@ -530,9 +530,12 @@ pub(super) async fn resolve_task_base_branch(
                             "Recreated merged plan branch for re-executed task"
                         );
                         // Reset DB status to Active so subsequent tasks use this branch
-                        let _ = plan_branch_repo
+                        if let Err(e) = plan_branch_repo
                             .update_status(&pb.id, PlanBranchStatus::Active)
-                            .await;
+                            .await
+                        {
+                            tracing::warn!(error = %e, branch = %pb.branch_name, "Failed to reset plan branch status to Active");
+                        }
                     }
                     Err(e) => {
                         // Race condition: another task may have created it concurrently
@@ -541,9 +544,12 @@ pub(super) async fn resolve_task_base_branch(
                                 branch = %pb.branch_name,
                                 "Merged plan branch recreated by concurrent task"
                             );
-                            let _ = plan_branch_repo
+                            if let Err(e) = plan_branch_repo
                                 .update_status(&pb.id, PlanBranchStatus::Active)
-                                .await;
+                                .await
+                            {
+                                tracing::warn!(error = %e, branch = %pb.branch_name, "Failed to reset plan branch status to Active (concurrent)");
+                            }
                         } else {
                             tracing::warn!(
                                 error = %e,
@@ -560,9 +566,12 @@ pub(super) async fn resolve_task_base_branch(
                     branch = %pb.branch_name,
                     "Plan branch exists in git but DB status is Merged — resetting to Active"
                 );
-                let _ = plan_branch_repo
+                if let Err(e) = plan_branch_repo
                     .update_status(&pb.id, PlanBranchStatus::Active)
-                    .await;
+                    .await
+                {
+                    tracing::warn!(error = %e, branch = %pb.branch_name, "Failed to reset plan branch status to Active");
+                }
             }
             tracing::info!(
                 task_id = task.id.as_str(),

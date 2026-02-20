@@ -86,9 +86,12 @@ impl<'a> super::TransitionHandler<'a> {
                             }
 
                             if let Ok(updated_metadata) = serde_json::to_string(&metadata_obj) {
-                                let _ = task_repo
+                                if let Err(e) = task_repo
                                     .update_metadata(&task_id, Some(updated_metadata))
-                                    .await;
+                                    .await
+                                {
+                                    tracing::warn!(task_id = %task_id, error = %e, "Failed to persist setup log metadata");
+                                }
                             }
                         }
 
@@ -132,9 +135,12 @@ impl<'a> super::TransitionHandler<'a> {
                                         if let Ok(updated_metadata) =
                                             serde_json::to_string(&metadata_obj)
                                         {
-                                            let _ = task_repo
+                                            if let Err(e) = task_repo
                                                 .update_metadata(&task_id, Some(updated_metadata))
-                                                .await;
+                                                .await
+                                            {
+                                                tracing::warn!(task_id = %task_id, error = %e, "Failed to persist setup warning metadata");
+                                            }
                                         }
                                     }
                                 }
@@ -851,14 +857,18 @@ impl<'a> super::TransitionHandler<'a> {
                                     task_id = task_id,
                                     "on_enter(Merging): Aborting stale rebase before agent spawn"
                                 );
-                                let _ = GitService::abort_rebase(&wt_path).await;
+                                if let Err(e) = GitService::abort_rebase(&wt_path).await {
+                                    tracing::warn!(task_id = task_id, error = %e, "Failed to abort stale rebase");
+                                }
                             }
                             if GitService::is_merge_in_progress(&wt_path) {
                                 tracing::info!(
                                     task_id = task_id,
                                     "on_enter(Merging): Aborting stale merge before agent spawn"
                                 );
-                                let _ = GitService::abort_merge(&wt_path).await;
+                                if let Err(e) = GitService::abort_merge(&wt_path).await {
+                                    tracing::warn!(task_id = task_id, error = %e, "Failed to abort stale merge");
+                                }
                             }
 
                             // Always: remove worktree symlinks that cause false conflicts.
@@ -875,7 +885,9 @@ impl<'a> super::TransitionHandler<'a> {
                                         path = %sym.display(),
                                         "on_enter(Merging): Removing worktree symlink"
                                     );
-                                    let _ = std::fs::remove_file(&sym);
+                                    if let Err(e) = std::fs::remove_file(&sym) {
+                                        tracing::warn!(task_id = task_id, path = %sym.display(), error = %e, "Failed to remove worktree symlink");
+                                    }
                                 }
                             }
                         }

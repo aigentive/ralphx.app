@@ -8,6 +8,10 @@
 /// 500ms is sufficient for the realistic lock window while keeping latency low.
 pub(super) const INSTALL_RETRY_DELAY_MS: u64 = 500;
 
+/// Status string for failed validation/install log entries.
+/// Used in ValidationLogEntry.status and compared in retry logic.
+const STATUS_FAILED: &str = "failed";
+
 use std::path::Path;
 use std::process::Command;
 
@@ -93,7 +97,10 @@ fn truncate_output(s: &str, max_len: usize) -> String {
     }
 }
 
-/// Emit a high-level merge progress event for UI display
+/// Emit a high-level merge progress event for UI display.
+///
+/// Note: All `let _ = handle.emit(...)` in this module are intentional —
+/// no frontend listeners is OK for progress/validation events.
 pub(super) fn emit_merge_progress<R: tauri::Runtime>(
     app_handle: Option<&AppHandle<R>>,
     task_id: &str,
@@ -238,7 +245,7 @@ async fn run_setup_phase(
                         command: resolved_cmd.clone(),
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
-                        status: "failed".to_string(),
+                        status: STATUS_FAILED.to_string(),
                         exit_code: None,
                         stdout: String::new(),
                         stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
@@ -259,7 +266,7 @@ async fn run_setup_phase(
                         command: resolved_cmd.clone(),
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
-                        status: "failed".to_string(),
+                        status: STATUS_FAILED.to_string(),
                         exit_code: None,
                         stdout: String::new(),
                         stderr: truncate_output(&format!("Task failed: {}", e), 2000),
@@ -563,7 +570,7 @@ async fn run_validate_phase(
                         command: resolved_cmd,
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
-                        status: "failed".to_string(),
+                        status: STATUS_FAILED.to_string(),
                         exit_code: None,
                         stdout: String::new(),
                         stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
@@ -592,7 +599,7 @@ async fn run_validate_phase(
                         command: resolved_cmd,
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
-                        status: "failed".to_string(),
+                        status: STATUS_FAILED.to_string(),
                         exit_code: None,
                         stdout: String::new(),
                         stderr: truncate_output(&format!("Task failed: {}", e), 2000),
@@ -962,7 +969,7 @@ pub(super) async fn run_install_phase(
                     command: resolved_cmd.clone(),
                     path: resolved_path.clone(),
                     label: entry.label.clone(),
-                    status: "failed".to_string(),
+                    status: STATUS_FAILED.to_string(),
                     exit_code: None,
                     stdout: String::new(),
                     stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
@@ -982,7 +989,7 @@ pub(super) async fn run_install_phase(
                     command: resolved_cmd.clone(),
                     path: resolved_path.clone(),
                     label: entry.label.clone(),
-                    status: "failed".to_string(),
+                    status: STATUS_FAILED.to_string(),
                     exit_code: None,
                     stdout: String::new(),
                     stderr: truncate_output(&format!("Task failed: {}", e), 2000),
@@ -992,7 +999,7 @@ pub(super) async fn run_install_phase(
         };
 
         // Retry once if the install command failed (transient errors like ENOTEMPTY)
-        if log_entry.status == "failed" {
+        if log_entry.status == STATUS_FAILED {
             tracing::warn!(
                 command = %resolved_cmd,
                 delay_ms = INSTALL_RETRY_DELAY_MS,
@@ -1060,7 +1067,7 @@ pub(super) async fn run_install_phase(
                         command: resolved_cmd.clone(),
                         path: resolved_path.clone(),
                         label: entry.label.clone(),
-                        status: "failed".to_string(),
+                        status: STATUS_FAILED.to_string(),
                         exit_code: output.status.code(),
                         stdout: truncate_output(&stdout_raw, 2000),
                         stderr: truncate_output(&stderr_raw, 2000),
@@ -1072,7 +1079,7 @@ pub(super) async fn run_install_phase(
         }
 
         // Set failure flag based on final outcome
-        if log_entry.status == "failed" {
+        if log_entry.status == STATUS_FAILED {
             install_had_failures = true;
         }
 
