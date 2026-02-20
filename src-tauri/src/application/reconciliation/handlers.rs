@@ -2,7 +2,7 @@
 
 use std::str::FromStr;
 
-use tauri::Runtime;
+use tauri::{Emitter, Runtime};
 use tracing::warn;
 
 use crate::application::chat_service::reconcile_merge_auto_complete;
@@ -16,8 +16,8 @@ use crate::domain::state_machine::transition_handler::{
 use crate::infrastructure::agents::claude::reconciliation_config;
 
 use super::policy::{
-    RecoveryActionKind, RecoveryContext, RecoveryDecision, RecoveryEvidence, RecoveryPolicy,
-    ShaComparisonResult, UserRecoveryAction,
+    RecoveryActionKind, RecoveryContext, RecoveryDecision, RecoveryEvidence, ShaComparisonResult,
+    UserRecoveryAction,
 };
 use super::ReconciliationRunner;
 
@@ -209,7 +209,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
-    async fn prune_stale_running_registry_entries(&self) {
+    pub(crate) async fn prune_stale_running_registry_entries(&self) {
         let entries = self.running_agent_registry.list_all().await;
         if entries.is_empty() {
             self.execution_state.set_running_count(0);
@@ -348,7 +348,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
-    async fn reconcile_completed_execution(
+    pub(crate) async fn reconcile_completed_execution(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -435,7 +435,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await
     }
 
-    async fn reconcile_reviewing_task(
+    pub(crate) async fn reconcile_reviewing_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -523,7 +523,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await
     }
 
-    async fn reconcile_merging_task(
+    pub(crate) async fn reconcile_merging_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -635,7 +635,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await
     }
 
-    async fn reconcile_qa_task(
+    pub(crate) async fn reconcile_qa_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -727,7 +727,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await
     }
 
-    async fn reconcile_pending_merge_task(
+    pub(crate) async fn reconcile_pending_merge_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -819,7 +819,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await
     }
 
-    async fn reconcile_merge_incomplete_task(
+    pub(crate) async fn reconcile_merge_incomplete_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -936,7 +936,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
-    async fn reconcile_merge_conflict_task(
+    pub(crate) async fn reconcile_merge_conflict_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -1055,7 +1055,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// - ProviderError with retry_after passed and resume_attempts < MAX → resume via entry actions
     /// - ProviderError with max attempts exceeded → transition to Failed
     /// - No metadata → skip (user-paused task)
-    async fn reconcile_paused_provider_error(
+    pub(crate) async fn reconcile_paused_provider_error(
         &self,
         task: &crate::domain::entities::Task,
     ) -> bool {
@@ -1229,7 +1229,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
     }
 
     /// Legacy handler for tasks with old provider_error key (backward compat).
-    async fn reconcile_paused_provider_error_legacy(
+    pub(crate) async fn reconcile_paused_provider_error_legacy(
         &self,
         task: &crate::domain::entities::Task,
     ) -> bool {
