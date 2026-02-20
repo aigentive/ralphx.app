@@ -8,9 +8,8 @@
 
 use super::helpers::*;
 use crate::domain::state_machine::{
-    State, TaskEvent, TaskStateMachine, TransitionHandler, TransitionResult,
+    State, TaskEvent, TransitionHandler, TransitionResult,
 };
-use std::sync::Arc;
 
 // ==================
 // Deferred merge retry tests
@@ -18,16 +17,7 @@ use std::sync::Arc;
 
 #[tokio::test]
 async fn test_exiting_pending_merge_triggers_retry_deferred_merges() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
-    let scheduler = Arc::new(MockTaskScheduler::new());
-    let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-
-    let context = create_context_with_services("task-1", "proj-1", services);
-    let mut machine = TaskStateMachine::new(context);
-
+    let (mut machine, scheduler) = new_machine_with_scheduler("task-1", "proj-1");
     let handler = TransitionHandler::new(&mut machine);
 
     // Transition from PendingMerge to Merged (successful merge)
@@ -57,16 +47,7 @@ async fn test_exiting_pending_merge_triggers_retry_deferred_merges() {
 
 #[tokio::test]
 async fn test_exiting_pending_merge_to_merge_incomplete_triggers_retry() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
-    let scheduler = Arc::new(MockTaskScheduler::new());
-    let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-
-    let context = create_context_with_services("task-1", "proj-1", services);
-    let mut machine = TaskStateMachine::new(context);
-
+    let (mut machine, scheduler) = new_machine_with_scheduler("task-1", "proj-1");
     let handler = TransitionHandler::new(&mut machine);
 
     // Transition from PendingMerge to MergeIncomplete (failed merge)
@@ -94,16 +75,7 @@ async fn test_exiting_pending_merge_to_merge_incomplete_triggers_retry() {
 
 #[tokio::test]
 async fn test_exiting_merging_to_merged_triggers_retry() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
-    let scheduler = Arc::new(MockTaskScheduler::new());
-    let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-
-    let context = create_context_with_services("task-1", "proj-1", services);
-    let mut machine = TaskStateMachine::new(context);
-
+    let (mut machine, scheduler) = new_machine_with_scheduler("task-1", "proj-1");
     let handler = TransitionHandler::new(&mut machine);
 
     // Transition from Merging to Merged (manual merge completion)
@@ -125,16 +97,7 @@ async fn test_exiting_merging_to_merged_triggers_retry() {
 
 #[tokio::test]
 async fn test_exiting_merging_to_merge_incomplete_triggers_retry() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
-    let scheduler = Arc::new(MockTaskScheduler::new());
-    let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-
-    let context = create_context_with_services("task-1", "proj-1", services);
-    let mut machine = TaskStateMachine::new(context);
-
+    let (mut machine, scheduler) = new_machine_with_scheduler("task-1", "proj-1");
     let handler = TransitionHandler::new(&mut machine);
 
     // Transition from Merging to MergeIncomplete (merge failed during conflict resolution)
@@ -158,16 +121,7 @@ async fn test_exiting_merging_to_merge_incomplete_triggers_retry() {
 
 #[tokio::test]
 async fn test_exiting_other_states_does_not_trigger_retry() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
-    let scheduler = Arc::new(MockTaskScheduler::new());
-    let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
-
-    let context = create_context_with_services("task-1", "proj-1", services);
-    let mut machine = TaskStateMachine::new(context);
-
+    let (mut machine, scheduler) = new_machine_with_scheduler("task-1", "proj-1");
     let handler = TransitionHandler::new(&mut machine);
 
     // Transition from Ready to Executing (normal execution start)
@@ -335,8 +289,6 @@ async fn test_background_execution_correctness_state_ordering() {
 /// 3. Deferred merge retry
 #[tokio::test]
 async fn test_background_execution_merged_terminal_state() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
-
     let scheduler = Arc::new(MockTaskScheduler::new());
     let dep_manager = Arc::new(MockDependencyManager::new());
 

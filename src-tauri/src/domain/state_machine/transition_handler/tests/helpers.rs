@@ -182,6 +182,25 @@ pub fn create_context_with_services(
 }
 
 pub use crate::domain::state_machine::TaskStateMachine;
+pub use crate::domain::state_machine::mocks::MockTaskScheduler;
+
+/// Create a `TaskStateMachine` wired with a `MockTaskScheduler`.
+///
+/// Returns `(machine, scheduler)` — caller creates `TransitionHandler::new(&mut machine)`.
+/// Covers the most common merge-test pattern (scheduler + default mocks).
+pub fn new_machine_with_scheduler(
+    task_id: &str,
+    project_id: &str,
+) -> (TaskStateMachine, Arc<MockTaskScheduler>) {
+    let scheduler = Arc::new(MockTaskScheduler::new());
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(
+            Arc::clone(&scheduler)
+                as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
+        );
+    let context = create_context_with_services(task_id, project_id, services);
+    (TaskStateMachine::new(context), scheduler)
+}
 
 /// Return type for `setup_pending_merge_repos`.
 pub struct PendingMergeSetup {
