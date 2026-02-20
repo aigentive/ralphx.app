@@ -107,7 +107,16 @@ pub async fn resolve_working_directory(
                             }
                         }
                     }
-                    // Local mode or no worktree_path: use project's working directory
+                    // No worktree_path available — fall back to project's working directory.
+                    // This is risky: the agent may run git operations in the user's checkout.
+                    if project.git_mode == GitMode::Worktree {
+                        tracing::warn!(
+                            context_type = ?context_type,
+                            context_id = context_id,
+                            "Agent CWD falling back to main repo: task has no worktree_path. \
+                             Agent may run git operations in the user's checkout."
+                        );
+                    }
                     return PathBuf::from(&project.working_directory);
                 }
             }
@@ -138,7 +147,15 @@ pub async fn resolve_working_directory(
                             }
                         }
 
-                        // For merge contexts in worktree mode, never execute from a task worktree.
+                        // Merge context with no valid merge worktree — falling back to main repo.
+                        // This is expected for checkout-free validation recovery (merge_path == repo_path),
+                        // but dangerous if the agent needs to run git checkout/merge in the main repo.
+                        tracing::warn!(
+                            context_id = context_id,
+                            worktree_path = task.worktree_path.as_deref().unwrap_or("None"),
+                            "Merge agent CWD falling back to main repo — no valid merge worktree. \
+                             If the agent runs git checkout, it will disrupt the user's local checkout."
+                        );
                         return project_path;
                     }
 

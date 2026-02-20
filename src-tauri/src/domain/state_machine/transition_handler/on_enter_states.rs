@@ -43,11 +43,18 @@ impl<'a> super::TransitionHandler<'a> {
                 // Skip pre-exec setup if mode is Off
                 use crate::domain::entities::MergeValidationMode;
                 if project.merge_validation_mode != MergeValidationMode::Off {
-                    // Determine execution directory (worktree_path or working_directory)
+                    // Determine execution directory — MUST be a worktree, never the main repo.
+                    // Falling back to working_directory would run install commands in the
+                    // user's checkout, potentially disrupting their work.
                     let exec_cwd = if let Some(ref wt_path) = task.worktree_path {
                         std::path::PathBuf::from(wt_path)
                     } else {
-                        std::path::PathBuf::from(&project.working_directory)
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            "Skipping pre-execution setup: task has no worktree_path. \
+                             Running install commands in the main repo is not safe."
+                        );
+                        return Ok(());
                     };
 
                     // Only run pre-execution setup if exec_cwd exists

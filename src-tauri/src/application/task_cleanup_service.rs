@@ -372,13 +372,20 @@ impl TaskCleanupService {
             }
         }
 
-        // Checkout base branch before deleting task branch
-        if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
-            tracing::warn!(
-                base_branch = base_branch,
-                error = %e,
-                "Failed to checkout base branch during cleanup (non-fatal)"
-            );
+        // Only checkout base branch if the task branch is currently checked out in main repo.
+        // In Worktree mode the task branch lives in a worktree, not the main checkout,
+        // so this is normally a no-op. Guards against edge cases from old Local mode.
+        let current_branch = GitService::get_current_branch(&repo_path)
+            .await
+            .unwrap_or_default();
+        if current_branch == task_branch {
+            if let Err(e) = GitService::checkout_branch(&repo_path, base_branch).await {
+                tracing::warn!(
+                    base_branch = base_branch,
+                    error = %e,
+                    "Failed to checkout base branch during cleanup (non-fatal)"
+                );
+            }
         }
 
         // Delete task branch
