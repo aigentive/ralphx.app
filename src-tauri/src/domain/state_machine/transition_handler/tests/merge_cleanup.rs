@@ -15,18 +15,40 @@ use crate::domain::state_machine::{
 
 /// pre_merge_cleanup step 0 invokes stop_agent for Review and Merge context types.
 ///
-/// The MockChatService.stop_agent returns Ok(false) (no agent running),
-/// which should be handled gracefully. This validates that the step 0 code
-/// path executes without error in the common case where no agent is running.
+/// With repos wired, `attempt_programmatic_merge()` proceeds past the early-return
+/// guard and actually executes `pre_merge_cleanup` (stop_agent calls), then tries
+/// the merge strategy dispatch. The MockChatService.stop_agent returns Ok(false)
+/// (no agent running), which should be handled gracefully.
 #[tokio::test]
 async fn test_step0_agent_kill_executes_without_error() {
-    let services = TaskServices::new_mock();
-    let context = create_context_with_services("task-1", "proj-1", services);
+    use crate::domain::entities::{Project, ProjectId, Task};
+    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Step 0 test".to_string());
+    task.internal_status = crate::domain::entities::InternalStatus::PendingMerge;
+    task.task_branch = Some("feature/test".to_string());
+    task_repo.create(task.clone()).await.unwrap();
+
+    let mut project = Project::new("test-project".to_string(), "/tmp/nonexistent-step0-test".to_string());
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project_repo.create(project).await.unwrap();
+
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&task_repo) as Arc<dyn crate::domain::repositories::TaskRepository>)
+        .with_project_repo(Arc::clone(&project_repo) as Arc<dyn crate::domain::repositories::ProjectRepository>);
+
+    let context = create_context_with_services(task.id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
-    // on_enter(PendingMerge) without repos returns early after pre_merge_cleanup,
-    // but the step 0 code still executes (stop_agent calls on MockChatService).
+    // With repos wired, on_enter(PendingMerge) proceeds past the guard and actually
+    // runs pre_merge_cleanup (step 0 = stop_agent) before trying to merge.
+    // Git operations fail fast on nonexistent dir.
     let result = handler.on_enter(&State::PendingMerge).await;
     assert!(result.is_ok(), "on_enter(PendingMerge) should succeed even with step 0 agent kill");
 }
@@ -36,6 +58,8 @@ async fn test_step0_agent_kill_executes_without_error() {
 /// Without repos, the function should return before reaching the sleep
 /// (attempt_programmatic_merge bails early without task_repo/project_repo).
 /// This ensures the step 0 settle doesn't slow down the no-repos path.
+///
+// Intentionally tests the no-repos early-return guard — not merge behavior
 #[tokio::test]
 async fn test_step0_no_repos_returns_before_settle() {
     use std::time::Instant;
@@ -65,6 +89,8 @@ async fn test_step0_no_repos_returns_before_settle() {
 ///
 /// We validate this structurally by confirming that on_enter(PendingMerge)
 /// without repos doesn't hang indefinitely (the deadline prevents infinite waits).
+///
+// Intentionally tests the no-repos early-return guard — not merge behavior
 #[tokio::test]
 async fn test_merge_deadline_prevents_infinite_hang() {
     use std::time::Instant;
@@ -94,6 +120,8 @@ async fn test_merge_deadline_prevents_infinite_hang() {
 /// This is a structural test: without repos, we can't reach the strategy dispatch,
 /// but we verify the transition_to_merge_incomplete method is reachable from
 /// the deadline path by testing its sibling (the repos-not-available path).
+///
+// Intentionally tests the no-repos early-return guard — not merge behavior
 #[tokio::test]
 async fn test_merge_incomplete_transition_works_without_repos() {
     let emitter = Arc::new(MockEventEmitter::new());
@@ -118,36 +146,64 @@ async fn test_merge_incomplete_transition_works_without_repos() {
 
 /// Steps 4/5/6 timeout wrappers don't break existing behavior.
 ///
-/// Since pre_merge_cleanup is called within attempt_programmatic_merge
-/// (which requires repos), we verify indirectly through the no-repos path
-/// which skips cleanup entirely, and through the on_exit path which verifies
-/// the overall handler infrastructure is intact.
+/// With repos wired, `attempt_programmatic_merge()` proceeds past the early-return
+/// guard and actually runs pre_merge_cleanup (including timeout-wrapped steps)
+/// before hitting the merge strategy dispatch. When the git dir doesn't exist,
+/// the merge fails via handle_outcome_git_error → MergeIncomplete.
+///
+/// Note: The git error path in merge_outcome_handler.rs uses a local
+/// transition_to_merge_incomplete (not self.on_exit), so on_exit side effects
+/// like try_retry_deferred_merges are NOT triggered. Deferred retry is handled
+/// by the reconciler instead.
 #[tokio::test]
 async fn test_timeout_wrappers_dont_break_existing_workflow() {
-    use crate::domain::state_machine::mocks::MockTaskScheduler;
+    use crate::domain::entities::{Project, ProjectId, Task};
+    use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 
-    let scheduler = Arc::new(MockTaskScheduler::new());
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Timeout wrapper test".to_string());
+    task.internal_status = crate::domain::entities::InternalStatus::PendingMerge;
+    task.task_branch = Some("feature/test".to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new("test-project".to_string(), "/tmp/nonexistent-timeout-test".to_string());
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project_repo.create(project).await.unwrap();
+
     let services = TaskServices::new_mock()
-        .with_task_scheduler(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+        .with_task_repo(Arc::clone(&task_repo) as Arc<dyn crate::domain::repositories::TaskRepository>)
+        .with_project_repo(Arc::clone(&project_repo) as Arc<dyn crate::domain::repositories::ProjectRepository>);
 
-    let context = create_context_with_services("task-1", "proj-1", services);
+    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
 
-    // Enter PendingMerge (no repos = early return)
+    // Enter PendingMerge — with repos, this runs pre_merge_cleanup (timeout-wrapped steps)
+    // then attempts merge, which fails on nonexistent git dir.
+    let start = std::time::Instant::now();
     let result = handler.on_enter(&State::PendingMerge).await;
+    let elapsed = start.elapsed();
     assert!(result.is_ok());
 
-    // Exit to Merged (verifies the post-merge code path works)
-    handler.on_exit(&State::PendingMerge, &State::Merged).await;
-
-    tokio::time::sleep(tokio::time::Duration::from_millis(900)).await;
-
-    let calls = scheduler.get_calls();
+    // Verify the merge path completes in bounded time (not stuck in cleanup/strategy)
     assert!(
-        calls.iter().any(|c| c.method == "try_retry_deferred_merges"),
-        "Deferred merge retry should still work with timeout wrappers"
+        elapsed.as_secs() < 30,
+        "on_enter(PendingMerge) with repos should complete in bounded time, took {}s",
+        elapsed.as_secs()
+    );
+
+    // Verify the task transitioned to MergeIncomplete (not stuck in PendingMerge)
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        crate::domain::entities::InternalStatus::MergeIncomplete,
+        "Task should be in MergeIncomplete after merge fails with nonexistent git dir, got {:?}",
+        updated.internal_status
     );
 }
 
