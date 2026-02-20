@@ -16,7 +16,7 @@ use crate::domain::entities::{
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{defer_merge_enabled, git_runtime_config};
 
-use super::cleanup_helpers::run_cleanup_step;
+use super::cleanup_helpers::{run_cleanup_step, CleanupStepResult};
 use super::merge_helpers::{
     compute_merge_worktree_path, compute_rebase_worktree_path,
     extract_task_id_from_merge_path, is_task_in_merge_workflow,
@@ -59,9 +59,8 @@ pub(super) async fn ensure_plan_branch_exists(
                 "Lazily created plan branch for merge target"
             );
         }
-        Err(e) if GitService::branch_exists(repo_path, &pb.branch_name).await => {
-            // Race: concurrent task created it between check and create
-            let _ = e;
+        Err(_) if GitService::branch_exists(repo_path, &pb.branch_name).await => {
+            // Intentional: race condition — concurrent task already created the branch
         }
         Err(e) => {
             tracing::warn!(
@@ -201,32 +200,43 @@ impl<'a> super::TransitionHandler<'a> {
         // task worktree. We must stop it BEFORE attempting worktree deletion to avoid
         // git lock contention that causes the 5+ minute hang (see merge-hang RCA).
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 0 — stopping any running agents");
+        let agent_stop_timeout_secs = git_runtime_config().agent_stop_timeout_secs;
         for ctx_type in [
             crate::domain::entities::ChatContextType::Review,
             crate::domain::entities::ChatContextType::Merge,
         ] {
-            match self
-                .machine
-                .context
-                .services
-                .chat_service
-                .stop_agent(ctx_type, task_id_str)
-                .await
-            {
-                Ok(true) => {
+            let stop_result = tokio::time::timeout(
+                std::time::Duration::from_secs(agent_stop_timeout_secs),
+                self.machine
+                    .context
+                    .services
+                    .chat_service
+                    .stop_agent(ctx_type, task_id_str),
+            )
+            .await;
+            match stop_result {
+                Ok(Ok(true)) => {
                     tracing::info!(
                         task_id = task_id_str,
                         context_type = ?ctx_type,
                         "Stopped running agent before merge cleanup"
                     );
                 }
-                Ok(false) => {}
-                Err(e) => {
+                Ok(Ok(false)) => {}
+                Ok(Err(e)) => {
                     tracing::warn!(
                         task_id = task_id_str,
                         context_type = ?ctx_type,
                         error = %e,
                         "Failed to stop agent (non-fatal)"
+                    );
+                }
+                Err(_elapsed) => {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        context_type = ?ctx_type,
+                        timeout_secs = agent_stop_timeout_secs,
+                        "stop_agent timed out (non-fatal)"
                     );
                 }
             }
@@ -273,13 +283,32 @@ impl<'a> super::TransitionHandler<'a> {
                         worktree_path = %worktree_path,
                         "Deleting task worktree before programmatic merge to unlock branch"
                     );
-                    run_cleanup_step(
+                    match run_cleanup_step(
                         "step 2 task worktree deletion",
                         git_runtime_config().cleanup_worktree_timeout_secs,
                         task_id_str,
                         GitService::delete_worktree(repo_path, &worktree_path_buf),
                     )
-                    .await;
+                    .await
+                    {
+                        CleanupStepResult::Ok => {}
+                        CleanupStepResult::TimedOut { elapsed } => {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                worktree_path = %worktree_path,
+                                elapsed_ms = elapsed.as_millis() as u64,
+                                "Task worktree deletion timed out — branch may still be locked"
+                            );
+                        }
+                        CleanupStepResult::Error { ref message } => {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                worktree_path = %worktree_path,
+                                error = %message,
+                                "Task worktree deletion failed — branch may still be locked"
+                            );
+                        }
+                    }
                 }
             }
 
@@ -307,13 +336,36 @@ impl<'a> super::TransitionHandler<'a> {
                         "Cleaning up stale {} worktree from previous attempt",
                         wt_label
                     );
-                    run_cleanup_step(
+                    match run_cleanup_step(
                         &format!("step 4 {} worktree deletion", wt_label),
                         git_runtime_config().cleanup_git_op_timeout_secs,
                         task_id_str,
                         GitService::delete_worktree(repo_path, &own_wt_path),
                     )
-                    .await;
+                    .await
+                    {
+                        CleanupStepResult::Ok => {}
+                        CleanupStepResult::TimedOut { elapsed } => {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                worktree_path = %own_wt,
+                                wt_type = wt_label,
+                                elapsed_ms = elapsed.as_millis() as u64,
+                                "Stale {} worktree deletion timed out",
+                                wt_label
+                            );
+                        }
+                        CleanupStepResult::Error { ref message } => {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                worktree_path = %own_wt,
+                                wt_type = wt_label,
+                                error = %message,
+                                "Stale {} worktree deletion failed",
+                                wt_label
+                            );
+                        }
+                    }
                 }
             }
 
@@ -384,13 +436,30 @@ impl<'a> super::TransitionHandler<'a> {
 
         // --- Step 6: Clean working tree ---
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 6 — cleaning working tree (git clean)");
-        run_cleanup_step(
+        match run_cleanup_step(
             "step 6 git clean",
             git_runtime_config().cleanup_git_op_timeout_secs,
             task_id_str,
             GitService::clean_working_tree(repo_path),
         )
-        .await;
+        .await
+        {
+            CleanupStepResult::Ok => {}
+            CleanupStepResult::TimedOut { elapsed } => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    elapsed_ms = elapsed.as_millis() as u64,
+                    "git clean timed out during pre-merge cleanup"
+                );
+            }
+            CleanupStepResult::Error { ref message } => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %message,
+                    "git clean failed during pre-merge cleanup"
+                );
+            }
+        }
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: complete");
     }
 }
