@@ -132,54 +132,5 @@ impl ChatConversationRepository for MemoryChatConversationRepository {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::domain::entities::IdeationSessionId;
-
-    #[tokio::test]
-    async fn test_create_and_get() {
-        let repo = MemoryChatConversationRepository::new();
-        let session_id = IdeationSessionId::new();
-        let conv = ChatConversation::new_ideation(session_id);
-        let id = conv.id;
-
-        repo.create(conv.clone()).await.unwrap();
-
-        let retrieved = repo.get_by_id(&id).await.unwrap().unwrap();
-        assert_eq!(retrieved.id, id);
-    }
-
-    #[tokio::test]
-    async fn test_get_by_context() {
-        let repo = MemoryChatConversationRepository::new();
-        let session_id = IdeationSessionId::new();
-        let conv = ChatConversation::new_ideation(session_id.clone());
-
-        repo.create(conv.clone()).await.unwrap();
-
-        let convos = repo
-            .get_by_context(ChatContextType::Ideation, session_id.as_str())
-            .await
-            .unwrap();
-        assert_eq!(convos.len(), 1);
-    }
-
-    #[tokio::test]
-    async fn test_update_claude_session_id() {
-        let repo = MemoryChatConversationRepository::new();
-        let session_id = IdeationSessionId::new();
-        let conv = ChatConversation::new_ideation(session_id);
-        let id = conv.id;
-
-        repo.create(conv).await.unwrap();
-        repo.update_claude_session_id(&id, "test-session-123")
-            .await
-            .unwrap();
-
-        let retrieved = repo.get_by_id(&id).await.unwrap().unwrap();
-        assert_eq!(
-            retrieved.claude_session_id,
-            Some("test-session-123".to_string())
-        );
-    }
-}
+#[path = "memory_chat_conversation_repo_tests.rs"]
+mod tests;

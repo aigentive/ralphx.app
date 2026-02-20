@@ -1,0 +1,242 @@
+use super::*;
+use std::path::PathBuf;
+
+#[test]
+fn test_context_to_category_mapping() {
+    assert_eq!(
+        MemoryCategory::from_context_type(ChatContextType::Ideation),
+        MemoryCategory::Planning
+    );
+    assert_eq!(
+        MemoryCategory::from_context_type(ChatContextType::Task),
+        MemoryCategory::Execution
+    );
+    assert_eq!(
+        MemoryCategory::from_context_type(ChatContextType::TaskExecution),
+        MemoryCategory::Execution
+    );
+    assert_eq!(
+        MemoryCategory::from_context_type(ChatContextType::Review),
+        MemoryCategory::Review
+    );
+    assert_eq!(
+        MemoryCategory::from_context_type(ChatContextType::Merge),
+        MemoryCategory::Merge
+    );
+    assert_eq!(
+        MemoryCategory::from_context_type(ChatContextType::Project),
+        MemoryCategory::ProjectChat
+    );
+}
+
+#[test]
+fn test_category_as_str() {
+    assert_eq!(MemoryCategory::Planning.as_str(), "planning");
+    assert_eq!(MemoryCategory::Execution.as_str(), "execution");
+    assert_eq!(MemoryCategory::Review.as_str(), "review");
+    assert_eq!(MemoryCategory::Merge.as_str(), "merge");
+    assert_eq!(MemoryCategory::ProjectChat.as_str(), "project_chat");
+}
+
+#[test]
+fn test_default_settings() {
+    let settings = ProjectMemorySettings::default();
+    assert!(!settings.enabled);
+    assert!(settings
+        .maintenance_categories
+        .contains(&"execution".to_string()));
+    assert!(settings
+        .maintenance_categories
+        .contains(&"review".to_string()));
+    assert!(settings
+        .maintenance_categories
+        .contains(&"merge".to_string()));
+    assert!(settings
+        .capture_categories
+        .contains(&"planning".to_string()));
+    assert!(settings
+        .capture_categories
+        .contains(&"execution".to_string()));
+    assert!(settings.capture_categories.contains(&"review".to_string()));
+}
+
+#[test]
+fn test_default_settings_maintenance_categories_count() {
+    let settings = ProjectMemorySettings::default();
+    assert_eq!(settings.maintenance_categories.len(), 3);
+}
+
+#[test]
+fn test_default_settings_capture_categories_count() {
+    let settings = ProjectMemorySettings::default();
+    assert_eq!(settings.capture_categories.len(), 3);
+}
+
+#[tokio::test]
+async fn test_trigger_memory_pipelines_no_project_id() {
+    // Should return early without panicking
+    let conv_id = ChatConversationId::from_string("conv-123".to_string());
+    let cli_path = PathBuf::from("/usr/bin/claude");
+    let plugin_dir = PathBuf::from("/plugins");
+    let wd = PathBuf::from("/tmp");
+
+    trigger_memory_pipelines(
+        ChatContextType::TaskExecution,
+        "task-123",
+        &conv_id,
+        None, // No project ID
+        None,
+        &cli_path,
+        &plugin_dir,
+        &wd,
+        None,
+        None,
+    )
+    .await;
+    // Test passes if no panic
+}
+
+#[tokio::test]
+async fn test_trigger_memory_pipelines_recursion_guard_maintainer() {
+    // Should return early when agent is memory-maintainer
+    let project_id = ProjectId::from_string("proj-123".to_string());
+    let conv_id = ChatConversationId::from_string("conv-123".to_string());
+    let cli_path = PathBuf::from("/usr/bin/claude");
+    let plugin_dir = PathBuf::from("/plugins");
+    let wd = PathBuf::from("/tmp");
+
+    trigger_memory_pipelines(
+        ChatContextType::TaskExecution,
+        "task-123",
+        &conv_id,
+        Some(&project_id),
+        Some("memory-maintainer"), // Recursion guard
+        &cli_path,
+        &plugin_dir,
+        &wd,
+        None,
+        None,
+    )
+    .await;
+    // Test passes if no spawn happens (verified via logs in real scenario)
+}
+
+#[tokio::test]
+async fn test_trigger_memory_pipelines_recursion_guard_capture() {
+    // Should return early when agent is memory-capture
+    let project_id = ProjectId::from_string("proj-123".to_string());
+    let conv_id = ChatConversationId::from_string("conv-123".to_string());
+    let cli_path = PathBuf::from("/usr/bin/claude");
+    let plugin_dir = PathBuf::from("/plugins");
+    let wd = PathBuf::from("/tmp");
+
+    trigger_memory_pipelines(
+        ChatContextType::TaskExecution,
+        "task-123",
+        &conv_id,
+        Some(&project_id),
+        Some("memory-capture"), // Recursion guard
+        &cli_path,
+        &plugin_dir,
+        &wd,
+        None,
+        None,
+    )
+    .await;
+    // Test passes if no spawn happens
+}
+
+#[tokio::test]
+async fn test_spawn_memory_maintainer_fails_in_test_env() {
+    let project_id = ProjectId::from_string("proj-123".to_string());
+    let conv_id = ChatConversationId::from_string("conv-123".to_string());
+    let cli_path = PathBuf::from("/usr/bin/claude");
+    let plugin_dir = PathBuf::from("/plugins");
+    let wd = PathBuf::from("/tmp");
+
+    let result = spawn_memory_maintainer(
+        &conv_id,
+        ChatContextType::TaskExecution,
+        "task-123",
+        &project_id,
+        &cli_path,
+        &plugin_dir,
+        &wd,
+    )
+    .await;
+
+    // In test environment, build_spawnable_command returns Err due to ensure_claude_spawn_allowed()
+    assert!(result.is_err());
+}
+
+#[tokio::test]
+async fn test_spawn_memory_capture_fails_in_test_env() {
+    let project_id = ProjectId::from_string("proj-123".to_string());
+    let conv_id = ChatConversationId::from_string("conv-123".to_string());
+    let cli_path = PathBuf::from("/usr/bin/claude");
+    let plugin_dir = PathBuf::from("/plugins");
+    let wd = PathBuf::from("/tmp");
+
+    let result = spawn_memory_capture(
+        &conv_id,
+        ChatContextType::TaskExecution,
+        "task-123",
+        &project_id,
+        &cli_path,
+        &plugin_dir,
+        &wd,
+    )
+    .await;
+
+    // In test environment, build_spawnable_command returns Err due to ensure_claude_spawn_allowed()
+    assert!(result.is_err());
+}
+
+#[test]
+fn test_resolve_pipelines_parallel_spawn_both_enabled() {
+    // "execution" is in both maintenance_categories AND capture_categories by default
+    let project_id = ProjectId::from_string("proj-123".to_string());
+    let settings = ProjectMemorySettings {
+        enabled: true,
+        ..Default::default()
+    };
+
+    let result = resolve_pipelines(
+        ChatContextType::TaskExecution,
+        Some(&project_id),
+        Some("ralphx:ralphx-worker"),
+        &settings,
+    );
+
+    assert!(
+        result.is_some(),
+        "Should return Some when category is enabled"
+    );
+    let (should_maintain, should_capture) = result.unwrap();
+    assert!(
+        should_maintain,
+        "execution should be in maintenance_categories"
+    );
+    assert!(should_capture, "execution should be in capture_categories");
+}
+
+#[test]
+fn test_resolve_pipelines_disabled_project_skips_spawn() {
+    let project_id = ProjectId::from_string("proj-123".to_string());
+    let settings = ProjectMemorySettings {
+        enabled: false,
+        ..ProjectMemorySettings::default()
+    };
+
+    let result = resolve_pipelines(
+        ChatContextType::TaskExecution,
+        Some(&project_id),
+        Some("ralphx:ralphx-worker"),
+        &settings,
+    );
+
+    assert!(
+        result.is_none(),
+        "Should return None when memory is disabled"
+    );
+}

@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 // ===== GitMode Tests =====
 
 #[test]
@@ -590,4 +588,3 @@ fn project_deserializes_from_json() {
         assert_eq!(format!("{}", MergeStrategy::Squash), "squash");
         assert_eq!(format!("{}", MergeStrategy::RebaseSquash), "rebase_squash");
     }
-}

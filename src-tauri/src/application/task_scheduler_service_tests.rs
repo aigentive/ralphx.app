@@ -1,0 +1,1571 @@
+use super::*;
+use crate::application::AppState;
+use crate::domain::entities::{Project, Task};
+
+/// Helper to create test state
+async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
+    let execution_state = Arc::new(ExecutionState::new());
+    let app_state = AppState::new_test();
+    (execution_state, app_state)
+}
+
+/// Helper to build a TaskSchedulerService from test state
+fn build_scheduler(
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+) -> TaskSchedulerService<tauri::Wry> {
+    TaskSchedulerService::new(
+        Arc::clone(execution_state),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&app_state.memory_event_repo),
+        None,
+    )
+}
+
+#[tokio::test]
+async fn test_no_schedule_when_paused() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create a project with a Ready task
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Ready Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Pause execution
+    execution_state.pause();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Should not schedule (paused)
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Task should still be Ready
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Ready);
+}
+
+#[tokio::test]
+async fn test_no_schedule_when_at_capacity() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Set max concurrent to 1 and fill the slot
+    execution_state.set_max_concurrent(1);
+    execution_state.increment_running();
+
+    // Create a project with a Ready task
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Ready Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Should not schedule (at capacity)
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Task should still be Ready
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Ready);
+}
+
+#[tokio::test]
+async fn test_no_schedule_when_no_ready_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Set high max concurrent
+    execution_state.set_max_concurrent(10);
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Should complete without panic (no tasks to schedule)
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Running count should still be 0
+    assert_eq!(execution_state.running_count(), 0);
+}
+
+#[tokio::test]
+async fn test_schedules_oldest_ready_task() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Set high max concurrent
+    execution_state.set_max_concurrent(10);
+
+    // Create a project
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create older task first
+    let mut older_task = Task::new(project.id.clone(), "Older Task".to_string());
+    older_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(older_task.clone())
+        .await
+        .unwrap();
+    let older_task_id = older_task.id.clone();
+
+    // Small delay to ensure different created_at timestamps
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    // Create newer task
+    let mut newer_task = Task::new(project.id.clone(), "Newer Task".to_string());
+    newer_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(newer_task.clone())
+        .await
+        .unwrap();
+    let newer_task_id = newer_task.id.clone();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Schedule - should pick the older task
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Older task should be Executing (transitioned)
+    let updated_older = app_state
+        .task_repo
+        .get_by_id(&older_task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_older.internal_status,
+        InternalStatus::Failed,
+        "Older task should be Failed after ExecutionBlocked"
+    );
+
+    // Newer task should also be Failed (Local mode doesn't block if no Executing tasks)
+    let updated_newer = app_state
+        .task_repo
+        .get_by_id(&newer_task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_newer.internal_status,
+        InternalStatus::Failed,
+        "Newer task should also be Failed after ExecutionBlocked (older task failed, not executing)"
+    );
+}
+
+#[tokio::test]
+async fn test_schedules_across_projects() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Set high max concurrent
+    execution_state.set_max_concurrent(10);
+
+    // Create two projects
+    let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
+    app_state
+        .project_repo
+        .create(project1.clone())
+        .await
+        .unwrap();
+
+    let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
+    app_state
+        .project_repo
+        .create(project2.clone())
+        .await
+        .unwrap();
+
+    // Create older task in project 2
+    let mut older_task = Task::new(project2.id.clone(), "Older Task (P2)".to_string());
+    older_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(older_task.clone())
+        .await
+        .unwrap();
+    let older_task_id = older_task.id.clone();
+
+    // Small delay
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    // Create newer task in project 1
+    let mut newer_task = Task::new(project1.id.clone(), "Newer Task (P1)".to_string());
+    newer_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(newer_task.clone())
+        .await
+        .unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Schedule - should pick the older task from project 2
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Older task should be Executing
+    let updated_older = app_state
+        .task_repo
+        .get_by_id(&older_task_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_older.internal_status,
+        InternalStatus::Failed,
+        "Older task from Project 2 should be Failed after ExecutionBlocked"
+    );
+}
+
+#[tokio::test]
+async fn test_find_oldest_schedulable_task() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Create a project (default is Worktree mode)
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create tasks with different statuses
+    let mut ready_task = Task::new(project.id.clone(), "Ready Task".to_string());
+    ready_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(ready_task.clone())
+        .await
+        .unwrap();
+
+    let mut backlog_task = Task::new(project.id.clone(), "Backlog Task".to_string());
+    backlog_task.internal_status = InternalStatus::Backlog;
+    app_state.task_repo.create(backlog_task).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Should find only the Ready task
+    let found = scheduler.find_oldest_schedulable_task().await;
+    assert!(found.is_some());
+    assert_eq!(found.unwrap().id, ready_task.id);
+}
+
+#[tokio::test]
+async fn test_trait_object_safety() {
+    let (execution_state, app_state) = setup_test_state().await;
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Should be usable as trait object
+    let scheduler_trait: Arc<dyn TaskScheduler> = Arc::new(scheduler);
+    scheduler_trait.try_schedule_ready_tasks().await;
+}
+
+#[tokio::test]
+async fn test_worktree_mode_allows_parallel_tasks() {
+    use crate::domain::entities::GitMode;
+
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    // Create a Worktree-mode project
+    let mut project = Project::new("Worktree Project".to_string(), "/test/wt".to_string());
+    project.git_mode = GitMode::Worktree;
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create an Executing task
+    let mut executing_task = Task::new(project.id.clone(), "Executing Task".to_string());
+    executing_task.internal_status = InternalStatus::Executing;
+    app_state.task_repo.create(executing_task).await.unwrap();
+
+    // Create a Ready task
+    let mut ready_task = Task::new(project.id.clone(), "Ready Task".to_string());
+    ready_task.internal_status = InternalStatus::Ready;
+    app_state
+        .task_repo
+        .create(ready_task.clone())
+        .await
+        .unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Should find the Ready task (Worktree mode allows parallel)
+    let found = scheduler.find_oldest_schedulable_task().await;
+    assert!(
+        found.is_some(),
+        "Worktree mode should allow parallel task execution"
+    );
+    assert_eq!(found.unwrap().id, ready_task.id);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Multi-Task Scheduling Tests (Phase 77)
+// ═══════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_schedules_multiple_tasks_up_to_capacity() {
+    use crate::domain::entities::GitMode;
+
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Set max concurrent to 3
+    execution_state.set_max_concurrent(3);
+
+    // Create a Worktree-mode project (allows parallel tasks from same project)
+    let mut project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    project.git_mode = GitMode::Worktree;
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create 5 Ready tasks
+    let mut task_ids = Vec::new();
+    for i in 0..5 {
+        let mut task = Task::new(project.id.clone(), format!("Task {}", i));
+        task.internal_status = InternalStatus::Ready;
+        app_state.task_repo.create(task.clone()).await.unwrap();
+        task_ids.push(task.id);
+        // Small delay to ensure different timestamps
+        tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+    }
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Schedule - should pick up to 3 tasks (max_concurrent)
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Count tasks in each state
+    let mut executing_count = 0;
+    let mut ready_count = 0;
+
+    for task_id in &task_ids {
+        let task = app_state
+            .task_repo
+            .get_by_id(task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        match task.internal_status {
+            InternalStatus::Failed => executing_count += 1,
+            InternalStatus::Ready => ready_count += 1,
+            _ => panic!("Unexpected status: {:?}", task.internal_status),
+        }
+    }
+
+    assert_eq!(
+        executing_count, 5,
+        "All tasks Failed after ExecutionBlocked (capacity check requires Executing state)"
+    );
+    assert_eq!(
+        ready_count, 0,
+        "No tasks remain Ready (all attempted scheduling)"
+    );
+}
+
+#[tokio::test]
+async fn test_loop_stops_at_capacity() {
+    use crate::domain::entities::GitMode;
+
+    let (execution_state, app_state) = setup_test_state().await;
+
+    // Set max concurrent to 2, pre-fill 1 running slot
+    execution_state.set_max_concurrent(2);
+    execution_state.increment_running(); // 1 slot already taken
+
+    // Create multiple Worktree-mode projects with one Ready task each
+    // This allows testing capacity limits without Local-mode single-task constraint
+    let mut task_ids = Vec::new();
+    for i in 0..3 {
+        let mut project = Project::new(format!("Project {}", i), format!("/test/path{}", i));
+        project.git_mode = GitMode::Worktree;
+        app_state
+            .project_repo
+            .create(project.clone())
+            .await
+            .unwrap();
+
+        let mut task = Task::new(project.id.clone(), format!("Task {}", i));
+        task.internal_status = InternalStatus::Ready;
+        app_state.task_repo.create(task.clone()).await.unwrap();
+        task_ids.push(task.id);
+        tokio::time::sleep(tokio::time::Duration::from_millis(5)).await;
+    }
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Schedule - should only pick 1 task (only 1 slot available: max=2, pre-filled=1)
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Count tasks in each state
+    let mut executing_count = 0;
+    let mut ready_count = 0;
+
+    for task_id in &task_ids {
+        let task = app_state
+            .task_repo
+            .get_by_id(task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        match task.internal_status {
+            InternalStatus::Failed => executing_count += 1,
+            InternalStatus::Ready => ready_count += 1,
+            _ => panic!("Unexpected status: {:?}", task.internal_status),
+        }
+    }
+
+    assert_eq!(
+        executing_count, 3,
+        "All tasks Failed after ExecutionBlocked (capacity check requires Executing state)"
+    );
+    assert_eq!(
+        ready_count, 0,
+        "No tasks remain Ready (all attempted scheduling)"
+    );
+
+    // Running count stays at pre-filled value (tasks failed, not executing)
+    assert_eq!(
+        execution_state.running_count(),
+        1,
+        "Running count unchanged (tasks failed during transition)"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Deferred Merge Retry Tests
+// ═══════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_retry_deferred_merges_skips_non_pending_merge_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a task in Executing state with merge_deferred metadata (shouldn't happen
+    // in practice, but tests the status filter)
+    let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.metadata = Some(r#"{"merge_deferred": true}"#.to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler
+        .try_retry_deferred_merges(project.id.as_str())
+        .await;
+
+    // Task should still have merge_deferred metadata (not touched)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Executing);
+    assert!(updated
+        .metadata
+        .as_deref()
+        .unwrap()
+        .contains("merge_deferred"));
+}
+
+#[tokio::test]
+async fn test_retry_deferred_merges_skips_pending_merge_without_flag() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a PendingMerge task without merge_deferred metadata
+    let mut task = Task::new(project.id.clone(), "Pending Merge Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler
+        .try_retry_deferred_merges(project.id.as_str())
+        .await;
+
+    // Task should still be PendingMerge with no metadata changes
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::PendingMerge);
+    assert!(updated.metadata.is_none());
+}
+
+#[tokio::test]
+async fn test_retry_deferred_merges_clears_flag_on_deferred_task() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a PendingMerge task WITH merge_deferred metadata
+    let mut task = Task::new(project.id.clone(), "Deferred Merge".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata = Some(
+        r#"{"merge_deferred": true, "merge_deferred_at": "2026-01-01T00:00:00Z"}"#.to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler
+        .try_retry_deferred_merges(project.id.as_str())
+        .await;
+
+    // The merge_deferred flag should be cleared
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    // Metadata should be None (only deferred fields existed)
+    assert!(
+        updated.metadata.is_none()
+            || !updated
+                .metadata
+                .as_deref()
+                .unwrap_or("")
+                .contains("merge_deferred"),
+        "merge_deferred flag should be cleared"
+    );
+}
+
+#[tokio::test]
+async fn test_retry_deferred_merges_only_retries_one_at_a_time() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create two PendingMerge tasks with merge_deferred metadata
+    let mut task1 = Task::new(project.id.clone(), "Deferred Merge 1".to_string());
+    task1.internal_status = InternalStatus::PendingMerge;
+    task1.metadata = Some(r#"{"merge_deferred": true}"#.to_string());
+    app_state.task_repo.create(task1.clone()).await.unwrap();
+
+    let mut task2 = Task::new(project.id.clone(), "Deferred Merge 2".to_string());
+    task2.internal_status = InternalStatus::PendingMerge;
+    task2.metadata = Some(r#"{"merge_deferred": true}"#.to_string());
+    app_state.task_repo.create(task2.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler
+        .try_retry_deferred_merges(project.id.as_str())
+        .await;
+
+    // Only one task should have its flag cleared (serialization)
+    let updated1 = app_state
+        .task_repo
+        .get_by_id(&task1.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let updated2 = app_state
+        .task_repo
+        .get_by_id(&task2.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let flag1_cleared = updated1.metadata.is_none()
+        || !updated1
+            .metadata
+            .as_deref()
+            .unwrap_or("")
+            .contains("merge_deferred");
+    let flag2_cleared = updated2.metadata.is_none()
+        || !updated2
+            .metadata
+            .as_deref()
+            .unwrap_or("")
+            .contains("merge_deferred");
+
+    assert!(
+        flag1_cleared ^ flag2_cleared,
+        "Exactly one task should have its flag cleared (serialization). \
+         task1 cleared={}, task2 cleared={}",
+        flag1_cleared,
+        flag2_cleared
+    );
+}
+
+#[tokio::test]
+async fn test_retry_deferred_merges_noop_for_wrong_project() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
+    app_state
+        .project_repo
+        .create(project1.clone())
+        .await
+        .unwrap();
+
+    let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
+    app_state
+        .project_repo
+        .create(project2.clone())
+        .await
+        .unwrap();
+
+    // Create a deferred merge task in project 1
+    let mut task = Task::new(project1.id.clone(), "Deferred Merge".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata = Some(r#"{"merge_deferred": true}"#.to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Retry for project 2 — should not touch project 1's task
+    scheduler
+        .try_retry_deferred_merges(project2.id.as_str())
+        .await;
+
+    // Task should still have the deferred flag
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        updated
+            .metadata
+            .as_deref()
+            .unwrap()
+            .contains("merge_deferred"),
+        "Task in project 1 should not be touched when retrying for project 2"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Active Project Scoping Tests (Phase 82)
+// ═══════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_scheduler_only_schedules_active_project_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    // Create two projects
+    let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
+    app_state
+        .project_repo
+        .create(project1.clone())
+        .await
+        .unwrap();
+
+    let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
+    app_state
+        .project_repo
+        .create(project2.clone())
+        .await
+        .unwrap();
+
+    // Create older Ready task in project 1
+    let mut p1_task = Task::new(project1.id.clone(), "Project 1 Task".to_string());
+    p1_task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(p1_task.clone()).await.unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    // Create newer Ready task in project 2 (chronologically newer but should be ignored)
+    let mut p2_task = Task::new(project2.id.clone(), "Project 2 Task".to_string());
+    p2_task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(p2_task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // Set active project to project 2 only
+    scheduler
+        .set_active_project(Some(project2.id.clone()))
+        .await;
+
+    // Schedule - should only pick task from project 2 (active project)
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Project 1 task should still be Ready (not scheduled, not active project)
+    let updated_p1 = app_state
+        .task_repo
+        .get_by_id(&p1_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_p1.internal_status,
+        InternalStatus::Ready,
+        "Project 1 task should NOT be scheduled (not active project)"
+    );
+
+    // Project 2 task should be Executing (scheduled from active project)
+    let updated_p2 = app_state
+        .task_repo
+        .get_by_id(&p2_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_p2.internal_status,
+        InternalStatus::Failed,
+        "Project 2 task should be Failed after ExecutionBlocked (active project)"
+    );
+}
+
+#[tokio::test]
+async fn test_scheduler_schedules_all_projects_when_no_active_project() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    // Create two projects
+    let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
+    app_state
+        .project_repo
+        .create(project1.clone())
+        .await
+        .unwrap();
+
+    let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
+    app_state
+        .project_repo
+        .create(project2.clone())
+        .await
+        .unwrap();
+
+    // Create older Ready task in project 2
+    let mut p2_task = Task::new(project2.id.clone(), "Project 2 Task".to_string());
+    p2_task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(p2_task.clone()).await.unwrap();
+
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    // Create newer Ready task in project 1
+    let mut p1_task = Task::new(project1.id.clone(), "Project 1 Task".to_string());
+    p1_task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(p1_task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+
+    // No active project set (default is None)
+    assert_eq!(scheduler.get_active_project().await, None);
+
+    // Schedule - should schedule tasks across all projects
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Both tasks should be Executing (no active project filter, both ready)
+    let updated_p2 = app_state
+        .task_repo
+        .get_by_id(&p2_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_p2.internal_status,
+        InternalStatus::Failed,
+        "Project 2 task should be Failed after ExecutionBlocked when no active project"
+    );
+
+    let updated_p1 = app_state
+        .task_repo
+        .get_by_id(&p1_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_p1.internal_status,
+        InternalStatus::Failed,
+        "Project 1 task should also be Failed after ExecutionBlocked when no active project (max_concurrent=10)"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Main Merge Retry Tests (Global Idle)
+// ═══════════════════════════════════════════════════════════════════════
+
+#[tokio::test]
+async fn test_retry_main_merges_skips_non_pending_merge_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a task in Executing state with main_merge_deferred metadata (shouldn't happen
+    // in practice, but tests the status filter)
+    let mut task = Task::new(project.id.clone(), "Executing Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_retry_main_merges().await;
+
+    // Task should still have main_merge_deferred metadata (not touched)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Executing);
+    assert!(updated
+        .metadata
+        .as_deref()
+        .unwrap()
+        .contains("main_merge_deferred"));
+}
+
+#[tokio::test]
+async fn test_retry_main_merges_skips_pending_merge_without_flag() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a PendingMerge task without main_merge_deferred metadata
+    let mut task = Task::new(project.id.clone(), "Pending Merge Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_retry_main_merges().await;
+
+    // Task should still be PendingMerge with no metadata changes
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::PendingMerge);
+    assert!(updated.metadata.is_none());
+}
+
+#[tokio::test]
+async fn test_retry_main_merges_clears_flag_on_deferred_task() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create a PendingMerge task WITH main_merge_deferred metadata
+    let mut task = Task::new(project.id.clone(), "Deferred Main Merge".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata = Some(
+        r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z"}"#
+            .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_retry_main_merges().await;
+
+    // The main_merge_deferred flag should be cleared
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    // Metadata should not contain main_merge_deferred
+    assert!(
+        updated.metadata.is_none()
+            || !updated
+                .metadata
+                .as_deref()
+                .unwrap_or("")
+                .contains("main_merge_deferred"),
+        "main_merge_deferred flag should be cleared"
+    );
+}
+
+#[tokio::test]
+async fn test_retry_main_merges_only_retries_one_at_a_time() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Create two PendingMerge tasks with main_merge_deferred metadata
+    let mut task1 = Task::new(project.id.clone(), "Deferred Main Merge 1".to_string());
+    task1.internal_status = InternalStatus::PendingMerge;
+    task1.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+    app_state.task_repo.create(task1.clone()).await.unwrap();
+
+    let mut task2 = Task::new(project.id.clone(), "Deferred Main Merge 2".to_string());
+    task2.internal_status = InternalStatus::PendingMerge;
+    task2.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+    app_state.task_repo.create(task2.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_retry_main_merges().await;
+
+    // Only one task should have its flag cleared (serialization)
+    let updated1 = app_state
+        .task_repo
+        .get_by_id(&task1.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let updated2 = app_state
+        .task_repo
+        .get_by_id(&task2.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let flag1_cleared = updated1.metadata.is_none()
+        || !updated1
+            .metadata
+            .as_deref()
+            .unwrap_or("")
+            .contains("main_merge_deferred");
+    let flag2_cleared = updated2.metadata.is_none()
+        || !updated2
+            .metadata
+            .as_deref()
+            .unwrap_or("")
+            .contains("main_merge_deferred");
+
+    assert!(
+        flag1_cleared ^ flag2_cleared,
+        "Exactly one task should have its flag cleared (serialization). \
+         task1 cleared={}, task2 cleared={}",
+        flag1_cleared,
+        flag2_cleared
+    );
+}
+
+#[tokio::test]
+async fn test_retry_main_merges_finds_tasks_across_all_projects() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project1 = Project::new("Project 1".to_string(), "/test/path1".to_string());
+    app_state
+        .project_repo
+        .create(project1.clone())
+        .await
+        .unwrap();
+
+    let project2 = Project::new("Project 2".to_string(), "/test/path2".to_string());
+    app_state
+        .project_repo
+        .create(project2.clone())
+        .await
+        .unwrap();
+
+    // Create a main-merge-deferred task in each project
+    let mut task1 = Task::new(project1.id.clone(), "Deferred Main Merge P1".to_string());
+    task1.internal_status = InternalStatus::PendingMerge;
+    task1.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+    app_state.task_repo.create(task1.clone()).await.unwrap();
+
+    let mut task2 = Task::new(project2.id.clone(), "Deferred Main Merge P2".to_string());
+    task2.internal_status = InternalStatus::PendingMerge;
+    task2.metadata = Some(r#"{"main_merge_deferred": true}"#.to_string());
+    app_state.task_repo.create(task2.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_retry_main_merges().await;
+
+    // At least one task from any project should have its flag cleared
+    let updated1 = app_state
+        .task_repo
+        .get_by_id(&task1.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let updated2 = app_state
+        .task_repo
+        .get_by_id(&task2.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    let flag1_cleared = updated1.metadata.is_none()
+        || !updated1
+            .metadata
+            .as_deref()
+            .unwrap_or("")
+            .contains("main_merge_deferred");
+    let flag2_cleared = updated2.metadata.is_none()
+        || !updated2
+            .metadata
+            .as_deref()
+            .unwrap_or("")
+            .contains("main_merge_deferred");
+
+    // At least one should be cleared (method scans all projects)
+    assert!(
+        flag1_cleared || flag2_cleared,
+        "At least one task across all projects should have its flag cleared"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Lock Contention Retry Tests (S6 fix)
+// ═══════════════════════════════════════════════════════════════════════
+
+/// When scheduling_lock is held, a retry should be queued instead of silently dropping.
+#[tokio::test]
+async fn test_contention_queues_retry_when_self_ref_set() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
+    scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+    // Verify no pending retries initially
+    assert_eq!(
+        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        0,
+        "No pending retries at start"
+    );
+
+    // Hold the scheduling_lock to simulate contention
+    let _guard = scheduler.scheduling_lock.lock().await;
+
+    // Call try_schedule_ready_tasks while lock is held — should queue a retry
+    // We can't await it directly because it would block. Spawn it.
+    let scheduler2 = Arc::clone(&scheduler);
+    let handle = tokio::spawn(async move {
+        // This call should encounter contention and queue a retry
+        scheduler2.try_schedule_ready_tasks().await;
+    });
+    handle.await.unwrap();
+
+    // A retry should now be pending (spawned but sleeping for 200ms)
+    assert_eq!(
+        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        1,
+        "One retry should be pending after contention"
+    );
+
+    // Release the lock so the retry can succeed
+    drop(_guard);
+
+    // Wait for the retry to fire (200ms delay + buffer)
+    tokio::time::sleep(tokio::time::Duration::from_millis(350)).await;
+
+    // After retry completes, counter should be back to 0
+    assert_eq!(
+        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        0,
+        "Retry counter should return to 0 after retry fires"
+    );
+}
+
+/// When scheduling_lock is held and self_ref is NOT set, the call is silently dropped
+/// (unchanged from original behaviour — no retry can be queued without a self reference).
+#[tokio::test]
+async fn test_contention_drops_silently_without_self_ref() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
+    // Deliberately do NOT call set_self_ref
+
+    let _guard = scheduler.scheduling_lock.lock().await;
+
+    let scheduler2 = Arc::clone(&scheduler);
+    tokio::spawn(async move {
+        scheduler2.try_schedule_ready_tasks().await;
+    })
+    .await
+    .unwrap();
+
+    // No retry queued because self_ref is None
+    assert_eq!(
+        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        0,
+        "No retry queued when self_ref is not set"
+    );
+}
+
+/// When retry limit is reached, further contention attempts are dropped without
+/// queuing additional retries.
+#[tokio::test]
+async fn test_contention_respects_max_retry_limit() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
+    scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
+
+    // Pre-fill the retry counter to the maximum
+    let max_retries = scheduler_config().max_contention_retries as u32;
+    scheduler
+        .contention_retry_pending
+        .store(max_retries, Ordering::Relaxed);
+
+    let _guard = scheduler.scheduling_lock.lock().await;
+
+    let scheduler2 = Arc::clone(&scheduler);
+    tokio::spawn(async move {
+        // Should be dropped: retry limit already at max
+        scheduler2.try_schedule_ready_tasks().await;
+    })
+    .await
+    .unwrap();
+
+    // Counter must stay at MAX (not incremented further)
+    assert_eq!(
+        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        max_retries,
+        "Counter must not exceed max_contention_retries"
+    );
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Ready Watchdog Tests
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Helper to create a ReadyWatchdog with a zero-second staleness threshold
+/// (all Ready tasks are immediately stale) for testing.
+fn build_watchdog(
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+) -> ReadyWatchdog {
+    let scheduler = Arc::new(build_scheduler(app_state, execution_state));
+    ReadyWatchdog::new(scheduler, Arc::clone(&app_state.task_repo))
+        .with_stale_threshold_secs(0)
+}
+
+#[tokio::test]
+async fn test_watchdog_returns_zero_when_no_ready_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let watchdog = build_watchdog(&app_state, &execution_state);
+
+    let count = watchdog.run_once().await;
+    assert_eq!(count, 0, "No stale tasks when no Ready tasks exist");
+}
+
+#[tokio::test]
+async fn test_watchdog_detects_stale_ready_task() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create a Ready task (threshold=0 so it's immediately stale)
+    let mut task = Task::new(project.id.clone(), "Stale Ready Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let watchdog = build_watchdog(&app_state, &execution_state);
+
+    // Watchdog should find the stale task
+    let count = watchdog.run_once().await;
+    assert_eq!(count, 1, "Should detect 1 stale Ready task");
+}
+
+#[tokio::test]
+async fn test_watchdog_does_not_detect_non_ready_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create tasks in non-Ready states
+    for status in &[
+        InternalStatus::Backlog,
+        InternalStatus::Executing,
+        InternalStatus::Blocked,
+    ] {
+        let mut task = Task::new(project.id.clone(), format!("{:?} Task", status));
+        task.internal_status = *status;
+        app_state.task_repo.create(task).await.unwrap();
+    }
+
+    let watchdog = build_watchdog(&app_state, &execution_state);
+
+    // No Ready tasks → watchdog should find 0 stale tasks
+    let count = watchdog.run_once().await;
+    assert_eq!(count, 0, "Only Ready tasks should be detected as stale");
+}
+
+#[tokio::test]
+async fn test_watchdog_triggers_scheduling_for_stale_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create a Ready task
+    let mut task = Task::new(project.id.clone(), "Stale Ready Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Watchdog with threshold=0 so the task is immediately stale
+    let watchdog = build_watchdog(&app_state, &execution_state);
+    watchdog.run_once().await;
+
+    // The task should have been transitioned out of Ready (Failed due to no agent in test)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Stale task should be transitioned after watchdog reschedule"
+    );
+}
+
+#[tokio::test]
+async fn test_watchdog_with_high_threshold_skips_fresh_tasks() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create a Ready task (just created → not stale under a large threshold)
+    let mut task = Task::new(project.id.clone(), "Fresh Ready Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Watchdog with a 3600-second threshold (task is too fresh to be stale)
+    let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
+    let watchdog = ReadyWatchdog::new(scheduler, Arc::clone(&app_state.task_repo))
+        .with_stale_threshold_secs(3600);
+
+    let count = watchdog.run_once().await;
+    assert_eq!(count, 0, "Fresh task should not be detected as stale");
+
+    // Task should still be Ready
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Fresh task should remain Ready with high staleness threshold"
+    );
+}
+
+#[tokio::test]
+async fn test_watchdog_configurable_threshold() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let watchdog = ReadyWatchdog::new(
+        Arc::new(build_scheduler(&app_state, &execution_state)),
+        Arc::clone(&app_state.task_repo),
+    )
+    .with_stale_threshold_secs(120)
+    .with_interval_secs(30);
+
+    assert_eq!(watchdog.stale_threshold_secs, 120);
+    assert_eq!(watchdog.interval_secs, 30);
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// Deferred Merge Timeout Tests
+// ═══════════════════════════════════════════════════════════════════════
+
+/// Helper: create a task with merge_deferred flag and a timestamp in the past
+fn make_deferred_task_with_age(
+    project_id: &crate::domain::entities::ProjectId,
+    title: &str,
+    seconds_ago: i64,
+) -> Task {
+    let deferred_at = (chrono::Utc::now() - chrono::Duration::seconds(seconds_ago))
+        .to_rfc3339();
+    let mut task = Task::new(project_id.clone(), title.to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_deferred": true,
+            "merge_deferred_at": deferred_at,
+            "target_branch": "feature/some-feature"
+        })
+        .to_string(),
+    );
+    task
+}
+
+/// Helper: create a task with main_merge_deferred flag and a timestamp in the past
+fn make_main_deferred_task_with_age(
+    project_id: &crate::domain::entities::ProjectId,
+    title: &str,
+    seconds_ago: i64,
+) -> Task {
+    let deferred_at = (chrono::Utc::now() - chrono::Duration::seconds(seconds_ago))
+        .to_rfc3339();
+    let mut task = Task::new(project_id.clone(), title.to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata = Some(
+        serde_json::json!({
+            "main_merge_deferred": true,
+            "main_merge_deferred_at": deferred_at,
+            "target_branch": "main"
+        })
+        .to_string(),
+    );
+    task
+}
+
+#[tokio::test]
+async fn test_retry_deferred_merges_proceeds_when_within_timeout() {
+    use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
+
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create a deferred task with age well within the timeout (10 seconds old)
+    let task = make_deferred_task_with_age(&project.id, "Recent Deferred Merge", 10);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+
+    // Task should have had its deferred flag cleared (retry was triggered)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let flag_cleared = updated.metadata.as_deref().map(|m| !m.contains("\"merge_deferred\":true")).unwrap_or(true);
+    assert!(
+        flag_cleared,
+        "Deferred merge within timeout should still have retry triggered (flag cleared)"
+    );
+    let _ = DEFERRED_MERGE_TIMEOUT_SECONDS; // silence unused warning
+}
+
+#[tokio::test]
+async fn test_retry_deferred_merges_logs_warning_when_timeout_exceeded() {
+    use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
+
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create a deferred task older than the timeout
+    let seconds_ago = DEFERRED_MERGE_TIMEOUT_SECONDS + 60; // well past timeout
+    let task = make_deferred_task_with_age(&project.id, "Timed Out Deferred Merge", seconds_ago);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    // Should not panic, should log warning and proceed with retry
+    scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+
+    // Task should have retry triggered (flag cleared or metadata updated)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let flag_cleared = updated.metadata.as_deref().map(|m| !m.contains("\"merge_deferred\":true")).unwrap_or(true);
+    assert!(
+        flag_cleared,
+        "Timed-out deferred merge should have retry triggered (flag cleared)"
+    );
+}
+
+#[tokio::test]
+async fn test_retry_main_merges_bypasses_sibling_guard_when_timeout_exceeded() {
+    use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
+
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create an ideation session
+    let session = crate::domain::entities::IdeationSession::new(project.id.clone());
+    app_state.ideation_session_repo.create(session.clone()).await.unwrap();
+
+    // Create a main-merge-deferred task older than the timeout, linked to the session
+    let seconds_ago = DEFERRED_MERGE_TIMEOUT_SECONDS + 60;
+    let mut task = make_main_deferred_task_with_age(&project.id, "Timed Out Main Merge", seconds_ago);
+    task.ideation_session_id = Some(session.id.clone());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Create a sibling task that is NOT terminal (would normally block the retry)
+    let mut sibling = Task::new(project.id.clone(), "Non-Terminal Sibling".to_string());
+    sibling.internal_status = InternalStatus::Executing;
+    sibling.ideation_session_id = Some(session.id.clone());
+    app_state.task_repo.create(sibling.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    // Should bypass sibling guard because task is timed out
+    scheduler.try_retry_main_merges().await;
+
+    // The main-merge-deferred flag should be cleared (retry was forced)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let flag_cleared = updated.metadata.as_deref()
+        .map(|m| !m.contains("\"main_merge_deferred\":true"))
+        .unwrap_or(true);
+    assert!(
+        flag_cleared,
+        "Timed-out main merge should bypass sibling guard and have flag cleared"
+    );
+}
+
+#[tokio::test]
+async fn test_retry_main_merges_respects_sibling_guard_when_not_timed_out() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create an ideation session
+    let session = crate::domain::entities::IdeationSession::new(project.id.clone());
+    app_state.ideation_session_repo.create(session.clone()).await.unwrap();
+
+    // Create a main-merge-deferred task RECENTLY (within timeout)
+    let mut task = make_main_deferred_task_with_age(&project.id, "Recent Main Merge", 5);
+    task.ideation_session_id = Some(session.id.clone());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Create a sibling task that is NOT terminal
+    let mut sibling = Task::new(project.id.clone(), "Non-Terminal Sibling".to_string());
+    sibling.internal_status = InternalStatus::Executing;
+    sibling.ideation_session_id = Some(session.id.clone());
+    app_state.task_repo.create(sibling.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    // Should NOT bypass sibling guard (task is within timeout)
+    scheduler.try_retry_main_merges().await;
+
+    // The main-merge-deferred flag should still be set (sibling guard skipped the retry)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let flag_still_set = updated.metadata.as_deref()
+        .map(|m| m.contains("\"main_merge_deferred\":true"))
+        .unwrap_or(false);
+    assert!(
+        flag_still_set,
+        "Recent main merge should respect sibling guard and not retry (flag still set)"
+    );
+}
+
+#[tokio::test]
+async fn test_retry_main_merges_retries_when_no_session_and_timed_out() {
+    use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
+
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task with no ideation_session_id but timed out — should always retry
+    let seconds_ago = DEFERRED_MERGE_TIMEOUT_SECONDS + 30;
+    let task = make_main_deferred_task_with_age(&project.id, "Sessionless Timed Out Merge", seconds_ago);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state);
+    scheduler.try_retry_main_merges().await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let flag_cleared = updated.metadata.as_deref()
+        .map(|m| !m.contains("\"main_merge_deferred\":true"))
+        .unwrap_or(true);
+    assert!(
+        flag_cleared,
+        "Timed-out main merge without session should be retried"
+    );
+}
