@@ -14,6 +14,7 @@ import {
   ChevronRight,
   Clock,
   Archive,
+  SkipForward,
 } from "lucide-react";
 import { SectionTitle } from "./SectionTitle";
 import type { MergeValidationStepEvent } from "@/types/events";
@@ -29,6 +30,7 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
   const isRunning = step.status === "running";
   const isFailed = step.status === "failed";
   const isCached = step.status === "cached";
+  const isSkipped = step.status === "skipped";
   const hasOutput = (step.stdout && step.stdout.trim().length > 0) ||
     (step.stderr && step.stderr.trim().length > 0);
   const [expanded, setExpanded] = useState(isRunning || isFailed);
@@ -37,6 +39,8 @@ export function ValidationStepRow({ step }: { step: MergeValidationStepEvent }) 
     <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
   ) : isFailed ? (
     <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
+  ) : isSkipped ? (
+    <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
   ) : isCached ? (
     <Archive className="w-4 h-4" style={{ color: "#34c759" }} />
   ) : (
@@ -119,13 +123,16 @@ export function StepsGroup({ steps, phase, label }: {
   const [expanded, setExpanded] = useState(anyFailed);
 
   const totalMs = steps.reduce((sum, s) => sum + (s.duration_ms ?? 0), 0);
-  const badgeBg = phase === "setup" ? "rgba(10, 132, 255, 0.15)" : phase === "install" ? "rgba(255, 107, 53, 0.15)" : "rgba(52, 199, 89, 0.15)";
-  const badgeColor = phase === "setup" ? "#64d2ff" : phase === "install" ? "#ff6b35" : "#34c759";
+  const badgeBg = phase === "setup" ? "rgba(10, 132, 255, 0.15)" : phase === "install" ? "rgba(255, 107, 53, 0.15)" : phase === "skipped" ? "rgba(255, 255, 255, 0.08)" : "rgba(52, 199, 89, 0.15)";
+  const badgeColor = phase === "setup" ? "#64d2ff" : phase === "install" ? "#ff6b35" : phase === "skipped" ? "rgba(255, 255, 255, 0.4)" : "#34c759";
 
+  const allSkipped = steps.every((s) => s.status === "skipped");
   const statusIcon = anyRunning ? (
     <Loader2 className="w-4 h-4 animate-spin" style={{ color: "#0a84ff" }} />
   ) : anyFailed ? (
     <XCircle className="w-4 h-4" style={{ color: "#ff453a" }} />
+  ) : allSkipped ? (
+    <SkipForward className="w-4 h-4" style={{ color: "rgba(255,255,255,0.3)" }} />
   ) : (
     <CheckCircle2 className="w-4 h-4" style={{ color: "#34c759" }} />
   );
@@ -165,6 +172,7 @@ export function StepsGroup({ steps, phase, label }: {
           {steps.map((step, i) => {
             const isFailed = step.status === "failed";
             const isRunning = step.status === "running";
+            const isSkipped = step.status === "skipped";
             const hasOutput = (step.stdout && step.stdout.trim().length > 0) ||
               (step.stderr && step.stderr.trim().length > 0);
             return (
@@ -174,6 +182,8 @@ export function StepsGroup({ steps, phase, label }: {
                     <Loader2 className="w-3 h-3 animate-spin" style={{ color: "#0a84ff" }} />
                   ) : isFailed ? (
                     <XCircle className="w-3 h-3" style={{ color: "#ff453a" }} />
+                  ) : isSkipped ? (
+                    <SkipForward className="w-3 h-3" style={{ color: "rgba(255,255,255,0.3)" }} />
                   ) : (
                     <CheckCircle2 className="w-3 h-3" style={{ color: "#34c759" }} />
                   )}
@@ -234,7 +244,7 @@ function parseMetadataValidationLog(
       command: String(entry.command ?? ""),
       path: String(entry.path ?? ""),
       label: String(entry.label ?? entry.command ?? ""),
-      status: (entry.status === "running" || entry.status === "success" || entry.status === "failed" || entry.status === "cached")
+      status: (entry.status === "running" || entry.status === "success" || entry.status === "failed" || entry.status === "cached" || entry.status === "skipped")
         ? entry.status
         : "success",
       exit_code: typeof entry.exit_code === "number" ? entry.exit_code : null,
@@ -278,7 +288,8 @@ export function ValidationProgress({
   const installSteps = steps.filter((s) => s.phase === "install");
   const validateSteps = steps.filter((s) => s.phase !== "setup" && s.phase !== "install");
   const passedValidateSteps = validateSteps.filter((s) => s.status === "success" || s.status === "cached");
-  const nonPassedValidateSteps = validateSteps.filter((s) => s.status !== "success" && s.status !== "cached");
+  const skippedValidateSteps = validateSteps.filter((s) => s.status === "skipped");
+  const activeValidateSteps = validateSteps.filter((s) => s.status !== "success" && s.status !== "cached" && s.status !== "skipped");
 
   return (
     <section data-testid={`validation-progress-${taskId}`}>
@@ -310,9 +321,16 @@ export function ValidationProgress({
             label={`${passedValidateSteps.length} check${passedValidateSteps.length !== 1 ? "s" : ""} passed`}
           />
         )}
-        {nonPassedValidateSteps.map((step, index) => (
+        {activeValidateSteps.map((step, index) => (
           <ValidationStepRow key={`${step.phase}-${step.command}-${index}`} step={step} />
         ))}
+        {skippedValidateSteps.length > 0 && (
+          <StepsGroup
+            steps={skippedValidateSteps}
+            phase="skipped"
+            label={`${skippedValidateSteps.length} check${skippedValidateSteps.length !== 1 ? "s" : ""} skipped`}
+          />
+        )}
       </div>
     </section>
   );

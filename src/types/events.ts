@@ -327,7 +327,7 @@ export const MergeValidationStepEventSchema = z.object({
   command: z.string(),
   path: z.string(),
   label: z.string(),
-  status: z.enum(["running", "success", "failed", "cached"]),
+  status: z.enum(["running", "success", "failed", "cached", "skipped"]),
   exit_code: z.number().nullable().optional(),
   stdout: z.string().optional(),
   stderr: z.string().optional(),
