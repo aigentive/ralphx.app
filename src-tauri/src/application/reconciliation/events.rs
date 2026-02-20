@@ -245,7 +245,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
     pub(crate) async fn record_merge_timeout_event(
         &self,
         task: &Task,
-        age: chrono::Duration,
+        _age: chrono::Duration,
     ) {
         let mut updated = task.clone();
 
@@ -253,13 +253,18 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .unwrap_or(None)
             .unwrap_or_default();
 
+        // Use configured timeout, not effective_age, because effective_age accumulates
+        // across retries (ExecuteEntryActions doesn't create new status_history entries,
+        // so latest_status_transition_age returns the original Merging timestamp).
+        let timeout_secs = reconciliation_config().merger_timeout_secs as i64;
+
         let failed_event = MergeRecoveryEvent::new(
             MergeRecoveryEventKind::AttemptFailed,
             MergeRecoverySource::System,
             MergeRecoveryReasonCode::GitError,
             format!(
                 "Merge timed out after {}s without completion signal",
-                age.num_seconds().max(0)
+                timeout_secs
             ),
         )
         .with_failure_source(MergeFailureSource::TransientGit);
@@ -270,8 +275,6 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 .unwrap_or_else(|_| serde_json::json!({})),
             Err(_) => serde_json::json!({}),
         };
-
-        let timeout_secs = reconciliation_config().merger_timeout_secs as i64;
         if let Some(obj) = metadata.as_object_mut() {
             obj.insert(
                 "error".to_string(),
