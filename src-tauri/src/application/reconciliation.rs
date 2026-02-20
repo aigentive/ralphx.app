@@ -5,7 +5,9 @@
 //
 // Submodules:
 // - policy.rs: types + pure decision logic (RecoveryPolicy, RecoveryContext, etc.)
-// - handlers.rs: all reconcile_* methods, orchestration, apply_recovery_decision
+// - handlers/: reconcile_* methods, orchestration, apply_recovery_decision
+//   - execution.rs: execution, review, QA, paused handlers + orchestration
+//   - merge.rs: merge-specific handlers (Merging, PendingMerge, MergeIncomplete, MergeConflict)
 // - metadata.rs: retry counters, SHA tracking, backoff delays
 // - events.rs: evidence building, event recording, prompts, lookups
 
@@ -30,10 +32,10 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
 pub use policy::UserRecoveryAction;
+pub(crate) use policy::RecoveryPolicy;
 // Re-exported for tests (use super::*)
-pub(crate) use policy::{
-    RecoveryActionKind, RecoveryContext, RecoveryEvidence, RecoveryPolicy,
-};
+#[cfg(test)]
+pub(crate) use policy::{RecoveryActionKind, RecoveryContext, RecoveryEvidence};
 
 pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     pub(crate) task_repo: Arc<dyn TaskRepository>,
