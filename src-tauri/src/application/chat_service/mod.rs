@@ -395,12 +395,15 @@ impl<R: Runtime> ClaudeChatService<R> {
         }
     }
 
-    /// Resolve the project's working directory from a context
+    /// Resolve the project's working directory from a context.
+    ///
+    /// Returns `Err` for Merge contexts that resolve to the primary repo
+    /// (hard error to prevent fixer agent from corrupting user's checkout).
     async fn resolve_working_directory(
         &self,
         context_type: ChatContextType,
         context_id: &str,
-    ) -> PathBuf {
+    ) -> Result<PathBuf, String> {
         chat_service_context::resolve_working_directory(
             context_type,
             context_id,
@@ -662,9 +665,15 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         );
 
         // 6. Resolve working directory
-        let mut working_directory = self
+        let mut working_directory = match self
             .resolve_working_directory(context_type, context_id)
-            .await;
+            .await
+        {
+            Ok(dir) => dir,
+            Err(e) => {
+                cleanup_and_err!(ChatServiceError::SpawnFailed(e));
+            }
+        };
         if !working_directory.exists() {
             tracing::warn!(
                 context_type = ?context_type,

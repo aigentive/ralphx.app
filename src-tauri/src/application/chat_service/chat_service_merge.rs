@@ -425,7 +425,16 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     "attempt_merge_auto_complete: re-validation failed, reverting merge"
                 );
 
-                if let Err(e) = GitService::reset_hard(worktree, "HEAD~1").await {
+                // Defence-in-depth: never reset_hard on the main repo — that would
+                // destroy the user's checkout. With Fix 1 (fixer worktree isolation),
+                // worktree should never equal main_repo_path, but guard against it.
+                if worktree_path == main_repo_path {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        "attempt_merge_auto_complete: BUG — worktree_path equals main_repo_path, \
+                         refusing to reset_hard on user's checkout"
+                    );
+                } else if let Err(e) = GitService::reset_hard(worktree, "HEAD~1").await {
                     tracing::error!(
                         task_id = task_id_str,
                         error = %e,
@@ -519,105 +528,151 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         }
     }
 
-    // 4. Verify merge actually happened on target branch using helper
-    let commit_sha = match verify_merge_on_target(&main_repo_path, &source_branch, &target_branch).await {
-        MergeVerification::Merged(sha) => {
-            // Task branch is merged - capture the merge commit SHA
-            sha
+    // 4. Verify merge actually happened on target branch.
+    // For validation recovery, skip ancestry-based verification — the merge was already
+    // verified during handle_outcome_success; the fixer agent only added fix commits on top.
+    // Squash merges fail is_commit_on_branch because the source SHA isn't an ancestor of the
+    // squash commit. Instead, just get the target branch HEAD SHA directly.
+    let commit_sha = if is_validation_recovery {
+        match GitService::get_branch_sha(&main_repo_path, &target_branch).await {
+            Ok(sha) => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    target_sha = %sha,
+                    "attempt_merge_auto_complete: validation recovery — skipping ancestry check, using target HEAD"
+                );
+                sha
+            }
+            Err(e) => {
+                tracing::error!(
+                    task_id = task_id_str,
+                    error = %e,
+                    target_branch = %target_branch,
+                    "attempt_merge_auto_complete: validation recovery — failed to get target branch SHA"
+                );
+                transition_to_merge_incomplete(
+                    &task_id,
+                    &format!("Auto-complete failed: cannot resolve target branch {}: {}", target_branch, e),
+                    task_repo,
+                    task_dependency_repo,
+                    project_repo,
+                    chat_message_repo,
+                    chat_attachment_repo,
+                    conversation_repo,
+                    agent_run_repo,
+                    ideation_session_repo,
+                    activity_event_repo,
+                    message_queue,
+                    running_agent_registry,
+                    memory_event_repo,
+                    execution_state,
+                    plan_branch_repo,
+                    app_handle,
+                )
+                .await;
+                return;
+            }
         }
-        MergeVerification::NotMerged => {
-            tracing::warn!(
-                task_id = task_id_str,
-                source_branch = %source_branch,
-                target_branch = %target_branch,
-                "attempt_merge_auto_complete: task branch not merged to target, transitioning to MergeIncomplete"
-            );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!(
-                    "Agent exited but task branch {} not merged to {}",
-                    source_branch, target_branch
-                ),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-        MergeVerification::SourceBranchMissing => {
-            tracing::error!(
-                task_id = task_id_str,
-                source_branch = %source_branch,
-                "attempt_merge_auto_complete: source branch does not exist or cannot be resolved"
-            );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!(
-                    "Auto-complete failed: source branch {} does not exist or cannot be resolved",
-                    source_branch
-                ),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
-        }
-        MergeVerification::TargetBranchMissing => {
-            tracing::error!(
-                task_id = task_id_str,
-                target_branch = %target_branch,
-                "attempt_merge_auto_complete: target branch does not exist or cannot be resolved"
-            );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!(
-                    "Auto-complete failed: target branch {} does not exist or cannot be resolved",
-                    target_branch
-                ),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
-            return;
+    } else {
+        match verify_merge_on_target(&main_repo_path, &source_branch, &target_branch).await {
+            MergeVerification::Merged(sha) => {
+                // Task branch is merged - capture the merge commit SHA
+                sha
+            }
+            MergeVerification::NotMerged => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    "attempt_merge_auto_complete: task branch not merged to target, transitioning to MergeIncomplete"
+                );
+                transition_to_merge_incomplete(
+                    &task_id,
+                    &format!(
+                        "Agent exited but task branch {} not merged to {}",
+                        source_branch, target_branch
+                    ),
+                    task_repo,
+                    task_dependency_repo,
+                    project_repo,
+                    chat_message_repo,
+                    chat_attachment_repo,
+                    conversation_repo,
+                    agent_run_repo,
+                    ideation_session_repo,
+                    activity_event_repo,
+                    message_queue,
+                    running_agent_registry,
+                    memory_event_repo,
+                    execution_state,
+                    plan_branch_repo,
+                    app_handle,
+                )
+                .await;
+                return;
+            }
+            MergeVerification::SourceBranchMissing => {
+                tracing::error!(
+                    task_id = task_id_str,
+                    source_branch = %source_branch,
+                    "attempt_merge_auto_complete: source branch does not exist or cannot be resolved"
+                );
+                transition_to_merge_incomplete(
+                    &task_id,
+                    &format!(
+                        "Auto-complete failed: source branch {} does not exist or cannot be resolved",
+                        source_branch
+                    ),
+                    task_repo,
+                    task_dependency_repo,
+                    project_repo,
+                    chat_message_repo,
+                    chat_attachment_repo,
+                    conversation_repo,
+                    agent_run_repo,
+                    ideation_session_repo,
+                    activity_event_repo,
+                    message_queue,
+                    running_agent_registry,
+                    memory_event_repo,
+                    execution_state,
+                    plan_branch_repo,
+                    app_handle,
+                )
+                .await;
+                return;
+            }
+            MergeVerification::TargetBranchMissing => {
+                tracing::error!(
+                    task_id = task_id_str,
+                    target_branch = %target_branch,
+                    "attempt_merge_auto_complete: target branch does not exist or cannot be resolved"
+                );
+                transition_to_merge_incomplete(
+                    &task_id,
+                    &format!(
+                        "Auto-complete failed: target branch {} does not exist or cannot be resolved",
+                        target_branch
+                    ),
+                    task_repo,
+                    task_dependency_repo,
+                    project_repo,
+                    chat_message_repo,
+                    chat_attachment_repo,
+                    conversation_repo,
+                    agent_run_repo,
+                    ideation_session_repo,
+                    activity_event_repo,
+                    message_queue,
+                    running_agent_registry,
+                    memory_event_repo,
+                    execution_state,
+                    plan_branch_repo,
+                    app_handle,
+                )
+                .await;
+                return;
+            }
         }
     };
 
@@ -636,6 +691,12 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             error = %e,
             "attempt_merge_auto_complete: complete_merge_internal failed — transitioning to MergeIncomplete"
         );
+        // Clean up fixer worktree on failure (if it's not the main repo)
+        if worktree_path != main_repo_path {
+            if let Err(cleanup_err) = GitService::delete_worktree(&main_repo_path, worktree).await {
+                tracing::warn!(task_id = task_id_str, error = %cleanup_err, "Failed to cleanup fixer worktree after merge failure (non-fatal)");
+            }
+        }
         // Transition via TaskTransitionService so on_exit(Merging) fires:
         // - decrements running_count (prevents concurrency limit leak)
         // - triggers try_retry_deferred_merges
@@ -672,6 +733,13 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             app_handle.cloned(),
         );
         dependency_manager.unblock_dependents(task_id_str).await;
+
+        // Clean up fixer worktree after successful merge (if it's not the main repo)
+        if worktree_path != main_repo_path {
+            if let Err(cleanup_err) = GitService::delete_worktree(&main_repo_path, worktree).await {
+                tracing::warn!(task_id = task_id_str, error = %cleanup_err, "Failed to cleanup fixer worktree after merge success (non-fatal)");
+            }
+        }
 
         // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
         let scheduler = TaskSchedulerService::new(

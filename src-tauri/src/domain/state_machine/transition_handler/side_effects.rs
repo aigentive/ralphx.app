@@ -15,7 +15,7 @@ use super::merge_validation::{format_validation_error_metadata, ValidationLogEnt
 
 use super::merge_validation::{emit_merge_progress, ValidationFailure};
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use tauri::Emitter;
@@ -26,7 +26,7 @@ use crate::infrastructure::agents::claude::{reconciliation_config, scheduler_con
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::MergeFailureSource,
-    InternalStatus, MergeValidationMode,
+    InternalStatus, MergeValidationMode, Project,
     Task, TaskId,
 };
 use crate::domain::repositories::{
@@ -435,6 +435,10 @@ impl<'a> super::TransitionHandler<'a> {
 
     /// Handle post-merge validation failure: revert the merge commit, then transition
     /// to MergeIncomplete with error metadata.
+    ///
+    /// `repo_path` and `project` are needed in AutoFix mode to create a dedicated
+    /// merge worktree when the merge was checkout-free (merge_path == repo_path).
+    #[allow(clippy::too_many_arguments)]
     pub(super) async fn handle_validation_failure(
         &self,
         task: &mut Task,
@@ -448,6 +452,8 @@ impl<'a> super::TransitionHandler<'a> {
         merge_path: &Path,
         mode_label: &str,
         validation_mode: &MergeValidationMode,
+        repo_path: &Path,
+        project: &Project,
     ) {
         if *validation_mode == MergeValidationMode::AutoFix {
             // AutoFix: DON'T revert — keep the merged (failing) code for the agent to fix
@@ -470,6 +476,64 @@ impl<'a> super::TransitionHandler<'a> {
                 })
                 .collect();
 
+            // If merge was checkout-free (merge_path == repo_path), create a dedicated
+            // worktree so the fixer agent doesn't run in the user's main checkout.
+            let fixer_worktree_path: PathBuf = if merge_path == repo_path {
+                let wt_path = PathBuf::from(
+                    super::merge_helpers::compute_merge_worktree_path(project, task_id_str),
+                );
+
+                // Pre-delete stale worktree if it exists from a previous attempt
+                if wt_path.exists() {
+                    if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "Failed to delete stale fixer worktree (non-fatal)"
+                        );
+                    }
+                }
+
+                // Create worktree on the target branch (which has the merged+failing code)
+                match GitService::checkout_existing_branch_worktree(repo_path, &wt_path, target_branch).await {
+                    Ok(()) => {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            worktree = %wt_path.display(),
+                            "Created dedicated fixer worktree for validation recovery"
+                        );
+                        wt_path
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "Failed to create fixer worktree — reverting merge and transitioning to MergeIncomplete"
+                        );
+                        // Revert the merge since we can't safely spawn a fixer
+                        if let Err(revert_err) = GitService::reset_hard(repo_path, "HEAD~1").await {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %revert_err,
+                                "Failed to revert merge after worktree creation failure"
+                            );
+                        }
+                        let metadata = serde_json::json!({
+                            "error": format!("Failed to create fixer worktree: {}", e),
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        });
+                        self.transition_to_merge_incomplete(
+                            task, task_id, task_id_str, metadata, task_repo, true,
+                        ).await;
+                        return;
+                    }
+                }
+            } else {
+                // Worktree-based merge — use the existing merge worktree
+                merge_path.to_path_buf()
+            };
+
             // Merge new validation recovery metadata into existing metadata
             // to preserve merge_recovery history and validation_revert_count
             let mut metadata_obj = task
@@ -485,7 +549,7 @@ impl<'a> super::TransitionHandler<'a> {
                 obj.insert("target_branch".to_string(), serde_json::json!(target_branch));
             }
             task.metadata = Some(metadata_obj.to_string());
-            task.worktree_path = Some(merge_path.to_string_lossy().to_string());
+            task.worktree_path = Some(fixer_worktree_path.to_string_lossy().to_string());
             task.internal_status = InternalStatus::Merging;
 
             self.persist_merge_transition(
