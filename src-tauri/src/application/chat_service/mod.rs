@@ -666,9 +666,13 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .resolve_working_directory(context_type, context_id)
             .await;
         if !working_directory.exists() {
-            tracing::debug!(
+            tracing::warn!(
+                context_type = ?context_type,
+                context_id = context_id,
                 missing = %working_directory.display(),
-                "chat_service.send_message working_directory missing, falling back to default"
+                default = %self.default_working_directory.display(),
+                "chat_service.send_message: resolved working_directory does not exist, \
+                 falling back to default. Agent may operate in unexpected directory."
             );
             working_directory = self.default_working_directory.clone();
         }

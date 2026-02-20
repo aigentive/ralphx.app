@@ -126,28 +126,34 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         }
     };
 
-    // Resolve working path: prefer worktree if it exists, else fall back to project repo
-    let worktree_exists = task
-        .worktree_path
-        .as_ref()
-        .map(|p| PathBuf::from(p).exists())
-        .unwrap_or(false);
-
-    let worktree_path = task
-        .worktree_path
-        .as_ref()
-        .map(PathBuf::from)
-        .filter(|path| path.exists())
-        .unwrap_or_else(|| PathBuf::from(&project.working_directory));
-
-    // Warn if worktree was set but is missing (race condition with prune/cleanup)
-    if task.worktree_path.is_some() && !worktree_exists {
-        tracing::warn!(
-            task_id = task_id_str,
-            worktree_path = task.worktree_path.as_deref().unwrap_or(""),
-            "attempt_merge_auto_complete: worktree path was set but does not exist, falling back to main repo"
-        );
-    }
+    // Resolve working path: MUST be a valid worktree or the main repo if that's where
+    // the merge happened (checkout-free validation recovery sets merge_path = repo_path).
+    // Never silently fall back to the main repo — that would run git operations in the
+    // user's checkout and potentially switch their branch.
+    let worktree_path = match &task.worktree_path {
+        Some(wt) => {
+            let path = PathBuf::from(wt);
+            if path.exists() {
+                path
+            } else {
+                tracing::error!(
+                    task_id = task_id_str,
+                    worktree_path = wt.as_str(),
+                    "attempt_merge_auto_complete: worktree path was set but does not exist. \
+                     Aborting to avoid running git operations in the user's main checkout."
+                );
+                return;
+            }
+        }
+        None => {
+            tracing::error!(
+                task_id = task_id_str,
+                "attempt_merge_auto_complete: task has no worktree_path. \
+                 Cannot safely determine merge working directory."
+            );
+            return;
+        }
+    };
 
     let worktree = Path::new(&worktree_path);
 

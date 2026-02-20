@@ -434,32 +434,11 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        // --- Step 6: Clean working tree ---
-        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 6 — cleaning working tree (git clean)");
-        match run_cleanup_step(
-            "step 6 git clean",
-            git_runtime_config().cleanup_git_op_timeout_secs,
-            task_id_str,
-            GitService::clean_working_tree(repo_path),
-        )
-        .await
-        {
-            CleanupStepResult::Ok => {}
-            CleanupStepResult::TimedOut { elapsed } => {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    elapsed_ms = elapsed.as_millis() as u64,
-                    "git clean timed out during pre-merge cleanup"
-                );
-            }
-            CleanupStepResult::Error { ref message } => {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    error = %message,
-                    "git clean failed during pre-merge cleanup"
-                );
-            }
-        }
+        // Step 6 REMOVED: clean_working_tree(repo_path) was running `git reset --hard HEAD`
+        // + `git clean -fd` on the MAIN repo before every merge attempt. This destroyed
+        // uncommitted user changes. In Worktree mode, merges happen in isolated worktrees
+        // and checkout-free merges use plumbing (merge-tree/commit-tree/update-ref) that
+        // don't need a clean working tree. Removing this preserves the user's local state.
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: complete");
     }
 }
