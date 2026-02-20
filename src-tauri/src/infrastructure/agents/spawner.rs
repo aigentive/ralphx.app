@@ -200,6 +200,8 @@ impl AgentSpawner for AgenticClientSpawner {
             if !exec.can_start_task() {
                 let reason = if exec.is_paused() {
                     "execution_paused"
+                } else if exec.is_provider_blocked() {
+                    "provider_rate_limited"
                 } else {
                     "max_concurrent_reached"
                 };

@@ -4,7 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::RwLock;
@@ -112,6 +112,10 @@ pub struct ExecutionState {
     /// Global maximum concurrent tasks across ALL projects (Phase 82)
     /// Default 20, hard cap 50. Enforced alongside per-project max.
     global_max_concurrent: AtomicU32,
+    /// Provider rate limit backpressure: epoch seconds until which all spawns are blocked.
+    /// 0 = no active rate limit. When any agent detects a provider rate limit,
+    /// this is set to the retry_after timestamp so ALL subsequent spawns are gated.
+    rate_limited_until: AtomicU64,
 }
 
 impl ExecutionState {
@@ -122,6 +126,7 @@ impl ExecutionState {
             running_count: AtomicU32::new(0),
             max_concurrent: AtomicU32::new(2),
             global_max_concurrent: AtomicU32::new(20),
+            rate_limited_until: AtomicU64::new(0),
         }
     }
 
@@ -132,6 +137,7 @@ impl ExecutionState {
             running_count: AtomicU32::new(0),
             max_concurrent: AtomicU32::new(max),
             global_max_concurrent: AtomicU32::new(20),
+            rate_limited_until: AtomicU64::new(0),
         }
     }
 
@@ -199,10 +205,40 @@ impl ExecutionState {
         self.global_max_concurrent.store(clamped, Ordering::SeqCst);
     }
 
+    /// Check if the provider rate limit is currently active (blocking all spawns)
+    pub fn is_provider_blocked(&self) -> bool {
+        let until = self.rate_limited_until.load(Ordering::SeqCst);
+        if until == 0 {
+            return false;
+        }
+        let now = chrono::Utc::now().timestamp() as u64;
+        now < until
+    }
+
+    /// Set the provider rate limit backpressure until a specific epoch second.
+    /// All agent spawns will be blocked until this time.
+    pub fn set_provider_blocked_until(&self, until_epoch_secs: u64) {
+        self.rate_limited_until
+            .store(until_epoch_secs, Ordering::SeqCst);
+    }
+
+    /// Clear the provider rate limit backpressure (set to 0 = no limit).
+    pub fn clear_provider_block(&self) {
+        self.rate_limited_until.store(0, Ordering::SeqCst);
+    }
+
+    /// Get the raw epoch seconds value for provider_blocked_until (0 = no limit).
+    pub fn provider_blocked_until_epoch(&self) -> u64 {
+        self.rate_limited_until.load(Ordering::SeqCst)
+    }
+
     /// Check if we can start a new task
-    /// Enforces both per-project max and global cap (Phase 82)
+    /// Enforces pause, provider rate limit, per-project max, and global cap (Phase 82)
     pub fn can_start_task(&self) -> bool {
         if self.is_paused() {
+            return false;
+        }
+        if self.is_provider_blocked() {
             return false;
         }
         let running = self.running_count();
@@ -211,6 +247,7 @@ impl ExecutionState {
 
     /// Emit execution:status_changed event with current state
     pub fn emit_status_changed<R: Runtime>(&self, handle: &AppHandle<R>, reason: &str) {
+        let blocked_until = self.provider_blocked_until_epoch();
         let _ = handle.emit(
             "execution:status_changed",
             serde_json::json!({
@@ -218,6 +255,8 @@ impl ExecutionState {
                 "runningCount": self.running_count(),
                 "maxConcurrent": self.max_concurrent(),
                 "globalMaxConcurrent": self.global_max_concurrent(),
+                "providerBlocked": self.is_provider_blocked(),
+                "providerBlockedUntil": if blocked_until > 0 { Some(blocked_until) } else { None::<u64> },
                 "reason": reason,
                 "timestamp": chrono::Utc::now().to_rfc3339(),
             }),
@@ -246,6 +285,11 @@ pub struct ExecutionStatusResponse {
     pub queued_count: u32,
     /// Whether new tasks can be started
     pub can_start_task: bool,
+    /// Whether a provider rate limit is currently blocking all spawns
+    pub provider_blocked: bool,
+    /// Epoch seconds when the provider rate limit expires (0 = no limit)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_blocked_until: Option<u64>,
 }
 
 /// Response for pause/resume/stop commands
@@ -485,6 +529,7 @@ pub async fn get_execution_status(
     let max_concurrent = execution_state.max_concurrent();
     let global_max = execution_state.global_max_concurrent();
 
+    let blocked_until = execution_state.provider_blocked_until_epoch();
     Ok(ExecutionStatusResponse {
         is_paused: execution_state.is_paused(),
         running_count,
@@ -492,8 +537,15 @@ pub async fn get_execution_status(
         global_max_concurrent: global_max,
         queued_count,
         can_start_task: !execution_state.is_paused()
+            && !execution_state.is_provider_blocked()
             && running_count < max_concurrent
             && global_running_count < global_max,
+        provider_blocked: execution_state.is_provider_blocked(),
+        provider_blocked_until: if blocked_until > 0 {
+            Some(blocked_until)
+        } else {
+            None
+        },
     })
 }
 
@@ -2243,6 +2295,85 @@ mod tests {
         assert!(!state.can_start_task());
     }
 
+    // ========================================
+    // Provider Rate Limit Backpressure Tests
+    // ========================================
+
+    #[test]
+    fn test_can_start_task_returns_false_when_provider_blocked() {
+        let state = ExecutionState::new();
+        // Set provider blocked until 60 seconds in the future
+        let future_epoch = chrono::Utc::now().timestamp() as u64 + 60;
+        state.set_provider_blocked_until(future_epoch);
+
+        assert!(state.is_provider_blocked());
+        assert!(!state.can_start_task());
+    }
+
+    #[test]
+    fn test_can_start_task_returns_true_when_block_expired() {
+        let state = ExecutionState::new();
+        // Set provider blocked until 60 seconds in the past
+        let past_epoch = chrono::Utc::now().timestamp() as u64 - 60;
+        state.set_provider_blocked_until(past_epoch);
+
+        assert!(!state.is_provider_blocked());
+        assert!(state.can_start_task());
+    }
+
+    #[test]
+    fn test_can_start_task_returns_true_when_no_block() {
+        let state = ExecutionState::new();
+        // Default: no provider block
+        assert!(!state.is_provider_blocked());
+        assert!(state.can_start_task());
+    }
+
+    #[test]
+    fn test_set_clear_provider_block_lifecycle() {
+        let state = ExecutionState::new();
+
+        // Initially not blocked
+        assert!(!state.is_provider_blocked());
+        assert_eq!(state.provider_blocked_until_epoch(), 0);
+
+        // Set block in the future
+        let future_epoch = chrono::Utc::now().timestamp() as u64 + 300;
+        state.set_provider_blocked_until(future_epoch);
+        assert!(state.is_provider_blocked());
+        assert_eq!(state.provider_blocked_until_epoch(), future_epoch);
+
+        // Clear block
+        state.clear_provider_block();
+        assert!(!state.is_provider_blocked());
+        assert_eq!(state.provider_blocked_until_epoch(), 0);
+    }
+
+    #[test]
+    fn test_provider_block_independent_of_pause() {
+        let state = ExecutionState::new();
+        let future_epoch = chrono::Utc::now().timestamp() as u64 + 60;
+        state.set_provider_blocked_until(future_epoch);
+
+        // Provider blocked, not paused — still can't start
+        assert!(!state.is_paused());
+        assert!(state.is_provider_blocked());
+        assert!(!state.can_start_task());
+
+        // Clear provider block, pause — still can't start (different reason)
+        state.clear_provider_block();
+        state.pause();
+        assert!(!state.is_provider_blocked());
+        assert!(state.is_paused());
+        assert!(!state.can_start_task());
+
+        // Both blocked — still can't start
+        state.set_provider_blocked_until(future_epoch);
+        assert!(state.is_provider_blocked());
+        assert!(state.is_paused());
+        assert!(!state.can_start_task());
+    }
+
     #[test]
     fn test_execution_state_thread_safe() {
         use std::thread;
@@ -2292,6 +2423,8 @@ mod tests {
             global_max_concurrent: 20,
             queued_count: 5,
             can_start_task: false,
+            provider_blocked: false,
+            provider_blocked_until: None,
         };
 
         let json = serde_json::to_string(&response).unwrap();
@@ -2316,6 +2449,8 @@ mod tests {
                 global_max_concurrent: 20,
                 queued_count: 3,
                 can_start_task: true,
+                provider_blocked: false,
+                provider_blocked_until: None,
             },
         };
 
