@@ -31,10 +31,6 @@ impl TaskRepository for StubTaskRepo {
     async fn get_status_history(&self, _: &TaskId) -> AppResult<Vec<StatusTransition>> { Ok(vec![]) }
     async fn get_status_entered_at(&self, _: &TaskId, _: InternalStatus) -> AppResult<Option<DateTime<Utc>>> { Ok(None) }
     async fn get_next_executable(&self, _: &ProjectId) -> AppResult<Option<Task>> { Ok(None) }
-    async fn get_blockers(&self, _: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn get_dependents(&self, _: &TaskId) -> AppResult<Vec<Task>> { Ok(vec![]) }
-    async fn add_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> { Ok(()) }
-    async fn resolve_blocker(&self, _: &TaskId, _: &TaskId) -> AppResult<()> { Ok(()) }
     async fn get_by_ideation_session(&self, _: &IdeationSessionId) -> AppResult<Vec<Task>> { Ok(vec![]) }
     async fn get_by_project_filtered(&self, _: &ProjectId, _: bool) -> AppResult<Vec<Task>> { Ok(vec![]) }
     async fn archive(&self, id: &TaskId) -> AppResult<Task> {

@@ -17,7 +17,6 @@ use crate::error::AppResult;
 pub struct MemoryTaskRepository {
     tasks: Arc<RwLock<HashMap<TaskId, Task>>>,
     history: Arc<RwLock<Vec<(TaskId, StatusTransition)>>>,
-    blockers: Arc<RwLock<HashMap<TaskId, Vec<TaskId>>>>,
 }
 
 impl Default for MemoryTaskRepository {
@@ -32,7 +31,6 @@ impl MemoryTaskRepository {
         Self {
             tasks: Arc::new(RwLock::new(HashMap::new())),
             history: Arc::new(RwLock::new(Vec::new())),
-            blockers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -42,7 +40,6 @@ impl MemoryTaskRepository {
         Self {
             tasks: Arc::new(RwLock::new(map)),
             history: Arc::new(RwLock::new(Vec::new())),
-            blockers: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -130,12 +127,6 @@ impl TaskRepository for MemoryTaskRepository {
     async fn delete(&self, id: &TaskId) -> AppResult<()> {
         let mut tasks = self.tasks.write().await;
         tasks.remove(id);
-        // Also remove any blockers referencing this task
-        let mut blockers = self.blockers.write().await;
-        blockers.remove(id);
-        for blocked_by in blockers.values_mut() {
-            blocked_by.retain(|blocker_id| blocker_id != id);
-        }
         Ok(())
     }
 
@@ -219,14 +210,13 @@ impl TaskRepository for MemoryTaskRepository {
 
     async fn get_next_executable(&self, project_id: &ProjectId) -> AppResult<Option<Task>> {
         let tasks = self.tasks.read().await;
-        let blockers = self.blockers.read().await;
 
+        // Note: dependency checking is done via TaskDependencyRepository in production SQL.
+        // The in-memory impl returns highest-priority ready task without dependency filtering.
         let mut ready_tasks: Vec<&Task> = tasks
             .values()
             .filter(|t| {
-                t.project_id == *project_id
-                    && t.internal_status == InternalStatus::Ready
-                    && !blockers.get(&t.id).map(|b| !b.is_empty()).unwrap_or(false)
+                t.project_id == *project_id && t.internal_status == InternalStatus::Ready
             })
             .collect();
 
@@ -237,55 +227,6 @@ impl TaskRepository for MemoryTaskRepository {
         });
 
         Ok(ready_tasks.first().cloned().cloned())
-    }
-
-    async fn get_blockers(&self, id: &TaskId) -> AppResult<Vec<Task>> {
-        let tasks = self.tasks.read().await;
-        let blockers = self.blockers.read().await;
-
-        let blocker_ids = blockers.get(id).cloned().unwrap_or_default();
-        let blocker_tasks: Vec<Task> = blocker_ids
-            .iter()
-            .filter_map(|blocker_id| tasks.get(blocker_id).cloned())
-            .collect();
-
-        Ok(blocker_tasks)
-    }
-
-    async fn get_dependents(&self, id: &TaskId) -> AppResult<Vec<Task>> {
-        let tasks = self.tasks.read().await;
-        let blockers = self.blockers.read().await;
-
-        // Find all tasks that have this task as a blocker
-        let dependent_ids: Vec<TaskId> = blockers
-            .iter()
-            .filter(|(_, blocked_by)| blocked_by.contains(id))
-            .map(|(task_id, _)| task_id.clone())
-            .collect();
-
-        let dependent_tasks: Vec<Task> = dependent_ids
-            .iter()
-            .filter_map(|task_id| tasks.get(task_id).cloned())
-            .collect();
-
-        Ok(dependent_tasks)
-    }
-
-    async fn add_blocker(&self, task_id: &TaskId, blocker_id: &TaskId) -> AppResult<()> {
-        let mut blockers = self.blockers.write().await;
-        blockers
-            .entry(task_id.clone())
-            .or_default()
-            .push(blocker_id.clone());
-        Ok(())
-    }
-
-    async fn resolve_blocker(&self, task_id: &TaskId, blocker_id: &TaskId) -> AppResult<()> {
-        let mut blockers = self.blockers.write().await;
-        if let Some(blocked_by) = blockers.get_mut(task_id) {
-            blocked_by.retain(|id| id != blocker_id);
-        }
-        Ok(())
     }
 
     async fn get_by_project_filtered(

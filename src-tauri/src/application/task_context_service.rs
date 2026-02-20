@@ -14,13 +14,15 @@ use crate::domain::entities::{
     TaskProposalSummary,
 };
 use crate::domain::repositories::{
-    ArtifactRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
+    ArtifactRepository, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
+    TaskStepRepository,
 };
 use crate::error::{AppError, AppResult};
 
 /// Service for aggregating task context for worker execution
 pub struct TaskContextService {
     task_repo: Arc<dyn TaskRepository>,
+    task_dependency_repo: Arc<dyn TaskDependencyRepository>,
     proposal_repo: Arc<dyn TaskProposalRepository>,
     artifact_repo: Arc<dyn ArtifactRepository>,
     step_repo: Arc<dyn TaskStepRepository>,
@@ -30,12 +32,14 @@ impl TaskContextService {
     /// Create a new TaskContextService with the given repositories
     pub fn new(
         task_repo: Arc<dyn TaskRepository>,
+        task_dependency_repo: Arc<dyn TaskDependencyRepository>,
         proposal_repo: Arc<dyn TaskProposalRepository>,
         artifact_repo: Arc<dyn ArtifactRepository>,
         step_repo: Arc<dyn TaskStepRepository>,
     ) -> Self {
         Self {
             task_repo,
+            task_dependency_repo,
             proposal_repo,
             artifact_repo,
             step_repo,
@@ -134,26 +138,30 @@ impl TaskContextService {
             None
         };
 
-        // 7. Fetch task dependencies (blockers and dependents)
-        let blockers = self.task_repo.get_blockers(task_id).await?;
-        let blocked_by: Vec<TaskDependencySummary> = blockers
-            .into_iter()
-            .map(|t| TaskDependencySummary {
-                id: t.id.clone(),
-                title: t.title.clone(),
-                internal_status: t.internal_status,
-            })
-            .collect();
+        // 7. Fetch task dependencies (blockers and dependents) via TaskDependencyRepository
+        let blocker_ids = self.task_dependency_repo.get_blockers(task_id).await?;
+        let mut blocked_by: Vec<TaskDependencySummary> = Vec::new();
+        for blocker_id in &blocker_ids {
+            if let Some(blocker_task) = self.task_repo.get_by_id(blocker_id).await? {
+                blocked_by.push(TaskDependencySummary {
+                    id: blocker_task.id.clone(),
+                    title: blocker_task.title.clone(),
+                    internal_status: blocker_task.internal_status,
+                });
+            }
+        }
 
-        let dependents = self.task_repo.get_dependents(task_id).await?;
-        let blocks: Vec<TaskDependencySummary> = dependents
-            .into_iter()
-            .map(|t| TaskDependencySummary {
-                id: t.id.clone(),
-                title: t.title.clone(),
-                internal_status: t.internal_status,
-            })
-            .collect();
+        let dependent_ids = self.task_dependency_repo.get_blocked_by(task_id).await?;
+        let mut blocks: Vec<TaskDependencySummary> = Vec::new();
+        for dep_id in &dependent_ids {
+            if let Some(dep_task) = self.task_repo.get_by_id(dep_id).await? {
+                blocks.push(TaskDependencySummary {
+                    id: dep_task.id.clone(),
+                    title: dep_task.title.clone(),
+                    internal_status: dep_task.internal_status,
+                });
+            }
+        }
 
         // 8. Compute tier from dependency depth
         // Tier 1 = no blockers, Tier N = depends on tasks in tier N-1

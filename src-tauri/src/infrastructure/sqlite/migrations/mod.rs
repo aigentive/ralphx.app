@@ -63,6 +63,7 @@ mod v41_activity_events_merge_index;
 mod v42_running_agent_heartbeat;
 mod v43_session_title_source;
 mod v44_remove_local_git_mode;
+mod v45_drop_task_blockers;
 mod v3_add_activity_events;
 mod v4_add_blocked_reason;
 mod v5_add_review_summary_issues;
@@ -147,7 +148,7 @@ mod v8_task_git_fields_tests;
 mod v9_project_git_fields_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 44;
+pub const SCHEMA_VERSION: i32 = 45;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -381,6 +382,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 44,
         name: "remove_local_git_mode",
         migrate: v44_remove_local_git_mode::migrate,
+    },
+    Migration {
+        version: 45,
+        name: "drop_task_blockers",
+        migrate: v45_drop_task_blockers::migrate,
     },
 ];
 

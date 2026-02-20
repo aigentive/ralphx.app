@@ -354,14 +354,17 @@ impl TaskRepository for SqliteTaskRepository {
     async fn get_next_executable(&self, project_id: &ProjectId) -> AppResult<Option<Task>> {
         let conn = self.conn.lock().await;
 
-        // Find READY tasks that have no blockers
+        // Find READY tasks that have no unsatisfied dependencies
         let result = conn.query_row(
             "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.ideation_session_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at, t.blocked_reason, t.task_branch, t.worktree_path, t.merge_commit_sha, t.metadata
              FROM tasks t
              WHERE t.project_id = ?1
                AND t.internal_status = 'ready'
                AND NOT EXISTS (
-                   SELECT 1 FROM task_blockers tb WHERE tb.task_id = t.id
+                   SELECT 1 FROM task_dependencies td
+                   JOIN tasks blocker ON blocker.id = td.depends_on_task_id
+                   WHERE td.task_id = t.id
+                   AND blocker.internal_status NOT IN ('merged', 'cancelled', 'merge_incomplete')
                )
              ORDER BY t.priority DESC, t.created_at ASC
              LIMIT 1",
@@ -374,72 +377,6 @@ impl TaskRepository for SqliteTaskRepository {
             Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(AppError::Database(e.to_string())),
         }
-    }
-
-    async fn get_blockers(&self, id: &TaskId) -> AppResult<Vec<Task>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.ideation_session_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at, t.blocked_reason, t.task_branch, t.worktree_path, t.merge_commit_sha, t.metadata
-                 FROM tasks t
-                 INNER JOIN task_blockers tb ON t.id = tb.blocker_id
-                 WHERE tb.task_id = ?1",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let tasks = stmt
-            .query_map([id.as_str()], Task::from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(tasks)
-    }
-
-    async fn get_dependents(&self, id: &TaskId) -> AppResult<Vec<Task>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.ideation_session_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at, t.blocked_reason, t.task_branch, t.worktree_path, t.merge_commit_sha, t.metadata
-                 FROM tasks t
-                 INNER JOIN task_blockers tb ON t.id = tb.task_id
-                 WHERE tb.blocker_id = ?1",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let tasks = stmt
-            .query_map([id.as_str()], Task::from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(tasks)
-    }
-
-    async fn add_blocker(&self, task_id: &TaskId, blocker_id: &TaskId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "INSERT INTO task_blockers (task_id, blocker_id) VALUES (?1, ?2)",
-            rusqlite::params![task_id.as_str(), blocker_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
-    }
-
-    async fn resolve_blocker(&self, task_id: &TaskId, blocker_id: &TaskId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "DELETE FROM task_blockers WHERE task_id = ?1 AND blocker_id = ?2",
-            rusqlite::params![task_id.as_str(), blocker_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
     }
 
     async fn get_by_project_filtered(

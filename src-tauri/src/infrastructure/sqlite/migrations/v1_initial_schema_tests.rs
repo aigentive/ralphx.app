@@ -7,7 +7,7 @@ use crate::infrastructure::sqlite::connection::open_memory_connection;
 
 #[test]
 fn test_schema_version_constant() {
-    assert_eq!(SCHEMA_VERSION, 44);
+    assert_eq!(SCHEMA_VERSION, 45);
 }
 
 #[test]
@@ -203,31 +203,17 @@ fn test_task_dependencies_unique_constraint() {
 }
 
 #[test]
-fn test_creates_task_blockers_table() {
+fn test_task_blockers_table_dropped_by_v45() {
     let conn = open_memory_connection().unwrap();
     run_migrations(&conn).unwrap();
 
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('p1', 'Test', '/path')",
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, category, title) VALUES ('t1', 'p1', 'feature', 'Task 1')",
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO tasks (id, project_id, category, title) VALUES ('t2', 'p1', 'feature', 'Task 2')",
-        [],
-    )
-    .unwrap();
-
+    // The task_blockers table was dropped by migration v45.
+    // Verify the table no longer exists.
     let result = conn.execute(
         "INSERT INTO task_blockers (task_id, blocker_id) VALUES ('t1', 't2')",
         [],
     );
-    assert!(result.is_ok());
+    assert!(result.is_err());
 }
 
 // ==========================================================================
