@@ -34,7 +34,7 @@ use tauri::Emitter;
 
 use super::super::machine::State;
 use crate::application::GitService;
-use crate::infrastructure::agents::claude::git_runtime_config;
+use crate::infrastructure::agents::claude::{git_runtime_config, scheduler_config};
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
@@ -635,6 +635,12 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
+        // --- Overall merge deadline ---
+        // Track wall-clock time so we can bail to MergeIncomplete if the entire
+        // cleanup + strategy dispatch exceeds 120s, rather than leaving the task
+        // silently stuck in PendingMerge for 5+ minutes.
+        let merge_deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(120);
+
         // Run pre-merge cleanup unconditionally on every attempt (first or retry).
         // Removes stale worktrees, locks, and in-progress git operations from prior runs.
         self.pre_merge_cleanup(
@@ -646,6 +652,23 @@ impl<'a> super::TransitionHandler<'a> {
             task_repo,
         )
         .await;
+
+        // Check deadline after cleanup (cleanup can take time if agents are being stopped)
+        if tokio::time::Instant::now() >= merge_deadline {
+            tracing::error!(
+                task_id = task_id_str,
+                "Programmatic merge exceeded 120s deadline during cleanup — transitioning to MergeIncomplete"
+            );
+            let metadata = serde_json::json!({
+                "error": "Merge attempt timed out after 120s (cleanup phase exceeded deadline)",
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+            });
+            self.transition_to_merge_incomplete(
+                &mut task, &task_id, task_id_str, metadata, task_repo, true,
+            ).await;
+            return;
+        }
 
         // Attempt the merge based on merge_strategy:
         // - Merge: merge in isolated worktree (or in-repo if target checked out)
@@ -690,52 +713,77 @@ impl<'a> super::TransitionHandler<'a> {
             target_branch = %target_branch,
             "Dispatching merge strategy"
         );
-        match project.merge_strategy {
-            MergeStrategy::Merge => {
-                let outcome = self.merge_worktree_strategy(
-                    repo_path, &source_branch, &target_branch, &project, task_id_str,
-                ).await;
-                let opts = MergeHandlerOptions::merge();
-                self.handle_merge_outcome(
-                    outcome, &mut task, &task_id, task_id_str,
-                    &project, repo_path, &source_branch, &target_branch,
-                    task_repo, plan_branch_repo, &opts,
-                ).await;
+
+        // Compute remaining time for the strategy dispatch
+        let remaining = merge_deadline.saturating_duration_since(tokio::time::Instant::now());
+
+        // Wrap strategy dispatch in a timeout using the remaining deadline budget.
+        // If the merge strategy hangs, we transition to MergeIncomplete immediately
+        // instead of leaving the task stuck in PendingMerge for the 5-minute stale threshold.
+        let strategy_completed = tokio::time::timeout(remaining, async {
+            match project.merge_strategy {
+                MergeStrategy::Merge => {
+                    let outcome = self.merge_worktree_strategy(
+                        repo_path, &source_branch, &target_branch, &project, task_id_str,
+                    ).await;
+                    let opts = MergeHandlerOptions::merge();
+                    self.handle_merge_outcome(
+                        outcome, &mut task, &task_id, task_id_str,
+                        &project, repo_path, &source_branch, &target_branch,
+                        task_repo, plan_branch_repo, &opts,
+                    ).await;
+                }
+                MergeStrategy::Rebase => {
+                    let outcome = self.rebase_worktree_strategy(
+                        repo_path, &source_branch, &target_branch, &project, task_id_str,
+                    ).await;
+                    let opts = MergeHandlerOptions::rebase();
+                    self.handle_merge_outcome(
+                        outcome, &mut task, &task_id, task_id_str,
+                        &project, repo_path, &source_branch, &target_branch,
+                        task_repo, plan_branch_repo, &opts,
+                    ).await;
+                }
+                MergeStrategy::Squash => {
+                    let outcome = self.squash_worktree_strategy(
+                        repo_path, &source_branch, &target_branch, &squash_commit_msg, &project, task_id_str,
+                    ).await;
+                    let opts = MergeHandlerOptions::squash();
+                    self.handle_merge_outcome(
+                        outcome, &mut task, &task_id, task_id_str,
+                        &project, repo_path, &source_branch, &target_branch,
+                        task_repo, plan_branch_repo, &opts,
+                    ).await;
+                }
+                MergeStrategy::RebaseSquash => {
+                    let outcome = self.rebase_squash_worktree_strategy(
+                        repo_path, &source_branch, &target_branch, &squash_commit_msg, &project, task_id_str,
+                    ).await;
+                    let opts = MergeHandlerOptions::rebase_squash();
+                    self.handle_merge_outcome(
+                        outcome, &mut task, &task_id, task_id_str,
+                        &project, repo_path, &source_branch, &target_branch,
+                        task_repo, plan_branch_repo, &opts,
+                    ).await;
+                }
             }
-            MergeStrategy::Rebase => {
-                let outcome = self.rebase_worktree_strategy(
-                    repo_path, &source_branch, &target_branch, &project, task_id_str,
-                ).await;
-                let opts = MergeHandlerOptions::rebase();
-                self.handle_merge_outcome(
-                    outcome, &mut task, &task_id, task_id_str,
-                    &project, repo_path, &source_branch, &target_branch,
-                    task_repo, plan_branch_repo, &opts,
-                ).await;
-            }
-            MergeStrategy::Squash => {
-                let outcome = self.squash_worktree_strategy(
-                    repo_path, &source_branch, &target_branch, &squash_commit_msg, &project, task_id_str,
-                ).await;
-                let opts = MergeHandlerOptions::squash();
-                self.handle_merge_outcome(
-                    outcome, &mut task, &task_id, task_id_str,
-                    &project, repo_path, &source_branch, &target_branch,
-                    task_repo, plan_branch_repo, &opts,
-                ).await;
-            }
-            MergeStrategy::RebaseSquash => {
-                let outcome = self.rebase_squash_worktree_strategy(
-                    repo_path, &source_branch, &target_branch, &squash_commit_msg, &project, task_id_str,
-                ).await;
-                let opts = MergeHandlerOptions::rebase_squash();
-                self.handle_merge_outcome(
-                    outcome, &mut task, &task_id, task_id_str,
-                    &project, repo_path, &source_branch, &target_branch,
-                    task_repo, plan_branch_repo, &opts,
-                ).await;
-            }
-        } // end match
+        }).await;
+
+        if strategy_completed.is_err() {
+            tracing::error!(
+                task_id = task_id_str,
+                "Programmatic merge exceeded 120s deadline during strategy dispatch — transitioning to MergeIncomplete"
+            );
+            let metadata = serde_json::json!({
+                "error": "Merge attempt timed out after 120s (strategy dispatch exceeded deadline)",
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+                "strategy": format!("{:?}", project.merge_strategy),
+            });
+            self.transition_to_merge_incomplete(
+                &mut task, &task_id, task_id_str, metadata, task_repo, true,
+            ).await;
+        }
     }
 
     /// Transition a task to MergeIncomplete with the given metadata JSON.
@@ -790,16 +838,14 @@ impl<'a> super::TransitionHandler<'a> {
     /// Runs unconditionally on EVERY merge attempt (first or retry) so that transient
     /// failures from a previous run never block the current one.
     ///
-    /// Worktree mode:
-    ///   1. Delete the task worktree to unlock the task branch
-    ///   2. Prune stale worktree references
-    ///   3. Delete own merge worktree from a prior attempt
-    ///   4. Scan and remove orphaned merge worktrees targeting the same branch
-    ///
-    /// Also:
-    ///   - Remove `.git/index.lock` if it is older than 5 seconds (stale lock from
-    ///     a crashed git process).
-    ///   - Clean the working tree (reset uncommitted changes)
+    /// Steps:
+    ///   0. Stop any running agents (review/merge) and kill worktree processes
+    ///   1. Remove stale `.git/index.lock`
+    ///   2. Delete the task worktree to unlock the task branch
+    ///   3. Prune stale worktree references
+    ///   4. Delete own merge/rebase worktrees from a prior attempt
+    ///   5. Scan and remove orphaned merge worktrees targeting the same branch
+    ///   6. Clean the working tree (git clean)
     async fn pre_merge_cleanup(
         &self,
         task_id_str: &str,
@@ -809,9 +855,53 @@ impl<'a> super::TransitionHandler<'a> {
         target_branch: &str,
         task_repo: &Arc<dyn TaskRepository>,
     ) {
+        // --- Step 0: Stop running agents and kill worktree processes ---
+        // The reviewer (or merger from a prior attempt) may still be running IN the
+        // task worktree. We must stop it BEFORE attempting worktree deletion to avoid
+        // git lock contention that causes the 5+ minute hang (see merge-hang RCA).
+        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 0 — stopping any running agents");
+        for ctx_type in [
+            crate::domain::entities::ChatContextType::Review,
+            crate::domain::entities::ChatContextType::Merge,
+        ] {
+            match self
+                .machine
+                .context
+                .services
+                .chat_service
+                .stop_agent(ctx_type, task_id_str)
+                .await
+            {
+                Ok(true) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        context_type = ?ctx_type,
+                        "Stopped running agent before merge cleanup"
+                    );
+                }
+                Ok(false) => {}
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        context_type = ?ctx_type,
+                        error = %e,
+                        "Failed to stop agent (non-fatal)"
+                    );
+                }
+            }
+        }
+        // Kill any lingering processes with files open in the task worktree
+        if let Some(ref worktree_path) = task.worktree_path {
+            let worktree_path_buf = PathBuf::from(worktree_path);
+            if worktree_path_buf.exists() {
+                crate::domain::services::kill_worktree_processes(&worktree_path_buf);
+            }
+        }
+        // Brief settle time for process tree cleanup after SIGTERM
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+
+        // --- Step 1: Remove stale index.lock ---
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 1 — removing stale index.lock");
-        // --- index.lock removal ---
-        // Remove a stale .git/index.lock left by a crashed git process.
         let index_lock_stale_secs = git_runtime_config().index_lock_stale_secs;
         match GitService::remove_stale_index_lock(repo_path, index_lock_stale_secs) {
             Ok(true) => {
@@ -831,8 +921,8 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         {
+            // --- Step 2: Delete task worktree ---
             tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 2 — deleting task worktree");
-            // Step 1: Delete task worktree to unlock branch for merge worktree creation
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
                 if worktree_path_buf.exists() {
@@ -841,8 +931,6 @@ impl<'a> super::TransitionHandler<'a> {
                         worktree_path = %worktree_path,
                         "Deleting task worktree before programmatic merge to unlock branch"
                     );
-                    // Wrap with timeout to prevent git lock contention (e.g. concurrent reviewer
-                    // agent cancellation) from blocking the merge pipeline indefinitely.
                     match tokio::time::timeout(
                         std::time::Duration::from_secs(10),
                         GitService::delete_worktree(repo_path, &worktree_path_buf),
@@ -857,7 +945,6 @@ impl<'a> super::TransitionHandler<'a> {
                                 worktree_path = %worktree_path,
                                 "Failed to delete task worktree before merge (non-fatal, continuing)"
                             );
-                            // Continue anyway - merge will fail with a clear error
                         }
                         Err(_elapsed) => {
                             tracing::warn!(
@@ -870,8 +957,8 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
 
+            // --- Step 3: Prune stale worktree refs ---
             tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 3 — pruning stale worktree refs");
-            // Step 2: Prune stale worktree references (metadata pointing to deleted dirs)
             if let Err(e) = GitService::prune_worktrees(repo_path).await {
                 tracing::warn!(
                     task_id = task_id_str,
@@ -880,8 +967,8 @@ impl<'a> super::TransitionHandler<'a> {
                 );
             }
 
+            // --- Step 4: Delete own stale merge/rebase worktrees ---
             tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 4 — deleting own stale merge/rebase worktrees");
-            // Step 3: Force-delete our own merge and rebase worktrees from prior attempts
             for (wt_label, own_wt) in [
                 ("merge", compute_merge_worktree_path(project, task_id_str)),
                 ("rebase", compute_rebase_worktree_path(project, task_id_str)),
@@ -894,73 +981,115 @@ impl<'a> super::TransitionHandler<'a> {
                         "Cleaning up stale {} worktree from previous attempt",
                         wt_label
                     );
-                    if let Err(e) = GitService::delete_worktree(repo_path, &own_wt_path).await {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            error = %e,
-                            worktree_path = %own_wt,
-                            "Failed to delete stale {} worktree (non-fatal)",
-                            wt_label
-                        );
+                    match tokio::time::timeout(
+                        std::time::Duration::from_secs(30),
+                        GitService::delete_worktree(repo_path, &own_wt_path),
+                    )
+                    .await
+                    {
+                        Ok(Ok(())) => {}
+                        Ok(Err(e)) => {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                error = %e,
+                                worktree_path = %own_wt,
+                                "Failed to delete stale {} worktree (non-fatal)",
+                                wt_label
+                            );
+                        }
+                        Err(_elapsed) => {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                worktree_path = %own_wt,
+                                "pre_merge_cleanup: step 4 {} worktree deletion timed out after 30s (non-fatal)",
+                                wt_label
+                            );
+                        }
                     }
                 }
             }
 
+            // --- Step 5: Scan for orphaned merge worktrees ---
             tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 5 — scanning for orphaned merge worktrees");
-            // Step 4: Scan for orphaned merge worktrees on the same target branch.
-            // Another task's merge may have crashed/failed, leaving a worktree that locks
-            // the target branch. We only clean up if the owning task is NOT actively merging.
-            if let Ok(worktrees) = GitService::list_worktrees(repo_path).await {
-                for wt in &worktrees {
-                    let Some(other_task_id) = extract_task_id_from_merge_path(&wt.path) else {
-                        continue;
-                    };
-                    if other_task_id == task_id_str {
-                        continue;
-                    }
-                    let wt_branch = wt.branch.as_deref().unwrap_or("");
-                    if wt_branch != target_branch {
-                        continue;
-                    }
-                    if is_task_in_merge_workflow(task_repo, other_task_id).await {
+            let worktrees_result = tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                GitService::list_worktrees(repo_path),
+            )
+            .await;
+            match worktrees_result {
+                Ok(Ok(worktrees)) => {
+                    for wt in &worktrees {
+                        let Some(other_task_id) = extract_task_id_from_merge_path(&wt.path) else {
+                            continue;
+                        };
+                        if other_task_id == task_id_str {
+                            continue;
+                        }
+                        let wt_branch = wt.branch.as_deref().unwrap_or("");
+                        if wt_branch != target_branch {
+                            continue;
+                        }
+                        if is_task_in_merge_workflow(task_repo, other_task_id).await {
+                            tracing::info!(
+                                task_id = task_id_str,
+                                other_task_id = other_task_id,
+                                worktree_path = %wt.path,
+                                "Skipping merge worktree cleanup — owning task is still in merge workflow"
+                            );
+                            continue;
+                        }
                         tracing::info!(
                             task_id = task_id_str,
                             other_task_id = other_task_id,
                             worktree_path = %wt.path,
-                            "Skipping merge worktree cleanup — owning task is still in merge workflow"
+                            target_branch = %target_branch,
+                            "Cleaning up orphaned merge worktree from non-active task"
                         );
-                        continue;
+                        let orphan_path = PathBuf::from(&wt.path);
+                        if let Err(e) = GitService::delete_worktree(repo_path, &orphan_path).await {
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                other_task_id = other_task_id,
+                                error = %e,
+                                worktree_path = %wt.path,
+                                "Failed to delete orphaned merge worktree (non-fatal)"
+                            );
+                        }
                     }
-                    tracing::info!(
+                }
+                Ok(Err(e)) => {
+                    tracing::warn!(
                         task_id = task_id_str,
-                        other_task_id = other_task_id,
-                        worktree_path = %wt.path,
-                        target_branch = %target_branch,
-                        "Cleaning up orphaned merge worktree from non-active task"
+                        error = %e,
+                        "Failed to list worktrees for orphan scan (non-fatal)"
                     );
-                    let orphan_path = PathBuf::from(&wt.path);
-                    if let Err(e) = GitService::delete_worktree(repo_path, &orphan_path).await {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            other_task_id = other_task_id,
-                            error = %e,
-                            worktree_path = %wt.path,
-                            "Failed to delete orphaned merge worktree (non-fatal)"
-                        );
-                    }
+                }
+                Err(_elapsed) => {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        "pre_merge_cleanup: step 5 worktree list timed out after 30s (non-fatal)"
+                    );
                 }
             }
         }
 
+        // --- Step 6: Clean working tree ---
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 6 — cleaning working tree (git clean)");
-        // Clean working tree before merge (non-fatal on error)
-        match GitService::clean_working_tree(repo_path).await {
-            Ok(()) => tracing::debug!(
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            GitService::clean_working_tree(repo_path),
+        )
+        .await
+        {
+            Ok(Ok(())) => tracing::debug!(
                 task_id = task_id_str,
                 "Pre-merge working tree clean succeeded"
             ),
-            Err(e) => {
+            Ok(Err(e)) => {
                 tracing::warn!(task_id = task_id_str, error = %e, "Pre-merge clean failed (non-fatal)")
+            }
+            Err(_elapsed) => {
+                tracing::warn!(task_id = task_id_str, "pre_merge_cleanup: step 6 git clean timed out after 30s (non-fatal)")
             }
         }
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: complete");
@@ -1028,6 +1157,18 @@ impl<'a> super::TransitionHandler<'a> {
             .dependency_manager
             .unblock_dependents(task_id_str)
             .await;
+
+        // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready).
+        // Without this, unblocked tasks rely on the ReadyWatchdog (60s interval) to be
+        // scheduled, causing up to 90s delay. This mirrors on_enter(Merged) in on_enter_states.rs.
+        if let Some(ref scheduler) = self.machine.context.services.task_scheduler {
+            let scheduler = Arc::clone(scheduler);
+            let merge_settle_ms = scheduler_config().merge_settle_ms;
+            tokio::spawn(async move {
+                tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms)).await;
+                scheduler.try_schedule_ready_tasks().await;
+            });
+        }
 
     }
 

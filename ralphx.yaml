@@ -116,7 +116,7 @@ reconciliation:
   # reconciliation.rs — max auto-retry attempts for tasks stuck in Merging state
   merging_max_retries: 3                       # Env: RALPHX_RECONCILIATION_MERGING_MAX_RETRIES
   # reconciliation.rs — PendingMerge tasks older than this (minutes) are considered stale and retried
-  pending_merge_stale_minutes: 5               # Env: RALPHX_RECONCILIATION_PENDING_MERGE_STALE_MINUTES
+  pending_merge_stale_minutes: 2               # Env: RALPHX_RECONCILIATION_PENDING_MERGE_STALE_MINUTES
   # reconciliation.rs — QA tasks older than this (minutes) are considered stale
   qa_stale_minutes: 5                          # Env: RALPHX_RECONCILIATION_QA_STALE_MINUTES
   # reconciliation.rs — initial backoff before retrying a MergeIncomplete task (exponential)
