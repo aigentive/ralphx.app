@@ -1197,7 +1197,7 @@ async fn test_blocked_task_with_multiple_blockers_all_complete() {
     app_state.task_repo.create(blocker1.clone()).await.unwrap();
 
     let mut blocker2 = Task::new(project.id.clone(), "Blocker 2".to_string());
-    blocker2.internal_status = InternalStatus::Failed; // Failed is also a terminal state
+    blocker2.internal_status = InternalStatus::Cancelled; // Cancelled satisfies dependencies
     app_state.task_repo.create(blocker2.clone()).await.unwrap();
 
     // Create a blocked task
@@ -1237,6 +1237,54 @@ async fn test_blocked_task_with_multiple_blockers_all_complete() {
         updated_task.internal_status,
         InternalStatus::Ready,
         "Blocked task should be unblocked when all blockers are complete"
+    );
+}
+
+/// Failed blockers do NOT satisfy dependencies — dependents must stay Blocked
+/// to prevent cascade execution against broken output.
+#[tokio::test]
+async fn test_blocked_task_stays_blocked_when_blocker_failed() {
+    let (execution_state, app_state) = setup_test_state().await;
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Blocker task is Failed — should NOT satisfy dependency
+    let mut blocker = Task::new(project.id.clone(), "Failed Blocker".to_string());
+    blocker.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(blocker.clone()).await.unwrap();
+
+    let mut blocked_task = Task::new(project.id.clone(), "Blocked Task".to_string());
+    blocked_task.internal_status = InternalStatus::Blocked;
+    app_state
+        .task_repo
+        .create(blocked_task.clone())
+        .await
+        .unwrap();
+
+    app_state
+        .task_dependency_repo
+        .add_dependency(&blocked_task.id, &blocker.id)
+        .await
+        .unwrap();
+
+    let (runner, _app_state_repo) = build_runner(&app_state, &execution_state);
+    runner.run().await;
+
+    let updated_task = app_state
+        .task_repo
+        .get_by_id(&blocked_task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Blocked,
+        "Task should stay Blocked when blocker is Failed"
     );
 }
 
