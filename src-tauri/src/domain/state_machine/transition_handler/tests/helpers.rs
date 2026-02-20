@@ -5,6 +5,7 @@
 
 pub use crate::application::{ChatService, MockChatService};
 use crate::domain::entities::types::IdeationSessionId;
+use std::time::Duration;
 use crate::domain::entities::{
     ArtifactId, IdeationSession, IdeationSessionStatus, InternalStatus, PlanBranch,
     PlanBranchStatus, Project, ProjectId, Task, TaskCategory, TaskId,
@@ -262,6 +263,144 @@ pub async fn setup_pending_merge_repos(
     );
     project.id = project_id;
     project.base_branch = Some("main".to_string());
+    project_repo.create(project).await.unwrap();
+
+    PendingMergeSetup { task_id, task_repo, project_repo }
+}
+
+/// Poll a condition until it returns true or timeout expires.
+///
+/// Replaces arbitrary `tokio::time::sleep` calls in tests with deterministic
+/// condition polling. Checks every 50ms up to `timeout_ms`.
+pub async fn wait_for_condition<F, Fut>(mut check: F, timeout_ms: u64) -> bool
+where
+    F: FnMut() -> Fut,
+    Fut: std::future::Future<Output = bool>,
+{
+    let deadline = tokio::time::Instant::now() + Duration::from_millis(timeout_ms);
+    while tokio::time::Instant::now() < deadline {
+        if check().await {
+            return true;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    false
+}
+
+// ==================
+// Real git repo helpers (for integration tests)
+// ==================
+
+/// A real git repository created in a temp directory.
+///
+/// The `TempDir` is owned so the directory persists for the test's lifetime.
+/// When this struct is dropped, the temp directory is cleaned up.
+#[allow(dead_code)]
+pub struct RealGitRepo {
+    pub dir: tempfile::TempDir,
+    pub main_branch: String,
+    pub task_branch: String,
+}
+
+impl RealGitRepo {
+    pub fn path(&self) -> &std::path::Path {
+        self.dir.path()
+    }
+
+    pub fn path_string(&self) -> String {
+        self.dir.path().to_string_lossy().to_string()
+    }
+}
+
+/// Create a real git repo with `main` branch (initial commit) and a task branch
+/// with one additional commit, then checkout `main`.
+pub fn setup_real_git_repo() -> RealGitRepo {
+    let dir = tempfile::TempDir::new().expect("create temp dir");
+    let path = dir.path();
+
+    // git init -b main
+    let _ = std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git init");
+
+    // Configure git user (required for commits)
+    let _ = std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(path)
+        .output();
+
+    // Initial commit on main
+    std::fs::write(path.join("README.md"), "# test repo").unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(path)
+        .output();
+
+    // Create task branch with a feature commit
+    let task_branch = "task/test-task-branch".to_string();
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "-b", &task_branch])
+        .current_dir(path)
+        .output();
+    std::fs::write(path.join("feature.rs"), "// feature code\nfn feature() {}").unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["commit", "-m", "add feature"])
+        .current_dir(path)
+        .output();
+
+    // Back to main
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output();
+
+    RealGitRepo {
+        dir,
+        main_branch: "main".to_string(),
+        task_branch,
+    }
+}
+
+/// Create in-memory repos pre-loaded with a task in PendingMerge and a project
+/// pointing to a REAL git directory (from `RealGitRepo`).
+///
+/// Unlike `setup_pending_merge_repos` which uses a nonexistent path, this wires
+/// the project's `working_directory` to an actual git repo so merge strategy
+/// dispatch is exercised.
+pub async fn setup_pending_merge_with_real_repo(
+    title: &str,
+    task_branch: &str,
+    repo_path: &str,
+    merge_strategy: crate::domain::entities::MergeStrategy,
+) -> PendingMergeSetup {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), title.to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some(task_branch.to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new("test-project".to_string(), repo_path.to_string());
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project.merge_strategy = merge_strategy;
     project_repo.create(project).await.unwrap();
 
     PendingMergeSetup { task_id, task_repo, project_repo }
