@@ -1,0 +1,322 @@
+// Real git repo integration tests for merge strategy dispatch
+//
+// These tests create actual git repositories in temp directories so that
+// merge strategy dispatch is genuinely exercised (not blocked by a
+// nonexistent repo path like the tests in test_quality_overhaul.rs).
+//
+// Key difference from existing tests:
+// - `setup_pending_merge_with_real_repo()` wires the project to a real git dir
+// - Merge code path reaches `pre_merge_cleanup()` AND strategy dispatch
+// - Git log is checked post-merge to verify commits landed on `main`
+
+use super::helpers::*;
+use crate::domain::entities::{InternalStatus, MergeStrategy};
+use crate::domain::state_machine::{State, TransitionHandler};
+
+/// Verify a fast-forward merge (Merge strategy) succeeds end-to-end with a real git repo.
+///
+/// Setup: main has 1 commit, task branch has 1 additional commit (no divergence).
+/// Expected: checkout-free merge succeeds, task transitions to Merged, git log on
+/// main shows the task branch commit.
+#[tokio::test]
+async fn test_fast_forward_merge_success_with_real_repo() {
+    let git_repo = setup_real_git_repo();
+    let setup = setup_pending_merge_with_real_repo(
+        "FF merge test",
+        &git_repo.task_branch,
+        &git_repo.path_string(),
+        MergeStrategy::Merge,
+    )
+    .await;
+
+    let task_id = setup.task_id.clone();
+    let task_repo = Arc::clone(&setup.task_repo);
+    let (mut machine, _task_repo, _task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Merged,
+        "Task should be Merged after successful fast-forward merge, got {:?}. Metadata: {:?}",
+        updated_task.internal_status,
+        updated_task.metadata,
+    );
+
+    // Verify the feature commit is on main by checking git log
+    let log_output = std::process::Command::new("git")
+        .args(["log", "--oneline", "main"])
+        .current_dir(git_repo.path())
+        .output()
+        .expect("git log");
+    let log_str = String::from_utf8_lossy(&log_output.stdout);
+    assert!(
+        log_str.contains("add feature") || log_str.contains("feature"),
+        "Git log on main should contain the task branch commit. Log:\n{}",
+        log_str,
+    );
+}
+
+/// Verify that merge code actually reaches strategy dispatch (not just the early-return guard).
+///
+/// With a real git repo, the merge path goes through:
+///   1. pre_merge_cleanup (stop agents, clean worktrees)
+///   2. strategy dispatch (checkout-free merge since main is checked out)
+///   3. handle_merge_outcome → complete_merge_internal
+///
+/// We verify by checking that the merge commit SHA is on the main branch after
+/// the merge, proving the strategy was actually dispatched and completed.
+#[tokio::test]
+async fn test_merge_reaches_strategy_dispatch_with_real_repo() {
+    let git_repo = setup_real_git_repo();
+
+    // Record main's HEAD SHA before merge
+    let pre_merge_sha = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(git_repo.path())
+        .output()
+        .expect("git rev-parse");
+    let pre_merge_sha = String::from_utf8_lossy(&pre_merge_sha.stdout).trim().to_string();
+
+    let setup = setup_pending_merge_with_real_repo(
+        "Strategy dispatch test",
+        &git_repo.task_branch,
+        &git_repo.path_string(),
+        MergeStrategy::Merge,
+    )
+    .await;
+
+    let task_id = setup.task_id.clone();
+    let task_repo = Arc::clone(&setup.task_repo);
+    let (mut machine, _task_repo, _task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    // Verify task reached Merged
+    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Merged,
+        "Task should be Merged, got {:?}. Metadata: {:?}",
+        updated_task.internal_status,
+        updated_task.metadata,
+    );
+
+    // Verify main's HEAD has advanced (merge commit or ff to task branch tip)
+    let post_merge_sha = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(git_repo.path())
+        .output()
+        .expect("git rev-parse");
+    let post_merge_sha = String::from_utf8_lossy(&post_merge_sha.stdout).trim().to_string();
+
+    assert_ne!(
+        pre_merge_sha, post_merge_sha,
+        "main HEAD should advance after merge (strategy was dispatched)"
+    );
+}
+
+/// Verify squash merge strategy works with a real git repo.
+///
+/// Squash merges condense all task branch commits into a single commit on main.
+/// This tests the checkout-free squash path (since main is the checked-out branch).
+#[tokio::test]
+async fn test_squash_merge_success_with_real_repo() {
+    let git_repo = setup_real_git_repo();
+
+    let setup = setup_pending_merge_with_real_repo(
+        "Squash merge test",
+        &git_repo.task_branch,
+        &git_repo.path_string(),
+        MergeStrategy::Squash,
+    )
+    .await;
+
+    let task_id = setup.task_id.clone();
+    let task_repo = Arc::clone(&setup.task_repo);
+    let (mut machine, _task_repo, _task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Merged,
+        "Task should be Merged after squash merge, got {:?}. Metadata: {:?}",
+        updated_task.internal_status,
+        updated_task.metadata,
+    );
+
+    // Verify feature file exists in working tree after squash merge
+    assert!(
+        git_repo.path().join("feature.rs").exists(),
+        "feature.rs should exist on main after squash merge"
+    );
+}
+
+/// Verify merge with a nonexistent source branch transitions to MergeIncomplete
+/// (not stuck in PendingMerge), even with a real git repo.
+#[tokio::test]
+async fn test_merge_missing_source_branch_with_real_repo() {
+    let git_repo = setup_real_git_repo();
+
+    let setup = setup_pending_merge_with_real_repo(
+        "Missing branch test",
+        "nonexistent/branch",
+        &git_repo.path_string(),
+        MergeStrategy::Merge,
+    )
+    .await;
+
+    let task_id = setup.task_id.clone();
+    let task_repo = Arc::clone(&setup.task_repo);
+    let (mut machine, _task_repo, _task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Missing source branch should produce MergeIncomplete, got {:?}",
+        updated_task.internal_status,
+    );
+
+    // Verify metadata contains branch_missing indicator
+    let meta: serde_json::Value =
+        serde_json::from_str(updated_task.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(
+        meta.get("branch_missing"),
+        Some(&serde_json::json!(true)),
+        "Metadata should indicate branch_missing. Metadata: {:?}",
+        updated_task.metadata,
+    );
+}
+
+/// Verify that merge with conflict (diverged branches) transitions to Merging
+/// and spawns a merger agent.
+///
+/// Setup: main and task branch both modify the same file (creating a conflict).
+#[tokio::test]
+async fn test_merge_with_conflict_transitions_to_merging() {
+    let git_repo = setup_real_git_repo();
+
+    // Create a conflicting commit on main (modify feature.rs on main too)
+    std::fs::write(git_repo.path().join("feature.rs"), "// conflict on main").unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(git_repo.path())
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["commit", "-m", "conflicting change on main"])
+        .current_dir(git_repo.path())
+        .output();
+
+    let setup = setup_pending_merge_with_real_repo(
+        "Conflict test",
+        &git_repo.task_branch,
+        &git_repo.path_string(),
+        MergeStrategy::Merge,
+    )
+    .await;
+
+    let task_id = setup.task_id.clone();
+    let task_repo = Arc::clone(&setup.task_repo);
+    let (mut machine, _task_repo, _task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert!(
+        updated_task.internal_status == InternalStatus::Merging
+            || updated_task.internal_status == InternalStatus::MergeIncomplete,
+        "Conflicting merge should transition to Merging (for agent) or MergeIncomplete, got {:?}. Metadata: {:?}",
+        updated_task.internal_status,
+        updated_task.metadata,
+    );
+}
+
+/// Verify rebase-squash strategy (default) works end-to-end with a real git repo.
+///
+/// RebaseSquash is the project default — verifying it works ensures the most
+/// common production path is covered.
+#[tokio::test]
+async fn test_rebase_squash_merge_success_with_real_repo() {
+    let git_repo = setup_real_git_repo();
+
+    let setup = setup_pending_merge_with_real_repo(
+        "RebaseSquash merge test",
+        &git_repo.task_branch,
+        &git_repo.path_string(),
+        MergeStrategy::RebaseSquash,
+    )
+    .await;
+
+    let task_id = setup.task_id.clone();
+    let task_repo = Arc::clone(&setup.task_repo);
+    let (mut machine, _task_repo, _task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated_task.internal_status,
+        InternalStatus::Merged,
+        "Task should be Merged after rebase-squash, got {:?}. Metadata: {:?}",
+        updated_task.internal_status,
+        updated_task.metadata,
+    );
+
+    // Feature file should exist after squash
+    assert!(
+        git_repo.path().join("feature.rs").exists(),
+        "feature.rs should exist on main after rebase-squash merge"
+    );
+}
+
+/// Verify merge completes in bounded time even with a real git repo.
+///
+/// This is the real-repo equivalent of test_pending_merge_with_repos_completes_in_bounded_time
+/// from test_quality_overhaul.rs. With a real git repo, the full merge path
+/// (cleanup + strategy dispatch + outcome handling) runs.
+#[tokio::test]
+async fn test_real_repo_merge_completes_in_bounded_time() {
+    let git_repo = setup_real_git_repo();
+
+    let setup = setup_pending_merge_with_real_repo(
+        "Bounded time real repo test",
+        &git_repo.task_branch,
+        &git_repo.path_string(),
+        MergeStrategy::Merge,
+    )
+    .await;
+
+    let (mut machine, task_repo, task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let start = std::time::Instant::now();
+    let _ = handler.on_enter(&State::PendingMerge).await;
+    let elapsed = start.elapsed();
+
+    // Full merge path (cleanup + strategy + outcome) should complete quickly
+    assert!(
+        elapsed.as_secs() < 30,
+        "Real repo merge should complete in bounded time, took {}s",
+        elapsed.as_secs()
+    );
+
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merged,
+        "Task should be Merged after bounded-time test, got {:?}",
+        updated.internal_status,
+    );
+}

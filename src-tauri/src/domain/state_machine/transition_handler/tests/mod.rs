@@ -29,6 +29,9 @@ mod merge_cleanup;
 // Test quality overhaul: adversarial mocks, ordering assertions, outcome coverage
 mod test_quality_overhaul;
 
+// Real git repo integration tests: merge strategy dispatch with actual git operations
+mod real_git_integration;
+
 // Tests extracted from inline #[cfg(test)] blocks in production modules
 mod merge_helpers_inline;
 mod merge_helpers_inline_2;
