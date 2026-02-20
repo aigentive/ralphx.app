@@ -11,6 +11,7 @@ use crate::domain::review::config::ReviewSettings;
 use std::sync::Arc;
 
 pub(crate) mod cleanup_helpers;
+mod checkout_free_strategy;
 mod commit_messages;
 mod merge_completion;
 mod merge_coordination;
