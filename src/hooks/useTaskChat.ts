@@ -150,10 +150,12 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
     }
 
     if (!activeConversationId && conversations.data && conversations.data.length > 0) {
-      // Sort by most recent activity
+      // Agent contexts (merge/execution) create fresh conversations per attempt.
+      // Sort by createdAt so the newest conversation wins even before it has messages.
+      const isAgentContext = contextType === "merge" || contextType === "task_execution";
       const sorted = [...conversations.data].sort((a, b) => {
-        const aTime = a.lastMessageAt || a.createdAt;
-        const bTime = b.lastMessageAt || b.createdAt;
+        const aTime = isAgentContext ? a.createdAt : (a.lastMessageAt || a.createdAt);
+        const bTime = isAgentContext ? b.createdAt : (b.lastMessageAt || b.createdAt);
         return new Date(bTime).getTime() - new Date(aTime).getTime();
       });
       const mostRecent = sorted[0];
