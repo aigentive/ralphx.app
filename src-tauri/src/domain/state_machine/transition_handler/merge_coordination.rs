@@ -23,16 +23,6 @@ use super::merge_helpers::{
 };
 use super::merge_validation::emit_merge_progress;
 
-/// Seconds to wait after SIGTERM for process tree cleanup before worktree deletion.
-/// Prevents TOCTOU race where git operations fail because agent processes still hold files.
-const AGENT_KILL_SETTLE_SECS: u64 = 1;
-
-/// Timeout in seconds for deleting the task worktree (step 2 of pre_merge_cleanup).
-const CLEANUP_TASK_WORKTREE_TIMEOUT_SECS: u64 = 10;
-
-/// Timeout in seconds for merge/rebase worktree deletion and git clean (steps 4, 5, 6).
-const CLEANUP_GIT_OP_TIMEOUT_SECS: u64 = 30;
-
 /// Ensure the plan branch exists as a git ref (lazy creation for merge target).
 ///
 /// Handles the case where the plan branch DB record exists but the git branch
@@ -249,7 +239,8 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
         // Brief settle time for process tree cleanup after SIGTERM
-        tokio::time::sleep(std::time::Duration::from_secs(AGENT_KILL_SETTLE_SECS)).await;
+        let agent_kill_settle_secs = git_runtime_config().agent_kill_settle_secs;
+        tokio::time::sleep(std::time::Duration::from_secs(agent_kill_settle_secs)).await;
 
         // --- Step 1: Remove stale index.lock ---
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 1 — removing stale index.lock");
@@ -284,7 +275,7 @@ impl<'a> super::TransitionHandler<'a> {
                     );
                     run_cleanup_step(
                         "step 2 task worktree deletion",
-                        CLEANUP_TASK_WORKTREE_TIMEOUT_SECS,
+                        git_runtime_config().cleanup_worktree_timeout_secs,
                         task_id_str,
                         GitService::delete_worktree(repo_path, &worktree_path_buf),
                     )
@@ -318,7 +309,7 @@ impl<'a> super::TransitionHandler<'a> {
                     );
                     run_cleanup_step(
                         &format!("step 4 {} worktree deletion", wt_label),
-                        CLEANUP_GIT_OP_TIMEOUT_SECS,
+                        git_runtime_config().cleanup_git_op_timeout_secs,
                         task_id_str,
                         GitService::delete_worktree(repo_path, &own_wt_path),
                     )
@@ -329,7 +320,7 @@ impl<'a> super::TransitionHandler<'a> {
             // --- Step 5: Scan for orphaned merge worktrees ---
             tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 5 — scanning for orphaned merge worktrees");
             let worktrees_result = tokio::time::timeout(
-                std::time::Duration::from_secs(CLEANUP_GIT_OP_TIMEOUT_SECS),
+                std::time::Duration::from_secs(git_runtime_config().cleanup_git_op_timeout_secs),
                 GitService::list_worktrees(repo_path),
             )
             .await;
@@ -384,7 +375,7 @@ impl<'a> super::TransitionHandler<'a> {
                 Err(_elapsed) => {
                     tracing::warn!(
                         task_id = task_id_str,
-                        timeout_secs = CLEANUP_GIT_OP_TIMEOUT_SECS,
+                        timeout_secs = git_runtime_config().cleanup_git_op_timeout_secs,
                         "pre_merge_cleanup: step 5 worktree list timed out (non-fatal)"
                     );
                 }
@@ -395,7 +386,7 @@ impl<'a> super::TransitionHandler<'a> {
         tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 6 — cleaning working tree (git clean)");
         run_cleanup_step(
             "step 6 git clean",
-            CLEANUP_GIT_OP_TIMEOUT_SECS,
+            git_runtime_config().cleanup_git_op_timeout_secs,
             task_id_str,
             GitService::clean_working_tree(repo_path),
         )

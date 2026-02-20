@@ -127,6 +127,8 @@ Example: "ServiceExtraction Pattern: business logic in *_service.rs, commands ju
 
 **MergeDeadline Pattern:** `attempt_programmatic_merge` wraps cleanup + strategy dispatch in a bounded configurable deadline (`attempt_merge_deadline_secs` in reconciliation config).
 
+**No Inline Timeout Consts:** All timeout/delay/duration values are operational knobs — always add to runtime_config + ralphx.yaml, never as Rust `const`. Follow the `attempt_merge_deadline_secs` pattern.
+
 ## Code Quality
 
 ### Multi-Stream Workflow

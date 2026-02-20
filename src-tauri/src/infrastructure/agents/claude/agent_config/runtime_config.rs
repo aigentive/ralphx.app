@@ -111,6 +111,12 @@ pub struct GitRuntimeConfig {
     pub max_retries: u64,
     pub retry_backoff_secs: Vec<u64>,
     pub index_lock_stale_secs: u64,
+    /// Seconds to wait after SIGTERM for process tree cleanup before worktree deletion.
+    pub agent_kill_settle_secs: u64,
+    /// Timeout in seconds for deleting the task worktree during pre-merge cleanup.
+    pub cleanup_worktree_timeout_secs: u64,
+    /// Timeout in seconds for merge/rebase worktree deletion and git clean during pre-merge cleanup.
+    pub cleanup_git_op_timeout_secs: u64,
 }
 
 impl Default for GitRuntimeConfig {
@@ -120,6 +126,9 @@ impl Default for GitRuntimeConfig {
             max_retries: 3,
             retry_backoff_secs: vec![1, 2, 4],
             index_lock_stale_secs: 5,
+            agent_kill_settle_secs: 1,
+            cleanup_worktree_timeout_secs: 10,
+            cleanup_git_op_timeout_secs: 30,
         }
     }
 }
@@ -243,6 +252,9 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.git.cmd_timeout_secs, "RALPHX_GIT_CMD_TIMEOUT_SECS");
     env_u64!(cfg.git.max_retries, "RALPHX_GIT_MAX_RETRIES");
     env_u64!(cfg.git.index_lock_stale_secs, "RALPHX_GIT_INDEX_LOCK_STALE_SECS");
+    env_u64!(cfg.git.agent_kill_settle_secs, "RALPHX_GIT_AGENT_KILL_SETTLE_SECS");
+    env_u64!(cfg.git.cleanup_worktree_timeout_secs, "RALPHX_GIT_CLEANUP_WORKTREE_TIMEOUT_SECS");
+    env_u64!(cfg.git.cleanup_git_op_timeout_secs, "RALPHX_GIT_CLEANUP_GIT_OP_TIMEOUT_SECS");
     // retry_backoff_secs: comma-separated list
     if let Some(v) = lookup("RALPHX_GIT_RETRY_BACKOFF_SECS") {
         let parsed: Vec<u64> = v.split(',')
