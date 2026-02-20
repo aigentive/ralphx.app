@@ -12,7 +12,8 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::services::{
-    kill_process, kill_worktree_processes, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
+    is_process_alive, kill_process, kill_worktree_processes, RunningAgentInfo, RunningAgentKey,
+    RunningAgentRegistry,
 };
 
 /// SQLite-backed implementation of RunningAgentRegistry.
@@ -43,6 +44,50 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
     ) {
+        // Check for existing agent and stop it if still alive
+        {
+            let conn = self.conn.lock().await;
+            let existing = conn
+                .query_row(
+                    "SELECT pid, worktree_path FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+                    rusqlite::params![key.context_type, key.context_id],
+                    |row| {
+                        let old_pid: u32 = row.get(0)?;
+                        let old_worktree: Option<String> = row.get(1)?;
+                        Ok((old_pid, old_worktree))
+                    },
+                )
+                .ok();
+            drop(conn);
+
+            if let Some((old_pid, old_worktree)) = existing {
+                if old_pid != pid && is_process_alive(old_pid) {
+                    tracing::warn!(
+                        old_pid,
+                        new_pid = pid,
+                        context_type = %key.context_type,
+                        context_id = %key.context_id,
+                        "Detected orphaned agent process — stopping before re-registration"
+                    );
+                    // Cancel old cancellation token
+                    {
+                        let mut tokens = self.tokens.lock().await;
+                        if let Some(old_token) = tokens.remove(&key) {
+                            old_token.cancel();
+                        }
+                    }
+                    // Kill worktree processes if applicable
+                    if let Some(ref path) = old_worktree {
+                        let worktree = PathBuf::from(path);
+                        if worktree.exists() {
+                            kill_worktree_processes(&worktree);
+                        }
+                    }
+                    kill_process(old_pid);
+                }
+            }
+        }
+
         let conn = self.conn.lock().await;
         let started_at = chrono::Utc::now().to_rfc3339();
         let _ = conn.execute(
