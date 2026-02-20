@@ -494,6 +494,34 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             session_id = ?conversation.claude_session_id,
             "chat_service.send_message conversation"
         );
+
+        // 1b. Guard: if an agent is already running for this context, queue
+        //     the message instead of spawning a second CLI process.
+        let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
+        if self.running_agent_registry.is_running(&registry_key).await {
+            tracing::warn!(
+                %context_type,
+                context_id,
+                "chat_service.send_message agent already running — auto-queuing message"
+            );
+            let queued = self
+                .message_queue
+                .queue(context_type, context_id, message.to_string());
+            self.emit_event(
+                "agent:queue_sent",
+                AgentQueueSentPayload {
+                    message_id: queued.id.clone(),
+                    conversation_id: conversation.id.as_str().to_string(),
+                    context_type: context_type.to_string(),
+                    context_id: context_id.to_string(),
+                },
+            );
+            return Err(ChatServiceError::AgentAlreadyRunning(format!(
+                "Message queued (id: {}). An agent is already running for {} {}.",
+                queued.id, context_type, context_id
+            )));
+        }
+
         let conversation_id = conversation.id;
         let is_new_conversation = conversation.claude_session_id.is_none();
         let stored_session_id = conversation.claude_session_id.clone();
