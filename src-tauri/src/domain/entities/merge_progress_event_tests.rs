@@ -1,7 +1,5 @@
 use super::*;
 
-use super::*;
-
 #[test]
 fn merge_phase_serializes_to_snake_case() {
     assert_eq!(
@@ -63,6 +61,10 @@ fn merge_phase_status_serializes() {
     assert_eq!(
         serde_json::to_string(&MergePhaseStatus::Failed).unwrap(),
         "\"failed\""
+    );
+    assert_eq!(
+        serde_json::to_string(&MergePhaseStatus::Skipped).unwrap(),
+        "\"skipped\""
     );
 }
 
@@ -131,6 +133,7 @@ fn merge_phase_status_display() {
     assert_eq!(format!("{}", MergePhaseStatus::Started), "started");
     assert_eq!(format!("{}", MergePhaseStatus::Passed), "passed");
     assert_eq!(format!("{}", MergePhaseStatus::Failed), "failed");
+    assert_eq!(format!("{}", MergePhaseStatus::Skipped), "skipped");
 }
 
 #[test]

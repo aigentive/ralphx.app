@@ -23,9 +23,10 @@ use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use super::merge_completion::complete_merge_internal;
 use super::merge_helpers::{compute_merge_worktree_path, parse_metadata};
 use super::merge_strategies::MergeOutcome;
+use crate::infrastructure::agents::claude::reconciliation_config;
 use super::merge_validation::{
     emit_merge_progress, extract_cached_validation, format_validation_warn_metadata,
-    run_validation_commands, take_skip_validation_flag,
+    run_validation_commands, take_skip_validation_flag, ValidationFailure,
 };
 
 /// Bundles the parameters needed by handle_merge_outcome and its sub-handlers.
@@ -173,32 +174,63 @@ impl<'a> super::TransitionHandler<'a> {
             format!("{} completed: {}", capitalize(opts.strategy_label), commit_sha),
         );
 
-        // Post-merge validation gate
+        // Post-merge validation gate (runs under its own deadline, separate from git timeout)
         let skip_validation = take_skip_validation_flag(task);
         let validation_mode = &project.merge_validation_mode;
         if !skip_validation && *validation_mode != MergeValidationMode::Off {
+            let validation_deadline_secs = reconciliation_config().validation_deadline_secs;
+            let validation_timeout = std::time::Duration::from_secs(validation_deadline_secs);
             let source_sha = GitService::get_branch_sha(repo_path, source_branch).await.ok();
             let cached_log = source_sha.as_deref().and_then(|sha| extract_cached_validation(task, sha));
-            if let Some(validation) = run_validation_commands(
+
+            let validation_result = tokio::time::timeout(validation_timeout, run_validation_commands(
                 project, task, repo_path, task_id_str,
                 self.machine.context.services.app_handle.as_ref(), cached_log.as_deref(),
-            ).await {
-                if !validation.all_passed {
-                    if *validation_mode == MergeValidationMode::Warn {
-                        tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode, proceeding");
-                        task.metadata = Some(format_validation_warn_metadata(&validation.log, source_branch, target_branch));
+                validation_mode,
+            )).await;
+
+            match validation_result {
+                Err(_) => {
+                    // Validation timed out — treat as validation failure
+                    tracing::error!(
+                        task_id = task_id_str,
+                        deadline_secs = validation_deadline_secs,
+                        "Post-merge validation timed out after {}s",
+                        validation_deadline_secs,
+                    );
+                    let timeout_failure = ValidationFailure {
+                        command: "validation pipeline".to_string(),
+                        path: ".".to_string(),
+                        exit_code: None,
+                        stderr: format!("Validation timed out after {}s", validation_deadline_secs),
+                    };
+                    self.handle_validation_failure(
+                        task, task_id, task_id_str, task_repo, &[timeout_failure], &[],
+                        source_branch, target_branch, repo_path, opts.strategy_label, validation_mode,
+                    ).await;
+                    return;
+                }
+                Ok(Some(validation)) => {
+                    if !validation.all_passed {
+                        if *validation_mode == MergeValidationMode::Warn {
+                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode, proceeding");
+                            task.metadata = Some(format_validation_warn_metadata(&validation.log, source_branch, target_branch));
+                        } else {
+                            self.handle_validation_failure(
+                                task, task_id, task_id_str, task_repo, &validation.failures, &validation.log,
+                                source_branch, target_branch, repo_path, opts.strategy_label, validation_mode,
+                            ).await;
+                            return;
+                        }
                     } else {
-                        self.handle_validation_failure(
-                            task, task_id, task_id_str, task_repo, &validation.failures, &validation.log,
-                            source_branch, target_branch, repo_path, opts.strategy_label, validation_mode,
-                        ).await;
-                        return;
+                        task.metadata = Some(serde_json::json!({
+                            "validation_log": validation.log, "validation_source_sha": source_sha,
+                            "source_branch": source_branch, "target_branch": target_branch,
+                        }).to_string());
                     }
-                } else {
-                    task.metadata = Some(serde_json::json!({
-                        "validation_log": validation.log, "validation_source_sha": source_sha,
-                        "source_branch": source_branch, "target_branch": target_branch,
-                    }).to_string());
+                }
+                Ok(None) => {
+                    // No validation commands configured — proceed
                 }
             }
         }

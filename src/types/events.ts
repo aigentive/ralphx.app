@@ -356,7 +356,7 @@ export const MergeProgressEventSchema = z.object({
     "test",
     "finalize",
   ]),
-  status: z.enum(["started", "passed", "failed"]),
+  status: z.enum(["started", "passed", "failed", "skipped"]),
   message: z.string(),
   timestamp: z.string(),
 });
