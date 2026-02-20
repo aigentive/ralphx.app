@@ -107,7 +107,7 @@ pub struct ReconciliationConfig {
 
 fn default_merger_timeout_secs() -> u64 { 1200 }
 fn default_merging_max_retries() -> u64 { 3 }
-fn default_pending_merge_stale_minutes() -> u64 { 5 }
+fn default_pending_merge_stale_minutes() -> u64 { 2 }
 fn default_qa_stale_minutes() -> u64 { 5 }
 fn default_merge_incomplete_retry_base_secs() -> u64 { 30 }
 fn default_merge_incomplete_retry_max_secs() -> u64 { 300 }
