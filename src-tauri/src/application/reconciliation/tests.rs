@@ -290,17 +290,17 @@ fn pending_merge_deferred_waits_when_not_stale() {
 fn merge_incomplete_retry_delay_uses_exponential_backoff_and_cap() {
     // With jitter, delay is in [base, base + base/4]. Check bounds.
     let d0 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(0).num_seconds();
-    assert!(d0 >= 30 && d0 <= 30 + 30 / 4, "retry 0: got {d0}");
+    assert!((30..=30 + 30 / 4).contains(&d0), "retry 0: got {d0}");
 
     let d1 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(1).num_seconds();
-    assert!(d1 >= 60 && d1 <= 60 + 60 / 4, "retry 1: got {d1}");
+    assert!((60..=60 + 60 / 4).contains(&d1), "retry 1: got {d1}");
 
     let d2 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(2).num_seconds();
-    assert!(d2 >= 120 && d2 <= 120 + 120 / 4, "retry 2: got {d2}");
+    assert!((120..=120 + 120 / 4).contains(&d2), "retry 2: got {d2}");
 
     // At high retry counts, base_delay caps at merge_incomplete_retry_max_secs (1800)
     let d10 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(10).num_seconds();
-    assert!(d10 >= 1800 && d10 <= 1800 + 1800 / 4, "retry 10: got {d10}");
+    assert!((1800..=1800 + 1800 / 4).contains(&d10), "retry 10: got {d10}");
 }
 
 #[test]
@@ -811,20 +811,20 @@ async fn merging_timeout_escalates_to_merge_incomplete_not_merge_conflict() {
 fn merge_conflict_retry_delay_exponential_backoff() {
     // With jitter, delay is in [base, base + base/4]. Check bounds.
     let d0 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(0).num_seconds();
-    assert!(d0 >= 60 && d0 <= 60 + 60 / 4, "retry 0: got {d0}");
+    assert!((60..=60 + 60 / 4).contains(&d0), "retry 0: got {d0}");
 
     let d1 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(1).num_seconds();
-    assert!(d1 >= 120 && d1 <= 120 + 120 / 4, "retry 1: got {d1}");
+    assert!((120..=120 + 120 / 4).contains(&d1), "retry 1: got {d1}");
 
     let d2 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(2).num_seconds();
-    assert!(d2 >= 240 && d2 <= 240 + 240 / 4, "retry 2: got {d2}");
+    assert!((240..=240 + 240 / 4).contains(&d2), "retry 2: got {d2}");
 
     let d3 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(3).num_seconds();
-    assert!(d3 >= 480 && d3 <= 480 + 480 / 4, "retry 3: got {d3}");
+    assert!((480..=480 + 480 / 4).contains(&d3), "retry 3: got {d3}");
 
     // Verify cap at 600s (base), with jitter up to 600/4=150
     let d10 = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(10).num_seconds();
-    assert!(d10 >= 600 && d10 <= 600 + 600 / 4, "retry 10: got {d10}");
+    assert!((600..=600 + 600 / 4).contains(&d10), "retry 10: got {d10}");
 }
 
 #[tokio::test]
@@ -2999,8 +2999,7 @@ async fn reconcile_merge_incomplete_skips_retry_when_rate_limit_active() {
 #[tokio::test]
 async fn reconcile_merge_incomplete_proceeds_after_rate_limit_expired() {
     use crate::domain::entities::{
-        MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-        MergeRecoverySource, MergeRecoveryState, Project,
+        MergeRecoveryMetadata, MergeRecoveryState, Project,
     };
 
     let app_state = AppState::new_test();
