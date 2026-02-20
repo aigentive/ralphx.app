@@ -12,7 +12,7 @@ pub(super) const INSTALL_RETRY_DELAY_MS: u64 = 500;
 /// Used in ValidationLogEntry.status and compared in retry logic.
 const STATUS_FAILED: &str = "failed";
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use tauri::{AppHandle, Emitter};
@@ -114,6 +114,89 @@ pub(super) fn emit_merge_progress<R: tauri::Runtime>(
     }
 }
 
+/// Idempotent symlink handling for worktree setup commands.
+///
+/// Parses `ln -s[f] <source> <target>` commands and handles existing targets:
+/// - Correct symlink already exists → returns `Some(log_entry)` (skip)
+/// - Wrong symlink or real file/dir → removes target, returns `None` (re-run command)
+/// - Target doesn't exist → returns `None` (run normally)
+/// - Non-symlink commands → returns `None` (pass through)
+pub(super) fn try_handle_symlink_idempotent(
+    cmd: &str,
+    cwd: &Path,
+    label: &str,
+    resolved_path: &str,
+) -> Option<ValidationLogEntry> {
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
+    if parts.is_empty() || parts[0] != "ln" {
+        return None;
+    }
+
+    // Must have -s flag (could be -s, -sf, -sn, -sfn, etc.)
+    let has_symlink_flag = parts.iter().any(|p| p.starts_with('-') && p.contains('s'));
+    if !has_symlink_flag {
+        return None;
+    }
+
+    // Extract non-flag arguments (source and target)
+    let args: Vec<&str> = parts
+        .iter()
+        .filter(|p| !p.starts_with('-') && **p != "ln")
+        .copied()
+        .collect();
+    if args.len() != 2 {
+        return None;
+    }
+
+    let source = PathBuf::from(args[0]);
+    let target_path = if Path::new(args[1]).is_absolute() {
+        PathBuf::from(args[1])
+    } else {
+        cwd.join(args[1])
+    };
+
+    if target_path.is_symlink() {
+        if let Ok(existing_target) = std::fs::read_link(&target_path) {
+            if existing_target == source {
+                // Correct symlink already exists — skip
+                tracing::info!(
+                    command = %cmd,
+                    target = %target_path.display(),
+                    "Worktree setup: symlink already correct, skipping"
+                );
+                return Some(ValidationLogEntry {
+                    phase: "setup".to_string(),
+                    command: cmd.to_string(),
+                    path: resolved_path.to_string(),
+                    label: label.to_string(),
+                    status: "skipped".to_string(),
+                    exit_code: Some(0),
+                    stdout: String::new(),
+                    stderr: "Symlink already exists and is correct".to_string(),
+                    duration_ms: 0,
+                });
+            }
+        }
+        // Wrong symlink — remove so command can recreate
+        tracing::info!(
+            command = %cmd,
+            target = %target_path.display(),
+            "Worktree setup: removing incorrect symlink before re-creation"
+        );
+        let _ = std::fs::remove_file(&target_path);
+    } else if target_path.exists() {
+        // Real file/dir at target — remove to allow symlink creation
+        tracing::info!(
+            command = %cmd,
+            target = %target_path.display(),
+            "Worktree setup: removing existing path before symlink creation"
+        );
+        let _ = std::fs::remove_dir_all(&target_path);
+    }
+
+    None // Proceed with normal command execution
+}
+
 /// Run worktree setup commands (symlinks, etc.) — non-fatal.
 ///
 /// Returns the log entries and whether any setup command failed.
@@ -160,6 +243,44 @@ async fn run_setup_phase(
                 merge_cwd.to_path_buf()
             } else {
                 merge_cwd.join(&resolved_path)
+            };
+
+            // Idempotent symlink handling: skip if correct symlink exists,
+            // remove stale target if wrong, pass through for non-symlink commands
+            if let Some(skip_entry) = try_handle_symlink_idempotent(
+                &resolved_cmd,
+                &cmd_cwd,
+                &entry.label,
+                &resolved_path,
+            ) {
+                if let Some(handle) = app_handle {
+                    let mut event_data = serde_json::json!({
+                        "task_id": task_id_str,
+                        "phase": skip_entry.phase,
+                        "command": skip_entry.command,
+                        "path": skip_entry.path,
+                        "label": skip_entry.label,
+                        "status": skip_entry.status,
+                        "exit_code": skip_entry.exit_code,
+                        "stderr": skip_entry.stderr,
+                        "duration_ms": skip_entry.duration_ms,
+                    });
+                    if let Some(ctx) = context {
+                        event_data["context"] = serde_json::json!(ctx);
+                    }
+                    let _ = handle.emit("merge:validation_step", event_data);
+                }
+                log.push(skip_entry);
+                continue;
+            }
+
+            // Harden symlink commands: use -sfn flags to prevent nesting bugs when
+            // the target already exists as a symlink (handles complex/chained commands
+            // that try_handle_symlink_idempotent can't parse)
+            let resolved_cmd = if resolved_cmd.contains("ln -s ") && !resolved_cmd.contains("-sfn") {
+                resolved_cmd.replace("ln -s ", "ln -sfn ").replace("ln -sf ", "ln -sfn ")
+            } else {
+                resolved_cmd
             };
 
             // Emit "running" event before execution

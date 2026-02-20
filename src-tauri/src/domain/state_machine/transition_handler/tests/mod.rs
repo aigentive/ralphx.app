@@ -39,3 +39,4 @@ mod merge_validation_inline;
 mod metadata_builder_tests;
 mod metadata_builder_tests_2;
 mod on_enter_states_tests;
+mod symlink_idempotent;

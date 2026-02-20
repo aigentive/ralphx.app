@@ -7,6 +7,8 @@
  * Supports filtering by context (e.g., "merge" vs "execution" vs "review") when the backend
  * emits context-qualified events.
  *
+ * Also listens for merge:validation_start to clear stale steps when a new validation run begins.
+ *
  * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
@@ -21,7 +23,8 @@ import {
  * Hook to listen for validation step events for a specific task.
  *
  * Updates existing steps (running→success/failed) by matching on command+phase,
- * or appends new steps.
+ * or appends new steps. Clears all steps when a merge:validation_start event
+ * is received for the same task (new validation run starting).
  *
  * @param taskId - The task ID to filter events for
  * @param context - Optional context filter ("merge" | "execution" | "review") to filter events by context
@@ -36,6 +39,15 @@ export function useValidationEvents(
 
   useEffect(() => {
     setSteps([]);
+
+    // Listen for validation_start to clear stale steps when a new run begins
+    const unsubStart = bus.subscribe<unknown>("merge:validation_start", (payload) => {
+      const data = payload as { task_id?: string } | null;
+      if (data?.task_id === taskId) {
+        setSteps([]);
+      }
+    });
+
     const unsub = bus.subscribe<unknown>("merge:validation_step", (payload) => {
       const parsed = MergeValidationStepEventSchema.safeParse(payload);
       if (!parsed.success || parsed.data.task_id !== taskId) return;
@@ -56,7 +68,10 @@ export function useValidationEvents(
         return [...prev, step];
       });
     });
-    return unsub;
+    return () => {
+      unsubStart();
+      unsub();
+    };
   }, [bus, taskId, context]);
 
   return steps;
