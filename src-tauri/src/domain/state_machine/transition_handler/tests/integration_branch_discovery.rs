@@ -61,11 +61,20 @@ async fn test_branch_discovery_integrates_with_pending_merge() {
     let handler = TransitionHandler::new(&mut machine);
 
     let _ = handler.on_enter(&State::PendingMerge).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
 
-    let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert_eq!(
-        updated_task.internal_status, InternalStatus::Merged,
+    let repo = Arc::clone(&task_repo);
+    let tid = task.id.clone();
+    assert!(
+        wait_for_condition(
+            || {
+                let r = Arc::clone(&repo);
+                let t = tid.clone();
+                async move {
+                    r.get_by_id(&t).await.unwrap().unwrap().internal_status == InternalStatus::Merged
+                }
+            },
+            5000
+        ).await,
         "Task should reach Merged status — proving branch was discovered and merge succeeded (branch={expected_branch})"
     );
 }
@@ -112,11 +121,20 @@ async fn test_merge_retry_recovery_discovers_branch_and_merges() {
     let handler = TransitionHandler::new(&mut machine);
 
     let _ = handler.on_enter(&State::PendingMerge).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
 
-    let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert_eq!(
-        updated_task.internal_status, InternalStatus::Merged,
+    let repo = Arc::clone(&task_repo);
+    let tid = task.id.clone();
+    assert!(
+        wait_for_condition(
+            || {
+                let r = Arc::clone(&repo);
+                let t = tid.clone();
+                async move {
+                    r.get_by_id(&t).await.unwrap().unwrap().internal_status == InternalStatus::Merged
+                }
+            },
+            5000
+        ).await,
         "Task should transition to Merged after successful programmatic merge (branch={expected_branch})"
     );
 }
@@ -166,16 +184,28 @@ async fn test_merge_retry_recovery_detects_conflicts_and_enters_merging() {
     let handler = TransitionHandler::new(&mut machine);
 
     let _ = handler.on_enter(&State::PendingMerge).await;
-    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+
+    let repo = Arc::clone(&task_repo);
+    let tid = task.id.clone();
+    assert!(
+        wait_for_condition(
+            || {
+                let r = Arc::clone(&repo);
+                let t = tid.clone();
+                async move {
+                    let status = r.get_by_id(&t).await.unwrap().unwrap().internal_status;
+                    status == InternalStatus::Merging
+                }
+            },
+            5000
+        ).await,
+        "Task should transition to Merging when conflicts are detected"
+    );
 
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     assert_eq!(
         updated_task.task_branch, Some(expected_branch.clone()),
         "Branch should be discovered and re-attached during retry"
-    );
-    assert_eq!(
-        updated_task.internal_status, InternalStatus::Merging,
-        "Task should transition to Merging when conflicts are detected"
     );
 }
 
