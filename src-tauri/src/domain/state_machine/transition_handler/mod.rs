@@ -114,7 +114,9 @@ impl<'a> TransitionHandler<'a> {
                         let failed_response = self.machine.dispatch(&new_state, &failed_event);
                         if let Response::Transition(failed_state) = failed_response {
                             self.on_exit(&new_state, &failed_state).await;
-                            let _ = self.on_enter(&failed_state).await;
+                            if let Err(e) = self.on_enter(&failed_state).await {
+                                tracing::error!(error = %e, "on_enter failed for recovery state {:?}", failed_state);
+                            }
                             return TransitionResult::Success(failed_state);
                         }
                     }

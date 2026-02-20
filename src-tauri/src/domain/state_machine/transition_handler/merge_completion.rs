@@ -170,7 +170,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     // 3. Cleanup branch and worktree
     cleanup_branch_and_worktree_internal(task, project, task_repo).await;
 
-    // 4. Emit events
+    // 4. Emit events (intentional: no frontend listeners is OK)
     if let Some(handle) = app_handle {
         let _ = handle.emit(
             "task:merged",

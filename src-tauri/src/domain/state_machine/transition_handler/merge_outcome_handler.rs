@@ -28,6 +28,23 @@ use super::merge_validation::{
     run_validation_commands, take_skip_validation_flag,
 };
 
+/// Bundles the parameters needed by handle_merge_outcome and its sub-handlers.
+///
+/// Groups task identity, project/repo context, branch info, repositories,
+/// and strategy options into a single struct to replace the 11-parameter signature.
+pub(super) struct MergeContext<'m> {
+    pub task: &'m mut Task,
+    pub task_id: &'m TaskId,
+    pub task_id_str: &'m str,
+    pub project: &'m Project,
+    pub repo_path: &'m Path,
+    pub source_branch: &'m str,
+    pub target_branch: &'m str,
+    pub task_repo: &'m Arc<dyn TaskRepository>,
+    pub plan_branch_repo: &'m Option<Arc<dyn PlanBranchRepository>>,
+    pub opts: &'m MergeHandlerOptions,
+}
+
 /// Per-arm options that vary between merge strategies.
 pub(super) struct MergeHandlerOptions {
     pub strategy_label: &'static str,
@@ -95,47 +112,37 @@ async fn transition_to_merge_incomplete(
 
 impl<'a> super::TransitionHandler<'a> {
     /// Handle a MergeOutcome uniformly for all merge strategy arms.
-    #[allow(clippy::too_many_arguments)]
     pub(super) async fn handle_merge_outcome(
         &self,
         outcome: MergeOutcome,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
-        project: &Project,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
-        task_repo: &Arc<dyn TaskRepository>,
-        plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-        opts: &MergeHandlerOptions,
+        ctx: &mut MergeContext<'_>,
     ) {
         match outcome {
             MergeOutcome::Success { commit_sha, merge_path } => {
                 self.handle_outcome_success(
-                    task, task_id, task_id_str, project, repo_path,
-                    source_branch, target_branch, task_repo, plan_branch_repo,
-                    &commit_sha, &merge_path, opts,
+                    ctx.task, ctx.task_id, ctx.task_id_str, ctx.project, ctx.repo_path,
+                    ctx.source_branch, ctx.target_branch, ctx.task_repo, ctx.plan_branch_repo,
+                    &commit_sha, &merge_path, ctx.opts,
                 ).await;
             }
             MergeOutcome::NeedsAgent { conflict_files, merge_worktree } => {
                 self.handle_outcome_needs_agent(
-                    task, task_id, task_id_str, project, repo_path,
-                    source_branch, target_branch, task_repo,
-                    &conflict_files, merge_worktree.as_deref(), opts,
+                    ctx.task, ctx.task_id, ctx.task_id_str, ctx.project, ctx.repo_path,
+                    ctx.source_branch, ctx.target_branch, ctx.task_repo,
+                    &conflict_files, merge_worktree.as_deref(), ctx.opts,
                 ).await;
             }
             MergeOutcome::BranchNotFound { branch } => {
                 self.handle_outcome_branch_not_found(
-                    task, task_id, task_id_str, source_branch, target_branch, task_repo, &branch,
+                    ctx.task, ctx.task_id, ctx.task_id_str, ctx.source_branch, ctx.target_branch, ctx.task_repo, &branch,
                 ).await;
             }
             MergeOutcome::Deferred { reason } => {
-                self.handle_outcome_deferred(task, task_id_str, source_branch, target_branch, task_repo, &reason).await;
+                self.handle_outcome_deferred(ctx.task, ctx.task_id_str, ctx.source_branch, ctx.target_branch, ctx.task_repo, &reason).await;
             }
             MergeOutcome::GitError(e) => {
                 self.handle_outcome_git_error(
-                    task, task_id, task_id_str, source_branch, target_branch, task_repo, e, opts,
+                    ctx.task, ctx.task_id, ctx.task_id_str, ctx.source_branch, ctx.target_branch, ctx.task_repo, e, ctx.opts,
                 ).await;
             }
             MergeOutcome::AlreadyHandled => {}
@@ -257,6 +264,7 @@ impl<'a> super::TransitionHandler<'a> {
             if let Err(e) = GitService::checkout_existing_branch_worktree(repo_path, &wt_path, &resolve_branch).await {
                 tracing::error!(error = %e, task_id = task_id_str, "Failed to create merge worktree");
             }
+            // Intentional: merge may fail with conflicts — agent will resolve them in the worktree
             let _ = git_cmd::run(&["merge", source_branch, "--no-edit"], &wt_path).await;
             wt_path
         };

@@ -130,6 +130,7 @@ impl<'a> super::TransitionHandler<'a> {
                     "Worktree merge failed"
                 );
                 if merge_wt.exists() {
+                    // Best-effort cleanup: worktree deletion failure is non-fatal during error recovery
                     let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 }
                 MergeOutcome::GitError(e)
@@ -187,6 +188,7 @@ impl<'a> super::TransitionHandler<'a> {
                     commit_sha = %commit_sha,
                     "Worktree rebase and merge succeeded"
                 );
+                // Best-effort cleanup: worktree deletion failure is non-fatal after success
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
@@ -211,6 +213,7 @@ impl<'a> super::TransitionHandler<'a> {
             }
             Err(e) => {
                 tracing::error!(error = %e, "Worktree rebase failed");
+                // Best-effort cleanup: worktree deletion failure is non-fatal during error recovery
                 if rebase_wt.exists() {
                     let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 }
@@ -254,6 +257,7 @@ impl<'a> super::TransitionHandler<'a> {
             squash_commit_msg,
         ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
+                // Best-effort cleanup: worktree deletion failure is non-fatal after success
                 let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
                     commit_sha,
@@ -327,6 +331,7 @@ impl<'a> super::TransitionHandler<'a> {
                     commit_sha = %commit_sha,
                     "Worktree rebase-squash succeeded"
                 );
+                // Best-effort cleanup: worktree deletion failure is non-fatal after success
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 let _ = GitService::delete_worktree(repo_path, &merge_wt).await;
                 MergeOutcome::Success {
@@ -351,6 +356,7 @@ impl<'a> super::TransitionHandler<'a> {
             }
             Err(e) => {
                 tracing::error!(error = %e, "Worktree rebase-squash failed");
+                // Best-effort cleanup: worktree deletion failure is non-fatal during error recovery
                 if rebase_wt.exists() {
                     let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 }
