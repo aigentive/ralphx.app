@@ -6,8 +6,10 @@
  * and validation progress display.
  */
 
+import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, cleanup } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MergingTaskDetail } from "./MergingTaskDetail";
 import type { Task } from "@/types/task";
 import type { MergeProgressEvent } from "@/types/events";
@@ -77,6 +79,21 @@ function makeProgressEvent(
   };
 }
 
+function TestWrapper({ children }: { children: React.ReactNode }) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+    },
+  });
+  return (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+}
+
+function renderWithProviders(ui: React.ReactElement) {
+  return render(ui, { wrapper: TestWrapper });
+}
+
 describe("MergingTaskDetail", () => {
   beforeEach(() => {
     mockListeners.clear();
@@ -85,7 +102,7 @@ describe("MergingTaskDetail", () => {
   describe("progress rendering", () => {
     it("shows 'Waiting for merge progress...' when no progress events received", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       expect(screen.getByTestId("merge-resuming-section")).toBeInTheDocument();
       expect(screen.getByText("Waiting for merge progress...")).toBeInTheDocument();
@@ -93,7 +110,7 @@ describe("MergingTaskDetail", () => {
 
     it("renders phase timeline when progress events arrive", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       // Initially shows waiting state
       expect(screen.getByText("Waiting for merge progress...")).toBeInTheDocument();
@@ -114,7 +131,7 @@ describe("MergingTaskDetail", () => {
 
     it("renders sequence of phases in correct order with proper status indicators", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       // Emit full sequence
       const phases: Array<{ phase: MergeProgressEvent["phase"]; status: MergeProgressEvent["status"]; message: string }> = [
@@ -140,7 +157,7 @@ describe("MergingTaskDetail", () => {
 
     it("updates phase status from started to passed", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       // Start worktree_setup
       act(() => {
@@ -169,7 +186,7 @@ describe("MergingTaskDetail", () => {
 
     it("shows failed phase message when a phase fails", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       act(() => {
         emitEvent("task:merge_progress", makeProgressEvent({
@@ -198,7 +215,7 @@ describe("MergingTaskDetail", () => {
 
     it("renders full seven-phase sequence through finalize", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       const fullSequence: Array<{ phase: MergeProgressEvent["phase"]; status: MergeProgressEvent["status"] }> = [
         { phase: "worktree_setup", status: "passed" },
@@ -231,7 +248,7 @@ describe("MergingTaskDetail", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
 
       // First render
-      const { unmount } = render(<MergingTaskDetail task={task} />);
+      const { unmount } = renderWithProviders(<MergingTaskDetail task={task} />);
 
       // Emit some progress events
       act(() => {
@@ -270,7 +287,7 @@ describe("MergingTaskDetail", () => {
       });
 
       // Remount: component starts fresh (hooks re-subscribe)
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       // After remount with no new events, should show waiting state
       expect(screen.getByText("Waiting for merge progress...")).toBeInTheDocument();
@@ -281,7 +298,7 @@ describe("MergingTaskDetail", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
 
       // First render
-      const { unmount } = render(<MergingTaskDetail task={task} />);
+      const { unmount } = renderWithProviders(<MergingTaskDetail task={task} />);
 
       // Emit initial event
       act(() => {
@@ -298,7 +315,7 @@ describe("MergingTaskDetail", () => {
       cleanup();
 
       // Remount
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       // Starts with waiting state
       expect(screen.getByText("Waiting for merge progress...")).toBeInTheDocument();
@@ -322,7 +339,7 @@ describe("MergingTaskDetail", () => {
   describe("fallback behavior when events are missing or delayed", () => {
     it("shows waiting state for pending_merge task with no events", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       // Should show the resuming/waiting section
       expect(screen.getByTestId("merge-resuming-section")).toBeInTheDocument();
@@ -331,7 +348,7 @@ describe("MergingTaskDetail", () => {
 
     it("does not show phase timeline or waiting state for historical pending_merge", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} isHistorical viewStatus="pending_merge" />);
+      renderWithProviders(<MergingTaskDetail task={task} isHistorical viewStatus="pending_merge" />);
 
       // Historical mode should not show live progress or waiting state
       expect(screen.queryByTestId("merge-phase-timeline")).not.toBeInTheDocument();
@@ -340,14 +357,39 @@ describe("MergingTaskDetail", () => {
 
     it("does not show phase timeline or waiting state for merging (agent phase)", () => {
       const task = createTestTask({ internalStatus: "merging" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       // Agent phase doesn't show merge progress timeline
       expect(screen.queryByTestId("merge-phase-timeline")).not.toBeInTheDocument();
       expect(screen.queryByTestId("merge-resuming-section")).not.toBeInTheDocument();
     });
 
-    it("falls back to metadata validation log when no live events exist", () => {
+    it("does not show stale metadata validation log in live mode", () => {
+      const metadata = JSON.stringify({
+        validation_log: [
+          {
+            task_id: "task-123",
+            phase: "validate",
+            command: "npm run typecheck",
+            path: ".",
+            label: "Type Check",
+            status: "success",
+            duration_ms: 3200,
+          },
+        ],
+      });
+
+      const task = createTestTask({
+        internalStatus: "pending_merge",
+        metadata,
+      });
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      // In live mode (not historical), stale metadata should NOT be shown
+      expect(screen.queryByTestId(`validation-progress-${task.id}`)).not.toBeInTheDocument();
+    });
+
+    it("shows metadata validation log in historical mode", () => {
       const metadata = JSON.stringify({
         validation_log: [
           {
@@ -376,16 +418,16 @@ describe("MergingTaskDetail", () => {
         internalStatus: "pending_merge",
         metadata,
       });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} isHistorical viewStatus="pending_merge" />);
 
-      // Should render validation progress from metadata
+      // In historical mode, metadata should be shown
       expect(screen.getByTestId(`validation-progress-${task.id}`)).toBeInTheDocument();
       expect(screen.getByText("Merge Validation")).toBeInTheDocument();
     });
 
     it("ignores events for different task IDs", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       act(() => {
         emitEvent("task:merge_progress", makeProgressEvent({
@@ -402,7 +444,7 @@ describe("MergingTaskDetail", () => {
 
     it("ignores malformed progress event payloads", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       act(() => {
         emitEvent("task:merge_progress", { invalid: "data" });
@@ -422,7 +464,7 @@ describe("MergingTaskDetail", () => {
 
     it("transitions from waiting to phase timeline when first event arrives after delay", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       // Initially waiting
       expect(screen.getByText("Waiting for merge progress...")).toBeInTheDocument();
@@ -446,14 +488,14 @@ describe("MergingTaskDetail", () => {
   describe("pending_merge basic rendering", () => {
     it("renders merging-task-detail test id", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       expect(screen.getByTestId("merging-task-detail")).toBeInTheDocument();
     });
 
     it("shows 'Merging Changes...' title for active pending_merge", () => {
       const task = createTestTask({ internalStatus: "pending_merge" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       expect(screen.getByText("Merging Changes...")).toBeInTheDocument();
     });
@@ -463,7 +505,7 @@ describe("MergingTaskDetail", () => {
         internalStatus: "pending_merge",
         taskBranch: "ralphx/ralphx/task-123",
       });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       expect(screen.getByText("ralphx/ralphx/task-123")).toBeInTheDocument();
     });
@@ -472,7 +514,7 @@ describe("MergingTaskDetail", () => {
   describe("merging (agent phase) rendering", () => {
     it("shows 'Resolving Merge Conflicts' for agent phase", () => {
       const task = createTestTask({ internalStatus: "merging" });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       expect(screen.getByText("Resolving Merge Conflicts")).toBeInTheDocument();
     });
@@ -482,7 +524,7 @@ describe("MergingTaskDetail", () => {
         conflict_files: ["src/main.ts", "src/lib/utils.ts"],
       });
       const task = createTestTask({ internalStatus: "merging", metadata });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
       expect(screen.getByTestId("conflict-files-section")).toBeInTheDocument();
       expect(screen.getByText("src/main.ts")).toBeInTheDocument();
@@ -499,10 +541,12 @@ describe("MergingTaskDetail", () => {
         ],
       });
       const task = createTestTask({ internalStatus: "merging", metadata });
-      render(<MergingTaskDetail task={task} />);
+      renderWithProviders(<MergingTaskDetail task={task} />);
 
+      // Recovery mode shows "Fixing Validation Errors..." title
       expect(screen.getByText("Fixing Validation Errors...")).toBeInTheDocument();
-      expect(screen.getByTestId("validation-failures-section")).toBeInTheDocument();
+      // Validation failures are shown via ValidationProgress (no separate section)
+      expect(screen.queryByTestId("validation-failures-section")).not.toBeInTheDocument();
     });
   });
 });

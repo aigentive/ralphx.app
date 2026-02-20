@@ -45,9 +45,9 @@ fn correct_symlink_is_skipped() {
     );
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_some(), "correct symlink should be skipped");
+    assert!(result.is_some(), "correct symlink should be cached");
     let entry = result.unwrap();
-    assert_eq!(entry.status, "skipped");
+    assert_eq!(entry.status, "cached");
     assert_eq!(entry.phase, "setup");
     assert!(entry.stderr.contains("already exists"));
 }
@@ -134,8 +134,8 @@ fn ln_sf_flag_is_recognized() {
     );
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_some(), "ln -sf with correct symlink should skip");
-    assert_eq!(result.unwrap().status, "skipped");
+    assert!(result.is_some(), "ln -sf with correct symlink should be cached");
+    assert_eq!(result.unwrap().status, "cached");
 }
 
 #[test]
@@ -153,7 +153,7 @@ fn relative_target_resolved_against_cwd() {
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
     assert!(result.is_some(), "relative target should be resolved against cwd");
-    assert_eq!(result.unwrap().status, "skipped");
+    assert_eq!(result.unwrap().status, "cached");
 }
 
 #[test]
@@ -177,9 +177,9 @@ fn template_resolved_command_works() {
     );
 
     let result = try_handle_symlink_idempotent(&cmd, &worktree, "Node.js root", ".");
-    assert!(result.is_some(), "template-resolved symlink should be skipped");
+    assert!(result.is_some(), "template-resolved symlink should be cached");
     let entry = result.unwrap();
-    assert_eq!(entry.status, "skipped");
+    assert_eq!(entry.status, "cached");
     assert_eq!(entry.label, "Node.js root");
 }
 
@@ -286,7 +286,7 @@ fn non_circular_existing_symlink_left_alone() {
     let cmd = format!("ln -s {} {}", source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_some(), "correct symlink should be left alone and skipped");
-    assert_eq!(result.unwrap().status, "skipped");
+    assert!(result.is_some(), "correct symlink should be left alone and cached");
+    assert_eq!(result.unwrap().status, "cached");
     assert!(target.is_symlink(), "correct symlink must still exist");
 }
