@@ -551,3 +551,11 @@ After tasks merge, the merge pipeline validates your code. These are configured 
 | `↑` / `↓` | Navigate plans in selector |
 | `Enter` | Select highlighted plan |
 | `Escape` | Close selector |
+
+---
+
+## See Also
+
+- [Kanban Board](kanban.md)
+- [Graph View](graph-view.md)
+- [Execution Pipeline](execution.md)

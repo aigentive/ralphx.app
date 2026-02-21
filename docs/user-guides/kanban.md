@@ -397,3 +397,11 @@ When retrying a failed or stuck task, add a **restart note** in the task detail 
 ### Use Drag-and-Drop for Priority, Not State
 
 While drag-and-drop supports state transitions, for most state changes it's cleaner to use the action buttons in the task detail view (Approve, Retry, etc.) — they're explicit and provide confirmation. Reserve drag-and-drop for priority reordering within a column, where the directness is an advantage.
+
+---
+
+## See Also
+
+- [Graph View](graph-view.md)
+- [Task State Machine](task-state-machine.md)
+- [Execution Pipeline](execution.md)

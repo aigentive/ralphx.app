@@ -79,6 +79,8 @@ Agents are ephemeral. They start when a task enters a state that requires them, 
 
 ## Agent Types
 
+RalphX uses 24 specialized agents across execution, review, merge, ideation, QA, and support roles.
+
 | Agent | Role | Model | Spawned when |
 |-------|------|-------|--------------|
 | **ralphx-worker** | Orchestrates task execution; decomposes work and delegates to coders | Sonnet | Task enters Executing |
@@ -104,6 +106,7 @@ Agents are ephemeral. They start when a task enters a state that requires them, 
 | **chat-task** | Handles chat interactions in the context of a specific task | Sonnet | Task chat opened |
 | **chat-project** | Handles chat interactions at the project level | Sonnet | Project chat opened |
 | **review-chat** | Handles chat about a specific review | Sonnet | Review chat opened |
+| **dependency-suggester** | Suggests task dependencies after proposals are created in an ideation session | Sonnet | After PROPOSE phase completes |
 
 ---
 
@@ -505,3 +508,11 @@ Reviewers are read-only — they examine the worktree but don't commit changes.
 **What it means:** The agent may be between turns or processing a long tool call.
 
 **What to do:** Messages are queued and delivered at the agent's next turn. If you see a "pending" indicator on your message, wait for the agent to complete its current operation. If the agent appears stuck and not progressing, use Stop + Restart to get a fresh spawn that will pick up the message from history.
+
+---
+
+## See Also
+
+- [Execution Pipeline](execution.md)
+- [Merge Pipeline](merge.md)
+- [Task State Machine](task-state-machine.md)

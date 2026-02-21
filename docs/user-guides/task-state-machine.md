@@ -354,7 +354,7 @@ RalphX uses different specialized agents at each active phase of the lifecycle. 
 |-------|-------|-------|-------------|
 | **Executing** | `ralphx-worker` | Sonnet | Reads the task proposal and plan, decomposes into sub-scopes, delegates to coder sub-agents (max 3 concurrent), steps through the implementation |
 | **ReExecuting** | `ralphx-worker` | Sonnet | Same as Executing, but first fetches review notes and open issues to incorporate reviewer feedback |
-| **QaRefining** | `ralphx-qa-prep` | Sonnet | Generates acceptance criteria and a structured test plan (may have run in background during Ready) |
+| **QaRefining** | `ralphx-qa-refiner` | Sonnet | Generates acceptance criteria and a structured test plan (may have run in background during Ready) |
 | **QaTesting** | `ralphx-qa-executor` | Sonnet | Executes browser-based tests using agent-browser; reports pass/fail |
 | **Reviewing** | `ralphx-reviewer` | Sonnet | Reviews code quality, correctness, test coverage; calls `complete_review` with approved/needs_changes/escalate |
 | **Merging** | `ralphx-merger` | Opus | Resolves git conflicts in worktrees; reads conflict files, resolves markers, verifies no remaining conflicts |
@@ -385,7 +385,7 @@ Agents communicate results back to the state machine via MCP tools. The state ma
 
 ## Human-in-the-Loop Controls
 
-RalphX is designed to run autonomously, but you are always in control. These are the explicit intervention points.
+RalphX is designed to run on its own, but you are always in control. These are the explicit intervention points.
 
 ### Approval Gate (ReviewPassed / Escalated)
 
@@ -445,7 +445,7 @@ When you resume a paused task (or a paused project):
 5. Transition the task back to its pre-pause state
 6. Clear the pause metadata and respawn the agent
 
-> ⚠️ **Stopped tasks are not restored on resume.** They require a manual **Retry** action which sends them back to **Ready** — the full execution cycle restarts from the beginning.
+> **Warning:** Stopped tasks are not restored on resume. They require a manual **Retry** action which sends them back to **Ready** — the full execution cycle restarts from the beginning.
 
 ### Pause Reason Types
 
@@ -633,7 +633,7 @@ Guards are pre-conditions checked before certain transitions fire. If a guard fa
 | `qa_enabled` | Whether tasks go through the QA phase (QaRefining → QaTesting) | `false` |
 | `git_mode` | `Local` (one task at a time) or `Worktree` (parallel, isolated) | `Local` |
 | `base_branch` | Target branch for standalone task merges | `main` |
-| `max_concurrent_tasks` | Max tasks that can be executing simultaneously (Worktree mode) | `3` |
+| `max_concurrent_tasks` | Max tasks that can be executing simultaneously (Worktree mode) | `10` |
 | `use_feature_branches` | Whether plan tasks use an isolated plan feature branch | `true` |
 | `worktree_parent_directory` | Parent directory for task worktrees | `~/ralphx-worktrees` |
 
@@ -644,7 +644,7 @@ Guards are pre-conditions checked before certain transitions fire. If a guard fa
 | `qa_prep_timeout_secs` | How long to wait for the background qa-prep agent before proceeding |
 | `execution_timeout_secs` | Inactivity timeout before a stalled worker is detected |
 | `review_timeout_secs` | Inactivity timeout before a stalled reviewer is detected |
-| `scheduler.ready_settle_ms` | Delay after entering Ready before the scheduler settles the Ready set (default: 600ms) |
+| `scheduler.ready_settle_ms` | Delay after entering Ready before the scheduler settles the Ready set (default: 300ms) |
 
 ### Merge Settings
 
@@ -663,3 +663,11 @@ See the [Merge Pipeline User Guide](./merge.md) for full configuration options c
 | Merge | `pending_merge`, `merging`, `merge_conflict`, `merge_incomplete`, `merged` | Post-approval merge pipeline (see Merge Pipeline User Guide) |
 | Terminal | `merged`, `failed`, `cancelled`, `stopped` | Done; all are restartable via Retry |
 | Suspended | `paused` | Temporarily halted; resumable to pre-pause state |
+
+---
+
+## See Also
+
+- [Agent Orchestration](agent-orchestration.md)
+- [Execution Pipeline](execution.md)
+- [Merge Pipeline](merge.md)

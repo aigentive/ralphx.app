@@ -1,6 +1,6 @@
 # Getting Started with RalphX
 
-RalphX is a native Mac application for autonomous AI-driven software development. You describe features in natural language, and a multi-agent system researches your codebase, writes code, reviews it, and merges it — all in isolated git worktrees that never touch your working directory. This guide walks you through setup, your first project, and your first end-to-end workflow.
+RalphX is a native Mac application for AI-driven software development. You describe features in natural language, and a multi-agent system researches your codebase, writes code, reviews it, and merges it — all in isolated git worktrees that never touch your working directory. This guide walks you through setup, your first project, and your first end-to-end workflow.
 
 ---
 
@@ -235,7 +235,7 @@ If the plan needs changes, type feedback in the chat. The orchestrator revises a
 
 ### 4. Watch execution on Kanban
 
-Navigate to **Kanban**. Your tasks appear in the **Backlog** or **Ready** column (depending on dependencies). RalphX schedules up to 2 tasks concurrently by default. As agents work, tasks move right:
+Navigate to **Kanban**. Your tasks appear in the **Backlog** or **Ready** column (depending on dependencies). RalphX schedules up to 10 tasks concurrently by default. As agents work, tasks move right:
 
 ```
 Backlog → Ready → Executing → Reviewing → ReviewPassed → Approved → PendingMerge → Merged
@@ -272,6 +272,9 @@ The task moves to **Merged**. The merge commit SHA is shown in the task detail v
 | Guide | What it covers |
 |-------|---------------|
 | [Ideation Studio](ideation-studio.md) | Session modes, team configuration, plan artifacts, task creation |
+| [Kanban Board](kanban.md) | Board layout, task cards, drag-and-drop transitions, filtering |
+| [Graph View](graph-view.md) | Dependency graph, critical path, timeline panel, battle mode |
 | [Execution Pipeline](execution.md) | Worker/coder/reviewer agents, concurrency, revision cycles, recovery |
 | [Merge Pipeline](merge.md) | Merge strategies, validation, conflict resolution, recovery |
 | [Task State Machine](task-state-machine.md) | All 24 states, transitions, and state invariants |
+| [Configuration](configuration.md) | Project settings, model config, supervisor, ralphx.yaml reference |
