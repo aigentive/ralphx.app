@@ -2,6 +2,28 @@
 
 # CLAUDE.md
 
+## Priority Zero — Owner Strategy Alignment (NON-NEGOTIABLE)
+
+Before ANY user-facing content, documentation, UI copy, or messaging work, agents MUST read:
+- `~/.ralphx/founder/founder-profile.md` — Owner vision and non-negotiables
+- `~/.ralphx/strategy/project-goal-card.md` — Messaging architecture, positioning, ICPs, competitive landscape
+- `~/.ralphx/strategy/project-metrics.md` — Verifiable project data points
+
+| Mandate | Detail |
+|---------|--------|
+| "Empowers" always | ❌ "replaces engineers" in any register |
+| "Control room" | ❌ "autonomous system" in user-facing content |
+| "Own, not rent" | Sovereignty framing for all audiences |
+| Local-first identity | Data never leaves the machine without explicit action |
+| Killer feature | "Brief in, feature on main." — founder's exact words |
+| ❌ "AI EngOps" | Analyst/investor only. User-facing: "AI development infrastructure" |
+| ❌ "autonomous" | Never in category-level descriptions |
+| Accessible | Vibe Coder through CTO — all 9 personas in goal card |
+
+These are the **owner's directives**. They override default agent judgment on messaging.
+
+---
+
 ## Project: RalphX
 Native Mac GUI for autonomous AI dev: Kanban, multi-agent orchestration, ideation chat.
 Full spec: `specs/plan.md` | Code quality: `.claude/rules/code-quality-standards.md` | State machine: `.claude/rules/task-state-machine.md` | Git/merge: `.claude/rules/task-git-branching.md` | Agents: `.claude/rules/task-execution-agents.md` | Task detail views: `.claude/rules/task-detail-views.md`
