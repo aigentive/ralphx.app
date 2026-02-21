@@ -2,7 +2,7 @@
  * IntegratedChatPanel.components - Sub-components for IntegratedChatPanel
  */
 
-import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X } from "lucide-react";
+import { Bot, MessageSquare, CheckSquare, FolderKanban, Hammer, Activity, X, History } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ChatContext } from "@/types/chat";
 
@@ -181,6 +181,37 @@ export function FailedRunBanner({ errorMessage, onDismiss }: FailedRunBannerProp
           <X className="w-3.5 h-3.5" />
         </Button>
       )}
+    </div>
+  );
+}
+
+interface PreviousRunBannerProps {
+  agentRunStatus: string | null;
+  contextType: string;
+}
+
+export function PreviousRunBanner({ agentRunStatus, contextType }: PreviousRunBannerProps) {
+  const contextLabel = contextType === "merge" ? "merge agent"
+    : contextType === "review" ? "reviewer"
+    : "worker";
+
+  const statusLabel = agentRunStatus === "failed" ? "failed"
+    : agentRunStatus === "cancelled" ? "cancelled"
+    : "completed";
+
+  return (
+    <div
+      data-testid="previous-run-banner"
+      className="px-3 py-1.5 flex items-center gap-2 shrink-0"
+      style={{
+        backgroundColor: "hsla(220 10% 15% / 0.8)",
+        borderBottom: "1px solid hsla(220 20% 100% / 0.06)",
+      }}
+    >
+      <History className="w-3 h-3" style={{ color: "hsl(220 10% 40%)" }} />
+      <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
+        Previous {contextLabel} run ({statusLabel})
+      </span>
     </div>
   );
 }

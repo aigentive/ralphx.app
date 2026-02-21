@@ -34,6 +34,7 @@ import {
   EmptyState,
   LoadingState,
   ContextIndicator,
+  PreviousRunBanner,
   animationStyles,
   HistoryEmptyState,
 } from "./IntegratedChatPanel.components";
@@ -687,6 +688,14 @@ export function IntegratedChatPanel({
             <ChildSessionNotification
               sessionId={ideationSessionId}
               onNavigateToSession={handleNavigateToChildSession}
+            />
+          )}
+
+          {/* Previous Run Banner - shown when viewing stale agent conversation */}
+          {isAgentContext && !isHistoryMode && !isAgentRunning && !isSending && sortedMessages.length > 0 && (
+            <PreviousRunBanner
+              agentRunStatus={agentRunQuery.data?.status ?? null}
+              contextType={isMergeMode ? "merge" : isReviewMode ? "review" : "execution"}
             />
           )}
 
