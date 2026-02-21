@@ -263,7 +263,7 @@ When using Debate Team mode, the plan includes a side-by-side debate summary sho
 ★ Winner: WebSockets — Lead justification: bidirectional needed for collab editing.
 ```
 
-On narrow viewports (< 768px), this collapses to vertically stacked collapsible cards.
+As part of the responsive layout, on narrow viewports (typically under 768px wide) this table collapses into vertically stacked collapsible cards for easier use on smaller screens.
 
 ---
 
