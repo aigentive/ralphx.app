@@ -644,7 +644,7 @@ Guards are pre-conditions checked before certain transitions fire. If a guard fa
 | `qa_prep_timeout_secs` | How long to wait for the background qa-prep agent before proceeding |
 | `execution_timeout_secs` | Inactivity timeout before a stalled worker is detected |
 | `review_timeout_secs` | Inactivity timeout before a stalled reviewer is detected |
-| `ready_schedule_delay_ms` | Delay after entering Ready before scheduling (default: 600ms) |
+| `scheduler.ready_settle_ms` | Delay after entering Ready before the scheduler settles the Ready set (default: 600ms) |
 
 ### Merge Settings
 
