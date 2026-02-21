@@ -114,17 +114,19 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // When DB run state disagrees with registry (has_conflict), the agent likely died
         // silently. Instead of bothering the user, auto-restart within the retry budget.
         let decision = if decision.action == RecoveryActionKind::Prompt {
-            // Grace period: if the agent run was created < 30s ago, the PID may not
+            // Grace period: if the agent run was created recently, the PID may not
             // have been registered yet — skip this cycle and let registration catch up.
+            let grace_period_secs = reconciliation_config().merge_registry_grace_period_secs as i64;
             let within_grace_period = run.as_ref().map_or(false, |r| {
                 let age = chrono::Utc::now() - r.started_at;
-                age < chrono::Duration::seconds(30)
+                age < chrono::Duration::seconds(grace_period_secs)
             });
 
             if within_grace_period {
                 tracing::debug!(
                     task_id = task.id.as_str(),
-                    "Merge conflict detection within 30s grace period — skipping"
+                    grace_period_secs = grace_period_secs,
+                    "Merge conflict detection within grace period — skipping"
                 );
                 return false;
             }

@@ -80,6 +80,9 @@ pub struct ReconciliationConfig {
     /// Separate from `attempt_merge_deadline_secs` so git operations stay bounded
     /// while long-running validation (e.g. `cargo test`) gets adequate time.
     pub validation_deadline_secs: u64,
+    /// Grace period (seconds) after a merge agent run is created before the reconciler
+    /// checks for run-state vs registry mismatches. Covers agent startup latency.
+    pub merge_registry_grace_period_secs: u64,
 }
 
 impl Default for ReconciliationConfig {
@@ -104,6 +107,7 @@ impl Default for ReconciliationConfig {
             qa_max_wall_clock_minutes: 15,
             attempt_merge_deadline_secs: 120,
             validation_deadline_secs: 1200,
+            merge_registry_grace_period_secs: 60,
         }
     }
 }
@@ -256,6 +260,7 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.qa_max_wall_clock_minutes, "RALPHX_RECONCILIATION_QA_MAX_WALL_CLOCK_MINUTES");
     env_u64!(cfg.reconciliation.attempt_merge_deadline_secs, "RALPHX_RECONCILIATION_ATTEMPT_MERGE_DEADLINE_SECS");
     env_u64!(cfg.reconciliation.validation_deadline_secs, "RALPHX_RECONCILIATION_VALIDATION_DEADLINE_SECS");
+    env_u64!(cfg.reconciliation.merge_registry_grace_period_secs, "RALPHX_RECONCILIATION_MERGE_REGISTRY_GRACE_PERIOD_SECS");
 
     // Git
     env_u64!(cfg.git.cmd_timeout_secs, "RALPHX_GIT_CMD_TIMEOUT_SECS");
