@@ -302,15 +302,19 @@ pub async fn retry_merge(
     let retry_in_progress = metadata_json
         .get("merge_retry_in_progress")
         .and_then(|v| {
-            // Legacy boolean guard
-            if v.as_bool() == Some(true) {
-                return Some(true);
-            }
             // Timestamp guard — check staleness
-            let ts = v.as_str()?;
-            let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
-            let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);
-            Some(age < chrono::Duration::seconds(60))
+            if let Some(ts) = v.as_str() {
+                let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
+                let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);
+                return Some(age < chrono::Duration::seconds(60));
+            }
+            // Legacy boolean or other non-string: treat as stale (no timestamp = cannot verify freshness)
+            tracing::warn!(
+                task_id = task_id_parsed.as_str(),
+                value = ?v,
+                "Legacy non-timestamp merge_retry_in_progress found, treating as stale"
+            );
+            Some(false)
         })
         .unwrap_or(false);
     if retry_in_progress {
