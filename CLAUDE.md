@@ -16,7 +16,6 @@ ralphx/
 │  ├─ manifest.json       # Phase tracker (SOURCE OF TRUTH)
 │  ├─ plan.md             # Master spec
 │  └─ phases/prd_*.md     # Phase PRDs
-├─ logs/activity.md       # Progress log
 ├─ ralphx-plugin/         # Claude plugin (agents/skills/hooks)
 └─ ralphx-mcp-server/     # TS proxy → Tauri :3847
 ```
