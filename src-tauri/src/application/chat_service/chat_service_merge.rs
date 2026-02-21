@@ -419,18 +419,21 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             "attempt_merge_auto_complete: validation recovery mode — re-running validation"
         );
 
-        // Clear stale validation data from metadata so the UI doesn't show old results
-        // while the new validation is running
-        if let Some(ref meta_str) = task.metadata {
-            if let Ok(mut val) = serde_json::from_str::<serde_json::Value>(meta_str) {
-                if let Some(obj) = val.as_object_mut() {
-                    obj.remove("validation_log");
-                    obj.remove("validation_failures");
-                    task.metadata = Some(val.to_string());
-                    task.touch();
-                    let _ = task_repo.update(&task).await;
-                }
+        // Clear stale validation data and set revalidating flag so the UI shows re-validation state
+        {
+            let mut val = task
+                .metadata
+                .as_deref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+            if let Some(obj) = val.as_object_mut() {
+                obj.remove("validation_log");
+                obj.remove("validation_failures");
+                obj.insert("revalidating".to_string(), serde_json::json!(true));
             }
+            task.metadata = Some(val.to_string());
+            task.touch();
+            let _ = task_repo.update(&task).await;
         }
 
         // Emit validation_start event so the frontend clears stale live steps
@@ -440,9 +443,15 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             }));
         }
 
+        // Downcast generic app_handle to Wry for run_validation_commands
+        let wry_handle: Option<tauri::AppHandle<tauri::Wry>> = app_handle.and_then(|h| {
+            let any: Box<dyn std::any::Any> = Box::new(h.clone());
+            any.downcast::<tauri::AppHandle<tauri::Wry>>().ok().map(|b| *b)
+        });
+
         // Re-run validation commands on the merge path
         let validation_cancel = tokio_util::sync::CancellationToken::new();
-        match run_validation_commands(&project, &task, worktree, task_id_str, None, None, &project.merge_validation_mode, &validation_cancel).await {
+        match run_validation_commands(&project, &task, worktree, task_id_str, wry_handle.as_ref(), None, &project.merge_validation_mode, &validation_cancel).await {
             Some(result) if !result.all_passed => {
                 // Agent didn't fix it — revert and fall back to MergeIncomplete
                 tracing::warn!(
@@ -499,6 +508,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 if let Some(obj) = merged.as_object_mut() {
                     obj.insert("validation_revert_count".to_string(), serde_json::json!(prev_revert_count + 1));
                     obj.insert("merge_failure_source".to_string(), serde_json::json!("ValidationFailed"));
+                    obj.remove("revalidating");
                 }
                 task.metadata = Some(merged.to_string());
                 task.touch();
@@ -539,6 +549,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     .unwrap_or_else(|| serde_json::json!({}));
                 if let Some(obj) = merged_meta.as_object_mut() {
                     obj.insert("validation_log".to_string(), serde_json::json!(result.log));
+                    obj.remove("revalidating");
                 }
                 task.metadata = Some(merged_meta.to_string());
                 task.touch();
@@ -550,6 +561,18 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     task_id = task_id_str,
                     "attempt_merge_auto_complete: no validation commands found, proceeding"
                 );
+                // Clear revalidating flag
+                let mut val = task
+                    .metadata
+                    .as_deref()
+                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Some(obj) = val.as_object_mut() {
+                    obj.remove("revalidating");
+                }
+                task.metadata = Some(val.to_string());
+                task.touch();
+                let _ = task_repo.update(&task).await;
             }
         }
     }
