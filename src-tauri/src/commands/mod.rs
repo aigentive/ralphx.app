@@ -82,7 +82,7 @@ pub use ideation_commands::{
     OrchestratorMessageResponse, PriorityAssessmentResponse, SessionWithDataResponse,
     TaskProposalResponse, ToolCallResultResponse,
 };
-pub use merge_pipeline_commands::{get_merge_pipeline, MergePipelineResponse};
+pub use merge_pipeline_commands::{get_merge_phase_list, get_merge_pipeline, get_merge_progress, MergePipelineResponse};
 pub use methodology_commands::{
     activate_methodology, deactivate_methodology, get_active_methodology, get_methodologies,
     MethodologyActivationResponse, MethodologyPhaseResponse, MethodologyResponse,

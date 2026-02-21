@@ -10,7 +10,7 @@ use tauri::State;
 use crate::application::AppState;
 use crate::commands::execution_commands::ActiveProjectState;
 use crate::domain::entities::ProjectId;
-use crate::domain::entities::{InternalStatus, PlanBranch, PlanBranchStatus, Project, Task, TaskCategory};
+use crate::domain::entities::{InternalStatus, PlanBranch, Project, Task, TaskCategory};
 use crate::domain::state_machine::transition_handler::{
     has_main_merge_deferred_metadata, has_merge_deferred_metadata,
 };
@@ -91,7 +91,7 @@ fn resolve_merge_branches_from_cache(
     if task.category == TaskCategory::PlanMerge {
         if let Some(pb) = plan_branches
             .iter()
-            .find(|pb| pb.merge_task_id.as_ref() == Some(&task.id) && pb.status == PlanBranchStatus::Active)
+            .find(|pb| pb.merge_task_id.as_ref() == Some(&task.id))
         {
             return (pb.branch_name.clone(), base_branch);
         }
@@ -101,7 +101,7 @@ fn resolve_merge_branches_from_cache(
     if let Some(ref session_id) = task.ideation_session_id {
         if let Some(pb) = plan_branches
             .iter()
-            .find(|pb| pb.session_id == *session_id && pb.status == PlanBranchStatus::Active)
+            .find(|pb| pb.session_id == *session_id)
         {
             return (task_branch, pb.branch_name.clone());
         }
@@ -231,4 +231,126 @@ pub async fn get_merge_pipeline(
         waiting,
         needs_attention,
     })
+}
+
+/// Get stored merge progress events for a task (hydration endpoint).
+///
+/// Returns accumulated progress events from the in-memory store.
+/// Frontend calls this on mount before subscribing to live events
+/// to recover phases that fired before the component mounted.
+#[tauri::command]
+pub async fn get_merge_progress(
+    task_id: String,
+) -> Result<Vec<crate::domain::entities::merge_progress_event::MergeProgressEvent>, String> {
+    use crate::domain::entities::merge_progress_event::MERGE_PROGRESS_STORE;
+
+    Ok(MERGE_PROGRESS_STORE
+        .get(&task_id)
+        .map(|entry| entry.value().clone())
+        .unwrap_or_default())
+}
+
+/// Get stored merge phase list for a task (hydration endpoint).
+///
+/// Returns the dynamic phase list from the in-memory store.
+/// Frontend calls this on mount to recover the phase list that
+/// was emitted before the component mounted.
+#[tauri::command]
+pub async fn get_merge_phase_list(
+    task_id: String,
+) -> Result<Option<Vec<crate::domain::entities::merge_progress_event::MergePhaseInfo>>, String> {
+    use crate::domain::entities::merge_progress_event::MERGE_PHASE_LIST_STORE;
+
+    Ok(MERGE_PHASE_LIST_STORE
+        .get(&task_id)
+        .map(|entry| entry.value().clone()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::entities::{
+        PlanBranchId, PlanBranchStatus, ProjectId, TaskId,
+        artifact::ArtifactId,
+        types::IdeationSessionId,
+    };
+    use chrono::Utc;
+
+    fn make_project() -> Project {
+        Project::new("test-project".into(), "/tmp/test".into())
+    }
+
+    fn make_task(id: &str, category: TaskCategory) -> Task {
+        let mut task = Task::new(ProjectId::from_string("proj-1".to_string()), format!("task-{id}"));
+        task.id = TaskId::from_string(id.to_string());
+        task.category = category;
+        task.task_branch = Some(format!("ralphx/task-{id}"));
+        task
+    }
+
+    fn make_plan_branch(session_id: &str, branch_name: &str, status: PlanBranchStatus) -> PlanBranch {
+        PlanBranch {
+            id: PlanBranchId::new(),
+            plan_artifact_id: ArtifactId::from_string("art-1"),
+            session_id: IdeationSessionId::from_string(session_id),
+            project_id: ProjectId::from_string("proj-1".to_string()),
+            branch_name: branch_name.to_string(),
+            source_branch: "main".to_string(),
+            status,
+            merge_task_id: None,
+            created_at: Utc::now(),
+            merged_at: None,
+        }
+    }
+
+    #[test]
+    fn cache_returns_plan_branch_for_merge_task_regardless_of_status() {
+        let project = make_project();
+        let task = make_task("merge-1", TaskCategory::PlanMerge);
+
+        for status in [PlanBranchStatus::Active, PlanBranchStatus::Merged, PlanBranchStatus::Abandoned] {
+            let mut pb = make_plan_branch("sess-1", "feature/plan-1", status);
+            pb.merge_task_id = Some(TaskId::from_string("merge-1".to_string()));
+
+            let (source, target) = resolve_merge_branches_from_cache(&task, &project, &[pb]);
+            assert_eq!(source, "feature/plan-1", "source should be plan branch for status {status:?}");
+            assert_eq!(target, "main", "target should be base branch for status {status:?}");
+        }
+    }
+
+    #[test]
+    fn cache_returns_plan_branch_for_session_task_regardless_of_status() {
+        let project = make_project();
+        let mut task = make_task("task-1", TaskCategory::Regular);
+        task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1"));
+
+        for status in [PlanBranchStatus::Active, PlanBranchStatus::Merged, PlanBranchStatus::Abandoned] {
+            let pb = make_plan_branch("sess-1", "feature/plan-1", status);
+
+            let (source, target) = resolve_merge_branches_from_cache(&task, &project, &[pb]);
+            assert_eq!(source, "ralphx/task-task-1", "source should be task branch for status {status:?}");
+            assert_eq!(target, "feature/plan-1", "target should be plan branch for status {status:?}");
+        }
+    }
+
+    #[test]
+    fn cache_falls_back_to_base_branch_when_no_plan_branch() {
+        let project = make_project();
+        let mut task = make_task("task-2", TaskCategory::Regular);
+        task.ideation_session_id = Some(IdeationSessionId::from_string("sess-99"));
+
+        let (source, target) = resolve_merge_branches_from_cache(&task, &project, &[]);
+        assert_eq!(source, "ralphx/task-task-2");
+        assert_eq!(target, "main");
+    }
+
+    #[test]
+    fn cache_merge_task_without_matching_plan_branch_falls_back() {
+        let project = make_project();
+        let task = make_task("merge-99", TaskCategory::PlanMerge);
+
+        let (source, target) = resolve_merge_branches_from_cache(&task, &project, &[]);
+        assert_eq!(source, "ralphx/task-merge-99");
+        assert_eq!(target, "main");
+    }
 }

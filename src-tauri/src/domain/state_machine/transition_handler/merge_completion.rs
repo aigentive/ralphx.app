@@ -205,6 +205,9 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
         format!("Merge finalized successfully: {}", commit_sha),
     );
 
+    // Clean up in-memory merge progress hydration store
+    crate::domain::entities::merge_progress_event::clear_merge_progress(task_id_str);
+
     tracing::info!(
         task_id = task_id_str,
         commit_sha = %commit_sha,

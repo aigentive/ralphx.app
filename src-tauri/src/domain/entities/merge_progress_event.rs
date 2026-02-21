@@ -1,8 +1,47 @@
 // Merge progress event entity - high-level merge/validation progress tracking
 // Emitted during task merge operations to provide user-friendly status updates
 
+use std::sync::LazyLock;
+
 use chrono::{DateTime, Utc};
+use dashmap::DashMap;
 use serde::{Deserialize, Serialize};
+
+/// Global in-memory store for merge progress events keyed by task_id.
+/// Used to hydrate frontend on mount (events fire before frontend subscribes).
+pub static MERGE_PROGRESS_STORE: LazyLock<DashMap<String, Vec<MergeProgressEvent>>> =
+    LazyLock::new(DashMap::new);
+
+/// Global in-memory store for merge phase lists keyed by task_id.
+/// Used to hydrate frontend on mount (phase list fires before frontend subscribes).
+pub static MERGE_PHASE_LIST_STORE: LazyLock<DashMap<String, Vec<MergePhaseInfo>>> =
+    LazyLock::new(DashMap::new);
+
+/// Store a merge progress event in the global hydration store.
+/// Updates existing phases (started→passed/failed) by matching on phase,
+/// or appends new phases — mirrors frontend dedup logic.
+pub fn store_merge_progress(event: &MergeProgressEvent) {
+    let mut entry = MERGE_PROGRESS_STORE
+        .entry(event.task_id.clone())
+        .or_default();
+    let events = entry.value_mut();
+    if let Some(idx) = events.iter().position(|e| e.phase == event.phase) {
+        events[idx] = event.clone();
+    } else {
+        events.push(event.clone());
+    }
+}
+
+/// Store a merge phase list in the global hydration store.
+pub fn store_merge_phase_list(task_id: &str, phases: Vec<MergePhaseInfo>) {
+    MERGE_PHASE_LIST_STORE.insert(task_id.to_string(), phases);
+}
+
+/// Clear merge progress data for a task (call when merge completes or is abandoned).
+pub fn clear_merge_progress(task_id: &str) {
+    MERGE_PROGRESS_STORE.remove(task_id);
+    MERGE_PHASE_LIST_STORE.remove(task_id);
+}
 
 /// High-level phase of merge/validation process.
 ///
