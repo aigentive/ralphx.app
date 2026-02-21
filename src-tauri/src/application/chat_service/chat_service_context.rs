@@ -138,7 +138,10 @@ pub async fn resolve_working_directory(
                                 let is_merge_worktree = path
                                     .file_name()
                                     .and_then(|name| name.to_str())
-                                    .map(|name| name.starts_with("merge-"))
+                                    .map(|name| {
+                                        name.starts_with("merge-")
+                                            || name.starts_with("rebase-")
+                                    })
                                     .unwrap_or(false);
 
                                 if is_merge_worktree {
