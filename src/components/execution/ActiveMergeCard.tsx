@@ -8,6 +8,7 @@ import { Square, Loader2 } from "lucide-react";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { useCallback, useState } from "react";
 import { getStatusIconConfig } from "@/types/status-icons";
+import { BranchBadge } from "@/components/shared/BranchBadge";
 
 interface ActiveMergeCardProps {
   task: MergePipelineTask;
@@ -37,7 +38,6 @@ export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
     onStop(task.taskId);
   }, [onStop, task.taskId]);
 
-  const branchShort = task.targetBranch?.split("/").pop() ?? task.targetBranch;
   const conflictInfo = task.conflictFiles && task.conflictFiles.length > 0
     ? ` | ${task.conflictFiles.length} conflicts`
     : "";
@@ -57,11 +57,8 @@ export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
       >
         {task.title}
       </span>
-      <span
-        className="text-[11px] font-mono shrink-0 max-w-[100px] truncate"
-        style={{ color: "hsl(220 10% 50%)" }}
-      >
-        {branchShort}
+      <span className="shrink-0 max-w-[100px] truncate">
+        <BranchBadge branch={task.targetBranch} variant="muted" size="sm" />
       </span>
       {task.conflictFiles && task.conflictFiles.length > 0 && (
         <span

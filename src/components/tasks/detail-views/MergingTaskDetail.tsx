@@ -35,6 +35,7 @@ import { useConflictDetection } from "@/hooks/useConflictDetection";
 import { MergePhaseTimeline } from "./MergePhaseTimeline";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import type { Task } from "@/types/task";
+import { BranchBadge } from "@/components/shared/BranchBadge";
 
 interface MergingTaskDetailProps {
   task: Task;
@@ -419,7 +420,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               ? "Merge attempt captured in history"
               : isValidationRecovery ? "Agent was fixing build errors" : "Agent was resolving conflicts"
             : isProgrammaticPhase
-            ? `Attempting to merge ${branchName}`
+            ? "Attempting to merge..."
             : isValidationRecovery ? "AI agent is fixing build errors" : "AI agent is resolving conflicts"
         }
         variant={
@@ -525,9 +526,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       {/* Branch Info */}
       <section data-testid="branch-info-section">
         <SectionTitle muted>Branch</SectionTitle>
-        <p className="text-[12px] text-white/50 font-mono">
-          {branchName}
-        </p>
+        <BranchBadge branch={branchName} variant="muted" size="sm" />
       </section>
     </TwoColumnLayout>
   );

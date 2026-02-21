@@ -36,6 +36,7 @@ import { extractErrorMessage } from "@/lib/errors";
 import { useUiStore } from "@/stores/uiStore";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
+import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
 
 interface MergeIncompleteTaskDetailProps {
   task: Task;
@@ -51,22 +52,6 @@ interface MergeErrorContext {
   hasValidationFailures: boolean;
   recoveryEvents: MergeRecoveryEvent[];
   metadata: TaskMetadata | null;
-}
-
-/** Abbreviate long git branch names for display.
- *  "ralphx/ralphx/task-9f7d52f0-..." → "task-9f7d52f0"
- *  "ralphx/ralphx/plan-c785dcd0" → "plan-c785dcd0"
- *  "main" → "main" (unchanged)
- */
-function abbreviateBranch(branch: string): string {
-  // Strip leading "ralphx/<slug>/" prefix (e.g., "ralphx/ralphx/")
-  const parts = branch.split("/");
-  const name = parts.length >= 3 ? parts.slice(2).join("/") : branch;
-  // Truncate long UUIDs in task branch names: "task-9f7d52f0-9ce9-4c33-..." → "task-9f7d52f0"
-  return name.replace(
-    /^(task-[a-f0-9]{8})-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/,
-    "$1",
-  );
 }
 
 function parseMergeError(metadata?: string | null): MergeErrorContext | null {
@@ -120,14 +105,11 @@ function ErrorContextCard({ mergeError }: { mergeError: MergeErrorContext | null
         </div>
       )}
       {(mergeError.sourceBranch || mergeError.targetBranch) && (
-        <div className="flex items-center gap-2 text-[13px] text-white/60">
-          <span className="font-mono text-white/70" title={mergeError.sourceBranch ?? undefined}>
-            {abbreviateBranch(mergeError.sourceBranch ?? "unknown")}
-          </span>
-          <span className="text-white/40">&rarr;</span>
-          <span className="font-mono text-white/70" title={mergeError.targetBranch ?? undefined}>
-            {abbreviateBranch(mergeError.targetBranch ?? "unknown")}
-          </span>
+        <div className="text-[13px] text-white/60">
+          <BranchFlow
+            source={mergeError.sourceBranch ?? "unknown"}
+            target={mergeError.targetBranch ?? "unknown"}
+          />
         </div>
       )}
       {mergeError.diagnosticInfo && (
@@ -199,20 +181,11 @@ function RecoverySteps({ branchName, targetBranch, hasValidationFailures }: { br
           </ol>
         </>
       )}
-      <div className="flex gap-4 pt-2">
-        <div>
-          <span className="text-[11px] text-white/40">Source: </span>
-          <span className="text-[11px] text-white/60 font-mono">
-            {branchName}
-          </span>
-        </div>
-        {targetBranch && (
-          <div>
-            <span className="text-[11px] text-white/40">Target: </span>
-            <span className="text-[11px] text-white/60 font-mono">
-              {targetBranch}
-            </span>
-          </div>
+      <div className="pt-2">
+        {targetBranch ? (
+          <BranchFlow source={branchName} target={targetBranch} size="sm" />
+        ) : (
+          <BranchBadge branch={branchName} variant="muted" size="sm" />
         )}
       </div>
     </div>

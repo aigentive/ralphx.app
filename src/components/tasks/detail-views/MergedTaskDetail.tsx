@@ -25,6 +25,7 @@ import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import type { Task } from "@/types/task";
+import { BranchBadge } from "@/components/shared/BranchBadge";
 import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
 import { DurationDisplay } from "./shared/DurationDisplay";
 
@@ -105,9 +106,7 @@ function MergeInfoCard({
                 <span className="text-[11px] uppercase tracking-wider text-white/40 block">
                   Branch
                 </span>
-                <span className="text-[13px] text-white/60 font-mono truncate block">
-                  {branchName}
-                </span>
+                <BranchBadge branch={branchName} variant="muted" />
               </div>
               <span className="text-[10px] px-2 py-0.5 rounded bg-white/5 text-white/40">
                 Deleted
