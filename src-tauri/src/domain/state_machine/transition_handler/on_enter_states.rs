@@ -951,12 +951,50 @@ impl<'a> super::TransitionHandler<'a> {
                         task_id
                     )
                 } else if is_plan_update_conflict {
+                    // Read base_branch and plan branch name from task metadata for the prompt.
+                    let plan_meta: Option<serde_json::Value> = if let Some(ref task_repo) =
+                        self.machine.context.services.task_repo
+                    {
+                        let tid = TaskId::from_string(task_id.clone());
+                        task_repo
+                            .get_by_id(&tid)
+                            .await
+                            .ok()
+                            .flatten()
+                            .and_then(|t| {
+                                t.metadata
+                                    .as_ref()
+                                    .and_then(|m| serde_json::from_str(m).ok())
+                            })
+                    } else {
+                        None
+                    };
+                    let base_branch = plan_meta
+                        .as_ref()
+                        .and_then(|v| v.get("base_branch")?.as_str().map(String::from))
+                        .unwrap_or_else(|| "main".to_string());
+                    let plan_branch = plan_meta
+                        .as_ref()
+                        .and_then(|v| v.get("target_branch")?.as_str().map(String::from))
+                        .unwrap_or_default();
                     format!(
-                        "Resolve conflicts between main and the plan branch for task: {}. \
-                         Main was updated with fixes that conflict with the plan branch. \
-                         Resolve the conflicts on the plan branch, then commit. \
-                         After resolution, the task merge will be retried automatically.",
-                        task_id
+                        "Resolve the plan branch update conflict for task {task_id}.\n\n\
+                         The plan branch ({plan_branch}) needs to be updated from {base_branch} \
+                         before the task can merge, but there are merge conflicts.\n\n\
+                         Your working directory is the merge worktree where the plan branch is \
+                         already checked out. DO NOT merge the task branch — the system handles \
+                         that automatically after you finish.\n\n\
+                         Steps:\n\
+                         1. Run `git status` to confirm you are on the plan branch ({plan_branch})\n\
+                         2. Run `git merge {base_branch}` to trigger the merge and expose conflicts\n\
+                         3. Resolve all conflict markers in the conflicted files\n\
+                         4. Stage resolved files: `git add <files>`\n\
+                         5. Commit: `git commit --no-edit`\n\
+                         6. Exit — the system will automatically retry the task merge\n\n\
+                         If the conflict is too complex, call report_incomplete with a description.",
+                        task_id = task_id,
+                        base_branch = base_branch,
+                        plan_branch = plan_branch,
                     )
                 } else {
                     format!("Resolve merge conflicts for task: {}", task_id)

@@ -240,6 +240,7 @@ impl<'a> super::TransitionHandler<'a> {
                     "conflict_files": conflict_files.iter().map(|f| f.display().to_string()).collect::<Vec<_>>(),
                     "source_branch": source_branch,
                     "target_branch": target_branch,
+                    "base_branch": base_branch,
                     "plan_update_conflict": true,
                 });
                 task.metadata = Some(metadata.to_string());

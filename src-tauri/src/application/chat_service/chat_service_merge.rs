@@ -404,7 +404,132 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         return;
     }
 
-    // 3b. If this was a validation recovery (AutoFix mode), re-run validation before completing.
+    // 3b. If this was a plan_update_conflict (plan←main had conflicts), check if the
+    // merger agent successfully updated the plan branch from main. If so, clear the flag
+    // and retry the task merge by transitioning back to PendingMerge.
+    let task_meta_value: Option<serde_json::Value> = task
+        .metadata
+        .as_ref()
+        .and_then(|m| serde_json::from_str(m).ok());
+    let is_plan_update_conflict = task_meta_value
+        .as_ref()
+        .and_then(|v| v.get("plan_update_conflict")?.as_bool())
+        .unwrap_or(false);
+
+    if is_plan_update_conflict {
+        let base_branch = task_meta_value
+            .as_ref()
+            .and_then(|v| v.get("base_branch")?.as_str().map(String::from))
+            .unwrap_or_else(|| "main".to_string());
+        // target_branch is the plan branch that needed updating
+        let plan_branch = target_branch.clone();
+
+        // Check if the plan branch is now up-to-date with base_branch
+        let plan_up_to_date = match GitService::get_branch_sha(&main_repo_path, &base_branch).await {
+            Ok(main_sha) => GitService::is_commit_on_branch(&main_repo_path, &main_sha, &plan_branch)
+                .await
+                .unwrap_or(false),
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "attempt_merge_auto_complete: failed to get base branch SHA for plan_update_conflict check"
+                );
+                false
+            }
+        };
+
+        if plan_up_to_date {
+            tracing::info!(
+                task_id = task_id_str,
+                plan_branch = %plan_branch,
+                base_branch = %base_branch,
+                "attempt_merge_auto_complete: plan branch now up-to-date with base — retrying task merge"
+            );
+            // Clear plan_update_conflict flag so the PendingMerge retry proceeds normally
+            {
+                let mut meta = task_meta_value.clone().unwrap_or_else(|| serde_json::json!({}));
+                if let Some(obj) = meta.as_object_mut() {
+                    obj.remove("plan_update_conflict");
+                    obj.remove("conflict_files");
+                    obj.remove("error");
+                }
+                task.metadata = Some(meta.to_string());
+                task.touch();
+                if let Err(e) = task_repo.update(&task).await {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "attempt_merge_auto_complete: failed to clear plan_update_conflict metadata"
+                    );
+                }
+            }
+            let transition_service = TaskTransitionService::new(
+                Arc::clone(task_repo),
+                Arc::clone(task_dependency_repo),
+                Arc::clone(project_repo),
+                Arc::clone(chat_message_repo),
+                Arc::clone(chat_attachment_repo),
+                Arc::clone(conversation_repo),
+                Arc::clone(agent_run_repo),
+                Arc::clone(ideation_session_repo),
+                Arc::clone(activity_event_repo),
+                Arc::clone(message_queue),
+                Arc::clone(running_agent_registry),
+                Arc::clone(execution_state),
+                app_handle.cloned(),
+                Arc::clone(memory_event_repo),
+            );
+            let transition_service = if let Some(ref repo) = plan_branch_repo {
+                transition_service.with_plan_branch_repo(Arc::clone(repo))
+            } else {
+                transition_service
+            };
+            if let Err(e) = transition_service
+                .transition_task(&task_id, InternalStatus::PendingMerge)
+                .await
+            {
+                tracing::error!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "attempt_merge_auto_complete: failed to retry task merge via PendingMerge"
+                );
+            }
+        } else {
+            tracing::warn!(
+                task_id = task_id_str,
+                plan_branch = %plan_branch,
+                base_branch = %base_branch,
+                "attempt_merge_auto_complete: plan branch still not up-to-date — merger agent did not resolve plan←main conflict"
+            );
+            transition_to_merge_incomplete(
+                &task_id,
+                &format!(
+                    "Merger agent exited but plan branch {} was not updated from {}",
+                    plan_branch, base_branch
+                ),
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                chat_attachment_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                memory_event_repo,
+                execution_state,
+                plan_branch_repo,
+                app_handle,
+            )
+            .await;
+        }
+        return;
+    }
+
+    // 3c. If this was a validation recovery (AutoFix mode), re-run validation before completing.
     // The agent may have fixed code and committed, but we must verify validation passes.
     let is_validation_recovery = task
         .metadata
