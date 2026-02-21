@@ -182,7 +182,7 @@ QA is an optional phase that runs between execution and review. It is enabled pe
 
 #### QaRefining
 
-The QA refiner agent (`ralphx-qa-prep`) adapts the acceptance criteria generated during prep to match the actual implementation:
+The QA refiner agent (`qa-refiner`) adapts the acceptance criteria generated during QA prep to match the actual implementation:
 
 1. **Wait for QA prep** — If the background `qa-prep` agent (started during Ready) hasn't finished yet, QaRefining waits for it to complete before spawning the refiner.
 2. **Spawn QA refiner** — The refiner reviews the diff and updates test steps to reflect what was actually built.
