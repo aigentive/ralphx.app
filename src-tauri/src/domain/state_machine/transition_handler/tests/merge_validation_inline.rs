@@ -42,6 +42,7 @@ async fn install_retry_succeeds_after_transient_failure() {
         worktree_setup: vec![],
     }];
 
+    let cancel = tokio_util::sync::CancellationToken::new();
     let (log, had_failures) = run_install_phase(
         &entries,
         dir.path(),
@@ -49,6 +50,7 @@ async fn install_retry_succeeds_after_transient_failure() {
         None,
         &|s: &str| s.to_string(),
         "test",
+        &cancel,
     )
     .await;
 

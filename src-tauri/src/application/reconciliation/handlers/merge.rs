@@ -175,6 +175,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // Validation-in-progress guard: if validation commands are actively running
+        // (set before run_validation_commands, cleared after), skip reconciliation to
+        // prevent the reconciler from re-triggering merge while cargo test etc. runs.
+        if Self::has_validation_in_progress(task) {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping PendingMerge reconciliation — validation in progress"
+            );
+            return true;
+        }
+
         // Phase 4: Handle main-merge-deferred tasks (deferred because agents were running)
         // If no agents are running now, retry the merge. If agents are still running, skip.
         if has_main_merge_deferred_metadata(task) {
@@ -266,6 +277,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // Skip retry when branch_missing flag is set - surface to user instead
         if has_branch_missing_metadata(task) {
             return false;
+        }
+
+        // Validation-in-progress guard: same as PendingMerge guard — validation may
+        // still be running when the task transitions to MergeIncomplete (e.g., revert
+        // completes but subprocess lingers). Skip until validation flag expires.
+        if Self::has_validation_in_progress(task) {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping MergeIncomplete reconciliation — validation in progress"
+            );
+            return true;
         }
 
         // User-initiated retry guard: if retry_merge set the in-flight flag, the background

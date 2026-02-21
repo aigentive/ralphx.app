@@ -72,6 +72,7 @@ impl<'a> super::TransitionHandler<'a> {
                             task_id_str,
                             self.machine.context.services.app_handle.as_ref(),
                             context,
+                            &tokio_util::sync::CancellationToken::new(),
                         )
                         .await
                     {

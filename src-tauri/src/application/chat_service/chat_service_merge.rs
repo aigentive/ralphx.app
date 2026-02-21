@@ -416,7 +416,8 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         }
 
         // Re-run validation commands on the merge path
-        match run_validation_commands(&project, &task, worktree, task_id_str, None, None, &project.merge_validation_mode).await {
+        let validation_cancel = tokio_util::sync::CancellationToken::new();
+        match run_validation_commands(&project, &task, worktree, task_id_str, None, None, &project.merge_validation_mode, &validation_cancel).await {
             Some(result) if !result.all_passed => {
                 // Agent didn't fix it — revert and fall back to MergeIncomplete
                 tracing::warn!(

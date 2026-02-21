@@ -18,8 +18,10 @@ use crate::domain::repositories::{
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
+use dashmap::DashMap;
 use tauri::{AppHandle, Runtime, Wry};
 use tokio::sync::Mutex;
+use tokio_util::sync::CancellationToken;
 
 /// Container for all services used by the state machine.
 ///
@@ -87,6 +89,11 @@ pub struct TaskServices {
     /// Ideation session repository for fetching live session titles.
     /// Used by TransitionHandler to build descriptive plan merge commit messages.
     pub ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
+
+    /// Task-keyed CancellationTokens for in-flight post-merge validations.
+    /// Inserted in handle_outcome_success before validation, cancelled in
+    /// pre_merge_cleanup when a new merge attempt starts for the same task.
+    pub validation_tokens: Arc<DashMap<String, CancellationToken>>,
 }
 
 impl TaskServices {
@@ -116,6 +123,7 @@ impl TaskServices {
             merge_lock: Arc::new(Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
             ideation_session_repo: None,
+            validation_tokens: Arc::new(DashMap::new()),
         }
     }
 
@@ -197,6 +205,13 @@ impl TaskServices {
         self
     }
 
+    /// Set shared validation tokens DashMap (builder pattern).
+    /// Use this to share tokens across multiple TaskServices instances.
+    pub fn with_validation_tokens(mut self, tokens: Arc<DashMap<String, CancellationToken>>) -> Self {
+        self.validation_tokens = tokens;
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -218,6 +233,7 @@ impl TaskServices {
             merge_lock: Arc::new(Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
             ideation_session_repo: None,
+            validation_tokens: Arc::new(DashMap::new()),
         }
     }
 }
@@ -260,6 +276,7 @@ impl std::fmt::Debug for TaskServices {
             )
             .field("merge_lock", &"<Mutex<()>>")
             .field("merges_in_flight", &"<Mutex<HashSet<String>>>")
+            .field("validation_tokens", &format!("<DashMap len={}>", self.validation_tokens.len()))
             .field(
                 "ideation_session_repo",
                 &self

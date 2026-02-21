@@ -22,7 +22,7 @@ async fn run_validation_returns_none_when_no_analysis() {
     let project = make_project(Some("main"));
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_none());
 }
 
@@ -32,7 +32,7 @@ async fn run_validation_returns_none_when_empty_entries() {
     project.detected_analysis = Some("[]".to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_none());
 }
 
@@ -43,7 +43,7 @@ async fn run_validation_returns_none_when_no_validate_commands() {
         Some(r#"[{"path": ".", "label": "Test", "validate": []}]"#.to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_none());
 }
 
@@ -58,7 +58,7 @@ async fn run_validation_prefers_custom_over_detected() {
         Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_some());
     assert!(result.unwrap().all_passed);
 }
@@ -70,7 +70,7 @@ async fn run_validation_succeeds_with_passing_command() {
         Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(r.all_passed);
@@ -88,7 +88,7 @@ async fn run_validation_fails_with_failing_command() {
         Some(r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -108,7 +108,7 @@ async fn run_validation_resolves_template_vars() {
     let mut task = make_task(None, None);
     task.worktree_path = Some("/tmp/wt".to_string());
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_some());
     assert!(result.unwrap().all_passed);
 }
@@ -119,7 +119,7 @@ async fn run_validation_returns_none_for_invalid_json() {
     project.detected_analysis = Some("not valid json".to_string());
     let task = make_task(None, None);
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_none());
 }
 
@@ -345,7 +345,7 @@ async fn run_validation_skips_passed_when_cached() {
     ];
 
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, Some(&cached), &MergeValidationMode::Block)
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, Some(&cached), &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new())
             .await;
     assert!(result.is_some());
     let r = result.unwrap();
@@ -368,7 +368,7 @@ async fn run_validation_reruns_all_when_no_cache() {
     let task = make_task(None, None);
 
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(r.all_passed);
@@ -390,7 +390,7 @@ async fn fail_fast_block_mode_skips_remaining_on_first_failure() {
     let task = make_task(None, None);
 
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -414,7 +414,7 @@ async fn fail_fast_autofix_mode_skips_remaining_on_first_failure() {
     let task = make_task(None, None);
 
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::AutoFix).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::AutoFix, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -433,7 +433,7 @@ async fn warn_mode_runs_all_commands_even_after_failure() {
     let task = make_task(None, None);
 
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Warn).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Warn, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -459,7 +459,7 @@ async fn fail_fast_skips_across_multiple_entries() {
     let task = make_task(None, None);
 
     let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block).await;
+        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -498,6 +498,7 @@ async fn run_validation_skips_setup_when_merge_cwd_equals_project_root() {
     // Pass project root as merge_cwd — triggers the skip guard
     let result = run_validation_commands(
         &project, &task, dir.path(), "", None, None, &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
     ).await;
 
     // Validation commands should still run (setup is skipped, not validate)
@@ -528,6 +529,7 @@ async fn run_validation_runs_setup_when_merge_cwd_differs_from_project_root() {
     // Use a different path than project root — setup should run
     let result = run_validation_commands(
         &project, &task, worktree_dir.path(), "", None, None, &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
     ).await;
 
     assert!(result.is_some());
