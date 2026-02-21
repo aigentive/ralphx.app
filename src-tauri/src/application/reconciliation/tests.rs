@@ -3172,3 +3172,205 @@ fn get_rate_limit_retry_after_returns_none_when_not_set() {
         "Should return None when rate_limit_retry_after is not set"
     );
 }
+
+// ── has_merge_retry_in_progress helper ──────────────────────────────
+
+#[test]
+fn has_merge_retry_in_progress_returns_true_for_fresh_timestamp() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Fresh Retry".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_retry_in_progress": chrono::Utc::now().to_rfc3339()
+        })
+        .to_string(),
+    );
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::has_merge_retry_in_progress(&task),
+        "Fresh timestamp should indicate retry in progress"
+    );
+}
+
+#[test]
+fn has_merge_retry_in_progress_returns_false_for_expired_timestamp() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Expired Retry".to_string(),
+    );
+    // 120 seconds ago — well past the 60s expiry
+    let expired = chrono::Utc::now() - chrono::Duration::seconds(120);
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_retry_in_progress": expired.to_rfc3339()
+        })
+        .to_string(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_merge_retry_in_progress(&task),
+        "Expired timestamp (>60s) should NOT indicate retry in progress"
+    );
+}
+
+#[test]
+fn has_merge_retry_in_progress_returns_true_for_legacy_boolean() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Legacy Guard".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_retry_in_progress": true
+        })
+        .to_string(),
+    );
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::has_merge_retry_in_progress(&task),
+        "Legacy boolean true should still be treated as active"
+    );
+}
+
+#[test]
+fn has_merge_retry_in_progress_returns_false_for_no_metadata() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No Metadata".to_string(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_merge_retry_in_progress(&task),
+        "No metadata should return false"
+    );
+}
+
+#[test]
+fn has_merge_retry_in_progress_returns_false_for_missing_key() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Other Metadata".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({"some_other_key": "value"}).to_string(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_merge_retry_in_progress(&task),
+        "Metadata without merge_retry_in_progress key should return false"
+    );
+}
+
+// ── validation_revert_count boundary (>= check) ────────────────────
+
+#[tokio::test]
+async fn reconcile_merge_incomplete_blocks_at_exact_max_validation_reverts() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Task with validation_revert_count = 2 (== max of 2, should block with >= check)
+    let mut task = Task::new(project.id.clone(), "Boundary Count Task".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
+    task.metadata = Some(
+        serde_json::json!({
+            "error": "Merge validation failed",
+            "merge_failure_source": "validation_failed",
+            "validation_revert_count": 2,  // == VALIDATION_REVERT_MAX_COUNT (2)
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "validation_failed",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled,
+        "Should block auto-retry when revert_count == max (>= boundary)"
+    );
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Task should remain in MergeIncomplete at exact boundary"
+    );
+}
+
+// ── reconciler skips tasks with merge_retry_in_progress ─────────────
+
+#[tokio::test]
+async fn reconcile_merge_incomplete_skips_when_user_retry_in_progress() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Task with high revert_count BUT merge_retry_in_progress set —
+    // reconciler should skip it entirely and let the background task handle it.
+    let mut task = Task::new(project.id.clone(), "User Retry Task".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
+    task.metadata = Some(
+        serde_json::json!({
+            "validation_revert_count": 5,
+            "merge_failure_source": "validation_failed",
+            "merge_retry_in_progress": chrono::Utc::now().to_rfc3339(),
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+
+    // Should return true ("handled, skip") — NOT false ("blocked by revert loop")
+    assert!(
+        reconciled,
+        "Should skip reconciliation (return true) when user retry is in progress, \
+         even with revert_count=5 exceeding max=2"
+    );
+
+    // Task should NOT have been transitioned — it stays in MergeIncomplete
+    // for the background retry task to handle
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Task should remain in MergeIncomplete — background retry handles transition"
+    );
+}
