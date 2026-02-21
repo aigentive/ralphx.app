@@ -35,7 +35,7 @@ import { useConflictDetection } from "@/hooks/useConflictDetection";
 import { MergePhaseTimeline } from "./MergePhaseTimeline";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import type { Task } from "@/types/task";
-import { BranchBadge } from "@/components/shared/BranchBadge";
+import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
 
 interface MergingTaskDetailProps {
   task: Task;
@@ -311,6 +311,24 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     }
   }, [task.metadata]);
 
+  // Parse merge conflict context (plan←main or source←target) from task metadata
+  const mergeConflictContext = useMemo(() => {
+    if (!task.metadata) return null;
+    try {
+      const parsed = typeof task.metadata === "string" ? JSON.parse(task.metadata) : task.metadata;
+      const fallback = task.taskBranch ?? "task branch";
+      if (parsed?.plan_update_conflict === true) {
+        return { type: "plan_update" as const, base: String(parsed.base_branch ?? "main"), target: String(parsed.target_branch ?? fallback) };
+      }
+      if (parsed?.source_update_conflict === true) {
+        return { type: "source_update" as const, source: String(parsed.source_branch ?? fallback), target: String(parsed.target_branch ?? fallback) };
+      }
+      return null;
+    } catch {
+      return null;
+    }
+  }, [task.metadata, task.taskBranch]);
+
   // Detect re-validating state from task metadata (set when fixer agent completes, cleared after re-validation)
   const isRevalidating = useMemo(() => {
     if (!task.metadata) return false;
@@ -530,7 +548,13 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       {/* Branch Info */}
       <section data-testid="branch-info-section">
         <SectionTitle muted>Branch</SectionTitle>
-        <BranchBadge branch={branchName} variant="muted" size="sm" />
+        {mergeConflictContext?.type === "plan_update" ? (
+          <BranchFlow source={mergeConflictContext.base} target={mergeConflictContext.target} size="sm" />
+        ) : mergeConflictContext?.type === "source_update" ? (
+          <BranchFlow source={mergeConflictContext.source} target={mergeConflictContext.target} size="sm" />
+        ) : (
+          <BranchBadge branch={branchName} variant="muted" size="sm" />
+        )}
       </section>
     </TwoColumnLayout>
   );
