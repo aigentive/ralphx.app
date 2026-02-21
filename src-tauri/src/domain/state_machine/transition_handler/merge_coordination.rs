@@ -237,6 +237,10 @@ pub(super) async fn update_plan_from_main(
                     return PlanUpdateResult::Updated;
                 }
                 Err(e) => {
+                    // Abort any in-progress merge to leave the worktree clean for the next attempt.
+                    // Without this, a failed merge leaves the worktree in a dirty merge-in-progress
+                    // state, causing the next attempt to see spurious conflicts or fail differently.
+                    let _ = GitService::abort_merge(&wt_path).await;
                     return PlanUpdateResult::Error(format!(
                         "merge in existing worktree failed: {}", e
                     ));
