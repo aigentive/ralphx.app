@@ -492,7 +492,7 @@ When a task enters one of these states, the following happens automatically:
 
 | State | Side Effects |
 |-------|-------------|
-| **ready** | Spawn `ralphx-qa-prep` agent in background (if QA enabled). After 600ms → schedule next ready task. |
+| **ready** | Spawn `ralphx-qa-prep` agent in background (if QA enabled). After `scheduler.ready_settle_ms` (default 300ms; configurable via `RALPHX_SCHEDULER_READY_SETTLE_MS`) → schedule next ready task. |
 | **executing** | Create task git branch. Create worktree (Worktree mode). Spawn **worker** agent. |
 | **re_executing** | Checkout task branch (Local mode). Spawn **worker** agent with revision context (review notes + open issues). |
 | **qa_refining** | Wait for qa-prep background agent to finish (if still running). Spawn `qa-refiner` agent. |
