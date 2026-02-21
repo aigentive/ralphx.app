@@ -268,6 +268,14 @@ impl ExecutionState {
         set.remove(task_id);
     }
 
+    /// Check if a task currently has an auto-complete in flight.
+    /// Used by the reconciler to skip reconciliation when auto-complete is already running
+    /// (prevents misinterpreting the dedup guard's skip as a failure).
+    pub fn is_auto_complete_in_flight(&self, task_id: &str) -> bool {
+        let set = self.auto_completes_in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        set.contains(task_id)
+    }
+
     /// Emit execution:status_changed event with current state
     pub fn emit_status_changed<R: Runtime>(&self, handle: &AppHandle<R>, reason: &str) {
         let blocked_until = self.provider_blocked_until_epoch();
