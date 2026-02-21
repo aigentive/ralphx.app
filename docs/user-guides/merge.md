@@ -12,7 +12,7 @@ RalphX automates the entire process of merging your task's code changes into the
 | What merge strategy should I use? | **RebaseSquash** (default) gives the cleanest history. Use **Merge** if you need to preserve individual commits. |
 | My merge is stuck — what do I do? | Check the merge progress panel. If it says "Needs Attention", click **Retry Merge**. |
 | What does "Deferred" mean? | Another task is merging to the same branch. Yours will start automatically when the other finishes. |
-| Validation failed — now what? | In **Block** mode: fix your code and retry. In **AutoFix** mode: a fixer agent will attempt the fix automatically. |
+| Validation failed — now what? | In **Block** mode: fix your code and retry (or use **Retry (Skip Validation)** to bypass validation once). In **AutoFix** mode: a fixer agent attempts the fix automatically — the "Fixing Validation Errors" banner shows while it works. |
 | Can I merge manually? | RalphX handles merging automatically, but you can pause, stop, or retry at any time. |
 | What happens if I restart the app mid-merge? | RalphX recovers automatically. PendingMerge tasks restart the merge. Merging tasks are picked up by the reconciler. |
 
@@ -25,9 +25,12 @@ RalphX automates the entire process of merging your task's code changes into the
 3. [Merge Strategies](#merge-strategies)
 4. [The Merge Pipeline Step by Step](#the-merge-pipeline-step-by-step)
 5. [Branch Management](#branch-management)
+   - [Branch Freshness Conflicts](#branch-freshness-conflicts)
 6. [Validation](#validation)
 7. [AI Agent Involvement](#ai-agent-involvement)
 8. [Recovery and Retry](#recovery-and-retry)
+   - [Recovery Timeline](#recovery-timeline)
+   - [Recovery Status Badges](#recovery-status-badges)
 9. [Human-in-the-Loop Controls](#human-in-the-loop-controls)
 10. [Progress UI](#progress-ui)
 11. [Troubleshooting](#troubleshooting)
@@ -95,7 +98,7 @@ Every task in the merge pipeline is in one of five states. Understanding these h
 | **PendingMerge** | RalphX is attempting the merge automatically | Progress phases updating in real-time | No — wait for it to complete |
 | **Merging** | An AI agent is resolving conflicts or fixing validation failures | Agent activity in the merge chat | No — the agent is working on it |
 | **MergeIncomplete** | The merge attempt failed (git error, timeout, or validation failure) | "Needs Attention" badge | Click **Retry Merge** or investigate the error |
-| **MergeConflict** | The AI agent couldn't resolve the conflicts | "Needs Attention" badge with conflict details | Click **Retry Merge** (if code changed) or resolve manually |
+| **MergeConflict** | The AI agent couldn't resolve the conflicts | "Needs Attention" badge with conflict details; click any conflict file to open the inline **ConflictDiffViewer** | Click **Retry Merge** (if code changed) or resolve manually |
 | **Merged** | Merge is complete. Code is on the target branch. | Green checkmark, merge commit SHA shown | None — task is done |
 
 ### What Satisfies Dependencies
@@ -121,12 +124,14 @@ The merge strategy is a project-level setting. All tasks in the project use the 
 
 ### Checkout-Free vs. Worktree Isolation
 
-RalphX never switches your currently checked-out branch. Instead:
+> **Working Directory Safety:** RalphX never modifies your main checkout. Merge operations always happen in isolated worktrees or via checkout-free git plumbing — your working directory and staged changes are never touched.
 
-- **If the target branch happens to be checked out**: RalphX uses fast git plumbing commands ("checkout-free" merge) that update the branch without disrupting your working directory.
+All four merge strategies support a checkout-free path:
+
+- **If the target branch is checked out in the main repo**: RalphX uses fast git plumbing commands ("checkout-free" mode). Each strategy maps to a specific checkout-free operation: Merge → `checkout_free_merge`, Rebase → `checkout_free_fast_forward` (no rebase — fast-forward only), Squash → `checkout_free_squash_merge`, RebaseSquash → `checkout_free_squash_merge` (rebase step skipped).
 - **Otherwise**: RalphX creates a temporary **worktree** — an isolated copy of the repo — to perform the merge safely. The worktree is cleaned up after the merge completes.
 
-For Rebase and RebaseSquash strategies, RalphX creates **two worktrees**: one for the rebase operation and one for the final merge. This ensures complete isolation.
+For Rebase and RebaseSquash strategies, when running via the **worktree path** (not checkout-free), RalphX creates **two worktrees**: one for the rebase operation and one for the final merge. This two-worktree isolation does not apply to the checkout-free path.
 
 ---
 
@@ -152,10 +157,10 @@ When a task enters PendingMerge, here's exactly what happens:
 
 ### Phase 3: Branch Freshness
 
-7. **Plan branch update** — If merging to a plan branch, updates it from main first (to prevent false validation failures from stale code)
-8. **Source branch update** — If the source branch is behind the target, merges the target into the source to bring it up-to-date
+7. **Plan branch update** — If merging to a plan branch, updates it from main first (to prevent false validation failures from stale code). **Errors are fatal** — an error here moves the task to MergeIncomplete immediately.
+8. **Source branch update** — If the source branch is behind the target, merges the target into the source to bring it up-to-date. **Errors are non-fatal** — an error here is logged and the merge continues to Phase 4.
 
-If either update produces conflicts, the task transitions to **Merging** and an AI agent is spawned to resolve them.
+If either update produces **conflicts** (distinct from errors), the task transitions to **Merging** and an AI agent is spawned to resolve them (see [Branch Freshness Conflicts](#branch-freshness-conflicts)).
 
 ### Phase 4: Early-Exit Checks
 
@@ -188,7 +193,8 @@ If either update produces conflicts, the task transitions to **Merging** and an 
 ### Phase 9: Finalization
 
 16. **Complete merge** — Records the merge commit SHA, transitions the task to Merged
-17. **Cleanup** — Deletes the task branch and worktree, marks plan branches as merged, unblocks dependent tasks, schedules newly-ready tasks
+17. **Cleanup** — Deletes the task branch and worktree, marks plan branches as merged
+18. **Settle delay** — Waits `merge_settle_ms` before unblocking dependent tasks (allows git state to propagate), then schedules newly-ready tasks
 
 ---
 
@@ -226,7 +232,56 @@ Before merging, RalphX ensures branches are current:
 
 2. **Source branch from target** — If the source (task) branch is behind the target, RalphX merges the target into the source. This ensures the merged code includes all recent changes.
 
-Both updates happen in isolated worktrees. If conflicts arise, an AI agent is spawned to resolve them.
+Both updates happen in isolated worktrees. If conflicts arise, an AI agent is spawned to resolve them (see [Branch Freshness Conflicts](#branch-freshness-conflicts) below).
+
+### Branch Freshness Conflicts
+
+When a branch update produces merge conflicts (not errors), the task enters a sub-lifecycle inside Merging state.
+
+#### Plan-Update Conflict Sub-Lifecycle
+
+```
+PlanUpdateResult::Conflicts detected
+  → metadata["plan_update_conflict"]=true
+    (+ target_branch, base_branch, conflict_files, source_branch stored)
+  → worktree_path set to the merge worktree
+  → task transitions to Merging
+  → merger agent spawned (plan-update prompt variant)
+  → on agent exit: auto-complete checks if plan branch is now up-to-date with base
+      if yes  → clears conflict flags → transitions back to PendingMerge (full retry)
+      if still behind → MergeIncomplete
+```
+
+UI: The Merging detail view shows a **main→plan** branch flow (BranchFlow) to indicate the direction of the freshness update.
+
+#### Source-Update Conflict Sub-Lifecycle
+
+```
+SourceUpdateResult::Conflicts detected
+  → new merge worktree created with source branch
+  → metadata["source_update_conflict"]=true
+  → task transitions to Merging
+  → merger agent spawned (source-update prompt variant)
+  → on agent exit: auto-complete checks if source branch is now up-to-date with target
+      if yes  → clears conflict flag → transitions back to PendingMerge (full retry)
+      if still behind → MergeIncomplete
+```
+
+UI: The Merging detail view shows a **source→target** branch flow.
+
+**Key asymmetry:** Source update *errors* are non-fatal (merge continues). Plan update *errors* ARE fatal (MergeIncomplete immediately).
+
+#### Existing Worktree Conflict Routing
+
+`update_plan_from_main` uses a 3-path decision for the target branch:
+
+| Condition | Path |
+|-----------|------|
+| Target checked out in main repo | Checkout-free merge (no new worktree) |
+| Target in an **existing worktree** | Merges main directly inside that existing worktree |
+| Target not checked out anywhere | Creates a new temporary worktree |
+
+For the existing-worktree path: if a `MERGE_HEAD` file is present from a prior attempt, the operation routes to `Conflicts` instead of `Error` — preserving any partial conflict resolution already in progress.
 
 ### Branch Cleanup After Merge
 
@@ -273,13 +328,16 @@ Validation runs in two phases:
 **Block mode:**
 1. The merge commit is reverted (`git reset --hard HEAD~1`)
 2. The task transitions to MergeIncomplete
-3. A `validation_revert_count` is incremented
-4. The reconciler may auto-retry (with exponential backoff)
+3. `validation_revert_count` is incremented (clicking **Retry Merge** resets this counter to 0)
+4. If `git reset` itself fails, the `merge_commit_unrevertable` flag is set — the task moves to MergeIncomplete but the merge commit remains on the target branch and requires manual cleanup
+5. The reconciler may auto-retry (with exponential backoff)
 
 **AutoFix mode:**
 1. The merge commit is **kept** (not reverted)
-2. A dedicated fixer worktree is created
-3. The task transitions to Merging
+2. A dedicated fixer worktree is created on the target branch
+   - If the original merge was checkout-free: a new worktree is created explicitly for the fixer
+   - If fixer worktree creation fails: the merge is reverted and the task moves to MergeIncomplete
+3. The task transitions to Merging; the UI shows a **"Fixing Validation Errors"** banner with a wrench icon
 4. A fixer agent is spawned with the validation failure details
 5. The agent reads the failures, fixes the code, and commits
 6. On agent completion, validation is re-run to confirm the fix
@@ -313,6 +371,8 @@ RalphX uses AI agents to handle merge conflicts and validation failures automati
 **Prompt variants:**
 - **Standard conflicts**: "Resolve merge conflicts for task: {task_id}"
 - **Plan-update conflicts**: "Resolve conflicts between main and the plan branch" (when updating a plan branch from main produced conflicts)
+- **Source-update conflicts**: "Resolve conflicts when updating source branch from target" (when updating the source branch from the target produced conflicts)
+- **Validation recovery**: "Fix validation failures for task: {task_id}. The merge succeeded but post-merge validation commands failed..." (AutoFix mode fixer agent)
 
 ### Fixer Agent
 
@@ -332,6 +392,7 @@ The fixer agent is actually the same merger agent with a different prompt: "Fix 
 1. **Spawn**: The agent is started via `ChatService.send_message()` with the `Merge` context type
 2. **Monitor**: The reconciler checks agent health via heartbeat-based effective age
 3. **Completion**: When the agent exits, `attempt_merge_auto_complete()` runs:
+   - Reads `target_branch` from task metadata (set at conflict-detection time) — not re-resolved from scratch, so it reflects the branch at the time the conflict was detected
    - Checks for stale rebase/merge state
    - Checks for conflict markers
    - Re-runs validation (if applicable)
@@ -401,7 +462,26 @@ RalphX tracks the full history of merge attempts in structured metadata:
 - **Failure sources**: TransientGit (safe to retry), AgentReported (needs human), SystemDetected (safe to retry), ValidationFailed (needs code fix)
 - **Recovery states**: Deferred, Retrying, Failed, Succeeded, RateLimited
 
-This metadata is visible in the task detail view and helps diagnose persistent merge issues.
+### Recovery Timeline
+
+The recovery timeline in the task detail view shows each event with:
+- **Source badge**: System (automated pipeline), Auto (reconciler-triggered), or User (manual action)
+- **Attempt number** and timestamp
+- **Message** describing what happened at that step
+
+### Recovery Status Badges
+
+Tasks in the merge pipeline show one of these status badges based on recovery history:
+
+| Badge | Meaning |
+|-------|---------|
+| **Auto-recovery attempted** | The reconciler has retried at least once automatically |
+| **Deferred due to active merge** | Waiting for another merge on the same branch to complete |
+| **Last attempt failed** | The most recent attempt ended in failure |
+
+### Unblocking Dependents
+
+After a merge completes, dependent tasks are not unblocked immediately — a `merge_settle_ms` delay is applied first to allow git state to propagate before scheduling newly-ready tasks.
 
 ---
 
@@ -411,7 +491,8 @@ This metadata is visible in the task detail view and helps diagnose persistent m
 
 | Action | When to use | What it does |
 |--------|------------|--------------|
-| **Retry Merge** | MergeIncomplete or MergeConflict | Transitions the task back to PendingMerge to re-attempt the merge |
+| **Retry Merge** | MergeIncomplete or MergeConflict | Transitions the task back to PendingMerge to re-attempt the merge; resets `validation_revert_count` to 0 |
+| **Retry (Skip Validation)** | MergeIncomplete when validation caused the failure | Same as Retry Merge but skips post-merge validation on the next attempt |
 | **Pause** | Any merge state | Pauses the merge (and any running agent). Resume to continue. |
 | **Stop** | Any merge state | Stops the merge. The task moves to Stopped. Restart to try again. |
 | **Cancel** | Any merge state | Cancels the task entirely. Unblocks dependent tasks. |
@@ -457,6 +538,12 @@ These phases appear for every merge:
 | **Merge** | Running the actual git merge/rebase operation |
 | **Finalize** | Publishing the merge commit and cleaning up |
 
+### Phase Descriptions
+
+Each phase in the progress timeline has an always-visible subtitle describing its current activity (not just a tooltip). This updates as the phase progresses.
+
+The full phase list is emitted in two batches: early structural phases appear first, then the complete list (including validation phases) is emitted when validation begins.
+
 ### Dynamic Validation Phases
 
 If validation is enabled, additional phases appear — one per validation command:
@@ -489,6 +576,27 @@ The merge pipeline panel groups tasks into three categories:
 - **Needs Attention** — Tasks that need your intervention (MergeConflict, MergeIncomplete)
 
 Each task shows its source/target branches, any blocking information, conflict files, and error context.
+
+The merge pipeline popover also shows:
+- **Elapsed time counter** — how long the current merge attempt has been running
+- **Deferred agent count** — number of tasks in main-merge-deferred state waiting for sibling tasks to finish
+- **Stop button** — immediately stops the active merge
+
+### Merge Conversation Navigation
+
+When multiple merge attempts have occurred (each spawning its own agent conversation), the UI auto-selects the most recent merge conversation by `createdAt`, ensuring you always see the latest agent activity. Each merge conversation is linked in the task detail view.
+
+### Pending and Merging Detail Views
+
+Both the PendingMerge and Merging detail views show the **source→target** branch flow (BranchFlow) so you can see exactly which branches are involved in the current merge. For freshness-conflict sub-lifecycles, the direction reflects the conflict: **main→plan** for plan-update conflicts, **source→target** for source-update conflicts.
+
+### Merged Task Detail
+
+Completed merges show:
+- **Merge commit SHA** (with copy/link actions)
+- **Branch tag** — "Deleted" label on the source branch after cleanup
+- **Commit history** for all commits included in the merge
+- **Validation history** across all attempts (commands run, pass/fail status)
 
 ### Progress Hydration
 
