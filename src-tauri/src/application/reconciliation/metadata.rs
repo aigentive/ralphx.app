@@ -138,11 +138,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
             .and_then(|v| {
                 let val = v.get("merge_retry_in_progress")?;
-                // Legacy boolean guard — treat as active (no expiry info)
-                if val.as_bool() == Some(true) {
-                    return Some(true);
-                }
-                // Timestamp-based guard — check staleness
+                // Only valid timestamps < 60s old count as active.
+                // Legacy boolean `true` or other non-string values have no timestamp
+                // and cannot be verified as fresh — treat as stale.
                 let ts = val.as_str()?;
                 let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
                 let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);

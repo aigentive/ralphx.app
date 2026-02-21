@@ -3214,7 +3214,7 @@ fn has_merge_retry_in_progress_returns_false_for_expired_timestamp() {
 }
 
 #[test]
-fn has_merge_retry_in_progress_returns_true_for_legacy_boolean() {
+fn has_merge_retry_in_progress_returns_false_for_legacy_boolean() {
     let mut task = Task::new(
         crate::domain::entities::ProjectId::new(),
         "Legacy Guard".to_string(),
@@ -3226,8 +3226,8 @@ fn has_merge_retry_in_progress_returns_true_for_legacy_boolean() {
         .to_string(),
     );
     assert!(
-        ReconciliationRunner::<tauri::Wry>::has_merge_retry_in_progress(&task),
-        "Legacy boolean true should still be treated as active"
+        !ReconciliationRunner::<tauri::Wry>::has_merge_retry_in_progress(&task),
+        "Legacy boolean true should be treated as stale (no timestamp = cannot verify freshness)"
     );
 }
 
