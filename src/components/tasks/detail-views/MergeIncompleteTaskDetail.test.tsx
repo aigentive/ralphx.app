@@ -21,6 +21,11 @@ vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
 }));
 
+// Mock useMergePipeline to avoid invoke interference
+vi.mock("@/hooks/useMergePipeline", () => ({
+  useMergePipeline: vi.fn().mockReturnValue({ data: undefined }),
+}));
+
 // Mock useUiStore
 vi.mock("@/stores/uiStore", () => ({
   useUiStore: vi.fn((selector) => {

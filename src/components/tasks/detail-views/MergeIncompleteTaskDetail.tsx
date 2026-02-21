@@ -37,6 +37,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
+import { useMergePipeline } from "@/hooks/useMergePipeline";
 
 interface MergeIncompleteTaskDetailProps {
   task: Task;
@@ -76,7 +77,7 @@ function parseMergeError(metadata?: string | null): MergeErrorContext | null {
 /**
  * ErrorContextCard - Shows actual error details or generic fallback
  */
-function ErrorContextCard({ mergeError }: { mergeError: MergeErrorContext | null }) {
+function ErrorContextCard({ mergeError, resolvedSource, resolvedTarget }: { mergeError: MergeErrorContext | null; resolvedSource?: string; resolvedTarget?: string | null }) {
   if (!mergeError) {
     return (
       <div className="space-y-3">
@@ -104,11 +105,11 @@ function ErrorContextCard({ mergeError }: { mergeError: MergeErrorContext | null
           {mergeError.error}
         </div>
       )}
-      {(mergeError.sourceBranch || mergeError.targetBranch) && (
+      {(resolvedSource || resolvedTarget || mergeError.sourceBranch || mergeError.targetBranch) && (
         <div className="text-[13px] text-white/60">
           <BranchFlow
-            source={mergeError.sourceBranch ?? "unknown"}
-            target={mergeError.targetBranch ?? "unknown"}
+            source={resolvedSource ?? mergeError.sourceBranch ?? "unknown"}
+            target={resolvedTarget ?? mergeError.targetBranch ?? "unknown"}
           />
         </div>
       )}
@@ -517,7 +518,14 @@ export function MergeIncompleteTaskDetail({
   const { confirm } = useConfirmation();
 
   const mergeError = parseMergeError(task.metadata);
-  const branchName = mergeError?.sourceBranch ?? task.taskBranch ?? "task branch";
+
+  // Use merge pipeline data for correct branch resolution (metadata may have stale target_branch)
+  const { data: pipelineData } = useMergePipeline(task.projectId);
+  const pipelineTask = pipelineData?.needsAttention.find((t) => t.taskId === task.id);
+  const resolvedSourceBranch = pipelineTask?.sourceBranch ?? mergeError?.sourceBranch ?? task.taskBranch ?? "task branch";
+  const resolvedTargetBranch = pipelineTask?.targetBranch ?? mergeError?.targetBranch ?? null;
+
+  const branchName = resolvedSourceBranch;
 
   // Derive recovery state badges from events
   const hasAutoRetryAttempts = mergeError?.recoveryEvents.some(
@@ -691,7 +699,7 @@ export function MergeIncompleteTaskDetail({
       <section data-testid="error-context-section">
         <SectionTitle>What Happened</SectionTitle>
         <DetailCard variant="error">
-          <ErrorContextCard mergeError={mergeError} />
+          <ErrorContextCard mergeError={mergeError} resolvedSource={resolvedSourceBranch} resolvedTarget={resolvedTargetBranch} />
         </DetailCard>
       </section>
 
@@ -708,7 +716,7 @@ export function MergeIncompleteTaskDetail({
         <section data-testid="recovery-steps-section">
           <SectionTitle>How to Recover</SectionTitle>
           <DetailCard>
-            <RecoverySteps branchName={branchName} targetBranch={mergeError?.targetBranch ?? null} hasValidationFailures={mergeError?.hasValidationFailures ?? false} />
+            <RecoverySteps branchName={branchName} targetBranch={resolvedTargetBranch} hasValidationFailures={mergeError?.hasValidationFailures ?? false} />
           </DetailCard>
         </section>
       )}
