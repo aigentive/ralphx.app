@@ -491,5 +491,4 @@ impl StreamProcessor {
 }
 
 #[cfg(test)]
-#[path = "tests.rs"]
 mod tests;
