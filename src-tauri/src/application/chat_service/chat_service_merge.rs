@@ -529,6 +529,118 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         return;
     }
 
+    // 3b-2. Handle source_update_conflict: agent resolved source←target conflicts.
+    // Verify source branch is now up-to-date with target, then retry the task merge.
+    let is_source_update_conflict = task_meta_value
+        .as_ref()
+        .and_then(|v| v.get("source_update_conflict")?.as_bool())
+        .unwrap_or(false);
+
+    if is_source_update_conflict {
+        let source_up_to_date = match GitService::get_branch_sha(&main_repo_path, &target_branch).await {
+            Ok(target_sha) => GitService::is_commit_on_branch(&main_repo_path, &target_sha, &source_branch)
+                .await
+                .unwrap_or(false),
+            Err(e) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "attempt_merge_auto_complete: failed to get target branch SHA for source_update_conflict check"
+                );
+                false
+            }
+        };
+
+        if source_up_to_date {
+            tracing::info!(
+                task_id = task_id_str,
+                source_branch = %source_branch,
+                target_branch = %target_branch,
+                "attempt_merge_auto_complete: source branch now up-to-date with target — retrying task merge"
+            );
+            // Clear source_update_conflict flag so the PendingMerge retry proceeds normally
+            {
+                let mut meta = task_meta_value.clone().unwrap_or_else(|| serde_json::json!({}));
+                if let Some(obj) = meta.as_object_mut() {
+                    obj.remove("source_update_conflict");
+                    obj.remove("conflict_files");
+                    obj.remove("error");
+                }
+                task.metadata = Some(meta.to_string());
+                task.touch();
+                if let Err(e) = task_repo.update(&task).await {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "attempt_merge_auto_complete: failed to clear source_update_conflict metadata"
+                    );
+                }
+            }
+            let transition_service = TaskTransitionService::new(
+                Arc::clone(task_repo),
+                Arc::clone(task_dependency_repo),
+                Arc::clone(project_repo),
+                Arc::clone(chat_message_repo),
+                Arc::clone(chat_attachment_repo),
+                Arc::clone(conversation_repo),
+                Arc::clone(agent_run_repo),
+                Arc::clone(ideation_session_repo),
+                Arc::clone(activity_event_repo),
+                Arc::clone(message_queue),
+                Arc::clone(running_agent_registry),
+                Arc::clone(execution_state),
+                app_handle.cloned(),
+                Arc::clone(memory_event_repo),
+            );
+            let transition_service = if let Some(ref repo) = plan_branch_repo {
+                transition_service.with_plan_branch_repo(Arc::clone(repo))
+            } else {
+                transition_service
+            };
+            if let Err(e) = transition_service
+                .transition_task(&task_id, InternalStatus::PendingMerge)
+                .await
+            {
+                tracing::error!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "attempt_merge_auto_complete: failed to retry task merge via PendingMerge (source_update_conflict)"
+                );
+            }
+        } else {
+            tracing::warn!(
+                task_id = task_id_str,
+                source_branch = %source_branch,
+                target_branch = %target_branch,
+                "attempt_merge_auto_complete: source branch still not up-to-date — merger agent did not resolve source←target conflict"
+            );
+            transition_to_merge_incomplete(
+                &task_id,
+                &format!(
+                    "Merger agent exited but source branch {} is not yet up-to-date with {}",
+                    source_branch, target_branch
+                ),
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                chat_attachment_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                memory_event_repo,
+                execution_state,
+                plan_branch_repo,
+                app_handle,
+            )
+            .await;
+        }
+        return;
+    }
+
     // 3c. If this was a validation recovery (AutoFix mode), re-run validation before completing.
     // The agent may have fixed code and committed, but we must verify validation passes.
     let is_validation_recovery = task

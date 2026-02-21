@@ -921,7 +921,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
 
                 // Check task metadata for merger prompt context flags
-                let (is_validation_recovery, is_plan_update_conflict) =
+                let (is_validation_recovery, is_plan_update_conflict, is_source_update_conflict) =
                     if let Some(ref task_repo) = self.machine.context.services.task_repo {
                         let tid = TaskId::from_string(task_id.clone());
                         if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
@@ -934,12 +934,15 @@ impl<'a> super::TransitionHandler<'a> {
                             let plan_conflict = meta.as_ref()
                                 .and_then(|v| v.get("plan_update_conflict")?.as_bool())
                                 .unwrap_or(false);
-                            (validation, plan_conflict)
+                            let source_conflict = meta.as_ref()
+                                .and_then(|v| v.get("source_update_conflict")?.as_bool())
+                                .unwrap_or(false);
+                            (validation, plan_conflict, source_conflict)
                         } else {
-                            (false, false)
+                            (false, false, false)
                         }
                     } else {
-                        (false, false)
+                        (false, false, false)
                     };
 
                 let prompt = if is_validation_recovery {
@@ -996,6 +999,50 @@ impl<'a> super::TransitionHandler<'a> {
                         base_branch = base_branch,
                         plan_branch = plan_branch,
                     )
+                } else if is_source_update_conflict {
+                    // Read source_branch and target_branch from task metadata for the prompt.
+                    let source_meta: Option<serde_json::Value> = if let Some(ref task_repo) =
+                        self.machine.context.services.task_repo
+                    {
+                        let tid = TaskId::from_string(task_id.clone());
+                        task_repo
+                            .get_by_id(&tid)
+                            .await
+                            .ok()
+                            .flatten()
+                            .and_then(|t| {
+                                t.metadata
+                                    .as_ref()
+                                    .and_then(|m| serde_json::from_str(m).ok())
+                            })
+                    } else {
+                        None
+                    };
+                    let source_branch = source_meta
+                        .as_ref()
+                        .and_then(|v| v.get("source_branch")?.as_str().map(String::from))
+                        .unwrap_or_default();
+                    let target_branch = source_meta
+                        .as_ref()
+                        .and_then(|v| v.get("target_branch")?.as_str().map(String::from))
+                        .unwrap_or_default();
+                    format!(
+                        "Resolve the source branch update conflict for task {task_id}.\n\n\
+                         The task branch ({source_branch}) needs to incorporate changes from \
+                         {target_branch} before it can be merged, but there are conflicts.\n\n\
+                         Your working directory is the merge worktree with the task branch checked out.\n\n\
+                         Steps:\n\
+                         1. Run `git status` to confirm you are on the task branch ({source_branch})\n\
+                         2. Run `git merge {target_branch}` to trigger the merge and expose conflicts\n\
+                         3. Resolve all conflict markers in the conflicted files\n\
+                         4. Stage resolved files: `git add <files>`\n\
+                         5. Commit: `git commit --no-edit`\n\
+                         6. Exit — the system will automatically retry the task merge\n\n\
+                         If the conflict is too complex, call report_incomplete with a description.",
+                        task_id = task_id,
+                        source_branch = source_branch,
+                        target_branch = target_branch,
+                    )
                 } else {
                     format!("Resolve merge conflicts for task: {}", task_id)
                 };
@@ -1004,6 +1051,7 @@ impl<'a> super::TransitionHandler<'a> {
                     task_id = task_id,
                     is_validation_recovery = is_validation_recovery,
                     is_plan_update_conflict = is_plan_update_conflict,
+                    is_source_update_conflict = is_source_update_conflict,
                     "on_enter(Merging): Spawning merger agent via ChatService"
                 );
 
