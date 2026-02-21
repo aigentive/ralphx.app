@@ -273,3 +273,131 @@ async fn update_plan_uses_existing_worktree_when_branch_checked_out() {
         .current_dir(repo.path())
         .output();
 }
+
+/// Regression test (Fix 0): existing-worktree path with merge-already-in-progress
+/// returns PlanUpdateResult::Conflicts instead of Error.
+///
+/// Before the fix, when the plan branch was already in a conflicted merge state
+/// (MERGE_HEAD exists from a prior attempt), calling merge_branch() would return
+/// Err("You have not concluded your merge") — no "CONFLICT" in stderr — causing
+/// the Err arm to call abort_merge and return PlanUpdateResult::Error.
+///
+/// After the fix, the Err arm checks is_merge_in_progress: if true, the conflict
+/// markers from the prior attempt are still there — return PlanUpdateResult::Conflicts
+/// so the agent can resolve them rather than treating it as a fatal error.
+#[tokio::test]
+async fn existing_worktree_with_prior_conflict_returns_conflicts_not_error() {
+    // Setup: plan branch behind main WITH conflicting changes (so merge conflicts)
+    let repo = setup_real_git_repo();
+    let path = repo.path();
+
+    // Create plan branch from main
+    let _ = std::process::Command::new("git")
+        .args(["branch", "plan/conflict-existing-wt"])
+        .current_dir(path)
+        .output();
+
+    // Add a conflicting commit to main
+    std::fs::write(path.join("shared.rs"), "// main version").unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["add", "shared.rs"])
+        .current_dir(path)
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["commit", "-m", "fix: main changes shared.rs"])
+        .current_dir(path)
+        .output();
+
+    // Add a conflicting commit on the plan branch
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "plan/conflict-existing-wt"])
+        .current_dir(path)
+        .output();
+    std::fs::write(path.join("shared.rs"), "// plan version").unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["add", "shared.rs"])
+        .current_dir(path)
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["commit", "-m", "feat: plan changes shared.rs"])
+        .current_dir(path)
+        .output();
+
+    // Back to main
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output();
+
+    let project = make_test_project(&repo.path_string());
+
+    // Simulate "prior attempt left worktree in conflicted state":
+    // Create a worktree with the plan branch, then start a conflicting merge in it
+    // (leaving MERGE_HEAD in place without committing or aborting).
+    let worktree_dir = tempfile::tempdir().unwrap();
+    let wt_path = worktree_dir.path().join("merge-prior-conflict");
+    let _ = std::process::Command::new("git")
+        .args(["worktree", "add", &wt_path.to_string_lossy(), "plan/conflict-existing-wt"])
+        .current_dir(path)
+        .output()
+        .expect("git worktree add");
+
+    // Start the merge in the worktree — this will conflict (both sides modified shared.rs)
+    // and leave MERGE_HEAD in place (no abort, simulating a prior attempt that was interrupted).
+    let _ = std::process::Command::new("git")
+        .args(["merge", "main", "--no-edit"])
+        .current_dir(&wt_path)
+        .output();
+    // Do NOT abort — the worktree is now in a conflicted state with MERGE_HEAD
+
+    // Verify precondition: merge is actually in progress in the worktree
+    let merge_head_exists = wt_path.join(".git").join("MERGE_HEAD").exists()
+        || wt_path.join("MERGE_HEAD").exists();
+    // Also check via the git-state pattern (worktrees store MERGE_HEAD in .git/worktrees/<name>/)
+    let merge_head_in_git = std::fs::read_dir(path.join(".git").join("worktrees"))
+        .ok()
+        .and_then(|mut entries| {
+            entries.find_map(|e| {
+                let entry = e.ok()?;
+                let merge_head = entry.path().join("MERGE_HEAD");
+                if merge_head.exists() { Some(true) } else { None }
+            })
+        })
+        .unwrap_or(false);
+
+    if !merge_head_exists && !merge_head_in_git {
+        // If for some reason the merge didn't conflict (environment difference),
+        // skip this test — it requires a real conflicted state.
+        let _ = std::process::Command::new("git")
+            .args(["worktree", "remove", "--force", &wt_path.to_string_lossy()])
+            .current_dir(path)
+            .output();
+        return;
+    }
+
+    // NOW call update_plan_from_main — should detect the existing worktree,
+    // call merge_branch which returns Err("You have not concluded your merge"),
+    // then detect is_merge_in_progress=true and return Conflicts instead of Error.
+    let result = update_plan_from_main(
+        path,
+        "plan/conflict-existing-wt",
+        "main",
+        &project,
+        "task-existing-conflict-wt",
+        None,
+    )
+    .await;
+
+    assert!(
+        matches!(result, PlanUpdateResult::Conflicts { .. }),
+        "Existing worktree with prior merge-in-progress must return Conflicts, not Error. \
+         Before Fix 0, this returned PlanUpdateResult::Error. Got: {:?}",
+        result
+    );
+
+    // Clean up
+    let _ = std::process::Command::new("git")
+        .args(["worktree", "remove", "--force", &wt_path.to_string_lossy()])
+        .current_dir(path)
+        .output();
+}

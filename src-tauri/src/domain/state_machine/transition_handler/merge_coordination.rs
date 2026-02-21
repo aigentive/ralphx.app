@@ -237,9 +237,26 @@ pub(super) async fn update_plan_from_main(
                     return PlanUpdateResult::Updated;
                 }
                 Err(e) => {
-                    // Abort any in-progress merge to leave the worktree clean for the next attempt.
-                    // Without this, a failed merge leaves the worktree in a dirty merge-in-progress
-                    // state, causing the next attempt to see spurious conflicts or fail differently.
+                    // Check if the error is because the worktree already has a merge in
+                    // progress from a prior attempt. When git sees MERGE_HEAD it refuses
+                    // to start a new merge and returns "You have not concluded your merge"
+                    // — no "CONFLICT" in stderr, so merge_branch returns Err instead of
+                    // Ok(MergeResult::Conflict). Route to Conflicts so the agent can
+                    // resolve the existing conflict markers without discarding them.
+                    if GitService::is_merge_in_progress(&wt_path) {
+                        let conflict_files = GitService::get_conflict_files(&wt_path)
+                            .await
+                            .unwrap_or_default();
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            conflict_count = conflict_files.len(),
+                            worktree_path = %wt_path.display(),
+                            "Plan branch already in merge conflict state in existing worktree \
+                             (prior attempt) — routing to merger agent without aborting"
+                        );
+                        return PlanUpdateResult::Conflicts { conflict_files };
+                    }
+                    // Not a conflict — abort any partial state and return as error.
                     let _ = GitService::abort_merge(&wt_path).await;
                     return PlanUpdateResult::Error(format!(
                         "merge in existing worktree failed: {}", e
