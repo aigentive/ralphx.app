@@ -14,6 +14,17 @@ use serde::{Deserialize, Serialize};
 pub struct MergePhase(pub String);
 
 impl MergePhase {
+    // --- Pre-merge pipeline phases ---
+    /// Loading task/project and resolving branches
+    pub const MERGE_PREPARATION: &'static str = "merge_preparation";
+    /// Validating plan merge preconditions
+    pub const PRECONDITION_CHECK: &'static str = "precondition_check";
+    /// Checking if source/target branches are up-to-date
+    pub const BRANCH_FRESHNESS: &'static str = "branch_freshness";
+    /// Cleaning up stale worktrees/agents from prior attempts
+    pub const MERGE_CLEANUP: &'static str = "merge_cleanup";
+
+    // --- Merge execution phases ---
     /// Setting up worktree (symlinks, initialization)
     pub const WORKTREE_SETUP: &'static str = "worktree_setup";
     /// Running git merge operation
@@ -227,6 +238,22 @@ pub struct PhaseAnalysisEntry {
 /// plus one dynamic phase per validate command in the analysis.
 pub fn derive_phases_from_analysis(entries: &[PhaseAnalysisEntry]) -> Vec<MergePhaseInfo> {
     let mut phases = vec![
+        MergePhaseInfo {
+            id: MergePhase::MERGE_PREPARATION.to_string(),
+            label: "Preparation".to_string(),
+        },
+        MergePhaseInfo {
+            id: MergePhase::PRECONDITION_CHECK.to_string(),
+            label: "Preconditions".to_string(),
+        },
+        MergePhaseInfo {
+            id: MergePhase::BRANCH_FRESHNESS.to_string(),
+            label: "Branch Freshness".to_string(),
+        },
+        MergePhaseInfo {
+            id: MergePhase::MERGE_CLEANUP.to_string(),
+            label: "Cleanup".to_string(),
+        },
         MergePhaseInfo {
             id: MergePhase::WORKTREE_SETUP.to_string(),
             label: "Worktree Setup".to_string(),

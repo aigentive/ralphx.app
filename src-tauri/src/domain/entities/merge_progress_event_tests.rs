@@ -310,22 +310,26 @@ fn derive_phases_from_analysis_basic() {
 
     let phases = derive_phases_from_analysis(&entries);
 
-    // worktree_setup + programmatic_merge + 4 validate + finalize = 7
-    assert_eq!(phases.len(), 7);
-    assert_eq!(phases[0].id, "worktree_setup");
-    assert_eq!(phases[0].label, "Worktree Setup");
-    assert_eq!(phases[1].id, "programmatic_merge");
-    assert_eq!(phases[1].label, "Merge");
-    assert_eq!(phases[2].id, "npm_run_typecheck");
-    assert_eq!(phases[2].label, "Type Check");
-    assert_eq!(phases[3].id, "npm_run_lint");
-    assert_eq!(phases[3].label, "Lint");
-    assert_eq!(phases[4].id, "cargo_clippy");
-    assert_eq!(phases[4].label, "Clippy");
-    assert_eq!(phases[5].id, "cargo_test");
-    assert_eq!(phases[5].label, "Test");
-    assert_eq!(phases[6].id, "finalize");
-    assert_eq!(phases[6].label, "Finalize");
+    // 4 pre-merge + worktree_setup + programmatic_merge + 4 validate + finalize = 11
+    assert_eq!(phases.len(), 11);
+    assert_eq!(phases[0].id, "merge_preparation");
+    assert_eq!(phases[1].id, "precondition_check");
+    assert_eq!(phases[2].id, "branch_freshness");
+    assert_eq!(phases[3].id, "merge_cleanup");
+    assert_eq!(phases[4].id, "worktree_setup");
+    assert_eq!(phases[4].label, "Worktree Setup");
+    assert_eq!(phases[5].id, "programmatic_merge");
+    assert_eq!(phases[5].label, "Merge");
+    assert_eq!(phases[6].id, "npm_run_typecheck");
+    assert_eq!(phases[6].label, "Type Check");
+    assert_eq!(phases[7].id, "npm_run_lint");
+    assert_eq!(phases[7].label, "Lint");
+    assert_eq!(phases[8].id, "cargo_clippy");
+    assert_eq!(phases[8].label, "Clippy");
+    assert_eq!(phases[9].id, "cargo_test");
+    assert_eq!(phases[9].label, "Test");
+    assert_eq!(phases[10].id, "finalize");
+    assert_eq!(phases[10].label, "Finalize");
 }
 
 #[test]
@@ -333,11 +337,15 @@ fn derive_phases_from_analysis_empty() {
     let entries: Vec<PhaseAnalysisEntry> = vec![];
     let phases = derive_phases_from_analysis(&entries);
 
-    // Just structural phases
-    assert_eq!(phases.len(), 3);
-    assert_eq!(phases[0].id, "worktree_setup");
-    assert_eq!(phases[1].id, "programmatic_merge");
-    assert_eq!(phases[2].id, "finalize");
+    // 4 pre-merge + structural phases (worktree_setup, programmatic_merge, finalize) = 7
+    assert_eq!(phases.len(), 7);
+    assert_eq!(phases[0].id, "merge_preparation");
+    assert_eq!(phases[1].id, "precondition_check");
+    assert_eq!(phases[2].id, "branch_freshness");
+    assert_eq!(phases[3].id, "merge_cleanup");
+    assert_eq!(phases[4].id, "worktree_setup");
+    assert_eq!(phases[5].id, "programmatic_merge");
+    assert_eq!(phases[6].id, "finalize");
 }
 
 #[test]
@@ -347,9 +355,10 @@ fn derive_phases_from_analysis_single_entry() {
     }];
 
     let phases = derive_phases_from_analysis(&entries);
-    assert_eq!(phases.len(), 4);
-    assert_eq!(phases[2].id, "npx_tsc");
-    assert_eq!(phases[2].label, "Type Check");
+    // 4 pre-merge + worktree_setup + programmatic_merge + 1 validate + finalize = 8
+    assert_eq!(phases.len(), 8);
+    assert_eq!(phases[6].id, "npx_tsc");
+    assert_eq!(phases[6].label, "Type Check");
 }
 
 #[test]
