@@ -153,9 +153,9 @@ describe("MergePhaseTimeline", () => {
     expect(screen.getByText("Finalize")).toBeInTheDocument();
   });
 
-  it("displays (live) indicator", () => {
+  it("displays 'Merge Progress' section title", () => {
     render(<MergePhaseTimeline phases={[makePhase()]} phaseList={DYNAMIC_PHASES} />);
-    expect(screen.getByText("(live)")).toBeInTheDocument();
+    expect(screen.getByText("Merge Progress")).toBeInTheDocument();
   });
 
   it("uses default config when phaseList is null", () => {

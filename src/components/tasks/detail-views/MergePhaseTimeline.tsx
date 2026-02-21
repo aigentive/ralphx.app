@@ -108,10 +108,7 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
 
   return (
     <section data-testid="merge-phase-timeline">
-      <SectionTitle>
-        Merge Progress
-        <span className="ml-2 text-[10px] font-normal text-white/30">(live)</span>
-      </SectionTitle>
+      <SectionTitle>Merge Progress</SectionTitle>
       <DetailCard>
         <div className="space-y-0.5">
           {visiblePhases.map((config, index) => {
