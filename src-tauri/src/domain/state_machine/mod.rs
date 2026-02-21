@@ -1,6 +1,6 @@
 // State machine module - statig-based task lifecycle management
-// This module implements the 14-state task state machine with:
-// - Type-safe transitions validated at compile time
+// This module implements the 24-state task state machine with:
+// - Runtime-enforced transitions with compile-time exhaustive match checking
 // - Hierarchical superstates (Execution, QA, Review)
 // - State-local data for QaFailed and Failed states
 // - Async actions for agent spawning and event emission
