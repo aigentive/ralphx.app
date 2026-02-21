@@ -237,19 +237,19 @@ The complete list of all valid transitions. Only these transitions are permitted
 | `backlog` | `ready`, `cancelled` |
 | `ready` | `executing`, `blocked`, `cancelled` |
 | `blocked` | `ready`, `cancelled` |
-| `executing` | `qa_refining`, `pending_review`, `failed`, `blocked`, `stopped`, `paused` |
-| `qa_refining` | `qa_testing`, `stopped`, `paused` |
-| `qa_testing` | `qa_passed`, `qa_failed`, `stopped`, `paused` |
+| `executing` | `qa_refining`, `pending_review`, `failed`, `blocked`, `stopped`, `paused`, `cancelled` |
+| `qa_refining` | `qa_testing`, `stopped`, `paused`, `cancelled` |
+| `qa_testing` | `qa_passed`, `qa_failed`, `stopped`, `paused`, `cancelled` |
 | `qa_passed` | `pending_review` |
-| `qa_failed` | `revision_needed` |
+| `qa_failed` | `revision_needed`, `pending_review` |
 | `pending_review` | `reviewing` |
-| `reviewing` | `review_passed`, `revision_needed`, `escalated`, `stopped`, `paused` |
+| `reviewing` | `review_passed`, `revision_needed`, `escalated`, `stopped`, `paused`, `cancelled` |
 | `review_passed` | `approved`, `revision_needed` |
 | `escalated` | `approved`, `revision_needed` |
 | `revision_needed` | `re_executing`, `cancelled` |
 | `re_executing` | `pending_review`, `failed`, `blocked`, `stopped`, `paused` |
 | `approved` | `pending_merge`, `ready` |
-| `pending_merge` | `merged`, `merging` |
+| `pending_merge` | `merged`, `merging`, `cancelled` |
 | `merging` | `merged`, `merge_conflict`, `merge_incomplete`, `stopped`, `paused` |
 | `merge_incomplete` | `pending_merge`, `merged` |
 | `merge_conflict` | `merged` |
