@@ -87,6 +87,7 @@ style={{ boxShadow: "none", outline: "none" }}
     ```
     > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
     ```
+16. **Progressive Intelligence model selection** — Default teammates to `sonnet` (faster, cost-effective). Escalate to `opus` ONLY for: deep multi-file investigation, complex architectural changes spanning multiple modules, subtle race conditions/state machine debugging, or when a Sonnet attempt failed/produced insufficient results. Simple tasks stay on Sonnet: single-file edits, CSS/UI, clear-root-cause bugfixes, docs/config. Pattern: Sonnet first → insufficient → re-spawn with Opus.
 
 ## Team Mode Rules
 When delegate mode is active (TeamCreate tool available):
