@@ -288,6 +288,8 @@ pub struct PlanDecisionTeammate {
 #[derive(Debug, Clone)]
 pub struct PendingTeamPlan {
     pub plan_id: String,
+    pub context_type: String,
+    pub context_id: String,
     pub process: String,
     pub teammates: Vec<PendingTeammate>,
     pub created_at: DateTime<Utc>,

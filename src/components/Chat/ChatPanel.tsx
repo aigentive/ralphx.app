@@ -214,7 +214,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const isTeamActive = useChatStore(isTeamActiveSelector);
   const teammatesSelector = useMemo(() => selectTeammates(contextKey), [contextKey]);
   const teammates = useTeamStore(teammatesSelector);
-  const pendingPlan = useTeamStore((s) => s.pendingPlan);
+  const pendingPlan = useTeamStore((s) => s.pendingPlans[contextKey]);
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
   const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
 
@@ -586,8 +586,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
         {pendingPlan && (
           <TeamPlanApproval
             plan={pendingPlan}
-            contextType={contextType}
-            contextId={contextId}
+            contextKey={contextKey}
           />
         )}
 

@@ -15,16 +15,14 @@ import type { ContextType } from "@/types/chat-conversation";
 
 interface TeamPlanApprovalProps {
   plan: PendingTeamPlan;
-  contextType: ContextType;
-  contextId: string;
+  contextKey: string;
 }
 
 export const TeamPlanApproval = React.memo(function TeamPlanApproval({
   plan,
-  contextType,
-  contextId,
+  contextKey,
 }: TeamPlanApprovalProps) {
-  const setPendingPlan = useTeamStore((s) => s.setPendingPlan);
+  const clearPendingPlan = useTeamStore((s) => s.clearPendingPlan);
   const [isApproving, setIsApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,13 +30,17 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
     setIsApproving(true);
     setError(null);
     try {
-      await approveTeamPlan(plan.planId, contextType, contextId);
-      setPendingPlan(null);
+      await approveTeamPlan(
+        plan.planId,
+        plan.originContextType as ContextType,
+        plan.originContextId,
+      );
+      clearPendingPlan(contextKey);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to approve team plan");
       setIsApproving(false);
     }
-  }, [plan.planId, contextType, contextId, setPendingPlan]);
+  }, [plan.planId, plan.originContextType, plan.originContextId, contextKey, clearPendingPlan]);
 
   const handleReject = useCallback(async () => {
     try {
@@ -46,8 +48,8 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
     } catch {
       // Best-effort — clear UI regardless
     }
-    setPendingPlan(null);
-  }, [plan.planId, setPendingPlan]);
+    clearPendingPlan(contextKey);
+  }, [plan.planId, contextKey, clearPendingPlan]);
 
   return (
     <div

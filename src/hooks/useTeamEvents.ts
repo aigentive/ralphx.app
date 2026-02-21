@@ -92,14 +92,16 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
-    // team:plan_requested — show approval UI (global, not context-filtered)
+    // team:plan_requested — show approval UI, filtered to current context
     unsubs.push(
       bus.subscribe<TeamPlanRequestedPayload>("team:plan_requested", (payload) => {
-        if (payload.validated) {
-          setPendingPlan({
+        if (payload.validated && matchKey(payload)) {
+          setPendingPlan(contextKey, {
             planId: payload.plan_id,
             process: payload.process,
             teammates: payload.teammates,
+            originContextType: payload.context_type,
+            originContextId: payload.context_id,
           });
         }
       }),

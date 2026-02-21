@@ -512,6 +512,8 @@ pub async fn build_command(
 
     // Add env vars for agent/task/project scope
     spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
+    spawnable.env("RALPHX_CONTEXT_TYPE", &conversation.context_type.to_string());
+    spawnable.env("RALPHX_CONTEXT_ID", &conversation.context_id);
     match conversation.context_type {
         ChatContextType::Task
         | ChatContextType::TaskExecution
@@ -620,6 +622,8 @@ pub async fn build_resume_command(
     )?;
 
     spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
+    spawnable.env("RALPHX_CONTEXT_TYPE", &context_type.to_string());
+    spawnable.env("RALPHX_CONTEXT_ID", context_id);
     match context_type {
         ChatContextType::Task
         | ChatContextType::TaskExecution

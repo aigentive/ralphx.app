@@ -11,6 +11,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createElement } from "react";
 import { useChatPanelContext } from "./useChatPanelContext";
 import { useChatStore } from "@/stores/chatStore";
+import { useTeamStore } from "@/stores/teamStore";
+import * as teamApi from "@/api/team";
 
 interface MockState {
   activeConversationId: string | null;
@@ -56,15 +58,31 @@ vi.mock("./useChat", () => ({
   },
 }));
 
+// Mock team store
+vi.mock("@/stores/teamStore", () => ({
+  useTeamStore: vi.fn(),
+}));
+
+// Mock team API
+vi.mock("@/api/team", () => ({
+  rejectTeamPlan: vi.fn().mockResolvedValue(undefined),
+}));
+
 interface ConversationData {
   id: string;
   lastMessageAt?: string | null;
   createdAt: string;
 }
 
+interface MockTeamState {
+  pendingPlans: Record<string, { planId: string; process: string; teammates: unknown[]; originContextType: string; originContextId: string }>;
+  clearPendingPlan: ReturnType<typeof vi.fn>;
+}
+
 describe("useChatPanelContext", () => {
   let queryClient: QueryClient;
   let mockStore: MockState;
+  let mockTeamStore: MockTeamState;
 
   beforeEach(() => {
     queryClient = new QueryClient({
@@ -83,6 +101,12 @@ describe("useChatPanelContext", () => {
       setSending: vi.fn(),
     };
 
+    // Setup mock team store
+    mockTeamStore = {
+      pendingPlans: {},
+      clearPendingPlan: vi.fn(),
+    };
+
     (useChatStore as unknown as { mockImplementation: (fn: (selector: ((state: MockState) => unknown) | undefined) => unknown) => void }).mockImplementation((selector) => {
       if (typeof selector === "function") {
         return selector(mockStore);
@@ -91,6 +115,15 @@ describe("useChatPanelContext", () => {
     });
 
     (useChatStore as unknown as { getState: () => MockState }).getState = vi.fn(() => mockStore);
+
+    (useTeamStore as unknown as { mockImplementation: (fn: (selector: ((state: MockTeamState) => unknown) | undefined) => unknown) => void }).mockImplementation((selector) => {
+      if (typeof selector === "function") {
+        return selector(mockTeamStore);
+      }
+      return mockTeamStore;
+    });
+
+    (useTeamStore as unknown as { getState: () => MockTeamState }).getState = vi.fn(() => mockTeamStore);
   });
 
   afterEach(() => {
@@ -514,6 +547,132 @@ describe("useChatPanelContext", () => {
       // Should not have called setActiveConversation again because we're in history mode
       // with an explicit override
       expect(mockStore.setActiveConversation).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("pending plan rejection on session switch", () => {
+    it("should call rejectTeamPlan when switching sessions with a pending plan", async () => {
+      const prevContextKey = "session:session-1";
+      mockTeamStore.pendingPlans[prevContextKey] = {
+        planId: "plan-abc",
+        process: "test process",
+        teammates: [],
+        originContextType: "ideation",
+        originContextId: "session-1",
+      };
+
+      const { rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper: ({ children }: { children: React.ReactNode }) =>
+            createElement(QueryClientProvider, { client: queryClient }, children),
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      // Switch to a different session — triggers context-change effect
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-2",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+      });
+
+      await waitFor(() => {
+        expect(teamApi.rejectTeamPlan).toHaveBeenCalledWith("plan-abc");
+      });
+    });
+
+    it("should clear pending plan for old context after session switch", async () => {
+      const prevContextKey = "session:session-1";
+      mockTeamStore.pendingPlans[prevContextKey] = {
+        planId: "plan-xyz",
+        process: "test process",
+        teammates: [],
+        originContextType: "ideation",
+        originContextId: "session-1",
+      };
+
+      const { rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper: ({ children }: { children: React.ReactNode }) =>
+            createElement(QueryClientProvider, { client: queryClient }, children),
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-2",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+      });
+
+      await waitFor(() => {
+        expect(mockTeamStore.clearPendingPlan).toHaveBeenCalledWith(prevContextKey);
+      });
+    });
+
+    it("should NOT call rejectTeamPlan when no pending plan exists for old context", async () => {
+      // No pending plan in store
+      mockTeamStore.pendingPlans = {};
+
+      const { rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper: ({ children }: { children: React.ReactNode }) =>
+            createElement(QueryClientProvider, { client: queryClient }, children),
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-2",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+      });
+
+      await waitFor(() => {
+        // clearPendingPlan is still called (idempotent cleanup)
+        expect(mockTeamStore.clearPendingPlan).toHaveBeenCalled();
+      });
+
+      expect(teamApi.rejectTeamPlan).not.toHaveBeenCalled();
     });
   });
 });

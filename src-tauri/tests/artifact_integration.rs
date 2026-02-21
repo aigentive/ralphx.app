@@ -604,7 +604,7 @@ async fn test_system_buckets_flagged(state: &AppState) {
         .get_system_buckets()
         .await
         .unwrap();
-    assert_eq!(system_buckets.len(), 4);
+    assert_eq!(system_buckets.len(), 5);
 
     // Verify all are marked as system
     for bucket in &system_buckets {
@@ -615,17 +615,17 @@ async fn test_system_buckets_flagged(state: &AppState) {
     let custom = ArtifactBucket::new("Custom Bucket").accepts(ArtifactType::Prd);
     ensure_bucket(state, custom).await;
 
-    // System buckets should still be 4
+    // System buckets should still be 5
     let system_buckets = state
         .artifact_bucket_repo
         .get_system_buckets()
         .await
         .unwrap();
-    assert_eq!(system_buckets.len(), 4);
+    assert_eq!(system_buckets.len(), 5);
 
-    // But total buckets should be 5
+    // But total buckets should be 6
     let all_buckets = state.artifact_bucket_repo.get_all().await.unwrap();
-    assert_eq!(all_buckets.len(), 5);
+    assert_eq!(all_buckets.len(), 6);
 }
 
 // ============================================================================

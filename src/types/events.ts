@@ -425,4 +425,6 @@ export interface TeamPlanRequestedPayload {
     preset?: string | null;
   }>;
   validated: boolean;
+  context_type: string;
+  context_id: string;
 }

@@ -181,7 +181,7 @@ export function IntegratedChatPanel({
   const isTeamActive = useChatStore(isTeamActiveSelector);
   const teammatesSelector = useMemo(() => selectTeammates(storeContextKey), [storeContextKey]);
   const teammates = useTeamStore(teammatesSelector);
-  const pendingPlan = useTeamStore((s) => s.pendingPlan);
+  const pendingPlan = useTeamStore((s) => s.pendingPlans[storeContextKey]);
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
   const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
 
@@ -661,8 +661,7 @@ export function IntegratedChatPanel({
           {pendingPlan && (
             <TeamPlanApproval
               plan={pendingPlan}
-              contextType={currentContextType}
-              contextId={currentContextId}
+              contextKey={storeContextKey}
             />
           )}
 

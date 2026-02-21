@@ -119,6 +119,8 @@ pub async fn request_team_plan(
         .team_tracker
         .store_pending_plan(PendingTeamPlan {
             plan_id: plan_id.clone(),
+            context_type: req.context_type.clone(),
+            context_id: req.context_id.clone(),
             process: req.process.clone(),
             teammates: pending_teammates,
             created_at: Utc::now(),
@@ -137,6 +139,8 @@ pub async fn request_team_plan(
             "team:plan_requested",
             serde_json::json!({
                 "plan_id": plan_id,
+                "context_type": req.context_type,
+                "context_id": req.context_id,
                 "process": req.process,
                 "teammates": req.teammates,
                 "validated": true,

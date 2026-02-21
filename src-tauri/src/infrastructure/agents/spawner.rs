@@ -182,10 +182,11 @@ impl AgenticClientSpawner {
 #[async_trait]
 impl AgentSpawner for AgenticClientSpawner {
     async fn spawn(&self, agent_type: &str, task_id: &str) {
-        // B5: Check if agent is already running for this task
+        // B5: Check if this agent type is already running for this task
+        let handle_key = format!("{}/{}", task_id, agent_type);
         {
             let handles = self.handles.lock().await;
-            if handles.contains_key(task_id) {
+            if handles.contains_key(&handle_key) {
                 warn!(
                     task_id = task_id,
                     agent_type = agent_type,
@@ -276,7 +277,7 @@ impl AgentSpawner for AgenticClientSpawner {
             Ok(handle) => {
                 // Store handle for wait/stop operations
                 let mut handles = self.handles.lock().await;
-                handles.insert(task_id.to_string(), handle);
+                handles.insert(handle_key, handle);
             }
             Err(e) => {
                 // Emit error event
@@ -290,11 +291,12 @@ impl AgentSpawner for AgenticClientSpawner {
         self.spawn(agent_type, task_id).await;
     }
 
-    async fn wait_for(&self, _agent_type: &str, task_id: &str) {
+    async fn wait_for(&self, agent_type: &str, task_id: &str) {
         // Remove handle when done waiting (agent has completed)
+        let handle_key = format!("{}/{}", task_id, agent_type);
         let handle = {
             let mut handles = self.handles.lock().await;
-            handles.remove(task_id)
+            handles.remove(&handle_key)
         };
 
         if let Some(handle) = handle {
@@ -305,10 +307,11 @@ impl AgentSpawner for AgenticClientSpawner {
         }
     }
 
-    async fn stop(&self, _agent_type: &str, task_id: &str) {
+    async fn stop(&self, agent_type: &str, task_id: &str) {
+        let handle_key = format!("{}/{}", task_id, agent_type);
         let handle = {
             let mut handles = self.handles.lock().await;
-            handles.remove(task_id)
+            handles.remove(&handle_key)
         };
 
         if let Some(handle) = handle {

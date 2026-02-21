@@ -907,6 +907,8 @@ pub struct GetSessionMessagesResponse {
 /// POST /api/team/plan — request approval for a team plan
 #[derive(Debug, Deserialize)]
 pub struct RequestTeamPlanRequest {
+    pub context_type: String,
+    pub context_id: String,
     pub process: String,
     pub teammates: Vec<TeamPlanTeammate>,
 }
