@@ -36,6 +36,7 @@ import { MergePhaseTimeline } from "./MergePhaseTimeline";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import type { Task } from "@/types/task";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
+import { useMergePipeline } from "@/hooks/useMergePipeline";
 
 interface MergingTaskDetailProps {
   task: Task;
@@ -374,6 +375,24 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
 
   const branchName = task.taskBranch ?? "task branch";
 
+  // Resolve target branch: pipeline (most accurate) → metadata fallback
+  const { data: pipelineData } = useMergePipeline(task.projectId);
+  const pipelineTask = [
+    ...(pipelineData?.active ?? []),
+    ...(pipelineData?.waiting ?? []),
+    ...(pipelineData?.needsAttention ?? []),
+  ].find((t) => t.taskId === task.id);
+  const resolvedTargetBranch = useMemo(() => {
+    if (pipelineTask?.targetBranch) return pipelineTask.targetBranch;
+    if (!task.metadata) return null;
+    try {
+      const parsed = typeof task.metadata === "string" ? JSON.parse(task.metadata) : task.metadata;
+      return (parsed?.target_branch as string | undefined) ?? null;
+    } catch {
+      return null;
+    }
+  }, [pipelineTask?.targetBranch, task.metadata]);
+
   const statusLabel = historicalOutcome
     ? historicalOutcome === "merged"
       ? "Merged"
@@ -552,6 +571,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
           <BranchFlow source={mergeConflictContext.base} target={mergeConflictContext.target} size="sm" />
         ) : mergeConflictContext?.type === "source_update" ? (
           <BranchFlow source={mergeConflictContext.source} target={mergeConflictContext.target} size="sm" />
+        ) : resolvedTargetBranch ? (
+          <BranchFlow source={branchName} target={resolvedTargetBranch} size="sm" />
         ) : (
           <BranchBadge branch={branchName} variant="muted" size="sm" />
         )}
