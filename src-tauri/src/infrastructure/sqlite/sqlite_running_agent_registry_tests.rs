@@ -55,7 +55,7 @@ async fn test_register_with_cancellation_token() {
     assert!(!token.is_cancelled());
 
     // Unregister should return token
-    let info = registry.unregister(&key).await.unwrap();
+    let info = registry.unregister(&key, "run-ct").await.unwrap();
     assert!(info.cancellation_token.is_some());
 }
 
@@ -76,7 +76,7 @@ async fn test_unregister() {
         )
         .await;
 
-    let info = registry.unregister(&key).await;
+    let info = registry.unregister(&key, "run-1").await;
     assert!(info.is_some());
     assert_eq!(info.unwrap().pid, 999);
 
@@ -84,7 +84,7 @@ async fn test_unregister() {
     assert!(!registry.is_running(&key).await);
 
     // Double unregister returns None
-    let info = registry.unregister(&key).await;
+    let info = registry.unregister(&key, "run-1").await;
     assert!(info.is_none());
 }
 
@@ -372,7 +372,7 @@ async fn test_try_register_cleanup_on_spawn_failure() {
     assert!(registry.is_running(&key).await);
 
     // Simulate spawn failure: unregister to release the slot
-    registry.unregister(&key).await;
+    registry.unregister(&key, "run-1").await;
     assert!(!registry.is_running(&key).await);
 
     // Another try_register should succeed now

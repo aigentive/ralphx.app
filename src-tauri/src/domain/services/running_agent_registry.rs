@@ -65,8 +65,11 @@ pub trait RunningAgentRegistry: Send + Sync {
         cancellation_token: Option<CancellationToken>,
     );
 
-    /// Unregister a running agent (called when agent completes or is stopped)
-    async fn unregister(&self, key: &RunningAgentKey) -> Option<RunningAgentInfo>;
+    /// Unregister a running agent (called when agent completes or is stopped).
+    ///
+    /// Only removes the entry if the stored `agent_run_id` matches the caller's, so a
+    /// finishing agent cannot accidentally delete a newer agent's slot for the same context.
+    async fn unregister(&self, key: &RunningAgentKey, agent_run_id: &str) -> Option<RunningAgentInfo>;
 
     /// Get information about a running agent
     async fn get(&self, key: &RunningAgentKey) -> Option<RunningAgentInfo>;
@@ -355,9 +358,13 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         agents.insert(key, info);
     }
 
-    async fn unregister(&self, key: &RunningAgentKey) -> Option<RunningAgentInfo> {
+    async fn unregister(&self, key: &RunningAgentKey, agent_run_id: &str) -> Option<RunningAgentInfo> {
         let mut agents = self.agents.lock().await;
-        agents.remove(key)
+        if agents.get(key).map(|i| i.agent_run_id.as_str()) == Some(agent_run_id) {
+            agents.remove(key)
+        } else {
+            None
+        }
     }
 
     async fn get(&self, key: &RunningAgentKey) -> Option<RunningAgentInfo> {
@@ -371,7 +378,11 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
     }
 
     async fn stop(&self, key: &RunningAgentKey) -> Result<Option<RunningAgentInfo>, String> {
-        let info = self.unregister(key).await;
+        let agent_run_id = {
+            let agents = self.agents.lock().await;
+            agents.get(key).map(|i| i.agent_run_id.clone()).unwrap_or_default()
+        };
+        let info = self.unregister(key, &agent_run_id).await;
 
         if let Some(ref agent_info) = info {
             // Cancel the async task before killing the process

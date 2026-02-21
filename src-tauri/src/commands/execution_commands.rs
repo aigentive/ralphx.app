@@ -1821,7 +1821,7 @@ async fn prune_stale_execution_registry_entries(app_state: &AppState) {
         if pid_alive {
             let _ = app_state.running_agent_registry.stop(&key).await;
         } else {
-            let _ = app_state.running_agent_registry.unregister(&key).await;
+            let _ = app_state.running_agent_registry.unregister(&key, &info.agent_run_id).await;
         }
 
         if let Some(agent_run) = run {

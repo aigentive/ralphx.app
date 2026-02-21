@@ -307,7 +307,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             if pid_alive {
                 let _ = self.running_agent_registry.stop(&key).await;
             } else {
-                let _ = self.running_agent_registry.unregister(&key).await;
+                let _ = self.running_agent_registry.unregister(&key, &info.agent_run_id).await;
             }
             removed += 1;
 
