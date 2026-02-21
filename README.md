@@ -260,6 +260,5 @@ RalphX is developed autonomously using the loop it implements. Tasks are describ
   <sub>Open source. Local-first. Auditable.</sub>
   <br><br>
   <a href="#getting-started">Get Started</a> &middot;
-  <a href="#documentation">Documentation</a> &middot;
-  <a href="docs/project-goal-card.md">Project Goal Card</a>
+  <a href="#documentation">Documentation</a>
 </p>
