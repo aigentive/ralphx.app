@@ -8,6 +8,11 @@
 /// 500ms is sufficient for the realistic lock window while keeping latency low.
 pub(super) const INSTALL_RETRY_DELAY_MS: u64 = 500;
 
+/// Delay before retrying a failed validation command (ms).
+/// Covers transient compilation timeouts and file-system lock windows.
+/// 2 seconds allows caches to settle while keeping merge latency acceptable.
+pub(super) const VALIDATE_RETRY_DELAY_MS: u64 = 2000;
+
 /// Status string for failed validation/install log entries.
 /// Used in ValidationLogEntry.status and compared in retry logic.
 const STATUS_FAILED: &str = "failed";
@@ -155,7 +160,7 @@ pub(super) struct PreExecAnalysisEntry {
 }
 
 /// A single validation command execution record for streaming + storage.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct ValidationLogEntry {
     pub(super) phase: String,
     pub(super) command: String,
@@ -166,6 +171,58 @@ pub(crate) struct ValidationLogEntry {
     pub(super) stdout: String,
     pub(super) stderr: String,
     pub(super) duration_ms: u64,
+    /// Whether this command was retried after initial failure.
+    /// True = passed/failed on automatic retry (attempt 2/2).
+    #[serde(default)]
+    pub(super) retried: bool,
+    /// Path to full stdout log file (only set for failed commands)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) stdout_log_path: Option<String>,
+    /// Path to full stderr log file (only set for failed commands)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub(super) stderr_log_path: Option<String>,
+}
+
+impl ValidationLogEntry {
+    /// Create a new ValidationLogEntry with all required fields.
+    /// Sets retried=false, stdout_log_path=None, stderr_log_path=None by default.
+    fn new(
+        phase: impl Into<String>,
+        command: impl Into<String>,
+        path: impl Into<String>,
+        label: impl Into<String>,
+        status: impl Into<String>,
+        exit_code: Option<i32>,
+        stdout: String,
+        stderr: String,
+        duration_ms: u64,
+    ) -> Self {
+        Self {
+            phase: phase.into(),
+            command: command.into(),
+            path: path.into(),
+            label: label.into(),
+            status: status.into(),
+            exit_code,
+            stdout,
+            stderr,
+            duration_ms,
+            retried: false,
+            stdout_log_path: None,
+            stderr_log_path: None,
+        }
+    }
+
+    /// Attach full log file paths for a failed command.
+    ///
+    /// Writes full stdout/stderr to ~/.ralphx/logs/{task_id}/ and stores
+    /// the paths on the entry so the fixer agent can read untruncated output.
+    pub(crate) fn attach_failure_logs(&mut self, task_id: &str) {
+        let (stdout_path, stderr_path) =
+            write_failure_logs(task_id, &self.command, &self.stdout, &self.stderr);
+        self.stdout_log_path = stdout_path;
+        self.stderr_log_path = stderr_path;
+    }
 }
 
 /// Result of running post-merge validation commands.
@@ -197,6 +254,81 @@ fn truncate_output(s: &str, max_len: usize) -> String {
         s.to_string()
     } else {
         format!("{}... (truncated)", &s[..max_len])
+    }
+}
+
+/// Directory for validation log files: ~/.ralphx/logs/{task_id}/
+pub(crate) fn validation_log_dir(task_id: &str) -> std::path::PathBuf {
+    let home = std::env::var("HOME")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
+    home.join(".ralphx")
+        .join("logs")
+        .join(task_id)
+}
+
+/// Write full stdout/stderr to disk for a failed validation command.
+///
+/// Returns (stdout_log_path, stderr_log_path). Only writes non-empty outputs.
+/// Failures are logged but don't block validation — this is best-effort.
+fn write_failure_logs(
+    task_id: &str,
+    command: &str,
+    stdout: &str,
+    stderr: &str,
+) -> (Option<String>, Option<String>) {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let dir = validation_log_dir(task_id);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        tracing::warn!(task_id, error = %e, "Failed to create validation log dir");
+        return (None, None);
+    }
+
+    // Hash command to create a unique, filesystem-safe filename
+    let mut hasher = DefaultHasher::new();
+    command.hash(&mut hasher);
+    let cmd_hash = format!("{:016x}", hasher.finish());
+
+    let stdout_path = if !stdout.is_empty() {
+        let path = dir.join(format!("{cmd_hash}_stdout.log"));
+        match std::fs::write(&path, stdout) {
+            Ok(()) => Some(path.to_string_lossy().to_string()),
+            Err(e) => {
+                tracing::warn!(task_id, error = %e, "Failed to write stdout log");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    let stderr_path = if !stderr.is_empty() {
+        let path = dir.join(format!("{cmd_hash}_stderr.log"));
+        match std::fs::write(&path, stderr) {
+            Ok(()) => Some(path.to_string_lossy().to_string()),
+            Err(e) => {
+                tracing::warn!(task_id, error = %e, "Failed to write stderr log");
+                None
+            }
+        }
+    } else {
+        None
+    };
+
+    (stdout_path, stderr_path)
+}
+
+/// Clean up validation log directory for a task.
+pub(crate) fn cleanup_validation_logs(task_id: &str) {
+    let dir = validation_log_dir(task_id);
+    if dir.exists() {
+        if let Err(e) = std::fs::remove_dir_all(&dir) {
+            tracing::warn!(task_id, error = %e, "Failed to clean up validation logs");
+        } else {
+            tracing::debug!(task_id, "Cleaned up validation log directory");
+        }
     }
 }
 
@@ -282,17 +414,11 @@ pub(super) fn try_handle_symlink_idempotent(
             target = %target_path.display(),
             "Worktree setup: skipping circular symlink (source == target)"
         );
-        return Some(ValidationLogEntry {
-            phase: "setup".to_string(),
-            command: cmd.to_string(),
-            path: resolved_path.to_string(),
-            label: label.to_string(),
-            status: "skipped".to_string(),
-            exit_code: Some(0),
-            stdout: String::new(),
-            stderr: "Skipped: circular symlink (source == target)".to_string(),
-            duration_ms: 0,
-        });
+        return Some(ValidationLogEntry::new(
+            "setup", cmd, resolved_path, label, "skipped",
+            Some(0), String::new(),
+            "Skipped: circular symlink (source == target)".to_string(), 0,
+        ));
     }
 
     if target_path.is_symlink() {
@@ -315,17 +441,11 @@ pub(super) fn try_handle_symlink_idempotent(
                     target = %target_path.display(),
                     "Worktree setup: symlink already correct, cached"
                 );
-                return Some(ValidationLogEntry {
-                    phase: "setup".to_string(),
-                    command: cmd.to_string(),
-                    path: resolved_path.to_string(),
-                    label: label.to_string(),
-                    status: "cached".to_string(),
-                    exit_code: Some(0),
-                    stdout: String::new(),
-                    stderr: "Symlink already exists and is correct".to_string(),
-                    duration_ms: 0,
-                });
+                return Some(ValidationLogEntry::new(
+                    "setup", cmd, resolved_path, label, "cached",
+                    Some(0), String::new(),
+                    "Symlink already exists and is correct".to_string(), 0,
+                ));
             }
         }
         // Wrong symlink — remove so command can recreate
@@ -491,6 +611,7 @@ async fn run_setup_phase(
                         stdout: truncate_output(&stdout_raw, 2000),
                         stderr: truncate_output(&stderr_raw, 2000),
                         duration_ms,
+                        ..Default::default()
                     }
                 }
                 CancellableCommandResult::SpawnError(e) => {
@@ -512,6 +633,7 @@ async fn run_setup_phase(
                         stdout: String::new(),
                         stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
                         duration_ms,
+                        ..Default::default()
                     }
                 }
                 CancellableCommandResult::Cancelled => {
@@ -532,6 +654,7 @@ async fn run_setup_phase(
                         stdout: String::new(),
                         stderr: "Command cancelled".to_string(),
                         duration_ms,
+                        ..Default::default()
                     }
                 }
             };
@@ -667,6 +790,7 @@ fn emit_skipped_for_remaining(
                 stdout: String::new(),
                 stderr: "Skipped due to prior validation failure (fail-fast)".to_string(),
                 duration_ms: 0,
+                ..Default::default()
             });
         }
     }
@@ -751,6 +875,7 @@ async fn run_validate_phase(
                         stdout: String::new(),
                         stderr: String::new(),
                         duration_ms: 0,
+                        ..Default::default()
                     };
                     if let Some(handle) = app_handle {
                         let _ = handle.emit(
@@ -807,7 +932,7 @@ async fn run_validate_phase(
 
             let result = spawn_cancellable_command(&resolved_cmd, &cmd_cwd, cancel).await;
 
-            let (log_entry, failure) = match result {
+            let (mut log_entry, mut failure) = match result {
                 CancellableCommandResult::Completed(output) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
@@ -877,6 +1002,7 @@ async fn run_validate_phase(
                         stdout: truncate_output(&stdout_raw, 2000),
                         stderr: truncate_output(&stderr_raw, 2000),
                         duration_ms,
+                        ..Default::default()
                     };
 
                     (entry, failure)
@@ -910,6 +1036,7 @@ async fn run_validate_phase(
                         stdout: String::new(),
                         stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
                         duration_ms,
+                        ..Default::default()
                     };
 
                     (entry, Some(failure))
@@ -946,11 +1073,132 @@ async fn run_validate_phase(
                         stdout: String::new(),
                         stderr: "Command cancelled".to_string(),
                         duration_ms,
+                        ..Default::default()
                     };
 
                     (entry, Some(failure))
                 }
             };
+
+            // Retry once if the validation command failed with a real exit code
+            // (not spawn error, not cancelled, not already cancelled by token).
+            if log_entry.status == STATUS_FAILED
+                && log_entry.exit_code.is_some()
+                && !cancel.is_cancelled()
+            {
+                tracing::warn!(
+                    command = %resolved_cmd,
+                    delay_ms = VALIDATE_RETRY_DELAY_MS,
+                    "Validation command failed, retrying once after {}ms (attempt 2/2)",
+                    VALIDATE_RETRY_DELAY_MS
+                );
+
+                let retry_phase = map_command_to_phase(&resolved_cmd);
+                emit_merge_progress(
+                    app_handle,
+                    task_id_str,
+                    retry_phase,
+                    MergePhaseStatus::Started,
+                    format!("Retrying {} ...", resolved_cmd),
+                );
+
+                tokio::time::sleep(std::time::Duration::from_millis(VALIDATE_RETRY_DELAY_MS))
+                    .await;
+
+                // Abort retry if cancelled during the delay
+                if !cancel.is_cancelled() {
+                    let retry_start = std::time::Instant::now();
+                    let retry_result =
+                        spawn_cancellable_command(&resolved_cmd, &cmd_cwd, cancel).await;
+
+                    if let CancellableCommandResult::Completed(output) = retry_result {
+                        let retry_duration_ms = retry_start.elapsed().as_millis() as u64;
+                        let stdout_raw =
+                            String::from_utf8_lossy(&output.stdout).to_string();
+                        let stderr_raw =
+                            String::from_utf8_lossy(&output.stderr).to_string();
+
+                        if output.status.success() {
+                            tracing::info!(
+                                command = %resolved_cmd,
+                                "Validation command succeeded on retry (attempt 2/2)"
+                            );
+
+                            let retry_phase = map_command_to_phase(&resolved_cmd);
+                            emit_merge_progress(
+                                app_handle,
+                                task_id_str,
+                                retry_phase,
+                                MergePhaseStatus::Passed,
+                                format!("{} passed on retry", resolved_cmd),
+                            );
+
+                            log_entry = ValidationLogEntry {
+                                phase: "validate".to_string(),
+                                command: resolved_cmd.clone(),
+                                path: resolved_path.clone(),
+                                label: entry.label.clone(),
+                                status: "success".to_string(),
+                                exit_code: output.status.code(),
+                                stdout: truncate_output(&stdout_raw, 2000),
+                                stderr: truncate_output(&stderr_raw, 2000),
+                                duration_ms: retry_duration_ms,
+                                retried: true,
+                                ..Default::default()
+                            };
+                            failure = None;
+                        } else {
+                            tracing::warn!(
+                                command = %resolved_cmd,
+                                stderr = %stderr_raw,
+                                "Validation command retry also failed (attempt 2/2)"
+                            );
+
+                            let retry_phase = map_command_to_phase(&resolved_cmd);
+                            emit_merge_progress(
+                                app_handle,
+                                task_id_str,
+                                retry_phase,
+                                MergePhaseStatus::Failed,
+                                format!("{} failed on retry", resolved_cmd),
+                            );
+
+                            log_entry = ValidationLogEntry {
+                                phase: "validate".to_string(),
+                                command: resolved_cmd.clone(),
+                                path: resolved_path.clone(),
+                                label: entry.label.clone(),
+                                status: STATUS_FAILED.to_string(),
+                                exit_code: output.status.code(),
+                                stdout: truncate_output(&stdout_raw, 2000),
+                                stderr: truncate_output(&stderr_raw, 2000),
+                                duration_ms: retry_duration_ms,
+                                retried: true,
+                                ..Default::default()
+                            };
+                            failure = Some(ValidationFailure {
+                                command: resolved_cmd.clone(),
+                                path: resolved_path.clone(),
+                                exit_code: output.status.code(),
+                                stderr: format!(
+                                    "{}{}",
+                                    if stderr_raw.is_empty() {
+                                        ""
+                                    } else {
+                                        &stderr_raw
+                                    },
+                                    if stdout_raw.is_empty() {
+                                        String::new()
+                                    } else {
+                                        format!("\nstdout: {}", stdout_raw)
+                                    },
+                                ),
+                            });
+                        }
+                    }
+                    // If spawn failed or was cancelled on retry, keep the original failure
+                }
+            }
 
             if let Some(handle) = app_handle {
                 let _ = handle.emit(
@@ -1201,6 +1449,16 @@ pub(crate) async fn run_validation_commands(
         "run_validation_commands: completed validation"
     );
 
+    // Write full output to disk for failed commands so the fixer agent
+    // can read untruncated logs from ~/.ralphx/logs/{task_id}/
+    if !all_passed {
+        for entry in &mut log {
+            if entry.status == STATUS_FAILED {
+                entry.attach_failure_logs(task_id_str);
+            }
+        }
+    }
+
     Some(ValidationResult {
         all_passed,
         failures,
@@ -1341,6 +1599,7 @@ pub(super) async fn run_install_phase(
                 stdout: String::new(),
                 stderr: "node_modules already exists — install skipped".to_string(),
                 duration_ms: 0,
+                ..Default::default()
             });
             continue;
         }
@@ -1400,6 +1659,7 @@ pub(super) async fn run_install_phase(
                     stdout: truncate_output(&stdout_raw, 2000),
                     stderr: truncate_output(&stderr_raw, 2000),
                     duration_ms,
+                    ..Default::default()
                 }
             }
             CancellableCommandResult::SpawnError(e) => {
@@ -1420,6 +1680,7 @@ pub(super) async fn run_install_phase(
                     stdout: String::new(),
                     stderr: truncate_output(&format!("Failed to execute: {}", e), 2000),
                     duration_ms,
+                    ..Default::default()
                 }
             }
             CancellableCommandResult::Cancelled => {
@@ -1439,6 +1700,7 @@ pub(super) async fn run_install_phase(
                     stdout: String::new(),
                     stderr: "Command cancelled".to_string(),
                     duration_ms,
+                    ..Default::default()
                 }
             }
         };
@@ -1491,6 +1753,7 @@ pub(super) async fn run_install_phase(
                         stdout: truncate_output(&stdout_raw, 2000),
                         stderr: truncate_output(&stderr_raw, 2000),
                         duration_ms,
+                        ..Default::default()
                     };
                 } else {
                     tracing::warn!(
@@ -1508,6 +1771,7 @@ pub(super) async fn run_install_phase(
                         stdout: truncate_output(&stdout_raw, 2000),
                         stderr: truncate_output(&stderr_raw, 2000),
                         duration_ms,
+                        ..Default::default()
                     };
                 }
             }
@@ -1683,6 +1947,15 @@ pub(crate) async fn run_pre_execution_setup(
         total_commands = log.len(),
         "run_pre_execution_setup: completed pre-execution setup"
     );
+
+    // Write full output to disk for failed setup commands
+    if !success {
+        for entry in &mut log {
+            if entry.status == STATUS_FAILED {
+                entry.attach_failure_logs(task_id_str);
+            }
+        }
+    }
 
     Some(PreExecSetupResult { success, log })
 }
