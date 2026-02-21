@@ -1,0 +1,313 @@
+// Stream processor type definitions
+// All data types, enums, and structs used by the stream processor
+
+use serde::{Deserialize, Serialize};
+
+// ============================================================================
+// Stream Message Types (from Claude CLI stream-json output)
+// ============================================================================
+
+/// Parsed stream-json message from Claude CLI
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum StreamMessage {
+    #[serde(rename = "content_block_start")]
+    ContentBlockStart {
+        index: Option<i32>,
+        content_block: ContentBlock,
+    },
+    #[serde(rename = "content_block_delta")]
+    ContentBlockDelta {
+        index: Option<i32>,
+        delta: ContentDelta,
+    },
+    #[serde(rename = "content_block_stop")]
+    ContentBlockStop { index: Option<i32> },
+    #[serde(rename = "message_start")]
+    MessageStart { message: Option<serde_json::Value> },
+    #[serde(rename = "message_delta")]
+    MessageDelta {
+        delta: Option<serde_json::Value>,
+        usage: Option<serde_json::Value>,
+    },
+    #[serde(rename = "message_stop")]
+    MessageStop,
+    /// Assistant message with full content (from --verbose mode)
+    #[serde(rename = "assistant")]
+    Assistant {
+        message: AssistantMessage,
+        session_id: Option<String>,
+    },
+    /// Result event containing session_id for --resume support
+    #[serde(rename = "result")]
+    Result {
+        result: Option<String>,
+        session_id: Option<String>,
+        #[serde(default)]
+        is_error: bool,
+        #[serde(default)]
+        errors: Vec<String>,
+        #[serde(default)]
+        subtype: Option<String>,
+        #[serde(default)]
+        cost_usd: f64,
+    },
+    /// System event (e.g., init messages, hook events)
+    #[serde(rename = "system")]
+    System {
+        message: Option<String>,
+        session_id: Option<String>,
+        #[serde(default)]
+        subtype: Option<String>,
+        #[serde(default)]
+        hook_id: Option<String>,
+        #[serde(default)]
+        hook_name: Option<String>,
+        #[serde(default)]
+        hook_event: Option<String>,
+        #[serde(default)]
+        output: Option<String>,
+        #[serde(default)]
+        exit_code: Option<i32>,
+        #[serde(default)]
+        outcome: Option<String>,
+    },
+    /// User message (contains tool results when using MCP)
+    #[serde(rename = "user")]
+    User { message: UserMessage },
+    #[serde(other)]
+    Other,
+}
+
+/// User message structure (contains tool results from MCP tool execution)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserMessage {
+    pub content: Vec<UserContent>,
+}
+
+/// Content block in user message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum UserContent {
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        tool_use_id: String,
+        content: serde_json::Value,
+        #[serde(default)]
+        is_error: bool,
+    },
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(other)]
+    Other,
+}
+
+/// Assistant message structure from Claude CLI verbose output
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AssistantMessage {
+    pub content: Vec<AssistantContent>,
+    #[serde(default)]
+    pub stop_reason: Option<String>,
+}
+
+/// Content block in assistant message
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum AssistantContent {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
+    #[serde(rename = "thinking")]
+    Thinking { thinking: String },
+    #[serde(other)]
+    Other,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentBlock {
+    #[serde(rename = "type")]
+    pub block_type: String,
+    pub id: Option<String>,
+    pub text: Option<String>,
+    pub name: Option<String>,
+    pub input: Option<serde_json::Value>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContentDelta {
+    #[serde(rename = "type")]
+    pub delta_type: String,
+    pub text: Option<String>,
+    pub partial_json: Option<String>,
+}
+
+// ============================================================================
+// Tool Call Type
+// ============================================================================
+
+/// Diff context captured at ToolCallCompleted for Edit/Write tool calls.
+/// Stores old file content so frontend can compute proper diffs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DiffContext {
+    /// Previous file content (None if new file)
+    pub old_content: Option<String>,
+    /// Resolved file path for reference
+    pub file_path: String,
+}
+
+/// Tool call extracted from the stream
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    pub id: Option<String>,
+    pub name: String,
+    pub arguments: serde_json::Value,
+    pub result: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diff_context: Option<DiffContext>,
+}
+
+/// Content block item - preserves order of text and tool calls
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ContentBlockItem {
+    #[serde(rename = "text")]
+    Text { text: String },
+    #[serde(rename = "tool_use")]
+    ToolUse {
+        id: Option<String>,
+        name: String,
+        arguments: serde_json::Value,
+        result: Option<serde_json::Value>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        diff_context: Option<serde_json::Value>,
+    },
+}
+
+// ============================================================================
+// Stream Events (what the processor emits)
+// ============================================================================
+
+/// Events emitted during stream processing
+#[derive(Debug, Clone)]
+pub enum StreamEvent {
+    /// Text chunk received
+    TextChunk(String),
+    /// Thinking block from Claude's extended reasoning
+    Thinking(String),
+    /// Tool call started (name and id available)
+    ToolCallStarted {
+        name: String,
+        id: Option<String>,
+        parent_tool_use_id: Option<String>,
+    },
+    /// Tool call completed (arguments parsed)
+    ToolCallCompleted {
+        tool_call: ToolCall,
+        parent_tool_use_id: Option<String>,
+    },
+    /// Tool result received (from user message with tool_result)
+    ToolResultReceived {
+        tool_use_id: String,
+        result: serde_json::Value,
+        parent_tool_use_id: Option<String>,
+    },
+    /// Session ID received (from Result or Assistant message)
+    SessionId(String),
+    /// Task subagent started (detected from Task tool_use)
+    TaskStarted {
+        tool_use_id: String,
+        description: Option<String>,
+        subagent_type: Option<String>,
+        model: Option<String>,
+        /// Teammate name if this Task spawns a team member (from args.name)
+        teammate_name: Option<String>,
+        /// Team name if this Task spawns a team member (from args.team_name)
+        team_name: Option<String>,
+    },
+    /// Task subagent completed (detected from Task tool_result)
+    TaskCompleted {
+        tool_use_id: String,
+        agent_id: Option<String>,
+        total_duration_ms: Option<u64>,
+        total_tokens: Option<u64>,
+        total_tool_use_count: Option<u64>,
+    },
+    /// Hook started (from system message with subtype "hook_started")
+    HookStarted {
+        hook_id: String,
+        hook_name: String,
+        hook_event: String,
+    },
+    /// Hook completed (from system message with subtype "hook_response")
+    HookCompleted {
+        hook_id: String,
+        hook_name: String,
+        hook_event: String,
+        output: Option<String>,
+        exit_code: Option<i32>,
+        outcome: Option<String>,
+    },
+    /// Hook block (from synthetic user message with text content)
+    HookBlock { reason: String },
+    /// Team created by lead (from TeamCreate tool result)
+    TeamCreated {
+        team_name: String,
+        config_path: String,
+    },
+    /// In-process teammate spawned by lead (from Task tool result with teammate_spawned status)
+    TeammateSpawned {
+        teammate_name: String,
+        team_name: String,
+        agent_id: String,
+        model: String,
+        color: String,
+        /// The teammate's initial task prompt (from Task tool's `prompt` field)
+        prompt: String,
+        /// Claude Code agent type controlling built-in tool set (e.g. "general-purpose")
+        agent_type: String,
+    },
+    /// Team message sent (from SendMessage tool result)
+    TeamMessageSent {
+        sender: String,
+        recipient: Option<String>,
+        content: String,
+        message_type: String,
+    },
+    /// Team deleted (from TeamDelete tool result)
+    TeamDeleted {
+        team_name: String,
+    },
+}
+
+// ============================================================================
+// Parsed Line and Stream Result
+// ============================================================================
+
+/// Parsed line with optional parent_tool_use_id and is_synthetic extracted from top-level JSON
+pub struct ParsedLine {
+    pub message: StreamMessage,
+    pub parent_tool_use_id: Option<String>,
+    pub is_synthetic: bool,
+    /// Top-level `tool_use_result` from Claude Code stream JSON.
+    /// Contains structured metadata (e.g. `{"status": "teammate_spawned", ...}`)
+    /// that is NOT inside the `message.content[].content` field.
+    pub tool_use_result: Option<serde_json::Value>,
+}
+
+/// Final result from processing a stream
+#[derive(Debug, Clone)]
+pub struct StreamResult {
+    pub response_text: String,
+    pub tool_calls: Vec<ToolCall>,
+    /// Content blocks in order (text and tool calls interleaved)
+    pub content_blocks: Vec<ContentBlockItem>,
+    pub session_id: Option<String>,
+    pub is_error: bool,
+    pub errors: Vec<String>,
+    pub error_subtype: Option<String>,
+}
