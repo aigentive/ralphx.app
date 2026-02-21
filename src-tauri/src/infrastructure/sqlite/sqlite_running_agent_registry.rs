@@ -149,10 +149,27 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             .ok();
 
         // Delete the row
-        let _ = conn.execute(
+        match conn.execute(
             "DELETE FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
             rusqlite::params![key.context_type, key.context_id],
-        );
+        ) {
+            Ok(0) => {
+                tracing::debug!(
+                    context_type = %key.context_type,
+                    context_id = %key.context_id,
+                    "unregister: 0 rows deleted — entry already gone"
+                );
+            }
+            Ok(_) => {} // deleted successfully
+            Err(e) => {
+                tracing::error!(
+                    context_type = %key.context_type,
+                    context_id = %key.context_id,
+                    error = %e,
+                    "unregister: DELETE failed"
+                );
+            }
+        }
         drop(conn);
 
         // Attach cancellation token from in-memory map
@@ -416,10 +433,17 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
 
         // Insert placeholder registration (pid=0, no worktree)
         let started_at = chrono::Utc::now().to_rfc3339();
-        let _ = conn.execute(
+        if let Err(e) = conn.execute(
             "INSERT INTO running_agents (context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at) VALUES (?1, ?2, 0, ?3, ?4, ?5, NULL, NULL)",
             rusqlite::params![key.context_type, key.context_id, conversation_id, agent_run_id, started_at],
-        );
+        ) {
+            tracing::error!(
+                context_type = %key.context_type,
+                context_id = %key.context_id,
+                error = %e,
+                "try_register: INSERT failed — agent slot may not be reserved"
+            );
+        }
 
         Ok(())
     }
@@ -431,18 +455,43 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
-    ) {
-        let conn = self.conn.lock().await;
-        let _ = conn.execute(
-            "UPDATE running_agents SET pid = ?1, worktree_path = ?2, agent_run_id = ?3 WHERE context_type = ?4 AND context_id = ?5",
-            rusqlite::params![pid, worktree_path, agent_run_id, key.context_type, key.context_id],
-        );
-        drop(conn);
+    ) -> Result<(), String> {
+        let db_result = {
+            let conn = self.conn.lock().await;
+            match conn.execute(
+                "UPDATE running_agents SET pid = ?1, worktree_path = ?2, agent_run_id = ?3 WHERE context_type = ?4 AND context_id = ?5",
+                rusqlite::params![pid, worktree_path, agent_run_id, key.context_type, key.context_id],
+            ) {
+                Ok(0) => {
+                    tracing::warn!(
+                        context_type = %key.context_type,
+                        context_id = %key.context_id,
+                        pid,
+                        "update_agent_process: 0 rows affected — entry was pruned before process details could be set"
+                    );
+                    Ok(())
+                }
+                Ok(_) => Ok(()),
+                Err(e) => {
+                    tracing::error!(
+                        context_type = %key.context_type,
+                        context_id = %key.context_id,
+                        error = %e,
+                        "update_agent_process: UPDATE failed"
+                    );
+                    Err(e.to_string())
+                }
+            }
+        };
 
+        // Always store the cancellation token regardless of DB result —
+        // the in-memory token is needed to cancel the process even if DB is inconsistent.
         if let Some(token) = cancellation_token {
             let mut tokens = self.tokens.lock().await;
             tokens.insert(key.clone(), token);
         }
+
+        db_result
     }
 }
 
