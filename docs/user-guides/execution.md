@@ -170,7 +170,7 @@ The worker agent is spawned via the ChatService with `ChatContextType::TaskExecu
 1. **Prompt** — The worker receives `"Execute task: {task_id}"`. If there's a `restart_note` in the task metadata (set by the user), it's appended to the prompt and then cleared (one-shot).
 2. **Agent behavior** — The worker reads the system card (`system-card-worker-execution-pattern.md`) and the task's implementation plan, decomposes work into sub-scopes, and delegates to parallel `ralphx-coder` sub-agents. Each coder has exclusive file ownership within its scope.
 3. **Step tracking** — The worker creates and updates task steps via MCP tools (`start_step`, `complete_step`). These are visible in the task detail view as a progress timeline.
-4. **Supervisor monitoring** — A `ralphx-supervisor` agent runs alongside the worker and monitors for infinite loops, stuck agents (no git diff after 5 minutes), repeated errors, or excessive token use. It can inject guidance or escalate.
+4. **Supervisor monitoring** — A `ralphx-supervisor` agent runs alongside the worker and monitors for infinite loops, stuck agents (no git diff after ~2.5 minutes), repeated errors, or excessive token use. It can inject guidance or escalate.
 5. **Completion** — When the agent stream ends:
    - If the agent produced output → task transitions to **PendingReview** (or **QaRefining** if QA is enabled)
    - If the agent produced no output → task transitions to **Failed**
