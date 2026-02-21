@@ -245,11 +245,26 @@ impl<'a> super::TransitionHandler<'a> {
                 });
                 task.metadata = Some(metadata.to_string());
                 task.internal_status = InternalStatus::Merging;
+                // Point worktree_path at the merge worktree so the agent runs in the
+                // right directory (plan branch is already checked out there after
+                // update_plan_from_main aborted the conflicting merge).
+                let merge_wt = super::merge_helpers::compute_merge_worktree_path(&project, task_id_str);
+                task.worktree_path = Some(merge_wt);
                 self.persist_merge_transition(
                     &mut task, &task_id, task_id_str,
                     InternalStatus::PendingMerge, InternalStatus::Merging,
                     "plan_update_conflict", task_repo,
                 ).await;
+                // Spawn the merger agent — mirrors handle_validation_failure's AutoFix path.
+                // Without this call, the task sits in Merging with no agent and
+                // attempt_merge_auto_complete transitions it straight to MergeIncomplete.
+                if let Err(e) = Box::pin(self.on_enter_dispatch(&State::Merging)).await {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "on_enter(Merging) failed during plan_update_conflict routing"
+                    );
+                }
                 return;
             }
             super::merge_coordination::PlanUpdateResult::Error(err) => {
