@@ -257,7 +257,8 @@ async fn test_try_register_then_update_agent_process() {
             Some("/tmp/worktree".to_string()),
             Some(token.clone()),
         )
-        .await;
+        .await
+        .unwrap();
 
     // Should now have real PID, agent_run_id, and worktree
     let info = registry.get(&key).await.unwrap();

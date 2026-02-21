@@ -766,7 +766,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // 7b. Update process details in registry now that spawn succeeded
         let cancellation_token = CancellationToken::new();
         if let Some(pid) = child.id() {
-            self.running_agent_registry
+            if let Err(e) = self
+                .running_agent_registry
                 .update_agent_process(
                     &registry_key,
                     pid,
@@ -774,7 +775,14 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     Some(registry_worktree.clone()),
                     Some(cancellation_token.clone()),
                 )
-                .await;
+                .await
+            {
+                tracing::error!(
+                    pid,
+                    error = %e,
+                    "chat_service.send_message: failed to update agent process in registry — slot claimed but PID not persisted"
+                );
+            }
         }
 
         // 8. Build background context and spawn

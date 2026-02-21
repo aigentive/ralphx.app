@@ -108,6 +108,9 @@ pub trait RunningAgentRegistry: Send + Sync {
     ///
     /// Called after the CLI process has been spawned to fill in the real PID,
     /// agent_run_id, worktree path, and cancellation token.
+    ///
+    /// Returns `Err` if the DB UPDATE fails. Returns `Ok(())` even if 0 rows were
+    /// affected (entry pruned before process details could be set — warns via tracing).
     async fn update_agent_process(
         &self,
         key: &RunningAgentKey,
@@ -115,7 +118,7 @@ pub trait RunningAgentRegistry: Send + Sync {
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
-    );
+    ) -> Result<(), String>;
 }
 
 /// Check if a process with the given PID is still alive.
@@ -440,14 +443,22 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
-    ) {
+    ) -> Result<(), String> {
         let mut agents = self.agents.lock().await;
         if let Some(info) = agents.get_mut(key) {
             info.pid = pid;
             info.agent_run_id = agent_run_id.to_string();
             info.worktree_path = worktree_path;
             info.cancellation_token = cancellation_token;
+        } else {
+            tracing::warn!(
+                context_type = %key.context_type,
+                context_id = %key.context_id,
+                pid,
+                "update_agent_process: entry not found — may have been pruned before process details could be set"
+            );
         }
+        Ok(())
     }
 }
 
