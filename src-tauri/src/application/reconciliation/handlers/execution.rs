@@ -226,6 +226,18 @@ impl<R: Runtime> ReconciliationRunner<R> {
             let context_type = ChatContextType::from_str(&key.context_type).ok();
             let pid_alive = process_is_alive(info.pid);
 
+            // Skip in-flight registrations: try_register inserts pid=0/empty agent_run_id as
+            // placeholder; update_agent_process fills real values ~40ms later. Pruning during
+            // this window would incorrectly delete a valid registration.
+            if info.agent_run_id.is_empty() {
+                tracing::debug!(
+                    context_type = key.context_type,
+                    context_id = key.context_id,
+                    "Skipping in-flight registry entry (no agent_run_id yet)"
+                );
+                continue;
+            }
+
             let run = match self
                 .agent_run_repo
                 .get_by_id(&AgentRunId::from_string(&info.agent_run_id))
