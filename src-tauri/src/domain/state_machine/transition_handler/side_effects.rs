@@ -281,12 +281,8 @@ impl<'a> super::TransitionHandler<'a> {
                     "target_branch": target_branch,
                     "merge_failure_source": "PlanUpdateFailed",
                 });
-                task.metadata = Some(metadata.to_string());
-                task.internal_status = InternalStatus::MergeIncomplete;
-                self.persist_merge_transition(
-                    &mut task, &task_id, task_id_str,
-                    InternalStatus::PendingMerge, InternalStatus::MergeIncomplete,
-                    "plan_update_failed", task_repo,
+                self.transition_to_merge_incomplete(
+                    &mut task, &task_id, task_id_str, metadata, task_repo, true,
                 ).await;
                 return;
             }
@@ -320,11 +316,47 @@ impl<'a> super::TransitionHandler<'a> {
                 });
                 task.metadata = Some(metadata.to_string());
                 task.internal_status = InternalStatus::Merging;
+                // Create a merge worktree with source branch checked out so the merger
+                // agent can resolve the conflict in an isolated directory. Mirrors the
+                // plan_update_conflict path which sets worktree_path before persist.
+                let merge_wt = super::merge_helpers::compute_merge_worktree_path(&project, task_id_str);
+                let merge_wt_path = std::path::PathBuf::from(&merge_wt);
+                if let Err(e) = GitService::checkout_existing_branch_worktree(
+                    repo_path, &merge_wt_path, &source_branch,
+                ).await {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        source_branch = %source_branch,
+                        "Failed to create merge worktree for source_update_conflict — falling back to MergeIncomplete"
+                    );
+                    self.transition_to_merge_incomplete(
+                        &mut task, &task_id, task_id_str,
+                        serde_json::json!({
+                            "error": format!("Failed to create merge worktree for source update conflict: {}", e),
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        }),
+                        task_repo, true,
+                    ).await;
+                    return;
+                }
+                task.worktree_path = Some(merge_wt);
                 self.persist_merge_transition(
                     &mut task, &task_id, task_id_str,
                     InternalStatus::PendingMerge, InternalStatus::Merging,
                     "source_update_conflict", task_repo,
                 ).await;
+                // Spawn the merger agent — mirrors handle_validation_failure's AutoFix path.
+                // Without this call, the task sits in Merging with no agent and
+                // attempt_merge_auto_complete transitions it straight to MergeIncomplete.
+                if let Err(e) = Box::pin(self.on_enter_dispatch(&State::Merging)).await {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        "on_enter(Merging) failed during source_update_conflict routing"
+                    );
+                }
                 return;
             }
             super::merge_coordination::SourceUpdateResult::Error(err) => {
