@@ -90,6 +90,7 @@ style={{ boxShadow: "none", outline: "none" }}
 16. **Progressive Intelligence model selection** — Default teammates to `sonnet` (faster, cost-effective). Escalate to `opus` ONLY for: deep multi-file investigation, complex architectural changes spanning multiple modules, subtle race conditions/state machine debugging, or when a Sonnet attempt failed/produced insufficient results. Simple tasks stay on Sonnet: single-file edits, CSS/UI, clear-root-cause bugfixes, docs/config. Pattern: Sonnet first → insufficient → re-spawn with Opus.
 17. **Team agent message timing** — Messages queue until turn ends; a "done" report followed by your queued question means the agent starts working on the question before shutdown arrives. Before sending shutdown, confirm all your previously-sent messages have been received and answered — never send investigation questions and shutdown in quick succession.
 18. **Convergent investigation** — For bug investigations, spawn at least 2 agents in parallel (one analyzing logs, one inspecting code) and compare hypotheses before implementing. Prevents tunnel vision and catches compounding issues.
+19. **Team parallelization** — For multiple independent work streams, spawn separate teammates per stream — don't serialize on a single agent. Maximize parallelism.
 
 ## Team Mode Rules
 When delegate mode is active (TeamCreate tool available):
