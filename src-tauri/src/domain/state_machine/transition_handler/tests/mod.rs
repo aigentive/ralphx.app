@@ -59,3 +59,7 @@ mod merge_dispatch_agent_spawn;
 // Orchestration chain integration tests: real git + real DB + MockChatService
 // Verifies merger agent is spawned: B2 (merge conflict) and C1 (AutoFix validation failure)
 mod orchestration_chain_tests;
+
+// Tests for spawn failure recovery: on_enter(Merging) + failing chat service
+// Covers Fix 2 (commit 189e8eaf): AttemptFailed events + retry budget exhaustion
+mod spawn_failure_recovery_tests;
