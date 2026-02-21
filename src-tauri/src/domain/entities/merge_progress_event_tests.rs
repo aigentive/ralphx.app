@@ -366,8 +366,13 @@ fn merge_phase_info_serializes() {
     let info = MergePhaseInfo {
         id: "cargo_test".to_string(),
         label: "Test".to_string(),
+        command: Some("cargo test".to_string()),
+        description: None,
     };
     let json = serde_json::to_string(&info).unwrap();
     assert!(json.contains("\"id\":\"cargo_test\""));
     assert!(json.contains("\"label\":\"Test\""));
+    assert!(json.contains("\"command\":\"cargo test\""));
+    // description is None → should be skipped
+    assert!(!json.contains("\"description\""));
 }

@@ -360,6 +360,10 @@ export type MergeProgressEvent = z.infer<typeof MergeProgressEventSchema>;
 export const MergePhaseInfoSchema = z.object({
   id: z.string().min(1),
   label: z.string().min(1),
+  /** Actual shell command (only set for dynamic/validation phases) */
+  command: z.string().optional(),
+  /** Static description (only set for structural phases) */
+  description: z.string().optional(),
 });
 
 export type MergePhaseInfo = z.infer<typeof MergePhaseInfoSchema>;
