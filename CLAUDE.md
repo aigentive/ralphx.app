@@ -88,6 +88,17 @@ style={{ boxShadow: "none", outline: "none" }}
     > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
     ```
 
+## Team Mode Rules
+When delegate mode is active (TeamCreate tool available):
+
+| Rule | Detail |
+|------|--------|
+| **Always managed teams** | Every agent task MUST be wrapped in a team (TeamCreate first). No standalone Task tool spawns — user needs visibility. Even single-agent tasks use a team. |
+| **TDD by default** | Teammates tasked with execution write tests FIRST, or at minimum verify test coverage exists before marking complete. |
+| **Lead reviews coverage** | Team lead instructs teammates to check/implement test coverage. Review for gaps before approving commits. |
+| **Report test results** | Teammates report pass/fail counts in completion messages. No "done" without test evidence. |
+| **Every change = tests** | Code changes without corresponding test coverage are incomplete. |
+
 ## Git Conventions
 - NO: git init, push, remotes
 - Commits: `docs:` | `feat:` | `fix:` | `chore:`
