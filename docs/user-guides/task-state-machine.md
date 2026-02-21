@@ -251,8 +251,8 @@ The complete list of all valid transitions. Only these transitions are permitted
 | `approved` | `pending_merge`, `ready` |
 | `pending_merge` | `merged`, `merging`, `cancelled` |
 | `merging` | `merged`, `merge_conflict`, `merge_incomplete`, `stopped`, `paused` |
-| `merge_incomplete` | `pending_merge`, `merged` |
-| `merge_conflict` | `merged` |
+| `merge_incomplete` | `pending_merge`, `merged`, `stopped`, `paused`, `cancelled` |
+| `merge_conflict` | `pending_merge`, `merged`, `stopped`, `paused`, `cancelled` |
 | `merged` | `ready` |
 | `failed` | `ready` |
 | `cancelled` | `ready` |
