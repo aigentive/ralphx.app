@@ -27,6 +27,7 @@ import {
   TwoColumnLayout,
 } from "./shared";
 import type { Task } from "@/types/task";
+import { BranchBadge } from "@/components/shared/BranchBadge";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -153,8 +154,7 @@ function ResolutionInstructions({ branchName }: { branchName: string }) {
         <li>Click "Conflicts Resolved" below to continue</li>
       </ol>
       <div className="pt-2">
-        <span className="text-[11px] text-white/40">Branch: </span>
-        <span className="text-[11px] text-white/60 font-mono">{branchName}</span>
+        <BranchBadge branch={branchName} variant="muted" size="sm" />
       </div>
     </div>
   );

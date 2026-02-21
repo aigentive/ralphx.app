@@ -9,6 +9,7 @@
 import { Clock, Users } from "lucide-react";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { getStatusIconConfig } from "@/types/status-icons";
+import { BranchBadge } from "@/components/shared/BranchBadge";
 
 interface WaitingMergeCardProps {
   task: MergePipelineTask;
@@ -28,8 +29,6 @@ export function WaitingMergeCard({ task, runningCount }: WaitingMergeCardProps) 
         ? `Waiting for ${task.blockingBranch} to merge`
         : "Waiting for active merge to complete"
       : "Pending merge";
-
-  const branchShort = task.targetBranch?.split("/").pop() ?? task.targetBranch;
 
   return (
     <div
@@ -68,11 +67,8 @@ export function WaitingMergeCard({ task, runningCount }: WaitingMergeCardProps) 
             : "agents"}
         </span>
       )}
-      <span
-        className="text-[11px] font-mono shrink-0 max-w-[100px] truncate"
-        style={{ color: "hsl(220 10% 38%)" }}
-      >
-        {branchShort}
+      <span className="shrink-0 max-w-[100px] truncate">
+        <BranchBadge branch={task.targetBranch} variant="muted" size="sm" />
       </span>
     </div>
   );

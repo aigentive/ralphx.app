@@ -32,6 +32,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { BranchBadge } from "@/components/shared/BranchBadge";
 
 // ============================================================================
 // Types
@@ -380,11 +381,8 @@ export function MergeWorkflowDialog({
               {completionData.commitCount !== 1 ? "s" : ""}
             </span>{" "}
             on branch:{" "}
-            <span
-              data-testid="branch-name"
-              className="font-mono font-medium text-[var(--accent-primary)]"
-            >
-              {completionData.branchName}
+            <span data-testid="branch-name">
+              <BranchBadge branch={completionData.branchName} variant="default" />
             </span>
           </div>
 

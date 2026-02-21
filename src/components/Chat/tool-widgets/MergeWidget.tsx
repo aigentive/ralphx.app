@@ -21,13 +21,11 @@ function shortSha(sha: string): string {
   return sha.length > 7 ? sha.slice(0, 7) : sha;
 }
 
-/** Extract branch short name (last segment after /) */
+import { formatBranchDisplay } from "@/lib/branch-utils";
+
+/** Extract branch short name using unified formatter */
 function shortBranch(branch: string): string {
-  const parts = branch.split("/");
-  if (parts.length <= 1) return branch;
-  // For "ralphx/slug/task-xxx" show "task-xxx"
-  // For "main" show "main"
-  return parts[parts.length - 1] || branch;
+  return formatBranchDisplay(branch).short;
 }
 
 // ============================================================================
