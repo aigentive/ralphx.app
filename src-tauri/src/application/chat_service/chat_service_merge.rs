@@ -27,6 +27,19 @@ use crate::domain::state_machine::transition_handler::{
     format_validation_error_metadata, run_validation_commands,
 };
 
+/// RAII guard that removes a task from ExecutionState::auto_completes_in_flight on drop.
+/// Ensures cleanup on all return paths, including early returns and panics.
+struct AutoCompleteGuard {
+    execution_state: Arc<ExecutionState>,
+    task_id: String,
+}
+
+impl Drop for AutoCompleteGuard {
+    fn drop(&mut self) {
+        self.execution_state.finish_auto_complete(&self.task_id);
+    }
+}
+
 /// Attempt to auto-complete a merge when the merger agent exits.
 ///
 /// Called after process_stream_background returns for ChatContextType::Merge.
@@ -57,9 +70,21 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
 ) {
     let task_id = TaskId::from_string(task_id_str.to_string());
 
-    // TODO: Add merges_in_flight guard here to skip if programmatic merge is already in flight.
-    // merges_in_flight lives in TaskServices/TaskTransitionService, not ExecutionState.
-    // Would require adding it to the function signature or moving it to ExecutionState.
+    // Dedup guard: prevent concurrent auto-complete calls for the same task.
+    // Two trigger paths (agent completion + error handler) can fire ~9s apart,
+    // causing concurrent validation in the same worktree → cargo file lock contention.
+    if !execution_state.try_start_auto_complete(task_id_str) {
+        tracing::info!(
+            task_id = task_id_str,
+            "attempt_merge_auto_complete: skipping — another auto-complete is already in flight for this task"
+        );
+        return;
+    }
+    // RAII guard: ensure we remove the task from the in-flight set on all exit paths.
+    let _auto_complete_guard = AutoCompleteGuard {
+        execution_state: Arc::clone(execution_state),
+        task_id: task_id_str.to_string(),
+    };
 
     // 1. Get task - if not in Merging state, agent already handled it
     let mut task = match task_repo.get_by_id(&task_id).await {
