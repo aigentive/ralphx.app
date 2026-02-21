@@ -395,7 +395,6 @@ The AI reviewer never directly approves a task into the merge pipeline. It bring
 |--------|-----------|--------|
 | **Approve** | ReviewPassed, Escalated | → Approved → (auto) PendingMerge |
 | **Request Changes** | ReviewPassed, Escalated | → RevisionNeeded → (auto) ReExecuting |
-| **Force Approve** | PendingReview, Reviewing (override) | → Approved immediately |
 
 ### QA Override (QaFailed)
 
