@@ -55,3 +55,7 @@ mod progress_events;
 
 // Regression tests: on_enter_dispatch coverage for all Merging state entry paths
 mod merge_dispatch_agent_spawn;
+
+// Orchestration chain integration tests: real git + real DB + MockChatService
+// Verifies merger agent is spawned on plan/source update conflict paths (A4, A5, A6)
+mod orchestration_chain_tests;
