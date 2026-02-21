@@ -24,7 +24,7 @@ use super::commit_messages::{build_plan_merge_commit_msg, build_squash_commit_ms
 use super::merge_completion::complete_merge_internal;
 use super::merge_helpers::{
     clear_merge_deferred_metadata, compute_merge_worktree_path, has_merge_deferred_metadata,
-    parse_metadata, task_targets_branch,
+    has_prior_validation_failure, parse_metadata, task_targets_branch,
 };
 use super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
 
@@ -118,23 +118,18 @@ impl<'a> super::TransitionHandler<'a> {
             return false;
         };
 
-        // Don't fast-path to completion if a previous merge commit couldn't be reverted.
-        // The target branch may contain a failing merge commit — proceeding would mark
-        // the task as Merged with broken code on the target.
-        if let Some(ref meta_str) = task.metadata {
-            if let Ok(meta) = serde_json::from_str::<serde_json::Value>(meta_str) {
-                if meta.get("merge_commit_unrevertable").and_then(|v| v.as_bool()).unwrap_or(false) {
-                    tracing::warn!(
-                        task_id = task_id_str,
-                        source_branch = %source_branch,
-                        target_branch = %target_branch,
-                        unrevertable_sha = ?meta.get("unrevertable_commit_sha"),
-                        "Source appears merged but merge_commit_unrevertable flag is set — \
-                         skipping fast-path (target may have failing code)"
-                    );
-                    return false;
-                }
-            }
+        // Don't fast-path to completion if prior validation failures exist.
+        // The target branch may contain broken code — proceeding would mark
+        // the task as Merged with failing code on the target.
+        if has_prior_validation_failure(task) {
+            tracing::warn!(
+                task_id = task_id_str,
+                source_branch = %source_branch,
+                target_branch = %target_branch,
+                "Source appears merged but prior validation failures detected — \
+                 skipping fast-path (target may have failing code)"
+            );
+            return false;
         }
 
         tracing::info!(
@@ -206,6 +201,22 @@ impl<'a> super::TransitionHandler<'a> {
         match GitService::find_commit_by_message_grep(repo_path, task_id_str, target_branch).await
         {
             Ok(Some(found_sha)) => {
+                // Safety gate: don't fast-path to completion if prior validation
+                // failures exist. The commits on target may be from a merge that
+                // was reverted (or failed to revert) due to validation errors.
+                // Returning false lets the normal merge flow handle it.
+                if has_prior_validation_failure(task) {
+                    tracing::warn!(
+                        task_id = task_id_str,
+                        source_branch = %source_branch,
+                        target_branch = %target_branch,
+                        found_sha = %found_sha,
+                        "Source branch missing, commits on target, but prior validation \
+                         failures detected — skipping recovery (will retry with fresh merge)"
+                    );
+                    return false;
+                }
+
                 tracing::info!(
                     task_id = task_id_str,
                     source_branch = %source_branch,

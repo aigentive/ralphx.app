@@ -257,6 +257,37 @@ pub(crate) fn has_branch_missing_metadata(task: &Task) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if task metadata indicates prior validation failures that should block
+/// fast-path merge completion (used by `check_already_merged` and
+/// `recover_deleted_source_branch` to avoid completing merges with broken code).
+///
+/// Returns `true` if ANY of these are set:
+/// - `merge_commit_unrevertable`: prior merge commit couldn't be reverted
+/// - `merge_failure_source` == `"validation_failed"`: prior merge failed validation
+/// - `validation_revert_count` > 0: prior validation-triggered reverts
+pub(super) fn has_prior_validation_failure(task: &Task) -> bool {
+    let Some(meta) = parse_metadata(task) else {
+        return false;
+    };
+    if meta.get("merge_commit_unrevertable").and_then(|v| v.as_bool()).unwrap_or(false) {
+        return true;
+    }
+    if meta.get("merge_failure_source")
+        .and_then(|v| v.as_str())
+        .map(|s| s == "validation_failed")
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    if meta.get("validation_revert_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) > 0
+    {
+        return true;
+    }
+    false
+}
+
 /// Check if a task has the `main_merge_deferred` flag set in its metadata.
 /// This flag indicates a merge to main was deferred because agents were running.
 pub(crate) fn has_main_merge_deferred_metadata(task: &Task) -> bool {
