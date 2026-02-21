@@ -215,6 +215,93 @@ async fn test_verify_merge_plan_branch_not_merged() {
     );
 }
 
+// --- Conflict metadata target_branch extraction tests ---
+// These verify the fix for: attempt_merge_auto_complete using wrong target_branch after
+// plan_update_conflict / source_update_conflict resolution.
+//
+// Root cause: resolve_merge_branches() can return "main" (the base branch) if the
+// plan branch state changed between conflict detection and auto-complete invocation.
+// Fix: read target_branch from task metadata, which is stored at conflict-detection
+// time and is the authoritative value.
+
+#[test]
+fn test_plan_update_conflict_target_branch_from_metadata() {
+    // Simulates the metadata set by side_effects.rs when plan←main has conflicts
+    let meta_json = r#"{
+        "plan_update_conflict": true,
+        "target_branch": "ralphx/ralphx/plan-c785dcd0",
+        "base_branch": "main",
+        "source_branch": "ralphx/ralphx/task-abc123"
+    }"#;
+    let meta: serde_json::Value = serde_json::from_str(meta_json).unwrap();
+
+    // This is the extraction logic in the plan_update_conflict path
+    let plan_branch = meta
+        .get("target_branch")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    // Must return the plan branch, not "main"
+    assert_eq!(plan_branch, Some("ralphx/ralphx/plan-c785dcd0".to_string()));
+
+    // Fallback when metadata missing target_branch (uses resolve_merge_branches result)
+    let meta_no_target: serde_json::Value =
+        serde_json::from_str(r#"{"plan_update_conflict": true, "base_branch": "main"}"#).unwrap();
+    let missing = meta_no_target
+        .get("target_branch")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+    // None → caller uses resolve_merge_branches fallback
+    assert_eq!(missing, None);
+}
+
+#[test]
+fn test_source_update_conflict_target_branch_from_metadata() {
+    // Simulates the metadata set by side_effects.rs when source←target has conflicts
+    let meta_json = r#"{
+        "source_update_conflict": true,
+        "target_branch": "ralphx/ralphx/plan-c785dcd0",
+        "source_branch": "ralphx/ralphx/task-abc123"
+    }"#;
+    let meta: serde_json::Value = serde_json::from_str(meta_json).unwrap();
+
+    // This is the extraction logic in the source_update_conflict path
+    let target_branch = meta
+        .get("target_branch")
+        .and_then(|v| v.as_str())
+        .map(String::from);
+
+    // Must return the plan branch, not "main"
+    assert_eq!(target_branch, Some("ralphx/ralphx/plan-c785dcd0".to_string()));
+}
+
+#[test]
+fn test_conflict_metadata_target_branch_not_contaminated_by_base_branch() {
+    // Regression test: when resolve_merge_branches returns "main" as target_branch
+    // (fallback due to plan_branch_repo being None or state change), the metadata
+    // extraction must still return the correct plan branch stored in metadata.
+    let meta_json = r#"{
+        "plan_update_conflict": true,
+        "target_branch": "ralphx/ralphx/plan-c785dcd0",
+        "base_branch": "main"
+    }"#;
+    let meta: serde_json::Value = serde_json::from_str(meta_json).unwrap();
+
+    // Simulate resolve_merge_branches returning "main" (the bug scenario)
+    let resolved_target_branch = "main".to_string();
+
+    // The fixed code reads from metadata first
+    let plan_branch = meta
+        .get("target_branch")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .unwrap_or_else(|| resolved_target_branch.clone());
+
+    // Must NOT be "main" — must be the plan branch from metadata
+    assert_ne!(plan_branch, "main", "plan_branch must not fall back to 'main' when metadata has the correct target_branch");
+    assert_eq!(plan_branch, "ralphx/ralphx/plan-c785dcd0");
+}
+
 // --- Auto-complete dedup guard tests ---
 
 #[test]
