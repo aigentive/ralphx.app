@@ -3374,3 +3374,77 @@ async fn reconcile_merge_incomplete_skips_when_user_retry_in_progress() {
         "Task should remain in MergeIncomplete — background retry handles transition"
     );
 }
+
+#[tokio::test]
+async fn reconcile_merging_skips_when_auto_complete_in_flight() {
+    // When attempt_merge_auto_complete is already running (e.g. validation in progress),
+    // the reconciler should skip this cycle entirely to avoid misinterpreting the
+    // dedup guard's "skip" as a failure and incorrectly escalating.
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task in Merging state with old transition (would normally trigger reconciliation)
+    let mut task = Task::new(project.id.clone(), "Auto-complete in-flight task".to_string());
+    task.internal_status = InternalStatus::Merging;
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(600);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Simulate auto-complete in flight for this task
+    assert!(execution_state.try_start_auto_complete(task.id.as_str()));
+
+    // Reconcile — should skip because auto-complete is in flight
+    let result = reconciler
+        .reconcile_merging_task(&task, InternalStatus::Merging)
+        .await;
+
+    // Should return true (handled/skip) not false (nothing to do)
+    assert!(result, "Reconciler should return true when auto-complete is in flight (skip this cycle)");
+
+    // Task should still be in Merging — no escalation, no retry increment
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merging,
+        "Task should remain in Merging when auto-complete is in flight"
+    );
+
+    // No merge_recovery metadata should be written (no timeout recorded)
+    let metadata_str = updated.metadata.as_deref().unwrap_or("{}");
+    let meta_json: serde_json::Value = serde_json::from_str(metadata_str).unwrap_or_default();
+    assert!(
+        meta_json.get("merge_recovery").is_none(),
+        "No merge_recovery metadata should be written when auto-complete is in flight"
+    );
+
+    // Cleanup
+    execution_state.finish_auto_complete(task.id.as_str());
+}
+
+#[test]
+fn is_auto_complete_in_flight_tracks_correctly() {
+    let state = ExecutionState::new();
+    let task_id = "test-task-123";
+
+    // Initially not in flight
+    assert!(!state.is_auto_complete_in_flight(task_id));
+
+    // Start auto-complete
+    assert!(state.try_start_auto_complete(task_id));
+    assert!(state.is_auto_complete_in_flight(task_id));
+
+    // Different task is not in flight
+    assert!(!state.is_auto_complete_in_flight("other-task"));
+
+    // Finish auto-complete
+    state.finish_auto_complete(task_id);
+    assert!(!state.is_auto_complete_in_flight(task_id));
+}

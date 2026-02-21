@@ -24,6 +24,18 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // Auto-complete in-flight guard: if attempt_merge_auto_complete is already running
+        // for this task (e.g. triggered by agent completion), skip this reconciliation cycle.
+        // Without this, the reconciler misinterprets the dedup guard's "skip" as a failure
+        // and may incorrectly escalate (increment retry count, eventually → MergeIncomplete).
+        if self.execution_state.is_auto_complete_in_flight(task.id.as_str()) {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping Merging reconciliation — auto-complete already in flight"
+            );
+            return true;
+        }
+
         let run = self
             .lookup_latest_run_for_task_context(task, ChatContextType::Merge)
             .await;
