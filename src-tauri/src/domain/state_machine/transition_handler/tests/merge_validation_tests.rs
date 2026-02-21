@@ -8,8 +8,9 @@ use std::path::Path;
 
 use super::helpers::*;
 use super::super::merge_validation::{
-    extract_cached_validation, format_validation_error_metadata, format_validation_warn_metadata,
-    run_validation_commands, take_skip_validation_flag, ValidationFailure, ValidationLogEntry,
+    cleanup_validation_logs, extract_cached_validation, format_validation_error_metadata,
+    format_validation_warn_metadata, run_validation_commands, take_skip_validation_flag,
+    validation_log_dir, ValidationFailure, ValidationLogEntry,
 };
 use crate::domain::entities::MergeValidationMode;
 
@@ -145,6 +146,7 @@ fn format_validation_error_metadata_formats_correctly() {
         stdout: String::new(),
         stderr: "error[E0308]: mismatched types".to_string(),
         duration_ms: 1500,
+        ..Default::default()
     }];
     let result = format_validation_error_metadata(&failures, &log, "task-branch", "main");
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -170,6 +172,7 @@ fn format_validation_warn_metadata_formats_correctly() {
         stdout: String::new(),
         stderr: "test failed".to_string(),
         duration_ms: 500,
+        ..Default::default()
     }];
     let result = format_validation_warn_metadata(&log, "task-branch", "main");
     let parsed: serde_json::Value = serde_json::from_str(&result).unwrap();
@@ -330,6 +333,7 @@ async fn run_validation_skips_passed_when_cached() {
             stdout: String::new(),
             stderr: String::new(),
             duration_ms: 50,
+            ..Default::default()
         },
         ValidationLogEntry {
             phase: "validate".to_string(),
@@ -341,6 +345,7 @@ async fn run_validation_skips_passed_when_cached() {
             stdout: String::new(),
             stderr: "error".to_string(),
             duration_ms: 100,
+            ..Default::default()
         },
     ];
 
@@ -537,4 +542,263 @@ async fn run_validation_runs_setup_when_merge_cwd_differs_from_project_root() {
     // Should have setup entries in the log
     let setup_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "setup").collect();
     assert!(!setup_entries.is_empty(), "setup entries should be present when merge_cwd != project_root");
+}
+
+// ==================
+// Validation retry tests
+// ==================
+
+/// Verify that a failing validation command is retried once and succeeds on retry.
+/// Uses a temp file flag: first invocation fails (creates flag), second sees flag and succeeds.
+#[tokio::test]
+async fn validation_retry_succeeds_on_second_attempt() {
+    let tmp = tempfile::tempdir().unwrap();
+    let flag_path = tmp.path().join("retry_flag");
+    let flag_str = flag_path.to_string_lossy();
+
+    // Shell command: fail on first run (no flag), succeed on second (flag exists)
+    let cmd = format!(
+        "if [ -f '{}' ]; then exit 0; else touch '{}' && exit 1; fi",
+        flag_str, flag_str
+    );
+
+    let mut project = make_project(Some("main"));
+    project.detected_analysis = Some(format!(
+        r#"[{{"path": ".", "label": "Test", "validate": ["{cmd}"]}}]"#,
+        cmd = cmd.replace('"', "\\\"")
+    ));
+    let task = make_task(None, None);
+
+    let result = run_validation_commands(
+        &project,
+        &task,
+        tmp.path(),
+        "test-task",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    assert!(result.is_some());
+    let r = result.unwrap();
+    assert!(
+        r.all_passed,
+        "Validation should pass after retry. Failures: {:?}",
+        r.failures
+    );
+    assert!(r.failures.is_empty());
+
+    // The log entry should indicate it was retried
+    let validate_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "validate").collect();
+    assert_eq!(validate_entries.len(), 1);
+    assert_eq!(validate_entries[0].status, "success");
+    assert!(
+        validate_entries[0].retried,
+        "Log entry should have retried=true"
+    );
+}
+
+/// Verify that a validation command that fails twice (initial + retry) is treated as a real failure.
+#[tokio::test]
+async fn validation_retry_both_attempts_fail() {
+    let mut project = make_project(Some("main"));
+    // "false" always exits with code 1, so both initial and retry fail
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string(),
+    );
+    let task = make_task(None, None);
+
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "test-task",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    assert!(result.is_some());
+    let r = result.unwrap();
+    assert!(!r.all_passed);
+    assert_eq!(r.failures.len(), 1);
+
+    // The log entry should indicate it was retried (even though both failed)
+    let validate_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "validate").collect();
+    assert_eq!(validate_entries.len(), 1);
+    assert_eq!(validate_entries[0].status, "failed");
+    assert!(
+        validate_entries[0].retried,
+        "Log entry should have retried=true even when retry fails"
+    );
+}
+
+/// Verify that a cancelled validation command is NOT retried.
+/// Cancelled commands have exit_code=None, so the retry guard rejects them.
+#[tokio::test]
+async fn validation_no_retry_when_cancelled() {
+    let mut project = make_project(Some("main"));
+    // Use "sleep 60" so we can cancel it
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Test", "validate": ["sleep 60"]}]"#.to_string(),
+    );
+    let task = make_task(None, None);
+
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let cancel_clone = cancel.clone();
+    // Cancel after a short delay
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+        cancel_clone.cancel();
+    });
+
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "test-task",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &cancel,
+    )
+    .await;
+
+    assert!(result.is_some());
+    let r = result.unwrap();
+
+    let validate_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "validate").collect();
+    assert_eq!(validate_entries.len(), 1);
+    assert_eq!(validate_entries[0].status, "failed");
+    assert!(
+        !validate_entries[0].retried,
+        "Cancelled commands should NOT be retried"
+    );
+}
+
+/// Verify that a passing validation command is not retried (retried stays false).
+#[tokio::test]
+async fn validation_no_retry_when_passing() {
+    let mut project = make_project(Some("main"));
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string(),
+    );
+    let task = make_task(None, None);
+
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "test-task",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    assert!(result.is_some());
+    let r = result.unwrap();
+    assert!(r.all_passed);
+
+    let validate_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "validate").collect();
+    assert_eq!(validate_entries.len(), 1);
+    assert_eq!(validate_entries[0].status, "success");
+    assert!(
+        !validate_entries[0].retried,
+        "Passing command should not have retried=true"
+    );
+}
+
+// --- Validation log file writing tests ---
+
+#[test]
+fn attach_failure_logs_writes_files_for_failed_command() {
+    let task_id = &format!("test-logs-{}", uuid::Uuid::new_v4());
+    let dir = validation_log_dir(task_id);
+
+    let mut entry = ValidationLogEntry {
+        phase: "validate".to_string(),
+        command: "cargo check".to_string(),
+        path: ".".to_string(),
+        label: "Rust".to_string(),
+        status: "failed".to_string(),
+        exit_code: Some(1),
+        stdout: "some stdout output".to_string(),
+        stderr: "error[E0308]: mismatched types\n  --> src/lib.rs:10:5".to_string(),
+        duration_ms: 1500,
+        ..Default::default()
+    };
+
+    entry.attach_failure_logs(task_id);
+
+    assert!(entry.stdout_log_path.is_some(), "stdout_log_path should be set");
+    assert!(entry.stderr_log_path.is_some(), "stderr_log_path should be set");
+
+    let stdout_path = std::path::Path::new(entry.stdout_log_path.as_ref().unwrap());
+    let stderr_path = std::path::Path::new(entry.stderr_log_path.as_ref().unwrap());
+
+    assert!(stdout_path.exists(), "stdout log file should exist");
+    assert!(stderr_path.exists(), "stderr log file should exist");
+
+    let stdout_content = std::fs::read_to_string(stdout_path).unwrap();
+    assert_eq!(stdout_content, "some stdout output");
+
+    let stderr_content = std::fs::read_to_string(stderr_path).unwrap();
+    assert!(stderr_content.contains("error[E0308]"));
+
+    // Cleanup
+    cleanup_validation_logs(task_id);
+    assert!(!dir.exists(), "log dir should be cleaned up");
+}
+
+#[test]
+fn attach_failure_logs_skips_empty_outputs() {
+    let task_id = &format!("test-logs-empty-{}", uuid::Uuid::new_v4());
+
+    let mut entry = ValidationLogEntry {
+        phase: "validate".to_string(),
+        command: "cargo check".to_string(),
+        path: ".".to_string(),
+        label: "Rust".to_string(),
+        status: "failed".to_string(),
+        exit_code: Some(1),
+        stdout: String::new(),
+        stderr: String::new(),
+        duration_ms: 1500,
+        ..Default::default()
+    };
+
+    entry.attach_failure_logs(task_id);
+
+    assert!(entry.stdout_log_path.is_none(), "empty stdout should not produce a log file");
+    assert!(entry.stderr_log_path.is_none(), "empty stderr should not produce a log file");
+
+    // Cleanup (dir may or may not exist)
+    cleanup_validation_logs(task_id);
+}
+
+#[test]
+fn cleanup_validation_logs_removes_directory() {
+    let task_id = &format!("test-cleanup-{}", uuid::Uuid::new_v4());
+    let dir = validation_log_dir(task_id);
+
+    // Create dir + files
+    std::fs::create_dir_all(&dir).unwrap();
+    std::fs::write(dir.join("test.log"), "test content").unwrap();
+    assert!(dir.exists());
+
+    cleanup_validation_logs(task_id);
+    assert!(!dir.exists(), "cleanup should remove the directory");
+}
+
+#[test]
+fn cleanup_validation_logs_is_noop_when_no_directory() {
+    let task_id = "nonexistent-task-id";
+    // Should not panic or error
+    cleanup_validation_logs(task_id);
 }
