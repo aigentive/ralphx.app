@@ -119,7 +119,6 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
               <div
                 key={config.id}
                 className="flex items-center gap-2.5 py-1.5"
-                title={config.command ? `$ ${config.command}` : config.description ?? undefined}
                 style={{
                   borderTop:
                     index > 0
@@ -138,6 +137,11 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
                   {config.command && (
                     <span className="text-[10px] font-mono text-white/25 truncate block max-w-[200px]">
                       $ {config.command}
+                    </span>
+                  )}
+                  {!config.command && config.description && (
+                    <span className="text-[10px] text-white/25 truncate block max-w-[280px]">
+                      {config.description}
                     </span>
                   )}
                 </div>
