@@ -65,6 +65,46 @@ async fn run_validation_prefers_custom_over_detected() {
 }
 
 #[tokio::test]
+async fn custom_analysis_empty_worktree_setup_not_overridden_by_detected() {
+    // When custom_analysis intentionally has empty worktree_setup [],
+    // detected_analysis's worktree_setup should NOT be merged in.
+    // This prevents the bug where user removes target/ symlink but hardening
+    // code injects it back from detected_analysis.
+    let worktree_dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let mut project = make_project(Some("main"));
+    project.working_directory = project_dir.path().to_str().unwrap().to_string();
+
+    // detected has a target/ symlink setup command
+    project.detected_analysis = Some(format!(
+        r#"[{{"path": ".", "label": "Rust", "validate": ["true"], "worktree_setup": ["ln -s {}/target {}/target"]}}]"#,
+        project_dir.path().display(),
+        worktree_dir.path().display()
+    ));
+    // custom intentionally has EMPTY worktree_setup (user removed the symlink)
+    project.custom_analysis =
+        Some(r#"[{"path": ".", "label": "Rust", "validate": ["true"], "worktree_setup": []}]"#.to_string());
+
+    let task = make_task(None, None);
+
+    let result = run_validation_commands(
+        &project, &task, worktree_dir.path(), "", None, None,
+        &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new(),
+    ).await;
+
+    assert!(result.is_some());
+    let r = result.unwrap();
+    // No setup entries should appear — custom_analysis's empty worktree_setup is respected
+    let setup_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "setup").collect();
+    assert!(
+        setup_entries.is_empty(),
+        "intentionally empty worktree_setup should NOT be overridden by detected_analysis; got {} setup entries: {:?}",
+        setup_entries.len(),
+        setup_entries.iter().map(|e| &e.command).collect::<Vec<_>>()
+    );
+}
+
+#[tokio::test]
 async fn run_validation_succeeds_with_passing_command() {
     let mut project = make_project(Some("main"));
     project.detected_analysis =

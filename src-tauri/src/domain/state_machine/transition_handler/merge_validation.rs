@@ -456,13 +456,19 @@ pub(super) fn try_handle_symlink_idempotent(
         );
         let _ = std::fs::remove_file(&target_path);
     } else if target_path.exists() {
-        // Real file/dir at target — remove to allow symlink creation
+        // Real file/dir exists at target — preserve it. This typically means a fixer
+        // agent built locally (creating a real target/ dir) and re-validation should
+        // use those artifacts instead of destroying them and symlinking to main repo.
         tracing::info!(
             command = %cmd,
             target = %target_path.display(),
-            "Worktree setup: removing existing path before symlink creation"
+            "Worktree setup: preserving existing real path (skipping symlink)"
         );
-        let _ = std::fs::remove_dir_all(&target_path);
+        return Some(ValidationLogEntry::new(
+            "setup", cmd, resolved_path, label, "cached",
+            Some(0), String::new(),
+            "Skipped: real directory exists (preserved)".to_string(), 0,
+        ));
     }
 
     None // Proceed with normal command execution
@@ -1310,7 +1316,7 @@ pub(crate) async fn run_validation_commands(
         .as_ref()
         .or(project.detected_analysis.as_ref())?;
 
-    let mut entries: Vec<MergeAnalysisEntry> = match serde_json::from_str(analysis_json) {
+    let entries: Vec<MergeAnalysisEntry> = match serde_json::from_str(analysis_json) {
         Ok(e) => e,
         Err(e) => {
             tracing::warn!(error = %e, "Failed to parse project analysis JSON, skipping validation");
@@ -1353,28 +1359,11 @@ pub(crate) async fn run_validation_commands(
     // The permit is RAII — it auto-releases when this function returns.
     let _worktree_permit = crate::domain::services::acquire_worktree_permit(merge_cwd);
 
-    // Hardening: if custom_analysis has entries with empty worktree_setup,
-    // merge in worktree_setup from detected_analysis (which has the correct symlink commands)
-    if project.custom_analysis.is_some() {
-        if let Some(detected_json) = project.detected_analysis.as_ref() {
-            if let Ok(detected_entries) = serde_json::from_str::<Vec<MergeAnalysisEntry>>(detected_json) {
-                for entry in &mut entries {
-                    if entry.worktree_setup.is_empty() {
-                        if let Some(detected) = detected_entries.iter().find(|d| d.path == entry.path) {
-                            if !detected.worktree_setup.is_empty() {
-                                tracing::info!(
-                                    path = %entry.path,
-                                    setup_count = detected.worktree_setup.len(),
-                                    "Merging worktree_setup from detected_analysis into custom_analysis entry"
-                                );
-                                entry.worktree_setup = detected.worktree_setup.clone();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // NOTE: Previously, hardening code here would merge worktree_setup from
+    // detected_analysis into custom_analysis entries that had empty worktree_setup.
+    // This was removed because it treated intentionally empty worktree_setup []
+    // (e.g., user explicitly removing target/ symlinks) as "not configured" and
+    // overrode the user's choice. If custom_analysis exists, trust it fully.
 
     // Build template resolver
     let project_root = &project.working_directory;
