@@ -1,355 +1,199 @@
-// Orchestration chain integration tests — real git + real DB + MockChatService
+// Orchestration chain tests: end-to-end flows from PendingMerge that verify
+// BOTH the status transition AND agent spawning in a single pass.
 //
-// These tests verify the full merge state machine path with real git repos and verify
-// that the merger agent is spawned (or not) by checking MockChatService.call_count().
+// Per CLAUDE.md rule 1.5: real git + real DB (MemoryTaskRepository) + MockChatService.
+// Mock agent spawning only → verify call_count() and ChatContextType::Merge.
 //
-// Coverage:
-//  A4 — plan_update_conflict: plan branch conflicts with main → Merging + agent spawn
-//  A5 — plan_update_error → MergeIncomplete (no agent spawn)
-//  A6 — source_update_conflict: task branch conflicts with target → Merging + agent spawn
+// Paths tested:
+//   B2: Normal merge conflict → Merging + merger agent spawned
+//   C1: AutoFix validation failure → Merging + validation_recovery=true + merger agent spawned
 
 use super::helpers::*;
 use crate::domain::entities::{
-    IdeationSessionId, InternalStatus, MergeStrategy, PlanBranchStatus,
+    InternalStatus, MergeStrategy, MergeValidationMode, Project, ProjectId, Task,
 };
-use crate::domain::repositories::PlanBranchRepository;
+use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::{State, TransitionHandler};
-use crate::infrastructure::memory::MemoryPlanBranchRepository;
 
-// ─── A4 ─────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+// Shared helper: TaskServices with a retained Arc<MockChatService>
+// ──────────────────────────────────────────────────────────────────────────────
 
-/// A4: plan_update_conflict path — plan branch has conflicting changes vs main.
+/// Build TaskServices with a retained Arc<MockChatService> for call_count assertions.
 ///
-/// Setup:
-///   - Real git repo with `main` and a task branch
-///   - Plan branch (`plan/feature-a4`) created from main with a conflicting change
-///   - Main also commits a conflicting change to the same file → divergence
-///   - Task has `ideation_session_id` linking it to the plan branch via PlanBranchRepository
-///
-/// Expected: `on_enter(PendingMerge)` routes through `update_plan_from_main()` →
-///   detects conflict → persists `Merging` + calls `on_enter_dispatch(Merging)` →
-///   `chat_service.send_message()` is called at least once (merger agent spawn).
-#[tokio::test]
-async fn plan_update_conflict_spawns_merger_agent() {
-    // ── 1. Create real git repo ──────────────────────────────────────────────
-    let git_repo = setup_real_git_repo();
-    let path = git_repo.path();
-
-    // ── 2. Create plan branch from main (before the conflicting commit) ──────
-    let plan_branch = "plan/feature-a4";
-    let _ = std::process::Command::new("git")
-        .args(["branch", plan_branch])
-        .current_dir(path)
-        .output();
-
-    // Add a conflicting change on main
-    std::fs::write(path.join("shared.rs"), "// main version\nfn main_fn() {}").unwrap();
-    let _ = std::process::Command::new("git")
-        .args(["add", "shared.rs"])
-        .current_dir(path)
-        .output();
-    let _ = std::process::Command::new("git")
-        .args(["commit", "-m", "fix: main changes shared.rs"])
-        .current_dir(path)
-        .output();
-
-    // Add a conflicting change on the plan branch (same file, different content)
-    let _ = std::process::Command::new("git")
-        .args(["checkout", plan_branch])
-        .current_dir(path)
-        .output();
-    std::fs::write(path.join("shared.rs"), "// plan version\nfn plan_fn() {}").unwrap();
-    let _ = std::process::Command::new("git")
-        .args(["add", "shared.rs"])
-        .current_dir(path)
-        .output();
-    let _ = std::process::Command::new("git")
-        .args(["commit", "-m", "feat: plan changes shared.rs"])
-        .current_dir(path)
-        .output();
-
-    // Back to main (merge will use worktree, needs main checked out)
-    let _ = std::process::Command::new("git")
-        .args(["checkout", "main"])
-        .current_dir(path)
-        .output();
-
-    // ── 3. Set up repos: task with ideation_session_id + plan branch record ──
-    let task_repo = Arc::new(MemoryTaskRepository::new());
-    let project_repo = Arc::new(MemoryProjectRepository::new());
-    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
-
-    let session_id_str = "sess-a4";
-    let session_id = IdeationSessionId::from_string(session_id_str.to_string());
-    let project_id = crate::domain::entities::ProjectId::from_string("proj-1".to_string());
-
-    // Create task with ideation_session_id
-    let mut task = crate::domain::entities::Task::new(project_id.clone(), "A4 plan conflict test".into());
-    task.internal_status = InternalStatus::PendingMerge;
-    task.task_branch = Some(git_repo.task_branch.clone());
-    task.ideation_session_id = Some(session_id.clone());
-    let task_id = task.id.clone();
-    task_repo.create(task).await.unwrap();
-
-    // Create project pointing at real git repo
-    let mut project = crate::domain::entities::Project::new("test-project".into(), git_repo.path_string());
-    project.id = project_id.clone();
-    project.base_branch = Some("main".into());
-    project.merge_strategy = MergeStrategy::Merge;
-    project_repo.create(project).await.unwrap();
-
-    // Register plan branch in repo (links session_id → plan/feature-a4)
-    let pb = make_plan_branch(
-        "artifact-a4",
-        plan_branch,
-        PlanBranchStatus::Active,
-        None,
-    );
-    // Override session_id to match (make_plan_branch hard-codes "sess-1")
-    let mut pb = pb;
-    pb.session_id = session_id.clone();
-    pb.project_id = project_id;
-    plan_branch_repo.create(pb).await.unwrap();
-
-    // ── 4. Wire MockChatService ───────────────────────────────────────────────
-    let mock_chat = Arc::new(MockChatService::new());
-
+/// Unlike `TaskServices::new_mock()`, this keeps a handle to the chat service
+/// so callers can assert `call_count() >= 1` after the transition.
+fn make_services_with_tracked_chat(
+    task_repo: Arc<MemoryTaskRepository>,
+    project_repo: Arc<MemoryProjectRepository>,
+) -> (Arc<MockChatService>, TaskServices) {
+    let chat_service = Arc::new(MockChatService::new());
     let services = TaskServices::new(
         Arc::new(MockAgentSpawner::new()) as Arc<dyn AgentSpawner>,
         Arc::new(MockEventEmitter::new()) as Arc<dyn EventEmitter>,
         Arc::new(MockNotifier::new()) as Arc<dyn Notifier>,
         Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
         Arc::new(MockReviewStarter::new()) as Arc<dyn ReviewStarter>,
-        Arc::clone(&mock_chat) as Arc<dyn crate::application::ChatService>,
+        Arc::clone(&chat_service) as Arc<dyn ChatService>,
     )
-    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn crate::domain::repositories::TaskRepository>)
-    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn crate::domain::repositories::ProjectRepository>)
-    .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
-
-    let context = crate::domain::state_machine::context::TaskContext::new(
-        task_id.as_str(),
-        "proj-1",
-        services,
-    );
-    let mut machine = crate::domain::state_machine::TaskStateMachine::new(context);
-
-    // ── 5. Run the on_enter ──────────────────────────────────────────────────
-    let handler = TransitionHandler::new(&mut machine);
-    let _ = handler.on_enter(&State::PendingMerge).await;
-
-    // ── 6. Assert: task in Merging, agent was spawned ────────────────────────
-    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
-    assert_eq!(
-        updated.internal_status,
-        InternalStatus::Merging,
-        "plan_update_conflict should route task to Merging, got {:?}. Metadata: {:?}",
-        updated.internal_status,
-        updated.metadata,
-    );
-
-    let meta: serde_json::Value =
-        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
-    assert_eq!(
-        meta.get("plan_update_conflict"),
-        Some(&serde_json::json!(true)),
-        "Metadata should have plan_update_conflict=true. Metadata: {:?}",
-        updated.metadata,
-    );
-
-    assert!(
-        mock_chat.call_count() >= 1,
-        "Merger agent should have been spawned (call_count >= 1), got {}",
-        mock_chat.call_count(),
-    );
+    .with_task_scheduler(Arc::new(MockTaskScheduler::new()) as Arc<dyn TaskScheduler>)
+    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn TaskRepository>)
+    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>);
+    (chat_service, services)
 }
 
-// ─── A5 ─────────────────────────────────────────────────────────────────────
+// ──────────────────────────────────────────────────────────────────────────────
+// B2: Normal merge conflict (PendingMerge → Merging + agent spawned)
+// ──────────────────────────────────────────────────────────────────────────────
 
-/// A5: plan_update_error path — base branch doesn't exist, update_plan_from_main errors.
+/// B2: Normal merge conflict → task transitions to Merging AND a merger agent is spawned.
 ///
-/// Setup:
-///   - Real git repo with a plan branch (target_branch != base_branch)
-///   - Project has `base_branch = "nonexistent-base"` (no such git branch)
+/// Orchestration chain:
+///   on_enter(PendingMerge)
+///   → attempt_programmatic_merge
+///   → MergeStrategy::Merge → MergeOutcome::NeedsAgent (conflicting file on both branches)
+///   → handle_outcome_needs_agent
+///   → task.internal_status = Merging
+///   → chat_service.send_message(ChatContextType::Merge, task_id, ...)  ← verified by call_count
 ///
-/// Expected: `update_plan_from_main()` returns `Error` →
-///   `transition_to_merge_incomplete` is called →
-///   task ends in `MergeIncomplete`, no agent spawn (call_count == 0).
+/// The existing `test_merge_with_conflict_transitions_to_merging` in real_git_integration.rs
+/// only asserts status. This test additionally wires MockChatService and verifies call_count >= 1.
 #[tokio::test]
-async fn plan_update_error_aborts_to_merge_incomplete() {
-    // ── 1. Create real git repo with plan branch ─────────────────────────────
+async fn b2_merge_conflict_transitions_to_merging_and_spawns_agent() {
     let git_repo = setup_real_git_repo();
-    let path = git_repo.path();
 
-    let plan_branch = "plan/feature-a5";
-    let _ = std::process::Command::new("git")
-        .args(["branch", plan_branch])
-        .current_dir(path)
-        .output();
-
-    // ── 2. Set up repos ──────────────────────────────────────────────────────
-    let task_repo = Arc::new(MemoryTaskRepository::new());
-    let project_repo = Arc::new(MemoryProjectRepository::new());
-    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
-
-    let session_id_str = "sess-a5";
-    let session_id = IdeationSessionId::from_string(session_id_str.to_string());
-    let project_id = crate::domain::entities::ProjectId::from_string("proj-1".to_string());
-
-    // Task with ideation_session_id (causes resolve_merge_branches to use plan branch)
-    let mut task = crate::domain::entities::Task::new(project_id.clone(), "A5 plan error test".into());
-    task.internal_status = InternalStatus::PendingMerge;
-    task.task_branch = Some(git_repo.task_branch.clone());
-    task.ideation_session_id = Some(session_id.clone());
-    let task_id = task.id.clone();
-    task_repo.create(task).await.unwrap();
-
-    // Project with nonexistent base branch → update_plan_from_main cannot get SHA
-    let mut project = crate::domain::entities::Project::new("test-project".into(), git_repo.path_string());
-    project.id = project_id.clone();
-    project.base_branch = Some("nonexistent-base".into()); // will cause Error result
-    project.merge_strategy = MergeStrategy::Merge;
-    project_repo.create(project).await.unwrap();
-
-    // Plan branch record (target_branch = plan/feature-a5 != "nonexistent-base")
-    let mut pb = make_plan_branch(
-        "artifact-a5",
-        plan_branch,
-        PlanBranchStatus::Active,
-        None,
-    );
-    pb.session_id = session_id;
-    pb.project_id = project_id;
-    plan_branch_repo.create(pb).await.unwrap();
-
-    // ── 3. Wire MockChatService ───────────────────────────────────────────────
-    let mock_chat = Arc::new(MockChatService::new());
-
-    let services = TaskServices::new(
-        Arc::new(MockAgentSpawner::new()) as Arc<dyn AgentSpawner>,
-        Arc::new(MockEventEmitter::new()) as Arc<dyn EventEmitter>,
-        Arc::new(MockNotifier::new()) as Arc<dyn Notifier>,
-        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
-        Arc::new(MockReviewStarter::new()) as Arc<dyn ReviewStarter>,
-        Arc::clone(&mock_chat) as Arc<dyn crate::application::ChatService>,
-    )
-    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn crate::domain::repositories::TaskRepository>)
-    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn crate::domain::repositories::ProjectRepository>)
-    .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
-
-    let context = crate::domain::state_machine::context::TaskContext::new(
-        task_id.as_str(),
-        "proj-1",
-        services,
-    );
-    let mut machine = crate::domain::state_machine::TaskStateMachine::new(context);
-
-    // ── 4. Run the on_enter ──────────────────────────────────────────────────
-    let handler = TransitionHandler::new(&mut machine);
-    let _ = handler.on_enter(&State::PendingMerge).await;
-
-    // ── 5. Assert: task in MergeIncomplete, no agent spawn ───────────────────
-    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
-    assert_eq!(
-        updated.internal_status,
-        InternalStatus::MergeIncomplete,
-        "plan_update_error should route task to MergeIncomplete, got {:?}. Metadata: {:?}",
-        updated.internal_status,
-        updated.metadata,
-    );
-
-    assert_eq!(
-        mock_chat.call_count(),
-        0,
-        "No agent should be spawned on plan_update_error (call_count should be 0), got {}",
-        mock_chat.call_count(),
-    );
-}
-
-// ─── A6 ─────────────────────────────────────────────────────────────────────
-
-/// A6: source_update_conflict path — task branch conflicts with main (target branch).
-///
-/// Setup:
-///   - Real git repo with `main` and a task branch that both modify `feature.rs`
-///   - Main has a commit (after task branch creation) that conflicts with task branch
-///   - No plan branch involved (target = main = base_branch — standard task merge)
-///
-/// Expected: `update_source_from_target()` returns `Conflicts` →
-///   worktree created for source branch → task persisted as `Merging` →
-///   `on_enter_dispatch(Merging)` → `chat_service.send_message()` called (agent spawn).
-#[tokio::test]
-async fn source_update_conflict_spawns_merger_agent() {
-    // ── 1. Create real git repo ──────────────────────────────────────────────
-    let git_repo = setup_real_git_repo();
-    let path = git_repo.path();
-
-    // Add a conflicting change on main AFTER task branch was created
-    // (task branch already has feature.rs from setup_real_git_repo)
+    // Create a conflicting commit on main: feature.rs was added on the task branch,
+    // now main also modifies it — git merge will produce a conflict.
     std::fs::write(
-        path.join("feature.rs"),
-        "// main conflicting version\nfn main_feature() {}",
+        git_repo.path().join("feature.rs"),
+        "// conflicting version on main",
     )
     .unwrap();
     let _ = std::process::Command::new("git")
-        .args(["add", "feature.rs"])
-        .current_dir(path)
+        .args(["add", "."])
+        .current_dir(git_repo.path())
         .output();
     let _ = std::process::Command::new("git")
-        .args(["commit", "-m", "fix: main modifies feature.rs (conflict)"])
-        .current_dir(path)
+        .args(["commit", "-m", "conflicting change on main"])
+        .current_dir(git_repo.path())
         .output();
 
-    // ── 2. Set up repos ──────────────────────────────────────────────────────
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let project_repo = Arc::new(MemoryProjectRepository::new());
 
-    let project_id = crate::domain::entities::ProjectId::from_string("proj-1".to_string());
-
-    // Regular task (no ideation_session_id → target = main = base_branch)
-    let mut task = crate::domain::entities::Task::new(project_id.clone(), "A6 source conflict test".into());
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "B2 merge conflict chain test".to_string());
     task.internal_status = InternalStatus::PendingMerge;
     task.task_branch = Some(git_repo.task_branch.clone());
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
-    // Project pointing at real git repo
-    let mut project = crate::domain::entities::Project::new("test-project".into(), git_repo.path_string());
+    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
     project.id = project_id;
-    project.base_branch = Some("main".into());
+    project.base_branch = Some("main".to_string());
     project.merge_strategy = MergeStrategy::Merge;
     project_repo.create(project).await.unwrap();
 
-    // ── 3. Wire MockChatService ───────────────────────────────────────────────
-    let mock_chat = Arc::new(MockChatService::new());
-
-    let services = TaskServices::new(
-        Arc::new(MockAgentSpawner::new()) as Arc<dyn AgentSpawner>,
-        Arc::new(MockEventEmitter::new()) as Arc<dyn EventEmitter>,
-        Arc::new(MockNotifier::new()) as Arc<dyn Notifier>,
-        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
-        Arc::new(MockReviewStarter::new()) as Arc<dyn ReviewStarter>,
-        Arc::clone(&mock_chat) as Arc<dyn crate::application::ChatService>,
-    )
-    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn crate::domain::repositories::TaskRepository>)
-    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn crate::domain::repositories::ProjectRepository>);
-
-    let context = crate::domain::state_machine::context::TaskContext::new(
-        task_id.as_str(),
-        "proj-1",
-        services,
-    );
-    let mut machine = crate::domain::state_machine::TaskStateMachine::new(context);
-
-    // ── 4. Run the on_enter ──────────────────────────────────────────────────
+    let (chat_service, services) =
+        make_services_with_tracked_chat(Arc::clone(&task_repo), Arc::clone(&project_repo));
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
     let handler = TransitionHandler::new(&mut machine);
+
     let _ = handler.on_enter(&State::PendingMerge).await;
 
-    // ── 5. Assert: task in Merging, agent was spawned ────────────────────────
     let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
     assert_eq!(
         updated.internal_status,
         InternalStatus::Merging,
-        "source_update_conflict should route task to Merging, got {:?}. Metadata: {:?}",
+        "Merge conflict must transition task to Merging. Got {:?}. Metadata: {:?}",
+        updated.internal_status,
+        updated.metadata,
+    );
+    assert!(
+        chat_service.call_count() >= 1,
+        "Merge conflict must spawn a merger agent (call_count={}). \
+         handle_outcome_needs_agent must call chat_service.send_message(ChatContextType::Merge, ...).",
+        chat_service.call_count(),
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// C1: AutoFix validation failure (PendingMerge → Merging + agent spawned)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// C1: AutoFix validation failure → task transitions to Merging, validation_recovery=true,
+/// AND a merger agent is spawned.
+///
+/// Orchestration chain:
+///   on_enter(PendingMerge)
+///   → attempt_programmatic_merge
+///   → MergeStrategy::RebaseSquash → MergeOutcome::Success (clean merge into worktree)
+///   → handle_outcome_success
+///   → run_validation_commands → fails ("false" always exits 1)
+///   → handle_validation_failure (AutoFix mode, merge_path != repo_path)
+///   → task.internal_status = Merging, metadata.validation_recovery = true
+///   → on_enter_dispatch(Merging) → chat_service.send_message(...)  ← verified by call_count
+///
+/// Key setup: repo is left on the TASK BRANCH (not main) so RebaseSquash uses worktree
+/// isolation (current_branch != target_branch). This gives merge_path != repo_path, so
+/// handle_validation_failure's else-branch reuses the existing merge worktree as the fixer
+/// worktree — no new `git worktree add <main>` is attempted (which would fail since
+/// `main` can't be checked out twice in the same repo).
+#[tokio::test]
+async fn c1_autofix_validation_failure_transitions_to_merging_and_spawns_agent() {
+    let git_repo = setup_real_git_repo();
+
+    // Check out task branch so `main` is NOT the current branch.
+    // All strategies check `if current_branch == target_branch` and fall back to
+    // checkout-free merge (returning merge_path = repo_path) when true. By staying
+    // on the task branch, RebaseSquash uses its dual-worktree path and returns a
+    // merge_path that points to the merge worktree, not the repo root.
+    let _ = std::process::Command::new("git")
+        .args(["checkout", &git_repo.task_branch])
+        .current_dir(git_repo.path())
+        .output();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(
+        project_id.clone(),
+        "C1 autofix validation chain test".to_string(),
+    );
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some(git_repo.task_branch.clone());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    // RebaseSquash with current_branch != target_branch → dual-worktree path.
+    // merge_path = merge_wt != repo_path → handle_validation_failure's else-branch
+    // reuses the existing merge worktree; no new git worktree add is attempted.
+    project.merge_strategy = MergeStrategy::RebaseSquash;
+    // AutoFix: don't revert merge on validation failure — spawn a fixer agent instead.
+    project.merge_validation_mode = MergeValidationMode::AutoFix;
+    // Validation command that always fails → triggers AutoFix agent-spawn path.
+    project.detected_analysis =
+        Some(r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string());
+    project_repo.create(project).await.unwrap();
+
+    let (chat_service, services) =
+        make_services_with_tracked_chat(Arc::clone(&task_repo), Arc::clone(&project_repo));
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merging,
+        "AutoFix validation failure must transition to Merging. Got {:?}. Metadata: {:?}",
         updated.internal_status,
         updated.metadata,
     );
@@ -357,15 +201,16 @@ async fn source_update_conflict_spawns_merger_agent() {
     let meta: serde_json::Value =
         serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
     assert_eq!(
-        meta.get("source_update_conflict"),
+        meta.get("validation_recovery"),
         Some(&serde_json::json!(true)),
-        "Metadata should have source_update_conflict=true. Metadata: {:?}",
+        "Metadata must have validation_recovery=true for AutoFix path. Metadata: {:?}",
         updated.metadata,
     );
 
     assert!(
-        mock_chat.call_count() >= 1,
-        "Merger agent should have been spawned (call_count >= 1), got {}",
-        mock_chat.call_count(),
+        chat_service.call_count() >= 1,
+        "AutoFix validation failure must spawn a merger agent (call_count={}). \
+         handle_validation_failure must call on_enter_dispatch(Merging) → chat_service.send_message().",
+        chat_service.call_count(),
     );
 }

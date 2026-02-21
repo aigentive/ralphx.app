@@ -57,5 +57,5 @@ mod progress_events;
 mod merge_dispatch_agent_spawn;
 
 // Orchestration chain integration tests: real git + real DB + MockChatService
-// Verifies merger agent is spawned on plan/source update conflict paths (A4, A5, A6)
+// Verifies merger agent is spawned: B2 (merge conflict) and C1 (AutoFix validation failure)
 mod orchestration_chain_tests;
