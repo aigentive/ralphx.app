@@ -298,11 +298,22 @@ pub async fn retry_merge(
         .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
         .unwrap_or_else(|| serde_json::json!({}));
 
-    if metadata_json
+    // Check with 60s staleness: timestamp-based guard auto-expires if background task crashed
+    let retry_in_progress = metadata_json
         .get("merge_retry_in_progress")
-        .and_then(|v| v.as_bool())
-        .unwrap_or(false)
-    {
+        .and_then(|v| {
+            // Legacy boolean guard
+            if v.as_bool() == Some(true) {
+                return Some(true);
+            }
+            // Timestamp guard — check staleness
+            let ts = v.as_str()?;
+            let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
+            let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);
+            Some(age < chrono::Duration::seconds(60))
+        })
+        .unwrap_or(false);
+    if retry_in_progress {
         tracing::info!(
             task_id = task_id_parsed.as_str(),
             "Merge retry already in progress, ignoring duplicate request"
@@ -327,7 +338,7 @@ pub async fn retry_merge(
     let mut meta_obj = metadata_json.as_object().cloned().unwrap_or_default();
     meta_obj.insert(
         "merge_retry_in_progress".to_string(),
-        serde_json::json!(true),
+        serde_json::json!(chrono::Utc::now().to_rfc3339()),
     );
 
     if skip_validation == Some(true) {

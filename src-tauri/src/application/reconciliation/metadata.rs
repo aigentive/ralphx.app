@@ -129,6 +129,28 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .unwrap_or(false)
     }
 
+    /// Returns true if a user-initiated merge retry is currently in progress.
+    /// The flag is a RFC3339 timestamp; it auto-expires after 60 s to prevent stuck state
+    /// if the background task panics before clearing the guard.
+    pub(crate) fn has_merge_retry_in_progress(task: &Task) -> bool {
+        task.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| {
+                let val = v.get("merge_retry_in_progress")?;
+                // Legacy boolean guard — treat as active (no expiry info)
+                if val.as_bool() == Some(true) {
+                    return Some(true);
+                }
+                // Timestamp-based guard — check staleness
+                let ts = val.as_str()?;
+                let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
+                let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);
+                Some(age < chrono::Duration::seconds(60))
+            })
+            .unwrap_or(false)
+    }
+
     /// Returns the number of times post-merge validation has reverted the merge commit.
     /// Used to break validation→revert→retry loops.
     pub(crate) fn validation_revert_count(task: &Task) -> u32 {

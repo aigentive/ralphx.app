@@ -2629,7 +2629,7 @@ async fn reconcile_merge_incomplete_stops_after_max_validation_reverts() {
         .await
         .unwrap();
 
-    // Task with validation_revert_count = 3 (> max of 2)
+    // Task with validation_revert_count = 3 (>= max of 2)
     let mut task = Task::new(project.id.clone(), "Validation Loop Task".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
     task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
@@ -2637,7 +2637,7 @@ async fn reconcile_merge_incomplete_stops_after_max_validation_reverts() {
         serde_json::json!({
             "error": "Merge validation failed: 1 command(s) failed",
             "merge_failure_source": "validation_failed",
-            "validation_revert_count": 3,  // > VALIDATION_REVERT_MAX_COUNT (2)
+            "validation_revert_count": 3,  // >= VALIDATION_REVERT_MAX_COUNT (2)
             "source_branch": "ralphx/task-xyz",
             "target_branch": "main",
         })
@@ -2703,7 +2703,7 @@ async fn reconcile_merge_incomplete_retries_when_below_max_validation_reverts() 
         serde_json::json!({
             "error": "Merge validation failed: 1 command(s) failed",
             "merge_failure_source": "validation_failed",
-            "validation_revert_count": 1,  // <= VALIDATION_REVERT_MAX_COUNT (2), allow retry
+            "validation_revert_count": 1,  // < VALIDATION_REVERT_MAX_COUNT (2), allow retry
             "source_branch": "ralphx/task-xyz",
             "target_branch": "main",
         })

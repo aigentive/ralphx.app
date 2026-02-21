@@ -637,40 +637,37 @@ impl<'a> super::TransitionHandler<'a> {
                 );
             }
 
-            // Read prior revert count and merge_recovery from existing metadata before overwriting
-            let existing_metadata = task
+            // Merge error metadata INTO existing metadata to preserve all existing keys
+            // (merge_retry_in_progress, merge_recovery, etc.) instead of replacing.
+            let mut merged = task
                 .metadata
                 .as_deref()
-                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
-            let prev_revert_count: u32 = existing_metadata
-                .as_ref()
-                .and_then(|v| v.get("validation_revert_count").and_then(|c| c.as_u64()).map(|c| c as u32))
-                .unwrap_or(0);
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+            let prev_revert_count: u32 = merged
+                .get("validation_revert_count")
+                .and_then(|c| c.as_u64())
+                .unwrap_or(0) as u32;
             let revert_count = prev_revert_count + 1;
 
-            let base_metadata = format_validation_error_metadata(failures, log, source_branch, target_branch);
-            let final_metadata = if let Ok(mut v) = serde_json::from_str::<serde_json::Value>(&base_metadata) {
-                if let Some(obj) = v.as_object_mut() {
-                    obj.insert(
-                        "merge_failure_source".to_string(),
-                        serde_json::to_value(MergeFailureSource::ValidationFailed)
-                            .unwrap_or(serde_json::json!("validation_failed")),
-                    );
-                    obj.insert("validation_revert_count".to_string(), serde_json::json!(revert_count));
-                    // Preserve merge_recovery history from prior metadata
-                    if let Some(recovery) = existing_metadata
-                        .as_ref()
-                        .and_then(|v| v.get("merge_recovery").cloned())
-                    {
-                        obj.insert("merge_recovery".to_string(), recovery);
+            let error_metadata_str = format_validation_error_metadata(failures, log, source_branch, target_branch);
+            if let Ok(error_obj) = serde_json::from_str::<serde_json::Value>(&error_metadata_str) {
+                if let (Some(target), Some(source)) = (merged.as_object_mut(), error_obj.as_object()) {
+                    for (k, v) in source {
+                        target.insert(k.clone(), v.clone());
                     }
                 }
-                v.to_string()
-            } else {
-                base_metadata
-            };
+            }
+            if let Some(obj) = merged.as_object_mut() {
+                obj.insert(
+                    "merge_failure_source".to_string(),
+                    serde_json::to_value(MergeFailureSource::ValidationFailed)
+                        .unwrap_or(serde_json::json!("validation_failed")),
+                );
+                obj.insert("validation_revert_count".to_string(), serde_json::json!(revert_count));
+            }
 
-            task.metadata = Some(final_metadata);
+            task.metadata = Some(merged.to_string());
             task.internal_status = InternalStatus::MergeIncomplete;
 
             self.persist_merge_transition(
