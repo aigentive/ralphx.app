@@ -509,7 +509,7 @@ When a task enters one of these states, the following happens automatically:
 | **merging** | Spawn **merger** agent (opus model). |
 | **merged** | Call `dependency_manager.unblock_dependents()` — unblocks any tasks waiting on this one. |
 | **failed** | Notify user. Emit `task_failed` event. |
-| **cancelled** | Emit `task_cancelled` event. |
+| **cancelled** | No additional state-entry event. Cancellation is signaled by the command layer via `task:cancelled` before transitioning into this state. |
 
 ### On State Exit
 
