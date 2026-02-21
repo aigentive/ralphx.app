@@ -204,6 +204,9 @@ fn truncate_output(s: &str, max_len: usize) -> String {
 ///
 /// Note: All `let _ = handle.emit(...)` in this module are intentional —
 /// no frontend listeners is OK for progress/validation events.
+///
+/// Also stores the event in the global hydration store so the frontend
+/// can fetch it on mount (events fire before frontend subscribes).
 pub(super) fn emit_merge_progress<R: tauri::Runtime>(
     app_handle: Option<&AppHandle<R>>,
     task_id: &str,
@@ -211,8 +214,12 @@ pub(super) fn emit_merge_progress<R: tauri::Runtime>(
     status: MergePhaseStatus,
     message: String,
 ) {
+    let event = MergeProgressEvent::new(task_id.to_string(), phase, status, message);
+
+    // Always store in hydration map (even without app_handle — backend-only merges still need hydration)
+    crate::domain::entities::merge_progress_event::store_merge_progress(&event);
+
     if let Some(handle) = app_handle {
-        let event = MergeProgressEvent::new(task_id.to_string(), phase, status, message);
         let _ = handle.emit("task:merge_progress", event);
     }
 }
@@ -1069,7 +1076,8 @@ pub(crate) async fn run_validation_commands(
 
     // Emit dynamic phase list to frontend for timeline rendering.
     // Convert MergeAnalysisEntry → PhaseAnalysisEntry (only validate commands needed).
-    if let Some(handle) = app_handle {
+    // Derive phase list and store in hydration map + emit to frontend
+    {
         let phase_entries: Vec<PhaseAnalysisEntry> = entries
             .iter()
             .map(|e| PhaseAnalysisEntry {
@@ -1077,13 +1085,19 @@ pub(crate) async fn run_validation_commands(
             })
             .collect();
         let phases = derive_phases_from_analysis(&phase_entries);
-        let _ = handle.emit(
-            "task:merge_phases",
-            serde_json::json!({
-                "task_id": task_id_str,
-                "phases": phases,
-            }),
-        );
+
+        // Always store in hydration map (even without app_handle)
+        crate::domain::entities::merge_progress_event::store_merge_phase_list(task_id_str, phases.clone());
+
+        if let Some(handle) = app_handle {
+            let _ = handle.emit(
+                "task:merge_phases",
+                serde_json::json!({
+                    "task_id": task_id_str,
+                    "phases": phases,
+                }),
+            );
+        }
     }
 
     // Acquire a worktree permit so cleanup_branch_and_worktree_internal knows

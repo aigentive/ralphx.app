@@ -7,10 +7,14 @@
  * Also listens for task:merge_phases to receive the dynamic phase list
  * derived from project analysis.
  *
+ * Hydrates initial state from backend on mount (events fire before frontend subscribes),
+ * then merges live events on top.
+ *
  * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
 import { useState, useEffect } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import { useEventBus } from "@/providers/EventProvider";
 import {
   MergeProgressEventSchema,
@@ -29,8 +33,28 @@ export interface MergeProgressData {
   phaseList: MergePhaseInfo[] | null;
 }
 
+/** Merge hydrated events into state, deduplicating by phase */
+function mergeEvents(
+  existing: MergeProgressEvent[],
+  incoming: MergeProgressEvent[],
+): MergeProgressEvent[] {
+  const result = [...existing];
+  for (const event of incoming) {
+    const idx = result.findIndex((p) => p.phase === event.phase);
+    if (idx >= 0) {
+      result[idx] = event;
+    } else {
+      result.push(event);
+    }
+  }
+  return result;
+}
+
 /**
  * Hook to listen for high-level merge progress events for a specific task.
+ *
+ * On mount, hydrates from backend store (catches events that fired before
+ * the component mounted). Then subscribes to live events and merges them.
  *
  * Updates existing phases (started→passed/failed) by matching on phase,
  * or appends new phases. Also captures the dynamic phase list from
@@ -47,6 +71,27 @@ export function useMergeProgressEvents(taskId: string): MergeProgressData {
   useEffect(() => {
     setPhases([]);
     setPhaseList(null);
+
+    // Hydrate from backend store (catches events emitted before mount)
+    invoke<MergeProgressEvent[]>("get_merge_progress", { taskId })
+      .then((stored) => {
+        if (stored && stored.length > 0) {
+          setPhases((prev) => mergeEvents(prev, stored));
+        }
+      })
+      .catch(() => {
+        // Silently ignore — Tauri not available in browser mock mode
+      });
+
+    invoke<MergePhaseInfo[] | null>("get_merge_phase_list", { taskId })
+      .then((stored) => {
+        if (stored) {
+          setPhaseList((prev) => prev ?? stored);
+        }
+      })
+      .catch(() => {
+        // Silently ignore — Tauri not available in browser mock mode
+      });
 
     // Listen for individual phase progress events
     const unsubProgress = bus.subscribe<unknown>("task:merge_progress", (payload) => {
