@@ -59,6 +59,7 @@ Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool
 | # | Rule |
 |---|------|
 | 1 | TDD mandatory — tests FIRST |
+| 1.5 | **Orchestration chain tests** — real git + real DB + MockChatService. Mock agent spawning only → verify `call_count()` & `ChatContextType::Merge`. |
 | 2 | Anti-AI-slop — ❌ purple gradients, ❌ Inter font |
 | 3 | Clean architecture — domain has no infra deps |
 | 4 | Type safety — strict TS, newtype IDs in Rust |
