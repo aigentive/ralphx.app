@@ -46,10 +46,6 @@ playwright-report/
 test-results/
 vitest-results.json
 
-# Screenshots (track mock-check.md evidence, ignore PNGs)
-screenshots/**/*.png
-!screenshots/**/*_mock-check.md
-!screenshots/.gitkeep
 *.db
 .ralph-stop
 .commit-lock
