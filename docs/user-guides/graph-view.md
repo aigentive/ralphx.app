@@ -371,3 +371,11 @@ Keyboard navigation is disabled while Battle Mode is active.
 **Right-click for quick actions:** Right-clicking a node is faster than opening the full detail overlay for common actions like approving, blocking, or starting execution. No need to navigate away from the graph.
 
 **Plan groups collapse for navigation:** On large projects with multiple plans, keep non-active plans collapsed. The heuristic collapses all-complete groups automatically — you only see work that's still in progress by default.
+
+---
+
+## See Also
+
+- [Kanban Board](kanban.md)
+- [Ideation Studio](ideation-studio.md)
+- [Task State Machine](task-state-machine.md)

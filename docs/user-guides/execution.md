@@ -9,7 +9,7 @@ RalphX automates the entire process of implementing a task — from scheduling t
 | Question | Answer |
 |----------|--------|
 | How do I start a task? | Move it to **Ready** (or use ideation to create it). RalphX picks it up automatically when a slot is available. |
-| How many tasks run at once? | Set **Max Concurrent** in execution settings. Default is 2 per project. |
+| How many tasks run at once? | Set **Max Concurrent** in execution settings. Default is 10 per project. |
 | My task is stuck in Executing — what do I do? | The reconciler will auto-restart the agent. If it keeps failing, it moves to **Failed** after 5 retries. You can **Retry** or check the conversation for errors. |
 | What is QA? | An optional automated testing phase after execution — a QA prep agent generates acceptance criteria, then a QA tester agent runs browser tests. |
 | AI review passed — what do I do? | Review the findings in the task detail view and click **Approve** or **Request Changes**. |
@@ -308,7 +308,7 @@ RalphX enforces two concurrency limits:
 
 | Limit | Scope | Default | Max |
 |-------|-------|---------|-----|
-| `max_concurrent` | Per-project | 2 | No system-enforced cap — set to any value, but constrained in practice by `global_max_concurrent` |
+| `max_concurrent` | Per-project | 10 | No system-enforced cap — set to any value, but constrained in practice by `global_max_concurrent` |
 | `global_max_concurrent` | All projects | 20 | 50 (validated/clamped by the system) |
 
 A task can only start if **both** limits have capacity. Tasks that would exceed either limit wait in **Ready**.
@@ -510,7 +510,7 @@ If a task is auto-resumed and hits a provider error again, up to `max_resume_att
 
 | Setting | Location | Options | Default |
 |---------|----------|---------|---------|
-| Max concurrent tasks | Execution settings | 1–∞ (per-project; no system cap — bounded in practice by global max) | 2 |
+| Max concurrent tasks | Execution settings | 1–∞ (per-project; no system cap — bounded in practice by global max) | 10 |
 | Global max concurrent | Execution settings | 1–50 (system-clamped; prevents runaway parallelism across all projects) | 20 |
 | Auto-commit | Execution settings | On / Off | On |
 | Pause on failure | Execution settings | On / Off | On |
@@ -612,7 +612,7 @@ The reconciler enforces a wall-clock limit of 60 minutes — after that the task
 
 | Setting | Description | Default |
 |---------|-------------|---------|
-| `max_concurrent_tasks` | Max tasks executing simultaneously in this project | 2 |
+| `max_concurrent_tasks` | Max tasks executing simultaneously in this project | 10 |
 | `auto_commit` | Auto-commit uncommitted changes after execution | `true` |
 | `pause_on_failure` | Pause execution when a task fails | `true` |
 
@@ -656,3 +656,11 @@ Key reconciliation settings can be overridden via environment variables at runti
 | `RALPHX_RECONCILIATION_QA_MAX_RETRIES` | `qa_max_retries` |
 | `RALPHX_LIMITS_MAX_RESUME_ATTEMPTS` | `max_resume_attempts` (provider error auto-resume cap) |
 | `RALPHX_DISABLE_STARTUP_RECOVERY` | Disables startup task resumption (testing only) |
+
+---
+
+## See Also
+
+- [Merge Pipeline](merge.md)
+- [Agent Orchestration](agent-orchestration.md)
+- [Task State Machine](task-state-machine.md)

@@ -143,7 +143,7 @@ Execution settings control how many tasks run simultaneously and what happens wh
 
 | Setting | Default | Description |
 |---------|---------|-------------|
-| **Max Concurrent Tasks** | 10 | Maximum tasks running simultaneously in this project (1–10). Bounded in practice by the global cap. |
+| **Max Concurrent Tasks** | 10 | Maximum tasks running simultaneously in this project. The UI slider range is 1–10; this is the slider range only, not a system hard limit. Bounded in practice by the global cap. |
 | **Auto Commit** | On | Automatically commit uncommitted changes in the worktree after a task completes execution |
 | **Pause on Failure** | On | Stop the task queue when any task in this project fails |
 | **Review Before Destructive** | On | Insert a review point before tasks that delete files or modify configuration |
@@ -209,7 +209,7 @@ The supervisor is a lightweight Haiku agent that monitors worker agents for loop
 |---------|---------|-------|-------------|
 | **Enable Supervisor** | On | On/Off | Enable watchdog monitoring alongside worker agents |
 | **Loop Threshold** | 3 | 2–10 | Number of identical tool calls before loop detection triggers |
-| **Stuck Timeout** | 300 seconds | 60–1800 | Seconds without git diff progress before stuck detection triggers |
+| **Stuck Timeout** | 150 seconds (~2.5 minutes) | 60–1800 | Seconds without git diff progress before stuck detection triggers (5 checks at 30-second intervals) |
 
 ### What the Supervisor Does
 
@@ -240,7 +240,7 @@ Different agent roles use different models, configured in `ralphx.yaml`:
 
 | Agent | Default model | Role |
 |-------|--------------|------|
-| orchestrator-ideation | Opus | Ideation planning |
+| orchestrator-ideation | Sonnet | Ideation planning |
 | ralphx-worker | Sonnet | Task execution |
 | ralphx-coder | Sonnet | File-level coding |
 | ralphx-reviewer | Sonnet | Code review |
@@ -465,3 +465,11 @@ See [Advanced: ralphx.yaml](#advanced-ralphxyaml) above for full tables. Key run
 | `git.cmd_timeout_secs` | 60 | `git:` section |
 | `supervisor.max_tokens` | 100000 | `supervisor:` section |
 | `limits.max_resume_attempts` | 5 | `limits:` section |
+
+---
+
+## See Also
+
+- [Execution Pipeline](execution.md)
+- [Merge Pipeline](merge.md)
+- [Agent Orchestration](agent-orchestration.md)
