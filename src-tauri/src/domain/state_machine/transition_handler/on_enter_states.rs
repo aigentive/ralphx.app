@@ -14,9 +14,13 @@ use super::merge_helpers::{
 };
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::{ChatServiceError, GitService};
-use crate::domain::entities::{ProjectId, TaskId, TaskStepStatus};
+use crate::domain::entities::{
+    MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
+    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, ProjectId, TaskId,
+    TaskStepStatus,
+};
 use crate::error::{AppError, AppResult};
-use crate::infrastructure::agents::claude::scheduler_config;
+use crate::infrastructure::agents::claude::{reconciliation_config, scheduler_config};
 
 impl<'a> super::TransitionHandler<'a> {
     /// Run pre-execution setup (worktree_setup + install), store log in metadata.
@@ -1074,6 +1078,12 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                     Err(e) => {
                         tracing::error!(task_id = task_id, error = %e, "Failed to spawn merger agent");
+                        record_merger_spawn_failure(
+                            &self.machine.context.services.task_repo,
+                            task_id,
+                            &e.to_string(),
+                        )
+                        .await;
                     }
                 }
             }
@@ -1122,6 +1132,69 @@ impl<'a> super::TransitionHandler<'a> {
         Ok(())
     }
 
+}
+
+/// Record a merger agent spawn failure as an `AttemptFailed` event in task metadata.
+///
+/// Each spawn failure consumes one slot of the reconciler's retry budget
+/// (`merging_max_retries`). Once the budget is exhausted the reconciler
+/// transitions the task to `MergeIncomplete` on the next cycle (≤30 s).
+async fn record_merger_spawn_failure(
+    task_repo: &Option<std::sync::Arc<dyn crate::domain::repositories::TaskRepository>>,
+    task_id: &str,
+    error: &str,
+) {
+    let Some(repo) = task_repo else { return };
+    let tid = TaskId::from_string(task_id.to_string());
+    let Ok(Some(mut task)) = repo.get_by_id(&tid).await else { return };
+
+    let mut recovery = MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+        .unwrap_or(None)
+        .unwrap_or_default();
+
+    let spawn_failure_count = recovery
+        .events
+        .iter()
+        .filter(|ev| {
+            ev.kind == MergeRecoveryEventKind::AttemptFailed
+                && ev.message.contains("failed to spawn")
+        })
+        .count() as u32
+        + 1; // +1 for the event we're about to record
+
+    let event = MergeRecoveryEvent::new(
+        MergeRecoveryEventKind::AttemptFailed,
+        MergeRecoverySource::System,
+        MergeRecoveryReasonCode::GitError,
+        format!("Merger agent failed to spawn: {}", error),
+    )
+    .with_failure_source(MergeFailureSource::TransientGit);
+
+    recovery.append_event_with_state(event, MergeRecoveryState::Failed);
+
+    let max_retries = reconciliation_config().merging_max_retries as u32;
+    if let Ok(updated_meta) = recovery.update_task_metadata(task.metadata.as_deref()) {
+        task.metadata = Some(updated_meta);
+        super::set_trigger_origin(&mut task, "recovery");
+        task.touch();
+        if let Err(e) = repo.update(&task).await {
+            tracing::warn!(
+                task_id = task_id,
+                error = %e,
+                "Failed to persist merger spawn failure metadata"
+            );
+        } else {
+            tracing::warn!(
+                task_id = task_id,
+                spawn_failure_count = spawn_failure_count,
+                max_retries = max_retries,
+                "Recorded merger spawn failure ({}/{}); reconciler will transition to \
+                 MergeIncomplete when retry budget is exhausted",
+                spawn_failure_count,
+                max_retries,
+            );
+        }
+    }
 }
 
 /// Extract `restart_note` from task metadata JSON.
