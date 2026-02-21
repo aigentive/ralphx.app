@@ -52,3 +52,6 @@ mod source_update_from_target;
 
 // Tests for merge progress event emission and phase ordering
 mod progress_events;
+
+// Regression tests: on_enter_dispatch coverage for all Merging state entry paths
+mod merge_dispatch_agent_spawn;
