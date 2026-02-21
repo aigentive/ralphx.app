@@ -79,13 +79,13 @@ fn wrong_symlink_is_removed_and_returns_none() {
 }
 
 #[test]
-fn real_dir_at_target_is_removed_and_returns_none() {
+fn real_dir_at_target_is_preserved_and_returns_cached() {
     let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("source_dir");
     let target = dir.path().join("node_modules");
     std::fs::create_dir(&source).unwrap();
     std::fs::create_dir(&target).unwrap();
-    // Put a file in the target dir to confirm removal
+    // Put a file in the target dir to confirm preservation
     std::fs::write(target.join("file.txt"), "content").unwrap();
 
     let cmd = format!(
@@ -95,8 +95,37 @@ fn real_dir_at_target_is_removed_and_returns_none() {
     );
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_none(), "real dir should be removed and command re-run");
-    assert!(!target.exists(), "real dir at target should be removed");
+    assert!(result.is_some(), "real dir should be preserved and cached");
+    let entry = result.unwrap();
+    assert_eq!(entry.status, "cached");
+    assert_eq!(entry.phase, "setup");
+    assert!(entry.stderr.contains("real directory exists"), "stderr: {}", entry.stderr);
+    // Real dir and its contents must still exist
+    assert!(target.exists(), "real dir at target must be preserved");
+    assert!(target.join("file.txt").exists(), "files inside real dir must be preserved");
+}
+
+#[test]
+fn real_file_at_target_is_preserved_and_returns_cached() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("source_dir");
+    let target = dir.path().join("some_file");
+    std::fs::create_dir(&source).unwrap();
+    std::fs::write(&target, "important content").unwrap();
+
+    let cmd = format!(
+        "ln -s {} {}",
+        source.display(),
+        target.display()
+    );
+
+    let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
+    assert!(result.is_some(), "real file should be preserved and cached");
+    let entry = result.unwrap();
+    assert_eq!(entry.status, "cached");
+    assert!(target.exists(), "real file at target must be preserved");
+    let content = std::fs::read_to_string(&target).unwrap();
+    assert_eq!(content, "important content", "file content must be intact");
 }
 
 #[test]
