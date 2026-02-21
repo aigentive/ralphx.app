@@ -257,7 +257,7 @@ The complete list of all valid transitions. Only these transitions are permitted
 | `failed` | `ready` |
 | `cancelled` | `ready` |
 | `stopped` | `ready` |
-| `paused` | `executing`, `re_executing`, `qa_refining`, `qa_testing`, `reviewing`, `merging` |
+| `paused` | resumes to `pause_reason.previous_status` (the state the task was in when paused; can include merge states like `pending_merge`, `merge_conflict`, or `merge_incomplete`) |
 
 ### Transition Triggers
 
