@@ -252,13 +252,27 @@ impl<'a> super::TransitionHandler<'a> {
                 return;
             }
             super::merge_coordination::PlanUpdateResult::Error(err) => {
-                tracing::warn!(
+                tracing::error!(
                     task_id = task_id_str,
                     error = %err,
-                    "Plan branch update from main failed (non-fatal) — proceeding with merge"
+                    "Plan branch update from main failed — aborting merge to prevent stale branch"
                 );
-                // Non-fatal: continue with merge anyway. The plan branch may still pass validation
-                // if the divergence doesn't affect the validation commands.
+                // Fatal: abort merge. Proceeding with a stale plan branch causes validation
+                // failures that the fixer agent cannot resolve (missing code from main).
+                let metadata = serde_json::json!({
+                    "error": format!("Plan branch update failed: {}", err),
+                    "source_branch": source_branch,
+                    "target_branch": target_branch,
+                    "merge_failure_source": "PlanUpdateFailed",
+                });
+                task.metadata = Some(metadata.to_string());
+                task.internal_status = InternalStatus::MergeIncomplete;
+                self.persist_merge_transition(
+                    &mut task, &task_id, task_id_str,
+                    InternalStatus::PendingMerge, InternalStatus::MergeIncomplete,
+                    "plan_update_failed", task_repo,
+                ).await;
+                return;
             }
         }
 
