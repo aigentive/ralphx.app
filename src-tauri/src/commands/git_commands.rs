@@ -334,6 +334,27 @@ pub async fn retry_merge(
         meta_obj.insert("skip_validation".to_string(), serde_json::json!(true));
     }
 
+    // User-initiated retry: reset all loop-prevention counters so the reconciler
+    // won't block subsequent auto-retries if this attempt fails again.
+    // These counters are meant to prevent automated infinite loops, not block
+    // explicit user actions.
+    meta_obj.insert(
+        "validation_revert_count".to_string(),
+        serde_json::json!(0),
+    );
+    meta_obj.remove("merge_failure_source");
+    // Reset merge recovery event log so auto-retry counters (which count
+    // AutoRetryTriggered / AttemptFailed events) restart from zero.
+    if let Some(recovery_val) = meta_obj.get_mut("merge_recovery") {
+        if let Some(recovery_obj) = recovery_val.as_object_mut() {
+            recovery_obj.insert("events".to_string(), serde_json::json!([]));
+            recovery_obj.insert(
+                "last_state".to_string(),
+                serde_json::json!("retrying"),
+            );
+        }
+    }
+
     task.metadata = Some(serde_json::Value::Object(meta_obj).to_string());
     state
         .task_repo
