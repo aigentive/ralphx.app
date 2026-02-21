@@ -46,3 +46,9 @@ mod symlink_idempotent;
 
 // Tests for has_prior_validation_failure guard (validation metadata checks)
 mod merge_helpers_validation_guard;
+
+// Tests for update_source_from_target: bringing feature branches up-to-date before merge
+mod source_update_from_target;
+
+// Tests for merge progress event emission and phase ordering
+mod progress_events;

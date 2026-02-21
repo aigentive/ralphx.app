@@ -177,6 +177,20 @@ pub(super) fn compute_rebase_worktree_path(project: &Project, task_id: &str) -> 
     format!("{}/{}/rebase-{}", expanded, slugify(&project.name), task_id)
 }
 
+/// Compute the worktree path for a source-update operation (merging target into source branch).
+///
+/// Convention: `{worktree_parent}/{slug}/source-update-{task_id}`
+/// This is a short-lived worktree used only to bring the feature/task branch up-to-date
+/// with its target branch before the actual merge runs.
+pub(super) fn compute_source_update_worktree_path(project: &Project, task_id: &str) -> String {
+    let worktree_parent = project
+        .worktree_parent_directory
+        .as_deref()
+        .unwrap_or("~/ralphx-worktrees");
+    let expanded = expand_home(worktree_parent);
+    format!("{}/{}/source-update-{}", expanded, slugify(&project.name), task_id)
+}
+
 /// Compute the worktree path for a plan-update operation (merging main into plan branch).
 ///
 /// Convention: `{worktree_parent}/{slug}/plan-update-{task_id}`

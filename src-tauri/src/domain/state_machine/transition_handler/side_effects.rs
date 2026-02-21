@@ -75,11 +75,58 @@ impl<'a> super::TransitionHandler<'a> {
         // Only proceed if task_repo is available (guaranteed by fetch_merge_context)
         let task_repo = self.machine.context.services.task_repo.as_ref().unwrap();
 
+        let app_handle = self.machine.context.services.app_handle.as_ref();
+
+        // Emit early phase list so the frontend can show pre-merge phases immediately
+        // (validation start emits the full list including dynamic validation phases later)
+        if let Some(handle) = app_handle {
+            let _ = handle.emit(
+                "task:merge_phases",
+                serde_json::json!({
+                    "task_id": task_id_str,
+                    "phases": [
+                        { "id": MergePhase::MERGE_PREPARATION, "label": "Preparation" },
+                        { "id": MergePhase::PRECONDITION_CHECK, "label": "Preconditions" },
+                        { "id": MergePhase::BRANCH_FRESHNESS, "label": "Branch Freshness" },
+                        { "id": MergePhase::MERGE_CLEANUP, "label": "Cleanup" },
+                        { "id": MergePhase::WORKTREE_SETUP, "label": "Worktree Setup" },
+                        { "id": MergePhase::PROGRAMMATIC_MERGE, "label": "Merge" },
+                        { "id": MergePhase::FINALIZE, "label": "Finalize" },
+                    ],
+                }),
+            );
+        }
+
+        // Signal that merge preparation has started
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::MERGE_PREPARATION),
+            MergePhaseStatus::Started,
+            "Preparing merge...".to_string(),
+        );
+
         // Attempt to discover and re-attach orphaned task branch
         self.log_branch_discovery(&mut task, &project, task_repo, task_id_str)
             .await;
 
+        // Preparation complete (branch discovery + context loaded)
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::MERGE_PREPARATION),
+            MergePhaseStatus::Passed,
+            "Merge context loaded".to_string(),
+        );
+
         // Pre-merge validation for plan_merge tasks
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::PRECONDITION_CHECK),
+            MergePhaseStatus::Started,
+            "Validating merge preconditions...".to_string(),
+        );
         let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
         let task_id = TaskId::from_string(task_id_str.clone());
         if let Err(validation_err) =
@@ -143,7 +190,25 @@ impl<'a> super::TransitionHandler<'a> {
             return;
         }
 
+        // Preconditions validated, branches resolved
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::PRECONDITION_CHECK),
+            MergePhaseStatus::Passed,
+            "Preconditions met".to_string(),
+        );
+
         let repo_path = Path::new(&project.working_directory);
+
+        // Branch freshness: ensure plan branch, update from main, update source from target
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::BRANCH_FRESHNESS),
+            MergePhaseStatus::Started,
+            "Checking branch freshness...".to_string(),
+        );
 
         // Ensure plan branch exists as git ref (lazy creation for merge target)
         super::merge_coordination::ensure_plan_branch_exists(
@@ -197,6 +262,60 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
+        // Update source branch from target if behind (prevents validation failures from stale code)
+        match super::merge_coordination::update_source_from_target(
+            repo_path,
+            &source_branch,
+            &target_branch,
+            &project,
+            task_id_str,
+            self.machine.context.services.app_handle.as_ref(),
+        ).await {
+            super::merge_coordination::SourceUpdateResult::AlreadyUpToDate
+            | super::merge_coordination::SourceUpdateResult::Updated => {
+                // Continue with merge
+            }
+            super::merge_coordination::SourceUpdateResult::Conflicts { conflict_files } => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    conflict_count = conflict_files.len(),
+                    "Source branch update from target produced conflicts — routing to merger agent"
+                );
+                let metadata = serde_json::json!({
+                    "error": "Conflicts detected while updating source branch from target. Merger agent needed.",
+                    "conflict_files": conflict_files.iter().map(|f| f.display().to_string()).collect::<Vec<_>>(),
+                    "source_branch": source_branch,
+                    "target_branch": target_branch,
+                    "source_update_conflict": true,
+                });
+                task.metadata = Some(metadata.to_string());
+                task.internal_status = InternalStatus::Merging;
+                self.persist_merge_transition(
+                    &mut task, &task_id, task_id_str,
+                    InternalStatus::PendingMerge, InternalStatus::Merging,
+                    "source_update_conflict", task_repo,
+                ).await;
+                return;
+            }
+            super::merge_coordination::SourceUpdateResult::Error(err) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %err,
+                    "Source branch update from target failed (non-fatal) — proceeding with merge"
+                );
+                // Non-fatal: continue with merge anyway. The source branch may still merge cleanly.
+            }
+        }
+
+        // Branch freshness checks complete
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::BRANCH_FRESHNESS),
+            MergePhaseStatus::Passed,
+            "Branches are up to date".to_string(),
+        );
+
         // "Already merged" early exit
         if self.check_already_merged(
             &mut task, &task_id, task_id_str, &project, repo_path,
@@ -215,7 +334,7 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Emit merge progress event
         emit_merge_progress(
-            self.machine.context.services.app_handle.as_ref(),
+            app_handle,
             task_id_str,
             MergePhase::programmatic_merge(),
             MergePhaseStatus::Started,
@@ -245,9 +364,23 @@ impl<'a> super::TransitionHandler<'a> {
             + std::time::Duration::from_secs(deadline_secs);
 
         // Pre-merge cleanup
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::MERGE_CLEANUP),
+            MergePhaseStatus::Started,
+            "Cleaning up previous merge artifacts...".to_string(),
+        );
         self.pre_merge_cleanup(
             task_id_str, &task, &project, repo_path, &target_branch, task_repo,
         ).await;
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::MERGE_CLEANUP),
+            MergePhaseStatus::Passed,
+            "Cleanup complete".to_string(),
+        );
 
         // Check deadline after cleanup
         if tokio::time::Instant::now() >= merge_deadline {

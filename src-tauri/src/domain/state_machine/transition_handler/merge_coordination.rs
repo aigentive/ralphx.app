@@ -19,7 +19,8 @@ use crate::infrastructure::agents::claude::{defer_merge_enabled, git_runtime_con
 use super::cleanup_helpers::{run_cleanup_step, CleanupStepResult};
 use super::merge_helpers::{
     compute_merge_worktree_path, compute_plan_update_worktree_path, compute_rebase_worktree_path,
-    extract_task_id_from_merge_path, is_task_in_merge_workflow,
+    compute_source_update_worktree_path, extract_task_id_from_merge_path,
+    is_task_in_merge_workflow,
 };
 use super::merge_validation::emit_merge_progress;
 
@@ -254,6 +255,160 @@ pub(super) async fn update_plan_from_main(
                 task_id = task_id_str,
                 error = %e,
                 "Failed to clean up plan-update worktree (non-fatal)"
+            );
+        }
+    }
+
+    result
+}
+
+/// Result of attempting to update a source (task/feature) branch from its target branch.
+#[derive(Debug)]
+pub(super) enum SourceUpdateResult {
+    /// Source branch already contains all of target's changes.
+    AlreadyUpToDate,
+    /// Source branch was updated (merge commit created).
+    Updated,
+    /// Merge target into source produced conflicts — needs agent resolution.
+    Conflicts { conflict_files: Vec<PathBuf> },
+    /// Git error during the update attempt.
+    Error(String),
+}
+
+/// Update the source (task/feature) branch from the target branch before merging.
+///
+/// When a task branch merges into a target (plan or main), the task branch may be behind
+/// the target if other tasks were merged into it since this task branched off. This causes
+/// false validation failures because the merged code doesn't include those changes.
+///
+/// This function checks if the target branch's HEAD is an ancestor of the source branch.
+/// If not, it merges the target into the source using an isolated worktree to bring it
+/// up-to-date. On conflict, returns `SourceUpdateResult::Conflicts` so the caller can
+/// route to the merger agent.
+pub(super) async fn update_source_from_target(
+    repo_path: &Path,
+    source_branch: &str,
+    target_branch: &str,
+    project: &crate::domain::entities::Project,
+    task_id_str: &str,
+    app_handle: Option<&tauri::AppHandle>,
+) -> SourceUpdateResult {
+    // Check if target's HEAD is already an ancestor of source
+    // (i.e., source already has all of target's changes)
+    let target_sha = match GitService::get_branch_sha(repo_path, target_branch).await {
+        Ok(sha) => sha,
+        Err(e) => {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                target_branch = %target_branch,
+                "Failed to get SHA for target branch — skipping source update"
+            );
+            return SourceUpdateResult::Error(format!(
+                "Failed to get SHA for {}: {}",
+                target_branch, e
+            ));
+        }
+    };
+
+    match GitService::is_commit_on_branch(repo_path, &target_sha, source_branch).await {
+        Ok(true) => {
+            tracing::debug!(
+                task_id = task_id_str,
+                source_branch = %source_branch,
+                target_branch = %target_branch,
+                "Source branch is up-to-date with target — no update needed"
+            );
+            return SourceUpdateResult::AlreadyUpToDate;
+        }
+        Ok(false) => {
+            tracing::info!(
+                task_id = task_id_str,
+                source_branch = %source_branch,
+                target_branch = %target_branch,
+                target_sha = %target_sha,
+                "Source branch is behind target — updating before merge"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to check if source branch is up-to-date — skipping update"
+            );
+            return SourceUpdateResult::Error(format!("is_commit_on_branch check failed: {}", e));
+        }
+    }
+
+    emit_merge_progress(
+        app_handle,
+        task_id_str,
+        MergePhase::programmatic_merge(),
+        MergePhaseStatus::Started,
+        format!(
+            "Updating {} from {} before merge",
+            source_branch, target_branch
+        ),
+    );
+
+    // Use isolated worktree to merge target into source
+    let wt_path_str = compute_source_update_worktree_path(project, task_id_str);
+    let wt_path = PathBuf::from(&wt_path_str);
+
+    // Clean up any stale worktree from a prior attempt
+    if wt_path.exists() {
+        if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to delete stale source-update worktree (non-fatal)"
+            );
+        }
+    }
+
+    // try_merge_in_worktree merges target_branch into source_branch
+    let result = match GitService::try_merge_in_worktree(
+        repo_path,
+        target_branch, // source of changes = target branch
+        source_branch, // branch to update = source/task branch
+        &wt_path,
+    )
+    .await
+    {
+        Ok(crate::application::MergeAttemptResult::Success { commit_sha }) => {
+            tracing::info!(
+                task_id = task_id_str,
+                source_branch = %source_branch,
+                target_branch = %target_branch,
+                commit_sha = %commit_sha,
+                "Source branch updated from target via worktree"
+            );
+            SourceUpdateResult::Updated
+        }
+        Ok(crate::application::MergeAttemptResult::NeedsAgent { conflict_files }) => {
+            tracing::warn!(
+                task_id = task_id_str,
+                conflict_count = conflict_files.len(),
+                "Conflicts detected updating source branch from target via worktree"
+            );
+            SourceUpdateResult::Conflicts { conflict_files }
+        }
+        Ok(crate::application::MergeAttemptResult::BranchNotFound { branch }) => {
+            SourceUpdateResult::Error(format!(
+                "Branch not found during source update: {}",
+                branch
+            ))
+        }
+        Err(e) => SourceUpdateResult::Error(format!("Source update merge failed: {}", e)),
+    };
+
+    // Clean up worktree (always, regardless of outcome)
+    if wt_path.exists() {
+        if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to clean up source-update worktree (non-fatal)"
             );
         }
     }
@@ -530,6 +685,7 @@ impl<'a> super::TransitionHandler<'a> {
                 ("merge", compute_merge_worktree_path(project, task_id_str)),
                 ("rebase", compute_rebase_worktree_path(project, task_id_str)),
                 ("plan-update", compute_plan_update_worktree_path(project, task_id_str)),
+                ("source-update", compute_source_update_worktree_path(project, task_id_str)),
             ] {
                 let own_wt_path = PathBuf::from(&own_wt);
                 if own_wt_path.exists() {

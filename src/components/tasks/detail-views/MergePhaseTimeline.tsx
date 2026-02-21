@@ -22,6 +22,10 @@ import type { MergeProgressEvent, MergePhaseInfo } from "@/types/events";
 
 /** Default phase config — used as fallback when no dynamic phase list is received */
 const DEFAULT_PHASE_CONFIG: MergePhaseInfo[] = [
+  { id: "merge_preparation", label: "Preparation" },
+  { id: "precondition_check", label: "Preconditions" },
+  { id: "branch_freshness", label: "Branch Freshness" },
+  { id: "merge_cleanup", label: "Cleanup" },
   { id: "worktree_setup", label: "Worktree Setup" },
   { id: "programmatic_merge", label: "Merge" },
   { id: "npm_run_typecheck", label: "Type Check" },
