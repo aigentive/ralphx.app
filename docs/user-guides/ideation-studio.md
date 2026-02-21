@@ -436,7 +436,7 @@ main
         └── ralphx/project/task-ghi789   ← Task branch
 ```
 
-Each task merges into the plan branch. When all tasks in the plan are merged, a final **plan-merge task** merges the plan branch into `main`. This task is created automatically when you accept the ideation session, appears on your Kanban board like any other task, and enters the merge pipeline once all sibling tasks reach Merged or Cancelled. This approach prevents partial feature merges and allows the full plan to be validated as a unit before touching `main`.
+Each task merges into the plan branch. When all tasks in the plan are merged, RalphX automatically creates a final **plan-merge task** that appears on your Kanban board and merges the plan branch into `main` once all sibling tasks reach Merged or Cancelled. This approach prevents partial feature merges and allows the full plan to be validated as a unit before touching `main`.
 
 ---
 
