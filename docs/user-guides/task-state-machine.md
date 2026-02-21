@@ -496,7 +496,7 @@ When a task enters one of these states, the following happens automatically:
 | **executing** | Create task git branch. Create worktree (Worktree mode). Spawn **worker** agent. |
 | **re_executing** | Checkout task branch (Local mode). Spawn **worker** agent with revision context (review notes + open issues). |
 | **qa_refining** | Wait for qa-prep background agent to finish (if still running). Spawn `qa-refiner` agent. |
-| **qa_testing** | Spawn `qa-tester` agent. Emit `qa_testing` event. |
+| **qa_testing** | Spawn `qa-tester` agent. |
 | **qa_passed** | Emit `qa_passed` event. |
 | **qa_failed** | Emit `qa_failed` event. Notify user. |
 | **pending_review** | Start AI review via ReviewStarter. Emit `review:update` event. |
