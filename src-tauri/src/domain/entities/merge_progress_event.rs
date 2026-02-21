@@ -159,6 +159,12 @@ pub struct MergePhaseInfo {
     pub id: String,
     /// Human-readable label for display
     pub label: String,
+    /// Actual shell command (only set for dynamic/validation phases)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command: Option<String>,
+    /// Static description (only set for structural phases)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// Derive a phase ID from a validation command string.
@@ -280,26 +286,38 @@ pub fn derive_phases_from_analysis(entries: &[PhaseAnalysisEntry]) -> Vec<MergeP
         MergePhaseInfo {
             id: MergePhase::MERGE_PREPARATION.to_string(),
             label: "Preparation".to_string(),
+            command: None,
+            description: Some("Loading task context and resolving branches".to_string()),
         },
         MergePhaseInfo {
             id: MergePhase::PRECONDITION_CHECK.to_string(),
             label: "Preconditions".to_string(),
+            command: None,
+            description: Some("Validating merge prerequisites and dependencies".to_string()),
         },
         MergePhaseInfo {
             id: MergePhase::BRANCH_FRESHNESS.to_string(),
             label: "Branch Freshness".to_string(),
+            command: None,
+            description: Some("Checking source branch is up-to-date with target".to_string()),
         },
         MergePhaseInfo {
             id: MergePhase::MERGE_CLEANUP.to_string(),
             label: "Cleanup".to_string(),
+            command: None,
+            description: Some("Removing stale worktrees and stopping old agents".to_string()),
         },
         MergePhaseInfo {
             id: MergePhase::WORKTREE_SETUP.to_string(),
             label: "Worktree Setup".to_string(),
+            command: None,
+            description: Some("Creating isolated worktree for validation".to_string()),
         },
         MergePhaseInfo {
             id: MergePhase::PROGRAMMATIC_MERGE.to_string(),
             label: "Merge".to_string(),
+            command: None,
+            description: Some("Running git merge/rebase operation".to_string()),
         },
     ];
 
@@ -308,6 +326,8 @@ pub fn derive_phases_from_analysis(entries: &[PhaseAnalysisEntry]) -> Vec<MergeP
             phases.push(MergePhaseInfo {
                 id: derive_phase_id(cmd),
                 label: derive_phase_label(cmd),
+                command: Some(cmd.clone()),
+                description: None,
             });
         }
     }
@@ -315,6 +335,8 @@ pub fn derive_phases_from_analysis(entries: &[PhaseAnalysisEntry]) -> Vec<MergeP
     phases.push(MergePhaseInfo {
         id: MergePhase::FINALIZE.to_string(),
         label: "Finalize".to_string(),
+        command: None,
+        description: Some("Publishing merge commit and cleaning up".to_string()),
     });
 
     phases

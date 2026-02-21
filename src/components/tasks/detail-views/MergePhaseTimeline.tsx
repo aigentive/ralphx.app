@@ -22,17 +22,17 @@ import type { MergeProgressEvent, MergePhaseInfo } from "@/types/events";
 
 /** Default phase config — used as fallback when no dynamic phase list is received */
 const DEFAULT_PHASE_CONFIG: MergePhaseInfo[] = [
-  { id: "merge_preparation", label: "Preparation" },
-  { id: "precondition_check", label: "Preconditions" },
-  { id: "branch_freshness", label: "Branch Freshness" },
-  { id: "merge_cleanup", label: "Cleanup" },
-  { id: "worktree_setup", label: "Worktree Setup" },
-  { id: "programmatic_merge", label: "Merge" },
-  { id: "npm_run_typecheck", label: "Type Check" },
-  { id: "npm_run_lint", label: "Lint" },
-  { id: "cargo_clippy", label: "Clippy" },
-  { id: "cargo_test", label: "Test" },
-  { id: "finalize", label: "Finalize" },
+  { id: "merge_preparation", label: "Preparation", description: "Loading task context and resolving branches" },
+  { id: "precondition_check", label: "Preconditions", description: "Validating merge prerequisites and dependencies" },
+  { id: "branch_freshness", label: "Branch Freshness", description: "Checking source branch is up-to-date with target" },
+  { id: "merge_cleanup", label: "Cleanup", description: "Removing stale worktrees and stopping old agents" },
+  { id: "worktree_setup", label: "Worktree Setup", description: "Creating isolated worktree for validation" },
+  { id: "programmatic_merge", label: "Merge", description: "Running git merge/rebase operation" },
+  { id: "npm_run_typecheck", label: "Type Check", command: "npm run typecheck" },
+  { id: "npm_run_lint", label: "Lint", command: "npm run lint" },
+  { id: "cargo_clippy", label: "Clippy", command: "cargo clippy" },
+  { id: "cargo_test", label: "Test", command: "cargo test" },
+  { id: "finalize", label: "Finalize", description: "Publishing merge commit and cleaning up" },
 ];
 
 function PhaseIcon({ status }: { status: "started" | "passed" | "failed" | "skipped" | "pending" }) {
@@ -122,6 +122,7 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
               <div
                 key={config.id}
                 className="flex items-center gap-2.5 py-1.5"
+                title={config.command ? `$ ${config.command}` : config.description ?? undefined}
                 style={{
                   borderTop:
                     index > 0
@@ -130,12 +131,19 @@ export function MergePhaseTimeline({ phases, phaseList }: MergePhaseTimelineProp
                 }}
               >
                 <PhaseIcon status={status} />
-                <span
-                  className="text-[13px] font-medium flex-1"
-                  style={{ color: phaseTextColor(status) }}
-                >
-                  {config.label}
-                </span>
+                <div className="flex-1 min-w-0">
+                  <span
+                    className="text-[13px] font-medium block"
+                    style={{ color: phaseTextColor(status) }}
+                  >
+                    {config.label}
+                  </span>
+                  {config.command && (
+                    <span className="text-[10px] font-mono text-white/25 truncate block max-w-[200px]">
+                      $ {config.command}
+                    </span>
+                  )}
+                </div>
                 {event?.message && status === "started" && (
                   <span className="text-[11px] text-white/40 truncate max-w-[200px]">
                     {event.message}
