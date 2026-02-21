@@ -530,7 +530,7 @@ impl ArtifactBucket {
         self.readers.iter().any(|r| r == reader || r == "all")
     }
 
-    /// Returns the 4 system buckets defined in the PRD
+    /// Returns the 5 system buckets defined in the PRD
     pub fn system_buckets() -> Vec<ArtifactBucket> {
         vec![
             ArtifactBucket::system("research-outputs", "Research Outputs")

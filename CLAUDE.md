@@ -98,6 +98,21 @@ style={{ boxShadow: "none", outline: "none" }}
 **What:** - bullets  **Commands:** - `commands`
 ```
 
+## Team Mode Rules
+When delegate mode is active (TeamCreate tool available):
+
+| Rule | Detail |
+|------|--------|
+| **Always managed teams** | Every agent task MUST be wrapped in a team (TeamCreate first). No standalone Task tool spawns — user needs visibility. Even single-agent tasks use a team. |
+| **TDD by default** | Teammates tasked with execution write tests FIRST, or at minimum verify test coverage exists before marking complete. |
+| **Lead reviews coverage** | Team lead instructs teammates to check/implement test coverage. Review for gaps before approving commits. |
+| **Report test results** | Teammates report pass/fail counts in completion messages. No "done" without test evidence. |
+| **Every change = tests** | Code changes without corresponding test coverage are incomplete. |
+| **Audit ALL code paths** | When fixing a bypass/guard, search for ALL code paths that reach the same destination. Fixing one path while missing another is a common regression (e.g., check_already_merged vs recover_deleted_source_branch). |
+| **Shared safety helpers** | Never duplicate safety/guard logic across code paths. Extract to a shared function so all paths use the same check. |
+| **Debate before implementing** | For non-trivial fixes, spawn Alpha (minimal) vs Beta (comprehensive) debate agents. This catches edge cases that single-agent implementation misses. |
+| **Verify end-to-end** | After a fix, verify the user-visible behavior changed, not just the code. Stale logs/UI can make a working fix appear broken. |
+
 ## Git Conventions
 ❌ git init/push/remotes | Prefixes: `docs:` | `feat:` | `fix:` | `chore:` | Co-author: `Co-Authored-By: Claude <MODEL> <noreply@anthropic.com>`
 

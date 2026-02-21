@@ -11,6 +11,8 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useChatStore, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
+import { useTeamStore } from "@/stores/teamStore";
+import { rejectTeamPlan } from "@/api/team";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { chatKeys } from "@/hooks/useChat";
 import type { ChatContext } from "@/types/chat";
@@ -192,6 +194,15 @@ export function useChatPanelContext({
       if (prevStoreContextKeyRef.current) {
         setAgentRunning(prevStoreContextKeyRef.current, false);
         setSending(prevStoreContextKeyRef.current, false);
+
+        // Cancel any pending team plan for the old context to prevent orphaned backend long-polls.
+        const oldPendingPlan = useTeamStore.getState().pendingPlans[prevStoreContextKeyRef.current];
+        if (oldPendingPlan) {
+          rejectTeamPlan(oldPendingPlan.planId).catch(() => {
+            // Ignore errors — backend clears the plan on timeout regardless
+          });
+        }
+        useTeamStore.getState().clearPendingPlan(prevStoreContextKeyRef.current);
       }
 
       // Reset auto-select flag when context changes

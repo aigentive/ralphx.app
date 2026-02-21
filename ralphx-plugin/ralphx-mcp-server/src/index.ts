@@ -76,6 +76,10 @@ const RALPHX_TASK_ID = process.env.RALPHX_TASK_ID;
 // Project ID from environment (for project-level scoping enforcement)
 const RALPHX_PROJECT_ID = process.env.RALPHX_PROJECT_ID;
 
+// Context type and ID from environment (set by chat_service_context for all agent spawns)
+const RALPHX_CONTEXT_TYPE = process.env.RALPHX_CONTEXT_TYPE;
+const RALPHX_CONTEXT_ID = process.env.RALPHX_CONTEXT_ID;
+
 /**
  * Validate that a tool call's task_id parameter matches the assigned task
  * @param toolName - Name of the tool being called
@@ -430,7 +434,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     } else if (name === "request_team_plan") {
       // POST /api/team/plan
       const { process, teammates } = args as { process: string; teammates: unknown[] };
-      result = await callTauri("team/plan", { process, teammates });
+      result = await callTauri("team/plan", {
+        context_type: RALPHX_CONTEXT_TYPE ?? "ideation",
+        context_id: RALPHX_CONTEXT_ID ?? "",
+        process,
+        teammates,
+      });
     } else if (name === "request_teammate_spawn") {
       // POST /api/team/spawn
       const { role, prompt, model, tools, mcp_tools, preset } = args as {

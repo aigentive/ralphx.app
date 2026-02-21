@@ -84,6 +84,8 @@ fn request_teammate_spawn_deserialization() {
 #[test]
 fn request_team_plan_deserialization() {
     let json = r#"{
+        "context_type": "ideation",
+        "context_id": "session-abc123",
         "process": "ideation-research",
         "teammates": [
             {
@@ -97,6 +99,8 @@ fn request_team_plan_deserialization() {
     }"#;
 
     let req: RequestTeamPlanRequest = serde_json::from_str(json).unwrap();
+    assert_eq!(req.context_type, "ideation");
+    assert_eq!(req.context_id, "session-abc123");
     assert_eq!(req.process, "ideation-research");
     assert_eq!(req.teammates.len(), 1);
     assert_eq!(req.teammates[0].role, "frontend-researcher");
@@ -303,6 +307,8 @@ async fn test_assign_color_rotates() {
 #[test]
 fn team_plan_request_converts_to_spawn_requests() {
     let req = RequestTeamPlanRequest {
+        context_type: "ideation".to_string(),
+        context_id: "session-abc123".to_string(),
         process: "ideation".to_string(),
         teammates: vec![
             crate::http_server::types::TeamPlanTeammate {

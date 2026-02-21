@@ -47,6 +47,8 @@ export interface PendingTeamPlan {
     prompt_summary: string;
     preset?: string | null;
   }>;
+  originContextType: string;
+  originContextId: string;
 }
 
 interface ActiveTeam {
@@ -66,7 +68,7 @@ interface ActiveTeam {
 
 interface TeamState {
   activeTeams: Record<string, ActiveTeam>;
-  pendingPlan: PendingTeamPlan | null;
+  pendingPlans: Record<string, PendingTeamPlan>;
 }
 
 interface TeamActions {
@@ -81,7 +83,8 @@ interface TeamActions {
   disbandTeam: (contextKey: string) => void;
   clearTeamForContext: (contextKey: string) => void;
   getTeammates: (contextKey: string) => TeammateState[];
-  setPendingPlan: (plan: PendingTeamPlan | null) => void;
+  setPendingPlan: (contextKey: string, plan: PendingTeamPlan) => void;
+  clearPendingPlan: (contextKey: string) => void;
   hydrateFromHistory: (contextKey: string, history: TeamHistoryResponse) => void;
 }
 
@@ -94,7 +97,7 @@ const MAX_TEAM_MESSAGES = 200;
 export const useTeamStore = create<TeamState & TeamActions>()(
   immer((set, get) => ({
     activeTeams: {},
-    pendingPlan: null,
+    pendingPlans: {},
 
     createTeam: (contextKey, teamName, leadName) =>
       set((state) => {
@@ -208,9 +211,14 @@ export const useTeamStore = create<TeamState & TeamActions>()(
       return team ? Object.values(team.teammates) : EMPTY_TEAMMATES;
     },
 
-    setPendingPlan: (plan) =>
+    setPendingPlan: (contextKey, plan) =>
       set((state) => {
-        state.pendingPlan = plan;
+        state.pendingPlans[contextKey] = plan;
+      }),
+
+    clearPendingPlan: (contextKey) =>
+      set((state) => {
+        delete state.pendingPlans[contextKey];
       }),
 
     hydrateFromHistory: (contextKey, history) =>

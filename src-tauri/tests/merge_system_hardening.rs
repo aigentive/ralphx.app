@@ -650,6 +650,14 @@ async fn fix_full_pipeline_task_to_main_direct() {
     assert_eq!(source, "task-branch");
     assert_eq!(target, "main");
 
+    // Detach HEAD so 'main' is available for worktree checkout
+    // (git worktree add refuses branches already checked out in any worktree)
+    Command::new("git")
+        .args(["checkout", "--detach", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .expect("git checkout --detach failed");
+
     // Perform rebase+merge (using worktree-based method)
     let rebase_wt = tempfile::tempdir().expect("Failed to create rebase worktree dir");
     let merge_wt = tempfile::tempdir().expect("Failed to create merge worktree dir");
