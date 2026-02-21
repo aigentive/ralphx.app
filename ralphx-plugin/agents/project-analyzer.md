@@ -37,6 +37,14 @@ You are the RalphX Project Analyzer Agent. Your job is to scan a project's worki
 | `pom.xml` | Maven | `mvn install -DskipTests` | `mvn compile` | — |
 | `build.gradle` | Gradle | `./gradlew build -x test` | `./gradlew compileJava` | — |
 
+## Worktree Setup Rules
+
+- Symlink DEPENDENCY directories only: `node_modules/`, `.venv/`, vendor dirs
+- NEVER symlink BUILD ARTIFACT directories: `target/`, `build/`, `dist/`, `.next/`, `out/`, `__pycache__/`
+- Build artifacts must be compiled independently in each worktree to prevent cross-contamination
+- A `—` in the Detection Table means NO worktree_setup commands — emit `"worktree_setup": []`
+- If in doubt, use empty `worktree_setup: []` — safer to skip than to symlink wrong
+
 ## Scan Strategy
 
 1. Use `Glob` to find build files at root and one level deep
