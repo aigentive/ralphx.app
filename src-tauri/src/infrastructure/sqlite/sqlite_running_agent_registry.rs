@@ -112,14 +112,15 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         }
     }
 
-    async fn unregister(&self, key: &RunningAgentKey) -> Option<RunningAgentInfo> {
+    async fn unregister(&self, key: &RunningAgentKey, agent_run_id: &str) -> Option<RunningAgentInfo> {
         let conn = self.conn.lock().await;
 
-        // Read the row first
+        // Read the row only if agent_run_id matches (ownership check prevents a finishing
+        // agent from accidentally deleting a newer agent's slot for the same context).
         let info = conn
             .query_row(
-                "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
-                rusqlite::params![key.context_type, key.context_id],
+                "SELECT pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at FROM running_agents WHERE context_type = ?1 AND context_id = ?2 AND agent_run_id = ?3",
+                rusqlite::params![key.context_type, key.context_id, agent_run_id],
                 |row| {
                     let pid: u32 = row.get(0)?;
                     let conversation_id: String = row.get(1)?;
@@ -148,10 +149,15 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             )
             .ok();
 
-        // Delete the row
+        if info.is_none() {
+            // Row does not exist or agent_run_id does not match — do not delete
+            return None;
+        }
+
+        // Delete the row (scoped to matching agent_run_id)
         match conn.execute(
-            "DELETE FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
-            rusqlite::params![key.context_type, key.context_id],
+            "DELETE FROM running_agents WHERE context_type = ?1 AND context_id = ?2 AND agent_run_id = ?3",
+            rusqlite::params![key.context_type, key.context_id, agent_run_id],
         ) {
             Ok(0) => {
                 tracing::debug!(
@@ -237,7 +243,16 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
     }
 
     async fn stop(&self, key: &RunningAgentKey) -> Result<Option<RunningAgentInfo>, String> {
-        let info = self.unregister(key).await;
+        let agent_run_id = {
+            let conn = self.conn.lock().await;
+            conn.query_row(
+                "SELECT agent_run_id FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+                rusqlite::params![key.context_type, key.context_id],
+                |row| row.get::<_, String>(0),
+            )
+            .unwrap_or_default()
+        };
+        let info = self.unregister(key, &agent_run_id).await;
 
         if let Some(ref agent_info) = info {
             // Cancel the async task before killing the process

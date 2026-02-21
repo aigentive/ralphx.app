@@ -87,13 +87,13 @@ async fn test_unregister() {
         )
         .await;
 
-    let info = registry.unregister(&key).await;
+    let info = registry.unregister(&key, "run-xyz").await;
     assert!(info.is_some());
 
     assert!(!registry.is_running(&key).await);
 
     // Double unregister should return None
-    let info = registry.unregister(&key).await;
+    let info = registry.unregister(&key, "run-xyz").await;
     assert!(info.is_none());
 }
 
@@ -281,7 +281,7 @@ async fn test_try_register_cleanup_on_spawn_failure() {
     assert!(registry.is_running(&key).await);
 
     // Simulate spawn failure: unregister to release the slot
-    registry.unregister(&key).await;
+    registry.unregister(&key, "run-1").await;
 
     // Slot should be free again
     assert!(!registry.is_running(&key).await);

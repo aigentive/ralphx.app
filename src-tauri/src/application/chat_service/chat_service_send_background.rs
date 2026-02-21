@@ -252,8 +252,8 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             }
         }
 
-        // Unregister the process when done (whether success or failure)
-        running_agent_registry.unregister(&registry_key).await;
+        // Unregister the process when done (ownership check: only removes our own slot)
+        running_agent_registry.unregister(&registry_key, &agent_run_id).await;
 
         match result {
             Ok(outcome) => {

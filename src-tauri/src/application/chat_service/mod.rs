@@ -500,13 +500,18 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
         // 1b. Atomic guard: claim the agent slot to prevent TOCTOU race.
         //     If an agent is already registered for this context, queue the message.
+        //     Create the AgentRun early so its ID can be stored in the slot for ownership tracking.
+        let agent_run = AgentRun::new(conversation.id);
+        let agent_run_id = agent_run.id.as_str().to_string();
+        let run_chain_id = agent_run.run_chain_id.clone();
+
         let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
         if let Err(_existing) = self
             .running_agent_registry
             .try_register(
                 registry_key.clone(),
                 conversation.id.as_str().to_string(),
-                String::new(), // agent_run_id filled in by update_agent_process
+                agent_run_id.clone(),
             )
             .await
         {
@@ -541,7 +546,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         macro_rules! cleanup_and_err {
             ($err:expr) => {{
                 self.running_agent_registry
-                    .unregister(&registry_key)
+                    .unregister(&registry_key, &agent_run_id)
                     .await;
                 if running_incremented {
                     if let Some(ref exec) = self.execution_state {
@@ -559,10 +564,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let is_new_conversation = conversation.claude_session_id.is_none();
         let stored_session_id = conversation.claude_session_id.clone();
 
-        // 2. Create agent run record
-        let agent_run = AgentRun::new(conversation_id);
-        let agent_run_id = agent_run.id.as_str().to_string();
-        let run_chain_id = agent_run.run_chain_id.clone();
+        // 2. Persist agent run record (created earlier before try_register for ownership tracking)
         if let Err(e) = self.agent_run_repo.create(agent_run).await {
             cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
         }
