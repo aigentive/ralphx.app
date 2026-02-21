@@ -98,6 +98,10 @@ When delegate mode is active (TeamCreate tool available):
 | **Lead reviews coverage** | Team lead instructs teammates to check/implement test coverage. Review for gaps before approving commits. |
 | **Report test results** | Teammates report pass/fail counts in completion messages. No "done" without test evidence. |
 | **Every change = tests** | Code changes without corresponding test coverage are incomplete. |
+| **Audit ALL code paths** | When fixing a bypass/guard, search for ALL code paths that reach the same destination. Fixing one path while missing another is a common regression (e.g., check_already_merged vs recover_deleted_source_branch). |
+| **Shared safety helpers** | Never duplicate safety/guard logic across code paths. Extract to a shared function so all paths use the same check. |
+| **Debate before implementing** | For non-trivial fixes, spawn Alpha (minimal) vs Beta (comprehensive) debate agents. This catches edge cases that single-agent implementation misses. |
+| **Verify end-to-end** | After a fix, verify the user-visible behavior changed, not just the code. Stale logs/UI can make a working fix appear broken. |
 
 ## Git Conventions
 - NO: git init, push, remotes
