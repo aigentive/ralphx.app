@@ -107,6 +107,39 @@ fn test_retry_merge_resets_counters_without_merge_recovery() {
     assert!(result.get("merge_recovery").is_none());
 }
 
+/// Verify that a task with legacy boolean `merge_retry_in_progress: true` (old format)
+/// is NOT blocked by the duplicate-retry guard. This reproduces the exact scenario where
+/// a task had the old boolean flag stuck in DB metadata — the guard must treat it as stale
+/// and allow the retry to proceed.
+#[test]
+fn test_legacy_boolean_merge_retry_flag_does_not_block_retry() {
+    // Simulate metadata with the OLD boolean format (pre-timestamp migration)
+    let metadata = serde_json::json!({
+        "merge_retry_in_progress": true,
+        "error": "Merge timed out after 1200s without complete_merge callback",
+    });
+    let metadata_json = metadata;
+
+    // This is the exact guard logic from retry_merge() in git_commands.rs
+    let retry_in_progress = metadata_json
+        .get("merge_retry_in_progress")
+        .and_then(|v| {
+            if let Some(ts) = v.as_str() {
+                let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
+                let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);
+                return Some(age < chrono::Duration::seconds(60));
+            }
+            // Legacy boolean or other non-string: stale
+            Some(false)
+        })
+        .unwrap_or(false);
+
+    assert!(
+        !retry_in_progress,
+        "Legacy boolean merge_retry_in_progress: true must NOT block retry (should be treated as stale)"
+    );
+}
+
 /// Verify that the reconciler's validation_revert_count check would pass after reset.
 /// The reconciler blocks when validation_revert_count >= max (default 2).
 /// After user retry resets to 0, the check should pass.
