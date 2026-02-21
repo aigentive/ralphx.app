@@ -320,3 +320,60 @@ async fn test_real_repo_merge_completes_in_bounded_time() {
         updated.internal_status,
     );
 }
+
+/// Verify that when branches are identical (trivial merge), the rebase-squash strategy
+/// creates a validation worktree instead of falling back to project root.
+///
+/// Bug: Previously, `try_rebase_squash_merge_in_worktree` would early-return when
+/// `branches_have_same_content` was true, never creating the merge worktree. The
+/// strategy then fell back to `repo_path` (project root), causing validation to run
+/// in the user's working directory.
+#[tokio::test]
+async fn test_trivial_merge_does_not_use_project_root_as_merge_path() {
+    use crate::application::GitService;
+
+    let git_repo = setup_real_git_repo();
+    let repo = git_repo.path();
+
+    // Fast-forward main to match task branch → branches now identical
+    let _ = std::process::Command::new("git")
+        .args(["merge", &git_repo.task_branch, "--ff-only"])
+        .current_dir(repo)
+        .output();
+
+    // Verify branches are identical (precondition for the bug)
+    let same_content = GitService::branches_have_same_content(repo, &git_repo.task_branch, "main")
+        .await
+        .unwrap();
+    assert!(
+        same_content,
+        "Precondition: branches should be identical after fast-forward"
+    );
+
+    // Run the merge via TransitionHandler
+    let setup = setup_pending_merge_with_real_repo(
+        "Trivial merge test",
+        &git_repo.task_branch,
+        &git_repo.path_string(),
+        MergeStrategy::RebaseSquash,
+    )
+    .await;
+
+    let task_id = setup.task_id.clone();
+    let task_repo = Arc::clone(&setup.task_repo);
+    let (mut machine, _task_repo, _task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    // The key assertion: task should complete successfully even with identical branches.
+    // Previously this would run validation in project root (merge_path == repo_path).
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merged,
+        "Trivial merge (identical branches) should still complete as Merged, got {:?}. Metadata: {:?}",
+        updated.internal_status,
+        updated.metadata,
+    );
+}
