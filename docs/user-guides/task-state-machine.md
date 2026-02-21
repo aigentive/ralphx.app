@@ -474,7 +474,8 @@ Tasks in **Paused** do **not** block their dependents from being unblocked. If t
 
 | Trigger | What Happens |
 |---------|-------------|
-| Dependency task reaches **Merged** or **Cancelled** | `dependency_manager.unblock_dependents()` is called on `merged` entry; transitions `blocked` → `ready` |
+| Dependency task reaches **Merged** | `dependency_manager.unblock_dependents()` is called on `merged` entry (and some merge completion paths); dependents transition `blocked` → `ready` |
+| Dependency task is **Cancelled** or **Stopped** | Dependents remain `blocked`; resolve blockers (for example via `BlockersResolved`) or update dependents manually as needed |
 | All blockers resolved | `BlockersResolved` event → `blocked` → `ready` |
 | You manually resolve the human input request | Clear the blocker in task detail; system fires `BlockersResolved` |
 
