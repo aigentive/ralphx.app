@@ -421,8 +421,14 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             .as_ref()
             .and_then(|v| v.get("base_branch")?.as_str().map(String::from))
             .unwrap_or_else(|| "main".to_string());
-        // target_branch is the plan branch that needed updating
-        let plan_branch = target_branch.clone();
+        // Use target_branch from metadata: it was stored at conflict-detection time and is
+        // more reliable than re-resolving via resolve_merge_branches, which can return the
+        // base branch (e.g. "main") if the plan branch state changed between when the
+        // conflict was detected and when this auto-complete runs.
+        let plan_branch = task_meta_value
+            .as_ref()
+            .and_then(|v| v.get("target_branch")?.as_str().map(String::from))
+            .unwrap_or_else(|| target_branch.clone());
 
         // Check if the plan branch is now up-to-date with base_branch
         let plan_up_to_date = match GitService::get_branch_sha(&main_repo_path, &base_branch).await {
@@ -537,6 +543,12 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         .unwrap_or(false);
 
     if is_source_update_conflict {
+        // Use target_branch from metadata: same reasoning as plan_update_conflict above —
+        // resolve_merge_branches may return the base branch if plan branch state changed.
+        let target_branch = task_meta_value
+            .as_ref()
+            .and_then(|v| v.get("target_branch")?.as_str().map(String::from))
+            .unwrap_or_else(|| target_branch.clone());
         let source_up_to_date = match GitService::get_branch_sha(&main_repo_path, &target_branch).await {
             Ok(target_sha) => GitService::is_commit_on_branch(&main_repo_path, &target_sha, &source_branch)
                 .await
