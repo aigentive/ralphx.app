@@ -3,6 +3,7 @@
 // Phase 82: Project-scoped execution with optional project_id parameters
 
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::str::FromStr;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
@@ -116,6 +117,11 @@ pub struct ExecutionState {
     /// 0 = no active rate limit. When any agent detects a provider rate limit,
     /// this is set to the retry_after timestamp so ALL subsequent spawns are gated.
     rate_limited_until: AtomicU64,
+    /// Set of task IDs that currently have an `attempt_merge_auto_complete` call in flight.
+    /// Prevents duplicate auto-complete calls (e.g. from agent completion + error handler)
+    /// from running validation concurrently in the same worktree.
+    /// Uses std::sync::Mutex (not tokio) so Drop-based guards work synchronously.
+    auto_completes_in_flight: std::sync::Mutex<HashSet<String>>,
 }
 
 impl ExecutionState {
@@ -127,6 +133,7 @@ impl ExecutionState {
             max_concurrent: AtomicU32::new(2),
             global_max_concurrent: AtomicU32::new(20),
             rate_limited_until: AtomicU64::new(0),
+            auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
         }
     }
 
@@ -138,6 +145,7 @@ impl ExecutionState {
             max_concurrent: AtomicU32::new(max),
             global_max_concurrent: AtomicU32::new(20),
             rate_limited_until: AtomicU64::new(0),
+            auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
         }
     }
 
@@ -243,6 +251,21 @@ impl ExecutionState {
         }
         let running = self.running_count();
         running < self.max_concurrent() && running < self.global_max_concurrent()
+    }
+
+    /// Try to mark a task as having an auto-complete in flight.
+    /// Returns `true` if the task was newly inserted (caller should proceed).
+    /// Returns `false` if the task was already in the set (caller should skip — duplicate).
+    pub fn try_start_auto_complete(&self, task_id: &str) -> bool {
+        let mut set = self.auto_completes_in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        set.insert(task_id.to_string())
+    }
+
+    /// Remove a task from the auto-completes-in-flight set.
+    /// Called when auto-complete finishes (success or failure).
+    pub fn finish_auto_complete(&self, task_id: &str) {
+        let mut set = self.auto_completes_in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        set.remove(task_id);
     }
 
     /// Emit execution:status_changed event with current state

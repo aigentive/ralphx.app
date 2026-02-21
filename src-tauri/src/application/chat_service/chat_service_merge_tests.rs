@@ -214,3 +214,67 @@ async fn test_verify_merge_plan_branch_not_merged() {
         "Expected NotMerged for task not merged to plan branch"
     );
 }
+
+// --- Auto-complete dedup guard tests ---
+
+#[test]
+fn test_auto_complete_guard_prevents_duplicate() {
+    use crate::commands::ExecutionState;
+
+    let exec_state = ExecutionState::new();
+    let task_id = "task-abc123";
+
+    // First call succeeds
+    assert!(exec_state.try_start_auto_complete(task_id));
+    // Second call is blocked (duplicate)
+    assert!(!exec_state.try_start_auto_complete(task_id));
+}
+
+#[test]
+fn test_auto_complete_guard_allows_different_tasks() {
+    use crate::commands::ExecutionState;
+
+    let exec_state = ExecutionState::new();
+
+    assert!(exec_state.try_start_auto_complete("task-a"));
+    assert!(exec_state.try_start_auto_complete("task-b"));
+    // Still blocked for task-a
+    assert!(!exec_state.try_start_auto_complete("task-a"));
+}
+
+#[test]
+fn test_auto_complete_guard_cleanup_allows_retry() {
+    use crate::commands::ExecutionState;
+
+    let exec_state = ExecutionState::new();
+    let task_id = "task-abc123";
+
+    assert!(exec_state.try_start_auto_complete(task_id));
+    assert!(!exec_state.try_start_auto_complete(task_id));
+
+    // After cleanup, a new call is allowed
+    exec_state.finish_auto_complete(task_id);
+    assert!(exec_state.try_start_auto_complete(task_id));
+}
+
+#[test]
+fn test_auto_complete_raii_guard_cleans_up_on_drop() {
+    use crate::commands::ExecutionState;
+
+    let exec_state = Arc::new(ExecutionState::new());
+    let task_id = "task-abc123";
+
+    // Simulate inserting and creating a guard
+    assert!(exec_state.try_start_auto_complete(task_id));
+    {
+        let _guard = super::AutoCompleteGuard {
+            execution_state: Arc::clone(&exec_state),
+            task_id: task_id.to_string(),
+        };
+        // While guard is alive, duplicate is blocked
+        assert!(!exec_state.try_start_auto_complete(task_id));
+        // Re-insert since try_start failed (it wasn't actually added again)
+    }
+    // After guard drops, the task is removed from the set
+    assert!(exec_state.try_start_auto_complete(task_id));
+}
