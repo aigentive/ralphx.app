@@ -282,7 +282,7 @@ The `ralphx-supervisor` (Haiku model) monitors the worker for:
 | Pattern | Threshold | Response |
 |---------|-----------|----------|
 | Same tool called with similar args | 3+ times | Inject guidance |
-| No git diff changes | 5 minutes | Inject guidance or escalate |
+| No git diff changes | ~2.5 minutes (default) | Inject guidance or escalate |
 | Same error repeating | 3+ times (guidance), 4+ times (pause) | Inject guidance or pause |
 | Token usage with no progress | High | Pause + notify (High severity) |
 | Critical loop detected | — | Kill + analyze (Critical severity) |
