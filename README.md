@@ -47,7 +47,7 @@ It started as a 196-line bash script called `ralph.sh` — a loop that orchestra
 
 RalphX is a native macOS desktop application — the layer between your AI agent and your git history.
 
-Describe what you want to build. RalphX turns that into structured tasks, assigns them to specialized agents, executes code in isolated git worktrees, reviews it, runs QA, and merges it to your base branch. You intervene when it matters. The rest happens on its own.
+Describe what you want to build. RalphX turns that into structured tasks, assigns them to specialized agents, executes code in isolated git worktrees, reviews it, runs QA, and merges it to your base branch. You intervene when it matters. Everything else executes.
 
 All data stays on your machine. Local SQLite database. No cloud dependency. No telemetry. Every agent action is logged, scoped, and reversible.
 
@@ -85,7 +85,7 @@ All data stays on your machine. Local SQLite database. No cloud dependency. No t
       |
       v
 +-----------+
-|  Kanban   |  Drag task to Ready --> execution begins
+|  Kanban   |  Drag task to Planned --> execution begins
 |  Board    |  Up to 10 tasks running concurrently
 +-----+-----+
       |
@@ -97,7 +97,7 @@ All data stays on your machine. Local SQLite database. No cloud dependency. No t
       |
       v
 +-----------+  Reviews diffs, files structured issues
-| Reviewer  |  Read-only access + review verdict
+| Reviewer  |  File read + validation commands + verdict
 |  Agent    |  Max 3 auto-fix cycles before escalation
 +-----+-----+
       |
@@ -147,7 +147,7 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 
 ### Kanban + Auto-Execution
 
-A visual board where columns map to lifecycle states. Drag a task to **Ready** and a Worker agent picks it up, writes code in an isolated worktree, and pushes it through the full pipeline. The Kanban board is the interface; the agents are the engine.
+A visual board where columns map to lifecycle states. Drag a task to **Planned** and a Worker agent picks it up, writes code in an isolated worktree, and pushes it through the full pipeline. The Kanban board is the interface; the agents are the engine.
 
 ### 24-State Task Lifecycle
 
@@ -177,6 +177,10 @@ Interactive node graph with critical path highlighting, tier-based grouping, and
 ### Supervisor Watchdog
 
 A background process monitors all running tasks. Detects execution loops, stalled agents, and resource waste. When it detects a problem, it stops the stuck agent through the state machine and escalates to you. No more checking terminal tabs wondering if the AI is still thinking.
+
+### Plugin System + Memory
+
+Encode your team's practices as reusable methodology plugins — review criteria, coding patterns, testing requirements. Agents follow your standards automatically. The memory system captures context across sessions so agents learn your codebase conventions over time.
 
 ---
 
@@ -220,7 +224,7 @@ A background process monitors all running tasks. Detects execution loops, stalle
 
 **VP Engineering** — Turn "we're experimenting with AI coding" into "we have a structured, auditable AI development pipeline."
 
-**CTO** — Local-first data sovereignty. Open source, no vendor lock-in. Rust backend, memory-safe. Runtime-enforced state machine. Your security team audits it in weeks, not months.
+**CTO** — Local-first data sovereignty. Open source, no vendor lock-in. Rust backend, memory-safe. Runtime-enforced state machine. Your security team can audit it in weeks, not months.
 
 ### Not For You If
 
@@ -228,6 +232,7 @@ A background process monitors all running tasks. Detects execution loops, stalle
 - You prefer cloud-hosted AI dev platforms (RalphX is local-first)
 - You need multi-user real-time collaboration (single-developer orchestration today)
 - You don't use Claude (RalphX orchestrates Claude agents specifically)
+- You work from NFS or network-attached filesystems (git worktrees require local storage)
 - You want code autocomplete (that's Copilot / Cursor — RalphX works outside the IDE)
 
 ---
@@ -236,7 +241,7 @@ A background process monitors all running tasks. Detects execution loops, stalle
 
 ### Prerequisites
 
-- macOS 12+ (Monterey or later)
+- macOS 13+ (Ventura or later)
 - [Claude CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
 - Node.js 18+ and npm
 - Rust 1.70+ (install via [rustup.rs](https://rustup.rs))
