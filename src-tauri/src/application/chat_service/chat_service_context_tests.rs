@@ -663,3 +663,153 @@ async fn test_build_resume_command_with_team_mode() {
 
     // Test passes if no panics occurred
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests for resolve_working_directory — merge context worktree prefix filter
+// Fix: commit cfb57e0e — accept both merge- and rebase- prefixes for merge worktrees
+// ──────────────────────────────────────────────────────────────────────────────
+
+use crate::domain::entities::{Project, Task};
+use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+
+/// Test 1: Merger agent spawn accepts rebase-{task_id} worktree path.
+///
+/// Regression test for commit cfb57e0e: before the fix, only merge- was accepted.
+/// rebase- prefixed worktrees are created by the checkout-free rebase strategy and
+/// must be valid merge agent working directories.
+#[tokio::test]
+async fn resolve_working_directory_merge_context_accepts_rebase_prefix() {
+    let parent = tempfile::TempDir::new().unwrap();
+    let wt = parent.path().join("rebase-abc123");
+    std::fs::create_dir_all(&wt).unwrap();
+    let wt_path = wt.to_str().unwrap().to_string();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let project_dir = parent.path().join("main-repo");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let mut project = Project::new("test".to_string(), project_dir.to_str().unwrap().to_string());
+    project.id = project_id.clone();
+    project.git_mode = GitMode::Worktree;
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, "test task".to_string());
+    task.worktree_path = Some(wt_path.clone());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let result = resolve_working_directory(
+        ChatContextType::Merge,
+        task_id.as_str(),
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        std::path::Path::new("/tmp/default"),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "rebase- prefixed worktree must be accepted for Merge context. Got: {:?}",
+        result
+    );
+    assert_eq!(
+        result.unwrap(),
+        std::path::PathBuf::from(&wt_path),
+        "Must return the rebase- worktree path as the working directory"
+    );
+}
+
+/// Test 2: Merger agent spawn accepts merge-{task_id} worktree path (existing behavior not broken).
+///
+/// Confirms the original merge- prefix continues to work after the fix.
+#[tokio::test]
+async fn resolve_working_directory_merge_context_accepts_merge_prefix() {
+    let parent = tempfile::TempDir::new().unwrap();
+    let wt = parent.path().join("merge-abc123");
+    std::fs::create_dir_all(&wt).unwrap();
+    let wt_path = wt.to_str().unwrap().to_string();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let project_dir = parent.path().join("main-repo");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let mut project = Project::new("test".to_string(), project_dir.to_str().unwrap().to_string());
+    project.id = project_id.clone();
+    project.git_mode = GitMode::Worktree;
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, "test task".to_string());
+    task.worktree_path = Some(wt_path.clone());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let result = resolve_working_directory(
+        ChatContextType::Merge,
+        task_id.as_str(),
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        std::path::Path::new("/tmp/default"),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "merge- prefixed worktree must still be accepted for Merge context. Got: {:?}",
+        result
+    );
+    assert_eq!(
+        result.unwrap(),
+        std::path::PathBuf::from(&wt_path),
+        "Must return the merge- worktree path as the working directory"
+    );
+}
+
+/// Test 3: Merger agent spawn rejects non-merge worktree paths (e.g., task-{task_id}).
+///
+/// A task worktree (task- prefix) must never be used as a merge agent working directory.
+/// The guard must reject it with an error rather than silently falling back.
+#[tokio::test]
+async fn resolve_working_directory_merge_context_rejects_task_prefix() {
+    let parent = tempfile::TempDir::new().unwrap();
+    let wt = parent.path().join("task-abc123");
+    std::fs::create_dir_all(&wt).unwrap();
+    let wt_path = wt.to_str().unwrap().to_string();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let project_dir = parent.path().join("main-repo");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let mut project = Project::new("test".to_string(), project_dir.to_str().unwrap().to_string());
+    project.id = project_id.clone();
+    project.git_mode = GitMode::Worktree;
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, "test task".to_string());
+    task.worktree_path = Some(wt_path.clone());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let result = resolve_working_directory(
+        ChatContextType::Merge,
+        task_id.as_str(),
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        std::path::Path::new("/tmp/default"),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "task- prefixed worktree must be rejected for Merge context (not a merge worktree). \
+         Got Ok instead of Err."
+    );
+}
