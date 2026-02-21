@@ -268,6 +268,16 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // User-initiated retry guard: if retry_merge set the in-flight flag, the background
+        // task will handle the transition — skip reconciliation to prevent stale-data races.
+        if Self::has_merge_retry_in_progress(task) {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping MergeIncomplete reconciliation — user retry in progress"
+            );
+            return true;
+        }
+
         // Rate limit guard: if a provider rate limit is active, skip retry until it expires.
         // Rate-limited skips do NOT count toward max retries — the retry budget is preserved.
         if let Some(retry_after) = Self::get_rate_limit_retry_after(task) {
@@ -304,7 +314,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // Loop-breaking guard: if validation has reverted the merge more than the configured max
         // times, stop auto-retrying and surface to user — the code changes must fix the failures.
         let revert_count = Self::validation_revert_count(task);
-        if revert_count > reconciliation_config().validation_revert_max_count as u32 {
+        if revert_count >= reconciliation_config().validation_revert_max_count as u32 {
             warn!(
                 task_id = task.id.as_str(),
                 revert_count = revert_count,
@@ -383,6 +393,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // Skip retry when branch_missing flag is set - surface to user instead
         if has_branch_missing_metadata(task) {
             return false;
+        }
+
+        // User-initiated retry guard: skip reconciliation while background retry is running.
+        if Self::has_merge_retry_in_progress(task) {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping MergeConflict reconciliation — user retry in progress"
+            );
+            return true;
         }
 
         // Smart retry guard: if the conflict was explicitly reported by the agent,

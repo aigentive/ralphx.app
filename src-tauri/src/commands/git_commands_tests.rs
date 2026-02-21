@@ -54,7 +54,7 @@ fn test_retry_merge_resets_loop_counters() {
 
     // Apply the same reset logic as retry_merge()
     let mut meta_obj = metadata.as_object().cloned().unwrap();
-    meta_obj.insert("merge_retry_in_progress".to_string(), serde_json::json!(true));
+    meta_obj.insert("merge_retry_in_progress".to_string(), serde_json::json!(chrono::Utc::now().to_rfc3339()));
     meta_obj.insert("validation_revert_count".to_string(), serde_json::json!(0));
     meta_obj.remove("merge_failure_source");
     if let Some(recovery_val) = meta_obj.get_mut("merge_recovery") {
@@ -76,8 +76,8 @@ fn test_retry_merge_resets_loop_counters() {
     assert_eq!(result["merge_recovery"]["last_state"], "retrying");
     // Other metadata keys preserved
     assert_eq!(result["some_other_key"], "preserved");
-    // In-flight guard set
-    assert_eq!(result["merge_retry_in_progress"], true);
+    // In-flight guard set (timestamp string, not boolean)
+    assert!(result["merge_retry_in_progress"].is_string());
 }
 
 /// Verify that the reset logic handles metadata with no merge_recovery key.
@@ -89,7 +89,7 @@ fn test_retry_merge_resets_counters_without_merge_recovery() {
     });
 
     let mut meta_obj = metadata.as_object().cloned().unwrap();
-    meta_obj.insert("merge_retry_in_progress".to_string(), serde_json::json!(true));
+    meta_obj.insert("merge_retry_in_progress".to_string(), serde_json::json!(chrono::Utc::now().to_rfc3339()));
     meta_obj.insert("validation_revert_count".to_string(), serde_json::json!(0));
     meta_obj.remove("merge_failure_source");
     if let Some(recovery_val) = meta_obj.get_mut("merge_recovery") {
@@ -108,14 +108,14 @@ fn test_retry_merge_resets_counters_without_merge_recovery() {
 }
 
 /// Verify that the reconciler's validation_revert_count check would pass after reset.
-/// The reconciler blocks when validation_revert_count > max (default 2).
+/// The reconciler blocks when validation_revert_count >= max (default 2).
 /// After user retry resets to 0, the check should pass.
 #[test]
 fn test_validation_revert_count_passes_after_reset() {
     // Simulate metadata after retry_merge resets the counter
     let metadata_str = serde_json::json!({
         "validation_revert_count": 0,
-        "merge_retry_in_progress": true,
+        "merge_retry_in_progress": chrono::Utc::now().to_rfc3339(),
     }).to_string();
 
     // Same read logic as ReconciliationRunner::validation_revert_count()
