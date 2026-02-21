@@ -200,7 +200,52 @@ pub(super) async fn update_plan_from_main(
         }
     }
 
-    // Target not checked out — use isolated worktree
+    // Fallback: if the plan branch is already checked out in an existing worktree
+    // (e.g., merge worktree from a prior attempt), merge main directly there instead
+    // of trying to create a new worktree (which would fail with "already used by worktree").
+    if let Ok(worktrees) = GitService::list_worktrees(repo_path).await {
+        if let Some(wt) = worktrees.iter().find(|w| w.branch.as_deref() == Some(target_branch)) {
+            let wt_path = PathBuf::from(&wt.path);
+            tracing::info!(
+                task_id = task_id_str,
+                target_branch = %target_branch,
+                worktree_path = %wt_path.display(),
+                "Plan branch already checked out in existing worktree — merging main there"
+            );
+            match GitService::merge_branch(&wt_path, base_branch, target_branch).await {
+                Ok(result) => {
+                    let sha = match &result {
+                        crate::application::MergeResult::Success { commit_sha }
+                        | crate::application::MergeResult::FastForward { commit_sha } => commit_sha.clone(),
+                        crate::application::MergeResult::Conflict { files } => {
+                            let _ = GitService::abort_merge(&wt_path).await;
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                conflict_count = files.len(),
+                                "Conflicts detected updating plan branch from main (existing worktree)"
+                            );
+                            return PlanUpdateResult::Conflicts {
+                                conflict_files: files.iter().map(PathBuf::from).collect(),
+                            };
+                        }
+                    };
+                    tracing::info!(
+                        task_id = task_id_str,
+                        commit_sha = %sha,
+                        "Plan branch updated from main (existing worktree)"
+                    );
+                    return PlanUpdateResult::Updated;
+                }
+                Err(e) => {
+                    return PlanUpdateResult::Error(format!(
+                        "merge in existing worktree failed: {}", e
+                    ));
+                }
+            }
+        }
+    }
+
+    // Target not checked out anywhere — use isolated worktree
     // try_merge_in_worktree merges base_branch (main) into target_branch (plan)
     let wt_path_str = super::merge_helpers::compute_plan_update_worktree_path(project, task_id_str);
     let wt_path = PathBuf::from(&wt_path_str);

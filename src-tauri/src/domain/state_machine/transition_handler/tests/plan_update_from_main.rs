@@ -217,3 +217,59 @@ async fn update_plan_nonexistent_base_branch_returns_error() {
         result
     );
 }
+
+#[tokio::test]
+async fn update_plan_uses_existing_worktree_when_branch_checked_out() {
+    // Simulate the real bug scenario: plan branch is already checked out in
+    // a merge worktree from a prior attempt. update_plan_from_main should
+    // fall back to merging main directly in that existing worktree.
+    let (repo, plan_branch) = setup_plan_behind_main();
+    let project = make_test_project(&repo.path_string());
+
+    // Create a worktree that has the plan branch checked out (simulating
+    // a stale merge worktree from a prior merge attempt)
+    let worktree_dir = tempfile::tempdir().unwrap();
+    let wt_path = worktree_dir.path().join("merge-stale");
+    let _ = std::process::Command::new("git")
+        .args(["worktree", "add", &wt_path.to_string_lossy(), &plan_branch])
+        .current_dir(repo.path())
+        .output()
+        .expect("git worktree add");
+
+    // Now update_plan_from_main should detect the existing worktree and
+    // merge main there instead of failing
+    let result = update_plan_from_main(
+        repo.path(),
+        &plan_branch,
+        "main",
+        &project,
+        "task-existing-wt",
+        None,
+    )
+    .await;
+
+    assert!(
+        matches!(result, PlanUpdateResult::Updated),
+        "Should use existing worktree to update plan branch. Got: {:?}",
+        result
+    );
+
+    // Verify: main's fix commit should now be on the plan branch
+    let log_output = std::process::Command::new("git")
+        .args(["log", "--oneline", &plan_branch])
+        .current_dir(repo.path())
+        .output()
+        .expect("git log");
+    let log_str = String::from_utf8_lossy(&log_output.stdout);
+    assert!(
+        log_str.contains("clippy"),
+        "Plan branch should contain the fix from main after existing-worktree merge. Log:\n{}",
+        log_str,
+    );
+
+    // Clean up worktree
+    let _ = std::process::Command::new("git")
+        .args(["worktree", "remove", &wt_path.to_string_lossy()])
+        .current_dir(repo.path())
+        .output();
+}
