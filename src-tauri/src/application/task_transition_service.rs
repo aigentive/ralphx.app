@@ -488,6 +488,11 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Prevents double-click / duplicate reconciliation from spawning two concurrent
     /// merge attempts for the same task (self-dedup).
     merges_in_flight: Arc<std::sync::Mutex<HashSet<String>>>,
+
+    /// Task-keyed CancellationTokens for in-flight post-merge validations.
+    /// Shared across all TaskServices instances so pre_merge_cleanup can cancel
+    /// a running validation when a new merge attempt starts for the same task.
+    validation_tokens: Arc<dashmap::DashMap<String, tokio_util::sync::CancellationToken>>,
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
@@ -578,6 +583,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             team_mode: None,
             merge_lock: Arc::new(tokio::sync::Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
+            validation_tokens: Arc::new(dashmap::DashMap::new()),
         }
     }
 
@@ -878,6 +884,9 @@ impl<R: Runtime> TaskTransitionService<R> {
 
         // Pass shared merges_in_flight set for self-dedup across concurrent calls
         services = services.with_merges_in_flight(Arc::clone(&self.merges_in_flight));
+
+        // Pass shared validation_tokens DashMap for cancelling in-flight validations
+        services = services.with_validation_tokens(Arc::clone(&self.validation_tokens));
 
         // Pass ideation session repository for plan merge commit message generation
         if let Some(ref session_repo) = self.ideation_session_repo {

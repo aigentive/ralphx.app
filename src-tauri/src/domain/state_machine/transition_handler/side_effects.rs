@@ -629,13 +629,30 @@ impl<'a> super::TransitionHandler<'a> {
                 mode_label,
             );
 
-            if let Err(e) = GitService::reset_hard(merge_path, "HEAD~1").await {
-                tracing::error!(
-                    task_id = task_id_str,
-                    error = %e,
-                    "Failed to revert merge commit after validation failure — target branch may have failing code"
-                );
-            }
+            // Capture the merge commit SHA before attempting revert (needed for
+            // unrevertable flag if reset_hard fails).
+            let merge_head_sha = GitService::get_branch_sha(merge_path, "HEAD")
+                .await
+                .ok();
+
+            let revert_failed = match GitService::reset_hard(merge_path, "HEAD~1").await {
+                Ok(_) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Successfully reverted merge commit after validation failure"
+                    );
+                    false
+                }
+                Err(e) => {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        merge_sha = ?merge_head_sha,
+                        "Failed to revert merge commit after validation failure — target branch has failing code"
+                    );
+                    true
+                }
+            };
 
             // Merge error metadata INTO existing metadata to preserve all existing keys
             // (merge_retry_in_progress, merge_recovery, etc.) instead of replacing.
@@ -665,6 +682,15 @@ impl<'a> super::TransitionHandler<'a> {
                         .unwrap_or(serde_json::json!("validation_failed")),
                 );
                 obj.insert("validation_revert_count".to_string(), serde_json::json!(revert_count));
+
+                // Flag unrevertable merge commits so check_already_merged() doesn't
+                // fast-path to completion with a failing merge commit on the target.
+                if revert_failed {
+                    obj.insert("merge_commit_unrevertable".to_string(), serde_json::json!(true));
+                    if let Some(ref sha) = merge_head_sha {
+                        obj.insert("unrevertable_commit_sha".to_string(), serde_json::json!(sha));
+                    }
+                }
             }
 
             task.metadata = Some(merged.to_string());

@@ -240,6 +240,29 @@ pub(super) async fn cleanup_branch_and_worktree_internal(
     // Delete worktree first, then branch
     if let Some(ref worktree_path) = task.worktree_path.clone() {
         let worktree_path_buf = PathBuf::from(worktree_path);
+
+        // Defence-in-depth: if the worktree is still in active use (e.g. validation
+        // running via a WorktreePermit), log a warning. The kill_worktree_processes
+        // call below + CancellationToken (Fix 4) should have already stopped the work,
+        // but if not, this warning surfaces a potential race condition.
+        if crate::domain::services::is_worktree_in_use(&worktree_path_buf) {
+            tracing::warn!(
+                task_id = task_id_str,
+                worktree = %worktree_path,
+                "Worktree is still marked as in-use (WorktreePermit held) — proceeding with cleanup"
+            );
+        }
+
+        // Kill any lingering processes with files open in the worktree
+        // (prevents race where a validation subprocess from a prior attempt
+        // still holds files, causing delete_worktree to fail or corrupt state).
+        // Matches pre_merge_cleanup step 0 pattern (merge_coordination.rs).
+        if worktree_path_buf.exists() {
+            crate::domain::services::kill_worktree_processes(&worktree_path_buf);
+            // Brief settle time for process tree cleanup after SIGTERM
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+        }
+
         match GitService::delete_worktree(repo_path, &worktree_path_buf).await {
             Ok(_) => {
                 tracing::info!(

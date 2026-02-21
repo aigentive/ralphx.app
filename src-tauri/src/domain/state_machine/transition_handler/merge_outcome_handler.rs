@@ -183,11 +183,22 @@ impl<'a> super::TransitionHandler<'a> {
             let source_sha = GitService::get_branch_sha(repo_path, source_branch).await.ok();
             let cached_log = source_sha.as_deref().and_then(|sha| extract_cached_validation(task, sha));
 
+            // Set validation_in_progress timestamp so the reconciler doesn't
+            // treat this task as stale while validation commands are running.
+            set_validation_in_progress(task, task_id_str, task_repo).await;
+
+            // Register a cancellable token in the shared DashMap so pre_merge_cleanup
+            // can cancel this validation if a new merge attempt starts for the same task.
+            let validation_cancel = tokio_util::sync::CancellationToken::new();
+            self.machine.context.services.validation_tokens
+                .insert(task_id_str.to_string(), validation_cancel.clone());
             let validation_result = tokio::time::timeout(validation_timeout, run_validation_commands(
                 project, task, merge_path, task_id_str,
                 self.machine.context.services.app_handle.as_ref(), cached_log.as_deref(),
-                validation_mode,
+                validation_mode, &validation_cancel,
             )).await;
+            // Always clean up the token after validation completes (success, failure, or timeout).
+            self.machine.context.services.validation_tokens.remove(task_id_str);
 
             match validation_result {
                 Err(_) => {
@@ -216,6 +227,7 @@ impl<'a> super::TransitionHandler<'a> {
                             tracing::warn!(task_id = task_id_str, error = %e, "Failed to delete merge worktree after validation timeout (non-fatal)");
                         }
                     }
+                    clear_validation_in_progress(task, task_id_str, task_repo).await;
                     return;
                 }
                 Ok(Some(validation)) => {
@@ -236,6 +248,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     tracing::warn!(task_id = task_id_str, error = %e, "Failed to delete merge worktree after validation failure (non-fatal)");
                                 }
                             }
+                            clear_validation_in_progress(task, task_id_str, task_repo).await;
                             return;
                         }
                     } else {
@@ -249,6 +262,9 @@ impl<'a> super::TransitionHandler<'a> {
                     // No validation commands configured — proceed
                 }
             }
+
+            // Clear validation_in_progress flag after validation completes (success/warn path)
+            clear_validation_in_progress(task, task_id_str, task_repo).await;
         }
 
         // Complete merge
@@ -501,5 +517,60 @@ fn capitalize(s: &str) -> String {
     match chars.next() {
         None => String::new(),
         Some(c) => c.to_uppercase().to_string() + chars.as_str(),
+    }
+}
+
+/// Set validation_in_progress timestamp in task metadata so the reconciler
+/// knows validation commands are actively running and skips stale-detection.
+async fn set_validation_in_progress(
+    task: &mut Task,
+    task_id_str: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+) {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert(
+            "validation_in_progress".to_string(),
+            serde_json::json!(now),
+        );
+    }
+    task.metadata = Some(meta.to_string());
+    task.touch();
+    if let Err(e) = task_repo.update(task).await {
+        tracing::warn!(
+            task_id = task_id_str,
+            error = %e,
+            "Failed to persist validation_in_progress flag (non-fatal)"
+        );
+    }
+}
+
+/// Clear validation_in_progress flag from task metadata after validation completes.
+async fn clear_validation_in_progress(
+    task: &mut Task,
+    task_id_str: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+) {
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.remove("validation_in_progress");
+    }
+    task.metadata = Some(meta.to_string());
+    task.touch();
+    if let Err(e) = task_repo.update(task).await {
+        tracing::warn!(
+            task_id = task_id_str,
+            error = %e,
+            "Failed to clear validation_in_progress flag (non-fatal)"
+        );
     }
 }

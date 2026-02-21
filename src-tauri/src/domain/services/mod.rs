@@ -14,6 +14,7 @@ pub mod rule_ingestion_service;
 pub mod rule_parser;
 pub mod running_agent_registry;
 pub mod workflow_service;
+pub mod worktree_guard;
 
 pub use artifact_flow_service::{ArtifactFlowService, FlowExecutionResult, StepExecutionResult};
 pub use artifact_service::ArtifactService;
@@ -30,6 +31,7 @@ pub use running_agent_registry::{
     is_process_alive, kill_process, kill_worktree_processes, MemoryRunningAgentRegistry,
     RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
 };
+pub use worktree_guard::{acquire_worktree_permit, is_worktree_in_use};
 pub use workflow_service::{
     AppliedColumn, AppliedWorkflow, ColumnMappingError, ValidationResult, WorkflowService,
 };

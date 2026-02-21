@@ -13,9 +13,10 @@ pub(super) const INSTALL_RETRY_DELAY_MS: u64 = 500;
 const STATUS_FAILED: &str = "failed";
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use tauri::{AppHandle, Emitter};
+use tokio::io::AsyncReadExt;
+use tokio_util::sync::CancellationToken;
 
 use crate::domain::entities::{
     merge_progress_event::{
@@ -26,6 +27,107 @@ use crate::domain::entities::{
 };
 
 use super::merge_helpers::truncate_str;
+
+/// Outcome of a cancellable shell command execution.
+///
+/// Replaces the nested `Result<Result<Output, io::Error>, JoinError>` from
+/// `spawn_blocking` + `Command::output()` with a flat enum that adds explicit
+/// cancellation support via `CancellationToken`.
+pub(crate) enum CancellableCommandResult {
+    /// Process completed normally (may have succeeded or failed — check `output.status`).
+    Completed(std::process::Output),
+    /// Failed to spawn the process or read its output.
+    SpawnError(std::io::Error),
+    /// Process was cancelled via the cancellation token.
+    /// Child process tree has been killed.
+    Cancelled,
+}
+
+/// Spawn a shell command with cancellation support.
+///
+/// Uses `tokio::process::Command` (async, non-blocking) instead of
+/// `std::process::Command` inside `spawn_blocking` (blocking, uncancellable).
+/// The process can be killed cooperatively via the `CancellationToken`, or
+/// externally via PID-based kill (e.g., `kill_worktree_processes`).
+///
+/// `kill_on_drop(true)` provides a safety net: if the `Child` is dropped
+/// without explicit cleanup, the OS sends SIGKILL to the process.
+pub(crate) async fn spawn_cancellable_command(
+    cmd: &str,
+    cwd: &Path,
+    cancel: &CancellationToken,
+) -> CancellableCommandResult {
+    let mut child = match tokio::process::Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(cwd)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+    {
+        Ok(child) => child,
+        Err(e) => return CancellableCommandResult::SpawnError(e),
+    };
+
+    // Capture PID before taking stdout/stderr handles.
+    let pid = child.id();
+
+    // Take stdout/stderr handles so we can read them concurrently with wait().
+    // This avoids the deadlock that occurs when a child writes more data than
+    // the pipe buffer can hold while we're waiting for exit (child blocks on
+    // write, we block on wait — neither makes progress).
+    let stdout_handle = child.stdout.take();
+    let stderr_handle = child.stderr.take();
+
+    // Read stdout/stderr concurrently with wait to avoid pipe-buffer deadlock.
+    // If the child writes >64KB and nobody drains the pipe, the child blocks on
+    // write and wait() never returns. By draining in parallel, both make progress.
+    let stdout_fut = async {
+        let mut buf = Vec::new();
+        if let Some(mut out) = stdout_handle {
+            let _ = out.read_to_end(&mut buf).await;
+        }
+        buf
+    };
+    let stderr_fut = async {
+        let mut buf = Vec::new();
+        if let Some(mut err) = stderr_handle {
+            let _ = err.read_to_end(&mut buf).await;
+        }
+        buf
+    };
+
+    tokio::select! {
+        biased; // Check cancellation first on each poll
+
+        _ = cancel.cancelled() => {
+            // Kill the process tree: children first, then the shell itself.
+            if let Some(id) = pid {
+                crate::domain::services::kill_process(id);
+            }
+            // Explicit kill + reap to avoid zombie processes.
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            CancellableCommandResult::Cancelled
+        }
+
+        (status, stdout_bytes, stderr_bytes) = async {
+            tokio::join!(child.wait(), stdout_fut, stderr_fut)
+        } => {
+            match status {
+                Ok(exit_status) => {
+                    CancellableCommandResult::Completed(std::process::Output {
+                        status: exit_status,
+                        stdout: stdout_bytes,
+                        stderr: stderr_bytes,
+                    })
+                }
+                Err(e) => CancellableCommandResult::SpawnError(e),
+            }
+        }
+    }
+}
 
 /// Analysis entry for path-scoped build/validation commands.
 /// Mirrors the HTTP handler's AnalysisEntry but kept local to avoid cross-module coupling.
@@ -249,6 +351,7 @@ async fn run_setup_phase(
     app_handle: Option<&tauri::AppHandle>,
     resolve: &(dyn Fn(&str) -> String + Send + Sync),
     context: Option<&str>,
+    cancel: &CancellationToken,
 ) -> (Vec<ValidationLogEntry>, bool) {
     let mut log: Vec<ValidationLogEntry> = Vec::new();
     let mut setup_had_failures = false;
@@ -349,21 +452,10 @@ async fn run_setup_phase(
 
             let start = std::time::Instant::now();
 
-            // Clone for move into spawn_blocking
-            let resolved_cmd_clone = resolved_cmd.clone();
-            let cmd_cwd_clone = cmd_cwd.clone();
-
-            let result = tokio::task::spawn_blocking(move || {
-                Command::new("sh")
-                    .arg("-c")
-                    .arg(&resolved_cmd_clone)
-                    .current_dir(&cmd_cwd_clone)
-                    .output()
-            })
-            .await;
+            let result = spawn_cancellable_command(&resolved_cmd, &cmd_cwd, cancel).await;
 
             let log_entry = match result {
-                Ok(Ok(output)) => {
+                CancellableCommandResult::Completed(output) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
                     let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
@@ -394,7 +486,7 @@ async fn run_setup_phase(
                         duration_ms,
                     }
                 }
-                Ok(Err(e)) => {
+                CancellableCommandResult::SpawnError(e) => {
                     setup_had_failures = true;
                     let duration_ms = start.elapsed().as_millis() as u64;
                     tracing::warn!(
@@ -415,13 +507,12 @@ async fn run_setup_phase(
                         duration_ms,
                     }
                 }
-                Err(e) => {
+                CancellableCommandResult::Cancelled => {
                     setup_had_failures = true;
                     let duration_ms = start.elapsed().as_millis() as u64;
-                    tracing::error!(
+                    tracing::warn!(
                         command = %resolved_cmd,
-                        error = %e,
-                        "Worktree setup task panicked or was cancelled"
+                        "Worktree setup command cancelled"
                     );
 
                     ValidationLogEntry {
@@ -432,7 +523,7 @@ async fn run_setup_phase(
                         status: STATUS_FAILED.to_string(),
                         exit_code: None,
                         stdout: String::new(),
-                        stderr: truncate_output(&format!("Task failed: {}", e), 2000),
+                        stderr: "Command cancelled".to_string(),
                         duration_ms,
                     }
                 }
@@ -588,6 +679,7 @@ async fn run_validate_phase(
     cached_log: Option<&[ValidationLogEntry]>,
     resolve: &(dyn Fn(&str) -> String + Send + Sync),
     validation_mode: &crate::domain::entities::MergeValidationMode,
+    cancel: &CancellationToken,
 ) -> (Vec<ValidationLogEntry>, Vec<ValidationFailure>, bool) {
     let mut log: Vec<ValidationLogEntry> = Vec::new();
     let mut failures = Vec::new();
@@ -706,21 +798,10 @@ async fn run_validate_phase(
 
             let start = std::time::Instant::now();
 
-            // Clone for move into spawn_blocking
-            let resolved_cmd_clone = resolved_cmd.clone();
-            let cmd_cwd_clone = cmd_cwd.clone();
-
-            let result = tokio::task::spawn_blocking(move || {
-                Command::new("sh")
-                    .arg("-c")
-                    .arg(&resolved_cmd_clone)
-                    .current_dir(&cmd_cwd_clone)
-                    .output()
-            })
-            .await;
+            let result = spawn_cancellable_command(&resolved_cmd, &cmd_cwd, cancel).await;
 
             let (log_entry, failure) = match result {
-                Ok(Ok(output)) => {
+                CancellableCommandResult::Completed(output) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
                     let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
@@ -793,7 +874,7 @@ async fn run_validate_phase(
 
                     (entry, failure)
                 }
-                Ok(Err(e)) => {
+                CancellableCommandResult::SpawnError(e) => {
                     let duration_ms = start.elapsed().as_millis() as u64;
                     tracing::error!(command = %resolved_cmd, error = %e, "Failed to execute validation command");
 
@@ -826,19 +907,26 @@ async fn run_validate_phase(
 
                     (entry, Some(failure))
                 }
-                Err(e) => {
+                CancellableCommandResult::Cancelled => {
                     let duration_ms = start.elapsed().as_millis() as u64;
-                    tracing::error!(
+                    tracing::warn!(
                         command = %resolved_cmd,
-                        error = %e,
-                        "Validation task panicked or was cancelled"
+                        "Validation command cancelled"
+                    );
+
+                    emit_merge_progress(
+                        app_handle,
+                        task_id_str,
+                        phase,
+                        MergePhaseStatus::Failed,
+                        format!("{} cancelled", resolved_cmd),
                     );
 
                     let failure = ValidationFailure {
                         command: resolved_cmd.clone(),
                         path: resolved_path.clone(),
                         exit_code: None,
-                        stderr: format!("Task failed: {}", e),
+                        stderr: "Command cancelled".to_string(),
                     };
 
                     let entry = ValidationLogEntry {
@@ -849,7 +937,7 @@ async fn run_validate_phase(
                         status: STATUS_FAILED.to_string(),
                         exit_code: None,
                         stdout: String::new(),
-                        stderr: truncate_output(&format!("Task failed: {}", e), 2000),
+                        stderr: "Command cancelled".to_string(),
                         duration_ms,
                     };
 
@@ -952,6 +1040,7 @@ pub(crate) async fn run_validation_commands(
     app_handle: Option<&tauri::AppHandle>,
     cached_log: Option<&[ValidationLogEntry]>,
     validation_mode: &crate::domain::entities::MergeValidationMode,
+    cancel: &CancellationToken,
 ) -> Option<ValidationResult> {
     let overall_start = std::time::Instant::now();
     tracing::info!(
@@ -996,6 +1085,11 @@ pub(crate) async fn run_validation_commands(
             }),
         );
     }
+
+    // Acquire a worktree permit so cleanup_branch_and_worktree_internal knows
+    // this worktree is in active use and should not be deleted underneath us.
+    // The permit is RAII — it auto-releases when this function returns.
+    let _worktree_permit = crate::domain::services::acquire_worktree_permit(merge_cwd);
 
     // Hardening: if custom_analysis has entries with empty worktree_setup,
     // merge in worktree_setup from detected_analysis (which has the correct symlink commands)
@@ -1054,7 +1148,7 @@ pub(crate) async fn run_validation_commands(
         );
         (Vec::new(), false)
     } else {
-        run_setup_phase(&entries, merge_cwd, task_id_str, app_handle, &resolve, None).await
+        run_setup_phase(&entries, merge_cwd, task_id_str, app_handle, &resolve, None, cancel).await
     };
 
     // Phase 2: Validate
@@ -1066,6 +1160,7 @@ pub(crate) async fn run_validation_commands(
         cached_log,
         &resolve,
         validation_mode,
+        cancel,
     )
     .await;
 
@@ -1195,6 +1290,7 @@ pub(super) async fn run_install_phase(
     app_handle: Option<&tauri::AppHandle>,
     resolve: &(dyn Fn(&str) -> String + Send + Sync),
     context: &str,
+    cancel: &CancellationToken,
 ) -> (Vec<ValidationLogEntry>, bool) {
     let mut log: Vec<ValidationLogEntry> = Vec::new();
     let mut install_had_failures = false;
@@ -1259,21 +1355,10 @@ pub(super) async fn run_install_phase(
 
         let start = std::time::Instant::now();
 
-        // Clone for move into spawn_blocking
-        let resolved_cmd_clone = resolved_cmd.clone();
-        let cmd_cwd_clone = cmd_cwd.clone();
-
-        let result = tokio::task::spawn_blocking(move || {
-            Command::new("sh")
-                .arg("-c")
-                .arg(&resolved_cmd_clone)
-                .current_dir(&cmd_cwd_clone)
-                .output()
-        })
-        .await;
+        let result = spawn_cancellable_command(&resolved_cmd, &cmd_cwd, cancel).await;
 
         let mut log_entry = match result {
-            Ok(Ok(output)) => {
+            CancellableCommandResult::Completed(output) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
                 let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
@@ -1303,7 +1388,7 @@ pub(super) async fn run_install_phase(
                     duration_ms,
                 }
             }
-            Ok(Err(e)) => {
+            CancellableCommandResult::SpawnError(e) => {
                 let duration_ms = start.elapsed().as_millis() as u64;
                 tracing::warn!(
                     command = %resolved_cmd,
@@ -1323,12 +1408,11 @@ pub(super) async fn run_install_phase(
                     duration_ms,
                 }
             }
-            Err(e) => {
+            CancellableCommandResult::Cancelled => {
                 let duration_ms = start.elapsed().as_millis() as u64;
-                tracing::error!(
+                tracing::warn!(
                     command = %resolved_cmd,
-                    error = %e,
-                    "Pre-execution install task panicked or was cancelled"
+                    "Pre-execution install command cancelled"
                 );
 
                 ValidationLogEntry {
@@ -1339,7 +1423,7 @@ pub(super) async fn run_install_phase(
                     status: STATUS_FAILED.to_string(),
                     exit_code: None,
                     stdout: String::new(),
-                    stderr: truncate_output(&format!("Task failed: {}", e), 2000),
+                    stderr: "Command cancelled".to_string(),
                     duration_ms,
                 }
             }
@@ -1371,19 +1455,10 @@ pub(super) async fn run_install_phase(
                 );
             }
 
-            let retry_cmd = resolved_cmd.clone();
-            let retry_cwd = cmd_cwd.clone();
             let retry_start = std::time::Instant::now();
-            let retry_result = tokio::task::spawn_blocking(move || {
-                Command::new("sh")
-                    .arg("-c")
-                    .arg(&retry_cmd)
-                    .current_dir(&retry_cwd)
-                    .output()
-            })
-            .await;
+            let retry_result = spawn_cancellable_command(&resolved_cmd, &cmd_cwd, cancel).await;
 
-            if let Ok(Ok(output)) = retry_result {
+            if let CancellableCommandResult::Completed(output) = retry_result {
                 let duration_ms = retry_start.elapsed().as_millis() as u64;
                 let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
                 let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
@@ -1422,7 +1497,7 @@ pub(super) async fn run_install_phase(
                     };
                 }
             }
-            // If spawn_blocking itself failed, keep the original failure log_entry
+            // If spawn failed or was cancelled, keep the original failure log_entry
         }
 
         // Set failure flag based on final outcome
@@ -1471,6 +1546,7 @@ pub(crate) async fn run_pre_execution_setup(
     task_id_str: &str,
     app_handle: Option<&tauri::AppHandle>,
     context: &str,
+    cancel: &CancellationToken,
 ) -> Option<PreExecSetupResult> {
     let overall_start = std::time::Instant::now();
     tracing::info!(
@@ -1565,6 +1641,7 @@ pub(crate) async fn run_pre_execution_setup(
             app_handle,
             &resolve,
             Some(context),
+            cancel,
         )
         .await
     };
@@ -1577,6 +1654,7 @@ pub(crate) async fn run_pre_execution_setup(
         app_handle,
         &resolve,
         context,
+        cancel,
     )
     .await;
 

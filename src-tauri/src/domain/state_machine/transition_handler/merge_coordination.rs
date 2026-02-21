@@ -383,11 +383,19 @@ impl<'a> super::TransitionHandler<'a> {
         target_branch: &str,
         task_repo: &Arc<dyn TaskRepository>,
     ) {
-        // --- Step 0: Stop running agents and kill worktree processes ---
+        // --- Step 0a: Cancel in-flight validation for this task ---
+        // If a previous merge attempt's validation is still running, cancel it now.
+        // The CancellationToken triggers process kill via spawn_cancellable_command.
+        if let Some((_, token)) = self.machine.context.services.validation_tokens.remove(task_id_str) {
+            token.cancel();
+            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: cancelled in-flight validation");
+        }
+
+        // --- Step 0b: Stop running agents and kill worktree processes ---
         // The reviewer (or merger from a prior attempt) may still be running IN the
         // task worktree. We must stop it BEFORE attempting worktree deletion to avoid
         // git lock contention that causes the 5+ minute hang (see merge-hang RCA).
-        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 0 — stopping any running agents");
+        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 0b — stopping any running agents");
         let agent_stop_timeout_secs = git_runtime_config().agent_stop_timeout_secs;
         for ctx_type in [
             crate::domain::entities::ChatContextType::Review,
