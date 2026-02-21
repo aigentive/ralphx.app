@@ -173,23 +173,32 @@ function MergeProgressSteps({
   historicalMode,
   isValidationRecovery,
   isValidating,
+  isRevalidating,
 }: {
   isProgrammaticPhase: boolean;
   isHistorical?: boolean | undefined;
   historicalMode?: "attempted" | "resolving" | undefined;
   isValidationRecovery?: boolean;
   isValidating?: boolean;
+  isRevalidating?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
 
   type StepStatus = "completed" | "active" | "pending";
   const steps: { label: string; status: StepStatus }[] = isValidationRecovery && !isProgrammaticPhase
-    ? [
-        { label: "Merge completed", status: "completed" },
-        { label: "Validation failed", status: "completed" },
-        { label: "AI agent fixing build errors", status: isHistorical ? "completed" : "active" },
-        { label: "Re-validating fixes", status: "pending" },
-      ]
+    ? isRevalidating
+      ? [
+          { label: "Merge completed", status: "completed" },
+          { label: "Validation failed", status: "completed" },
+          { label: "AI agent fixing build errors", status: "completed" },
+          { label: "Re-validating fixes", status: isHistorical ? "completed" : "active" },
+        ]
+      : [
+          { label: "Merge completed", status: "completed" },
+          { label: "Validation failed", status: "completed" },
+          { label: "AI agent fixing build errors", status: isHistorical ? "completed" : "active" },
+          { label: "Re-validating fixes", status: "pending" },
+        ]
     : isHistorical
     ? historicalMode === "attempted"
       ? [
@@ -294,6 +303,17 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     try {
       const parsed = typeof task.metadata === "string" ? JSON.parse(task.metadata) : task.metadata;
       return parsed?.validation_recovery === true;
+    } catch {
+      return false;
+    }
+  }, [task.metadata]);
+
+  // Detect re-validating state from task metadata (set when fixer agent completes, cleared after re-validation)
+  const isRevalidating = useMemo(() => {
+    if (!task.metadata) return false;
+    try {
+      const parsed = typeof task.metadata === "string" ? JSON.parse(task.metadata) : task.metadata;
+      return parsed?.revalidating === true;
     } catch {
       return false;
     }
@@ -449,12 +469,13 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             historicalMode={historicalMode}
             isValidationRecovery={isValidationRecovery}
             isValidating={liveSteps.length > 0}
+            isRevalidating={isRevalidating}
           />
         </DetailCard>
       </section>
 
-      {/* Phase-level progress timeline (live, during programmatic merge) */}
-      {!isHistorical && isProgrammaticPhase && (
+      {/* Phase-level progress timeline (live, during programmatic merge or re-validation) */}
+      {!isHistorical && (isProgrammaticPhase || isRevalidating) && (
         mergePhases.length > 0 ? (
           <MergePhaseTimeline phases={mergePhases} phaseList={phaseList} />
         ) : (
