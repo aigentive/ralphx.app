@@ -132,156 +132,6 @@ function ConflictFilesList({
   );
 }
 
-/**
- * MergeStepIcon - Renders the icon for a single merge step
- */
-function MergeStepIcon({ status, isHistorical }: { status: "completed" | "active" | "pending"; isHistorical?: boolean | undefined }) {
-  if (status === "completed") {
-    return <CheckCircle2 className="w-5 h-5" style={{ color: "#34c759" }} />;
-  }
-  if (status === "active" && !isHistorical) {
-    return (
-      <div className="relative">
-        <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#0a84ff" }} />
-        <div
-          className="absolute inset-0 rounded-full animate-pulse"
-          style={{ background: "radial-gradient(circle, rgba(10,132,255,0.3) 0%, transparent 70%)" }}
-        />
-      </div>
-    );
-  }
-  if (status === "active" && isHistorical) {
-    return (
-      <div
-        className="w-5 h-5 rounded-full border-2"
-        style={{ borderColor: "rgba(255,255,255,0.2)", backgroundColor: "rgba(255, 159, 10, 0.35)" }}
-      />
-    );
-  }
-  return (
-    <div className="w-5 h-5 rounded-full border-2" style={{ borderColor: "rgba(255,255,255,0.2)" }} />
-  );
-}
-
-/**
- * MergeProgressSteps - Collapsible progress through merge phases.
- * Shows only the active step collapsed; expand to see all steps.
- * Uses original step rendering style with large icons and dividers.
- */
-function MergeProgressSteps({
-  isProgrammaticPhase,
-  isHistorical,
-  historicalMode,
-  isValidationRecovery,
-  isValidating,
-  isRevalidating,
-}: {
-  isProgrammaticPhase: boolean;
-  isHistorical?: boolean | undefined;
-  historicalMode?: "attempted" | "resolving" | undefined;
-  isValidationRecovery?: boolean;
-  isValidating?: boolean;
-  isRevalidating?: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-
-  type StepStatus = "completed" | "active" | "pending";
-  const steps: { label: string; status: StepStatus }[] = isValidationRecovery && !isProgrammaticPhase
-    ? isRevalidating
-      ? [
-          { label: "Merge completed", status: "completed" },
-          { label: "Validation failed", status: "completed" },
-          { label: "AI agent fixing build errors", status: "completed" },
-          { label: "Re-validating fixes", status: isHistorical ? "completed" : "active" },
-        ]
-      : [
-          { label: "Merge completed", status: "completed" },
-          { label: "Validation failed", status: "completed" },
-          { label: "AI agent fixing build errors", status: isHistorical ? "completed" : "active" },
-          { label: "Re-validating fixes", status: "pending" },
-        ]
-    : isHistorical
-    ? historicalMode === "attempted"
-      ? [
-          { label: "Merging branches", status: "completed" },
-          { label: "Running validation", status: "pending" },
-        ]
-      : [
-          { label: "Merging branches", status: "completed" },
-          { label: "Agent resolving conflicts", status: "active" },
-        ]
-    : isProgrammaticPhase
-    ? isValidating
-      ? [
-          { label: "Merging branches", status: "completed" },
-          { label: "Running validation", status: "active" },
-          { label: "Completing merge", status: "pending" },
-        ]
-      : [
-          { label: "Merging branches", status: "active" },
-          { label: "Running validation", status: "pending" },
-          { label: "Completing merge", status: "pending" },
-        ]
-    : [
-        { label: "Merging branches", status: "completed" },
-        { label: "Agent resolving conflicts", status: "active" },
-        { label: "Completing merge", status: "pending" },
-      ];
-
-  const activeStep = steps.find((s) => s.status === "active");
-  const displayStep = activeStep ?? steps[steps.length - 1];
-
-  return (
-    <div>
-      {/* Collapsed: show only the active step */}
-      <button
-        type="button"
-        className="w-full flex items-center gap-3 py-2.5 text-left cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="relative">
-          {displayStep !== undefined && <MergeStepIcon status={displayStep.status} isHistorical={isHistorical} />}
-        </div>
-        <span
-          className="text-[13px] font-medium flex-1"
-          style={{
-            color: "rgba(255,255,255,0.6)",
-          }}
-        >
-          {displayStep?.label ?? "Merge"}
-        </span>
-        {expanded
-          ? <ChevronDown className="w-4 h-4 text-white/30 shrink-0" />
-          : <ChevronRight className="w-4 h-4 text-white/30 shrink-0" />}
-      </button>
-
-      {/* Expanded: show all steps in original style */}
-      {expanded && (
-        <div className="divide-y divide-white/5">
-          {steps.map((step, index) => (
-            <div key={index} className="flex items-center gap-3 py-2.5">
-              <div className="relative">
-                <MergeStepIcon status={step.status} isHistorical={isHistorical} />
-              </div>
-              <span
-                className="text-[13px] font-medium"
-                style={{
-                  color: step.status === "completed"
-                    ? "rgba(255,255,255,0.6)"
-                    : step.status === "active"
-                    ? isHistorical ? "rgba(255,255,255,0.35)" : "#0a84ff"
-                    : "rgba(255,255,255,0.35)",
-                }}
-              >
-                {step.label}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTaskDetailProps) {
   const status = isHistorical && viewStatus ? viewStatus : task.internalStatus;
@@ -292,12 +142,6 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
       ? task.internalStatus
       : null
     : null;
-  const historicalMode = isHistorical
-    ? isProgrammaticPhase
-      ? "attempted"
-      : "resolving"
-    : undefined;
-
   // Detect validation recovery mode from task metadata
   const isValidationRecovery = useMemo(() => {
     if (!task.metadata) return false;
@@ -460,22 +304,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         }
       />
 
-      {/* Merge Progress */}
-      <section data-testid="merge-progress-section">
-        <SectionTitle>{isHistorical ? "Process Details" : "Merge Progress"}</SectionTitle>
-        <DetailCard variant="default">
-          <MergeProgressSteps
-            isProgrammaticPhase={isProgrammaticPhase}
-            isHistorical={isHistorical}
-            historicalMode={historicalMode}
-            isValidationRecovery={isValidationRecovery}
-            isValidating={liveSteps.length > 0}
-            isRevalidating={isRevalidating}
-          />
-        </DetailCard>
-      </section>
-
-      {/* Phase-level progress timeline (live, during programmatic merge or re-validation) */}
+      {/* Merge Progress — single unified section using MergePhaseTimeline */}
       {!isHistorical && (isProgrammaticPhase || isRevalidating) && (
         mergePhases.length > 0 ? (
           <MergePhaseTimeline phases={mergePhases} phaseList={phaseList} />
