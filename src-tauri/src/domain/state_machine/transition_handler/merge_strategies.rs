@@ -92,8 +92,29 @@ impl<'a> super::TransitionHandler<'a> {
         match GitService::try_merge_in_worktree(repo_path, source_branch, target_branch, &merge_wt).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 // If inner function early-returned (e.g. branches_have_same_content)
-                // the worktree was never created — fall back to repo_path
-                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
+                // the worktree was never created. Create one for validation instead of
+                // falling back to repo_path — running validation in project root is unsafe.
+                let actual_path = if merge_wt.exists() {
+                    merge_wt
+                } else {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Merge worktree not created (trivial merge), creating one for validation"
+                    );
+                    match GitService::checkout_existing_branch_worktree(
+                        repo_path, &merge_wt, target_branch,
+                    ).await {
+                        Ok(_) => merge_wt,
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to create validation worktree after trivial merge"
+                            );
+                            return MergeOutcome::GitError(e);
+                        }
+                    }
+                };
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
@@ -183,8 +204,29 @@ impl<'a> super::TransitionHandler<'a> {
                 // Clean up rebase worktree (no longer needed)
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 // If inner function early-returned (e.g. base_commit_count <= 1 fallback)
-                // the merge worktree may not exist — fall back to repo_path
-                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
+                // the merge worktree may not exist. Create one for validation instead of
+                // falling back to repo_path — running validation in project root is unsafe.
+                let actual_path = if merge_wt.exists() {
+                    merge_wt
+                } else {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Merge worktree not created (trivial merge), creating one for validation"
+                    );
+                    match GitService::checkout_existing_branch_worktree(
+                        repo_path, &merge_wt, target_branch,
+                    ).await {
+                        Ok(_) => merge_wt,
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to create validation worktree after trivial merge"
+                            );
+                            return MergeOutcome::GitError(e);
+                        }
+                    }
+                };
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
@@ -258,8 +300,29 @@ impl<'a> super::TransitionHandler<'a> {
         ).await {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 // If inner function early-returned (branches_have_same_content)
-                // the worktree was never created — fall back to repo_path
-                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
+                // the worktree was never created. Create one for validation instead of
+                // falling back to repo_path — running validation in project root is unsafe.
+                let actual_path = if merge_wt.exists() {
+                    merge_wt
+                } else {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Merge worktree not created (trivial merge), creating one for validation"
+                    );
+                    match GitService::checkout_existing_branch_worktree(
+                        repo_path, &merge_wt, target_branch,
+                    ).await {
+                        Ok(_) => merge_wt,
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to create validation worktree after trivial merge"
+                            );
+                            return MergeOutcome::GitError(e);
+                        }
+                    }
+                };
                 MergeOutcome::Success {
                     commit_sha,
                     merge_path: actual_path,
@@ -331,8 +394,30 @@ impl<'a> super::TransitionHandler<'a> {
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
                 // If inner function early-returned (branches_have_same_content or
                 // base_commit_count <= 1 with identical branches) the merge worktree
-                // was never created — fall back to repo_path
-                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
+                // was never created. Create one for validation instead of falling back
+                // to repo_path — running validation in project root is unsafe (interferes
+                // with user's dev server, cargo locks, etc.).
+                let actual_path = if merge_wt.exists() {
+                    merge_wt
+                } else {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        "Merge worktree not created (trivial merge), creating one for validation"
+                    );
+                    match GitService::checkout_existing_branch_worktree(
+                        repo_path, &merge_wt, target_branch,
+                    ).await {
+                        Ok(_) => merge_wt,
+                        Err(e) => {
+                            tracing::error!(
+                                task_id = task_id_str,
+                                error = %e,
+                                "Failed to create validation worktree after trivial merge"
+                            );
+                            return MergeOutcome::GitError(e);
+                        }
+                    }
+                };
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
