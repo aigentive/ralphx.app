@@ -88,3 +88,11 @@ mod rc8_rc9_rc10_regression;
 // RC#13: source_update_conflict doesn't clean stale merge-{id} (same as RC#6 pattern)
 // Bonus: pre_merge_cleanup aborts stale MERGE_HEAD in task worktree
 mod rc12_rc13_stale_worktree;
+
+// Merge target resolution regression tests: task with plan branch must merge to plan, not main
+// Test 1: task_with_plan_branch_merges_to_plan_not_main
+// Test 2: check_already_merged_detects_prior_merge_on_plan_branch
+// Test 3: metadata_toctou_guard_survives_conflict_metadata
+// Test 4: plan_update_conflict_retry_uses_correct_target
+// Test 5: plan_branch_repo_none_fallback_uses_metadata_guard
+mod merge_target_resolution;
