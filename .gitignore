@@ -52,3 +52,4 @@ vitest-results.json
 .stream-*-lock
 .stream-*-mtimes
 streams/hygiene/trigger
+.claude/worktrees/
