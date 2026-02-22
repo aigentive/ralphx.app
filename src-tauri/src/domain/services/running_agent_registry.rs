@@ -112,12 +112,15 @@ pub trait RunningAgentRegistry: Send + Sync {
     /// Called after the CLI process has been spawned to fill in the real PID,
     /// agent_run_id, worktree path, and cancellation token.
     ///
-    /// Returns `Err` if the DB UPDATE fails. Returns `Ok(())` even if 0 rows were
-    /// affected (entry pruned before process details could be set — warns via tracing).
+    /// If the placeholder row was pruned between `try_register` and this call
+    /// (TOCTOU race with GC), re-inserts the full registration via INSERT OR REPLACE.
+    ///
+    /// Returns `Err` only if the DB operation itself fails.
     async fn update_agent_process(
         &self,
         key: &RunningAgentKey,
         pid: u32,
+        conversation_id: &str,
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
@@ -451,6 +454,7 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
         &self,
         key: &RunningAgentKey,
         pid: u32,
+        conversation_id: &str,
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
@@ -466,7 +470,19 @@ impl RunningAgentRegistry for MemoryRunningAgentRegistry {
                 context_type = %key.context_type,
                 context_id = %key.context_id,
                 pid,
-                "update_agent_process: entry not found — may have been pruned before process details could be set"
+                "update_agent_process: entry pruned — re-inserting full registration"
+            );
+            agents.insert(
+                key.clone(),
+                RunningAgentInfo {
+                    pid,
+                    conversation_id: conversation_id.to_string(),
+                    agent_run_id: agent_run_id.to_string(),
+                    started_at: chrono::Utc::now(),
+                    worktree_path,
+                    cancellation_token,
+                    last_active_at: None,
+                },
             );
         }
         Ok(())

@@ -238,6 +238,21 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 continue;
             }
 
+            // Age guard: pid=0 entries younger than 30s are in the try_register →
+            // update_agent_process window. The pruner must not race against the spawn.
+            if info.pid == 0 {
+                let age = chrono::Utc::now() - info.started_at;
+                if age < chrono::Duration::seconds(30) {
+                    tracing::debug!(
+                        context_type = key.context_type,
+                        context_id = key.context_id,
+                        age_secs = age.num_seconds(),
+                        "Skipping young pid=0 registry entry (age < 30s)"
+                    );
+                    continue;
+                }
+            }
+
             let run = match self
                 .agent_run_repo
                 .get_by_id(&AgentRunId::from_string(&info.agent_run_id))

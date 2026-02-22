@@ -149,10 +149,8 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             )
             .ok();
 
-        if info.is_none() {
-            // Row does not exist or agent_run_id does not match — do not delete
-            return None;
-        }
+        // Row does not exist or agent_run_id does not match — do not delete
+        info.as_ref()?;
 
         // Delete the row (scoped to matching agent_run_id)
         match conn.execute(
@@ -467,6 +465,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         &self,
         key: &RunningAgentKey,
         pid: u32,
+        conversation_id: &str,
         agent_run_id: &str,
         worktree_path: Option<String>,
         cancellation_token: Option<CancellationToken>,
@@ -478,13 +477,27 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                 rusqlite::params![pid, worktree_path, agent_run_id, key.context_type, key.context_id],
             ) {
                 Ok(0) => {
+                    // TOCTOU recovery: the placeholder row was pruned between try_register
+                    // and this call. Re-insert the full registration so the agent is tracked.
                     tracing::warn!(
                         context_type = %key.context_type,
                         context_id = %key.context_id,
                         pid,
-                        "update_agent_process: 0 rows affected — entry was pruned before process details could be set"
+                        "update_agent_process: 0 rows affected — re-inserting full registration"
                     );
-                    Ok(())
+                    let started_at = chrono::Utc::now().to_rfc3339();
+                    conn.execute(
+                        "INSERT OR REPLACE INTO running_agents (context_type, context_id, pid, conversation_id, agent_run_id, started_at, worktree_path, last_active_at) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, NULL)",
+                        rusqlite::params![key.context_type, key.context_id, pid, conversation_id, agent_run_id, started_at, worktree_path],
+                    ).map(|_| ()).map_err(|e| {
+                        tracing::error!(
+                            context_type = %key.context_type,
+                            context_id = %key.context_id,
+                            error = %e,
+                            "update_agent_process: INSERT OR REPLACE failed after pruned row"
+                        );
+                        e.to_string()
+                    })
                 }
                 Ok(_) => Ok(()),
                 Err(e) => {
