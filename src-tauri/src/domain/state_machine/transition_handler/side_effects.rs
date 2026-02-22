@@ -373,6 +373,18 @@ impl<'a> super::TransitionHandler<'a> {
                 // plan_update_conflict path which sets worktree_path before persist.
                 let merge_wt = super::merge_helpers::compute_merge_worktree_path(&project, task_id_str);
                 let merge_wt_path = std::path::PathBuf::from(&merge_wt);
+                // RC#13: Clean up any stale merge worktree from a prior phase before
+                // creating a fresh one. Without this, checkout_existing_branch_worktree
+                // fails with "fatal: '/path/merge-{id}' already exists".
+                if merge_wt_path.exists() {
+                    if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "Failed to clean stale merge worktree before source_update_conflict (non-fatal)"
+                        );
+                    }
+                }
                 if let Err(e) = GitService::checkout_existing_branch_worktree(
                     repo_path, &merge_wt_path, &source_branch,
                 ).await {

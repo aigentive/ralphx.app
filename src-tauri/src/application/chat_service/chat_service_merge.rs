@@ -470,6 +470,23 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 base_branch = %base_branch,
                 "attempt_merge_auto_complete: plan branch now up-to-date with base — retrying task merge"
             );
+            // RC#12: Clean up the merge-{id} worktree left over from Phase 1 (plan_update)
+            // before retrying the task merge. Without this, Phase 2 fails with
+            // "fatal: '/path/merge-{id}' already exists" when source_update_conflict
+            // tries to create the same worktree path.
+            {
+                use crate::domain::state_machine::transition_handler::compute_merge_worktree_path;
+                let merge_wt_path = PathBuf::from(compute_merge_worktree_path(&project, task_id_str));
+                if merge_wt_path.exists() {
+                    if let Err(e) = GitService::delete_worktree(&main_repo_path, &merge_wt_path).await {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "attempt_merge_auto_complete: failed to clean merge worktree after plan update (non-fatal)"
+                        );
+                    }
+                }
+            }
             // Clear plan_update_conflict flag so the PendingMerge retry proceeds normally
             {
                 let mut meta = task_meta_value.clone().unwrap_or_else(|| serde_json::json!({}));
