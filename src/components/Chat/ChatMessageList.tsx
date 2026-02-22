@@ -153,9 +153,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Fetch attachments for all messages
     const { data: attachmentsMap } = useMessageAttachments(messages, conversationId);
 
-    // Footer content hash — makes Virtuoso aware of footer height changes
-    // without manual scrollTo calls. Virtuoso re-evaluates followOutput when
-    // context changes, triggering a smooth scroll if user is at bottom.
+    // Footer content hash — drives the streaming auto-scroll useEffect below.
+    // NOTE: Virtuoso's followOutput does NOT react to context/Footer changes,
+    // only to totalCount changes. We use autoscrollToBottom() imperatively instead.
     const totalChildCalls = useMemo(() => {
       if (!streamingTasks || streamingTasks.size === 0) return 0;
       let count = 0;
@@ -172,10 +172,16 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       contentBlockCount: streamingContentBlocks?.length ?? 0,
     }), [streamingToolCalls.length, totalChildCalls, streamingTasks?.size, streamingContentBlocks?.length]);
 
-    // Unified auto-scroll hook — Virtuoso followOutput is the single scroll path.
-    // No isStreaming/streamingHash needed: Virtuoso re-evaluates followOutput
-    // when its context prop changes (footerContentHash), handling all streaming
-    // scroll updates through one mechanism.
+    // Streaming auto-scroll — followOutput only fires on totalCount changes,
+    // NOT on Footer height growth. Call autoscrollToBottom() imperatively when
+    // footer content changes to keep the view pinned during streaming.
+    useEffect(() => {
+      if (scrollToTimestamp) return; // Don't auto-scroll in history mode
+      virtuosoRef.current?.autoscrollToBottom();
+    }, [footerContentHash, scrollToTimestamp]);
+
+    // Unified auto-scroll hook — Virtuoso followOutput handles new-message scroll,
+    // while the useEffect above handles streaming footer growth.
     const {
       messagesEndRef,
       isAtBottom,
@@ -325,9 +331,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     useEffect(() => {
       if (timeline.length === 0 || !conversationId || isTestEnv) return;
       if (hasScrolledRef.current === conversationId) return;
-      hasScrolledRef.current = conversationId;
 
       const timeoutId = setTimeout(() => {
+        hasScrolledRef.current = conversationId;
         virtuosoRef.current?.scrollToIndex({
           index: timeline.length - 1,
           align: "end",
