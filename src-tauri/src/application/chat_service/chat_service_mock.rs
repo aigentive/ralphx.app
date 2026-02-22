@@ -28,6 +28,8 @@ pub struct MockChatService {
     active_run: Mutex<Option<AgentRun>>,
     message_queue: Arc<MessageQueue>,
     call_count: std::sync::atomic::AtomicU32,
+    /// When set, send_message returns AgentAlreadyRunning after this many successful calls.
+    already_running_after: Mutex<Option<u32>>,
 }
 
 pub struct MockChatResponse {
@@ -45,6 +47,7 @@ impl MockChatService {
             active_run: Mutex::new(None),
             message_queue: Arc::new(MessageQueue::new()),
             call_count: std::sync::atomic::AtomicU32::new(0),
+            already_running_after: Mutex::new(None),
         }
     }
 
@@ -56,6 +59,7 @@ impl MockChatService {
             active_run: Mutex::new(None),
             message_queue,
             call_count: std::sync::atomic::AtomicU32::new(0),
+            already_running_after: Mutex::new(None),
         }
     }
 
@@ -78,6 +82,11 @@ impl MockChatService {
             claude_session_id: Some(uuid::Uuid::new_v4().to_string()),
         })
         .await;
+    }
+
+    /// After `n` successful send_message calls, subsequent calls return AgentAlreadyRunning.
+    pub async fn set_already_running_after(&self, n: u32) {
+        *self.already_running_after.lock().await = Some(n);
     }
 
     pub async fn set_active_run(&self, run: Option<AgentRun>) {
@@ -103,8 +112,19 @@ impl ChatService for MockChatService {
         context_id: &str,
         _message: &str,
     ) -> Result<SendResult, ChatServiceError> {
-        self.call_count
-            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let current = self
+            .call_count
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+            + 1;
+
+        if let Some(threshold) = *self.already_running_after.lock().await {
+            if current > threshold {
+                return Err(ChatServiceError::AgentAlreadyRunning(format!(
+                    "Mock: agent already running for {} {}",
+                    context_type, context_id
+                )));
+            }
+        }
 
         if !*self.is_available.lock().await {
             return Err(ChatServiceError::AgentNotAvailable(
