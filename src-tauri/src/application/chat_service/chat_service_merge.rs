@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::application::git_service::{GitService, StaleRebaseResult};
+use crate::application::git_service::checkout_free::update_branch_ref;
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
@@ -889,6 +890,84 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             }
         }
     } else {
+        // 4a. Fast-forward target branch from merge-resolve/{task_id} if it exists.
+        // When checkout-free merge detects conflicts, merge_outcome_handler creates a
+        // merge-resolve/{task_id} branch + worktree for agent conflict resolution.
+        // After the agent resolves and commits, the merge commit lives on merge-resolve/,
+        // NOT on the target branch. We must fast-forward the target branch before verification.
+        let resolve_branch = format!("merge-resolve/{}", task_id_str);
+        if let Ok(resolve_sha) = GitService::get_branch_sha(&main_repo_path, &resolve_branch).await {
+            tracing::info!(
+                task_id = task_id_str,
+                resolve_branch = %resolve_branch,
+                resolve_sha = %resolve_sha,
+                target_branch = %target_branch,
+                "attempt_merge_auto_complete: merge-resolve branch found, fast-forwarding target branch"
+            );
+            if let Err(e) = update_branch_ref(&main_repo_path, &target_branch, &resolve_sha).await {
+                tracing::error!(
+                    task_id = task_id_str,
+                    error = %e,
+                    target_branch = %target_branch,
+                    resolve_sha = %resolve_sha,
+                    "attempt_merge_auto_complete: failed to fast-forward target branch from merge-resolve"
+                );
+                transition_to_merge_incomplete(
+                    &task_id,
+                    &format!(
+                        "Auto-complete failed: could not fast-forward {} to merge-resolve commit {}: {}",
+                        target_branch, resolve_sha, e
+                    ),
+                    task_repo,
+                    task_dependency_repo,
+                    project_repo,
+                    chat_message_repo,
+                    chat_attachment_repo,
+                    conversation_repo,
+                    agent_run_repo,
+                    ideation_session_repo,
+                    activity_event_repo,
+                    message_queue,
+                    running_agent_registry,
+                    memory_event_repo,
+                    execution_state,
+                    plan_branch_repo,
+                    app_handle,
+                )
+                .await;
+                return;
+            }
+            tracing::info!(
+                task_id = task_id_str,
+                target_branch = %target_branch,
+                resolve_sha = %resolve_sha,
+                "attempt_merge_auto_complete: target branch fast-forwarded successfully"
+            );
+
+            // Clean up: delete the merge-resolve worktree and branch
+            let merge_wt_path = task.worktree_path.as_deref().map(PathBuf::from);
+            if let Some(ref wt_path) = merge_wt_path {
+                if wt_path.exists() {
+                    if let Err(e) = GitService::delete_worktree(&main_repo_path, wt_path).await {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            worktree = %wt_path.display(),
+                            "attempt_merge_auto_complete: failed to delete merge-resolve worktree (non-fatal)"
+                        );
+                    }
+                }
+            }
+            if let Err(e) = GitService::delete_branch(&main_repo_path, &resolve_branch, true).await {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    resolve_branch = %resolve_branch,
+                    "attempt_merge_auto_complete: failed to delete merge-resolve branch (non-fatal)"
+                );
+            }
+        }
+
         match verify_merge_on_target(&main_repo_path, &source_branch, &target_branch).await {
             MergeVerification::Merged(sha) => {
                 // Task branch is merged - capture the merge commit SHA
