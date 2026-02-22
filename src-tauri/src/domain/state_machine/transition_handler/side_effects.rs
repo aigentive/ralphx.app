@@ -630,7 +630,11 @@ impl<'a> super::TransitionHandler<'a> {
 
     /// Transition a task to MergeIncomplete with the given metadata JSON.
     ///
-    /// Handles the full transition: update metadata -> persist status change -> emit event.
+    /// Merges `metadata` INTO the task's existing metadata so that recovery history
+    /// (e.g., `merge_recovery` events, `validation_revert_count`, attempt counters)
+    /// is preserved across MergeIncomplete->PendingMerge retry cycles.
+    ///
+    /// Handles the full transition: merge metadata -> persist status change -> emit event.
     /// Optionally triggers on_exit (needed when the caller wants deferred-merge retry).
     pub(super) async fn transition_to_merge_incomplete(
         &self,
@@ -641,7 +645,18 @@ impl<'a> super::TransitionHandler<'a> {
         task_repo: &Arc<dyn TaskRepository>,
         trigger_on_exit: bool,
     ) {
-        task.metadata = Some(metadata.to_string());
+        // Merge new metadata INTO existing metadata to preserve recovery history
+        // (merge_recovery events, validation_revert_count, attempt counters, etc.)
+        let mut existing = task.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+        if let (Some(target), Some(source)) = (existing.as_object_mut(), metadata.as_object()) {
+            for (k, v) in source {
+                target.insert(k.clone(), v.clone());
+            }
+        }
+        task.metadata = Some(existing.to_string());
         task.internal_status = InternalStatus::MergeIncomplete;
 
         if !self.persist_merge_transition(

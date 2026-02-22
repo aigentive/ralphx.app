@@ -149,6 +149,21 @@ pub(super) fn expand_home(path: &str) -> String {
     path.to_string()
 }
 
+/// Compute the worktree path for a task execution worktree.
+///
+/// Convention: `{worktree_parent}/{slug}/task-{task_id}`
+/// This is the worktree created during on_enter(Executing) for task isolation.
+/// Used by pre_merge_cleanup to delete the task worktree even when
+/// `task.worktree_path` has been overwritten by a prior merge attempt.
+pub(super) fn compute_task_worktree_path(project: &Project, task_id: &str) -> String {
+    let worktree_parent = project
+        .worktree_parent_directory
+        .as_deref()
+        .unwrap_or("~/ralphx-worktrees");
+    let expanded = expand_home(worktree_parent);
+    format!("{}/{}/task-{}", expanded, slugify(&project.name), task_id)
+}
+
 /// Compute the worktree path for a merge operation.
 ///
 /// Convention: `{worktree_parent}/{slug}/merge-{task_id}`

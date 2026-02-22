@@ -79,3 +79,6 @@ mod plan_update_conflict_worktree;
 // Gap 5: Attempt counter persistence across retry cycles
 // Gap 6: Source update with existing worktree fallback
 mod merge_pipeline_gaps;
+
+// RC#8 + RC#9 + RC#10: task worktree cleanup, source update fallback, metadata preservation
+mod rc8_rc9_rc10_regression;
