@@ -54,8 +54,7 @@ fn test_extract_restart_note_with_invalid_json() {
 
 #[test]
 fn test_extract_restart_note_alongside_other_keys() {
-    let metadata =
-        r#"{"trigger_origin":"scheduler","restart_note":"Try a different approach","execution_setup_log":[]}"#;
+    let metadata = r#"{"trigger_origin":"scheduler","restart_note":"Try a different approach","execution_setup_log":[]}"#;
     let result = extract_restart_note(Some(metadata));
     assert_eq!(result, Some("Try a different approach".to_string()));
 }

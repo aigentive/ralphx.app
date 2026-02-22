@@ -219,8 +219,12 @@ impl PauseReason {
     /// The status the task was in before being paused.
     pub fn previous_status(&self) -> &str {
         match self {
-            Self::UserInitiated { previous_status, .. } => previous_status,
-            Self::ProviderError { previous_status, .. } => previous_status,
+            Self::UserInitiated {
+                previous_status, ..
+            } => previous_status,
+            Self::ProviderError {
+                previous_status, ..
+            } => previous_status,
         }
     }
 }

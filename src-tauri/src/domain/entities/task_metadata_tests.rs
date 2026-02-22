@@ -97,7 +97,6 @@ fn merge_recovery_event_deserializes_from_json() {
     assert_eq!(event.message, "Merge deferred");
     assert_eq!(event.target_branch, Some("main".to_string()));
     assert_eq!(event.attempt, Some(1));
-
 }
 
 #[test]
@@ -191,7 +190,10 @@ fn merge_recovery_event_kind_serialization() {
             "attempt_succeeded",
         ),
         (MergeRecoveryEventKind::ManualRetry, "manual_retry"),
-        (MergeRecoveryEventKind::MainMergeDeferred, "main_merge_deferred"),
+        (
+            MergeRecoveryEventKind::MainMergeDeferred,
+            "main_merge_deferred",
+        ),
         (MergeRecoveryEventKind::MainMergeRetry, "main_merge_retry"),
     ];
 
@@ -658,4 +660,3 @@ fn rate_limit_cleared_after_expiry() {
     assert_eq!(restored.rate_limit_retry_after, None);
     assert_eq!(restored.last_state, MergeRecoveryState::Retrying);
 }
-

@@ -82,7 +82,13 @@ fn test_exec_with_retry_non_transient_error_no_retry() {
     let cwd = std::path::PathBuf::from("/nonexistent_path_that_does_not_exist_xyz");
     let result = exec_with_retry(&args, &cwd, None);
     // Should return an error (either spawn failure or git error)
-    assert!(result.is_err() || result.as_ref().map(|o| !o.status.success()).unwrap_or(false));
+    assert!(
+        result.is_err()
+            || result
+                .as_ref()
+                .map(|o| !o.status.success())
+                .unwrap_or(false)
+    );
 }
 
 /// Simulate a transient error by running a command whose stderr contains a transient pattern.
@@ -132,5 +138,9 @@ async fn test_run_status_basic() {
 async fn test_run_with_env_basic() {
     let tmpdir = std::env::temp_dir();
     let result = run_with_env(&["--version"], &tmpdir, &[("GIT_TERMINAL_PROMPT", "0")]).await;
-    assert!(result.is_ok(), "git --version with env should succeed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "git --version with env should succeed: {:?}",
+        result
+    );
 }

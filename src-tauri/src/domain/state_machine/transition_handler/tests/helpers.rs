@@ -5,11 +5,11 @@
 
 pub use crate::application::{ChatService, MockChatService};
 use crate::domain::entities::types::IdeationSessionId;
-use std::time::Duration;
 use crate::domain::entities::{
     ArtifactId, IdeationSession, IdeationSessionStatus, InternalStatus, PlanBranch,
     PlanBranchStatus, Project, ProjectId, Task, TaskCategory, TaskId,
 };
+pub use crate::domain::repositories::{ProjectRepository, TaskRepository};
 pub use crate::domain::state_machine::context::{TaskContext, TaskServices};
 pub use crate::domain::state_machine::mocks::{
     MockAgentSpawner, MockDependencyManager, MockEventEmitter, MockNotifier, MockReviewStarter,
@@ -17,9 +17,9 @@ pub use crate::domain::state_machine::mocks::{
 pub use crate::domain::state_machine::services::{
     AgentSpawner, DependencyManager, EventEmitter, Notifier, ReviewStarter,
 };
-pub use crate::domain::repositories::{ProjectRepository, TaskRepository};
 pub use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
 pub use std::sync::Arc;
+use std::time::Duration;
 
 // ==================
 // Entity factories (from side_effects.rs tests)
@@ -182,8 +182,8 @@ pub fn create_context_with_services(
     TaskContext::new(task_id, project_id, services)
 }
 
-pub use crate::domain::state_machine::TaskStateMachine;
 pub use crate::domain::state_machine::mocks::MockTaskScheduler;
+pub use crate::domain::state_machine::TaskStateMachine;
 
 /// Create a `TaskStateMachine` wired with a `MockTaskScheduler`.
 ///
@@ -195,10 +195,8 @@ pub fn new_machine_with_scheduler(
 ) -> (TaskStateMachine, Arc<MockTaskScheduler>) {
     let scheduler = Arc::new(MockTaskScheduler::new());
     let services = TaskServices::new_mock()
-        .with_task_scheduler(
-            Arc::clone(&scheduler)
-                as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
-        );
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
     let context = create_context_with_services(task_id, project_id, services);
     (TaskStateMachine::new(context), scheduler)
 }
@@ -265,7 +263,11 @@ pub async fn setup_pending_merge_repos(
     project.base_branch = Some("main".to_string());
     project_repo.create(project).await.unwrap();
 
-    PendingMergeSetup { task_id, task_repo, project_repo }
+    PendingMergeSetup {
+        task_id,
+        task_repo,
+        project_repo,
+    }
 }
 
 /// Poll a condition until it returns true or timeout expires.
@@ -403,6 +405,9 @@ pub async fn setup_pending_merge_with_real_repo(
     project.merge_strategy = merge_strategy;
     project_repo.create(project).await.unwrap();
 
-    PendingMergeSetup { task_id, task_repo, project_repo }
+    PendingMergeSetup {
+        task_id,
+        task_repo,
+        project_repo,
+    }
 }
-

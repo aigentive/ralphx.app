@@ -51,12 +51,15 @@ async fn test_checkout_existing_branch_worktree_success() {
 
     // Create worktree checking out the existing branch
     let worktree_path = temp_dir.path().join("worktrees").join("merge-wt");
-    let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature-branch").await;
+    let result =
+        GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature-branch").await;
     assert!(result.is_ok(), "Should succeed: {:?}", result.err());
 
     // Verify worktree was created and is on the correct branch
     assert!(worktree_path.exists(), "Worktree directory should exist");
-    let branch = GitService::get_current_branch(&worktree_path).await.unwrap();
+    let branch = GitService::get_current_branch(&worktree_path)
+        .await
+        .unwrap();
     assert_eq!(branch, "feature-branch");
 }
 
@@ -104,7 +107,8 @@ async fn test_checkout_existing_branch_worktree_creates_parent_dirs() {
 
     // Path with deeply nested non-existent parent dirs
     let worktree_path = temp_dir.path().join("deep").join("nested").join("merge-wt");
-    let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature").await;
+    let result =
+        GitService::checkout_existing_branch_worktree(repo, &worktree_path, "feature").await;
     assert!(
         result.is_ok(),
         "Should create parent dirs: {:?}",
@@ -147,7 +151,8 @@ async fn test_checkout_existing_branch_worktree_nonexistent_branch() {
 
     let worktree_path = temp_dir.path().join("merge-wt");
     let result =
-        GitService::checkout_existing_branch_worktree(repo, &worktree_path, "nonexistent-branch").await;
+        GitService::checkout_existing_branch_worktree(repo, &worktree_path, "nonexistent-branch")
+            .await;
     assert!(result.is_err(), "Should fail for nonexistent branch");
 }
 
@@ -445,7 +450,8 @@ async fn test_try_merge_in_worktree_does_not_touch_main_repo() {
     let branch_before = GitService::get_current_branch(repo).await.unwrap();
 
     let merge_wt = temp_dir.path().join("merge-wt");
-    let _ = GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt).await;
+    let _ =
+        GitService::try_merge_in_worktree(repo, "task-branch", "feature-branch", &merge_wt).await;
 
     // Main repo should still be on the same branch
     let branch_after = GitService::get_current_branch(repo).await.unwrap();
@@ -667,7 +673,8 @@ async fn test_worktree_recovery_existing_branch_checkout() {
 
     // Re-execution: checkout existing branch into new worktree
     let worktree_path = temp_dir.path().join("worktrees").join("task-abc123");
-    let result = GitService::checkout_existing_branch_worktree(repo, &worktree_path, task_branch).await;
+    let result =
+        GitService::checkout_existing_branch_worktree(repo, &worktree_path, task_branch).await;
     assert!(
         result.is_ok(),
         "Should successfully checkout existing branch: {:?}",
@@ -680,7 +687,9 @@ async fn test_worktree_recovery_existing_branch_checkout() {
         worktree_path.join("work.txt").exists(),
         "Previous work should be present"
     );
-    let branch = GitService::get_current_branch(&worktree_path).await.unwrap();
+    let branch = GitService::get_current_branch(&worktree_path)
+        .await
+        .unwrap();
     assert_eq!(branch, task_branch, "Should be on the task branch");
 }
 
@@ -739,7 +748,9 @@ async fn test_worktree_creation_new_branch_when_not_exists() {
 
     // Verify worktree was created and is on new branch
     assert!(worktree_path.exists(), "Worktree should be created");
-    let branch = GitService::get_current_branch(&worktree_path).await.unwrap();
+    let branch = GitService::get_current_branch(&worktree_path)
+        .await
+        .unwrap();
     assert_eq!(branch, new_branch, "Should be on the new task branch");
 
     // Verify branch now exists
@@ -917,7 +928,10 @@ fn test_remove_stale_index_lock_zero_threshold_removes_any_lock() {
     // Threshold of 0 means remove any lock, regardless of age
     let result = GitService::remove_stale_index_lock(repo, 0);
     assert!(result.is_ok(), "Should not error: {:?}", result.err());
-    assert!(result.unwrap(), "Any lock with threshold=0 should be removed");
+    assert!(
+        result.unwrap(),
+        "Any lock with threshold=0 should be removed"
+    );
     assert!(!lock_path.exists(), "Lock should be deleted");
 }
 
@@ -940,13 +954,23 @@ async fn test_delete_worktree_succeeds_for_unregistered_directory() {
     std::fs::write(fake_wt.join("dummy.txt"), "stale contents").unwrap();
 
     // Precondition: directory exists
-    assert!(fake_wt.exists(), "Fake worktree dir should exist before deletion");
+    assert!(
+        fake_wt.exists(),
+        "Fake worktree dir should exist before deletion"
+    );
 
     let result = GitService::delete_worktree(repo, &fake_wt).await;
-    assert!(result.is_ok(), "delete_worktree should succeed via rm-rf fallback: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "delete_worktree should succeed via rm-rf fallback: {:?}",
+        result.err()
+    );
 
     // Directory must be gone after the call
-    assert!(!fake_wt.exists(), "Stale worktree directory should be removed");
+    assert!(
+        !fake_wt.exists(),
+        "Stale worktree directory should be removed"
+    );
 }
 
 /// Regression: directory doesn't exist at all.
@@ -960,8 +984,15 @@ async fn test_delete_worktree_succeeds_when_dir_already_gone() {
 
     // Path that was never created
     let nonexistent_wt = temp_dir.path().join("worktrees").join("already-gone-wt");
-    assert!(!nonexistent_wt.exists(), "Path should not exist before the call");
+    assert!(
+        !nonexistent_wt.exists(),
+        "Path should not exist before the call"
+    );
 
     let result = GitService::delete_worktree(repo, &nonexistent_wt).await;
-    assert!(result.is_ok(), "delete_worktree should succeed when directory is already gone: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "delete_worktree should succeed when directory is already gone: {:?}",
+        result.err()
+    );
 }

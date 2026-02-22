@@ -217,7 +217,8 @@ impl Task {
         Ok(Self {
             id: TaskId::from_string(row.get("id")?),
             project_id: ProjectId::from_string(row.get("project_id")?),
-            category: row.get::<_, String>("category")?
+            category: row
+                .get::<_, String>("category")?
                 .parse()
                 .unwrap_or(TaskCategory::Regular),
             title: row.get("title")?,

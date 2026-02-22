@@ -91,12 +91,20 @@ async fn test_task_workflow(state: &AppState) {
         .unwrap();
 
     // 9. Get blockers for task1 (via task_dependency_repo)
-    let blockers = state.task_dependency_repo.get_blockers(&task1.id).await.unwrap();
+    let blockers = state
+        .task_dependency_repo
+        .get_blockers(&task1.id)
+        .await
+        .unwrap();
     assert_eq!(blockers.len(), 1);
     assert_eq!(blockers[0], task2.id);
 
     // 10. Get tasks blocked by task2 (via task_dependency_repo)
-    let blocked = state.task_dependency_repo.get_blocked_by(&task2.id).await.unwrap();
+    let blocked = state
+        .task_dependency_repo
+        .get_blocked_by(&task2.id)
+        .await
+        .unwrap();
     assert_eq!(blocked.len(), 1);
     assert_eq!(blocked[0], task1.id);
 
@@ -108,7 +116,11 @@ async fn test_task_workflow(state: &AppState) {
         .unwrap();
 
     // 12. Verify dependency is resolved
-    let blockers = state.task_dependency_repo.get_blockers(&task1.id).await.unwrap();
+    let blockers = state
+        .task_dependency_repo
+        .get_blockers(&task1.id)
+        .await
+        .unwrap();
     assert!(blockers.is_empty());
 
     // 13. Get status history for task1

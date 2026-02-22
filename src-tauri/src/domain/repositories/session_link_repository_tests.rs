@@ -23,10 +23,7 @@ impl SessionLinkRepository for MockSessionLinkRepository {
         Ok(link)
     }
 
-    async fn get_by_parent(
-        &self,
-        parent_id: &IdeationSessionId,
-    ) -> AppResult<Vec<SessionLink>> {
+    async fn get_by_parent(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<SessionLink>> {
         Ok(self
             .links
             .iter()

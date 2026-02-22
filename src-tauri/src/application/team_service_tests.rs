@@ -134,7 +134,10 @@ async fn test_stop_team() {
     svc.stop_team("t1").await.unwrap();
 
     let status = svc.get_team_status("t1").await.unwrap();
-    assert_eq!(status.phase, super::super::team_state_tracker::TeamPhase::Winding);
+    assert_eq!(
+        status.phase,
+        super::super::team_state_tracker::TeamPhase::Winding
+    );
     for t in &status.teammates {
         assert_eq!(t.status, TeammateStatus::Shutdown);
     }
@@ -151,7 +154,10 @@ async fn test_disband_team() {
     svc.disband_team("t1").await.unwrap();
 
     let status = svc.get_team_status("t1").await.unwrap();
-    assert_eq!(status.phase, super::super::team_state_tracker::TeamPhase::Disbanded);
+    assert_eq!(
+        status.phase,
+        super::super::team_state_tracker::TeamPhase::Disbanded
+    );
 }
 
 #[tokio::test]
@@ -214,8 +220,12 @@ async fn test_teammate_count() {
 async fn test_cleanup_stale_teams_for_context() {
     let svc = test_service();
     // Create two teams: one for the target context, one for a different context
-    svc.create_team("team-a", "ctx-target", "task_execution").await.unwrap();
-    svc.create_team("team-b", "ctx-other", "ideation").await.unwrap();
+    svc.create_team("team-a", "ctx-target", "task_execution")
+        .await
+        .unwrap();
+    svc.create_team("team-b", "ctx-other", "ideation")
+        .await
+        .unwrap();
 
     // Cleanup should only disband the team belonging to ctx-target
     svc.cleanup_stale_teams_for_context("ctx-target").await;
@@ -238,7 +248,9 @@ async fn test_cleanup_stale_teams_for_context() {
 #[tokio::test]
 async fn test_cleanup_stale_teams_no_match() {
     let svc = test_service();
-    svc.create_team("team-x", "ctx-1", "ideation").await.unwrap();
+    svc.create_team("team-x", "ctx-1", "ideation")
+        .await
+        .unwrap();
 
     // Cleanup for a non-existent context should not panic or affect other teams
     svc.cleanup_stale_teams_for_context("ctx-nonexistent").await;

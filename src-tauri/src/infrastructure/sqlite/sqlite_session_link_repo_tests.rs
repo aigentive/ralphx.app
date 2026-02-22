@@ -1,10 +1,7 @@
 use super::*;
 use crate::domain::entities::SessionRelationship;
 
-fn create_test_link(
-    parent_id: &IdeationSessionId,
-    child_id: &IdeationSessionId,
-) -> SessionLink {
+fn create_test_link(parent_id: &IdeationSessionId, child_id: &IdeationSessionId) -> SessionLink {
     SessionLink::new(
         parent_id.clone(),
         child_id.clone(),
@@ -14,8 +11,7 @@ fn create_test_link(
 
 #[tokio::test]
 async fn test_create_link() {
-    let conn =
-        rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
 
     // Set up the schema
     conn.execute_batch(
@@ -46,8 +42,7 @@ async fn test_create_link() {
 
 #[tokio::test]
 async fn test_get_by_parent() {
-    let conn =
-        rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
 
     conn.execute_batch(
         "CREATE TABLE session_links (
@@ -88,8 +83,7 @@ async fn test_get_by_parent() {
 
 #[tokio::test]
 async fn test_get_by_child() {
-    let conn =
-        rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
 
     conn.execute_batch(
         "CREATE TABLE session_links (
@@ -130,8 +124,7 @@ async fn test_get_by_child() {
 
 #[tokio::test]
 async fn test_delete() {
-    let conn =
-        rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
 
     conn.execute_batch(
         "CREATE TABLE session_links (
@@ -179,8 +172,7 @@ async fn test_delete() {
 
 #[tokio::test]
 async fn test_delete_by_child() {
-    let conn =
-        rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
+    let conn = rusqlite::Connection::open_in_memory().expect("Failed to open in-memory database");
 
     conn.execute_batch(
         "CREATE TABLE session_links (

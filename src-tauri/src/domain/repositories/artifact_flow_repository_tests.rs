@@ -160,10 +160,8 @@ async fn test_mock_artifact_flow_repository_get_all_with_flows() {
 async fn test_mock_artifact_flow_repository_get_active_filters_inactive() {
     let active_flow = create_test_flow();
     let inactive_flow = create_flow_with_filter().set_active(false);
-    let repo = MockArtifactFlowRepository::with_flows(vec![
-        active_flow.clone(),
-        inactive_flow.clone(),
-    ]);
+    let repo =
+        MockArtifactFlowRepository::with_flows(vec![active_flow.clone(), inactive_flow.clone()]);
 
     let result = repo.get_active().await;
     assert!(result.is_ok());

@@ -10,8 +10,7 @@ fn test_send_team_message_input_deserialize() {
 
 #[test]
 fn test_send_teammate_message_input_deserialize() {
-    let json =
-        r#"{"teamName":"my-team","teammateName":"coder-1","content":"Hello teammate"}"#;
+    let json = r#"{"teamName":"my-team","teammateName":"coder-1","content":"Hello teammate"}"#;
     let input: SendTeammateMessageInput = serde_json::from_str(json).unwrap();
     assert_eq!(input.team_name, "my-team");
     assert_eq!(input.teammate_name, "coder-1");

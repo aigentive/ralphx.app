@@ -21,7 +21,10 @@ async fn test_create_duplicate_team_fails() {
         .unwrap();
 
     let result = tracker.create_team("team1", "ctx-2", "ideation").await;
-    assert!(matches!(result, Err(TeamTrackerError::TeamAlreadyExists(_))));
+    assert!(matches!(
+        result,
+        Err(TeamTrackerError::TeamAlreadyExists(_))
+    ));
 }
 
 #[tokio::test]
@@ -202,10 +205,7 @@ async fn test_get_team_messages_with_limit() {
     assert_eq!(all.len(), 5);
 
     // Get limited messages (most recent first)
-    let limited = tracker
-        .get_team_messages("team1", Some(2))
-        .await
-        .unwrap();
+    let limited = tracker.get_team_messages("team1", Some(2)).await.unwrap();
     assert_eq!(limited.len(), 2);
 }
 

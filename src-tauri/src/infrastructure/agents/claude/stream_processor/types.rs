@@ -279,9 +279,7 @@ pub enum StreamEvent {
         message_type: String,
     },
     /// Team deleted (from TeamDelete tool result)
-    TeamDeleted {
-        team_name: String,
-    },
+    TeamDeleted { team_name: String },
 }
 
 // ============================================================================

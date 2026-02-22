@@ -14,9 +14,9 @@ use std::sync::Arc;
 use crate::application::{AppState, TaskSchedulerService, TaskTransitionService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
-use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::repositories::TaskRepository;
 use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
+use crate::domain::state_machine::services::TaskScheduler;
 use crate::infrastructure::memory::MemoryTaskRepository;
 
 // ============================================================================
@@ -509,14 +509,12 @@ async fn test_concurrent_transition_task_only_one_triggers_on_enter() {
     let ts2 = build_transition_service(&app_state, &execution_state);
 
     let tid1 = task_id.clone();
-    let h1 = tokio::spawn(async move {
-        ts1.transition_task(&tid1, InternalStatus::Executing).await
-    });
+    let h1 =
+        tokio::spawn(async move { ts1.transition_task(&tid1, InternalStatus::Executing).await });
 
     let tid2 = task_id.clone();
-    let h2 = tokio::spawn(async move {
-        ts2.transition_task(&tid2, InternalStatus::Executing).await
-    });
+    let h2 =
+        tokio::spawn(async move { ts2.transition_task(&tid2, InternalStatus::Executing).await });
 
     let (r1, r2) = tokio::join!(h1, h2);
     let r1 = r1.unwrap();

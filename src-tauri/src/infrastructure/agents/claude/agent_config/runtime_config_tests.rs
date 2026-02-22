@@ -140,7 +140,10 @@ fn test_yaml_deserialization_requires_all_fields() {
     // Partial YAML should fail — all fields are required (no serde defaults)
     let partial_yaml = "merge_line_read_secs: 900";
     let result: Result<StreamTimeoutsConfig, _> = serde_yaml::from_str(partial_yaml);
-    assert!(result.is_err(), "partial YAML should fail without serde defaults");
+    assert!(
+        result.is_err(),
+        "partial YAML should fail without serde defaults"
+    );
 }
 
 #[test]

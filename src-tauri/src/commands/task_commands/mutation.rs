@@ -9,8 +9,8 @@ use crate::application::task_cleanup_service::{StopMode, TaskCleanupService};
 use crate::application::AppState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskCategory, TaskId};
-use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
 use crate::domain::state_machine::transition_handler::metadata_builder::build_restart_metadata;
+use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
 use std::sync::Arc;
 use tauri::{Emitter, State};
 
@@ -189,15 +189,15 @@ pub async fn move_task(
 
     // Always update agent_variant in metadata for ready/executing transitions
     // so that switching from team→solo properly clears the stale "team" value
-    if matches!(new_status, InternalStatus::Ready | InternalStatus::Executing) {
+    if matches!(
+        new_status,
+        InternalStatus::Ready | InternalStatus::Executing
+    ) {
         let mut meta = parse_metadata(&old_task).unwrap_or_else(|| serde_json::json!({}));
         if let Some(obj) = meta.as_object_mut() {
             match agent_variant.as_deref() {
                 Some(variant) if !variant.is_empty() => {
-                    obj.insert(
-                        "agent_variant".to_string(),
-                        serde_json::json!(variant),
-                    );
+                    obj.insert("agent_variant".to_string(), serde_json::json!(variant));
                 }
                 _ => {
                     obj.remove("agent_variant");
@@ -1072,9 +1072,8 @@ pub async fn pause_task(
         scope: "task".to_string(),
     };
     let mut task_to_update = task.clone();
-    task_to_update.metadata = Some(
-        pause_reason.write_to_task_metadata(task_to_update.metadata.as_deref()),
-    );
+    task_to_update.metadata =
+        Some(pause_reason.write_to_task_metadata(task_to_update.metadata.as_deref()));
     task_to_update.touch();
     let _ = state.task_repo.update(&task_to_update).await;
 
@@ -1326,8 +1325,8 @@ pub async fn resume_task(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<TaskResponse, String> {
-    use crate::application::{TaskSchedulerService, TaskTransitionService};
     use crate::application::chat_service::PauseReason;
+    use crate::application::{TaskSchedulerService, TaskTransitionService};
     use crate::domain::state_machine::services::TaskScheduler;
 
     let task_id = TaskId::from_string(task_id);
@@ -1349,24 +1348,23 @@ pub async fn resume_task(
     }
 
     // Determine restore status: prefer pause_reason metadata, fall back to status_history
-    let restore_status = if let Some(reason) =
-        PauseReason::from_task_metadata(task.metadata.as_deref())
-    {
-        match reason.previous_status().parse::<InternalStatus>() {
-            Ok(status) => status,
-            Err(_) => {
-                tracing::warn!(
-                    task_id = task_id.as_str(),
-                    previous_status = reason.previous_status(),
-                    "Invalid previous_status in pause metadata, falling back to history"
-                );
-                // Fall back to status history
-                get_restore_status_from_history(&state, &task_id).await?
+    let restore_status =
+        if let Some(reason) = PauseReason::from_task_metadata(task.metadata.as_deref()) {
+            match reason.previous_status().parse::<InternalStatus>() {
+                Ok(status) => status,
+                Err(_) => {
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        previous_status = reason.previous_status(),
+                        "Invalid previous_status in pause metadata, falling back to history"
+                    );
+                    // Fall back to status history
+                    get_restore_status_from_history(&state, &task_id).await?
+                }
             }
-        }
-    } else {
-        get_restore_status_from_history(&state, &task_id).await?
-    };
+        } else {
+            get_restore_status_from_history(&state, &task_id).await?
+        };
 
     // Check if execution can accept another task
     if !execution_state.can_start_task() {

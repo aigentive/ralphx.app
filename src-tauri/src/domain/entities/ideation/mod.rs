@@ -298,7 +298,9 @@ impl IdeationSession {
                 .get::<_, Option<String>>("converted_at")?
                 .map(Self::parse_datetime),
             team_mode: row.get::<_, Option<String>>("team_mode").unwrap_or(None),
-            team_config_json: row.get::<_, Option<String>>("team_config_json").unwrap_or(None),
+            team_config_json: row
+                .get::<_, Option<String>>("team_config_json")
+                .unwrap_or(None),
             title_source: row.get::<_, Option<String>>("title_source").unwrap_or(None),
         })
     }

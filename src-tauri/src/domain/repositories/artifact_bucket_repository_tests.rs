@@ -133,8 +133,7 @@ async fn test_mock_bucket_repository_get_all_empty() {
 async fn test_mock_bucket_repository_get_all_with_buckets() {
     let bucket1 = create_test_bucket();
     let bucket2 = create_system_bucket();
-    let repo =
-        MockArtifactBucketRepository::with_buckets(vec![bucket1.clone(), bucket2.clone()]);
+    let repo = MockArtifactBucketRepository::with_buckets(vec![bucket1.clone(), bucket2.clone()]);
 
     let result = repo.get_all().await;
     assert!(result.is_ok());

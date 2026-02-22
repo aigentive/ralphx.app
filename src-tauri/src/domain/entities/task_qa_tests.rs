@@ -45,10 +45,8 @@ fn test_complete_prep() {
 
     qa.start_prep("agent-1".to_string());
 
-    let criteria = AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual(
-        "AC1",
-        "Test visual",
-    )]);
+    let criteria =
+        AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual("AC1", "Test visual")]);
     let steps = QATestSteps::from_steps(vec![QATestStep::new(
         "QA1",
         "AC1",

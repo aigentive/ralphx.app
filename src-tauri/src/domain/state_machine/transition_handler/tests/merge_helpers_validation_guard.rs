@@ -4,8 +4,8 @@
 // from three independent metadata fields: merge_commit_unrevertable,
 // merge_failure_source, and validation_revert_count.
 
-use super::helpers::*;
 use super::super::merge_helpers::has_prior_validation_failure;
+use super::helpers::*;
 
 #[test]
 fn returns_false_for_no_metadata() {

@@ -193,7 +193,6 @@ fn test_criteria_from_prd_format() {
     // ----------------
     // QATestStep Tests
     // ----------------
-
 }
 
 #[test]
@@ -347,4 +346,3 @@ fn test_steps_from_prd_format() {
     assert_eq!(s.qa_steps[0].commands.len(), 6);
     assert_eq!(s.qa_steps[0].expected, "All 7 columns visible");
 }
-

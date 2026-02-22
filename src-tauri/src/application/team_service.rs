@@ -98,7 +98,9 @@ impl TeamService {
         context_id: &str,
         context_type: &str,
     ) -> Result<(), TeamTrackerError> {
-        self.tracker.create_team(name, context_id, context_type).await?;
+        self.tracker
+            .create_team(name, context_id, context_type)
+            .await?;
 
         // Persist session to DB
         if let Some(ref repo) = self.session_repo {
@@ -107,7 +109,10 @@ impl TeamService {
             if let Err(e) = repo.create(session).await {
                 warn!("Failed to persist team session: {e}");
             } else {
-                self.session_id_cache.write().await.insert(name.to_string(), sid);
+                self.session_id_cache
+                    .write()
+                    .await
+                    .insert(name.to_string(), sid);
             }
         }
 
@@ -284,9 +289,7 @@ impl TeamService {
 
         if let (Some(ref handle), Some((ctx_type, ctx_id))) = (&self.app_handle, ctx) {
             for name in &teammate_names {
-                team_events::emit_teammate_shutdown(
-                    handle, team_name, name, &ctx_type, &ctx_id,
-                );
+                team_events::emit_teammate_shutdown(handle, team_name, name, &ctx_type, &ctx_id);
             }
         }
         Ok(())
@@ -348,7 +351,9 @@ impl TeamService {
         team_name: &str,
         teammate_name: &str,
     ) -> Result<TeammateCostResponse, TeamTrackerError> {
-        self.tracker.get_teammate_cost(team_name, teammate_name).await
+        self.tracker
+            .get_teammate_cost(team_name, teammate_name)
+            .await
     }
 
     /// Get team messages (serializable).
@@ -416,7 +421,9 @@ impl TeamService {
             None
         };
 
-        self.tracker.remove_teammate(team_name, teammate_name).await?;
+        self.tracker
+            .remove_teammate(team_name, teammate_name)
+            .await?;
 
         if let (Some(ref handle), Some((ctx_type, ctx_id))) = (&self.app_handle, ctx) {
             team_events::emit_teammate_shutdown(

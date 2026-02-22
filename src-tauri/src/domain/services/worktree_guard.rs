@@ -12,8 +12,7 @@ use std::sync::{Arc, LazyLock};
 /// Global worktree refcount registry.
 /// Acquire a permit before running commands in a worktree;
 /// check `is_in_use` before deleting one.
-static WORKTREE_REFCOUNTS: LazyLock<DashMap<PathBuf, Arc<AtomicU32>>> =
-    LazyLock::new(DashMap::new);
+static WORKTREE_REFCOUNTS: LazyLock<DashMap<PathBuf, Arc<AtomicU32>>> = LazyLock::new(DashMap::new);
 
 /// Acquire a permit indicating this worktree is in active use.
 /// The permit is RAII — dropping it decrements the refcount.

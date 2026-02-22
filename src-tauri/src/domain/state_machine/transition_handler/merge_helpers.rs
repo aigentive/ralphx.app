@@ -166,9 +166,7 @@ pub(crate) async fn validate_plan_merge_preconditions(
     };
 
     // Check 2: PlanBranch must exist and have Active status
-    let plan_branch = pb_repo.get_by_merge_task_id(&task.id).await
-        .ok()
-        .flatten();
+    let plan_branch = pb_repo.get_by_merge_task_id(&task.id).await.ok().flatten();
 
     let Some(pb) = plan_branch else {
         // No PlanBranch record for this merge task — treat as not active
@@ -280,7 +278,12 @@ pub(super) fn compute_source_update_worktree_path(project: &Project, task_id: &s
         .as_deref()
         .unwrap_or("~/ralphx-worktrees");
     let expanded = expand_home(worktree_parent);
-    format!("{}/{}/source-update-{}", expanded, slugify(&project.name), task_id)
+    format!(
+        "{}/{}/source-update-{}",
+        expanded,
+        slugify(&project.name),
+        task_id
+    )
 }
 
 /// Compute the worktree path for a plan-update operation (merging main into plan branch).
@@ -294,7 +297,12 @@ pub(super) fn compute_plan_update_worktree_path(project: &Project, task_id: &str
         .as_deref()
         .unwrap_or("~/ralphx-worktrees");
     let expanded = expand_home(worktree_parent);
-    format!("{}/{}/plan-update-{}", expanded, slugify(&project.name), task_id)
+    format!(
+        "{}/{}/plan-update-{}",
+        expanded,
+        slugify(&project.name),
+        task_id
+    )
 }
 
 /// Extract a task ID from a merge worktree path.
@@ -375,19 +383,26 @@ pub(super) fn has_prior_validation_failure(task: &Task) -> bool {
     let Some(meta) = parse_metadata(task) else {
         return false;
     };
-    if meta.get("merge_commit_unrevertable").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if meta
+        .get("merge_commit_unrevertable")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         return true;
     }
-    if meta.get("merge_failure_source")
+    if meta
+        .get("merge_failure_source")
         .and_then(|v| v.as_str())
         .map(|s| s == "validation_failed")
         .unwrap_or(false)
     {
         return true;
     }
-    if meta.get("validation_revert_count")
+    if meta
+        .get("validation_revert_count")
         .and_then(|v| v.as_u64())
-        .unwrap_or(0) > 0
+        .unwrap_or(0)
+        > 0
     {
         return true;
     }
@@ -468,8 +483,8 @@ pub(crate) const DEFERRED_MERGE_TIMEOUT_SECONDS: i64 = 120;
 /// `DEFERRED_MERGE_TIMEOUT_SECONDS`. Returns false if the timestamp is missing or unparseable
 /// (no timeout enforcement in that case — the reconciliation watchdog handles it instead).
 pub(crate) fn is_merge_deferred_timed_out(task: &Task) -> bool {
-    let deferred_at = parse_metadata(task)
-        .and_then(|v| v.get("merge_deferred_at")?.as_str().map(String::from));
+    let deferred_at =
+        parse_metadata(task).and_then(|v| v.get("merge_deferred_at")?.as_str().map(String::from));
 
     let Some(deferred_at_str) = deferred_at else {
         return false;
@@ -548,11 +563,7 @@ pub(crate) fn clear_trigger_origin(task: &mut Task) {
 /// - `conflict_detected_by`: "programmatic" (system) or "agent" (via report_conflict)
 ///
 /// Mutates the task in-place, creating metadata if it doesn't exist.
-pub(crate) fn set_conflict_metadata(
-    task: &mut Task,
-    conflict_files: &[String],
-    detected_by: &str,
-) {
+pub(crate) fn set_conflict_metadata(task: &mut Task, conflict_files: &[String], detected_by: &str) {
     let mut meta = parse_metadata(task).unwrap_or_else(|| serde_json::json!({}));
     if let Some(obj) = meta.as_object_mut() {
         obj.insert(

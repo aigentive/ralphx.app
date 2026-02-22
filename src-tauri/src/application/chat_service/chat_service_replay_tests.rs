@@ -4,7 +4,10 @@ use super::*;
 fn test_should_skip_error_messages() {
     assert!(ReplayBuilder::should_skip_message(
         &MessageRole::System,
-        &format!("{} timeout]", crate::application::chat_service::AGENT_ERROR_PREFIX)
+        &format!(
+            "{} timeout]",
+            crate::application::chat_service::AGENT_ERROR_PREFIX
+        )
     ));
     assert!(!ReplayBuilder::should_skip_message(
         &MessageRole::User,
@@ -183,7 +186,9 @@ fn test_ideation_state_xml_placed_after_instructions() {
     );
 
     // Verify ordering: </instructions> then <ideation_state> then <conversation_history>
-    let instructions_end = prompt.find("</instructions>").expect("instructions end tag");
+    let instructions_end = prompt
+        .find("</instructions>")
+        .expect("instructions end tag");
     let ideation_start = prompt.find("<ideation_state>").expect("ideation_state tag");
     let history_start = prompt
         .find("<conversation_history>")

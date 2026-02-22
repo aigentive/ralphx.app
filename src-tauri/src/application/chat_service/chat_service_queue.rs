@@ -16,7 +16,9 @@ use super::chat_service_types::{
 use super::has_meaningful_output;
 use crate::application::question_state::QuestionState;
 use crate::domain::entities::{ChatContextType, ChatConversationId};
-use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, IdeationSessionRepository, TaskRepository};
+use crate::domain::repositories::{
+    ActivityEventRepository, ChatMessageRepository, IdeationSessionRepository, TaskRepository,
+};
 use crate::domain::services::MessageQueue;
 use tokio_util::sync::CancellationToken;
 

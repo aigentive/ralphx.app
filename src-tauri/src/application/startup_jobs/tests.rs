@@ -1627,7 +1627,10 @@ async fn test_startup_quota_sync_before_resumption() {
 
 #[test]
 fn is_waiting_for_global_idle_returns_false_when_no_metadata() {
-    let task = Task::new(crate::domain::entities::ProjectId::new(), "Test".to_string());
+    let task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Test".to_string(),
+    );
     assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
         &task, 1
     ));
@@ -1635,7 +1638,10 @@ fn is_waiting_for_global_idle_returns_false_when_no_metadata() {
 
 #[test]
 fn is_waiting_for_global_idle_returns_false_when_no_main_merge_deferred_flag() {
-    let mut task = Task::new(crate::domain::entities::ProjectId::new(), "Test".to_string());
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Test".to_string(),
+    );
     task.metadata = Some(r#"{"other": "data"}"#.to_string());
     assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
         &task, 1
@@ -1644,9 +1650,11 @@ fn is_waiting_for_global_idle_returns_false_when_no_main_merge_deferred_flag() {
 
 #[test]
 fn is_waiting_for_global_idle_returns_false_when_main_merge_deferred_but_no_agents() {
-    let mut task = Task::new(crate::domain::entities::ProjectId::new(), "Test".to_string());
-    task.metadata =
-        Some(serde_json::json!({"main_merge_deferred": true}).to_string());
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Test".to_string(),
+    );
+    task.metadata = Some(serde_json::json!({"main_merge_deferred": true}).to_string());
     // running_count = 0 means all agents completed
     assert!(!StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
         &task, 0
@@ -1655,9 +1663,11 @@ fn is_waiting_for_global_idle_returns_false_when_main_merge_deferred_but_no_agen
 
 #[test]
 fn is_waiting_for_global_idle_returns_true_when_main_merge_deferred_and_agents_running() {
-    let mut task = Task::new(crate::domain::entities::ProjectId::new(), "Test".to_string());
-    task.metadata =
-        Some(serde_json::json!({"main_merge_deferred": true}).to_string());
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Test".to_string(),
+    );
+    task.metadata = Some(serde_json::json!({"main_merge_deferred": true}).to_string());
     // running_count > 0 means agents are still running
     assert!(StartupJobRunner::<tauri::Wry>::is_waiting_for_global_idle(
         &task, 1
@@ -2243,8 +2253,7 @@ async fn test_startup_skips_blocked_tasks_with_non_terminal_blockers() {
     let mut plan_merge_task = Task::new(project.id.clone(), "Merge Plan to Main".to_string());
     plan_merge_task.internal_status = InternalStatus::Blocked;
     plan_merge_task.category = TaskCategory::PlanMerge;
-    plan_merge_task.blocked_reason =
-        Some("Waiting for: Feature Task 2".to_string());
+    plan_merge_task.blocked_reason = Some("Waiting for: Feature Task 2".to_string());
     let plan_merge_id = plan_merge_task.id.clone();
     app_state
         .task_repo
@@ -2317,8 +2326,7 @@ async fn test_startup_keeps_blocked_tasks_with_stopped_blocker() {
     let mut plan_merge_task = Task::new(project.id.clone(), "Merge Plan to Main".to_string());
     plan_merge_task.internal_status = InternalStatus::Blocked;
     plan_merge_task.category = TaskCategory::PlanMerge;
-    plan_merge_task.blocked_reason =
-        Some("Waiting for: Stopped Feature Task".to_string());
+    plan_merge_task.blocked_reason = Some("Waiting for: Stopped Feature Task".to_string());
     let plan_merge_id = plan_merge_task.id.clone();
     app_state
         .task_repo
@@ -2691,7 +2699,9 @@ async fn test_reconcile_sets_blocked_reason_with_failed_blocker_title() {
         .unwrap()
         .unwrap();
     assert_eq!(updated.internal_status, InternalStatus::Blocked);
-    let reason = updated.blocked_reason.expect("blocked_reason should be set");
+    let reason = updated
+        .blocked_reason
+        .expect("blocked_reason should be set");
     assert!(
         reason.contains("Auth Service Setup"),
         "blocked_reason should contain the failed blocker's title, got: {}",

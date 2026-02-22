@@ -35,8 +35,11 @@ pub async fn merge_tree_write(
     target_ref: &str,
     source_ref: &str,
 ) -> AppResult<Result<String, Vec<PathBuf>>> {
-    let output =
-        git_cmd::run(&["merge-tree", "--write-tree", target_ref, source_ref], repo).await?;
+    let output = git_cmd::run(
+        &["merge-tree", "--write-tree", target_ref, source_ref],
+        repo,
+    )
+    .await?;
 
     if output.status.success() {
         let tree_sha = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -193,8 +196,7 @@ pub async fn try_squash_merge_checkout_free(
 
     match merge_tree_write(repo, target_branch, source_branch).await? {
         Ok(tree_sha) => {
-            let commit_sha =
-                commit_tree(repo, &tree_sha, &[&target_sha], commit_message).await?;
+            let commit_sha = commit_tree(repo, &tree_sha, &[&target_sha], commit_message).await?;
             update_branch_ref(repo, target_branch, &commit_sha).await?;
             debug!(
                 "Checkout-free squash merge succeeded: {} → {} = {}",

@@ -108,7 +108,10 @@ impl TeamMessageRepository for SqliteTeamMessageRepository {
             .map_err(|e| AppError::Database(e.to_string()))?;
 
         let mut messages: Vec<TeamMessageRecord> = stmt
-            .query_map(rusqlite::params![session_id.as_str(), limit], row_to_message)
+            .query_map(
+                rusqlite::params![session_id.as_str(), limit],
+                row_to_message,
+            )
             .map_err(|e| AppError::Database(e.to_string()))?
             .collect::<Result<Vec<_>, _>>()
             .map_err(|e| AppError::Database(e.to_string()))?;

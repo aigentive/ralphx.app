@@ -568,7 +568,10 @@ async fn test_self_dedup_insert_prevents_duplicate_entry() {
 
     // First insert succeeds
     let first = set.insert(task_id.clone());
-    assert!(first, "First insert should return true — task is not yet in flight");
+    assert!(
+        first,
+        "First insert should return true — task is not yet in flight"
+    );
 
     // Second insert for the same task returns false (dedup fires)
     let second = set.insert(task_id.clone());
@@ -598,9 +601,7 @@ async fn test_self_dedup_concurrent_insert_only_one_wins() {
     // Simulate two concurrent threads both trying to insert the same task
     let set1 = Arc::clone(&set);
     let id1 = task_id.clone();
-    let handle1 = std::thread::spawn(move || {
-        set1.lock().unwrap().insert(id1)
-    });
+    let handle1 = std::thread::spawn(move || set1.lock().unwrap().insert(id1));
 
     // Give thread 1 a head start, then thread 2 tries to insert
     let result1 = handle1.join().unwrap();

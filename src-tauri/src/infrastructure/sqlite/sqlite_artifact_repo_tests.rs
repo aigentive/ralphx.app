@@ -55,8 +55,7 @@ async fn test_create_artifact_with_bucket() {
     let repo = SqliteArtifactRepository::new(conn);
 
     // prd-library bucket is seeded by v25 migration
-    let artifact =
-        create_test_artifact().with_bucket(ArtifactBucketId::from_string("prd-library"));
+    let artifact = create_test_artifact().with_bucket(ArtifactBucketId::from_string("prd-library"));
 
     let result = repo.create(artifact.clone()).await;
     assert!(result.is_ok());
@@ -616,14 +615,12 @@ async fn test_get_at_version_three_level_chain() {
     let v1_id = v1.id.clone();
     repo.create(v1).await.unwrap();
 
-    let mut v2 =
-        Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
+    let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
     v2.metadata.version = 2;
     let v2_id = v2.id.clone();
     repo.create_with_previous_version(v2, v1_id).await.unwrap();
 
-    let mut v3 =
-        Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
+    let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
     v3.metadata.version = 3;
     let v3_id = v3.id.clone();
     repo.create_with_previous_version(v3, v2_id).await.unwrap();
@@ -700,16 +697,14 @@ async fn test_resolve_latest_three_version_chain_from_v1() {
     let v1_id = v1.id.clone();
     repo.create(v1).await.unwrap();
 
-    let mut v2 =
-        Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
+    let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
     v2.metadata.version = 2;
     let v2_id = v2.id.clone();
     repo.create_with_previous_version(v2, v1_id.clone())
         .await
         .unwrap();
 
-    let mut v3 =
-        Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
+    let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
     v3.metadata.version = 3;
     let v3_id = v3.id.clone();
     repo.create_with_previous_version(v3, v2_id).await.unwrap();
@@ -728,14 +723,12 @@ async fn test_resolve_latest_three_version_chain_from_middle() {
     let v1_id = v1.id.clone();
     repo.create(v1).await.unwrap();
 
-    let mut v2 =
-        Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
+    let mut v2 = Artifact::new_inline("Plan", ArtifactType::Specification, "V2", "orchestrator");
     v2.metadata.version = 2;
     let v2_id = v2.id.clone();
     repo.create_with_previous_version(v2, v1_id).await.unwrap();
 
-    let mut v3 =
-        Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
+    let mut v3 = Artifact::new_inline("Plan", ArtifactType::Specification, "V3", "orchestrator");
     v3.metadata.version = 3;
     let v3_id = v3.id.clone();
     repo.create_with_previous_version(v3, v2_id.clone())
@@ -895,7 +888,10 @@ async fn test_create_artifact_with_team_metadata_persists() {
     repo.create(artifact.clone()).await.unwrap();
 
     let loaded = repo.get_by_id(&artifact.id).await.unwrap().unwrap();
-    let tm = loaded.metadata.team_metadata.expect("team_metadata should be persisted");
+    let tm = loaded
+        .metadata
+        .team_metadata
+        .expect("team_metadata should be persisted");
     assert_eq!(tm.team_name, "ideation-team");
     assert_eq!(tm.author_teammate, "researcher");
     assert_eq!(tm.session_id, Some("session-123".to_string()));
@@ -934,7 +930,10 @@ async fn test_update_artifact_preserves_team_metadata() {
 
     let loaded = repo.get_by_id(&artifact.id).await.unwrap().unwrap();
     assert_eq!(loaded.name, "Updated Name");
-    let tm = loaded.metadata.team_metadata.expect("team_metadata should survive update");
+    let tm = loaded
+        .metadata
+        .team_metadata
+        .expect("team_metadata should survive update");
     assert_eq!(tm.team_name, "team-alpha");
     assert_eq!(tm.author_teammate, "worker-1");
 }

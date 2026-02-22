@@ -281,7 +281,10 @@ fn test_resolve_process_agent_unknown_process_returns_none() {
 #[test]
 fn test_resolve_process_agent_empty_mapping_returns_none() {
     let mapping = ProcessMapping::default();
-    assert_eq!(resolve_process_agent(&mapping, "execution", "default"), None);
+    assert_eq!(
+        resolve_process_agent(&mapping, "execution", "default"),
+        None
+    );
 }
 
 // ── validate_team_plan tests ────────────────────────────────────
@@ -936,7 +939,10 @@ team_constraints:
     let ideation = &config.process_mapping.slots["ideation"];
     assert_eq!(ideation.default, "orchestrator-ideation");
     assert_eq!(ideation.variants.get("team").unwrap(), "ideation-team-lead");
-    assert_eq!(ideation.variants.get("readonly").unwrap(), "orchestrator-ideation-readonly");
+    assert_eq!(
+        ideation.variants.get("readonly").unwrap(),
+        "orchestrator-ideation-readonly"
+    );
 
     // Team constraints
     let defaults = config.team_constraints.defaults.as_ref().unwrap();

@@ -86,7 +86,10 @@ async fn b2_merge_conflict_transitions_to_merging_and_spawns_agent() {
     let project_repo = Arc::new(MemoryProjectRepository::new());
 
     let project_id = ProjectId::from_string("proj-1".to_string());
-    let mut task = Task::new(project_id.clone(), "B2 merge conflict chain test".to_string());
+    let mut task = Task::new(
+        project_id.clone(),
+        "B2 merge conflict chain test".to_string(),
+    );
     task.internal_status = InternalStatus::PendingMerge;
     task.task_branch = Some(git_repo.task_branch.clone());
     let task_id = task.id.clone();
@@ -281,7 +284,12 @@ async fn toctou_merge_branches_cached_in_metadata_before_merge() {
 
     // Plan branch with session_id="sess-1" and status=Active
     // make_plan_branch hardcodes session_id="sess-1" — matches task.ideation_session_id above
-    let pb = make_plan_branch("artifact-1", plan_branch_name, PlanBranchStatus::Active, None);
+    let pb = make_plan_branch(
+        "artifact-1",
+        plan_branch_name,
+        PlanBranchStatus::Active,
+        None,
+    );
     plan_branch_repo.create(pb).await.unwrap();
 
     let (_, services) =

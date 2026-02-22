@@ -79,11 +79,8 @@ fn activity_event_role_default() {
 #[test]
 fn new_task_event_creates_correct_event() {
     let task_id = TaskId::new();
-    let event = ActivityEvent::new_task_event(
-        task_id.clone(),
-        ActivityEventType::Thinking,
-        "test content",
-    );
+    let event =
+        ActivityEvent::new_task_event(task_id.clone(), ActivityEventType::Thinking, "test content");
 
     assert_eq!(event.task_id, Some(task_id));
     assert_eq!(event.ideation_session_id, None);

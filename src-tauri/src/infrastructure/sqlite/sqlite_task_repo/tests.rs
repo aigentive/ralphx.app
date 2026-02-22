@@ -1,4 +1,6 @@
-use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory, TaskId};
+use crate::domain::entities::{
+    IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory, TaskId,
+};
 use crate::domain::repositories::TaskRepository;
 use crate::infrastructure::sqlite::SqliteTaskRepository;
 use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};

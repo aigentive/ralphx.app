@@ -6,6 +6,12 @@ pub mod agent_names;
 mod claude_code_client;
 mod stream_processor;
 
+#[allow(unused_imports)]
+pub use agent_config::team_config::{
+    env_variant_override, get_team_constraints, validate_child_team_config, validate_team_plan,
+    ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError,
+    TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
+};
 pub use agent_config::{
     agent_configs, claude_runtime_config, defer_merge_enabled, get_agent_config, get_allowed_tools,
     get_effective_settings, get_preapproved_tools, git_runtime_config, limits_config,
@@ -13,12 +19,6 @@ pub use agent_config::{
     supervisor_runtime_config, team_constraints_config, AgentConfig, AllRuntimeConfig,
     GitRuntimeConfig, LimitsConfig, ReconciliationConfig, SchedulerConfig, StreamTimeoutsConfig,
     SupervisorRuntimeConfig,
-};
-#[allow(unused_imports)]
-pub use agent_config::team_config::{
-    env_variant_override, get_team_constraints, validate_child_team_config, validate_team_plan,
-    ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError,
-    TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
 };
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{

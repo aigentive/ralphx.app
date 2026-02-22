@@ -165,8 +165,7 @@ fn workflow_column_with_color() {
 
 #[test]
 fn workflow_column_with_icon() {
-    let col =
-        WorkflowColumn::new("col", "Col", InternalStatus::Backlog).with_icon("check-circle");
+    let col = WorkflowColumn::new("col", "Col", InternalStatus::Backlog).with_icon("check-circle");
     assert_eq!(col.icon, Some("check-circle".to_string()));
 }
 
@@ -175,8 +174,7 @@ fn workflow_column_with_behavior() {
     let behavior = ColumnBehavior::new()
         .with_skip_review(true)
         .with_agent_profile("worker-fast");
-    let col =
-        WorkflowColumn::new("col", "Col", InternalStatus::Executing).with_behavior(behavior);
+    let col = WorkflowColumn::new("col", "Col", InternalStatus::Executing).with_behavior(behavior);
 
     let b = col.behavior.unwrap();
     assert_eq!(b.skip_review, Some(true));
@@ -185,8 +183,7 @@ fn workflow_column_with_behavior() {
 
 #[test]
 fn workflow_column_serializes() {
-    let col =
-        WorkflowColumn::new("test", "Test", InternalStatus::Blocked).with_color("#aabbcc");
+    let col = WorkflowColumn::new("test", "Test", InternalStatus::Blocked).with_color("#aabbcc");
     let json = serde_json::to_string(&col).unwrap();
     assert!(json.contains("\"id\":\"test\""));
     assert!(json.contains("\"maps_to\":\"blocked\""));
@@ -259,8 +256,7 @@ fn state_group_builder_chain() {
 
 #[test]
 fn state_group_locked_sets_both_flags() {
-    let group =
-        StateGroup::new("locked", "Locked Group", vec![InternalStatus::Executing]).locked();
+    let group = StateGroup::new("locked", "Locked Group", vec![InternalStatus::Executing]).locked();
     assert_eq!(group.can_drag_from, Some(false));
     assert_eq!(group.can_drop_to, Some(false));
 }
@@ -352,8 +348,7 @@ fn default_ralphx_workflow_has_groups_for_multi_state_columns() {
         .any(|g| g.id == "fresh" && g.statuses.contains(&InternalStatus::Ready)));
     assert!(ready_groups
         .iter()
-        .any(|g| g.id == "needs_revision"
-            && g.statuses.contains(&InternalStatus::RevisionNeeded)));
+        .any(|g| g.id == "needs_revision" && g.statuses.contains(&InternalStatus::RevisionNeeded)));
 
     // In Progress column should have 2 groups: First Attempt, Revising
     let progress_col = workflow
@@ -386,9 +381,9 @@ fn default_ralphx_workflow_has_groups_for_multi_state_columns() {
     assert!(review_groups
         .iter()
         .any(|g| g.id == "ai_reviewing" && g.statuses.contains(&InternalStatus::Reviewing)));
-    assert!(review_groups.iter().any(
-        |g| g.id == "ready_approval" && g.statuses.contains(&InternalStatus::ReviewPassed)
-    ));
+    assert!(review_groups
+        .iter()
+        .any(|g| g.id == "ready_approval" && g.statuses.contains(&InternalStatus::ReviewPassed)));
 }
 
 #[test]

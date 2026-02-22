@@ -37,7 +37,6 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 
-
 use super::TaskTransitionService;
 use crate::domain::state_machine::transition_handler::{get_trigger_origin, set_trigger_origin};
 
@@ -378,14 +377,16 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                     return;
                 }
                 if let Some(scheduler) = self.self_ref.lock().unwrap().clone() {
-                    self.contention_retry_pending.fetch_add(1, Ordering::Relaxed);
+                    self.contention_retry_pending
+                        .fetch_add(1, Ordering::Relaxed);
                     tracing::debug!(
                         pending_retries = pending + 1,
                         "Scheduling lock contention detected; queuing retry in {retry_delay_ms}ms"
                     );
                     let retry_counter = Arc::clone(&self.contention_retry_pending);
                     tokio::spawn(async move {
-                        tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay_ms)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(retry_delay_ms))
+                            .await;
                         // Decrement before the retry attempt so the slot is freed
                         // regardless of whether the retry succeeds or skips.
                         retry_counter.fetch_sub(1, Ordering::Relaxed);
@@ -770,7 +771,11 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                 .metadata
                 .as_ref()
                 .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                .and_then(|v| v.get("target_branch").and_then(|t| t.as_str()).map(|s| s.to_string()))
+                .and_then(|v| {
+                    v.get("target_branch")
+                        .and_then(|t| t.as_str())
+                        .map(|s| s.to_string())
+                })
                 .unwrap_or_else(|| "main".to_string());
 
             let (reason_code, retry_message) = if timed_out {
@@ -784,7 +789,10 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
             } else {
                 (
                     MergeRecoveryReasonCode::AgentsRunning,
-                    format!("Main merge retry attempt {}: all agents now idle", attempt_count),
+                    format!(
+                        "Main merge retry attempt {}: all agents now idle",
+                        attempt_count
+                    ),
                 )
             };
 

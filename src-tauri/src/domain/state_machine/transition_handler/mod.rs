@@ -5,8 +5,8 @@
 use super::events::TaskEvent;
 use super::machine::{Response, State, TaskStateMachine};
 
-pub(crate) mod cleanup_helpers;
 mod checkout_free_strategy;
+pub(crate) mod cleanup_helpers;
 mod commit_messages;
 mod exit_actions;
 mod merge_completion;
@@ -39,6 +39,9 @@ pub(crate) use merge_helpers::{
 
 // -- Crate-visible re-exports (merge_validation) --
 pub(crate) use merge_validation::{format_validation_error_metadata, run_validation_commands};
+
+// -- Public re-exports (merge_validation for testing) --
+pub use merge_validation::{PreExecSetupResult, run_pre_execution_setup};
 
 /// Result of handling a transition
 #[derive(Debug, Clone, PartialEq, Eq)]

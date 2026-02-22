@@ -743,7 +743,10 @@ fn proposal_category_from_str() {
         "feature".parse::<ProposalCategory>().unwrap(),
         ProposalCategory::Feature
     );
-    assert_eq!("fix".parse::<ProposalCategory>().unwrap(), ProposalCategory::Fix);
+    assert_eq!(
+        "fix".parse::<ProposalCategory>().unwrap(),
+        ProposalCategory::Fix
+    );
     assert_eq!(
         "devops".parse::<ProposalCategory>().unwrap(),
         ProposalCategory::DevOps
@@ -834,7 +837,12 @@ fn proposal_new_generates_unique_id() {
         ProposalCategory::Feature,
         Priority::High,
     );
-    let p2 = TaskProposal::new(session_id, "Task 2", ProposalCategory::Feature, Priority::Low);
+    let p2 = TaskProposal::new(
+        session_id,
+        "Task 2",
+        ProposalCategory::Feature,
+        Priority::Low,
+    );
 
     assert_ne!(p1.id, p2.id);
 }

@@ -106,8 +106,7 @@ async fn test_workflow_response_serialization() {
     let workflow = WorkflowSchema::new(
         "Response Test",
         vec![
-            WorkflowColumn::new("col1", "Column 1", InternalStatus::Backlog)
-                .with_color("#ff0000"),
+            WorkflowColumn::new("col1", "Column 1", InternalStatus::Backlog).with_color("#ff0000"),
         ],
     )
     .with_description("A test workflow");

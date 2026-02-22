@@ -112,7 +112,11 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
         }
     }
 
-    async fn unregister(&self, key: &RunningAgentKey, agent_run_id: &str) -> Option<RunningAgentInfo> {
+    async fn unregister(
+        &self,
+        key: &RunningAgentKey,
+        agent_run_id: &str,
+    ) -> Option<RunningAgentInfo> {
         let conn = self.conn.lock().await;
 
         // Read the row only if agent_run_id matches (ownership check prevents a finishing

@@ -124,7 +124,10 @@ pub(super) async fn update_plan_from_main(
                 base_branch = %base_branch,
                 "Failed to get SHA for base branch — skipping plan branch update"
             );
-            return PlanUpdateResult::Error(format!("Failed to get SHA for {}: {}", base_branch, e));
+            return PlanUpdateResult::Error(format!(
+                "Failed to get SHA for {}: {}",
+                base_branch, e
+            ));
         }
     };
 
@@ -162,18 +165,25 @@ pub(super) async fn update_plan_from_main(
         task_id_str,
         MergePhase::programmatic_merge(),
         MergePhaseStatus::Started,
-        format!("Updating {} from {} before merge", target_branch, base_branch),
+        format!(
+            "Updating {} from {} before merge",
+            target_branch, base_branch
+        ),
     );
 
     // Use checkout-free merge if target is already checked out
-    let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
+    let current_branch = GitService::get_current_branch(repo_path)
+        .await
+        .unwrap_or_default();
     if current_branch == target_branch {
         // Target is checked out in main repo — merge main directly
         match GitService::merge_branch(repo_path, base_branch, target_branch).await {
             Ok(result) => {
                 let sha = match &result {
                     crate::application::MergeResult::Success { commit_sha }
-                    | crate::application::MergeResult::FastForward { commit_sha } => commit_sha.clone(),
+                    | crate::application::MergeResult::FastForward { commit_sha } => {
+                        commit_sha.clone()
+                    }
                     crate::application::MergeResult::Conflict { files } => {
                         // Abort the in-progress merge so the working tree is clean
                         let _ = GitService::abort_merge(repo_path).await;
@@ -204,7 +214,10 @@ pub(super) async fn update_plan_from_main(
     // (e.g., merge worktree from a prior attempt), merge main directly there instead
     // of trying to create a new worktree (which would fail with "already used by worktree").
     if let Ok(worktrees) = GitService::list_worktrees(repo_path).await {
-        if let Some(wt) = worktrees.iter().find(|w| w.branch.as_deref() == Some(target_branch)) {
+        if let Some(wt) = worktrees
+            .iter()
+            .find(|w| w.branch.as_deref() == Some(target_branch))
+        {
             let wt_path = PathBuf::from(&wt.path);
             tracing::info!(
                 task_id = task_id_str,
@@ -216,7 +229,9 @@ pub(super) async fn update_plan_from_main(
                 Ok(result) => {
                     let sha = match &result {
                         crate::application::MergeResult::Success { commit_sha }
-                        | crate::application::MergeResult::FastForward { commit_sha } => commit_sha.clone(),
+                        | crate::application::MergeResult::FastForward { commit_sha } => {
+                            commit_sha.clone()
+                        }
                         crate::application::MergeResult::Conflict { files } => {
                             let _ = GitService::abort_merge(&wt_path).await;
                             tracing::warn!(
@@ -259,7 +274,8 @@ pub(super) async fn update_plan_from_main(
                     // Not a conflict — abort any partial state and return as error.
                     let _ = GitService::abort_merge(&wt_path).await;
                     return PlanUpdateResult::Error(format!(
-                        "merge in existing worktree failed: {}", e
+                        "merge in existing worktree failed: {}",
+                        e
                     ));
                 }
             }
@@ -276,8 +292,8 @@ pub(super) async fn update_plan_from_main(
 
     let result = match GitService::try_merge_in_worktree(
         repo_path,
-        base_branch,      // source = main
-        target_branch,    // target = plan branch
+        base_branch,   // source = main
+        target_branch, // target = plan branch
         &wt_path,
     )
     .await
@@ -498,10 +514,7 @@ pub(super) async fn update_source_from_target(
             SourceUpdateResult::Conflicts { conflict_files }
         }
         Ok(crate::application::MergeAttemptResult::BranchNotFound { branch }) => {
-            SourceUpdateResult::Error(format!(
-                "Branch not found during source update: {}",
-                branch
-            ))
+            SourceUpdateResult::Error(format!("Branch not found during source update: {}", branch))
         }
         Err(e) => SourceUpdateResult::Error(format!("Source update merge failed: {}", e)),
     };
@@ -539,9 +552,7 @@ pub(super) async fn check_main_merge_deferral(
             .await
             .unwrap_or_default();
         let all_siblings_terminal = siblings.iter().all(|t| {
-            t.id == task.id
-                || t.internal_status == InternalStatus::PendingMerge
-                || t.is_terminal()
+            t.id == task.id || t.internal_status == InternalStatus::PendingMerge || t.is_terminal()
         });
         if !all_siblings_terminal {
             tracing::info!(
@@ -637,16 +648,28 @@ impl<'a> super::TransitionHandler<'a> {
         // --- Step 0a: Cancel in-flight validation for this task ---
         // If a previous merge attempt's validation is still running, cancel it now.
         // The CancellationToken triggers process kill via spawn_cancellable_command.
-        if let Some((_, token)) = self.machine.context.services.validation_tokens.remove(task_id_str) {
+        if let Some((_, token)) = self
+            .machine
+            .context
+            .services
+            .validation_tokens
+            .remove(task_id_str)
+        {
             token.cancel();
-            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: cancelled in-flight validation");
+            tracing::info!(
+                task_id = task_id_str,
+                "pre_merge_cleanup: cancelled in-flight validation"
+            );
         }
 
         // --- Step 0b: Stop running agents and kill worktree processes ---
         // The reviewer (or merger from a prior attempt) may still be running IN the
         // task worktree. We must stop it BEFORE attempting worktree deletion to avoid
         // git lock contention that causes the 5+ minute hang (see merge-hang RCA).
-        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 0b — stopping any running agents");
+        tracing::info!(
+            task_id = task_id_str,
+            "pre_merge_cleanup: step 0b — stopping any running agents"
+        );
         let agent_stop_timeout_secs = git_runtime_config().agent_stop_timeout_secs;
         for ctx_type in [
             crate::domain::entities::ChatContextType::Review,
@@ -700,7 +723,10 @@ impl<'a> super::TransitionHandler<'a> {
         tokio::time::sleep(std::time::Duration::from_secs(agent_kill_settle_secs)).await;
 
         // --- Step 1: Remove stale index.lock ---
-        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 1 — removing stale index.lock");
+        tracing::info!(
+            task_id = task_id_str,
+            "pre_merge_cleanup: step 1 — removing stale index.lock"
+        );
         let index_lock_stale_secs = git_runtime_config().index_lock_stale_secs;
         match GitService::remove_stale_index_lock(repo_path, index_lock_stale_secs) {
             Ok(true) => {
@@ -721,7 +747,10 @@ impl<'a> super::TransitionHandler<'a> {
 
         {
             // --- Step 2: Delete task worktree ---
-            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 2 — deleting task worktree");
+            tracing::info!(
+                task_id = task_id_str,
+                "pre_merge_cleanup: step 2 — deleting task worktree"
+            );
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
                 if worktree_path_buf == repo_path {
@@ -768,7 +797,10 @@ impl<'a> super::TransitionHandler<'a> {
             }
 
             // --- Step 3: Prune stale worktree refs ---
-            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 3 — pruning stale worktree refs");
+            tracing::info!(
+                task_id = task_id_str,
+                "pre_merge_cleanup: step 3 — pruning stale worktree refs"
+            );
             if let Err(e) = GitService::prune_worktrees(repo_path).await {
                 tracing::warn!(
                     task_id = task_id_str,
@@ -778,13 +810,22 @@ impl<'a> super::TransitionHandler<'a> {
             }
 
             // --- Step 4: Delete own stale merge/rebase worktrees ---
-            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 4 — deleting own stale merge/rebase worktrees");
+            tracing::info!(
+                task_id = task_id_str,
+                "pre_merge_cleanup: step 4 — deleting own stale merge/rebase worktrees"
+            );
             for (wt_label, own_wt) in [
                 ("task", compute_task_worktree_path(project, task_id_str)),
                 ("merge", compute_merge_worktree_path(project, task_id_str)),
                 ("rebase", compute_rebase_worktree_path(project, task_id_str)),
-                ("plan-update", compute_plan_update_worktree_path(project, task_id_str)),
-                ("source-update", compute_source_update_worktree_path(project, task_id_str)),
+                (
+                    "plan-update",
+                    compute_plan_update_worktree_path(project, task_id_str),
+                ),
+                (
+                    "source-update",
+                    compute_source_update_worktree_path(project, task_id_str),
+                ),
             ] {
                 let own_wt_path = PathBuf::from(&own_wt);
                 if own_wt_path.exists() {
@@ -828,7 +869,10 @@ impl<'a> super::TransitionHandler<'a> {
             }
 
             // --- Step 5: Scan for orphaned merge worktrees ---
-            tracing::info!(task_id = task_id_str, "pre_merge_cleanup: step 5 — scanning for orphaned merge worktrees");
+            tracing::info!(
+                task_id = task_id_str,
+                "pre_merge_cleanup: step 5 — scanning for orphaned merge worktrees"
+            );
             let worktrees_result = tokio::time::timeout(
                 std::time::Duration::from_secs(git_runtime_config().cleanup_git_op_timeout_secs),
                 GitService::list_worktrees(repo_path),

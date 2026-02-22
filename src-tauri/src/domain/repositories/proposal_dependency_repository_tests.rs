@@ -63,10 +63,7 @@ impl ProposalDependencyRepository for MockProposalDependencyRepository {
             .unwrap_or_default())
     }
 
-    async fn get_dependents(
-        &self,
-        proposal_id: &TaskProposalId,
-    ) -> AppResult<Vec<TaskProposalId>> {
+    async fn get_dependents(&self, proposal_id: &TaskProposalId) -> AppResult<Vec<TaskProposalId>> {
         // Find all proposals that have this proposal in their dependency set
         Ok(self
             .dependencies
@@ -100,7 +97,8 @@ impl ProposalDependencyRepository for MockProposalDependencyRepository {
             .dependencies
             .iter()
             .flat_map(|(from, tos)| {
-                tos.iter().map(|to| (from.clone(), to.clone(), None, String::from("auto")))
+                tos.iter()
+                    .map(|to| (from.clone(), to.clone(), None, String::from("auto")))
             })
             .collect())
     }
@@ -127,17 +125,11 @@ impl ProposalDependencyRepository for MockProposalDependencyRepository {
         Ok(())
     }
 
-    async fn clear_session_dependencies(
-        &self,
-        _session_id: &IdeationSessionId,
-    ) -> AppResult<()> {
+    async fn clear_session_dependencies(&self, _session_id: &IdeationSessionId) -> AppResult<()> {
         Ok(())
     }
 
-    async fn clear_auto_dependencies(
-        &self,
-        _session_id: &IdeationSessionId,
-    ) -> AppResult<()> {
+    async fn clear_auto_dependencies(&self, _session_id: &IdeationSessionId) -> AppResult<()> {
         Ok(())
     }
 
@@ -298,10 +290,8 @@ async fn test_mock_repository_would_create_cycle_direct() {
     let proposal_a = TaskProposalId::new();
     let proposal_b = TaskProposalId::new();
     // B depends on A
-    let repo = MockProposalDependencyRepository::with_dependency(
-        proposal_b.clone(),
-        proposal_a.clone(),
-    );
+    let repo =
+        MockProposalDependencyRepository::with_dependency(proposal_b.clone(), proposal_a.clone());
 
     // Adding A depends on B would create A -> B -> A cycle
     let result = repo.would_create_cycle(&proposal_a, &proposal_b).await;
@@ -374,11 +364,9 @@ async fn test_mock_repository_count_dependents_multiple() {
 async fn test_repository_trait_object_in_arc() {
     let proposal_a = TaskProposalId::new();
     let proposal_b = TaskProposalId::new();
-    let repo: Arc<dyn ProposalDependencyRepository> =
-        Arc::new(MockProposalDependencyRepository::with_dependency(
-            proposal_a.clone(),
-            proposal_b.clone(),
-        ));
+    let repo: Arc<dyn ProposalDependencyRepository> = Arc::new(
+        MockProposalDependencyRepository::with_dependency(proposal_a.clone(), proposal_b.clone()),
+    );
 
     // Use through trait object
     let deps = repo.get_dependencies(&proposal_a).await;
@@ -394,11 +382,9 @@ async fn test_repository_trait_object_in_arc() {
 async fn test_repository_trait_object_cycle_detection() {
     let proposal_a = TaskProposalId::new();
     let proposal_b = TaskProposalId::new();
-    let repo: Arc<dyn ProposalDependencyRepository> =
-        Arc::new(MockProposalDependencyRepository::with_dependency(
-            proposal_b.clone(),
-            proposal_a.clone(),
-        ));
+    let repo: Arc<dyn ProposalDependencyRepository> = Arc::new(
+        MockProposalDependencyRepository::with_dependency(proposal_b.clone(), proposal_a.clone()),
+    );
 
     let would_cycle = repo.would_create_cycle(&proposal_a, &proposal_b).await;
     assert!(would_cycle.is_ok());
@@ -409,11 +395,9 @@ async fn test_repository_trait_object_cycle_detection() {
 async fn test_repository_trait_object_count_operations() {
     let proposal_a = TaskProposalId::new();
     let proposal_b = TaskProposalId::new();
-    let repo: Arc<dyn ProposalDependencyRepository> =
-        Arc::new(MockProposalDependencyRepository::with_dependency(
-            proposal_a.clone(),
-            proposal_b.clone(),
-        ));
+    let repo: Arc<dyn ProposalDependencyRepository> = Arc::new(
+        MockProposalDependencyRepository::with_dependency(proposal_a.clone(), proposal_b.clone()),
+    );
 
     let dep_count = repo.count_dependencies(&proposal_a).await;
     assert!(dep_count.is_ok());
@@ -431,7 +415,9 @@ async fn test_repository_trait_object_add_remove_clear() {
     let proposal_a = TaskProposalId::new();
     let proposal_b = TaskProposalId::new();
 
-    let add_result = repo.add_dependency(&proposal_a, &proposal_b, None, None).await;
+    let add_result = repo
+        .add_dependency(&proposal_a, &proposal_b, None, None)
+        .await;
     assert!(add_result.is_ok());
 
     let remove_result = repo.remove_dependency(&proposal_a, &proposal_b).await;

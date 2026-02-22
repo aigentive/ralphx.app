@@ -3,9 +3,9 @@ use crate::infrastructure::agents::claude::agent_names::{
     SHORT_CHAT_PROJECT, SHORT_CHAT_TASK, SHORT_CODER, SHORT_DEEP_RESEARCHER,
     SHORT_DEPENDENCY_SUGGESTER, SHORT_IDEATION_TEAM_LEAD, SHORT_MEMORY_CAPTURE,
     SHORT_MEMORY_MAINTAINER, SHORT_MERGER, SHORT_ORCHESTRATOR, SHORT_ORCHESTRATOR_IDEATION,
-    SHORT_ORCHESTRATOR_IDEATION_READONLY, SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR,
-    SHORT_QA_PREP, SHORT_REVIEWER, SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY,
-    SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER, SHORT_WORKER_TEAM,
+    SHORT_ORCHESTRATOR_IDEATION_READONLY, SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP,
+    SHORT_REVIEWER, SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_SUPERVISOR,
+    SHORT_WORKER, SHORT_WORKER_TEAM,
 };
 use std::collections::HashSet;
 
@@ -152,7 +152,7 @@ agents:
     preapproved_cli_tools: []
     system_prompt_file: ralphx-plugin/agents/worker.md
 "#;
-    let parsed = parse_config(yaml).expect("config should parse");
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
     assert_eq!(
         parsed.claude.settings,
         Some(serde_json::json!({
@@ -322,9 +322,7 @@ fn test_runtime_settings_profile_override_for_agent_uses_normalized_key() {
     let selection = runtime_settings_profile_override_for_agent_with(
         "orchestrator-ideation",
         &|name| match name {
-            "RALPHX_CLAUDE_SETTINGS_PROFILE_ORCHESTRATOR_IDEATION" => {
-                Some("default".to_string())
-            }
+            "RALPHX_CLAUDE_SETTINGS_PROFILE_ORCHESTRATOR_IDEATION" => Some("default".to_string()),
             _ => None,
         },
     );
@@ -665,14 +663,19 @@ agents:
     // model overridden by child
     assert_eq!(team.model.as_deref(), Some("opus"));
     // system_prompt_file overridden by child
-    assert_eq!(team.system_prompt_file, "ralphx-plugin/agents/worker-team.md");
+    assert_eq!(
+        team.system_prompt_file,
+        "ralphx-plugin/agents/worker-team.md"
+    );
     // tools inherited from parent (child didn't specify)
     assert!(team.resolved_cli_tools.contains(&"Write".to_string()));
     assert!(team.resolved_cli_tools.contains(&"Edit".to_string()));
     assert!(team.resolved_cli_tools.contains(&"Task".to_string()));
     // mcp_tools inherited from parent
     assert!(team.allowed_mcp_tools.contains(&"start_step".to_string()));
-    assert!(team.allowed_mcp_tools.contains(&"complete_step".to_string()));
+    assert!(team
+        .allowed_mcp_tools
+        .contains(&"complete_step".to_string()));
     // preapproved_cli_tools inherited from parent
     assert!(team.preapproved_cli_tools.contains(&"Write".to_string()));
 }

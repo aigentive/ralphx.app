@@ -2,8 +2,8 @@
 //
 // Extracted from side_effects.rs (lines 6713–6809).
 
-use super::helpers::*;
 use super::super::merge_helpers::{is_task_in_merge_workflow, task_targets_branch};
+use super::helpers::*;
 use crate::domain::entities::{InternalStatus, PlanBranchStatus, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::infrastructure::memory::{MemoryPlanBranchRepository, MemoryTaskRepository};

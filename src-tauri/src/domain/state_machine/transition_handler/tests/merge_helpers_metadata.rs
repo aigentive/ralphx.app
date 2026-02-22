@@ -3,11 +3,11 @@
 //
 // Extracted from side_effects.rs (lines 6466–6707).
 
-use super::helpers::*;
 use super::super::merge_helpers::{
     clear_merge_deferred_metadata, clear_trigger_origin, extract_task_id_from_merge_path,
     get_trigger_origin, has_merge_deferred_metadata, parse_metadata, set_trigger_origin,
 };
+use super::helpers::*;
 use crate::domain::entities::InternalStatus;
 
 // ==================

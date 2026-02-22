@@ -44,10 +44,7 @@ impl TaskProposalRepository for MockTaskProposalRepository {
         Ok(self.return_proposal.clone())
     }
 
-    async fn get_by_session(
-        &self,
-        session_id: &IdeationSessionId,
-    ) -> AppResult<Vec<TaskProposal>> {
+    async fn get_by_session(&self, session_id: &IdeationSessionId) -> AppResult<Vec<TaskProposal>> {
         let mut filtered: Vec<_> = self
             .proposals
             .iter()
@@ -74,11 +71,7 @@ impl TaskProposalRepository for MockTaskProposalRepository {
         Ok(())
     }
 
-    async fn set_created_task_id(
-        &self,
-        _id: &TaskProposalId,
-        _task_id: &TaskId,
-    ) -> AppResult<()> {
+    async fn set_created_task_id(&self, _id: &TaskProposalId, _task_id: &TaskId) -> AppResult<()> {
         Ok(())
     }
 
@@ -116,10 +109,7 @@ impl TaskProposalRepository for MockTaskProposalRepository {
             .count() as u32)
     }
 
-    async fn count_selected_by_session(
-        &self,
-        session_id: &IdeationSessionId,
-    ) -> AppResult<u32> {
+    async fn count_selected_by_session(&self, session_id: &IdeationSessionId) -> AppResult<u32> {
         Ok(self
             .proposals
             .iter()

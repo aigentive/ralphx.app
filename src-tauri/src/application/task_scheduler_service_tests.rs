@@ -1195,13 +1195,9 @@ async fn test_contention_respects_max_retry_limit() {
 
 /// Helper to create a ReadyWatchdog with a zero-second staleness threshold
 /// (all Ready tasks are immediately stale) for testing.
-fn build_watchdog(
-    app_state: &AppState,
-    execution_state: &Arc<ExecutionState>,
-) -> ReadyWatchdog {
+fn build_watchdog(app_state: &AppState, execution_state: &Arc<ExecutionState>) -> ReadyWatchdog {
     let scheduler = Arc::new(build_scheduler(app_state, execution_state));
-    ReadyWatchdog::new(scheduler, Arc::clone(&app_state.task_repo))
-        .with_stale_threshold_secs(0)
+    ReadyWatchdog::new(scheduler, Arc::clone(&app_state.task_repo)).with_stale_threshold_secs(0)
 }
 
 #[tokio::test]
@@ -1221,7 +1217,11 @@ async fn test_watchdog_detects_stale_ready_task() {
     execution_state.set_max_concurrent(10);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a Ready task (threshold=0 so it's immediately stale)
     let mut task = Task::new(project.id.clone(), "Stale Ready Task".to_string());
@@ -1241,7 +1241,11 @@ async fn test_watchdog_does_not_detect_non_ready_tasks() {
     execution_state.set_max_concurrent(10);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create tasks in non-Ready states
     for status in &[
@@ -1267,7 +1271,11 @@ async fn test_watchdog_triggers_scheduling_for_stale_tasks() {
     execution_state.set_max_concurrent(10);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a Ready task
     let mut task = Task::new(project.id.clone(), "Stale Ready Task".to_string());
@@ -1298,7 +1306,11 @@ async fn test_watchdog_with_high_threshold_skips_fresh_tasks() {
     execution_state.set_max_concurrent(10);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a Ready task (just created → not stale under a large threshold)
     let mut task = Task::new(project.id.clone(), "Fresh Ready Task".to_string());
@@ -1352,8 +1364,7 @@ fn make_deferred_task_with_age(
     title: &str,
     seconds_ago: i64,
 ) -> Task {
-    let deferred_at = (chrono::Utc::now() - chrono::Duration::seconds(seconds_ago))
-        .to_rfc3339();
+    let deferred_at = (chrono::Utc::now() - chrono::Duration::seconds(seconds_ago)).to_rfc3339();
     let mut task = Task::new(project_id.clone(), title.to_string());
     task.internal_status = InternalStatus::PendingMerge;
     task.metadata = Some(
@@ -1373,8 +1384,7 @@ fn make_main_deferred_task_with_age(
     title: &str,
     seconds_ago: i64,
 ) -> Task {
-    let deferred_at = (chrono::Utc::now() - chrono::Duration::seconds(seconds_ago))
-        .to_rfc3339();
+    let deferred_at = (chrono::Utc::now() - chrono::Duration::seconds(seconds_ago)).to_rfc3339();
     let mut task = Task::new(project_id.clone(), title.to_string());
     task.internal_status = InternalStatus::PendingMerge;
     task.metadata = Some(
@@ -1395,14 +1405,20 @@ async fn test_retry_deferred_merges_proceeds_when_within_timeout() {
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a deferred task with age well within the timeout (10 seconds old)
     let task = make_deferred_task_with_age(&project.id, "Recent Deferred Merge", 10);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     let scheduler = build_scheduler(&app_state, &execution_state);
-    scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+    scheduler
+        .try_retry_deferred_merges(project.id.as_str())
+        .await;
 
     // Task should have had its deferred flag cleared (retry was triggered)
     let updated = app_state
@@ -1411,7 +1427,11 @@ async fn test_retry_deferred_merges_proceeds_when_within_timeout() {
         .await
         .unwrap()
         .unwrap();
-    let flag_cleared = updated.metadata.as_deref().map(|m| !m.contains("\"merge_deferred\":true")).unwrap_or(true);
+    let flag_cleared = updated
+        .metadata
+        .as_deref()
+        .map(|m| !m.contains("\"merge_deferred\":true"))
+        .unwrap_or(true);
     assert!(
         flag_cleared,
         "Deferred merge within timeout should still have retry triggered (flag cleared)"
@@ -1426,7 +1446,11 @@ async fn test_retry_deferred_merges_logs_warning_when_timeout_exceeded() {
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a deferred task older than the timeout
     let seconds_ago = DEFERRED_MERGE_TIMEOUT_SECONDS + 60; // well past timeout
@@ -1435,7 +1459,9 @@ async fn test_retry_deferred_merges_logs_warning_when_timeout_exceeded() {
 
     let scheduler = build_scheduler(&app_state, &execution_state);
     // Should not panic, should log warning and proceed with retry
-    scheduler.try_retry_deferred_merges(project.id.as_str()).await;
+    scheduler
+        .try_retry_deferred_merges(project.id.as_str())
+        .await;
 
     // Task should have retry triggered (flag cleared or metadata updated)
     let updated = app_state
@@ -1444,7 +1470,11 @@ async fn test_retry_deferred_merges_logs_warning_when_timeout_exceeded() {
         .await
         .unwrap()
         .unwrap();
-    let flag_cleared = updated.metadata.as_deref().map(|m| !m.contains("\"merge_deferred\":true")).unwrap_or(true);
+    let flag_cleared = updated
+        .metadata
+        .as_deref()
+        .map(|m| !m.contains("\"merge_deferred\":true"))
+        .unwrap_or(true);
     assert!(
         flag_cleared,
         "Timed-out deferred merge should have retry triggered (flag cleared)"
@@ -1458,15 +1488,24 @@ async fn test_retry_main_merges_bypasses_sibling_guard_when_timeout_exceeded() {
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create an ideation session
     let session = crate::domain::entities::IdeationSession::new(project.id.clone());
-    app_state.ideation_session_repo.create(session.clone()).await.unwrap();
+    app_state
+        .ideation_session_repo
+        .create(session.clone())
+        .await
+        .unwrap();
 
     // Create a main-merge-deferred task older than the timeout, linked to the session
     let seconds_ago = DEFERRED_MERGE_TIMEOUT_SECONDS + 60;
-    let mut task = make_main_deferred_task_with_age(&project.id, "Timed Out Main Merge", seconds_ago);
+    let mut task =
+        make_main_deferred_task_with_age(&project.id, "Timed Out Main Merge", seconds_ago);
     task.ideation_session_id = Some(session.id.clone());
     app_state.task_repo.create(task.clone()).await.unwrap();
 
@@ -1487,7 +1526,9 @@ async fn test_retry_main_merges_bypasses_sibling_guard_when_timeout_exceeded() {
         .await
         .unwrap()
         .unwrap();
-    let flag_cleared = updated.metadata.as_deref()
+    let flag_cleared = updated
+        .metadata
+        .as_deref()
         .map(|m| !m.contains("\"main_merge_deferred\":true"))
         .unwrap_or(true);
     assert!(
@@ -1501,11 +1542,19 @@ async fn test_retry_main_merges_respects_sibling_guard_when_not_timed_out() {
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create an ideation session
     let session = crate::domain::entities::IdeationSession::new(project.id.clone());
-    app_state.ideation_session_repo.create(session.clone()).await.unwrap();
+    app_state
+        .ideation_session_repo
+        .create(session.clone())
+        .await
+        .unwrap();
 
     // Create a main-merge-deferred task RECENTLY (within timeout)
     let mut task = make_main_deferred_task_with_age(&project.id, "Recent Main Merge", 5);
@@ -1529,7 +1578,9 @@ async fn test_retry_main_merges_respects_sibling_guard_when_not_timed_out() {
         .await
         .unwrap()
         .unwrap();
-    let flag_still_set = updated.metadata.as_deref()
+    let flag_still_set = updated
+        .metadata
+        .as_deref()
         .map(|m| m.contains("\"main_merge_deferred\":true"))
         .unwrap_or(false);
     assert!(
@@ -1545,11 +1596,16 @@ async fn test_retry_main_merges_retries_when_no_session_and_timed_out() {
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Task with no ideation_session_id but timed out — should always retry
     let seconds_ago = DEFERRED_MERGE_TIMEOUT_SECONDS + 30;
-    let task = make_main_deferred_task_with_age(&project.id, "Sessionless Timed Out Merge", seconds_ago);
+    let task =
+        make_main_deferred_task_with_age(&project.id, "Sessionless Timed Out Merge", seconds_ago);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     let scheduler = build_scheduler(&app_state, &execution_state);
@@ -1561,7 +1617,9 @@ async fn test_retry_main_merges_retries_when_no_session_and_timed_out() {
         .await
         .unwrap()
         .unwrap();
-    let flag_cleared = updated.metadata.as_deref()
+    let flag_cleared = updated
+        .metadata
+        .as_deref()
         .map(|m| !m.contains("\"main_merge_deferred\":true"))
         .unwrap_or(true);
     assert!(
@@ -1596,11 +1654,7 @@ async fn test_scheduler_skips_ready_task_with_failed_blocker() {
     // Create a Ready task that depends on the Failed blocker
     let mut dependent = Task::new(project.id.clone(), "Dependent Task".to_string());
     dependent.internal_status = InternalStatus::Ready;
-    app_state
-        .task_repo
-        .create(dependent.clone())
-        .await
-        .unwrap();
+    app_state.task_repo.create(dependent.clone()).await.unwrap();
 
     // Wire up the dependency: dependent depends on blocker
     app_state
@@ -1651,11 +1705,7 @@ async fn test_scheduler_skips_ready_task_with_blocked_blocker() {
     // Create a Ready task that depends on the Blocked blocker
     let mut dependent = Task::new(project.id.clone(), "Dependent Task".to_string());
     dependent.internal_status = InternalStatus::Ready;
-    app_state
-        .task_repo
-        .create(dependent.clone())
-        .await
-        .unwrap();
+    app_state.task_repo.create(dependent.clone()).await.unwrap();
 
     // Wire up the dependency
     app_state
@@ -1703,11 +1753,7 @@ async fn test_scheduler_schedules_ready_task_with_merged_blocker() {
     // Create a Ready task that depends on the Merged blocker
     let mut dependent = Task::new(project.id.clone(), "Dependent Task".to_string());
     dependent.internal_status = InternalStatus::Ready;
-    app_state
-        .task_repo
-        .create(dependent.clone())
-        .await
-        .unwrap();
+    app_state.task_repo.create(dependent.clone()).await.unwrap();
 
     // Wire up the dependency
     app_state
@@ -1800,11 +1846,7 @@ async fn test_scheduler_schedules_ready_task_with_cancelled_blocker() {
     // Create a Ready task that depends on the Cancelled blocker
     let mut dependent = Task::new(project.id.clone(), "Dependent Task".to_string());
     dependent.internal_status = InternalStatus::Ready;
-    app_state
-        .task_repo
-        .create(dependent.clone())
-        .await
-        .unwrap();
+    app_state.task_repo.create(dependent.clone()).await.unwrap();
 
     // Wire up the dependency
     app_state

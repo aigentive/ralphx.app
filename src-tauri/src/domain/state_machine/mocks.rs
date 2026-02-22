@@ -443,10 +443,10 @@ impl TaskScheduler for MockTaskScheduler {
     }
 
     async fn try_retry_main_merges(&self) {
-        self.calls.lock().unwrap().push(ServiceCall::new(
-            "try_retry_main_merges",
-            vec![],
-        ));
+        self.calls
+            .lock()
+            .unwrap()
+            .push(ServiceCall::new("try_retry_main_merges", vec![]));
     }
 }
 

@@ -22,8 +22,7 @@ async fn test_get_interrupted_conversations_returns_orphaned_conversation() {
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo =
-        SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
+    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
 
     // Create a conversation with claude_session_id
     let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
@@ -63,8 +62,7 @@ async fn test_get_interrupted_conversations_ignores_without_session_id() {
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo =
-        SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
+    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
 
     // Create a conversation WITHOUT claude_session_id
     let conversation = ChatConversation::new_ideation(IdeationSessionId::new());
@@ -96,8 +94,7 @@ async fn test_get_interrupted_conversations_ignores_completed_runs() {
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo =
-        SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
+    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
 
     // Create a conversation with claude_session_id
     let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
@@ -128,8 +125,7 @@ async fn test_get_interrupted_conversations_ignores_different_error_message() {
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo =
-        SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
+    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
 
     // Create a conversation with claude_session_id
     let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());
@@ -161,8 +157,7 @@ async fn test_get_interrupted_conversations_only_latest_run() {
     let shared_conn = Arc::new(Mutex::new(conn));
 
     let agent_run_repo = SqliteAgentRunRepository::from_shared(Arc::clone(&shared_conn));
-    let conversation_repo =
-        SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
+    let conversation_repo = SqliteChatConversationRepository::from_shared(Arc::clone(&shared_conn));
 
     // Create a conversation with claude_session_id
     let mut conversation = ChatConversation::new_ideation(IdeationSessionId::new());

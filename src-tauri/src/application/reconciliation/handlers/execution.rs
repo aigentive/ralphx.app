@@ -322,7 +322,10 @@ impl<R: Runtime> ReconciliationRunner<R> {
             if pid_alive {
                 let _ = self.running_agent_registry.stop(&key).await;
             } else {
-                let _ = self.running_agent_registry.unregister(&key, &info.agent_run_id).await;
+                let _ = self
+                    .running_agent_registry
+                    .unregister(&key, &info.agent_run_id)
+                    .await;
             }
             removed += 1;
 
@@ -670,7 +673,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
             run_status: None,
             registry_running: false,
             can_start: self.execution_state.can_start_task(),
-            is_stale: age >= chrono::Duration::minutes(reconciliation_config().qa_stale_minutes as i64),
+            is_stale: age
+                >= chrono::Duration::minutes(reconciliation_config().qa_stale_minutes as i64),
             is_deferred: false,
         };
         let decision = self.policy.decide_reconciliation(context, evidence);
@@ -752,7 +756,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     auto_resumable,
                     resume_attempts,
                     ..
-                } => (category, message, retry_after, previous_status, auto_resumable, resume_attempts),
+                } => (
+                    category,
+                    message,
+                    retry_after,
+                    previous_status,
+                    auto_resumable,
+                    resume_attempts,
+                ),
             };
 
         if !auto_resumable {
@@ -815,9 +826,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
             resume_attempts: resume_attempts + 1,
         };
         let mut updated_task = task.clone();
-        updated_task.metadata = Some(
-            updated_reason.write_to_task_metadata(updated_task.metadata.as_deref()),
-        );
+        updated_task.metadata =
+            Some(updated_reason.write_to_task_metadata(updated_task.metadata.as_deref()));
         updated_task.touch();
         if let Err(e) = self.task_repo.update(&updated_task).await {
             warn!(
@@ -938,9 +948,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let mut updated_meta = meta.clone();
         updated_meta.resume_attempts += 1;
         let mut updated_task = task.clone();
-        updated_task.metadata = Some(
-            updated_meta.write_to_task_metadata(updated_task.metadata.as_deref()),
-        );
+        updated_task.metadata =
+            Some(updated_meta.write_to_task_metadata(updated_task.metadata.as_deref()));
         updated_task.touch();
         if let Err(e) = self.task_repo.update(&updated_task).await {
             warn!(task_id = task.id.as_str(), error = %e, "Failed to update legacy resume attempts");
@@ -957,7 +966,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
             _ => InternalStatus::Executing,
         };
 
-        match self.transition_service.transition_task(&task.id, resume_status).await {
+        match self
+            .transition_service
+            .transition_task(&task.id, resume_status)
+            .await
+        {
             Ok(_) => {
                 let mut cleared = match self.task_repo.get_by_id(&task.id).await {
                     Ok(Some(t)) => t,

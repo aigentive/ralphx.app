@@ -82,7 +82,10 @@ async fn test_get_all_for_session_with_source_includes_source_field() {
 
     repo.add_with_session(&p1, &p2, &session_id, "auto");
 
-    let all = repo.get_all_for_session_with_source(&session_id).await.unwrap();
+    let all = repo
+        .get_all_for_session_with_source(&session_id)
+        .await
+        .unwrap();
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].0, p1);
     assert_eq!(all[0].1, p2);
@@ -113,7 +116,10 @@ async fn test_add_dependency_defaults_to_auto() {
     // Add dependency with source="auto" explicitly
     repo.add_with_session(&p1, &p2, &session_id, "auto");
 
-    let all = repo.get_all_for_session_with_source(&session_id).await.unwrap();
+    let all = repo
+        .get_all_for_session_with_source(&session_id)
+        .await
+        .unwrap();
     assert_eq!(all.len(), 1);
     assert_eq!(all[0].3, "auto");
 }
@@ -134,7 +140,10 @@ async fn test_clear_auto_dependencies_preserves_manual_deps() {
     // Clear only auto dependencies
     repo.clear_auto_dependencies(&session_id).await.unwrap();
 
-    let all = repo.get_all_for_session_with_source(&session_id).await.unwrap();
+    let all = repo
+        .get_all_for_session_with_source(&session_id)
+        .await
+        .unwrap();
     assert_eq!(all.len(), 1);
     // Only the manual dependency should remain
     assert_eq!(all[0].0, p2);
@@ -160,11 +169,17 @@ async fn test_clear_auto_dependencies_clears_only_in_session() {
     repo.clear_auto_dependencies(&session1).await.unwrap();
 
     // Session 1 should have no deps
-    let s1_all = repo.get_all_for_session_with_source(&session1).await.unwrap();
+    let s1_all = repo
+        .get_all_for_session_with_source(&session1)
+        .await
+        .unwrap();
     assert_eq!(s1_all.len(), 0);
 
     // Session 2 should still have its auto dep
-    let s2_all = repo.get_all_for_session_with_source(&session2).await.unwrap();
+    let s2_all = repo
+        .get_all_for_session_with_source(&session2)
+        .await
+        .unwrap();
     assert_eq!(s2_all.len(), 1);
     assert_eq!(s2_all[0].3, "auto");
 }

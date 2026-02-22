@@ -9,16 +9,36 @@ use std::sync::Arc;
 /// Helper: initialize a git repo in the given directory with an initial commit.
 fn init_git_repo(repo_path: &std::path::Path) {
     use std::process::Command;
-    Command::new("git").args(["init"]).current_dir(repo_path).output().unwrap();
-    Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo_path).output().unwrap();
-    Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo_path).output().unwrap();
+    Command::new("git")
+        .args(["init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
 }
 
 /// Helper: stage all and commit with given message.
 fn git_add_and_commit(repo_path: &std::path::Path, message: &str) {
     use std::process::Command;
-    Command::new("git").args(["add", "."]).current_dir(repo_path).output().unwrap();
-    Command::new("git").args(["commit", "-m", message]).current_dir(repo_path).output().unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", message])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
 }
 
 // ==================
@@ -40,15 +60,24 @@ async fn test_branch_discovery_integrates_with_pending_merge() {
     std::fs::write(repo_path.join("README.md"), "test").unwrap();
     git_add_and_commit(&repo_path, "Initial commit");
 
-    let project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let project = Project::new(
+        "test-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
     let task = Task::new(project.id.clone(), "Test task".to_string());
 
     let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
-    Command::new("git").args(["branch", &expected_branch]).current_dir(&repo_path).output().unwrap();
+    Command::new("git")
+        .args(["branch", &expected_branch])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
     assert_eq!(task.task_branch, None);
 
-    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> = Arc::new(MemoryTaskRepository::new());
-    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> = Arc::new(MemoryProjectRepository::new());
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> =
+        Arc::new(MemoryProjectRepository::new());
     task_repo.create(task.clone()).await.unwrap();
     project_repo.create(project.clone()).await.unwrap();
 
@@ -94,21 +123,34 @@ async fn test_merge_retry_recovery_discovers_branch_and_merges() {
     std::fs::write(repo_path.join("README.md"), "initial content").unwrap();
     git_add_and_commit(&repo_path, "Initial commit");
 
-    let project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let project = Project::new(
+        "test-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
     let mut task = Task::new(project.id.clone(), "Test recovery task".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
     task.task_branch = None;
 
     let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
-    Command::new("git").args(["checkout", "-b", &expected_branch]).current_dir(&repo_path).output().unwrap();
+    Command::new("git")
+        .args(["checkout", "-b", &expected_branch])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
     std::fs::write(repo_path.join("feature.txt"), "feature work").unwrap();
     git_add_and_commit(&repo_path, "Add feature");
-    Command::new("git").args(["checkout", "main"]).current_dir(&repo_path).output().unwrap();
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
 
     assert_eq!(task.task_branch, None);
 
-    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> = Arc::new(MemoryTaskRepository::new());
-    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> = Arc::new(MemoryProjectRepository::new());
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> =
+        Arc::new(MemoryProjectRepository::new());
     task_repo.create(task.clone()).await.unwrap();
     project_repo.create(project.clone()).await.unwrap();
 
@@ -154,24 +196,37 @@ async fn test_merge_retry_recovery_detects_conflicts_and_enters_merging() {
     std::fs::write(repo_path.join("conflict.txt"), "original line\n").unwrap();
     git_add_and_commit(&repo_path, "Initial commit");
 
-    let project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let project = Project::new(
+        "test-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
     let mut task = Task::new(project.id.clone(), "Test conflict task".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
     task.task_branch = None;
 
     let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
-    Command::new("git").args(["checkout", "-b", &expected_branch]).current_dir(&repo_path).output().unwrap();
+    Command::new("git")
+        .args(["checkout", "-b", &expected_branch])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
     std::fs::write(repo_path.join("conflict.txt"), "branch change\n").unwrap();
     git_add_and_commit(&repo_path, "Branch modification");
 
-    Command::new("git").args(["checkout", "main"]).current_dir(&repo_path).output().unwrap();
+    Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
     std::fs::write(repo_path.join("conflict.txt"), "main change\n").unwrap();
     git_add_and_commit(&repo_path, "Main modification");
 
     assert_eq!(task.task_branch, None);
 
-    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> = Arc::new(MemoryTaskRepository::new());
-    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> = Arc::new(MemoryProjectRepository::new());
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> =
+        Arc::new(MemoryProjectRepository::new());
     task_repo.create(task.clone()).await.unwrap();
     project_repo.create(project.clone()).await.unwrap();
 
@@ -198,13 +253,15 @@ async fn test_merge_retry_recovery_detects_conflicts_and_enters_merging() {
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Task should transition to Merging when conflicts are detected"
     );
 
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     assert_eq!(
-        updated_task.task_branch, Some(expected_branch.clone()),
+        updated_task.task_branch,
+        Some(expected_branch.clone()),
         "Branch should be discovered and re-attached during retry"
     );
 }
@@ -226,7 +283,10 @@ async fn test_executing_entry_recovers_existing_branch_into_worktree() {
 
     let worktree_parent = temp_dir.path().join("worktrees");
     std::fs::create_dir_all(&worktree_parent).unwrap();
-    let mut project = Project::new("test-project".to_string(), repo_path.to_string_lossy().to_string());
+    let mut project = Project::new(
+        "test-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
     project.git_mode = GitMode::Worktree;
     project.worktree_parent_directory = Some(worktree_parent.to_string_lossy().to_string());
 
@@ -235,11 +295,17 @@ async fn test_executing_entry_recovers_existing_branch_into_worktree() {
     task.task_branch = None;
 
     let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
-    Command::new("git").args(["branch", &expected_branch]).current_dir(&repo_path).output().unwrap();
+    Command::new("git")
+        .args(["branch", &expected_branch])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
     assert_eq!(task.task_branch, None);
 
-    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> = Arc::new(MemoryTaskRepository::new());
-    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> = Arc::new(MemoryProjectRepository::new());
+    let task_repo: Arc<dyn crate::domain::repositories::TaskRepository> =
+        Arc::new(MemoryTaskRepository::new());
+    let project_repo: Arc<dyn crate::domain::repositories::ProjectRepository> =
+        Arc::new(MemoryProjectRepository::new());
     task_repo.create(task.clone()).await.unwrap();
     project_repo.create(project.clone()).await.unwrap();
 
@@ -252,30 +318,49 @@ async fn test_executing_entry_recovers_existing_branch_into_worktree() {
     let handler = TransitionHandler::new(&mut machine);
 
     let result = handler.on_enter(&State::Executing).await;
-    assert!(result.is_ok(), "Executing entry should succeed even with existing branch: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "Executing entry should succeed even with existing branch: {:?}",
+        result
+    );
 
     let updated_task = task_repo.get_by_id(&task.id).await.unwrap().unwrap();
     assert_eq!(
-        updated_task.task_branch, Some(expected_branch.clone()),
+        updated_task.task_branch,
+        Some(expected_branch.clone()),
         "Existing branch should be attached during Executing entry"
     );
 
     let expected_worktree = format!(
         "{}/test-project/task-{}",
-        worktree_parent.to_string_lossy(), task.id.as_str()
+        worktree_parent.to_string_lossy(),
+        task.id.as_str()
     );
-    assert_eq!(updated_task.worktree_path, Some(expected_worktree.clone()), "Worktree path should be set");
+    assert_eq!(
+        updated_task.worktree_path,
+        Some(expected_worktree.clone()),
+        "Worktree path should be set"
+    );
 
     let worktree_path = std::path::Path::new(&expected_worktree);
-    assert!(worktree_path.exists(), "Worktree directory should exist at {}", expected_worktree);
+    assert!(
+        worktree_path.exists(),
+        "Worktree directory should exist at {}",
+        expected_worktree
+    );
 
     let branch_check = Command::new("git")
         .args(["branch", "--show-current"])
         .current_dir(worktree_path)
         .output()
         .unwrap();
-    let current_branch = String::from_utf8_lossy(&branch_check.stdout).trim().to_string();
-    assert_eq!(current_branch, expected_branch, "Worktree should be on the existing branch");
+    let current_branch = String::from_utf8_lossy(&branch_check.stdout)
+        .trim()
+        .to_string();
+    assert_eq!(
+        current_branch, expected_branch,
+        "Worktree should be on the existing branch"
+    );
 }
 
 // ==================

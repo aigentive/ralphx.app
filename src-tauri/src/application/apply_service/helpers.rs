@@ -1,6 +1,8 @@
 // Helper functions for ApplyService
 
-use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskCategory, TaskProposal, TaskProposalId};
+use crate::domain::entities::{
+    InternalStatus, ProjectId, Task, TaskCategory, TaskProposal, TaskProposalId,
+};
 use std::collections::{HashMap, HashSet};
 
 use super::types::SelectionValidation;

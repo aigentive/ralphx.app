@@ -12,7 +12,9 @@ use std::sync::Arc;
 
 use ralphx_lib::application::AppState;
 use ralphx_lib::commands::execution_commands::ExecutionState;
-use ralphx_lib::domain::entities::{IdeationSessionId, InternalStatus, Project, Task, TaskCategory};
+use ralphx_lib::domain::entities::{
+    IdeationSessionId, InternalStatus, Project, Task, TaskCategory,
+};
 
 // ============================================================================
 // Local helpers (private in production code, reimplemented for tests)
@@ -49,7 +51,11 @@ fn create_test_project(name: &str, working_directory: &str, base_branch: Option<
 }
 
 /// Create a test task in PendingMerge status with optional metadata
-fn create_pending_merge_task(project_id: &ralphx_lib::domain::entities::ProjectId, title: &str, metadata: Option<&str>) -> Task {
+fn create_pending_merge_task(
+    project_id: &ralphx_lib::domain::entities::ProjectId,
+    title: &str,
+    metadata: Option<&str>,
+) -> Task {
     let mut task = Task::new(project_id.clone(), title.to_string());
     task.internal_status = InternalStatus::PendingMerge;
     task.task_branch = Some(format!("task-{}", task.id.as_str()));
@@ -109,20 +115,36 @@ async fn test_main_merge_deferred_when_agents_running() {
 
     // Create project with main as base branch
     let project = create_test_project("Test Project", "/test/path", Some("main"));
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Simulate agents running
     execution_state.increment_running();
     execution_state.increment_running();
-    assert_eq!(execution_state.running_count(), 2, "Should have 2 agents running");
+    assert_eq!(
+        execution_state.running_count(),
+        2,
+        "Should have 2 agents running"
+    );
 
     // Create a task targeting main branch in PendingMerge
     let task = create_pending_merge_task(&project.id, "Task targeting main", None);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     // Verify initial state: no main_merge_deferred flag
-    let initial = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert!(!has_main_merge_deferred_metadata(&initial), "Should not have main_merge_deferred initially");
+    let initial = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !has_main_merge_deferred_metadata(&initial),
+        "Should not have main_merge_deferred initially"
+    );
     assert_eq!(initial.internal_status, InternalStatus::PendingMerge);
 
     // NOTE: The actual deferral logic should be implemented in attempt_programmatic_merge()
@@ -133,15 +155,35 @@ async fn test_main_merge_deferred_when_agents_running() {
     // 3. Return early, staying in PendingMerge
 
     // For now, simulate what the feature should do:
-    let mut deferred_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let mut deferred_task = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
     set_main_merge_deferred_metadata(&mut deferred_task);
     app_state.task_repo.update(&deferred_task).await.unwrap();
 
     // Verify the expected deferred state
-    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert!(has_main_merge_deferred_metadata(&updated), "Should have main_merge_deferred flag after deferral");
-    assert_eq!(updated.internal_status, InternalStatus::PendingMerge, "Should stay in PendingMerge");
-    assert!(!has_merge_deferred_metadata(&updated), "Should NOT have branch-conflict merge_deferred flag");
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        has_main_merge_deferred_metadata(&updated),
+        "Should have main_merge_deferred flag after deferral"
+    );
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::PendingMerge,
+        "Should stay in PendingMerge"
+    );
+    assert!(
+        !has_merge_deferred_metadata(&updated),
+        "Should NOT have branch-conflict merge_deferred flag"
+    );
 }
 
 // ============================================================================
@@ -163,7 +205,11 @@ async fn test_deferred_main_merge_retries_on_global_idle() {
 
     // Create project with main as base branch
     let project = create_test_project("Test Project", "/test/path", Some("main"));
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a task with main_merge_deferred flag (simulating prior deferral)
     let mut task = create_pending_merge_task(&project.id, "Deferred main merge task", None);
@@ -171,8 +217,16 @@ async fn test_deferred_main_merge_retries_on_global_idle() {
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     // Verify task is deferred
-    let initial = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert!(has_main_merge_deferred_metadata(&initial), "Should start with main_merge_deferred flag");
+    let initial = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        has_main_merge_deferred_metadata(&initial),
+        "Should start with main_merge_deferred flag"
+    );
 
     // Simulate agents running
     execution_state.increment_running();
@@ -182,22 +236,43 @@ async fn test_deferred_main_merge_retries_on_global_idle() {
     // In the real implementation, on_exit() decrements running_count,
     // then checks if count == 0 and calls try_retry_main_merges()
     execution_state.decrement_running();
-    assert_eq!(execution_state.running_count(), 0, "All agents should be complete");
+    assert_eq!(
+        execution_state.running_count(),
+        0,
+        "All agents should be complete"
+    );
 
     // For now, simulate what try_retry_main_merges() should do:
     // 1. Query tasks with PendingMerge + main_merge_deferred metadata
     // 2. Clear the flag
     // 3. Re-invoke entry actions (attempt_programmatic_merge)
-    let mut updated_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let mut updated_task = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
     if has_main_merge_deferred_metadata(&updated_task) && execution_state.running_count() == 0 {
         clear_main_merge_deferred_metadata(&mut updated_task);
         app_state.task_repo.update(&updated_task).await.unwrap();
     }
 
     // Verify the flag was cleared and task is ready for merge retry
-    let after_retry = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert!(!has_main_merge_deferred_metadata(&after_retry), "main_merge_deferred should be cleared");
-    assert_eq!(after_retry.internal_status, InternalStatus::PendingMerge, "Should still be in PendingMerge for retry");
+    let after_retry = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !has_main_merge_deferred_metadata(&after_retry),
+        "main_merge_deferred should be cleared"
+    );
+    assert_eq!(
+        after_retry.internal_status,
+        InternalStatus::PendingMerge,
+        "Should still be in PendingMerge for retry"
+    );
 }
 
 // ============================================================================
@@ -217,7 +292,11 @@ async fn test_main_merge_and_branch_conflict_deferral_coexist() {
 
     // Create project
     let project = create_test_project("Test Project", "/test/path", Some("main"));
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create Task A: deferred because agents are running (main merge deferral)
     let mut task_a = create_pending_merge_task(&project.id, "Main merge deferred", None);
@@ -226,7 +305,8 @@ async fn test_main_merge_and_branch_conflict_deferral_coexist() {
 
     // Create Task B: deferred because another merge is in progress (branch-conflict)
     let mut task_b = create_pending_merge_task(&project.id, "Branch conflict deferred", None);
-    task_b.metadata = Some(r#"{"merge_deferred": true, "blocking_task_id": "other-task-id"}"#.to_string());
+    task_b.metadata =
+        Some(r#"{"merge_deferred": true, "blocking_task_id": "other-task-id"}"#.to_string());
     app_state.task_repo.create(task_b.clone()).await.unwrap();
 
     // Create Task C: has BOTH flags (edge case: deferred for main while blocked by branch-conflict)
@@ -242,21 +322,54 @@ async fn test_main_merge_and_branch_conflict_deferral_coexist() {
     app_state.task_repo.create(task_c.clone()).await.unwrap();
 
     // Verify distinct flags
-    let saved_a = app_state.task_repo.get_by_id(&task_a.id).await.unwrap().unwrap();
-    let saved_b = app_state.task_repo.get_by_id(&task_b.id).await.unwrap().unwrap();
-    let saved_c = app_state.task_repo.get_by_id(&task_c.id).await.unwrap().unwrap();
+    let saved_a = app_state
+        .task_repo
+        .get_by_id(&task_a.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let saved_b = app_state
+        .task_repo
+        .get_by_id(&task_b.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let saved_c = app_state
+        .task_repo
+        .get_by_id(&task_c.id)
+        .await
+        .unwrap()
+        .unwrap();
 
     // Task A: only main_merge_deferred
-    assert!(has_main_merge_deferred_metadata(&saved_a), "Task A should have main_merge_deferred");
-    assert!(!has_merge_deferred_metadata(&saved_a), "Task A should NOT have merge_deferred");
+    assert!(
+        has_main_merge_deferred_metadata(&saved_a),
+        "Task A should have main_merge_deferred"
+    );
+    assert!(
+        !has_merge_deferred_metadata(&saved_a),
+        "Task A should NOT have merge_deferred"
+    );
 
     // Task B: only merge_deferred (branch-conflict)
-    assert!(!has_main_merge_deferred_metadata(&saved_b), "Task B should NOT have main_merge_deferred");
-    assert!(has_merge_deferred_metadata(&saved_b), "Task B should have merge_deferred");
+    assert!(
+        !has_main_merge_deferred_metadata(&saved_b),
+        "Task B should NOT have main_merge_deferred"
+    );
+    assert!(
+        has_merge_deferred_metadata(&saved_b),
+        "Task B should have merge_deferred"
+    );
 
     // Task C: both flags
-    assert!(has_main_merge_deferred_metadata(&saved_c), "Task C should have main_merge_deferred");
-    assert!(has_merge_deferred_metadata(&saved_c), "Task C should have merge_deferred");
+    assert!(
+        has_main_merge_deferred_metadata(&saved_c),
+        "Task C should have main_merge_deferred"
+    );
+    assert!(
+        has_merge_deferred_metadata(&saved_c),
+        "Task C should have merge_deferred"
+    );
 
     // Test independent flag clearing
     // Simulate agents going idle (should clear main_merge_deferred but NOT merge_deferred)
@@ -264,9 +377,20 @@ async fn test_main_merge_and_branch_conflict_deferral_coexist() {
     clear_main_merge_deferred_metadata(&mut updated_c);
     app_state.task_repo.update(&updated_c).await.unwrap();
 
-    let after_idle = app_state.task_repo.get_by_id(&task_c.id).await.unwrap().unwrap();
-    assert!(!has_main_merge_deferred_metadata(&after_idle), "main_merge_deferred should be cleared");
-    assert!(has_merge_deferred_metadata(&after_idle), "merge_deferred should still be set");
+    let after_idle = app_state
+        .task_repo
+        .get_by_id(&task_c.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !has_main_merge_deferred_metadata(&after_idle),
+        "main_merge_deferred should be cleared"
+    );
+    assert!(
+        has_merge_deferred_metadata(&after_idle),
+        "merge_deferred should still be set"
+    );
 }
 
 // ============================================================================
@@ -288,7 +412,11 @@ async fn test_multiple_main_merges_deferred_and_retry() {
 
     // Create project
     let project = create_test_project("Test Project", "/test/path", Some("main"));
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Simulate agents running
     execution_state.increment_running();
@@ -299,7 +427,8 @@ async fn test_multiple_main_merges_deferred_and_retry() {
     // Create multiple tasks targeting main, all deferred
     let mut tasks: Vec<Task> = Vec::new();
     for i in 0..3 {
-        let mut task = create_pending_merge_task(&project.id, &format!("Main merge task {}", i), None);
+        let mut task =
+            create_pending_merge_task(&project.id, &format!("Main merge task {}", i), None);
         set_main_merge_deferred_metadata(&mut task);
         app_state.task_repo.create(task.clone()).await.unwrap();
         tasks.push(task);
@@ -307,8 +436,17 @@ async fn test_multiple_main_merges_deferred_and_retry() {
 
     // Verify all are deferred
     for task in &tasks {
-        let saved = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-        assert!(has_main_merge_deferred_metadata(&saved), "Task {} should have main_merge_deferred", task.id.as_str());
+        let saved = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            has_main_merge_deferred_metadata(&saved),
+            "Task {} should have main_merge_deferred",
+            task.id.as_str()
+        );
     }
 
     // Simulate all agents completing (one by one)
@@ -319,7 +457,12 @@ async fn test_multiple_main_merges_deferred_and_retry() {
 
     // Simulate try_retry_main_merges() - clears flags for all deferred tasks
     for task in &tasks {
-        let mut updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+        let mut updated = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
         if has_main_merge_deferred_metadata(&updated) {
             clear_main_merge_deferred_metadata(&mut updated);
             app_state.task_repo.update(&updated).await.unwrap();
@@ -328,9 +471,23 @@ async fn test_multiple_main_merges_deferred_and_retry() {
 
     // Verify all flags are cleared
     for task in &tasks {
-        let final_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-        assert!(!has_main_merge_deferred_metadata(&final_task), "Task {} should have flag cleared", task.id.as_str());
-        assert_eq!(final_task.internal_status, InternalStatus::PendingMerge, "Task {} should be in PendingMerge for retry", task.id.as_str());
+        let final_task = app_state
+            .task_repo
+            .get_by_id(&task.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            !has_main_merge_deferred_metadata(&final_task),
+            "Task {} should have flag cleared",
+            task.id.as_str()
+        );
+        assert_eq!(
+            final_task.internal_status,
+            InternalStatus::PendingMerge,
+            "Task {} should be in PendingMerge for retry",
+            task.id.as_str()
+        );
     }
 }
 
@@ -354,7 +511,11 @@ async fn test_app_restart_agents_running_stays_deferred() {
 
     // Create project
     let project = create_test_project("Test Project", "/test/path", Some("main"));
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a task deferred for main merge
     let mut task = create_pending_merge_task(&project.id, "Deferred main merge", None);
@@ -365,7 +526,11 @@ async fn test_app_restart_agents_running_stays_deferred() {
     // (reconciliation would set running_count based on active agent_runs)
     execution_state.increment_running();
     execution_state.increment_running();
-    assert_eq!(execution_state.running_count(), 2, "Agents still running after restart");
+    assert_eq!(
+        execution_state.running_count(),
+        2,
+        "Agents still running after restart"
+    );
 
     // In the real implementation, reconcile_pending_merge_task() would:
     // 1. Check has_main_merge_deferred_metadata(task) -> true
@@ -373,15 +538,28 @@ async fn test_app_restart_agents_running_stays_deferred() {
     // 3. Skip retry (keep task deferred)
 
     // Simulate reconciliation check
-    let saved_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    let should_retry = has_main_merge_deferred_metadata(&saved_task)
-        && execution_state.running_count() == 0;
+    let saved_task = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let should_retry =
+        has_main_merge_deferred_metadata(&saved_task) && execution_state.running_count() == 0;
 
     assert!(!should_retry, "Should NOT retry when agents still running");
 
     // Task should remain deferred
-    let final_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert!(has_main_merge_deferred_metadata(&final_task), "main_merge_deferred should remain set");
+    let final_task = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        has_main_merge_deferred_metadata(&final_task),
+        "main_merge_deferred should remain set"
+    );
     assert_eq!(final_task.internal_status, InternalStatus::PendingMerge);
 }
 
@@ -404,7 +582,11 @@ async fn test_app_restart_no_agents_auto_retries() {
 
     // Create project
     let project = create_test_project("Test Project", "/test/path", Some("main"));
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Create a task deferred for main merge
     let mut task = create_pending_merge_task(&project.id, "Deferred main merge", None);
@@ -412,7 +594,11 @@ async fn test_app_restart_no_agents_auto_retries() {
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     // Simulate app restart with NO agents running
-    assert_eq!(execution_state.running_count(), 0, "No agents running on restart");
+    assert_eq!(
+        execution_state.running_count(),
+        0,
+        "No agents running on restart"
+    );
 
     // In the real implementation, reconcile_pending_merge_task() would:
     // 1. Check has_main_merge_deferred_metadata(task) -> true
@@ -420,9 +606,14 @@ async fn test_app_restart_no_agents_auto_retries() {
     // 3. Clear main_merge_deferred and re-invoke entry actions
 
     // Simulate reconciliation triggering retry
-    let saved_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    let should_retry = has_main_merge_deferred_metadata(&saved_task)
-        && execution_state.running_count() == 0;
+    let saved_task = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    let should_retry =
+        has_main_merge_deferred_metadata(&saved_task) && execution_state.running_count() == 0;
 
     assert!(should_retry, "Should retry when no agents running");
 
@@ -432,9 +623,21 @@ async fn test_app_restart_no_agents_auto_retries() {
     app_state.task_repo.update(&updated_task).await.unwrap();
 
     // Verify the task is ready for merge
-    let final_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert!(!has_main_merge_deferred_metadata(&final_task), "main_merge_deferred should be cleared");
-    assert_eq!(final_task.internal_status, InternalStatus::PendingMerge, "Should be in PendingMerge for merge attempt");
+    let final_task = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !has_main_merge_deferred_metadata(&final_task),
+        "main_merge_deferred should be cleared"
+    );
+    assert_eq!(
+        final_task.internal_status,
+        InternalStatus::PendingMerge,
+        "Should be in PendingMerge for merge attempt"
+    );
 }
 
 // ============================================================================
@@ -457,7 +660,11 @@ async fn test_non_main_target_no_main_merge_deferral() {
 
     // Create project
     let project = create_test_project("Test Project", "/test/path", Some("main"));
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Simulate agents running
     execution_state.increment_running();
@@ -475,9 +682,20 @@ async fn test_non_main_target_no_main_merge_deferral() {
     // So main_merge_deferred should NOT be set even when agents are running
 
     // For this test, just verify the task doesn't have the flag
-    let saved_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert!(!has_main_merge_deferred_metadata(&saved_task), "Should NOT have main_merge_deferred for feature branch target");
-    assert!(!has_merge_deferred_metadata(&saved_task), "Should not have merge_deferred either (no conflict)");
+    let saved_task = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        !has_main_merge_deferred_metadata(&saved_task),
+        "Should NOT have main_merge_deferred for feature branch target"
+    );
+    assert!(
+        !has_merge_deferred_metadata(&saved_task),
+        "Should not have merge_deferred either (no conflict)"
+    );
 }
 
 // ============================================================================
@@ -498,7 +716,11 @@ async fn test_plan_merge_task_deferred_when_agents_running() {
 
     // Create project
     let project = create_test_project("Test Project", "/test/path", Some("main"));
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Simulate agents running
     execution_state.increment_running();
@@ -513,12 +735,25 @@ async fn test_plan_merge_task_deferred_when_agents_running() {
 
     // For now, simulate what the feature should do:
     // Since this task targets main and agents are running, set main_merge_deferred
-    let mut deferred_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let mut deferred_task = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
     set_main_merge_deferred_metadata(&mut deferred_task);
     app_state.task_repo.update(&deferred_task).await.unwrap();
 
     // Verify the expected deferred state
-    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
-    assert!(has_main_merge_deferred_metadata(&updated), "plan_merge task should have main_merge_deferred when agents running");
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        has_main_merge_deferred_metadata(&updated),
+        "plan_merge task should have main_merge_deferred when agents running"
+    );
     assert_eq!(updated.internal_status, InternalStatus::PendingMerge);
 }

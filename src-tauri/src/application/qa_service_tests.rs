@@ -164,8 +164,7 @@ impl AgenticClient for MockAgenticClient {
     async fn wait_for_completion(
         &self,
         _handle: &AgentHandle,
-    ) -> crate::domain::agents::error::AgentResult<crate::domain::agents::types::AgentOutput>
-    {
+    ) -> crate::domain::agents::error::AgentResult<crate::domain::agents::types::AgentOutput> {
         if self.success {
             Ok(crate::domain::agents::types::AgentOutput::success(
                 &self.output,
@@ -206,9 +205,8 @@ impl AgenticClient for MockAgenticClient {
     }
 
     fn capabilities(&self) -> &crate::domain::agents::capabilities::ClientCapabilities {
-        static CAPS: std::sync::OnceLock<
-            crate::domain::agents::capabilities::ClientCapabilities,
-        > = std::sync::OnceLock::new();
+        static CAPS: std::sync::OnceLock<crate::domain::agents::capabilities::ClientCapabilities> =
+            std::sync::OnceLock::new();
         CAPS.get_or_init(crate::domain::agents::capabilities::ClientCapabilities::mock)
     }
 

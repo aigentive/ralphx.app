@@ -21,11 +21,8 @@ mod tests {
         // Insert a project — the v1 schema default is 'local', but v44 converts to 'worktree'.
         // Since migrations already ran, new inserts still use the schema DEFAULT 'local',
         // but we can verify the migration logic by re-running it.
-        conn.execute(
-            "UPDATE projects SET git_mode = 'local' WHERE 1=0",
-            [],
-        )
-        .unwrap();
+        conn.execute("UPDATE projects SET git_mode = 'local' WHERE 1=0", [])
+            .unwrap();
 
         // Verify no 'local' projects exist after full migration
         let count: i32 = conn

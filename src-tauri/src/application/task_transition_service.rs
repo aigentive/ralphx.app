@@ -156,10 +156,7 @@ impl<R: Runtime> RepoBackedDependencyManager<R> {
 
     /// Get names of incomplete blockers for a task (for blocked_reason message).
     /// Returns (waiting_names, failed_names) so callers can produce specific messages.
-    async fn get_incomplete_blocker_names(
-        &self,
-        task_id: &TaskId,
-    ) -> (Vec<String>, Vec<String>) {
+    async fn get_incomplete_blocker_names(&self, task_id: &TaskId) -> (Vec<String>, Vec<String>) {
         let blockers = match self.task_dep_repo.get_blockers(task_id).await {
             Ok(b) => b,
             Err(_) => return (Vec::new(), Vec::new()),
@@ -838,9 +835,15 @@ impl<R: Runtime> TaskTransitionService<R> {
                 // No explicit choice — fall back to task metadata.
                 // Always set team_mode explicitly to prevent AtomicBool contamination
                 // from previous tasks sharing the same Arc<ChatService>.
-                let is_team = task.metadata.as_ref()
+                let is_team = task
+                    .metadata
+                    .as_ref()
                     .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                    .and_then(|meta| meta.get("agent_variant").and_then(|v| v.as_str()).map(|s| s == "team"))
+                    .and_then(|meta| {
+                        meta.get("agent_variant")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s == "team")
+                    })
                     .unwrap_or(false);
                 self.chat_service.set_team_mode(is_team);
             }
@@ -919,7 +922,11 @@ impl<R: Runtime> TaskTransitionService<R> {
                     failed_task.touch();
                     // Use optimistic lock: only overwrite to Failed if task is still in the
                     // expected state. Prevents clobbering if another caller already transitioned it.
-                    match self.task_repo.update_with_expected_status(&failed_task, from_status).await {
+                    match self
+                        .task_repo
+                        .update_with_expected_status(&failed_task, from_status)
+                        .await
+                    {
                         Ok(false) => {
                             tracing::info!(
                                 task_id = task_id.as_str(),

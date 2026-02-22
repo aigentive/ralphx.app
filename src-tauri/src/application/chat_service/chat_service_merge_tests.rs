@@ -272,7 +272,10 @@ fn test_source_update_conflict_target_branch_from_metadata() {
         .map(String::from);
 
     // Must return the plan branch, not "main"
-    assert_eq!(target_branch, Some("ralphx/ralphx/plan-c785dcd0".to_string()));
+    assert_eq!(
+        target_branch,
+        Some("ralphx/ralphx/plan-c785dcd0".to_string())
+    );
 }
 
 #[test]
@@ -298,7 +301,10 @@ fn test_conflict_metadata_target_branch_not_contaminated_by_base_branch() {
         .unwrap_or_else(|| resolved_target_branch.clone());
 
     // Must NOT be "main" — must be the plan branch from metadata
-    assert_ne!(plan_branch, "main", "plan_branch must not fall back to 'main' when metadata has the correct target_branch");
+    assert_ne!(
+        plan_branch, "main",
+        "plan_branch must not fall back to 'main' when metadata has the correct target_branch"
+    );
     assert_eq!(plan_branch, "ralphx/ralphx/plan-c785dcd0");
 }
 

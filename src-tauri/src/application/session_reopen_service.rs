@@ -90,7 +90,8 @@ impl SessionReopenService {
             if plan_branch.status == PlanBranchStatus::Active {
                 if let Ok(Some(project)) = self.project_repo.get_by_id(&session.project_id).await {
                     let repo_path = PathBuf::from(&project.working_directory);
-                    let _ = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name).await;
+                    let _ = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name)
+                        .await;
                 }
                 let _ = self.plan_branch_repo.delete(&plan_branch.id).await;
             }

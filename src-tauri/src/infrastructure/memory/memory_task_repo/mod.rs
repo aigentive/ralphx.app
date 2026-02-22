@@ -215,9 +215,7 @@ impl TaskRepository for MemoryTaskRepository {
         // The in-memory impl returns highest-priority ready task without dependency filtering.
         let mut ready_tasks: Vec<&Task> = tasks
             .values()
-            .filter(|t| {
-                t.project_id == *project_id && t.internal_status == InternalStatus::Ready
-            })
+            .filter(|t| t.project_id == *project_id && t.internal_status == InternalStatus::Ready)
             .collect();
 
         ready_tasks.sort_by(|a, b| {

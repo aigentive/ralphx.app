@@ -82,10 +82,7 @@ impl AgentRunRepository for MockAgentRunRepository {
         Ok(())
     }
 
-    async fn delete_by_conversation(
-        &self,
-        _conversation_id: &ChatConversationId,
-    ) -> AppResult<()> {
+    async fn delete_by_conversation(&self, _conversation_id: &ChatConversationId) -> AppResult<()> {
         Ok(())
     }
 

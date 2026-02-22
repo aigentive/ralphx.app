@@ -410,8 +410,9 @@ impl StreamProcessor {
                             // Use top-level tool_use_result (structured metadata from Claude Code)
                             // falling back to content.tool_use_result or content itself
                             let empty = serde_json::Value::Null;
-                            let metadata = tool_use_result.as_ref()
-                                .unwrap_or_else(|| content.get("tool_use_result").unwrap_or(&empty));
+                            let metadata = tool_use_result.as_ref().unwrap_or_else(|| {
+                                content.get("tool_use_result").unwrap_or(&empty)
+                            });
                             let json_agent_id = metadata
                                 .get("agentId")
                                 .and_then(|v| v.as_str())

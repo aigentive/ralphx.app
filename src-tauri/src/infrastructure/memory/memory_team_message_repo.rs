@@ -92,10 +92,7 @@ impl TeamMessageRepository for MemoryTeamMessageRepository {
     }
 
     async fn delete(&self, id: &TeamMessageId) -> AppResult<()> {
-        self.messages
-            .write()
-            .unwrap()
-            .remove(id.as_str());
+        self.messages.write().unwrap().remove(id.as_str());
         Ok(())
     }
 }

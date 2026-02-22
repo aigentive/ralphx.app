@@ -559,7 +559,8 @@ async fn test_ai_review_needs_changes_flow() {
         "Fix task title should start with 'Fix:'"
     );
     assert_eq!(
-        fix_task.category, TaskCategory::Regular,
+        fix_task.category,
+        TaskCategory::Regular,
         "Fix task category should be Regular"
     );
     assert!(

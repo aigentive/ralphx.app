@@ -10,8 +10,8 @@
 use ralphx_lib::application::AppState;
 use ralphx_lib::domain::entities::{
     Artifact, ArtifactContent, ArtifactType, Complexity, IdeationSession, IdeationSessionBuilder,
-    IdeationSessionId, IdeationSessionStatus, Priority, ProjectId, ProposalCategory, ProposalStatus,
-    TaskProposal, TaskProposalId,
+    IdeationSessionId, IdeationSessionStatus, Priority, ProjectId, ProposalCategory,
+    ProposalStatus, TaskProposal, TaskProposalId,
 };
 // No SQLite infrastructure imports needed for memory-only tests
 
@@ -473,8 +473,7 @@ async fn test_child_has_no_plan_when_inherit_false(state: &AppState) {
 
     // Verify child has no plan despite parent having one
     assert_eq!(
-        created_child.plan_artifact_id,
-        None,
+        created_child.plan_artifact_id, None,
         "Child should NOT inherit parent's plan when inherit_context is false"
     );
 }
@@ -553,9 +552,7 @@ async fn memory_child_has_no_plan_when_parent_has_no_plan() {
 /// Test: Child inherits parent's team config when inherit_context=true.
 /// Verifies the inheritance priority: explicit > inherited > None
 /// Also verifies that inherited config is validated against project constraints.
-async fn test_child_inherits_team_config_when_parent_has_config_and_inherit_true(
-    state: &AppState,
-) {
+async fn test_child_inherits_team_config_when_parent_has_config_and_inherit_true(state: &AppState) {
     let project_id = ProjectId::new();
 
     // Create parent session with team config
@@ -565,11 +562,13 @@ async fn test_child_inherits_team_config_when_parent_has_config_and_inherit_true
         .title("Parent with Team Config")
         .status(IdeationSessionStatus::Active)
         .team_mode("research")
-        .team_config_json(serde_json::to_string(&serde_json::json!({
-            "max_teammates": 3,
-            "model_ceiling": "sonnet"
-        }))
-        .unwrap())
+        .team_config_json(
+            serde_json::to_string(&serde_json::json!({
+                "max_teammates": 3,
+                "model_ceiling": "sonnet"
+            }))
+            .unwrap(),
+        )
         .build();
 
     let parent_id = parent.id.clone();
@@ -584,11 +583,13 @@ async fn test_child_inherits_team_config_when_parent_has_config_and_inherit_true
         .status(IdeationSessionStatus::Active)
         .parent_session_id(parent_id.clone())
         .team_mode("research") // Inherited from parent
-        .team_config_json(serde_json::to_string(&serde_json::json!({
-            "max_teammates": 3,
-            "model_ceiling": "sonnet"
-        }))
-        .unwrap()) // Inherited from parent
+        .team_config_json(
+            serde_json::to_string(&serde_json::json!({
+                "max_teammates": 3,
+                "model_ceiling": "sonnet"
+            }))
+            .unwrap(),
+        ) // Inherited from parent
         .build();
 
     let created_child = state.ideation_session_repo.create(child).await.unwrap();
@@ -623,11 +624,13 @@ async fn test_child_explicit_team_config_overrides_inheritance(state: &AppState)
         .title("Parent with Team Config")
         .status(IdeationSessionStatus::Active)
         .team_mode("research")
-        .team_config_json(serde_json::to_string(&serde_json::json!({
-            "max_teammates": 5,
-            "model_ceiling": "opus"
-        }))
-        .unwrap())
+        .team_config_json(
+            serde_json::to_string(&serde_json::json!({
+                "max_teammates": 5,
+                "model_ceiling": "opus"
+            }))
+            .unwrap(),
+        )
         .build();
 
     let parent_id = parent.id.clone();
@@ -642,11 +645,13 @@ async fn test_child_explicit_team_config_overrides_inheritance(state: &AppState)
         .status(IdeationSessionStatus::Active)
         .parent_session_id(parent_id.clone())
         .team_mode("debate") // Explicit override
-        .team_config_json(serde_json::to_string(&serde_json::json!({
-            "max_teammates": 2,
-            "model_ceiling": "haiku"
-        }))
-        .unwrap()) // Explicit override, NOT inherited
+        .team_config_json(
+            serde_json::to_string(&serde_json::json!({
+                "max_teammates": 2,
+                "model_ceiling": "haiku"
+            }))
+            .unwrap(),
+        ) // Explicit override, NOT inherited
         .build();
 
     let created_child = state.ideation_session_repo.create(child).await.unwrap();
@@ -681,11 +686,13 @@ async fn test_child_no_team_config_when_inherit_false(state: &AppState) {
         .title("Parent with Team Config")
         .status(IdeationSessionStatus::Active)
         .team_mode("research")
-        .team_config_json(serde_json::to_string(&serde_json::json!({
-            "max_teammates": 5,
-            "model_ceiling": "opus"
-        }))
-        .unwrap())
+        .team_config_json(
+            serde_json::to_string(&serde_json::json!({
+                "max_teammates": 5,
+                "model_ceiling": "opus"
+            }))
+            .unwrap(),
+        )
         .build();
 
     let parent_id = parent.id.clone();
@@ -771,10 +778,8 @@ async fn test_child_inherits_none_when_parent_has_no_team_config(state: &AppStat
 
 #[tokio::test]
 async fn memory_child_inherits_team_config_when_parent_has_config_and_inherit_true() {
-    test_child_inherits_team_config_when_parent_has_config_and_inherit_true(
-        &create_memory_state(),
-    )
-    .await;
+    test_child_inherits_team_config_when_parent_has_config_and_inherit_true(&create_memory_state())
+        .await;
 }
 
 #[tokio::test]

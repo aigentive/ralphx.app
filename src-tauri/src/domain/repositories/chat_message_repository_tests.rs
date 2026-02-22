@@ -40,10 +40,7 @@ impl ChatMessageRepository for MockChatMessageRepository {
         Ok(self.return_message.clone())
     }
 
-    async fn get_by_session(
-        &self,
-        session_id: &IdeationSessionId,
-    ) -> AppResult<Vec<ChatMessage>> {
+    async fn get_by_session(&self, session_id: &IdeationSessionId) -> AppResult<Vec<ChatMessage>> {
         let mut filtered: Vec<_> = self
             .messages
             .iter()
@@ -211,8 +208,7 @@ async fn test_mock_repository_get_by_session_with_messages() {
     let message1 = create_test_message_in_session(&session_id);
     let message2 = create_test_message_in_session(&session_id);
 
-    let repo =
-        MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
+    let repo = MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
 
     let result = repo.get_by_session(&session_id).await;
     assert!(result.is_ok());
@@ -227,8 +223,7 @@ async fn test_mock_repository_get_by_session_filters_by_session() {
     let message1 = create_test_message_in_session(&session_id1);
     let message2 = create_test_message_in_session(&session_id2);
 
-    let repo =
-        MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
+    let repo = MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
 
     let result = repo.get_by_session(&session_id1).await;
     assert!(result.is_ok());
@@ -253,8 +248,7 @@ async fn test_mock_repository_get_by_project_with_messages() {
     let message1 = create_test_message_in_project(&project_id);
     let message2 = create_test_message_in_project(&project_id);
 
-    let repo =
-        MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
+    let repo = MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
 
     let result = repo.get_by_project(&project_id).await;
     assert!(result.is_ok());
@@ -278,8 +272,7 @@ async fn test_mock_repository_get_by_task_with_messages() {
     let message1 = create_test_message_about_task(&task_id);
     let message2 = create_test_message_about_task(&task_id);
 
-    let repo =
-        MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
+    let repo = MockChatMessageRepository::with_messages(vec![message1.clone(), message2.clone()]);
 
     let result = repo.get_by_task(&task_id).await;
     assert!(result.is_ok());

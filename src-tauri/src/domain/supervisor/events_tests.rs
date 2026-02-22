@@ -138,7 +138,6 @@ fn test_supervisor_event_deserialize() {
     let event: SupervisorEvent =
         serde_json::from_str(json).expect("Failed to deserialize SupervisorEvent");
     assert_eq!(event.task_id(), "task-123");
-
 }
 
 #[test]
@@ -149,4 +148,3 @@ fn test_supervisor_event_roundtrip() {
         serde_json::from_str(&json).expect("Failed to deserialize SupervisorEvent");
     assert_eq!(original.task_id(), restored.task_id());
 }
-

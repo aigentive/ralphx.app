@@ -47,8 +47,8 @@ pub use artifact_commands::{
     get_artifact_relations, get_artifacts, get_artifacts_by_bucket, get_artifacts_by_task,
     get_buckets, get_system_buckets, get_team_artifacts_by_session, update_artifact,
     AddRelationInput, ArtifactRelationResponse, ArtifactResponse, BucketResponse,
-    CreateArtifactInput, CreateBucketInput, GetTeamArtifactsResponse,
-    TeamArtifactSummaryResponse, UpdateArtifactInput,
+    CreateArtifactInput, CreateBucketInput, GetTeamArtifactsResponse, TeamArtifactSummaryResponse,
+    UpdateArtifactInput,
 };
 pub use chat_attachment_commands::{
     delete_chat_attachment, link_attachments_to_message, list_conversation_attachments,
@@ -56,15 +56,17 @@ pub use chat_attachment_commands::{
     UploadChatAttachmentInput,
 };
 pub use chat_responses::ChatMessageResponse;
-pub use diff_commands::{detect_merge_conflicts, get_conflict_file_diff, get_file_diff, get_task_file_changes};
+pub use diff_commands::{
+    detect_merge_conflicts, get_conflict_file_diff, get_file_diff, get_task_file_changes,
+};
 // Re-export ConflictDiff from application for convenience
 #[allow(unused_imports)]
 pub use crate::application::ConflictDiff;
 pub use execution_commands::{
     get_active_project, get_execution_status, get_global_execution_settings, get_running_processes,
-    pause_execution, recover_task_execution, resolve_recovery_prompt, restart_task, resume_execution,
-    set_active_project, stop_execution, update_global_execution_settings, ActiveProjectState,
-    ExecutionState, RestartResult, ResumeCategory, RunningProcessesResponse,
+    pause_execution, recover_task_execution, resolve_recovery_prompt, restart_task,
+    resume_execution, set_active_project, stop_execution, update_global_execution_settings,
+    ActiveProjectState, ExecutionState, RestartResult, ResumeCategory, RunningProcessesResponse,
 };
 pub use health::health_check;
 pub use ideation_commands::{
@@ -82,7 +84,9 @@ pub use ideation_commands::{
     OrchestratorMessageResponse, PriorityAssessmentResponse, SessionWithDataResponse,
     TaskProposalResponse, ToolCallResultResponse,
 };
-pub use merge_pipeline_commands::{get_merge_phase_list, get_merge_pipeline, get_merge_progress, MergePipelineResponse};
+pub use merge_pipeline_commands::{
+    get_merge_phase_list, get_merge_pipeline, get_merge_progress, MergePipelineResponse,
+};
 pub use methodology_commands::{
     activate_methodology, deactivate_methodology, get_active_methodology, get_methodologies,
     MethodologyActivationResponse, MethodologyPhaseResponse, MethodologyResponse,
@@ -137,8 +141,7 @@ pub use team_commands::{
     create_team, disband_team, get_team_history, get_team_messages, get_team_status,
     get_teammate_cost, send_team_message, send_teammate_message, stop_team, stop_teammate,
     CreateTeamInput, GetTeamHistoryInput, SendTeamMessageInput, SendTeammateMessageInput,
-    TeamHistoryResponse, TeamMessageRecordResponse, TeamSessionResponse,
-    TeammateSnapshotResponse,
+    TeamHistoryResponse, TeamMessageRecordResponse, TeamSessionResponse, TeammateSnapshotResponse,
 };
 // Unified chat commands (consolidates context_chat + execution_chat)
 pub use unified_chat_commands::{

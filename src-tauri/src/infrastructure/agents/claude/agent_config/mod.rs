@@ -8,8 +8,8 @@ use std::sync::OnceLock;
 
 #[allow(unused_imports)]
 pub use team_config::{
-    ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraints,
-    TeamConstraintError, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
+    ApprovedTeamPlan, ApprovedTeammate, ProcessMapping, ProcessSlot, TeamConstraintError,
+    TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
 };
 
 pub use runtime_config::{
@@ -294,7 +294,10 @@ fn merge_agent_configs(parent: &AgentConfigRaw, child: &AgentConfigRaw) -> Agent
     }
 }
 
-fn parse_config(yaml: &str) -> Option<LoadedConfig> {
+fn parse_config_with_lookup(
+    yaml: &str,
+    lookup: &dyn Fn(&str) -> Option<String>,
+) -> Option<LoadedConfig> {
     let parsed: RalphxConfig = match serde_yaml::from_str(yaml) {
         Ok(v) => v,
         Err(e) => {
@@ -316,7 +319,7 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
     let mut seen_names = HashSet::new();
     let mut resolved = Vec::with_capacity(resolved_raw_agents.len());
     let global_profile_selection =
-        runtime_settings_profile_override().or_else(|| parsed.claude.settings_profile.clone());
+        runtime_settings_profile_override_with(lookup).or_else(|| parsed.claude.settings_profile.clone());
     let resolved_settings =
         resolve_claude_settings(&parsed.claude, global_profile_selection.as_deref());
 
@@ -339,7 +342,7 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
 
         let cli_tools = resolve_tools(raw, &parsed.tool_sets);
         let agent_profile_selection =
-            runtime_settings_profile_override_for_agent(&raw.name)
+            runtime_settings_profile_override_for_agent_with(&raw.name, lookup)
                 .or_else(|| raw.settings_profile.clone());
         let agent_settings = if let Some(profile_name) = agent_profile_selection.as_deref() {
             if parsed.claude.settings_profiles.contains_key(profile_name) {
@@ -403,8 +406,13 @@ fn parse_config(yaml: &str) -> Option<LoadedConfig> {
     })
 }
 
-fn runtime_settings_profile_override() -> Option<String> {
-    runtime_settings_profile_override_with(&|name| std::env::var(name).ok())
+fn parse_config(yaml: &str) -> Option<LoadedConfig> {
+    parse_config_with_lookup(yaml, &|name| std::env::var(name).ok())
+}
+
+#[cfg(test)]
+fn parse_config_no_env_overrides(yaml: &str) -> Option<LoadedConfig> {
+    parse_config_with_lookup(yaml, &|_| None)
 }
 
 fn runtime_settings_profile_override_with(
@@ -418,10 +426,6 @@ fn runtime_settings_profile_override_with(
             Some(trimmed.to_string())
         }
     })
-}
-
-fn runtime_settings_profile_override_for_agent(agent_name: &str) -> Option<String> {
-    runtime_settings_profile_override_for_agent_with(agent_name, &|name| std::env::var(name).ok())
 }
 
 fn runtime_settings_profile_override_for_agent_with(
@@ -694,13 +698,13 @@ pub fn process_mapping() -> &'static ProcessMapping {
 }
 
 pub fn team_constraints_config() -> &'static TeamConstraintsConfig {
-    &LOADED_CONFIG_CELL
-        .get_or_init(load_config)
-        .team_constraints
+    &LOADED_CONFIG_CELL.get_or_init(load_config).team_constraints
 }
 
 pub fn defer_merge_enabled() -> bool {
-    LOADED_CONFIG_CELL.get_or_init(load_config).defer_merge_enabled
+    LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .defer_merge_enabled
 }
 
 pub fn stream_timeouts() -> &'static StreamTimeoutsConfig {
@@ -708,7 +712,10 @@ pub fn stream_timeouts() -> &'static StreamTimeoutsConfig {
 }
 
 pub fn reconciliation_config() -> &'static ReconciliationConfig {
-    &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.reconciliation
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .runtime
+        .reconciliation
 }
 
 pub fn git_runtime_config() -> &'static GitRuntimeConfig {
@@ -716,11 +723,17 @@ pub fn git_runtime_config() -> &'static GitRuntimeConfig {
 }
 
 pub fn scheduler_config() -> &'static SchedulerConfig {
-    &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.scheduler
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .runtime
+        .scheduler
 }
 
 pub fn supervisor_runtime_config() -> &'static SupervisorRuntimeConfig {
-    &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.supervisor
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .runtime
+        .supervisor
 }
 
 pub fn limits_config() -> &'static LimitsConfig {

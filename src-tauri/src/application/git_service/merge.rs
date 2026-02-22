@@ -17,11 +17,7 @@ impl GitService {
     /// * `repo` - Path to the git repository
     /// * `source` - Name of the branch to merge from
     /// * `_target` - Name of the target branch (unused, we merge into current HEAD)
-    pub async fn merge_branch(
-        repo: &Path,
-        source: &str,
-        _target: &str,
-    ) -> AppResult<MergeResult> {
+    pub async fn merge_branch(repo: &Path, source: &str, _target: &str) -> AppResult<MergeResult> {
         debug!("Merging branch '{}' in {:?}", source, repo);
 
         let output = git_cmd::run(&["merge", source, "--no-edit"], repo).await?;
@@ -117,18 +113,14 @@ impl GitService {
         Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch).await?;
 
         // Step 2: Squash merge source into worktree
-        let output = match git_cmd::run(
-            &["merge", "--squash", source_branch],
-            merge_worktree_path,
-        )
-        .await
-        {
-            Ok(output) => output,
-            Err(e) => {
-                let _ = Self::delete_worktree(repo, merge_worktree_path).await;
-                return Err(e);
-            }
-        };
+        let output =
+            match git_cmd::run(&["merge", "--squash", source_branch], merge_worktree_path).await {
+                Ok(output) => output,
+                Err(e) => {
+                    let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                    return Err(e);
+                }
+            };
 
         if !output.status.success() {
             let stdout = String::from_utf8_lossy(&output.stdout);
@@ -290,18 +282,14 @@ impl GitService {
         // Step 6: Create merge worktree on target, squash merge
         Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch).await?;
 
-        let squash_output = match git_cmd::run(
-            &["merge", "--squash", source_branch],
-            merge_worktree_path,
-        )
-        .await
-        {
-            Ok(output) => output,
-            Err(e) => {
-                let _ = Self::delete_worktree(repo, merge_worktree_path).await;
-                return Err(e);
-            }
-        };
+        let squash_output =
+            match git_cmd::run(&["merge", "--squash", source_branch], merge_worktree_path).await {
+                Ok(output) => output,
+                Err(e) => {
+                    let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                    return Err(e);
+                }
+            };
 
         if !squash_output.status.success() {
             let stderr = String::from_utf8_lossy(&squash_output.stderr);
@@ -379,19 +367,15 @@ impl GitService {
         Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch).await?;
 
         // Step 2: Merge source branch into the merge worktree
-        let output = match git_cmd::run(
-            &["merge", source_branch, "--no-edit"],
-            merge_worktree_path,
-        )
-        .await
-        {
-            Ok(output) => output,
-            Err(e) => {
-                // Clean up worktree on command execution failure
-                let _ = Self::delete_worktree(repo, merge_worktree_path).await;
-                return Err(e);
-            }
-        };
+        let output =
+            match git_cmd::run(&["merge", source_branch, "--no-edit"], merge_worktree_path).await {
+                Ok(output) => output,
+                Err(e) => {
+                    // Clean up worktree on command execution failure
+                    let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                    return Err(e);
+                }
+            };
 
         if output.status.success() {
             let commit_sha = Self::get_head_sha(merge_worktree_path).await?;
@@ -497,18 +481,16 @@ impl GitService {
                 Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch)
                     .await?;
 
-                let output = match git_cmd::run(
-                    &["merge", source_branch, "--no-edit"],
-                    merge_worktree_path,
-                )
-                .await
-                {
-                    Ok(output) => output,
-                    Err(e) => {
-                        let _ = Self::delete_worktree(repo, merge_worktree_path).await;
-                        return Err(e);
-                    }
-                };
+                let output =
+                    match git_cmd::run(&["merge", source_branch, "--no-edit"], merge_worktree_path)
+                        .await
+                    {
+                        Ok(output) => output,
+                        Err(e) => {
+                            let _ = Self::delete_worktree(repo, merge_worktree_path).await;
+                            return Err(e);
+                        }
+                    };
 
                 if output.status.success() {
                     let commit_sha = Self::get_head_sha(merge_worktree_path).await?;

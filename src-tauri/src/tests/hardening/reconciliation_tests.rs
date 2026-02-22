@@ -513,4 +513,3 @@ async fn test_e9_merge_recovery_preserves_worktree_context() {
         Response::Transition(State::Merged)
     );
 }
-

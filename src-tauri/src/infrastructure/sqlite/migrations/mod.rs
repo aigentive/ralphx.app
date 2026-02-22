@@ -58,13 +58,13 @@ mod v36_spawn_orchestrator_jobs;
 mod v37_team_sessions;
 mod v38_ideation_team_mode;
 mod v39_conversation_parent_id;
+mod v3_add_activity_events;
 mod v40_dependency_source;
 mod v41_activity_events_merge_index;
 mod v42_running_agent_heartbeat;
 mod v43_session_title_source;
 mod v44_remove_local_git_mode;
 mod v45_drop_task_blockers;
-mod v3_add_activity_events;
 mod v4_add_blocked_reason;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
@@ -129,13 +129,13 @@ mod v38_ideation_team_mode_tests;
 #[cfg(test)]
 mod v39_conversation_parent_id_tests;
 #[cfg(test)]
+mod v3_add_activity_events_tests;
+#[cfg(test)]
 mod v40_dependency_source_tests;
 #[cfg(test)]
 mod v43_session_title_source_tests;
 #[cfg(test)]
 mod v44_remove_local_git_mode_tests;
-#[cfg(test)]
-mod v3_add_activity_events_tests;
 #[cfg(test)]
 mod v4_add_blocked_reason_tests;
 #[cfg(test)]

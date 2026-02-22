@@ -43,12 +43,24 @@ fn session_swap_recovery_enqueues_rehydration_before_user_messages() {
     let queue = MessageQueue::new();
 
     // Simulate: user queued messages while agent was running
-    queue.queue(ChatContextType::Ideation, "ctx-1", "User follow-up 1".to_string());
-    queue.queue(ChatContextType::Ideation, "ctx-1", "User follow-up 2".to_string());
+    queue.queue(
+        ChatContextType::Ideation,
+        "ctx-1",
+        "User follow-up 1".to_string(),
+    );
+    queue.queue(
+        ChatContextType::Ideation,
+        "ctx-1",
+        "User follow-up 2".to_string(),
+    );
 
     // Session swap detected → recovery enqueues rehydration at front
     let rehydration_content = "<instructions>Your session was recovered</instructions>".to_string();
-    queue.queue_front(ChatContextType::Ideation, "ctx-1", rehydration_content.clone());
+    queue.queue_front(
+        ChatContextType::Ideation,
+        "ctx-1",
+        rehydration_content.clone(),
+    );
 
     // Verify queue order: rehydration first, then user messages
     let queued = queue.get_queued(ChatContextType::Ideation, "ctx-1");

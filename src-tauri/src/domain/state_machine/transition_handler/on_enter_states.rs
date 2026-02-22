@@ -242,8 +242,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     slugify(&project.name),
                                     task_id_str
                                 );
-                                let worktree_path_buf =
-                                    std::path::PathBuf::from(&worktree_path);
+                                let worktree_path_buf = std::path::PathBuf::from(&worktree_path);
 
                                 // Clean up stale task worktree from a prior execution attempt
                                 if worktree_path_buf.exists() {
@@ -280,9 +279,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 };
 
                                 match result {
-                                    Ok(_) => {
-                                        Ok(Some((branch.clone(), Some(worktree_path))))
-                                    }
+                                    Ok(_) => Ok(Some((branch.clone(), Some(worktree_path)))),
                                     Err(e) => {
                                         return Err(AppError::ExecutionBlocked(
                                             format!("Git isolation failed: could not create worktree at '{}': {}", worktree_path, e)
@@ -751,15 +748,14 @@ impl<'a> super::TransitionHandler<'a> {
                     match task_repo.get_by_id(&task_id_typed).await {
                         Ok(Some(task)) => {
                             // Read auto_retry_count_executing from task metadata for observability
-                            let attempt_count = task
-                                .metadata
-                                .as_deref()
-                                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                                .and_then(|v| {
-                                    v.get("auto_retry_count_executing")
-                                        .and_then(|c| c.as_u64())
-                                })
-                                .unwrap_or(0) as u32;
+                            let attempt_count =
+                                task.metadata
+                                    .as_deref()
+                                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                                    .and_then(|v| {
+                                        v.get("auto_retry_count_executing").and_then(|c| c.as_u64())
+                                    })
+                                    .unwrap_or(0) as u32;
 
                             if MetadataUpdate::key_exists_in(
                                 "failure_error",
@@ -787,8 +783,7 @@ impl<'a> super::TransitionHandler<'a> {
                                 }
                             } else {
                                 // Fallback: metadata not pre-computed, write it now for backward compatibility
-                                let enriched_data =
-                                    data.clone().with_attempt_count(attempt_count);
+                                let enriched_data = data.clone().with_attempt_count(attempt_count);
                                 let metadata_update = build_failed_metadata(&enriched_data);
                                 let merged_metadata =
                                     metadata_update.merge_into(task.metadata.as_deref());
@@ -928,16 +923,20 @@ impl<'a> super::TransitionHandler<'a> {
                     if let Some(ref task_repo) = self.machine.context.services.task_repo {
                         let tid = TaskId::from_string(task_id.clone());
                         if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
-                            let meta = task.metadata
+                            let meta = task
+                                .metadata
                                 .as_ref()
                                 .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
-                            let validation = meta.as_ref()
+                            let validation = meta
+                                .as_ref()
                                 .and_then(|v| v.get("validation_recovery")?.as_bool())
                                 .unwrap_or(false);
-                            let plan_conflict = meta.as_ref()
+                            let plan_conflict = meta
+                                .as_ref()
                                 .and_then(|v| v.get("plan_update_conflict")?.as_bool())
                                 .unwrap_or(false);
-                            let source_conflict = meta.as_ref()
+                            let source_conflict = meta
+                                .as_ref()
                                 .and_then(|v| v.get("source_update_conflict")?.as_bool())
                                 .unwrap_or(false);
                             (validation, plan_conflict, source_conflict)
@@ -958,23 +957,22 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                 } else if is_plan_update_conflict {
                     // Read base_branch and plan branch name from task metadata for the prompt.
-                    let plan_meta: Option<serde_json::Value> = if let Some(ref task_repo) =
-                        self.machine.context.services.task_repo
-                    {
-                        let tid = TaskId::from_string(task_id.clone());
-                        task_repo
-                            .get_by_id(&tid)
-                            .await
-                            .ok()
-                            .flatten()
-                            .and_then(|t| {
-                                t.metadata
-                                    .as_ref()
-                                    .and_then(|m| serde_json::from_str(m).ok())
-                            })
-                    } else {
-                        None
-                    };
+                    let plan_meta: Option<serde_json::Value> =
+                        if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                            let tid = TaskId::from_string(task_id.clone());
+                            task_repo
+                                .get_by_id(&tid)
+                                .await
+                                .ok()
+                                .flatten()
+                                .and_then(|t| {
+                                    t.metadata
+                                        .as_ref()
+                                        .and_then(|m| serde_json::from_str(m).ok())
+                                })
+                        } else {
+                            None
+                        };
                     let base_branch = plan_meta
                         .as_ref()
                         .and_then(|v| v.get("base_branch")?.as_str().map(String::from))
@@ -1004,23 +1002,22 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                 } else if is_source_update_conflict {
                     // Read source_branch and target_branch from task metadata for the prompt.
-                    let source_meta: Option<serde_json::Value> = if let Some(ref task_repo) =
-                        self.machine.context.services.task_repo
-                    {
-                        let tid = TaskId::from_string(task_id.clone());
-                        task_repo
-                            .get_by_id(&tid)
-                            .await
-                            .ok()
-                            .flatten()
-                            .and_then(|t| {
-                                t.metadata
-                                    .as_ref()
-                                    .and_then(|m| serde_json::from_str(m).ok())
-                            })
-                    } else {
-                        None
-                    };
+                    let source_meta: Option<serde_json::Value> =
+                        if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                            let tid = TaskId::from_string(task_id.clone());
+                            task_repo
+                                .get_by_id(&tid)
+                                .await
+                                .ok()
+                                .flatten()
+                                .and_then(|t| {
+                                    t.metadata
+                                        .as_ref()
+                                        .and_then(|m| serde_json::from_str(m).ok())
+                                })
+                        } else {
+                            None
+                        };
                     let source_branch = source_meta
                         .as_ref()
                         .and_then(|v| v.get("source_branch")?.as_str().map(String::from))
@@ -1139,7 +1136,6 @@ impl<'a> super::TransitionHandler<'a> {
         }
         Ok(())
     }
-
 }
 
 /// Record a merger agent spawn failure as an `AttemptFailed` event in task metadata.
@@ -1154,7 +1150,9 @@ async fn record_merger_spawn_failure(
 ) {
     let Some(repo) = task_repo else { return };
     let tid = TaskId::from_string(task_id.to_string());
-    let Ok(Some(mut task)) = repo.get_by_id(&tid).await else { return };
+    let Ok(Some(mut task)) = repo.get_by_id(&tid).await else {
+        return;
+    };
 
     let mut recovery = MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
         .unwrap_or(None)

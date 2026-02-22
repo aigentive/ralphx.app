@@ -98,7 +98,8 @@ pub async fn get_task_commits(
     // Handle merged tasks specially - branch/worktree is deleted, use merge_commit_sha
     if task.internal_status == InternalStatus::Merged {
         if let Some(ref merge_sha) = task.merge_commit_sha {
-            let commits = GitService::get_merged_task_commits(&repo_path, base_branch, merge_sha).await
+            let commits = GitService::get_merged_task_commits(&repo_path, base_branch, merge_sha)
+                .await
                 .map_err(|e| e.to_string())?;
             return Ok(TaskCommitsResponse {
                 commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
@@ -122,8 +123,9 @@ pub async fn get_task_commits(
         .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     // Get commits since base (from HEAD of the working path)
-    let commits =
-        GitService::get_commits_since(&working_path, base_branch).await.map_err(|e| e.to_string())?;
+    let commits = GitService::get_commits_since(&working_path, base_branch)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(TaskCommitsResponse {
         commits: commits.into_iter().map(CommitInfoResponse::from).collect(),
@@ -167,8 +169,9 @@ pub async fn get_task_diff_stats(
         .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     // Get diff stats
-    let stats =
-        GitService::get_diff_stats(&working_path, base_branch).await.map_err(|e| e.to_string())?;
+    let stats = GitService::get_diff_stats(&working_path, base_branch)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(TaskDiffStatsResponse::from(stats))
 }
@@ -229,7 +232,9 @@ pub async fn resolve_merge_conflict(
     let merge_in_progress = GitService::is_merge_in_progress(&working_path);
     let rebase_in_progress = GitService::is_rebase_in_progress(&working_path);
     if (merge_in_progress || rebase_in_progress)
-        && GitService::has_conflict_markers(&working_path).await.unwrap_or(true)
+        && GitService::has_conflict_markers(&working_path)
+            .await
+            .unwrap_or(true)
     {
         return Err(
             "Conflict markers still present in merge-related changed files. Please resolve all conflicts before marking as complete."
@@ -239,7 +244,8 @@ pub async fn resolve_merge_conflict(
 
     // Commit the resolved merge
     let commit_message = format!("Merge resolution for task: {}", task.title);
-    let commit_sha = GitService::commit_all(&working_path, &commit_message).await
+    let commit_sha = GitService::commit_all(&working_path, &commit_message)
+        .await
         .map_err(|e| format!("Failed to commit resolved merge: {}", e))?;
 
     // Update task with merge commit SHA if commit was made
@@ -353,20 +359,14 @@ pub async fn retry_merge(
     // won't block subsequent auto-retries if this attempt fails again.
     // These counters are meant to prevent automated infinite loops, not block
     // explicit user actions.
-    meta_obj.insert(
-        "validation_revert_count".to_string(),
-        serde_json::json!(0),
-    );
+    meta_obj.insert("validation_revert_count".to_string(), serde_json::json!(0));
     meta_obj.remove("merge_failure_source");
     // Reset merge recovery event log so auto-retry counters (which count
     // AutoRetryTriggered / AttemptFailed events) restart from zero.
     if let Some(recovery_val) = meta_obj.get_mut("merge_recovery") {
         if let Some(recovery_obj) = recovery_val.as_object_mut() {
             recovery_obj.insert("events".to_string(), serde_json::json!([]));
-            recovery_obj.insert(
-                "last_state".to_string(),
-                serde_json::json!("retrying"),
-            );
+            recovery_obj.insert("last_state".to_string(), serde_json::json!("retrying"));
         }
     }
 

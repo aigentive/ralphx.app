@@ -172,9 +172,13 @@ pub fn emit_teammate_status_change<R: Runtime>(
     context_id: &str,
 ) {
     match status {
-        TeammateStatus::Idle => {
-            emit_teammate_idle(app_handle, team_name, teammate_name, context_type, context_id)
-        }
+        TeammateStatus::Idle => emit_teammate_idle(
+            app_handle,
+            team_name,
+            teammate_name,
+            context_type,
+            context_id,
+        ),
         TeammateStatus::Shutdown | TeammateStatus::Failed => {
             emit_teammate_shutdown(
                 app_handle,

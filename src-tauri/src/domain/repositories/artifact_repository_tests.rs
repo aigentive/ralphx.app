@@ -87,10 +87,7 @@ impl ArtifactRepository for MockArtifactRepository {
         Ok(relation)
     }
 
-    async fn get_relations(
-        &self,
-        _artifact_id: &ArtifactId,
-    ) -> AppResult<Vec<ArtifactRelation>> {
+    async fn get_relations(&self, _artifact_id: &ArtifactId) -> AppResult<Vec<ArtifactRelation>> {
         Ok(vec![])
     }
 
@@ -102,11 +99,7 @@ impl ArtifactRepository for MockArtifactRepository {
         Ok(vec![])
     }
 
-    async fn delete_relation(
-        &self,
-        _from_id: &ArtifactId,
-        _to_id: &ArtifactId,
-    ) -> AppResult<()> {
+    async fn delete_relation(&self, _from_id: &ArtifactId, _to_id: &ArtifactId) -> AppResult<()> {
         Ok(())
     }
 
@@ -346,8 +339,7 @@ async fn test_artifact_repository_trait_object_in_arc() {
 
 #[tokio::test]
 async fn test_artifact_content_inline_stored_correctly() {
-    let artifact =
-        Artifact::new_inline("Test", ArtifactType::Prd, "inline content here", "user");
+    let artifact = Artifact::new_inline("Test", ArtifactType::Prd, "inline content here", "user");
     assert!(artifact.content.is_inline());
     if let ArtifactContent::Inline { text } = &artifact.content {
         assert_eq!(text, "inline content here");
@@ -384,9 +376,8 @@ async fn test_artifact_with_task_association() {
 #[tokio::test]
 async fn test_artifact_with_process_association() {
     let process_id = ProcessId::from_string("process-123");
-    let artifact =
-        Artifact::new_inline("Test", ArtifactType::Findings, "findings", "researcher")
-            .with_process(process_id.clone());
+    let artifact = Artifact::new_inline("Test", ArtifactType::Findings, "findings", "researcher")
+        .with_process(process_id.clone());
 
     assert_eq!(artifact.metadata.process_id, Some(process_id));
 }

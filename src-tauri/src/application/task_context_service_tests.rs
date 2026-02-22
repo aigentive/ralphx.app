@@ -247,11 +247,7 @@ impl TaskDependencyRepository for MockTaskDependencyRepository {
     async fn count_blocked_by(&self, _task_id: &TaskId) -> AppResult<u32> {
         Ok(0)
     }
-    async fn has_dependency(
-        &self,
-        _task_id: &TaskId,
-        _depends_on: &TaskId,
-    ) -> AppResult<bool> {
+    async fn has_dependency(&self, _task_id: &TaskId, _depends_on: &TaskId) -> AppResult<bool> {
         Ok(false)
     }
 }
@@ -305,11 +301,7 @@ impl TaskProposalRepository for MockTaskProposalRepository {
         Ok(())
     }
 
-    async fn set_created_task_id(
-        &self,
-        _id: &TaskProposalId,
-        _task_id: &TaskId,
-    ) -> AppResult<()> {
+    async fn set_created_task_id(&self, _id: &TaskProposalId, _task_id: &TaskId) -> AppResult<()> {
         Ok(())
     }
 
@@ -449,10 +441,7 @@ impl ArtifactRepository for MockArtifactRepository {
         Ok(relation)
     }
 
-    async fn get_relations(
-        &self,
-        _artifact_id: &ArtifactId,
-    ) -> AppResult<Vec<ArtifactRelation>> {
+    async fn get_relations(&self, _artifact_id: &ArtifactId) -> AppResult<Vec<ArtifactRelation>> {
         Ok(vec![])
     }
 
@@ -464,11 +453,7 @@ impl ArtifactRepository for MockArtifactRepository {
         Ok(vec![])
     }
 
-    async fn delete_relation(
-        &self,
-        _from_id: &ArtifactId,
-        _to_id: &ArtifactId,
-    ) -> AppResult<()> {
+    async fn delete_relation(&self, _from_id: &ArtifactId, _to_id: &ArtifactId) -> AppResult<()> {
         Ok(())
     }
 
@@ -713,8 +698,7 @@ async fn test_get_task_context_with_related_artifacts() {
         "Research",
         "user",
     );
-    let related2 =
-        Artifact::new_inline("Design Doc", ArtifactType::DesignDoc, "Design", "user");
+    let related2 = Artifact::new_inline("Design Doc", ArtifactType::DesignDoc, "Design", "user");
 
     let service = TaskContextService::new(
         Arc::new(MockTaskRepository::with_task(task.clone())),
@@ -739,14 +723,12 @@ async fn test_get_task_context_with_related_artifacts() {
 #[tokio::test]
 async fn test_content_preview_truncation() {
     let short_content = "Short content";
-    let artifact =
-        Artifact::new_inline("Test", ArtifactType::Specification, short_content, "user");
+    let artifact = Artifact::new_inline("Test", ArtifactType::Specification, short_content, "user");
     let preview = TaskContextService::create_content_preview(&artifact);
     assert_eq!(preview, short_content);
 
     let long_content = "x".repeat(600);
-    let artifact =
-        Artifact::new_inline("Test", ArtifactType::Specification, long_content, "user");
+    let artifact = Artifact::new_inline("Test", ArtifactType::Specification, long_content, "user");
     let preview = TaskContextService::create_content_preview(&artifact);
     assert_eq!(preview.len(), 503); // 500 + "..."
     assert!(preview.ends_with("..."));

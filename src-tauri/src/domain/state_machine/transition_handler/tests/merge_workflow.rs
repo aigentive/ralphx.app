@@ -7,9 +7,7 @@
 // - Blocking isolation (concurrent operations, execution state)
 
 use super::helpers::*;
-use crate::domain::state_machine::{
-    State, TaskEvent, TransitionHandler, TransitionResult,
-};
+use crate::domain::state_machine::{State, TaskEvent, TransitionHandler, TransitionResult};
 
 // ==================
 // Deferred merge retry tests
@@ -30,11 +28,14 @@ async fn test_exiting_pending_merge_triggers_retry_deferred_merges() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Expected try_retry_deferred_merges to be called"
     );
 
@@ -73,11 +74,14 @@ async fn test_exiting_pending_merge_to_merge_incomplete_triggers_retry() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Expected retry even on merge_incomplete"
     );
 
@@ -110,11 +114,14 @@ async fn test_exiting_merging_to_merged_triggers_retry() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Expected try_retry_deferred_merges to be called"
     );
 
@@ -145,11 +152,14 @@ async fn test_exiting_merging_to_merge_incomplete_triggers_retry() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Expected try_retry_deferred_merges to be called"
     );
 
@@ -177,11 +187,14 @@ async fn test_exiting_other_states_does_not_trigger_retry() {
         || {
             let s = Arc::clone(&sched);
             async move {
-                s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                s.get_calls()
+                    .iter()
+                    .any(|c| c.method == "try_retry_deferred_merges")
             }
         },
-        500
-    ).await;
+        500,
+    )
+    .await;
 
     // Verify try_retry_deferred_merges was NOT called for non-merge states
     let calls = scheduler.get_calls();
@@ -366,11 +379,14 @@ async fn test_background_execution_merged_terminal_state() {
                 async move {
                     let calls = s.get_calls();
                     calls.iter().any(|c| c.method == "try_schedule_ready_tasks")
-                        && calls.iter().any(|c| c.method == "try_retry_deferred_merges")
+                        && calls
+                            .iter()
+                            .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Should trigger both ready task scheduling and deferred merge retry"
     );
 

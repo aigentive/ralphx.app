@@ -18,6 +18,7 @@ pub mod priority_service;
 pub mod qa_service;
 pub mod question_state;
 pub mod reconciliation;
+pub mod resume_validator;
 pub mod review_issue_service;
 pub mod review_service;
 pub mod session_reopen_service;
@@ -25,13 +26,12 @@ pub mod startup_jobs;
 pub mod supervisor_service;
 pub mod task_cleanup_service;
 pub mod task_context_service;
-pub mod resume_validator;
 pub mod task_scheduler_service;
+pub mod task_transition_service;
 pub mod team_events;
 pub mod team_service;
 pub mod team_state_tracker;
 pub mod team_stream_processor;
-pub mod task_transition_service;
 
 // Re-export commonly used items
 pub use app_state::AppState;
@@ -59,6 +59,7 @@ pub use priority_service::PriorityService;
 pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use question_state::{PendingQuestionInfo, QuestionAnswer, QuestionOption, QuestionState};
 pub use reconciliation::ReconciliationRunner;
+pub use resume_validator::{ResumeValidationResult, ResumeValidator};
 pub use review_issue_service::{CreateIssueInput, ReviewIssueService};
 pub use review_service::ReviewService;
 pub use session_reopen_service::SessionReopenService;
@@ -68,13 +69,10 @@ pub use task_cleanup_service::{
     CleanupReport, StopMode, TaskCleanupService, TaskGroup, TaskStopper,
 };
 pub use task_context_service::TaskContextService;
-pub use resume_validator::{ResumeValidationResult, ResumeValidator};
-pub use task_scheduler_service::{
-    ReadyWatchdog, TaskSchedulerService,
-};
+pub use task_scheduler_service::{ReadyWatchdog, TaskSchedulerService};
+pub use task_transition_service::TaskTransitionService;
 pub use team_service::TeamService;
 pub use team_state_tracker::TeamStateTracker;
-pub use task_transition_service::TaskTransitionService;
 
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
 pub use chat_service::{
@@ -82,6 +80,6 @@ pub use chat_service::{
     AgentRunCompletedPayload, AgentRunStartedPayload, AgentToolCallPayload,
     ChatConversationWithMessages, ChatService, ChatServiceError, ClaudeChatService,
     MockChatResponse, MockChatService, SendResult, TeamCostUpdatePayload, TeamCreatedPayload,
-    TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload,
-    TeamTeammateShutdownPayload, TeamTeammateSpawnedPayload,
+    TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload, TeamTeammateShutdownPayload,
+    TeamTeammateSpawnedPayload,
 };

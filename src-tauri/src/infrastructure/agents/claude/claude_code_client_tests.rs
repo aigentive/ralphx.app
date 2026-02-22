@@ -49,16 +49,14 @@ fn test_default_trait() {
 
 #[tokio::test]
 async fn test_is_available_with_nonexistent_path() {
-    let client =
-        ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
+    let client = ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
     let available = client.is_available().await.unwrap();
     assert!(!available);
 }
 
 #[tokio::test]
 async fn test_spawn_agent_blocked_in_tests() {
-    let client =
-        ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
+    let client = ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
     let config = AgentConfig::worker("test");
 
     let result = client.spawn_agent(config).await;
@@ -225,8 +223,7 @@ fn test_build_cli_args_with_plugin_dir() {
 
 #[tokio::test]
 async fn test_spawn_agent_streaming_blocked_in_tests() {
-    let client =
-        ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
+    let client = ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
     let config = AgentConfig::worker("test");
 
     let result = client.spawn_agent_streaming(config, None).await;
@@ -236,8 +233,7 @@ async fn test_spawn_agent_streaming_blocked_in_tests() {
 
 #[test]
 fn test_cli_available_with_nonexistent_path() {
-    let client =
-        ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
+    let client = ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
     assert!(!client.cli_available());
 }
 
@@ -625,22 +621,15 @@ fn test_build_teammate_env_vars_includes_custom_env() {
         .with_env("RALPHX_SESSION_ID", "sess-456");
     let env = ClaudeCodeClient::build_teammate_env_vars(&config);
 
-    assert_eq!(
-        env.get("RALPHX_PROJECT_ID"),
-        Some(&"proj-123".to_string())
-    );
-    assert_eq!(
-        env.get("RALPHX_SESSION_ID"),
-        Some(&"sess-456".to_string())
-    );
+    assert_eq!(env.get("RALPHX_PROJECT_ID"), Some(&"proj-123".to_string()));
+    assert_eq!(env.get("RALPHX_SESSION_ID"), Some(&"sess-456".to_string()));
     // Team flags still present
     assert_eq!(env.get("CLAUDECODE"), Some(&"1".to_string()));
 }
 
 #[tokio::test]
 async fn test_spawn_teammate_interactive_blocked_in_tests() {
-    let client =
-        ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
+    let client = ClaudeCodeClient::new().with_cli_path("/nonexistent/path/to/claude_binary_12345");
     let config = test_teammate_config();
 
     let result = client.spawn_teammate_interactive(config).await;

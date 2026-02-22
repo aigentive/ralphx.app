@@ -1,10 +1,7 @@
 use super::*;
 use crate::domain::entities::SessionRelationship;
 
-fn create_test_link(
-    parent_id: &IdeationSessionId,
-    child_id: &IdeationSessionId,
-) -> SessionLink {
+fn create_test_link(parent_id: &IdeationSessionId, child_id: &IdeationSessionId) -> SessionLink {
     SessionLink::new(
         parent_id.clone(),
         child_id.clone(),

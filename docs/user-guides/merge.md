@@ -695,7 +695,9 @@ These values control how aggressively RalphX retries and recovers:
 
 ### Validation Command Format
 
-Validation commands are defined in the project's analysis (auto-detected or custom). The format is:
+Validation commands are defined in the project's analysis (auto-detected or custom). When `custom_analysis` is set, it takes **complete precedence** over `detected_analysis` — your customizations are trusted fully, including explicitly cleared fields like `worktree_setup: []`.
+
+The format is:
 
 ```json
 {

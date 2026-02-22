@@ -34,7 +34,10 @@ fn json_error(status: StatusCode, error: impl Into<String>) -> JsonError {
 fn team_config_input_to_constraints(input: &TeamConfigInput) -> TeamConstraints {
     TeamConstraints {
         max_teammates: input.max_teammates.map(|v| v as u8).unwrap_or(5),
-        model_cap: input.model_ceiling.clone().unwrap_or_else(|| "sonnet".to_string()),
+        model_cap: input
+            .model_ceiling
+            .clone()
+            .unwrap_or_else(|| "sonnet".to_string()),
         budget_limit: input.budget_limit,
         ..TeamConstraints::default()
     }
@@ -150,9 +153,10 @@ pub async fn create_child_session(
     // Resolve team config: explicit > inherited > None
     let (resolved_team_mode, resolved_team_config_json) = if let Some(mode) = &req.team_mode {
         // Explicit team_mode provided - use it with optional config
-        let config_json = req.team_config.as_ref().and_then(|c| {
-            serde_json::to_value(c).ok()
-        });
+        let config_json = req
+            .team_config
+            .as_ref()
+            .and_then(|c| serde_json::to_value(c).ok());
         (Some(mode.clone()), config_json.map(|v| v.to_string()))
     } else if req.inherit_context {
         // No explicit team_mode, but inherit_context=true: inherit from parent
@@ -393,16 +397,14 @@ pub async fn create_child_session(
         if let Some(ref prompt) = req.initial_prompt {
             event_payload["initialPrompt"] = serde_json::json!(prompt);
         }
-        let _ = app_handle.emit(
-            "ideation:child_session_created",
-            event_payload,
-        );
+        let _ = app_handle.emit("ideation:child_session_created", event_payload);
     }
 
     // Parse team_config_json back to TeamConfigInput for response
-    let team_config = created_session.team_config_json.as_ref().and_then(|json_str| {
-        serde_json::from_str(json_str).ok()
-    });
+    let team_config = created_session
+        .team_config_json
+        .as_ref()
+        .and_then(|json_str| serde_json::from_str(json_str).ok());
 
     Ok(Json(CreateChildSessionResponse {
         session_id: child_session_str,
@@ -533,10 +535,7 @@ pub async fn get_parent_session_context(
 /// Returns true if the session should use team mode for agent spawning.
 /// "solo" and None are treated as non-team; any other value ("research", "debate", etc.) is team.
 fn session_is_team_mode(session: &IdeationSession) -> bool {
-    session
-        .team_mode
-        .as_deref()
-        .is_some_and(|m| m != "solo")
+    session.team_mode.as_deref().is_some_and(|m| m != "solo")
 }
 
 #[cfg(test)]

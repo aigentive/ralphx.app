@@ -38,11 +38,7 @@ fn correct_symlink_is_skipped() {
     #[cfg(unix)]
     std::os::unix::fs::symlink(&source, &target).unwrap();
 
-    let cmd = format!(
-        "ln -s {} {}",
-        source.display(),
-        target.display()
-    );
+    let cmd = format!("ln -s {} {}", source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
     assert!(result.is_some(), "correct symlink should be cached");
@@ -65,14 +61,13 @@ fn wrong_symlink_is_removed_and_returns_none() {
     #[cfg(unix)]
     std::os::unix::fs::symlink(&wrong_source, &target).unwrap();
 
-    let cmd = format!(
-        "ln -s {} {}",
-        correct_source.display(),
-        target.display()
-    );
+    let cmd = format!("ln -s {} {}", correct_source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_none(), "wrong symlink should be removed and command re-run");
+    assert!(
+        result.is_none(),
+        "wrong symlink should be removed and command re-run"
+    );
     // Target should have been removed
     assert!(!target.exists(), "wrong symlink should be removed");
     assert!(!target.is_symlink(), "wrong symlink should be removed");
@@ -88,21 +83,24 @@ fn real_dir_at_target_is_preserved_and_returns_cached() {
     // Put a file in the target dir to confirm preservation
     std::fs::write(target.join("file.txt"), "content").unwrap();
 
-    let cmd = format!(
-        "ln -s {} {}",
-        source.display(),
-        target.display()
-    );
+    let cmd = format!("ln -s {} {}", source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
     assert!(result.is_some(), "real dir should be preserved and cached");
     let entry = result.unwrap();
     assert_eq!(entry.status, "cached");
     assert_eq!(entry.phase, "setup");
-    assert!(entry.stderr.contains("real directory exists"), "stderr: {}", entry.stderr);
+    assert!(
+        entry.stderr.contains("real directory exists"),
+        "stderr: {}",
+        entry.stderr
+    );
     // Real dir and its contents must still exist
     assert!(target.exists(), "real dir at target must be preserved");
-    assert!(target.join("file.txt").exists(), "files inside real dir must be preserved");
+    assert!(
+        target.join("file.txt").exists(),
+        "files inside real dir must be preserved"
+    );
 }
 
 #[test]
@@ -113,11 +111,7 @@ fn real_file_at_target_is_preserved_and_returns_cached() {
     std::fs::create_dir(&source).unwrap();
     std::fs::write(&target, "important content").unwrap();
 
-    let cmd = format!(
-        "ln -s {} {}",
-        source.display(),
-        target.display()
-    );
+    let cmd = format!("ln -s {} {}", source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
     assert!(result.is_some(), "real file should be preserved and cached");
@@ -135,11 +129,7 @@ fn target_does_not_exist_returns_none() {
     let target = dir.path().join("target_link");
     std::fs::create_dir(&source).unwrap();
 
-    let cmd = format!(
-        "ln -s {} {}",
-        source.display(),
-        target.display()
-    );
+    let cmd = format!("ln -s {} {}", source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
     assert!(result.is_none(), "no target should run normally");
@@ -156,14 +146,13 @@ fn ln_sf_flag_is_recognized() {
     #[cfg(unix)]
     std::os::unix::fs::symlink(&source, &target).unwrap();
 
-    let cmd = format!(
-        "ln -sf {} {}",
-        source.display(),
-        target.display()
-    );
+    let cmd = format!("ln -sf {} {}", source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_some(), "ln -sf with correct symlink should be cached");
+    assert!(
+        result.is_some(),
+        "ln -sf with correct symlink should be cached"
+    );
     assert_eq!(result.unwrap().status, "cached");
 }
 
@@ -181,7 +170,10 @@ fn relative_target_resolved_against_cwd() {
     let cmd = format!("ln -s {} node_modules", source.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_some(), "relative target should be resolved against cwd");
+    assert!(
+        result.is_some(),
+        "relative target should be resolved against cwd"
+    );
     assert_eq!(result.unwrap().status, "cached");
 }
 
@@ -199,14 +191,13 @@ fn template_resolved_command_works() {
     #[cfg(unix)]
     std::os::unix::fs::symlink(&source, &target).unwrap();
 
-    let cmd = format!(
-        "ln -s {} {}",
-        source.display(),
-        target.display()
-    );
+    let cmd = format!("ln -s {} {}", source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, &worktree, "Node.js root", ".");
-    assert!(result.is_some(), "template-resolved symlink should be cached");
+    assert!(
+        result.is_some(),
+        "template-resolved symlink should be cached"
+    );
     let entry = result.unwrap();
     assert_eq!(entry.status, "cached");
     assert_eq!(entry.label, "Node.js root");
@@ -224,17 +215,20 @@ fn circular_symlink_source_equals_target_skipped() {
     let nm = dir.path().join("node_modules");
     std::fs::create_dir(&nm).unwrap();
 
-    let cmd = format!(
-        "ln -s {} {}",
-        nm.display(),
-        nm.display()
-    );
+    let cmd = format!("ln -s {} {}", nm.display(), nm.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_some(), "circular symlink (source==target) must be skipped");
+    assert!(
+        result.is_some(),
+        "circular symlink (source==target) must be skipped"
+    );
     let entry = result.unwrap();
     assert_eq!(entry.status, "skipped");
-    assert!(entry.stderr.contains("circular"), "stderr should mention circular: {}", entry.stderr);
+    assert!(
+        entry.stderr.contains("circular"),
+        "stderr should mention circular: {}",
+        entry.stderr
+    );
     // The real dir must NOT be deleted
     assert!(nm.exists(), "source==target dir must NOT be deleted");
 }
@@ -249,7 +243,10 @@ fn circular_symlink_relative_source_equals_target_skipped() {
     let cmd = format!("ln -s node_modules {}", nm.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_some(), "relative circular symlink should be skipped");
+    assert!(
+        result.is_some(),
+        "relative circular symlink should be skipped"
+    );
     let entry = result.unwrap();
     assert_eq!(entry.status, "skipped");
     assert!(entry.stderr.contains("circular"));
@@ -266,14 +263,13 @@ fn non_circular_symlink_not_blocked() {
     std::fs::create_dir_all(&source).unwrap();
     std::fs::create_dir_all(&worktree).unwrap();
 
-    let cmd = format!(
-        "ln -s {} {}",
-        source.display(),
-        target.display()
-    );
+    let cmd = format!("ln -s {} {}", source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, &worktree, "Test", ".");
-    assert!(result.is_none(), "non-circular symlink should proceed normally");
+    assert!(
+        result.is_none(),
+        "non-circular symlink should proceed normally"
+    );
 }
 
 // ==================
@@ -297,9 +293,15 @@ fn circular_self_symlink_removed_and_proceeds() {
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
     // Should return None (removed bad symlink, proceed with command execution)
-    assert!(result.is_none(), "circular self-symlink should be removed, command should proceed");
+    assert!(
+        result.is_none(),
+        "circular self-symlink should be removed, command should proceed"
+    );
     // The symlink should have been removed
-    assert!(!target.is_symlink(), "circular self-symlink should be removed");
+    assert!(
+        !target.is_symlink(),
+        "circular self-symlink should be removed"
+    );
 }
 
 #[cfg(unix)]
@@ -315,7 +317,10 @@ fn non_circular_existing_symlink_left_alone() {
     let cmd = format!("ln -s {} {}", source.display(), target.display());
 
     let result = try_handle_symlink_idempotent(&cmd, dir.path(), "Test", ".");
-    assert!(result.is_some(), "correct symlink should be left alone and cached");
+    assert!(
+        result.is_some(),
+        "correct symlink should be left alone and cached"
+    );
     assert_eq!(result.unwrap().status, "cached");
     assert!(target.is_symlink(), "correct symlink must still exist");
 }

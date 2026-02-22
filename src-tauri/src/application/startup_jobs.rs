@@ -324,10 +324,8 @@ impl<R: Runtime> StartupJobRunner<R> {
         // before spawning other agents. This ensures main branch is in a clean state
         // before worker/reviewer agents start. PendingMerge first so fast-path
         // programmatic merges complete before agent-based merges.
-        const MERGE_RECOVERY_STATES: &[InternalStatus] = &[
-            InternalStatus::PendingMerge,
-            InternalStatus::Merging,
-        ];
+        const MERGE_RECOVERY_STATES: &[InternalStatus] =
+            &[InternalStatus::PendingMerge, InternalStatus::Merging];
 
         info!("Phase 1: Merge-first recovery — processing merge states before agent spawning");
 
@@ -346,7 +344,11 @@ impl<R: Runtime> StartupJobRunner<R> {
                     }
                 };
 
-                debug!(count = tasks.len(), ?status, "Phase 1: Found tasks in merge state");
+                debug!(
+                    count = tasks.len(),
+                    ?status,
+                    "Phase 1: Found tasks in merge state"
+                );
                 for task in tasks {
                     if task.archived_at.is_some() {
                         debug!(task_id = task.id.as_str(), title = %task.title, "Skipping archived task");
@@ -434,7 +436,8 @@ impl<R: Runtime> StartupJobRunner<R> {
 
                     // Skip main-merge-deferred tasks when agents are still running.
                     // These are correctly deferred, not orphaned — reconciliation will retry when agents complete.
-                    if Self::is_waiting_for_global_idle(&task, self.execution_state.running_count()) {
+                    if Self::is_waiting_for_global_idle(&task, self.execution_state.running_count())
+                    {
                         debug!(
                             task_id = task.id.as_str(),
                             running_count = self.execution_state.running_count(),
@@ -515,7 +518,8 @@ impl<R: Runtime> StartupJobRunner<R> {
                     // Skip main-merge-deferred tasks when agents are still running.
                     // These tasks are correctly deferred and will be retried when all agents
                     // complete (via try_retry_main_merges on global idle).
-                    if Self::is_waiting_for_global_idle(&task, self.execution_state.running_count()) {
+                    if Self::is_waiting_for_global_idle(&task, self.execution_state.running_count())
+                    {
                         debug!(
                             task_id = task.id.as_str(),
                             running_count = self.execution_state.running_count(),
@@ -740,9 +744,9 @@ impl<R: Runtime> StartupJobRunner<R> {
         /// Returns Some(target) if the state should be checked, None otherwise.
         fn violation_target(status: InternalStatus) -> Option<InternalStatus> {
             match status {
-                InternalStatus::Ready
-                | InternalStatus::Executing
-                | InternalStatus::ReExecuting => Some(InternalStatus::Blocked),
+                InternalStatus::Ready | InternalStatus::Executing | InternalStatus::ReExecuting => {
+                    Some(InternalStatus::Blocked)
+                }
                 InternalStatus::QaRefining
                 | InternalStatus::QaTesting
                 | InternalStatus::Reviewing => Some(InternalStatus::Stopped),
@@ -802,7 +806,10 @@ impl<R: Runtime> StartupJobRunner<R> {
                                     {
                                         format!("\"{}\" (failed)", blocker.title)
                                     } else {
-                                        format!("\"{}\" ({})", blocker.title, blocker.internal_status)
+                                        format!(
+                                            "\"{}\" ({})",
+                                            blocker.title, blocker.internal_status
+                                        )
                                     };
                                     unsatisfied_names.push(label);
                                 }
@@ -838,12 +845,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                     // Record state transition for timeline
                     let _ = self
                         .task_repo
-                        .persist_status_change(
-                            &task.id,
-                            from_status,
-                            target,
-                            "dep_reconciliation",
-                        )
+                        .persist_status_change(&task.id, from_status, target, "dep_reconciliation")
                         .await;
 
                     // Emit event for UI
@@ -886,8 +888,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         if reblocked > 0 || stopped > 0 {
             info!(
                 reblocked,
-                stopped,
-                "Startup dependency reconciliation complete"
+                stopped, "Startup dependency reconciliation complete"
             );
         } else {
             debug!("No dependency violations found on startup");
@@ -925,7 +926,10 @@ impl<R: Runtime> StartupJobRunner<R> {
     /// when agents are still running. Returns true only if:
     /// - Task has `main_merge_deferred` metadata flag set
     /// - There are agents currently running (running_count > 0)
-    fn is_waiting_for_global_idle(task: &crate::domain::entities::Task, running_count: u32) -> bool {
+    fn is_waiting_for_global_idle(
+        task: &crate::domain::entities::Task,
+        running_count: u32,
+    ) -> bool {
         use crate::domain::state_machine::transition_handler::has_main_merge_deferred_metadata;
 
         has_main_merge_deferred_metadata(task) && running_count > 0

@@ -106,8 +106,13 @@ pub(super) async fn attempt_session_recovery(
     };
 
     // 3. Generate rehydration prompt
-    let bootstrap_prompt =
-        build_rehydration_prompt(&replay, context_type, context_id, new_message, ideation_metadata.as_ref());
+    let bootstrap_prompt = build_rehydration_prompt(
+        &replay,
+        context_type,
+        context_id,
+        new_message,
+        ideation_metadata.as_ref(),
+    );
 
     // 4. Spawn fresh Claude session with history
     let spawnable = match chat_service_context::build_command(
@@ -214,7 +219,8 @@ async fn build_ideation_recovery_metadata(
     let (session_repo, proposal_repo) = (ideation_session_repo?, task_proposal_repo?);
 
     // Parse context_id as IdeationSessionId
-    let session_id = crate::domain::entities::IdeationSessionId::from_string(context_id.to_string());
+    let session_id =
+        crate::domain::entities::IdeationSessionId::from_string(context_id.to_string());
 
     // Fetch the session
     let session = match session_repo.get_by_id(&session_id).await {

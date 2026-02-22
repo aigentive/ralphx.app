@@ -161,26 +161,26 @@ pub(super) struct PreExecAnalysisEntry {
 
 /// A single validation command execution record for streaming + storage.
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
-pub(crate) struct ValidationLogEntry {
-    pub(super) phase: String,
-    pub(super) command: String,
-    pub(super) path: String,
-    pub(super) label: String,
-    pub(super) status: String,
-    pub(super) exit_code: Option<i32>,
-    pub(super) stdout: String,
-    pub(super) stderr: String,
-    pub(super) duration_ms: u64,
+pub struct ValidationLogEntry {
+    pub phase: String,
+    pub command: String,
+    pub path: String,
+    pub label: String,
+    pub status: String,
+    pub exit_code: Option<i32>,
+    pub stdout: String,
+    pub stderr: String,
+    pub duration_ms: u64,
     /// Whether this command was retried after initial failure.
     /// True = passed/failed on automatic retry (attempt 2/2).
     #[serde(default)]
-    pub(super) retried: bool,
+    pub retried: bool,
     /// Path to full stdout log file (only set for failed commands)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) stdout_log_path: Option<String>,
+    pub stdout_log_path: Option<String>,
     /// Path to full stderr log file (only set for failed commands)
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(super) stderr_log_path: Option<String>,
+    pub stderr_log_path: Option<String>,
 }
 
 impl ValidationLogEntry {
@@ -243,9 +243,9 @@ pub(crate) struct ValidationFailure {
 
 /// Result of running pre-execution setup commands.
 #[derive(Debug)]
-pub(crate) struct PreExecSetupResult {
-    pub(crate) success: bool,
-    pub(crate) log: Vec<ValidationLogEntry>,
+pub struct PreExecSetupResult {
+    pub success: bool,
+    pub log: Vec<ValidationLogEntry>,
 }
 
 /// Truncate a string to `max_len` chars, appending "... (truncated)" if needed.
@@ -262,9 +262,7 @@ pub(crate) fn validation_log_dir(task_id: &str) -> std::path::PathBuf {
     let home = std::env::var("HOME")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| std::path::PathBuf::from("/tmp"));
-    home.join(".ralphx")
-        .join("logs")
-        .join(task_id)
+    home.join(".ralphx").join("logs").join(task_id)
 }
 
 /// Write full stdout/stderr to disk for a failed validation command.
@@ -415,9 +413,15 @@ pub(super) fn try_handle_symlink_idempotent(
             "Worktree setup: skipping circular symlink (source == target)"
         );
         return Some(ValidationLogEntry::new(
-            "setup", cmd, resolved_path, label, "skipped",
-            Some(0), String::new(),
-            "Skipped: circular symlink (source == target)".to_string(), 0,
+            "setup",
+            cmd,
+            resolved_path,
+            label,
+            "skipped",
+            Some(0),
+            String::new(),
+            "Skipped: circular symlink (source == target)".to_string(),
+            0,
         ));
     }
 
@@ -442,9 +446,15 @@ pub(super) fn try_handle_symlink_idempotent(
                     "Worktree setup: symlink already correct, cached"
                 );
                 return Some(ValidationLogEntry::new(
-                    "setup", cmd, resolved_path, label, "cached",
-                    Some(0), String::new(),
-                    "Symlink already exists and is correct".to_string(), 0,
+                    "setup",
+                    cmd,
+                    resolved_path,
+                    label,
+                    "cached",
+                    Some(0),
+                    String::new(),
+                    "Symlink already exists and is correct".to_string(),
+                    0,
                 ));
             }
         }
@@ -465,9 +475,15 @@ pub(super) fn try_handle_symlink_idempotent(
             "Worktree setup: preserving existing real path (skipping symlink)"
         );
         return Some(ValidationLogEntry::new(
-            "setup", cmd, resolved_path, label, "cached",
-            Some(0), String::new(),
-            "Skipped: real directory exists (preserved)".to_string(), 0,
+            "setup",
+            cmd,
+            resolved_path,
+            label,
+            "cached",
+            Some(0),
+            String::new(),
+            "Skipped: real directory exists (preserved)".to_string(),
+            0,
         ));
     }
 
@@ -525,12 +541,9 @@ async fn run_setup_phase(
 
             // Idempotent symlink handling: skip if correct symlink exists,
             // remove stale target if wrong, pass through for non-symlink commands
-            if let Some(skip_entry) = try_handle_symlink_idempotent(
-                &resolved_cmd,
-                &cmd_cwd,
-                &entry.label,
-                &resolved_path,
-            ) {
+            if let Some(skip_entry) =
+                try_handle_symlink_idempotent(&resolved_cmd, &cmd_cwd, &entry.label, &resolved_path)
+            {
                 if let Some(handle) = app_handle {
                     let mut event_data = serde_json::json!({
                         "task_id": task_id_str,
@@ -555,8 +568,11 @@ async fn run_setup_phase(
             // Harden symlink commands: use -sfn flags to prevent nesting bugs when
             // the target already exists as a symlink (handles complex/chained commands
             // that try_handle_symlink_idempotent can't parse)
-            let resolved_cmd = if resolved_cmd.contains("ln -s ") && !resolved_cmd.contains("-sfn") {
-                resolved_cmd.replace("ln -s ", "ln -sfn ").replace("ln -sf ", "ln -sfn ")
+            let resolved_cmd = if resolved_cmd.contains("ln -s ") && !resolved_cmd.contains("-sfn")
+            {
+                resolved_cmd
+                    .replace("ln -s ", "ln -sfn ")
+                    .replace("ln -sf ", "ln -sfn ")
             } else {
                 resolved_cmd
             };
@@ -739,9 +755,7 @@ fn emit_skipped_for_remaining(
     failed_path: &str,
     failed_cmd: &str,
 ) {
-    use crate::domain::entities::merge_progress_event::{
-        map_command_to_phase, MergePhaseStatus,
-    };
+    use crate::domain::entities::merge_progress_event::{map_command_to_phase, MergePhaseStatus};
 
     let mut past_failure = false;
     for entry in entries {
@@ -1108,8 +1122,7 @@ async fn run_validate_phase(
                     format!("Retrying {} ...", resolved_cmd),
                 );
 
-                tokio::time::sleep(std::time::Duration::from_millis(VALIDATE_RETRY_DELAY_MS))
-                    .await;
+                tokio::time::sleep(std::time::Duration::from_millis(VALIDATE_RETRY_DELAY_MS)).await;
 
                 // Abort retry if cancelled during the delay
                 if !cancel.is_cancelled() {
@@ -1119,10 +1132,8 @@ async fn run_validate_phase(
 
                     if let CancellableCommandResult::Completed(output) = retry_result {
                         let retry_duration_ms = retry_start.elapsed().as_millis() as u64;
-                        let stdout_raw =
-                            String::from_utf8_lossy(&output.stdout).to_string();
-                        let stderr_raw =
-                            String::from_utf8_lossy(&output.stderr).to_string();
+                        let stdout_raw = String::from_utf8_lossy(&output.stdout).to_string();
+                        let stderr_raw = String::from_utf8_lossy(&output.stderr).to_string();
 
                         if output.status.success() {
                             tracing::info!(
@@ -1253,8 +1264,7 @@ async fn run_validate_phase(
 
                     // Break out of both loops (entry + command)
                     // We return early — the outer loop won't continue
-                    let validate_duration_ms =
-                        validate_phase_start.elapsed().as_millis() as u64;
+                    let validate_duration_ms = validate_phase_start.elapsed().as_millis() as u64;
                     tracing::info!(
                         task_id = task_id_str,
                         duration_ms = validate_duration_ms,
@@ -1341,7 +1351,10 @@ pub(crate) async fn run_validation_commands(
         let phases = derive_phases_from_analysis(&phase_entries);
 
         // Always store in hydration map (even without app_handle)
-        crate::domain::entities::merge_progress_event::store_merge_phase_list(task_id_str, phases.clone());
+        crate::domain::entities::merge_progress_event::store_merge_phase_list(
+            task_id_str,
+            phases.clone(),
+        );
 
         if let Some(handle) = app_handle {
             let _ = handle.emit(
@@ -1399,7 +1412,16 @@ pub(crate) async fn run_validation_commands(
         );
         (Vec::new(), false)
     } else {
-        run_setup_phase(&entries, merge_cwd, task_id_str, app_handle, &resolve, None, cancel).await
+        run_setup_phase(
+            &entries,
+            merge_cwd,
+            task_id_str,
+            app_handle,
+            &resolve,
+            None,
+            cancel,
+        )
+        .await
     };
 
     // Phase 2: Validate
@@ -1806,7 +1828,7 @@ pub(super) async fn run_install_phase(
 /// for metadata storage.
 ///
 /// This function runs worktree_setup + install commands only. No validate steps.
-pub(crate) async fn run_pre_execution_setup(
+pub async fn run_pre_execution_setup(
     project: &Project,
     task: &Task,
     exec_cwd: &Path,
@@ -1828,7 +1850,7 @@ pub(crate) async fn run_pre_execution_setup(
         .as_ref()
         .or(project.detected_analysis.as_ref())?;
 
-    let mut entries: Vec<PreExecAnalysisEntry> = match serde_json::from_str(analysis_json) {
+    let entries: Vec<PreExecAnalysisEntry> = match serde_json::from_str(analysis_json) {
         Ok(e) => e,
         Err(e) => {
             tracing::warn!(error = %e, "Failed to parse project analysis JSON, skipping pre-execution setup");
@@ -1840,28 +1862,11 @@ pub(crate) async fn run_pre_execution_setup(
         return None;
     }
 
-    // Hardening: if custom_analysis has entries with empty worktree_setup,
-    // merge in worktree_setup from detected_analysis (which has the correct symlink commands)
-    if project.custom_analysis.is_some() {
-        if let Some(detected_json) = project.detected_analysis.as_ref() {
-            if let Ok(detected_entries) = serde_json::from_str::<Vec<PreExecAnalysisEntry>>(detected_json) {
-                for entry in &mut entries {
-                    if entry.worktree_setup.is_empty() {
-                        if let Some(detected) = detected_entries.iter().find(|d| d.path == entry.path) {
-                            if !detected.worktree_setup.is_empty() {
-                                tracing::info!(
-                                    path = %entry.path,
-                                    setup_count = detected.worktree_setup.len(),
-                                    "Merging worktree_setup from detected_analysis into custom_analysis entry (pre-exec)"
-                                );
-                                entry.worktree_setup = detected.worktree_setup.clone();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // NOTE: Previously, hardening code here would merge worktree_setup from
+    // detected_analysis into custom_analysis entries that had empty worktree_setup.
+    // This was removed because it treated intentionally empty worktree_setup []
+    // (e.g., user explicitly removing target/ symlinks) as "not configured" and
+    // overrode the user's choice. If custom_analysis exists, trust it fully.
 
     // Build template resolver
     let project_root = &project.working_directory;

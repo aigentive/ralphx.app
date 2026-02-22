@@ -20,8 +20,7 @@ fn test_parse_text_delta() {
 
 #[test]
 fn test_parse_line_with_data_prefix() {
-    let line =
-        r#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}"#;
+    let line = r#"data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hi"}}"#;
     let parsed = StreamProcessor::parse_line(line);
 
     let parsed = parsed.expect("Expected Some(ParsedLine)");
@@ -213,9 +212,18 @@ fn test_parse_system_hook_response_json() {
 fn test_parse_line_extracts_tool_use_result() {
     let line = r#"{"type":"user","message":{"role":"user","content":[{"tool_use_id":"toolu_xxx","type":"tool_result","content":[{"type":"text","text":"Spawned."}]}]},"parent_tool_use_id":null,"session_id":"sess1","tool_use_result":{"status":"teammate_spawned","name":"worker","agent_id":"worker@team","model":"sonnet","color":"green","prompt":"Do work","agent_type":"general-purpose","teammate_id":"worker@team","team_name":"my-team"}}"#;
     let parsed = StreamProcessor::parse_line(line).expect("Expected Some(ParsedLine)");
-    assert!(parsed.tool_use_result.is_some(), "tool_use_result should be extracted");
+    assert!(
+        parsed.tool_use_result.is_some(),
+        "tool_use_result should be extracted"
+    );
     let tur = parsed.tool_use_result.unwrap();
-    assert_eq!(tur.get("status").and_then(|s| s.as_str()), Some("teammate_spawned"));
+    assert_eq!(
+        tur.get("status").and_then(|s| s.as_str()),
+        Some("teammate_spawned")
+    );
     assert_eq!(tur.get("name").and_then(|s| s.as_str()), Some("worker"));
-    assert_eq!(tur.get("team_name").and_then(|s| s.as_str()), Some("my-team"));
+    assert_eq!(
+        tur.get("team_name").and_then(|s| s.as_str()),
+        Some("my-team")
+    );
 }

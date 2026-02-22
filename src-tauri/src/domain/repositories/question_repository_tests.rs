@@ -42,10 +42,7 @@ impl QuestionRepository for MockQuestionRepository {
             .collect())
     }
 
-    async fn get_by_request_id(
-        &self,
-        request_id: &str,
-    ) -> AppResult<Option<PendingQuestionInfo>> {
+    async fn get_by_request_id(&self, request_id: &str) -> AppResult<Option<PendingQuestionInfo>> {
         let questions = self.questions.read().unwrap();
         Ok(questions.get(request_id).map(|(info, _)| info.clone()))
     }

@@ -46,10 +46,8 @@ async fn test_update_prep() {
     let qa_id = task_qa.id.clone();
     repo.create(&task_qa).await.unwrap();
 
-    let criteria = AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual(
-        "AC1",
-        "Test visual",
-    )]);
+    let criteria =
+        AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual("AC1", "Test visual")]);
     let steps = QATestSteps::from_steps(vec![QATestStep::new(
         "QA1",
         "AC1",

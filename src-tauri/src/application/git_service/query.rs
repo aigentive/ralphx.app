@@ -158,11 +158,7 @@ impl GitService {
 
         // First, check if merge commit has a second parent (true merge vs fast-forward)
         let check_output = git_cmd::run(
-            &[
-                "rev-parse",
-                "--verify",
-                &format!("{}^2", merge_commit_sha),
-            ],
+            &["rev-parse", "--verify", &format!("{}^2", merge_commit_sha)],
             repo,
         )
         .await?;
@@ -187,11 +183,8 @@ impl GitService {
             }
         };
 
-        let mut output = git_cmd::run(
-            &["log", &range, "--pretty=format:%H|%h|%s|%an|%aI"],
-            repo,
-        )
-        .await?;
+        let mut output =
+            git_cmd::run(&["log", &range, "--pretty=format:%H|%h|%s|%an|%aI"], repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

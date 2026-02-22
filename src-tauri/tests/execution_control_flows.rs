@@ -5,7 +5,8 @@
 // - Pause/resume execution
 // - Blocking and unblocking tasks
 
-use ralphx_lib::domain::entities::{ProjectId, TaskId};
+use ralphx_lib::domain::entities::{Project, ProjectId, Task, TaskId};
+use ralphx_lib::domain::repositories::{ProjectRepository, TaskRepository};
 use ralphx_lib::domain::state_machine::{State, TaskEvent};
 use ralphx_lib::infrastructure::sqlite::{
     open_memory_connection, run_migrations, TaskStateMachineRepository,
@@ -448,4 +449,151 @@ fn test_resume_from_blocked_goes_to_ready() {
 
     // Should be Ready, not Executing or any other state
     assert_eq!(state, State::Ready);
+}
+
+// ============================================================================
+// Settings UI Command Removal Tests
+// ============================================================================
+
+/// Test: Settings UI command removal full workflow
+///
+/// This test validates the bug fix for the worktree setup user override bug.
+/// When users modify project analytics in the Settings UI by removing/clearing
+/// worktree setup commands, the system should respect their changes and NOT
+/// execute the agent's original suggestions from `detected_analysis`.
+///
+/// The fix ensures that when a user provides a `custom_analysis` with empty
+/// `worktree_setup: []`, the system respects that choice and does NOT merge
+/// in commands from `detected_analysis`.
+///
+/// This integration test verifies the end-to-end workflow by:
+/// 1. Creating a project with both `detected_analysis` (containing worktree_setup commands)
+///    and `custom_analysis` (with empty worktree_setup array, simulating user removal)
+/// 2. Triggering the actual state machine transition to Executing state
+/// 3. Independently verifying that removed commands are NOT executed by inspecting
+///    the `execution_setup_log` metadata
+#[tokio::test]
+async fn test_settings_ui_command_removal_full_workflow() {
+    use ralphx_lib::domain::entities::InternalStatus;
+    use ralphx_lib::domain::state_machine::{State, TaskStateMachine, TransitionHandler};
+    use ralphx_lib::domain::state_machine::context::{TaskContext, TaskServices};
+    use ralphx_lib::domain::state_machine::mocks::{MockAgentSpawner, MockEventEmitter, MockNotifier, MockDependencyManager, MockReviewStarter};
+    use ralphx_lib::application::MockChatService;
+    use ralphx_lib::infrastructure::memory::{MemoryTaskRepository, MemoryProjectRepository};
+    use std::sync::Arc;
+
+    // Create worktree and project directories
+    let worktree_dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+
+    // Set up repositories
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+
+    // Create a project with both detected_analysis and custom_analysis
+    let mut project = Project::new(
+        "test-project".to_string(),
+        project_dir.path().to_str().unwrap().to_string(),
+    );
+    project.id = project_id.clone();
+    project.base_branch = Some("main".to_string());
+    project.merge_validation_mode = ralphx_lib::domain::entities::MergeValidationMode::Warn; // Use Warn to run pre-execution setup without blocking on failures
+
+    // detected_analysis has worktree_setup commands (agent's original suggestion)
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Rust", "install": "true", "worktree_setup": ["echo setup_command_from_detected"]}]"#.to_string(),
+    );
+
+    // custom_analysis intentionally has EMPTY worktree_setup (user removed commands via Settings UI)
+    project.custom_analysis = Some(
+        r#"[{"path": ".", "label": "Rust", "install": "true", "worktree_setup": []}]"#.to_string(),
+    );
+
+    project_repo.create(project).await.unwrap();
+
+    // Create a task in Executing state (on_enter will run pre-execution setup)
+    let mut task = Task::new(project_id, "Test task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    task.worktree_path = Some(worktree_dir.path().to_str().unwrap().to_string());
+    task.task_branch = Some("test-branch".to_string()); // Set task_branch to skip worktree creation
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    // Set up services
+    let chat_service = Arc::new(MockChatService::new());
+    let services = TaskServices::new(
+        Arc::new(MockAgentSpawner::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::AgentSpawner>,
+        Arc::new(MockEventEmitter::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::EventEmitter>,
+        Arc::new(MockNotifier::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::Notifier>,
+        Arc::new(MockDependencyManager::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::DependencyManager>,
+        Arc::new(MockReviewStarter::new()) as Arc<dyn ralphx_lib::domain::state_machine::services::ReviewStarter>,
+        Arc::clone(&chat_service) as Arc<dyn ralphx_lib::application::ChatService>,
+    )
+    .with_task_repo(Arc::clone(&task_repo) as Arc<dyn ralphx_lib::domain::repositories::TaskRepository>)
+    .with_project_repo(Arc::clone(&project_repo) as Arc<dyn ralphx_lib::domain::repositories::ProjectRepository>);
+
+    // Create state machine and handler
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Trigger the state machine on_enter for Executing state
+    // This runs the pre-execution setup (worktree_setup + install)
+    let _ = handler.on_enter(&State::Executing).await;
+
+    // Independently verify the execution_setup_log metadata
+    let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let metadata_json = updated_task.metadata.as_deref().unwrap_or("{}");
+    let metadata: serde_json::Value = serde_json::from_str(metadata_json).unwrap();
+
+    let execution_log = metadata
+        .get("execution_setup_log")
+        .and_then(|v| v.as_array())
+        .expect("execution_setup_log should be present in metadata");
+
+    // Verify that NO worktree_setup commands from detected_analysis were executed
+    // The custom_analysis has empty worktree_setup, so we should only have the install phase
+    for entry in execution_log {
+        let phase = entry.get("phase").and_then(|v| v.as_str()).unwrap();
+        let command = entry.get("command").and_then(|v| v.as_str()).unwrap();
+
+        // Verify no setup phase commands were executed
+        assert_ne!(
+            phase, "setup",
+            "Setup phase commands should NOT be executed when custom_analysis has empty worktree_setup. \
+             Found setup command: {}",
+            command
+        );
+
+        // Verify install phase was still executed
+        assert_eq!(
+            phase, "install",
+            "Only install phase should be executed when custom_analysis has empty worktree_setup"
+        );
+    }
+
+    // Verify that we only have install phase entries (no setup phase)
+    let setup_count = execution_log
+        .iter()
+        .filter(|e| e.get("phase").and_then(|v| v.as_str()) == Some("setup"))
+        .count();
+    assert_eq!(
+        setup_count, 0,
+        "Should have NO setup phase entries when custom_analysis has empty worktree_setup. \
+         Found {} setup entries in execution_setup_log: {:?}",
+        setup_count, execution_log
+    );
+
+    // Verify we have install phase entries
+    let install_count = execution_log
+        .iter()
+        .filter(|e| e.get("phase").and_then(|v| v.as_str()) == Some("install"))
+        .count();
+    assert!(
+        install_count > 0,
+        "Should have install phase entries. execution_setup_log: {:?}",
+        execution_log
+    );
 }

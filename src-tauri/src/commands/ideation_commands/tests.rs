@@ -2,8 +2,8 @@ use super::*;
 use crate::application::AppState;
 use crate::commands::ideation_commands::ideation_commands_apply::should_create_feature_branch;
 use crate::domain::entities::{
-    ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority,
-    ProjectId, ProposalCategory, TaskProposal, TaskProposalId,
+    ChatMessage, IdeationSession, IdeationSessionId, IdeationSessionStatus, Priority, ProjectId,
+    ProposalCategory, TaskProposal, TaskProposalId,
 };
 use crate::domain::ideation::IdeationSettings;
 
@@ -962,10 +962,8 @@ async fn test_get_task_messages() {
 
     // Send messages about the task
     for i in 1..=2 {
-        let message = ChatMessage::user_about_task(
-            created_task.id.clone(),
-            format!("Task message {}", i),
-        );
+        let message =
+            ChatMessage::user_about_task(created_task.id.clone(), format!("Task message {}", i));
         state
             .chat_message_repo
             .create(message)
@@ -1154,8 +1152,7 @@ async fn test_orchestrator_message_in_session() {
         .expect("Failed to create ideation session in test");
 
     // Create orchestrator message
-    let message =
-        ChatMessage::orchestrator_in_session(created_session.id.clone(), "AI response");
+    let message = ChatMessage::orchestrator_in_session(created_session.id.clone(), "AI response");
     let created = state
         .chat_message_repo
         .create(message)
@@ -1297,11 +1294,9 @@ async fn test_delete_session_cascades_to_tasks() {
         .expect("Failed to create session");
 
     // Create tasks linked to this session
-    let mut task1 =
-        crate::domain::entities::Task::new(project_id.clone(), "Task 1".to_string());
+    let mut task1 = crate::domain::entities::Task::new(project_id.clone(), "Task 1".to_string());
     task1.ideation_session_id = Some(created_session.id.clone());
-    let mut task2 =
-        crate::domain::entities::Task::new(project_id.clone(), "Task 2".to_string());
+    let mut task2 = crate::domain::entities::Task::new(project_id.clone(), "Task 2".to_string());
     task2.ideation_session_id = Some(created_session.id.clone());
 
     let t1 = state

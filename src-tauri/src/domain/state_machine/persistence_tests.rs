@@ -104,8 +104,8 @@ fn test_state_data_roundtrip_qa_failed() {
     let original_data = QaFailedData::single(QaFailure::new("test_roundtrip", "failed"));
     let original_state = State::QaFailed(original_data.clone());
 
-    let state_data = StateData::from_state(&original_state)
-        .expect("Failed to extract state data in roundtrip");
+    let state_data =
+        StateData::from_state(&original_state).expect("Failed to extract state data in roundtrip");
     let restored_state = state_data
         .into_state()
         .expect("Failed to restore state from data in roundtrip");
@@ -139,8 +139,7 @@ fn test_state_data_roundtrip_failed() {
 
 #[test]
 fn test_state_data_apply_to_state_replaces_qa_failed_data() {
-    let persisted_data =
-        QaFailedData::single(QaFailure::new("persisted_test", "persisted error"));
+    let persisted_data = QaFailedData::single(QaFailure::new("persisted_test", "persisted error"));
     let json = serde_json::to_string(&persisted_data).unwrap();
     let state_data = StateData::new("qa_failed", json);
 
@@ -286,8 +285,7 @@ fn test_serialize_failed_data() {
 
 #[test]
 fn test_deserialize_failed_data() {
-    let json =
-        r#"{"error":"deser error","details":"trace","is_timeout":true,"notified":false}"#;
+    let json = r#"{"error":"deser error","details":"trace","is_timeout":true,"notified":false}"#;
     let data = deserialize_failed_data(json).unwrap();
     assert_eq!(data.error, "deser error");
     assert!(data.is_timeout);

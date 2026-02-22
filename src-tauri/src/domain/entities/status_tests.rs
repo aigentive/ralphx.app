@@ -813,9 +813,25 @@ fn test_is_terminal_covers_all_variants() {
     use InternalStatus::*;
     let terminal = [Merged, Failed, Cancelled, Stopped, MergeIncomplete];
     let non_terminal = [
-        Backlog, Ready, Blocked, Executing, QaRefining, QaTesting, QaPassed, QaFailed,
-        PendingReview, Reviewing, ReviewPassed, Escalated, RevisionNeeded, ReExecuting,
-        Approved, PendingMerge, Merging, MergeConflict, Paused,
+        Backlog,
+        Ready,
+        Blocked,
+        Executing,
+        QaRefining,
+        QaTesting,
+        QaPassed,
+        QaFailed,
+        PendingReview,
+        Reviewing,
+        ReviewPassed,
+        Escalated,
+        RevisionNeeded,
+        ReExecuting,
+        Approved,
+        PendingMerge,
+        Merging,
+        MergeConflict,
+        Paused,
     ];
     // Verify total coverage matches all_variants()
     assert_eq!(
@@ -852,10 +868,7 @@ fn test_is_dependency_satisfied() {
         !Failed.is_dependency_satisfied(),
         "Failed should NOT satisfy dependencies"
     );
-    assert!(
-        Failed.is_terminal(),
-        "Failed should still be terminal"
-    );
+    assert!(Failed.is_terminal(), "Failed should still be terminal");
 
     // Stopped is terminal but does NOT satisfy dependencies —
     // the task was interrupted, not completed
@@ -863,10 +876,7 @@ fn test_is_dependency_satisfied() {
         !Stopped.is_dependency_satisfied(),
         "Stopped should NOT satisfy dependencies"
     );
-    assert!(
-        Stopped.is_terminal(),
-        "Stopped should still be terminal"
-    );
+    assert!(Stopped.is_terminal(), "Stopped should still be terminal");
 
     // MergeIncomplete is terminal but does NOT satisfy dependencies —
     // the merge failed, code is not on the target branch
@@ -899,9 +909,28 @@ fn test_is_dependency_satisfied_covers_all_variants() {
     use InternalStatus::*;
     let satisfied = [Merged, Cancelled];
     let not_satisfied = [
-        Backlog, Ready, Blocked, Executing, QaRefining, QaTesting, QaPassed, QaFailed,
-        PendingReview, Reviewing, ReviewPassed, Escalated, RevisionNeeded, ReExecuting,
-        Approved, PendingMerge, Merging, MergeConflict, MergeIncomplete, Paused, Failed, Stopped,
+        Backlog,
+        Ready,
+        Blocked,
+        Executing,
+        QaRefining,
+        QaTesting,
+        QaPassed,
+        QaFailed,
+        PendingReview,
+        Reviewing,
+        ReviewPassed,
+        Escalated,
+        RevisionNeeded,
+        ReExecuting,
+        Approved,
+        PendingMerge,
+        Merging,
+        MergeConflict,
+        MergeIncomplete,
+        Paused,
+        Failed,
+        Stopped,
     ];
     assert_eq!(
         satisfied.len() + not_satisfied.len(),

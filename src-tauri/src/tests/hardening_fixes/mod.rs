@@ -17,5 +17,5 @@ mod d4_transition_retry_fix_test;
 mod e7_retry_limit_fix_test;
 mod f4_worktree_error_fix_test;
 mod h2_on_enter_visibility_fix_test;
-mod s3_scheduler_wiring_fix_test;
 mod helpers;
+mod s3_scheduler_wiring_fix_test;

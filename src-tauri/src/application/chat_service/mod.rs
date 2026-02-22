@@ -54,8 +54,8 @@ pub const AGENT_ERROR_PREFIX: &str = "[Agent error:";
 
 // Re-exports from extracted modules
 pub use chat_service_errors::{
-    classify_agent_error, PauseReason, ProviderErrorCategory, ProviderErrorMetadata,
-    StreamError, STALE_SESSION_ERROR,
+    classify_agent_error, PauseReason, ProviderErrorCategory, ProviderErrorMetadata, StreamError,
+    STALE_SESSION_ERROR,
 };
 pub use chat_service_helpers::{
     context_type_to_process, get_agent_name, get_assistant_role, resolve_agent_with_team_mode,
@@ -64,9 +64,6 @@ pub(crate) use chat_service_merge::{MergeAutoCompleteContext, reconcile_merge_au
 pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
 pub use chat_service_streaming::process_stream_background;
-pub use streaming_state_cache::{
-    CachedStreamingTask, CachedToolCall, ConversationStreamingState, StreamingStateCache,
-};
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload, AgentMessageCreatedPayload,
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
@@ -75,12 +72,19 @@ pub use chat_service_types::{
     TeamCreatedPayload, TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload,
     TeamTeammateShutdownPayload, TeamTeammateSpawnedPayload,
 };
+pub use streaming_state_cache::{
+    CachedStreamingTask, CachedToolCall, ConversationStreamingState, StreamingStateCache,
+};
 
 // Types and errors are now in chat_service_types.rs
 
 /// Shared definition for "meaningful" agent output used by streaming and
 /// background completion logic.
-pub(crate) fn has_meaningful_output(response_text: &str, tool_call_count: usize, stderr_text: &str) -> bool {
+pub(crate) fn has_meaningful_output(
+    response_text: &str,
+    tool_call_count: usize,
+    stderr_text: &str,
+) -> bool {
     if tool_call_count > 0 {
         return true;
     }
@@ -366,7 +370,10 @@ impl<R: Runtime> ClaudeChatService<R> {
         self
     }
 
-    pub fn with_team_service(mut self, service: std::sync::Arc<crate::application::TeamService>) -> Self {
+    pub fn with_team_service(
+        mut self,
+        service: std::sync::Arc<crate::application::TeamService>,
+    ) -> Self {
         self.team_service = Some(service);
         self
     }

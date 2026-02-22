@@ -1,8 +1,8 @@
 // Tests for update_plan_from_main — ensures plan branches are brought up-to-date
 // from main before task→plan merges to prevent false validation failures.
 
-use super::helpers::*;
 use super::super::merge_coordination::{update_plan_from_main, PlanUpdateResult};
+use super::helpers::*;
 use crate::domain::entities::Project;
 
 /// Helper: create a real git repo with main, a plan branch (from main), and then
@@ -46,8 +46,8 @@ async fn update_plan_skips_when_target_is_main() {
 
     let result = update_plan_from_main(
         repo.path(),
-        "main",       // target = main
-        "main",       // base = main
+        "main", // target = main
+        "main", // base = main
         &project,
         "task-1",
         None,
@@ -97,15 +97,8 @@ async fn update_plan_behind_main_gets_updated() {
     let (repo, plan_branch) = setup_plan_behind_main();
     let project = make_test_project(&repo.path_string());
 
-    let result = update_plan_from_main(
-        repo.path(),
-        &plan_branch,
-        "main",
-        &project,
-        "task-3",
-        None,
-    )
-    .await;
+    let result =
+        update_plan_from_main(repo.path(), &plan_branch, "main", &project, "task-3", None).await;
 
     assert!(
         matches!(result, PlanUpdateResult::Updated),
@@ -172,15 +165,8 @@ async fn update_plan_with_conflicts_returns_conflicts() {
 
     let project = make_test_project(&repo.path_string());
 
-    let result = update_plan_from_main(
-        path,
-        "plan/conflict-test",
-        "main",
-        &project,
-        "task-4",
-        None,
-    )
-    .await;
+    let result =
+        update_plan_from_main(path, "plan/conflict-test", "main", &project, "task-4", None).await;
 
     assert!(
         matches!(result, PlanUpdateResult::Conflicts { .. }),
@@ -204,7 +190,7 @@ async fn update_plan_nonexistent_base_branch_returns_error() {
     let result = update_plan_from_main(
         path,
         "plan/orphan-test",
-        "nonexistent-base",  // base branch doesn't exist
+        "nonexistent-base", // base branch doesn't exist
         &project,
         "task-5",
         None,
@@ -337,7 +323,12 @@ async fn existing_worktree_with_prior_conflict_returns_conflicts_not_error() {
     let worktree_dir = tempfile::tempdir().unwrap();
     let wt_path = worktree_dir.path().join("merge-prior-conflict");
     let _ = std::process::Command::new("git")
-        .args(["worktree", "add", &wt_path.to_string_lossy(), "plan/conflict-existing-wt"])
+        .args([
+            "worktree",
+            "add",
+            &wt_path.to_string_lossy(),
+            "plan/conflict-existing-wt",
+        ])
         .current_dir(path)
         .output()
         .expect("git worktree add");
@@ -351,8 +342,8 @@ async fn existing_worktree_with_prior_conflict_returns_conflicts_not_error() {
     // Do NOT abort — the worktree is now in a conflicted state with MERGE_HEAD
 
     // Verify precondition: merge is actually in progress in the worktree
-    let merge_head_exists = wt_path.join(".git").join("MERGE_HEAD").exists()
-        || wt_path.join("MERGE_HEAD").exists();
+    let merge_head_exists =
+        wt_path.join(".git").join("MERGE_HEAD").exists() || wt_path.join("MERGE_HEAD").exists();
     // Also check via the git-state pattern (worktrees store MERGE_HEAD in .git/worktrees/<name>/)
     let merge_head_in_git = std::fs::read_dir(path.join(".git").join("worktrees"))
         .ok()
@@ -360,7 +351,11 @@ async fn existing_worktree_with_prior_conflict_returns_conflicts_not_error() {
             entries.find_map(|e| {
                 let entry = e.ok()?;
                 let merge_head = entry.path().join("MERGE_HEAD");
-                if merge_head.exists() { Some(true) } else { None }
+                if merge_head.exists() {
+                    Some(true)
+                } else {
+                    None
+                }
             })
         })
         .unwrap_or(false);

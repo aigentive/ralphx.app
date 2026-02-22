@@ -483,14 +483,21 @@ async fn test_merge_does_not_unblock_task_with_remaining_blocker() {
 fn test_team_mode_defaults_to_none() {
     let app_state = AppState::new_test();
     let service = build_test_service(&app_state);
-    assert_eq!(service.team_mode, None, "Default team_mode should be None (unset)");
+    assert_eq!(
+        service.team_mode, None,
+        "Default team_mode should be None (unset)"
+    );
 }
 
 #[test]
 fn test_with_team_mode_true_sets_some_true() {
     let app_state = AppState::new_test();
     let service = build_test_service(&app_state).with_team_mode(true);
-    assert_eq!(service.team_mode, Some(true), "with_team_mode(true) should set Some(true)");
+    assert_eq!(
+        service.team_mode,
+        Some(true),
+        "with_team_mode(true) should set Some(true)"
+    );
 }
 
 #[test]
@@ -540,11 +547,7 @@ async fn test_failed_blocker_keeps_dependent_blocked() {
     let mut dependent = Task::new(project.id.clone(), "Run Migrations".to_string());
     dependent.internal_status = InternalStatus::Blocked;
     dependent.blocked_reason = Some(format!("Waiting for: {}", blocker.title));
-    app_state
-        .task_repo
-        .create(dependent.clone())
-        .await
-        .unwrap();
+    app_state.task_repo.create(dependent.clone()).await.unwrap();
 
     app_state
         .task_dependency_repo
@@ -583,11 +586,7 @@ async fn test_failed_blocker_sets_blocked_reason_with_failure_message() {
 
     let mut dependent = Task::new(project.id.clone(), "Run Migrations".to_string());
     dependent.internal_status = InternalStatus::Blocked;
-    app_state
-        .task_repo
-        .create(dependent.clone())
-        .await
-        .unwrap();
+    app_state.task_repo.create(dependent.clone()).await.unwrap();
 
     app_state
         .task_dependency_repo
@@ -639,11 +638,7 @@ async fn test_mixed_failed_and_running_blockers_keeps_dependent_blocked() {
 
     let mut dependent = Task::new(project.id.clone(), "Deploy".to_string());
     dependent.internal_status = InternalStatus::Blocked;
-    app_state
-        .task_repo
-        .create(dependent.clone())
-        .await
-        .unwrap();
+    app_state.task_repo.create(dependent.clone()).await.unwrap();
 
     app_state
         .task_dependency_repo
@@ -686,11 +681,7 @@ async fn test_has_unresolved_blockers_treats_failed_as_unresolved() {
 
     let mut dependent = Task::new(project.id.clone(), "Deploy Step".to_string());
     dependent.internal_status = InternalStatus::Blocked;
-    app_state
-        .task_repo
-        .create(dependent.clone())
-        .await
-        .unwrap();
+    app_state.task_repo.create(dependent.clone()).await.unwrap();
 
     app_state
         .task_dependency_repo
@@ -698,9 +689,7 @@ async fn test_has_unresolved_blockers_treats_failed_as_unresolved() {
         .await
         .unwrap();
 
-    let has_blockers = manager
-        .has_unresolved_blockers(dependent.id.as_str())
-        .await;
+    let has_blockers = manager.has_unresolved_blockers(dependent.id.as_str()).await;
     assert!(
         has_blockers,
         "Failed blockers must be treated as unresolved (hard-block)"
