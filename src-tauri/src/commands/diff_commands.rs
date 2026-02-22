@@ -233,6 +233,50 @@ pub async fn get_conflict_file_diff(
 
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
+    // Parse metadata to get actual merge branches and conflict type
+    let metadata: Option<serde_json::Value> = task
+        .metadata
+        .as_ref()
+        .and_then(|m| serde_json::from_str(m).ok());
+
+    let (ours_ref, theirs_ref) = if let Some(ref meta) = metadata {
+        let is_plan_update = meta
+            .get("plan_update_conflict")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let is_source_update = meta
+            .get("source_update_conflict")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        let merge_source = meta
+            .get("merge_source_branch")
+            .and_then(|v| v.as_str())
+            .unwrap_or(task_branch);
+        let merge_target = meta
+            .get("merge_target_branch")
+            .and_then(|v| v.as_str())
+            .unwrap_or(base_branch);
+
+        if is_plan_update {
+            // Plan branch (target) checked out, merging main in
+            // ours = target (plan branch), theirs = base (main)
+            (merge_target.to_string(), base_branch.to_string())
+        } else if is_source_update {
+            // Source branch checked out, merging target in
+            // ours = source, theirs = target
+            (merge_source.to_string(), merge_target.to_string())
+        } else {
+            // Normal merge: target ← source
+            // ours = target, theirs = source
+            (merge_target.to_string(), merge_source.to_string())
+        }
+    } else {
+        // Fallback: original behavior
+        (base_branch.to_string(), task_branch.to_string())
+    };
+
     let diff_service = DiffService::new();
-    diff_service.get_conflict_diff(&file_path, &working_path_str, task_branch, base_branch)
+    // get_conflict_diff params: (file_path, project_path, task_branch=theirs, base_branch=ours)
+    diff_service.get_conflict_diff(&file_path, &working_path_str, &theirs_ref, &ours_ref)
 }
