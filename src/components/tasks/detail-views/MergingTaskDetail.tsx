@@ -19,6 +19,7 @@ import {
   ChevronDown,
   ChevronRight,
   Wrench,
+  RefreshCw,
 } from "lucide-react";
 import { useConflictDiff } from "@/hooks/useConflictDiff";
 import { ConflictDiffViewer } from "@/components/diff/ConflictDiffViewer";
@@ -400,10 +401,18 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     : isHistorical
     ? isProgrammaticPhase
       ? "Attempted"
-      : isValidationRecovery ? "Fixing" : "Resolving"
+      : isValidationRecovery
+      ? "Fixing"
+      : mergeConflictContext
+      ? "Updating"
+      : "Resolving"
     : isProgrammaticPhase
     ? "Merging"
-    : isValidationRecovery ? "Fixing" : "Resolving";
+    : isValidationRecovery
+    ? "Fixing"
+    : mergeConflictContext
+    ? "Updating"
+    : "Resolving";
   const statusIcon = historicalOutcome
     ? historicalOutcome === "merged"
       ? CheckCircle2
@@ -411,10 +420,18 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     : isHistorical
     ? isProgrammaticPhase
       ? GitMerge
-      : isValidationRecovery ? Wrench : AlertTriangle
+      : isValidationRecovery
+      ? Wrench
+      : mergeConflictContext
+      ? RefreshCw
+      : AlertTriangle
     : isProgrammaticPhase
     ? GitMerge
-    : isValidationRecovery ? Wrench : AlertTriangle;
+    : isValidationRecovery
+    ? Wrench
+    : mergeConflictContext
+    ? RefreshCw
+    : AlertTriangle;
 
   return (
     <TwoColumnLayout
@@ -431,10 +448,18 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isHistorical
             ? isProgrammaticPhase
               ? GitMerge
-              : isValidationRecovery ? Wrench : AlertTriangle
+              : isValidationRecovery
+              ? Wrench
+              : mergeConflictContext
+              ? RefreshCw
+              : AlertTriangle
             : isProgrammaticPhase
             ? GitMerge
-            : isValidationRecovery ? Wrench : Bot
+            : isValidationRecovery
+            ? Wrench
+            : mergeConflictContext
+            ? RefreshCw
+            : Bot
         }
         title={
           historicalOutcome
@@ -444,10 +469,22 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isHistorical
             ? isProgrammaticPhase
               ? "Merge Attempted"
-              : isValidationRecovery ? "Fixing Validation Errors" : "Resolving Conflicts"
+              : isValidationRecovery
+              ? "Fixing Validation Errors"
+              : mergeConflictContext?.type === "plan_update"
+              ? "Updating Plan Branch"
+              : mergeConflictContext?.type === "source_update"
+              ? "Updating Task Branch"
+              : "Resolving Conflicts"
             : isProgrammaticPhase
             ? "Merging Changes..."
-            : isValidationRecovery ? "Fixing Validation Errors..." : "Resolving Merge Conflicts"
+            : isValidationRecovery
+            ? "Fixing Validation Errors..."
+            : mergeConflictContext?.type === "plan_update"
+            ? "Updating Plan Branch"
+            : mergeConflictContext?.type === "source_update"
+            ? "Updating Task Branch"
+            : "Resolving Merge Conflicts"
         }
         subtitle={
           historicalOutcome
@@ -457,10 +494,22 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isHistorical
             ? isProgrammaticPhase
               ? "Merge attempt captured in history"
-              : isValidationRecovery ? "Agent was fixing build errors" : "Agent was resolving conflicts"
+              : isValidationRecovery
+              ? "Agent was fixing build errors"
+              : mergeConflictContext?.type === "plan_update"
+              ? "Merging latest changes from main into plan branch"
+              : mergeConflictContext?.type === "source_update"
+              ? "Merging latest changes from plan into task branch"
+              : "Agent was resolving conflicts"
             : isProgrammaticPhase
             ? "Attempting to merge..."
-            : isValidationRecovery ? "AI agent is fixing build errors" : "AI agent is resolving conflicts"
+            : isValidationRecovery
+            ? "AI agent is fixing build errors"
+            : mergeConflictContext?.type === "plan_update"
+            ? "Merging latest changes from main into plan branch"
+            : mergeConflictContext?.type === "source_update"
+            ? "Merging latest changes from plan into task branch"
+            : "AI agent is resolving conflicts"
         }
         variant={
           historicalOutcome
@@ -470,10 +519,18 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
             : isHistorical
             ? isProgrammaticPhase
               ? "info"
-              : isValidationRecovery ? "accent" : "warning"
+              : isValidationRecovery
+              ? "accent"
+              : mergeConflictContext
+              ? "info"
+              : "warning"
             : isProgrammaticPhase
             ? "accent"
-            : isValidationRecovery ? "accent" : "warning"
+            : isValidationRecovery
+            ? "accent"
+            : mergeConflictContext
+            ? "info"
+            : "warning"
         }
         animated={!isHistorical}
         badge={
@@ -488,10 +545,18 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
                 : isHistorical
                 ? isProgrammaticPhase
                   ? "info"
-                  : isValidationRecovery ? "accent" : "warning"
+                  : isValidationRecovery
+                  ? "accent"
+                  : mergeConflictContext
+                  ? "info"
+                  : "warning"
                 : isProgrammaticPhase
                 ? "accent"
-                : isValidationRecovery ? "accent" : "warning"
+                : isValidationRecovery
+                ? "accent"
+                : mergeConflictContext
+                ? "info"
+                : "warning"
             }
             animated={!isHistorical}
             size="md"
