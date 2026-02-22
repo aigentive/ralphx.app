@@ -102,7 +102,7 @@ export default function WelcomeScreen({ onCreateProject, onClose }: WelcomeScree
               letterSpacing: "var(--tracking-wide)",
             }}
           >
-            Watch AI Build Your Software
+            Describe it. Ship it.
           </p>
         </div>
 
