@@ -109,6 +109,95 @@ impl<'a> super::TransitionHandler<'a> {
         task_repo: &Arc<dyn TaskRepository>,
         plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     ) -> bool {
+        // Defense-in-depth: If task belongs to a plan, check the plan branch independently.
+        // This catches cases where target_branch was incorrectly resolved but the merge
+        // already landed on the plan branch from a prior cycle.
+        if let Some(ref session_id) = task.ideation_session_id {
+            if let Some(ref pb_repo) = plan_branch_repo {
+                if let Ok(Some(pb)) = pb_repo.get_by_session_id(session_id).await {
+                    if pb.branch_name != target_branch {
+                        // Plan branch differs from resolved target — check plan branch too
+                        if let Ok(source_sha) =
+                            GitService::get_branch_sha(repo_path, source_branch).await
+                        {
+                            if let Ok(true) = GitService::is_commit_on_branch(
+                                repo_path,
+                                &source_sha,
+                                &pb.branch_name,
+                            )
+                            .await
+                            {
+                                if has_prior_validation_failure(task) {
+                                    tracing::warn!(
+                                        %task_id_str,
+                                        plan_branch = %pb.branch_name,
+                                        resolved_target = %target_branch,
+                                        "check_already_merged: source on plan branch but prior \
+                                         validation failures — skipping fast-path"
+                                    );
+                                } else {
+                                    tracing::warn!(
+                                        %task_id_str,
+                                        plan_branch = %pb.branch_name,
+                                        resolved_target = %target_branch,
+                                        "check_already_merged: task already merged to plan branch \
+                                         (target mismatch detected)"
+                                    );
+
+                                    // Clean up orphaned merge worktree
+                                    let merge_wt =
+                                        compute_merge_worktree_path(project, task_id_str);
+                                    let merge_wt_path = Path::new(&merge_wt);
+                                    if merge_wt_path.exists() {
+                                        if let Err(e) =
+                                            GitService::delete_worktree(repo_path, merge_wt_path)
+                                                .await
+                                        {
+                                            tracing::warn!(
+                                                error = %e,
+                                                "Failed to clean up orphaned merge worktree (non-fatal)"
+                                            );
+                                        }
+                                    }
+
+                                    // Complete merge using the CORRECT target (plan branch)
+                                    let plan_sha =
+                                        GitService::get_branch_sha(repo_path, &pb.branch_name)
+                                            .await
+                                            .unwrap_or_else(|_| source_sha.clone());
+
+                                    if let Err(e) = complete_merge_internal(
+                                        task,
+                                        project,
+                                        &plan_sha,
+                                        &pb.branch_name,
+                                        task_repo,
+                                        self.machine.context.services.app_handle.as_ref(),
+                                    )
+                                    .await
+                                    {
+                                        tracing::error!(
+                                            error = %e,
+                                            "Failed to complete already-merged task (plan branch)"
+                                        );
+                                    } else {
+                                        self.post_merge_cleanup(
+                                            task_id_str,
+                                            task_id,
+                                            repo_path,
+                                            plan_branch_repo,
+                                        )
+                                        .await;
+                                    }
+                                    return true;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         let Ok(source_sha) = GitService::get_branch_sha(repo_path, source_branch).await else {
             return false;
         };
