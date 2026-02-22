@@ -282,7 +282,7 @@ impl<'a> super::TransitionHandler<'a> {
                     "base_branch": base_branch,
                     "plan_update_conflict": true,
                 });
-                task.metadata = Some(metadata.to_string());
+                super::merge_helpers::merge_metadata_into(&mut task, &metadata);
                 task.internal_status = InternalStatus::Merging;
                 // Create a merge worktree with the plan branch (target) checked out.
                 // The merger agent will run `git merge main` to reproduce and resolve conflicts.
@@ -378,7 +378,7 @@ impl<'a> super::TransitionHandler<'a> {
                     "target_branch": target_branch,
                     "source_update_conflict": true,
                 });
-                task.metadata = Some(metadata.to_string());
+                super::merge_helpers::merge_metadata_into(&mut task, &metadata);
                 task.internal_status = InternalStatus::Merging;
                 // Create a merge worktree with source branch checked out so the merger
                 // agent can resolve the conflict in an isolated directory. Mirrors the
