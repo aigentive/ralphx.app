@@ -70,3 +70,6 @@ mod on_enter_already_running_tests;
 
 // RC#6: plan_update_conflict must create merge-* worktree before spawning merger agent
 mod plan_update_conflict_worktree;
+
+// RC#8 + RC#9 + RC#10: task worktree cleanup, source update fallback, metadata preservation
+mod rc8_rc9_rc10_regression;
