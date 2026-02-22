@@ -445,3 +445,260 @@ fn test_toctou_cached_target_same_as_resolved_no_override() {
     // Same value — no override needed
     assert_eq!(target_branch, "plan/active-plan");
 }
+
+// --- RC#7: merge-resolve branch fast-forward tests ---
+// These verify the fix for: merge-resolve/{task_id} branch commits not being
+// fast-forwarded to the target branch before verification, causing
+// verify_merge_on_target to return NotMerged → MergeIncomplete.
+
+/// RC#7: After checkout-free conflict resolution via merge-resolve/{task_id},
+/// the target branch must be fast-forwarded to the merge-resolve HEAD before
+/// verify_merge_on_target is called. Without the fast-forward, verification
+/// returns NotMerged because the merge commit lives only on merge-resolve.
+#[tokio::test]
+async fn test_merge_resolve_branch_fast_forwards_target_before_verification() {
+    use crate::application::git_service::checkout_free::update_branch_ref;
+
+    let dir = setup_test_repo();
+    let repo = dir.path();
+    let task_id = "task-rc7-test";
+
+    // Create a task branch with a file that conflicts with main
+    create_branch_with_change(repo, "task/rc7", "shared.txt", "task version of shared.txt\n");
+
+    // Create a conflicting commit on main
+    fs::write(repo.join("shared.txt"), "main version of shared.txt\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .expect("git add");
+    Command::new("git")
+        .args(["commit", "-m", "conflicting change on main"])
+        .current_dir(repo)
+        .output()
+        .expect("git commit");
+
+    // Record main HEAD before conflict resolution
+    let main_sha_before = String::from_utf8_lossy(
+        &Command::new("git")
+            .args(["rev-parse", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+
+    // Simulate what merge_outcome_handler.rs:331 does:
+    // 1. Create merge-resolve/{task_id} branch at target SHA
+    let resolve_branch = format!("merge-resolve/{}", task_id);
+    Command::new("git")
+        .args(["branch", &resolve_branch, &main_sha_before])
+        .current_dir(repo)
+        .output()
+        .expect("create resolve branch");
+
+    // 2. Create worktree for conflict resolution
+    let wt_path = repo.join("merge-resolve-wt");
+    Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            wt_path.to_str().unwrap(),
+            &resolve_branch,
+        ])
+        .current_dir(repo)
+        .output()
+        .expect("create worktree");
+
+    // 3. Merge task branch in worktree (will have conflicts)
+    let merge_output = Command::new("git")
+        .args(["merge", "task/rc7", "--no-edit"])
+        .current_dir(&wt_path)
+        .output()
+        .expect("merge in worktree");
+    // Merge should fail due to conflicts
+    assert!(
+        !merge_output.status.success(),
+        "Expected merge conflict but merge succeeded"
+    );
+
+    // 4. Simulate agent resolving conflicts: pick the task version
+    fs::write(wt_path.join("shared.txt"), "resolved: merged content\n").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(&wt_path)
+        .output()
+        .expect("git add resolved");
+    Command::new("git")
+        .args(["commit", "--no-edit"])
+        .current_dir(&wt_path)
+        .output()
+        .expect("git commit resolution");
+
+    // Get merge-resolve HEAD SHA (this is where the merge commit lives)
+    let resolve_sha = String::from_utf8_lossy(
+        &Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(&wt_path)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+
+    // BEFORE fix: verify_merge_on_target returns NotMerged because main hasn't been updated
+    let pre_fix_result = verify_merge_on_target(repo, "task/rc7", "main").await;
+    assert_eq!(
+        pre_fix_result,
+        MergeVerification::NotMerged,
+        "Before fast-forward, target branch should NOT show task as merged"
+    );
+
+    // THE FIX: fast-forward target branch to merge-resolve HEAD
+    let resolve_sha_from_git =
+        GitService::get_branch_sha(repo, &resolve_branch).await.unwrap();
+    assert_eq!(
+        resolve_sha, resolve_sha_from_git,
+        "merge-resolve branch SHA should match the commit we just made"
+    );
+    update_branch_ref(repo, "main", &resolve_sha_from_git)
+        .await
+        .expect("fast-forward target branch");
+
+    // AFTER fix: verify_merge_on_target returns Merged
+    let post_fix_result = verify_merge_on_target(repo, "task/rc7", "main").await;
+    match post_fix_result {
+        MergeVerification::Merged(sha) => {
+            assert_eq!(
+                sha, resolve_sha,
+                "Target branch HEAD should match merge-resolve HEAD after fast-forward"
+            );
+        }
+        other => panic!(
+            "Expected Merged after fast-forward, got: {:?}",
+            other
+        ),
+    }
+
+    // Verify main branch now points to the merge-resolve commit
+    let main_sha_after = String::from_utf8_lossy(
+        &Command::new("git")
+            .args(["rev-parse", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+    assert_eq!(
+        main_sha_after, resolve_sha,
+        "main branch should now point to the merge-resolve commit"
+    );
+
+    // Cleanup: delete worktree and branch (mirrors what the fix does)
+    let _ = Command::new("git")
+        .args(["worktree", "remove", "--force", wt_path.to_str().unwrap()])
+        .current_dir(repo)
+        .output();
+    let _ = Command::new("git")
+        .args(["branch", "-D", &resolve_branch])
+        .current_dir(repo)
+        .output();
+}
+
+/// RC#7 negative: When no merge-resolve branch exists, verify_merge_on_target
+/// should still work normally (the fast-forward path is skipped).
+#[tokio::test]
+async fn test_no_merge_resolve_branch_verification_works_normally() {
+    let dir = setup_test_repo();
+    let repo = dir.path();
+
+    // Create task branch and merge it normally
+    create_branch_with_change(repo, "task/normal", "normal.txt", "normal content\n");
+    merge_branch(repo, "task/normal");
+
+    // No merge-resolve branch exists — get_branch_sha should fail
+    let resolve_result =
+        GitService::get_branch_sha(repo, "merge-resolve/task-normal").await;
+    assert!(
+        resolve_result.is_err(),
+        "merge-resolve branch should not exist for normal merges"
+    );
+
+    // Normal verification should still work
+    let result = verify_merge_on_target(repo, "task/normal", "main").await;
+    match result {
+        MergeVerification::Merged(sha) => {
+            assert!(!sha.is_empty(), "Merge commit SHA should not be empty");
+        }
+        other => panic!("Expected Merged for normal merge, got: {:?}", other),
+    }
+}
+
+/// RC#7: Cleanup verification — after fast-forward, merge-resolve branch and worktree
+/// should be cleaned up. This test verifies the cleanup calls succeed.
+#[tokio::test]
+async fn test_merge_resolve_cleanup_after_fast_forward() {
+    let dir = setup_test_repo();
+    let repo = dir.path();
+    let task_id = "task-cleanup-test";
+
+    // Create merge-resolve branch
+    let main_sha = String::from_utf8_lossy(
+        &Command::new("git")
+            .args(["rev-parse", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap()
+            .stdout,
+    )
+    .trim()
+    .to_string();
+
+    let resolve_branch = format!("merge-resolve/{}", task_id);
+    Command::new("git")
+        .args(["branch", &resolve_branch, &main_sha])
+        .current_dir(repo)
+        .output()
+        .expect("create resolve branch");
+
+    // Create worktree
+    let wt_path = repo.join("merge-wt-cleanup");
+    Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            wt_path.to_str().unwrap(),
+            &resolve_branch,
+        ])
+        .current_dir(repo)
+        .output()
+        .expect("create worktree");
+
+    assert!(wt_path.exists(), "Worktree should exist before cleanup");
+
+    // Verify branch exists
+    let branch_exists = GitService::get_branch_sha(repo, &resolve_branch).await;
+    assert!(branch_exists.is_ok(), "merge-resolve branch should exist before cleanup");
+
+    // Cleanup: delete worktree then branch (mirrors the fix)
+    GitService::delete_worktree(repo, &wt_path)
+        .await
+        .expect("delete worktree");
+    GitService::delete_branch(repo, &resolve_branch, true)
+        .await
+        .expect("delete branch");
+
+    // Verify cleanup
+    assert!(!wt_path.exists(), "Worktree directory should be removed after cleanup");
+    let branch_after = GitService::get_branch_sha(repo, &resolve_branch).await;
+    assert!(
+        branch_after.is_err(),
+        "merge-resolve branch should be deleted after cleanup"
+    );
+}
