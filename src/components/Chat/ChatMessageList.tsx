@@ -129,6 +129,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
   ) {
     // Internal ref for scroll operations
     const virtuosoRef = useRef<VirtuosoHandle>(null);
+    const hasScrolledRef = useRef<string | null>(null);
     const isTestEnv = import.meta.env.VITEST;
 
     // Forward the ref to parent
@@ -319,8 +320,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // the last message is visible after layout settles.
     // Virtuoso's initialTopMostItemIndex races with layout calculation on mount,
     // so we use a delayed scrollToIndex to guarantee scroll position is correct.
+    // Uses hasScrolledRef to scroll exactly once per conversation (when timeline
+    // transitions from empty to populated after async data load).
     useEffect(() => {
       if (timeline.length === 0 || !conversationId || isTestEnv) return;
+      if (hasScrolledRef.current === conversationId) return;
+      hasScrolledRef.current = conversationId;
 
       const timeoutId = setTimeout(() => {
         virtuosoRef.current?.scrollToIndex({
@@ -331,7 +336,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }, MARKDOWN_RENDER_DELAY_MS);
 
       return () => clearTimeout(timeoutId);
-    }, [conversationId]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [conversationId, timeline.length, isTestEnv]);
 
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
@@ -571,7 +576,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             <div ref={messagesEndRef} />
           </div>
           {/* Scroll-to-bottom button — same position as production branch */}
-          {!isAtBottom && messages.length > 5 && !scrollToTimestamp && (
+          {!isAtBottom && timeline.length > 0 && !scrollToTimestamp && (
             <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">
               <Button
                 variant="outline"
@@ -614,8 +619,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           itemContent={renderItem}
         />
         {/* Scroll-to-bottom button — OUTSIDE Virtuoso to avoid Footer feedback loop.
-            isAtBottom/scrollToBottom/messages.length are NOT in virtuosoComponents deps. */}
-        {!isAtBottom && messages.length > 5 && !scrollToTimestamp && (
+            isAtBottom/scrollToBottom/timeline.length are NOT in virtuosoComponents deps. */}
+        {!isAtBottom && timeline.length > 0 && !scrollToTimestamp && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">
             <Button
               variant="outline"
