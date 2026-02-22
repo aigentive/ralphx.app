@@ -63,3 +63,7 @@ mod orchestration_chain_tests;
 // Tests for spawn failure recovery: on_enter(Merging) + failing chat service
 // Covers Fix 2 (commit 189e8eaf): AttemptFailed events + retry budget exhaustion
 mod spawn_failure_recovery_tests;
+
+// Tests for AgentAlreadyRunning guard in on_enter(Merging) and on_enter(Reviewing)
+// RC#2: double on_enter returns no-op instead of recording spawn failure
+mod on_enter_already_running_tests;

@@ -592,6 +592,15 @@ impl<'a> super::TransitionHandler<'a> {
                         tracing::info!(task_id = task_id, "Reviewer agent spawned successfully");
                     }
                     Err(e) => {
+                        // AgentAlreadyRunning means another caller successfully started the agent.
+                        // The task IS being reviewed — treat as a successful no-op.
+                        if matches!(e, ChatServiceError::AgentAlreadyRunning(_)) {
+                            tracing::info!(
+                                task_id = task_id,
+                                "Agent already running for this task — treating on_enter(Reviewing) as no-op"
+                            );
+                            return Ok(());
+                        }
                         tracing::error!(task_id = task_id, error = %e, "Failed to spawn reviewer agent");
                     }
                 }
@@ -1077,6 +1086,15 @@ impl<'a> super::TransitionHandler<'a> {
                         tracing::info!(task_id = task_id, "Merger agent spawned successfully");
                     }
                     Err(e) => {
+                        // AgentAlreadyRunning means another caller successfully started the agent.
+                        // The task IS being merged — treat as a successful no-op.
+                        if matches!(e, ChatServiceError::AgentAlreadyRunning(_)) {
+                            tracing::info!(
+                                task_id = task_id,
+                                "Agent already running for this task — treating on_enter(Merging) as no-op"
+                            );
+                            return Ok(());
+                        }
                         tracing::error!(task_id = task_id, error = %e, "Failed to spawn merger agent");
                         record_merger_spawn_failure(
                             &self.machine.context.services.task_repo,
