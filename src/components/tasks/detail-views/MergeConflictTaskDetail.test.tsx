@@ -66,6 +66,60 @@ describe("MergeConflictTaskDetail", () => {
     expect(screen.getByText("Merge Conflict")).toBeInTheDocument();
   });
 
+  describe("conflict type distinction in status banner", () => {
+    it("shows 'Plan Update Conflict' for plan_update_conflict metadata", () => {
+      const metadata = JSON.stringify({ plan_update_conflict: true });
+      const task = createTestTask({ metadata });
+      render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByText("Plan Update Conflict")).toBeInTheDocument();
+      expect(screen.getByText("Manual resolution required to update plan from main")).toBeInTheDocument();
+    });
+
+    it("shows 'Task Update Conflict' for source_update_conflict metadata", () => {
+      const metadata = JSON.stringify({ source_update_conflict: true });
+      const task = createTestTask({ metadata });
+      render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByText("Task Update Conflict")).toBeInTheDocument();
+      expect(screen.getByText("Manual resolution required to update task from plan")).toBeInTheDocument();
+    });
+
+    it("shows 'Merge Conflict' when no conflict type flag is set", () => {
+      const task = createTestTask();
+      render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
+
+      expect(screen.getByText("Merge Conflict")).toBeInTheDocument();
+      expect(screen.getByText("Manual resolution required")).toBeInTheDocument();
+    });
+
+    it("shows correct historical subtitle for plan_update_conflict", () => {
+      const metadata = JSON.stringify({ plan_update_conflict: true });
+      const task = createTestTask({ metadata });
+      render(<MergeConflictTaskDetail task={task} isHistorical />, { wrapper: TestWrapper });
+
+      expect(screen.getByText("Plan Update Conflict")).toBeInTheDocument();
+      expect(screen.getByText("Manual resolution was required to update plan from main")).toBeInTheDocument();
+    });
+
+    it("shows correct historical subtitle for source_update_conflict", () => {
+      const metadata = JSON.stringify({ source_update_conflict: true });
+      const task = createTestTask({ metadata });
+      render(<MergeConflictTaskDetail task={task} isHistorical />, { wrapper: TestWrapper });
+
+      expect(screen.getByText("Task Update Conflict")).toBeInTheDocument();
+      expect(screen.getByText("Manual resolution was required to update task from plan")).toBeInTheDocument();
+    });
+
+    it("shows 'Merge Conflict' and historical subtitle when no conflict type and isHistorical", () => {
+      const task = createTestTask();
+      render(<MergeConflictTaskDetail task={task} isHistorical />, { wrapper: TestWrapper });
+
+      expect(screen.getByText("Merge Conflict")).toBeInTheDocument();
+      expect(screen.getByText("Manual resolution was required")).toBeInTheDocument();
+    });
+  });
+
   it("shows conflict files from metadata", () => {
     const metadata = JSON.stringify({
       conflict_files: ["src/main.rs", "src/lib.rs"],

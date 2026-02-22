@@ -541,7 +541,7 @@ describe("MergingTaskDetail", () => {
   });
 
   describe("merging (agent phase) rendering", () => {
-    it("shows 'Resolving Merge Conflicts' for agent phase", () => {
+    it("shows 'Resolving Merge Conflicts' for agent phase with no conflict type", () => {
       const task = createTestTask({ internalStatus: "merging" });
       renderWithProviders(<MergingTaskDetail task={task} />);
 
@@ -558,6 +558,49 @@ describe("MergingTaskDetail", () => {
       expect(screen.getByTestId("conflict-files-section")).toBeInTheDocument();
       expect(screen.getByText("src/main.ts")).toBeInTheDocument();
       expect(screen.getByText("src/lib/utils.ts")).toBeInTheDocument();
+    });
+
+    it("shows 'Updating Plan Branch' for plan_update_conflict in merging state", () => {
+      const metadata = JSON.stringify({ plan_update_conflict: true });
+      const task = createTestTask({ internalStatus: "merging", metadata });
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      expect(screen.getByText("Updating Plan Branch")).toBeInTheDocument();
+      expect(screen.getByText("Merging latest changes from main into plan branch")).toBeInTheDocument();
+    });
+
+    it("shows 'Updating Task Branch' for source_update_conflict in merging state", () => {
+      const metadata = JSON.stringify({ source_update_conflict: true });
+      const task = createTestTask({ internalStatus: "merging", metadata });
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      expect(screen.getByText("Updating Task Branch")).toBeInTheDocument();
+      expect(screen.getByText("Merging latest changes from plan into task branch")).toBeInTheDocument();
+    });
+  });
+
+  describe("conflict type in historical mode (resolving)", () => {
+    it("shows 'Updating Plan Branch' in historical resolving with plan_update_conflict", () => {
+      const metadata = JSON.stringify({ plan_update_conflict: true });
+      const task = createTestTask({ internalStatus: "merging", metadata });
+      renderWithProviders(<MergingTaskDetail task={task} isHistorical viewStatus="merging" />);
+
+      expect(screen.getByText("Updating Plan Branch")).toBeInTheDocument();
+    });
+
+    it("shows 'Updating Task Branch' in historical resolving with source_update_conflict", () => {
+      const metadata = JSON.stringify({ source_update_conflict: true });
+      const task = createTestTask({ internalStatus: "merging", metadata });
+      renderWithProviders(<MergingTaskDetail task={task} isHistorical viewStatus="merging" />);
+
+      expect(screen.getByText("Updating Task Branch")).toBeInTheDocument();
+    });
+
+    it("shows 'Resolving Conflicts' in historical resolving with no conflict type", () => {
+      const task = createTestTask({ internalStatus: "merging" });
+      renderWithProviders(<MergingTaskDetail task={task} isHistorical viewStatus="merging" />);
+
+      expect(screen.getByText("Resolving Conflicts")).toBeInTheDocument();
     });
   });
 
