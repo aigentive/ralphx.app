@@ -95,116 +95,132 @@ defer_merge_enabled: false
 timeouts:
   stream:
     # chat_service_streaming.rs — max stdout silence before killing merger agent (was 180s; raised to 600s so test runs don't time out)
-    merge_line_read_secs: 600        # Env: RALPHX_STREAM_MERGE_LINE_READ_SECS
+    merge_line_read_secs: 600 # Env: RALPHX_STREAM_MERGE_LINE_READ_SECS
     # chat_service_streaming.rs — max time with no parseable stream events from merger agent
-    merge_parse_stall_secs: 180      # Env: RALPHX_STREAM_MERGE_PARSE_STALL_SECS
+    merge_parse_stall_secs: 180 # Env: RALPHX_STREAM_MERGE_PARSE_STALL_SECS
     # chat_service_streaming.rs — max stdout silence for reviewer agent
-    review_line_read_secs: 300       # Env: RALPHX_STREAM_REVIEW_LINE_READ_SECS
+    review_line_read_secs: 300 # Env: RALPHX_STREAM_REVIEW_LINE_READ_SECS
     # chat_service_streaming.rs — max time with no parseable events from reviewer
-    review_parse_stall_secs: 120     # Env: RALPHX_STREAM_REVIEW_PARSE_STALL_SECS
+    review_parse_stall_secs: 120 # Env: RALPHX_STREAM_REVIEW_PARSE_STALL_SECS
     # chat_service_streaming.rs — max stdout silence for worker/ideation/other agents
-    default_line_read_secs: 600      # Env: RALPHX_STREAM_DEFAULT_LINE_READ_SECS
+    default_line_read_secs: 600 # Env: RALPHX_STREAM_DEFAULT_LINE_READ_SECS
     # chat_service_streaming.rs — max stall for worker/ideation/other agents
-    default_parse_stall_secs: 180    # Env: RALPHX_STREAM_DEFAULT_PARSE_STALL_SECS
+    default_parse_stall_secs: 180 # Env: RALPHX_STREAM_DEFAULT_PARSE_STALL_SECS
     # chat_service_streaming.rs — team lead wait time for teammate responses (generous: 1 hour)
-    team_line_read_secs: 3600        # Env: RALPHX_STREAM_TEAM_LINE_READ_SECS
+    team_line_read_secs: 3600 # Env: RALPHX_STREAM_TEAM_LINE_READ_SECS
     # chat_service_streaming.rs — team lead stream stall limit (generous: 1 hour)
-    team_parse_stall_secs: 3600      # Env: RALPHX_STREAM_TEAM_PARSE_STALL_SECS
+    team_parse_stall_secs: 3600 # Env: RALPHX_STREAM_TEAM_PARSE_STALL_SECS
 
 reconciliation:
   # reconciliation.rs — overall deadline for merger agent; triggers MergeIncomplete + auto-retry if exceeded
-  merger_timeout_secs: 1200                    # Env: RALPHX_RECONCILIATION_MERGER_TIMEOUT_SECS
+  merger_timeout_secs: 1200 # Env: RALPHX_RECONCILIATION_MERGER_TIMEOUT_SECS
   # reconciliation.rs — max auto-retry attempts for tasks stuck in Merging state
-  merging_max_retries: 3                       # Env: RALPHX_RECONCILIATION_MERGING_MAX_RETRIES
+  merging_max_retries: 3 # Env: RALPHX_RECONCILIATION_MERGING_MAX_RETRIES
   # reconciliation.rs — PendingMerge tasks older than this (minutes) are considered stale and retried
-  pending_merge_stale_minutes: 2               # Env: RALPHX_RECONCILIATION_PENDING_MERGE_STALE_MINUTES
+  pending_merge_stale_minutes: 2 # Env: RALPHX_RECONCILIATION_PENDING_MERGE_STALE_MINUTES
   # reconciliation.rs — QA tasks older than this (minutes) are considered stale
-  qa_stale_minutes: 5                          # Env: RALPHX_RECONCILIATION_QA_STALE_MINUTES
+  qa_stale_minutes: 5 # Env: RALPHX_RECONCILIATION_QA_STALE_MINUTES
   # reconciliation.rs — initial backoff before retrying a MergeIncomplete task (exponential)
-  merge_incomplete_retry_base_secs: 30         # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_RETRY_BASE_SECS
+  merge_incomplete_retry_base_secs: 30 # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_RETRY_BASE_SECS
   # reconciliation.rs — cap on MergeIncomplete exponential backoff
-  merge_incomplete_retry_max_secs: 1800        # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_RETRY_MAX_SECS
+  merge_incomplete_retry_max_secs: 1800 # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_RETRY_MAX_SECS
   # reconciliation.rs — max auto-retry attempts for MergeIncomplete before surfacing to user
-  merge_incomplete_max_retries: 50             # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_MAX_RETRIES
+  merge_incomplete_max_retries: 50 # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_MAX_RETRIES
   # reconciliation.rs — max validation-revert cycles before stopping auto-retry (prevents infinite loops)
-  validation_revert_max_count: 2               # Env: RALPHX_RECONCILIATION_VALIDATION_REVERT_MAX_COUNT
+  validation_revert_max_count: 2 # Env: RALPHX_RECONCILIATION_VALIDATION_REVERT_MAX_COUNT
   # reconciliation.rs — initial backoff before retrying a MergeConflict task
-  merge_conflict_retry_base_secs: 60           # Env: RALPHX_RECONCILIATION_MERGE_CONFLICT_RETRY_BASE_SECS
+  merge_conflict_retry_base_secs: 60 # Env: RALPHX_RECONCILIATION_MERGE_CONFLICT_RETRY_BASE_SECS
   # reconciliation.rs — cap on MergeConflict exponential backoff
-  merge_conflict_retry_max_secs: 600           # Env: RALPHX_RECONCILIATION_MERGE_CONFLICT_RETRY_MAX_SECS
+  merge_conflict_retry_max_secs: 600 # Env: RALPHX_RECONCILIATION_MERGE_CONFLICT_RETRY_MAX_SECS
   # reconciliation.rs — max auto-retry attempts for MergeConflict
-  merge_conflict_max_retries: 3                # Env: RALPHX_RECONCILIATION_MERGE_CONFLICT_MAX_RETRIES
+  merge_conflict_max_retries: 3 # Env: RALPHX_RECONCILIATION_MERGE_CONFLICT_MAX_RETRIES
   # reconciliation.rs — max auto-retry attempts for tasks stuck in Executing
-  executing_max_retries: 5                     # Env: RALPHX_RECONCILIATION_EXECUTING_MAX_RETRIES
+  executing_max_retries: 5 # Env: RALPHX_RECONCILIATION_EXECUTING_MAX_RETRIES
   # reconciliation.rs — max auto-retry attempts for tasks stuck in Reviewing
-  reviewing_max_retries: 3                     # Env: RALPHX_RECONCILIATION_REVIEWING_MAX_RETRIES
+  reviewing_max_retries: 3 # Env: RALPHX_RECONCILIATION_REVIEWING_MAX_RETRIES
   # reconciliation.rs — max auto-retry attempts for tasks stuck in QA
-  qa_max_retries: 3                            # Env: RALPHX_RECONCILIATION_QA_MAX_RETRIES
+  qa_max_retries: 3 # Env: RALPHX_RECONCILIATION_QA_MAX_RETRIES
   # reconciliation.rs — total wall-clock limit for Executing state (minutes)
-  executing_max_wall_clock_minutes: 60         # Env: RALPHX_RECONCILIATION_EXECUTING_MAX_WALL_CLOCK_MINUTES
+  executing_max_wall_clock_minutes: 60 # Env: RALPHX_RECONCILIATION_EXECUTING_MAX_WALL_CLOCK_MINUTES
   # reconciliation.rs — total wall-clock limit for Reviewing state (minutes)
-  reviewing_max_wall_clock_minutes: 30         # Env: RALPHX_RECONCILIATION_REVIEWING_MAX_WALL_CLOCK_MINUTES
+  reviewing_max_wall_clock_minutes: 30 # Env: RALPHX_RECONCILIATION_REVIEWING_MAX_WALL_CLOCK_MINUTES
   # reconciliation.rs — total wall-clock limit for QA state (minutes)
-  qa_max_wall_clock_minutes: 15                # Env: RALPHX_RECONCILIATION_QA_MAX_WALL_CLOCK_MINUTES
+  qa_max_wall_clock_minutes: 15 # Env: RALPHX_RECONCILIATION_QA_MAX_WALL_CLOCK_MINUTES
   # side_effects.rs — max wall-clock seconds for programmatic merge attempt (cleanup + strategy dispatch)
-  attempt_merge_deadline_secs: 120             # Env: RALPHX_RECONCILIATION_ATTEMPT_MERGE_DEADLINE_SECS
+  attempt_merge_deadline_secs: 120 # Env: RALPHX_RECONCILIATION_ATTEMPT_MERGE_DEADLINE_SECS
   # merge_outcome_handler.rs — max wall-clock seconds for post-merge validation commands (separate from git deadline)
-  validation_deadline_secs: 1200               # Env: RALPHX_RECONCILIATION_VALIDATION_DEADLINE_SECS
+  validation_deadline_secs: 1200 # Env: RALPHX_RECONCILIATION_VALIDATION_DEADLINE_SECS
   # handlers/merge.rs — grace period after merger agent run created before checking run-state vs registry (covers agent startup)
-  merge_registry_grace_period_secs: 60         # Env: RALPHX_RECONCILIATION_MERGE_REGISTRY_GRACE_PERIOD_SECS
+  merge_registry_grace_period_secs: 60 # Env: RALPHX_RECONCILIATION_MERGE_REGISTRY_GRACE_PERIOD_SECS
 
 git:
   # git_service/git_cmd.rs — per-command timeout to prevent hung git processes
-  cmd_timeout_secs: 60               # Env: RALPHX_GIT_CMD_TIMEOUT_SECS
+  cmd_timeout_secs: 60 # Env: RALPHX_GIT_CMD_TIMEOUT_SECS
   # git_service/git_cmd.rs — max retry attempts for transient git failures
-  max_retries: 3                     # Env: RALPHX_GIT_MAX_RETRIES
+  max_retries: 3 # Env: RALPHX_GIT_MAX_RETRIES
   # git_service/git_cmd.rs — delay between retries (list, not env-overridable)
   retry_backoff_secs: [1, 2, 4]
   # side_effects.rs — age threshold for removing a stale .git/index.lock file
-  index_lock_stale_secs: 5           # Env: RALPHX_GIT_INDEX_LOCK_STALE_SECS
+  index_lock_stale_secs: 5 # Env: RALPHX_GIT_INDEX_LOCK_STALE_SECS
   # merge_coordination.rs — settle time after SIGTERM before worktree deletion
-  agent_kill_settle_secs: 1          # Env: RALPHX_GIT_AGENT_KILL_SETTLE_SECS
+  agent_kill_settle_secs: 1 # Env: RALPHX_GIT_AGENT_KILL_SETTLE_SECS
   # merge_coordination.rs — timeout for each stop_agent() call in pre-merge cleanup step 0
-  agent_stop_timeout_secs: 10       # Env: RALPHX_GIT_AGENT_STOP_TIMEOUT_SECS
+  agent_stop_timeout_secs: 10 # Env: RALPHX_GIT_AGENT_STOP_TIMEOUT_SECS
   # merge_coordination.rs — timeout for task worktree deletion during pre-merge cleanup
-  cleanup_worktree_timeout_secs: 10  # Env: RALPHX_GIT_CLEANUP_WORKTREE_TIMEOUT_SECS
+  cleanup_worktree_timeout_secs: 10 # Env: RALPHX_GIT_CLEANUP_WORKTREE_TIMEOUT_SECS
   # merge_coordination.rs — timeout for merge/rebase worktree deletion and git clean
-  cleanup_git_op_timeout_secs: 30    # Env: RALPHX_GIT_CLEANUP_GIT_OP_TIMEOUT_SECS
+  cleanup_git_op_timeout_secs: 30 # Env: RALPHX_GIT_CLEANUP_GIT_OP_TIMEOUT_SECS
 
 scheduler:
   # task_scheduler_service.rs — how often the watchdog scans for stuck/stale tasks
-  watchdog_interval_secs: 60             # Env: RALPHX_SCHEDULER_WATCHDOG_INTERVAL_SECS
+  watchdog_interval_secs: 60 # Env: RALPHX_SCHEDULER_WATCHDOG_INTERVAL_SECS
   # task_scheduler_service.rs — how long a Ready task can sit before considered stale
-  watchdog_stale_threshold_secs: 30      # Env: RALPHX_SCHEDULER_WATCHDOG_STALE_THRESHOLD_SECS
+  watchdog_stale_threshold_secs: 30 # Env: RALPHX_SCHEDULER_WATCHDOG_STALE_THRESHOLD_SECS
   # task_scheduler_service.rs — max spawn retries when task slot contention occurs
-  max_contention_retries: 3              # Env: RALPHX_SCHEDULER_MAX_CONTENTION_RETRIES
+  max_contention_retries: 3 # Env: RALPHX_SCHEDULER_MAX_CONTENTION_RETRIES
   # task_scheduler_service.rs — sleep between contention retry attempts (milliseconds)
-  contention_retry_delay_ms: 200         # Env: RALPHX_SCHEDULER_CONTENTION_RETRY_DELAY_MS
+  contention_retry_delay_ms: 200 # Env: RALPHX_SCHEDULER_CONTENTION_RETRY_DELAY_MS
   # on_enter_states.rs — settle delay before spawning agent for a newly-Ready task (milliseconds)
-  ready_settle_ms: 300                   # Env: RALPHX_SCHEDULER_READY_SETTLE_MS
+  ready_settle_ms: 300 # Env: RALPHX_SCHEDULER_READY_SETTLE_MS
   # on_enter_states.rs — settle delay before scheduling unblocked tasks after a merge completes (milliseconds)
-  merge_settle_ms: 100                   # Env: RALPHX_SCHEDULER_MERGE_SETTLE_MS
+  merge_settle_ms: 100 # Env: RALPHX_SCHEDULER_MERGE_SETTLE_MS
 
 supervisor:
   # supervisor_service.rs — wall-clock seconds before supervisor warns agent about time usage
-  time_threshold_secs: 600               # Env: RALPHX_SUPERVISOR_TIME_THRESHOLD_SECS
+  time_threshold_secs: 600 # Env: RALPHX_SUPERVISOR_TIME_THRESHOLD_SECS
   # supervisor_service.rs — token count at which supervisor warns agent
-  token_threshold: 50000                 # Env: RALPHX_SUPERVISOR_TOKEN_THRESHOLD
+  token_threshold: 50000 # Env: RALPHX_SUPERVISOR_TOKEN_THRESHOLD
   # supervisor_service.rs — token count at which supervisor forces agent stop
-  max_tokens: 100000                     # Env: RALPHX_SUPERVISOR_MAX_TOKENS
+  max_tokens: 100000 # Env: RALPHX_SUPERVISOR_MAX_TOKENS
   # supervisor_service.rs — how often supervisor checks for stuck/looping behavior
-  progress_interval_secs: 30             # Env: RALPHX_SUPERVISOR_PROGRESS_INTERVAL_SECS
+  progress_interval_secs: 30 # Env: RALPHX_SUPERVISOR_PROGRESS_INTERVAL_SECS
   # supervisor_service.rs — min repetitions before classifying as a loop
-  loop_threshold: 3                      # Env: RALPHX_SUPERVISOR_LOOP_THRESHOLD
+  loop_threshold: 3 # Env: RALPHX_SUPERVISOR_LOOP_THRESHOLD
   # supervisor_service.rs — min stuck-checks before taking action
-  stuck_threshold: 5                     # Env: RALPHX_SUPERVISOR_STUCK_THRESHOLD
+  stuck_threshold: 5 # Env: RALPHX_SUPERVISOR_STUCK_THRESHOLD
 
 limits:
   # chat_service_errors.rs — max times an agent conversation is auto-resumed after a provider error
-  max_resume_attempts: 5                 # Env: RALPHX_LIMITS_MAX_RESUME_ATTEMPTS
+  max_resume_attempts: 5 # Env: RALPHX_LIMITS_MAX_RESUME_ATTEMPTS
 
 tool_sets:
-  base_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch, Skill, TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, KillShell, MCPSearch]
+  base_tools:
+    [
+      Read,
+      Grep,
+      Glob,
+      Bash,
+      WebFetch,
+      WebSearch,
+      Skill,
+      TaskCreate,
+      TaskUpdate,
+      TaskGet,
+      TaskList,
+      TaskOutput,
+      KillShell,
+      MCPSearch,
+    ]
 
 # process_mapping:
 #   Maps logical process slots to agent variants. Each slot has a `default`
@@ -321,7 +337,7 @@ claude:
     # RALPHX_ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
     # RALPHX_API_TIMEOUT_MS=3000000
     # RALPHX_ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air
-    # RALPHX_ANTHROPIC_DEFAULT_SONNET_MODEL=glm-5
+    # RALPHX_ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7
     # RALPHX_ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5
     z_ai:
       extends: default
@@ -330,7 +346,7 @@ claude:
         ANTHROPIC_BASE_URL: https://api.z.ai/api/anthropic
         API_TIMEOUT_MS: "3000000"
         ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-4.5-air
-        ANTHROPIC_DEFAULT_SONNET_MODEL: glm-5
+        ANTHROPIC_DEFAULT_SONNET_MODEL: glm-4.7
         ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5
 
 agents:
@@ -701,7 +717,11 @@ agents:
   - name: ideation-team-lead
     extends: orchestrator-ideation
     system_prompt_file: ralphx-plugin/agents/ideation-team-lead.md
-    tools: { extends: base_tools, include: [Task, TaskStop, TeamCreate, TeamDelete, SendMessage] }
+    tools:
+      {
+        extends: base_tools,
+        include: [Task, TaskStop, TeamCreate, TeamDelete, SendMessage],
+      }
     # inherits: model (opus), preapproved_cli_tools from orchestrator-ideation
     # mcp_tools override: parent tools + team coordination tools
     mcp_tools: [
@@ -738,5 +758,19 @@ agents:
     extends: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker-team.md
     model: claude-sonnet-4-6
-    tools: { extends: base_tools, include: [Write, Edit, Task, LSP, TaskStop, TeamCreate, TeamDelete, SendMessage] }
+    tools:
+      {
+        extends: base_tools,
+        include:
+          [
+            Write,
+            Edit,
+            Task,
+            LSP,
+            TaskStop,
+            TeamCreate,
+            TeamDelete,
+            SendMessage,
+          ],
+      }
     # inherits: mcp_tools, preapproved_cli_tools from ralphx-worker
