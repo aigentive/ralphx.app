@@ -15,6 +15,7 @@ import {
   Ban,
   ChevronDown,
   ChevronRight,
+  RefreshCw,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { extractErrorMessage } from "@/lib/errors";
@@ -247,6 +248,19 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
     }
   }, [task.metadata]);
 
+  // Parse conflict type from task metadata to distinguish freshness updates from real conflicts
+  const conflictType = useMemo(() => {
+    if (!task.metadata) return null;
+    try {
+      const parsed = typeof task.metadata === "string" ? JSON.parse(task.metadata) : task.metadata;
+      if (parsed?.plan_update_conflict === true) return "plan_update" as const;
+      if (parsed?.source_update_conflict === true) return "source_update" as const;
+      return null;
+    } catch {
+      return null;
+    }
+  }, [task.metadata]);
+
   // Live conflict detection (only active for non-historical views)
   const {
     conflicts: liveConflicts,
@@ -327,15 +341,49 @@ export function MergeConflictTaskDetail({ task, isHistorical = false }: MergeCon
     >
       {/* Status Banner */}
       <StatusBanner
-        icon={AlertTriangle}
-        title="Merge Conflict"
-        subtitle={isHistorical ? "Manual resolution was required" : "Manual resolution required"}
-        variant="warning"
+        icon={
+          conflictType === "plan_update" || conflictType === "source_update"
+            ? RefreshCw
+            : AlertTriangle
+        }
+        title={
+          conflictType === "plan_update"
+            ? "Plan Update Conflict"
+            : conflictType === "source_update"
+            ? "Task Update Conflict"
+            : "Merge Conflict"
+        }
+        subtitle={
+          conflictType === "plan_update"
+            ? isHistorical
+              ? "Manual resolution was required to update plan from main"
+              : "Manual resolution required to update plan from main"
+            : conflictType === "source_update"
+            ? isHistorical
+              ? "Manual resolution was required to update task from plan"
+              : "Manual resolution required to update task from plan"
+            : isHistorical
+            ? "Manual resolution was required"
+            : "Manual resolution required"
+        }
+        variant={
+          conflictType === "plan_update" || conflictType === "source_update"
+            ? "info"
+            : "warning"
+        }
         badge={
           <StatusPill
-            icon={AlertTriangle}
+            icon={
+              conflictType === "plan_update" || conflictType === "source_update"
+                ? RefreshCw
+                : AlertTriangle
+            }
             label="Conflict"
-            variant="warning"
+            variant={
+              conflictType === "plan_update" || conflictType === "source_update"
+                ? "info"
+                : "warning"
+            }
             size="md"
           />
         }
