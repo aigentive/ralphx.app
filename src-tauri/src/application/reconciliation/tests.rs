@@ -3448,3 +3448,68 @@ fn is_auto_complete_in_flight_tracks_correctly() {
     state.finish_auto_complete(task_id);
     assert!(!state.is_auto_complete_in_flight(task_id));
 }
+
+#[tokio::test]
+async fn test_agent_reported_failure_skips_retry() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Agent Reported Failure".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_failure_source": serde_json::to_value(MergeFailureSource::AgentReported).unwrap()
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled,
+        "Should not retry when agent explicitly reported the failure (AgentReported guard)"
+    );
+}
+
+#[tokio::test]
+async fn test_validation_revert_max_exceeded_skips_retry() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Validation Revert Loop".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    // Set validation_revert_count at max to trigger the loop-breaking guard
+    task.metadata = Some(
+        serde_json::json!({
+            "validation_revert_count": reconciliation_config().validation_revert_max_count
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled,
+        "Should not retry when validation_revert_count has reached max (ValidationFailed guard)"
+    );
+}

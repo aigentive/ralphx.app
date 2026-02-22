@@ -7,13 +7,17 @@
 // Paths tested:
 //   B2: Normal merge conflict → Merging + merger agent spawned
 //   C1: AutoFix validation failure → Merging + validation_recovery=true + merger agent spawned
+//   TOCTOU: Metadata caching at dispatch (merge_target_branch/merge_source_branch in metadata)
 
 use super::helpers::*;
 use crate::domain::entities::{
-    InternalStatus, MergeStrategy, MergeValidationMode, Project, ProjectId, Task,
+    IdeationSessionId, InternalStatus, MergeStrategy, MergeValidationMode, PlanBranchStatus,
+    Project, ProjectId, Task,
 };
+use crate::domain::repositories::PlanBranchRepository;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::{State, TransitionHandler};
+use crate::infrastructure::memory::MemoryPlanBranchRepository;
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Shared helper: TaskServices with a retained Arc<MockChatService>
@@ -212,5 +216,100 @@ async fn c1_autofix_validation_failure_transitions_to_merging_and_spawns_agent()
         "AutoFix validation failure must spawn a merger agent (call_count={}). \
          handle_validation_failure must call on_enter_dispatch(Merging) → chat_service.send_message().",
         chat_service.call_count(),
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// TOCTOU: Metadata caching at merge dispatch
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// TOCTOU guard — verify merge branches are cached in task metadata at dispatch.
+///
+/// Orchestration chain:
+///   on_enter(PendingMerge)
+///   → attempt_programmatic_merge
+///   → resolve_merge_branches (task has ideation_session_id → looks up plan branch repo)
+///   → plan branch found with status=Active → target = plan branch name (not "main")
+///   → task.metadata["merge_target_branch"] = plan_branch_name  ← verified
+///   → task.metadata["merge_source_branch"] = task_branch       ← verified
+///
+/// This ensures auto-complete always merges into the branch that was current at
+/// dispatch time, even if plan state changes before the merger agent finishes.
+#[tokio::test]
+async fn toctou_merge_branches_cached_in_metadata_before_merge() {
+    let git_repo = setup_real_git_repo(); // creates main + task/test-task-branch
+    let plan_branch_name = "plan/toctou-test";
+
+    // Create plan branch in git (from main, no conflicts with task branch)
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "-b", plan_branch_name])
+        .current_dir(git_repo.path())
+        .output();
+    std::fs::write(git_repo.path().join("plan-init.txt"), "plan branch init").unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(git_repo.path())
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["commit", "-m", "init plan branch"])
+        .current_dir(git_repo.path())
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(git_repo.path())
+        .output();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+
+    let mut task = Task::new(project_id.clone(), "TOCTOU branch caching test".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some(git_repo.task_branch.clone());
+    // Task belongs to a plan (sess-1 matches make_plan_branch's hardcoded session_id)
+    task.ideation_session_id = Some(IdeationSessionId::from_string("sess-1".to_string()));
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new("test-project".to_string(), git_repo.path_string());
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project.merge_strategy = MergeStrategy::Merge;
+    project_repo.create(project).await.unwrap();
+
+    // Plan branch with session_id="sess-1" and status=Active
+    // make_plan_branch hardcodes session_id="sess-1" — matches task.ideation_session_id above
+    let pb = make_plan_branch("artifact-1", plan_branch_name, PlanBranchStatus::Active, None);
+    plan_branch_repo.create(pb).await.unwrap();
+
+    let (_, services) =
+        make_services_with_tracked_chat(Arc::clone(&task_repo), Arc::clone(&project_repo));
+    let services = services
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    let meta: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+
+    assert_eq!(
+        meta.get("merge_target_branch").and_then(|v| v.as_str()),
+        Some(plan_branch_name),
+        "TOCTOU guard: merge_target_branch must be cached as plan branch (not 'main'). \
+         Got metadata: {:?}",
+        updated.metadata,
+    );
+    assert_eq!(
+        meta.get("merge_source_branch").and_then(|v| v.as_str()),
+        Some(git_repo.task_branch.as_str()),
+        "TOCTOU guard: merge_source_branch must be cached as task branch. \
+         Got metadata: {:?}",
+        updated.metadata,
     );
 }
