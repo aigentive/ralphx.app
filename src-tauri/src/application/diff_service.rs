@@ -48,6 +48,7 @@ pub struct FileDiff {
 
 /// 3-way diff data for a file with merge conflicts
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConflictDiff {
     /// File path relative to project root
     pub file_path: String,

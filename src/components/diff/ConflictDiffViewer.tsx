@@ -35,7 +35,8 @@ interface ParsedLine {
  * content from theirs (source branch)
  * >>>>>>> theirs-branch-name
  */
-function parseConflictContent(content: string): ParsedLine[] {
+function parseConflictContent(content: string | undefined | null): ParsedLine[] {
+  if (!content) return [];
   const lines = content.split("\n");
   const result: ParsedLine[] = [];
 
