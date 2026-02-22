@@ -9,17 +9,6 @@ Before ANY user-facing content, documentation, UI copy, or messaging work, agent
 - `~/.ralphx/strategy/project-goal-card.md` — Messaging architecture, positioning, ICPs, competitive landscape
 - `~/.ralphx/strategy/project-metrics.md` — Verifiable project data points
 
-| Mandate | Detail |
-|---------|--------|
-| "Empowers" always | ❌ "replaces engineers" in any register |
-| "Control room" | ❌ "autonomous system" in user-facing content |
-| "Own, not rent" | Sovereignty framing for all audiences |
-| Local-first identity | Data never leaves the machine without explicit action |
-| Killer feature | "Brief in, feature on main." — founder's exact words |
-| ❌ "AI EngOps" | Analyst/investor only. User-facing: "AI development infrastructure" |
-| ❌ "autonomous" | Never in category-level descriptions |
-| Accessible | Vibe Coder through CTO — all 9 personas in goal card |
-
 These are the **owner's directives**. They override default agent judgment on messaging.
 
 ---
