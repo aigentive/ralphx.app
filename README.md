@@ -1,23 +1,17 @@
-<h1 align="center">
-  <br>
-  RalphX
-  <br>
-</h1>
-
 <p align="center">
-  <strong>Describe it. Ship it.</strong>
-  <br>
-  The AI development infrastructure you own, not rent.
+  <img src="assets/welcome-2026-02-22.png" alt="RalphX — Describe it. Ship it." width="100%">
 </p>
 
 <p align="center">
-  <a href="#the-story">The Story</a> &middot;
-  <a href="#what-it-is">What It Is</a> &middot;
-  <a href="#screenshots">Screenshots</a> &middot;
-  <a href="#how-it-works">How It Works</a> &middot;
-  <a href="#the-numbers">The Numbers</a> &middot;
-  <a href="#who-its-for">Who It's For</a> &middot;
-  <a href="#getting-started">Get Started</a> &middot;
+  <strong>The AI development infrastructure you own, not rent.</strong>
+</p>
+
+<p align="center">
+  <a href="#the-story">The Story</a> ·
+  <a href="#what-it-is">What It Is</a> ·
+  <a href="#how-it-works">How It Works</a> ·
+  <a href="#the-numbers">The Numbers</a> ·
+  <a href="#getting-started">Get Started</a> ·
   <a href="#documentation">Docs</a>
 </p>
 
@@ -37,12 +31,6 @@ It started as a 196-line bash script called `ralph.sh` — a loop that orchestra
 
 ---
 
-<p align="center">
-  <img src="assets/graph-2026-02-22.png" alt="RalphX Graph View — dependency graph with critical path, tier grouping, and live execution status" width="100%">
-</p>
-
----
-
 ## What It Is
 
 RalphX is a native macOS desktop application — the layer between your AI agent and your git history.
@@ -53,70 +41,9 @@ All data stays on your machine. Local SQLite database. No cloud dependency. No t
 
 **Give every builder the power to develop software with AI — independent of any platform, vendor, or provider.**
 
----
-
-## Screenshots
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="assets/ideation-2026-02-21.png" alt="Ideation Studio — natural language to structured task proposals">
-      <p><strong>Ideation Studio</strong> — Describe what you want in natural language. Choose Solo, Research Team, or Debate Team mode. Get task proposals with dependencies, complexity estimates, and acceptance criteria. Apply to Kanban with one click.</p>
-    </td>
-    <td width="50%">
-      <img src="assets/merge-2026-02-21.png" alt="Merge Pipeline — 10-step automated merge validation">
-      <p><strong>Merge Pipeline</strong> — 10-step automated merge validation: preparation, preconditions, branch freshness, worktree setup, cleanup, merge, type check, lint, clippy, tests. The Merger agent resolves conflicts and reports results in real time.</p>
-    </td>
-  </tr>
-</table>
-
----
-
-#### Review Gates
-
-<table>
-  <tr>
-    <td width="33%">
-      <img src="assets/ai-review-2026-02-22.png" alt="AI Review in progress — Reviewer agent examining changes">
-      <p><strong>AI Review</strong> — The Reviewer agent examines diffs, runs environment checks, and steps through changes in real time. Code is analyzed before feedback reaches the Worker.</p>
-    </td>
-    <td width="33%">
-      <img src="assets/revise-2026-02-22.png" alt="Revision cycle — structured feedback delivered to the Worker">
-      <p><strong>Revision cycle</strong> — Structured feedback: specific issues, severity grades, required fixes. The Worker gets exactly what it needs to correct. Max 3 cycles before human escalation.</p>
-    </td>
-    <td width="33%">
-      <img src="assets/approved-2026-02-22.png" alt="Approved — code passes AI review and moves to merge">
-      <p><strong>Approved</strong> — Code passes AI review and moves to merge. Human escalation happens when it matters — not by default.</p>
-    </td>
-  </tr>
-</table>
-
----
-
-#### Merge Pipeline
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="assets/pending-merge-2026-02-22.png" alt="Queued — merge starts automatically">
-      <p><strong>Queued</strong> — Merge starts automatically. Type check, lint, clippy, and tests run in sequence. Failures are visible immediately.</p>
-    </td>
-    <td width="50%">
-      <img src="assets/merge-fix-validation-2026-02-22.png" alt="Validation failure — Merger agent fixes build errors inline">
-      <p><strong>Validation failure</strong> — Build errors are fixed inline by the Merger agent. The merge branch isn't reverted.</p>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="assets/merge-conflicts-2026-02-22.png" alt="Conflicts — Merger agent resolves, never forces">
-      <p><strong>Conflicts</strong> — The Merger agent resolves conflicts, reports what changed, and never force-pushes. Your history stays clean.</p>
-    </td>
-    <td width="50%">
-      <img src="assets/merge-incomplete-deferred-2026-02-22.png" alt="Deferred — blocked merges defer automatically with recovery log">
-      <p><strong>Deferred</strong> — Blocked merges defer automatically with a timestamped recovery log. Retry, resolve manually, or cancel — you stay in control.</p>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="assets/graph-2026-02-22.png" alt="RalphX dependency graph — critical path highlighting, tier grouping, live execution status" width="100%">
+</p>
 
 ---
 
@@ -191,44 +118,37 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 
 ---
 
-## Key Features
+## Screenshots
 
-### Kanban + Auto-Execution
+<table><tr>
+<td><img src="assets/ideation-2026-02-21.png" width="100%"></td>
+<td><img src="assets/merge-2026-02-21.png" width="100%"></td>
+</tr></table>
 
-A visual board where columns map to lifecycle states. Drag a task to **Planned** and a Worker agent picks it up, writes code in an isolated worktree, and pushes it through the full pipeline. The Kanban board is the interface; the agents are the engine.
+<p align="center">
+  <em>Ideation Studio — describe what you want, get structured task proposals</em> · <em>Merge Pipeline — 10-step automated validation</em>
+</p>
 
-### 24-State Task Lifecycle
+<details>
+<summary><strong>More screenshots</strong></summary>
+<br>
 
-Every task moves through a structured lifecycle enforced by a runtime state machine with compile-time exhaustive match checking. Invalid transitions are rejected immediately. States span from Backlog through Executing, Reviewing, QA, Merging, and Done. Every transition is logged with timestamps, agent IDs, and outcomes.
+<p align="center">
+  <img src="assets/ai-review-2026-02-22.png" alt="AI Review" width="100%">
+</p>
+<p align="center"><em>AI Review — Reviewer agent examines diffs and files structured issues</em></p>
 
-### Ideation Studio
+<p align="center">
+  <img src="assets/merge-conflicts-2026-02-22.png" alt="Merge conflict resolution" width="100%">
+</p>
+<p align="center"><em>Conflict resolution — Merger agent resolves conflicts, never force-pushes</em></p>
 
-Open Ideation. Describe what you want to build. The Orchestrator agent researches your codebase and generates task proposals with dependency graphs, complexity estimates, acceptance criteria, and execution order. Choose **Solo** mode for quick tasks, **Research Team** for investigation, or **Debate Team** for architectural decisions. Apply proposals to the Kanban board with one click.
+<p align="center">
+  <img src="assets/approved-2026-02-22.png" alt="Approved — code passes review" width="100%">
+</p>
+<p align="center"><em>Approved — code passes AI review and moves to merge</em></p>
 
-### Review Gates
-
-AI-generated code never ships unreviewed:
-
-1. **AI Review** — Reviewer agent examines diffs, files structured issues with severity levels
-2. **Human Checkpoint** — Escalation point for changes that need your judgment
-3. **QA Testing** — Automated test execution and verification
-4. **Auto-fix limit** — Max 3 auto-fix cycles. If the Worker can't resolve review issues, it stops and escalates.
-
-### Git Worktree Isolation
-
-Every task gets its own git worktree. AI agents commit, branch, and merge in complete isolation — your working directory is never touched. Review diffs before anything reaches main. If something goes wrong, the worktree is disposable. Your code is safe.
-
-### Dependency Graph
-
-Interactive node graph with critical path highlighting, tier-based grouping, and real-time execution status. See what's blocked, what's running, and what's on the longest chain. Battle Mode renders executing tasks as a pixel-art space game — same real data, different view.
-
-### Supervisor Watchdog
-
-A background process monitors all running tasks. Detects execution loops, stalled agents, and resource waste. When it detects a problem, it stops the stuck agent through the state machine and escalates to you. No more checking terminal tabs wondering if the AI is still thinking.
-
-### Plugin System + Memory
-
-Encode your team's practices as reusable methodology plugins — review criteria, coding patterns, testing requirements. Agents follow your standards automatically. The memory system captures context across sessions so agents learn your codebase conventions over time.
+</details>
 
 ---
 
@@ -248,40 +168,19 @@ Encode your team's practices as reusable methodology plugins — review criteria
 
 ## Who It's For
 
-### Individual
+**Solo developers** — One board for all your AI agents. Review diffs before merge. Stop managing terminal tabs.
 
-**Senior Software Engineer** — Running 3+ AI sessions in terminal tabs. Copy-pasting context. Managing worktrees manually. RalphX gives you one board, live visibility into every agent, and review diffs before merge.
+**Solopreneurs** — AI agents are your engineering team. Describe what you want, get shipped features with review gates that catch bugs at 2 AM.
 
-**Solopreneur** — AI agents are your entire engineering team. RalphX turns "describe what I want" into shipped features — with review gates that catch bugs at 2 AM.
+**Team leads** — Encode standards as methodology plugins. Review gates filter 80% of issues before human eyes. Scale AI output without scaling review bottleneck.
 
-**Vibe Coder** — You build by describing what you want. Maybe you're a designer, PM, or domain expert coding through AI. The 24-state lifecycle and review gates protect you from shipping broken code. The AI reviews the AI — and escalates when it matters.
+**Staff+ engineers** — Plugin system encodes architectural standards as agent methodology. Every AI-generated PR follows your team's practices automatically.
 
-### Team
-
-**Staff / Principal Engineer** — The plugin system lets you encode architectural standards as agent methodology — review criteria, coding patterns, testing requirements. Every AI-generated PR follows your team's practices automatically.
-
-**Tech Lead** — Your team's AI output exceeds your review capacity. Review gates filter 80% of issues before your eyes touch the code. Review what matters.
-
-### Organization
-
-**Engineering Manager** — Visibility into AI-assisted development without micromanaging. Activity stream and state machine give a real-time dashboard: what's executing, what's blocked, what shipped.
-
-**Director of Engineering** — Standardize AI development practices across teams. One methodology configuration, enforced everywhere. Audit trail satisfies security. Open source means they audit the actual code.
-
-### Enterprise
-
-**VP Engineering** — Turn "we're experimenting with AI coding" into "we have a structured, auditable AI development pipeline."
-
-**CTO** — Local-first data sovereignty. Open source, no vendor lock-in. Rust backend, memory-safe. Runtime-enforced state machine. Your security team can audit it in weeks, not months.
-
-### Not For You If
+### Not for you (yet) if
 
 - You're on Linux or Windows (macOS only, for now)
-- You prefer cloud-hosted AI dev platforms (RalphX is local-first)
-- You need multi-user real-time collaboration (single-developer orchestration today)
-- You don't use Claude (RalphX orchestrates Claude agents specifically)
-- You work from NFS or network-attached filesystems (git worktrees require local storage)
-- You want code autocomplete (that's Copilot / Cursor — RalphX works outside the IDE)
+- You don't use Claude (Claude-specific today, model-agnostic roadmap)
+- You need multi-user collaboration (single-developer orchestration)
 
 ---
 
