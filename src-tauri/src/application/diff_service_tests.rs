@@ -99,12 +99,18 @@ async fn test_detect_conflicts_clean_merge() {
     create_branch_with_change(&repo_path, "feature-a", "file_a.txt", "Content A\n");
 
     let diff_service = DiffService::new();
-    let result = diff_service.detect_conflicts(&repo_path_str, "feature-a", "master").await;
+    let result = diff_service
+        .detect_conflicts(&repo_path_str, "feature-a", "master")
+        .await;
 
     // Should succeed with no conflicts
     assert!(result.is_ok());
     let conflicts = result.unwrap();
-    assert!(conflicts.is_empty(), "Expected no conflicts, got: {:?}", conflicts);
+    assert!(
+        conflicts.is_empty(),
+        "Expected no conflicts, got: {:?}",
+        conflicts
+    );
 }
 
 #[test]
@@ -123,7 +129,11 @@ fn test_get_conflict_files_empty() {
     let result = DiffService::get_conflict_files(&repo_path);
     assert!(result.is_ok());
     let files = result.unwrap();
-    assert!(files.is_empty(), "Expected no conflict files, got: {:?}", files);
+    assert!(
+        files.is_empty(),
+        "Expected no conflict files, got: {:?}",
+        files
+    );
 }
 
 #[test]
@@ -131,7 +141,11 @@ fn test_resolve_git_dir_regular_repo() {
     let (_temp_dir, repo_path) = create_git_repo();
 
     let git_dir = DiffService::resolve_git_dir(&repo_path);
-    assert!(git_dir.ends_with(".git"), "Expected .git dir, got: {:?}", git_dir);
+    assert!(
+        git_dir.ends_with(".git"),
+        "Expected .git dir, got: {:?}",
+        git_dir
+    );
 }
 
 #[test]

@@ -69,8 +69,7 @@ fn test_task_started_emitted_streaming_mode() {
             delta_type: "input_json_delta".to_string(),
             text: None,
             partial_json: Some(
-                r#"{"description":"Run tests","subagent_type":"Bash","model":"haiku"}"#
-                    .to_string(),
+                r#"{"description":"Run tests","subagent_type":"Bash","model":"haiku"}"#.to_string(),
             ),
         },
     });

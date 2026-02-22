@@ -238,8 +238,8 @@ async fn test_extensibility_repos_accessible() {
     use crate::domain::entities::research::{ResearchBrief, ResearchProcess};
     use crate::domain::entities::status::InternalStatus;
     use crate::domain::entities::{
-        Artifact, ArtifactBucket, ArtifactFlow, ArtifactFlowTrigger, ArtifactType,
-        WorkflowColumn, WorkflowSchema,
+        Artifact, ArtifactBucket, ArtifactFlow, ArtifactFlowTrigger, ArtifactType, WorkflowColumn,
+        WorkflowSchema,
     };
 
     let state = AppState::new_test();

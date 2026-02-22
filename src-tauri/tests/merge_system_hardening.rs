@@ -119,10 +119,7 @@ fn create_plan_branch_hierarchy(repo: &Path) {
 
 /// Create a test project with a working directory pointing at a repo
 fn create_test_project(name: &str, repo_path: &Path) -> Project {
-    let mut project = Project::new(
-        name.to_string(),
-        repo_path.to_str().unwrap().to_string(),
-    );
+    let mut project = Project::new(name.to_string(), repo_path.to_str().unwrap().to_string());
     project.base_branch = Some("main".to_string());
     project
 }
@@ -228,12 +225,8 @@ async fn fix_task_with_session_resolves_to_plan_branch() {
     let mut task = create_pending_merge_task(&project, "ralphx/test/task-789");
     task.ideation_session_id = Some(session_id.clone());
 
-    let plan_repo = setup_plan_branch_repo(
-        session_id,
-        project.id.clone(),
-        "plan/feature",
-        None,
-    ).await;
+    let plan_repo =
+        setup_plan_branch_repo(session_id, project.id.clone(), "plan/feature", None).await;
 
     let (source, target) = resolve_merge_branches(&task, &project, &Some(plan_repo)).await;
 
@@ -257,7 +250,8 @@ async fn fix_plan_merge_task_resolves_plan_branch_to_main() {
         project.id.clone(),
         "plan/awesome-feature",
         Some(task_id),
-    ).await;
+    )
+    .await;
 
     let (source, target) = resolve_merge_branches(&task, &project, &Some(plan_repo)).await;
 
@@ -272,12 +266,8 @@ async fn fix_regular_task_resolves_to_base_branch() {
     let task = create_pending_merge_task(&project, "ralphx/test/task-regular");
 
     let session_id = IdeationSessionId::from_string("session-unrelated".to_string());
-    let plan_repo = setup_plan_branch_repo(
-        session_id,
-        project.id.clone(),
-        "plan/other-feature",
-        None,
-    ).await;
+    let plan_repo =
+        setup_plan_branch_repo(session_id, project.id.clone(), "plan/other-feature", None).await;
 
     let (source, target) = resolve_merge_branches(&task, &project, &Some(plan_repo)).await;
 
@@ -328,12 +318,7 @@ async fn gap_complete_merge_rejects_commit_not_on_target() {
 
     // Try to complete merge with a SHA that's NOT on main
     let result = complete_merge_internal::<tauri::test::MockRuntime>(
-        &mut task,
-        &project,
-        &task_sha,
-        "main",
-        &task_repo,
-        None,
+        &mut task, &project, &task_sha, "main", &task_repo, None,
     )
     .await;
 
@@ -366,12 +351,7 @@ async fn fix_complete_merge_accepts_commit_on_target() {
 
     // Complete merge with the SHA that IS on main
     let result = complete_merge_internal::<tauri::test::MockRuntime>(
-        &mut task,
-        &project,
-        &merge_sha,
-        "main",
-        &task_repo,
-        None,
+        &mut task, &project, &merge_sha, "main", &task_repo, None,
     )
     .await;
 
@@ -400,12 +380,7 @@ async fn fix_complete_merge_rejects_sha_on_wrong_branch() {
 
     // Try to complete merge with target="main" (wrong - SHA is on plan/feature, not main)
     let result = complete_merge_internal::<tauri::test::MockRuntime>(
-        &mut task,
-        &project,
-        &merge_sha,
-        "main",
-        &task_repo,
-        None,
+        &mut task, &project, &merge_sha, "main", &task_repo, None,
     )
     .await;
 
@@ -548,7 +523,8 @@ async fn fix_correct_target_distinguishes_plan_from_main() {
 
     // FIX: Check correct target (plan/feature) - should return true
     let is_on_plan = GitService::is_commit_on_branch(repo, &task_sha, "plan/feature")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(
         is_on_plan,
         "FIX: task SHA should be on plan/feature (correct target)"
@@ -556,7 +532,8 @@ async fn fix_correct_target_distinguishes_plan_from_main() {
 
     // FIX: Check wrong target (main) - should return false
     let is_on_main = GitService::is_commit_on_branch(repo, &task_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(
         !is_on_main,
         "FIX: task SHA should NOT be on main (wrong target)"
@@ -584,13 +561,8 @@ async fn fix_full_pipeline_task_to_plan_branch() {
     task.ideation_session_id = Some(session_id.clone());
 
     // Setup plan branch repo
-    let plan_repo = setup_plan_branch_repo(
-        session_id,
-        project.id.clone(),
-        "plan/feature",
-        None,
-    )
-    .await;
+    let plan_repo =
+        setup_plan_branch_repo(session_id, project.id.clone(), "plan/feature", None).await;
 
     // Resolve merge branches - should return (task-branch, plan/feature)
     let (source, target) = resolve_merge_branches(&task, &project, &Some(plan_repo.clone())).await;
@@ -598,7 +570,9 @@ async fn fix_full_pipeline_task_to_plan_branch() {
     assert_eq!(target, "plan/feature");
 
     // Perform checkout-free merge
-    let merge_result = try_merge_checkout_free(repo, &source, &target).await.expect("merge failed");
+    let merge_result = try_merge_checkout_free(repo, &source, &target)
+        .await
+        .expect("merge failed");
     let commit_sha = match merge_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict"),
@@ -616,18 +590,24 @@ async fn fix_full_pipeline_task_to_plan_branch() {
     )
     .await;
 
-    assert!(result.is_ok(), "complete_merge_internal failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "complete_merge_internal failed: {:?}",
+        result
+    );
     assert_eq!(task.internal_status, InternalStatus::Merged);
     assert_eq!(task.merge_commit_sha.as_deref(), Some(commit_sha.as_str()));
 
     // Verify: commit is on plan/feature
     let is_on_plan = GitService::is_commit_on_branch(repo, &commit_sha, "plan/feature")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_on_plan, "Commit should be on plan/feature");
 
     // Verify: commit is NOT on main
     let is_on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(!is_on_main, "Commit should NOT be on main");
 }
 
@@ -668,7 +648,8 @@ async fn fix_full_pipeline_task_to_main_direct() {
         rebase_wt.path(),
         merge_wt.path(),
     )
-        .await.expect("rebase+merge failed");
+    .await
+    .expect("rebase+merge failed");
     let commit_sha = match merge_result {
         MergeAttemptResult::Success { commit_sha } => commit_sha,
         _ => panic!("Expected Success, got: {:?}", merge_result),
@@ -686,13 +667,18 @@ async fn fix_full_pipeline_task_to_main_direct() {
     )
     .await;
 
-    assert!(result.is_ok(), "complete_merge_internal failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "complete_merge_internal failed: {:?}",
+        result
+    );
     assert_eq!(task.internal_status, InternalStatus::Merged);
     assert_eq!(task.merge_commit_sha.as_deref(), Some(commit_sha.as_str()));
 
     // Verify: commit is on main
     let is_on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_on_main, "Commit should be on main");
 }
 
@@ -730,7 +716,9 @@ async fn fix_full_pipeline_plan_merge_to_main() {
     assert_eq!(target, "main");
 
     // Perform checkout-free merge
-    let merge_result = try_merge_checkout_free(repo, &source, &target).await.expect("merge failed");
+    let merge_result = try_merge_checkout_free(repo, &source, &target)
+        .await
+        .expect("merge failed");
     let commit_sha = match merge_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict"),
@@ -748,12 +736,17 @@ async fn fix_full_pipeline_plan_merge_to_main() {
     )
     .await;
 
-    assert!(result.is_ok(), "complete_merge_internal failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "complete_merge_internal failed: {:?}",
+        result
+    );
     assert_eq!(task.internal_status, InternalStatus::Merged);
 
     // Verify: both branches are updated (plan/feature content is now on main)
     let is_on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_on_main, "Merge commit should be on main");
 }
 
@@ -774,13 +767,8 @@ async fn fix_full_pipeline_squash_merge_to_plan_branch() {
     task.ideation_session_id = Some(session_id.clone());
 
     // Setup plan branch repo
-    let plan_repo = setup_plan_branch_repo(
-        session_id,
-        project.id.clone(),
-        "plan/feature",
-        None,
-    )
-    .await;
+    let plan_repo =
+        setup_plan_branch_repo(session_id, project.id.clone(), "plan/feature", None).await;
 
     // Resolve merge branches - should return (task-branch, plan/feature)
     let (source, target) = resolve_merge_branches(&task, &project, &Some(plan_repo.clone())).await;
@@ -789,8 +777,9 @@ async fn fix_full_pipeline_squash_merge_to_plan_branch() {
 
     // Perform checkout-free squash merge
     let commit_message = "Squash merge: Add task.txt";
-    let merge_result =
-        try_squash_merge_checkout_free(repo, &source, &target, commit_message).await.expect("merge failed");
+    let merge_result = try_squash_merge_checkout_free(repo, &source, &target, commit_message)
+        .await
+        .expect("merge failed");
     let commit_sha = match merge_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict"),
@@ -808,17 +797,23 @@ async fn fix_full_pipeline_squash_merge_to_plan_branch() {
     )
     .await;
 
-    assert!(result.is_ok(), "complete_merge_internal failed: {:?}", result);
+    assert!(
+        result.is_ok(),
+        "complete_merge_internal failed: {:?}",
+        result
+    );
     assert_eq!(task.internal_status, InternalStatus::Merged);
 
     // Verify: commit is on plan/feature
     let is_on_plan = GitService::is_commit_on_branch(repo, &commit_sha, "plan/feature")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_on_plan, "Commit should be on plan/feature");
 
     // Verify: commit is NOT on main
     let is_on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(!is_on_main, "Commit should NOT be on main");
 
     // Verify: squash commit has single parent (not a merge commit)
@@ -875,14 +870,16 @@ async fn fix_deleted_source_branch_recovery() {
 
     // Recovery: find commits by message grep on target branch
     let found_sha = GitService::find_commit_by_message_grep(repo, "Add task.txt", "main")
-        .await.expect("find_commit_by_message_grep failed");
+        .await
+        .expect("find_commit_by_message_grep failed");
 
     assert!(found_sha.is_some(), "Should find commit by message");
     let found_sha = found_sha.unwrap();
 
     // Verify: the merge commit (or one of its parents) contains the task.txt commit
     let is_on_main = GitService::is_commit_on_branch(repo, &found_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_on_main, "Found commit should be on main");
 }
 
@@ -902,9 +899,12 @@ async fn fix_checkout_free_merge_while_main_checked_out() {
         .output()
         .expect("git checkout main failed");
 
-    let main_sha_before = GitService::get_branch_sha(repo, "main").await.expect("get main SHA failed");
-    let plan_sha_before =
-        GitService::get_branch_sha(repo, "plan/feature").await.expect("get plan SHA failed");
+    let main_sha_before = GitService::get_branch_sha(repo, "main")
+        .await
+        .expect("get main SHA failed");
+    let plan_sha_before = GitService::get_branch_sha(repo, "plan/feature")
+        .await
+        .expect("get plan SHA failed");
 
     // Verify working tree state (should only have README.md from initial commit)
     assert!(repo.join("README.md").exists(), "README.md should exist");
@@ -915,27 +915,34 @@ async fn fix_checkout_free_merge_while_main_checked_out() {
 
     // Perform checkout-free merge: task-branch → plan/feature (while main is checked out)
     let merge_result = try_merge_checkout_free(repo, "task-branch", "plan/feature")
-        .await.expect("checkout-free merge failed");
+        .await
+        .expect("checkout-free merge failed");
     let commit_sha = match merge_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict"),
     };
 
     // Verify: main branch unchanged
-    let main_sha_after = GitService::get_branch_sha(repo, "main").await.expect("get main SHA failed");
+    let main_sha_after = GitService::get_branch_sha(repo, "main")
+        .await
+        .expect("get main SHA failed");
     assert_eq!(
         main_sha_before, main_sha_after,
         "Main branch should be unchanged"
     );
 
     // Verify: plan/feature branch advanced
-    let plan_sha_after =
-        GitService::get_branch_sha(repo, "plan/feature").await.expect("get plan SHA failed");
+    let plan_sha_after = GitService::get_branch_sha(repo, "plan/feature")
+        .await
+        .expect("get plan SHA failed");
     assert_ne!(
         plan_sha_before, plan_sha_after,
         "Plan branch should be advanced"
     );
-    assert_eq!(plan_sha_after, commit_sha, "Plan branch should point to merge commit");
+    assert_eq!(
+        plan_sha_after, commit_sha,
+        "Plan branch should point to merge commit"
+    );
 
     // Verify: working tree unchanged (still on main, task.txt NOT present)
     assert!(
@@ -944,17 +951,21 @@ async fn fix_checkout_free_merge_while_main_checked_out() {
     );
 
     // Verify: current branch is still main
-    let current_branch = GitService::get_current_branch(repo).await.expect("get current branch failed");
+    let current_branch = GitService::get_current_branch(repo)
+        .await
+        .expect("get current branch failed");
     assert_eq!(current_branch, "main", "Should still be on main branch");
 
     // Verify: commit is on plan/feature
     let is_on_plan = GitService::is_commit_on_branch(repo, &commit_sha, "plan/feature")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_on_plan, "Commit should be on plan/feature");
 
     // Verify: commit is NOT on main
     let is_on_main = GitService::is_commit_on_branch(repo, &commit_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(!is_on_main, "Commit should NOT be on main");
 }
 
@@ -997,11 +1008,14 @@ async fn fix_two_tasks_merge_sequentially_to_plan_branch() {
         .output()
         .expect("git checkout main failed");
 
-    let main_sha_before = GitService::get_branch_sha(repo, "main").await.expect("get main SHA failed");
+    let main_sha_before = GitService::get_branch_sha(repo, "main")
+        .await
+        .expect("get main SHA failed");
 
     // Merge task-A → plan/feature
     let merge_a_result = try_merge_checkout_free(repo, "task-a", "plan/feature")
-        .await.expect("merge task-a failed");
+        .await
+        .expect("merge task-a failed");
     let commit_a_sha = match merge_a_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict in task-a"),
@@ -1009,35 +1023,39 @@ async fn fix_two_tasks_merge_sequentially_to_plan_branch() {
 
     // Merge task-B → plan/feature
     let merge_b_result = try_merge_checkout_free(repo, "task-b", "plan/feature")
-        .await.expect("merge task-b failed");
+        .await
+        .expect("merge task-b failed");
     let commit_b_sha = match merge_b_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict in task-b"),
     };
 
     // Verify: main unchanged
-    let main_sha_after = GitService::get_branch_sha(repo, "main").await.expect("get main SHA failed");
-    assert_eq!(
-        main_sha_before, main_sha_after,
-        "Main should be unchanged"
-    );
+    let main_sha_after = GitService::get_branch_sha(repo, "main")
+        .await
+        .expect("get main SHA failed");
+    assert_eq!(main_sha_before, main_sha_after, "Main should be unchanged");
 
     // Verify: both commits are on plan/feature
     let is_a_on_plan = GitService::is_commit_on_branch(repo, &commit_a_sha, "plan/feature")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_a_on_plan, "Task-A commit should be on plan/feature");
 
     let is_b_on_plan = GitService::is_commit_on_branch(repo, &commit_b_sha, "plan/feature")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_b_on_plan, "Task-B commit should be on plan/feature");
 
     // Verify: neither commit is on main
     let is_a_on_main = GitService::is_commit_on_branch(repo, &commit_a_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(!is_a_on_main, "Task-A commit should NOT be on main");
 
     let is_b_on_main = GitService::is_commit_on_branch(repo, &commit_b_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(!is_b_on_main, "Task-B commit should NOT be on main");
 
     // Verify: both files exist when we checkout plan/feature
@@ -1085,28 +1103,28 @@ async fn fix_plan_branch_then_to_main() {
 
     // Step 1: Merge task → plan/feature
     let merge_task_result = try_merge_checkout_free(repo, "task-branch", "plan/feature")
-        .await.expect("merge task failed");
+        .await
+        .expect("merge task failed");
     let task_commit_sha = match merge_task_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict"),
     };
 
     // Verify: task commit on plan/feature, NOT on main
-    let is_task_on_plan =
-        GitService::is_commit_on_branch(repo, &task_commit_sha, "plan/feature")
-            .await.expect("is_commit_on_branch failed");
+    let is_task_on_plan = GitService::is_commit_on_branch(repo, &task_commit_sha, "plan/feature")
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_task_on_plan, "Task commit should be on plan/feature");
 
     let is_task_on_main = GitService::is_commit_on_branch(repo, &task_commit_sha, "main")
-        .await.expect("is_commit_on_branch failed");
-    assert!(
-        !is_task_on_main,
-        "Task commit should NOT be on main yet"
-    );
+        .await
+        .expect("is_commit_on_branch failed");
+    assert!(!is_task_on_main, "Task commit should NOT be on main yet");
 
     // Step 2: Merge plan/feature → main
     let merge_plan_result = try_merge_checkout_free(repo, "plan/feature", "main")
-        .await.expect("merge plan failed");
+        .await
+        .expect("merge plan failed");
     let plan_commit_sha = match merge_plan_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict"),
@@ -1114,12 +1132,14 @@ async fn fix_plan_branch_then_to_main() {
 
     // Verify: plan merge commit is on main
     let is_plan_on_main = GitService::is_commit_on_branch(repo, &plan_commit_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_plan_on_main, "Plan merge commit should be on main");
 
     // Verify: task commit is NOW reachable from main (because plan/feature was merged)
     let is_task_on_main_now = GitService::is_commit_on_branch(repo, &task_commit_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(
         is_task_on_main_now,
         "Task commit should NOW be reachable from main after plan merge"
@@ -1133,7 +1153,9 @@ async fn fix_plan_branch_then_to_main() {
         .expect("git checkout main failed");
 
     // Hard reset to sync working tree with main branch
-    GitService::hard_reset_to_head(repo).await.expect("hard reset failed");
+    GitService::hard_reset_to_head(repo)
+        .await
+        .expect("hard reset failed");
 
     // Verify: all files exist on main
     assert!(
@@ -1227,12 +1249,14 @@ async fn gap_non_merge_commit_with_merge_message() {
     // GAP: is_commit_on_branch correctly identifies it's NOT a merge
     // (it's on the branch, but it's not a merge commit from task-branch)
     let is_fake_on_main = GitService::is_commit_on_branch(repo, &fake_merge_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_fake_on_main, "Fake merge should be on main");
 
     // The task SHA should NOT be on main (task-branch was never merged)
     let is_task_on_main = GitService::is_commit_on_branch(repo, &task_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(
         !is_task_on_main,
         "GAP: task SHA should NOT be on main (task-branch was never actually merged)"
@@ -1277,17 +1301,13 @@ async fn fix_concurrent_merge_attempts_sequential() {
     // Create project and setup plan branch repo
     let project = create_test_project("test-project", repo);
     let session_id = IdeationSessionId::from_string("session-concurrent".to_string());
-    let _plan_repo = setup_plan_branch_repo(
-        session_id.clone(),
-        project.id.clone(),
-        "plan/feature",
-        None,
-    )
-    .await;
+    let _plan_repo =
+        setup_plan_branch_repo(session_id.clone(), project.id.clone(), "plan/feature", None).await;
 
     // Merge first task
     let merge_1_result = try_merge_checkout_free(repo, "task-1", "plan/feature")
-        .await.expect("merge task-1 failed");
+        .await
+        .expect("merge task-1 failed");
     let commit_1_sha = match merge_1_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict in task-1"),
@@ -1308,12 +1328,17 @@ async fn fix_concurrent_merge_attempts_sequential() {
     )
     .await;
 
-    assert!(result_1.is_ok(), "Task-1 merge should succeed: {:?}", result_1);
+    assert!(
+        result_1.is_ok(),
+        "Task-1 merge should succeed: {:?}",
+        result_1
+    );
     assert_eq!(task_1.internal_status, InternalStatus::Merged);
 
     // Merge second task (after first task already merged)
     let merge_2_result = try_merge_checkout_free(repo, "task-2", "plan/feature")
-        .await.expect("merge task-2 failed");
+        .await
+        .expect("merge task-2 failed");
     let commit_2_sha = match merge_2_result {
         CheckoutFreeMergeResult::Success { commit_sha } => commit_sha,
         CheckoutFreeMergeResult::Conflict { .. } => panic!("Unexpected conflict in task-2"),
@@ -1333,25 +1358,33 @@ async fn fix_concurrent_merge_attempts_sequential() {
     )
     .await;
 
-    assert!(result_2.is_ok(), "Task-2 merge should succeed: {:?}", result_2);
+    assert!(
+        result_2.is_ok(),
+        "Task-2 merge should succeed: {:?}",
+        result_2
+    );
     assert_eq!(task_2.internal_status, InternalStatus::Merged);
 
     // Verify: both commits are on plan/feature
     let is_1_on_plan = GitService::is_commit_on_branch(repo, &commit_1_sha, "plan/feature")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_1_on_plan, "Task-1 commit should be on plan/feature");
 
     let is_2_on_plan = GitService::is_commit_on_branch(repo, &commit_2_sha, "plan/feature")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_2_on_plan, "Task-2 commit should be on plan/feature");
 
     // Verify: both commits are NOT on main
     let is_1_on_main = GitService::is_commit_on_branch(repo, &commit_1_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(!is_1_on_main, "Task-1 commit should NOT be on main");
 
     let is_2_on_main = GitService::is_commit_on_branch(repo, &commit_2_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(!is_2_on_main, "Task-2 commit should NOT be on main");
 }
 
@@ -1409,23 +1442,20 @@ async fn gap_plan_merge_verification_failure() {
 
     // Verify plan SHA is on plan/feature but NOT on main
     let is_on_plan = GitService::is_commit_on_branch(repo, &plan_sha, "plan/feature")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(is_on_plan, "Plan SHA should be on plan/feature");
 
     let is_on_main = GitService::is_commit_on_branch(repo, &plan_sha, "main")
-        .await.expect("is_commit_on_branch failed");
+        .await
+        .expect("is_commit_on_branch failed");
     assert!(!is_on_main, "Plan SHA should NOT be on main yet");
 
     // Attempt complete_merge_internal with a SHA on plan branch but target="main"
     // (without actually merging plan to main first)
     let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
     let result = complete_merge_internal::<tauri::test::MockRuntime>(
-        &mut task,
-        &project,
-        &plan_sha,
-        "main",
-        &task_repo,
-        None,
+        &mut task, &project, &plan_sha, "main", &task_repo, None,
     )
     .await;
 

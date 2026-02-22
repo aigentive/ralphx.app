@@ -973,7 +973,8 @@ async fn test_fetch_origin_concurrent_no_remote_no_errors() {
     }
 
     let errors: Arc<StdMutex<Vec<String>>> = Arc::new(StdMutex::new(Vec::new()));
-    let paths: Vec<std::path::PathBuf> = temp_dirs.iter().map(|td| td.path().to_path_buf()).collect();
+    let paths: Vec<std::path::PathBuf> =
+        temp_dirs.iter().map(|td| td.path().to_path_buf()).collect();
 
     let handles: Vec<_> = paths
         .into_iter()
@@ -1025,6 +1026,12 @@ async fn test_fetch_origin_serializes_on_same_repo() {
         tokio::spawn(async move { GitService::fetch_origin(&repo2).await }),
     );
 
-    assert!(r1.unwrap().is_ok(), "First concurrent fetch_origin should succeed");
-    assert!(r2.unwrap().is_ok(), "Second concurrent fetch_origin should succeed");
+    assert!(
+        r1.unwrap().is_ok(),
+        "First concurrent fetch_origin should succeed"
+    );
+    assert!(
+        r2.unwrap().is_ok(),
+        "Second concurrent fetch_origin should succeed"
+    );
 }

@@ -199,10 +199,8 @@ pub async fn apply_proposals_to_kanban(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Project not found: {}", session.project_id.as_str()))?;
 
-    let use_feature_branch = should_create_feature_branch(
-        input.use_feature_branch,
-        project.use_feature_branches,
-    );
+    let use_feature_branch =
+        should_create_feature_branch(input.use_feature_branch, project.use_feature_branches);
 
     if use_feature_branch {
         // Check if a feature branch already exists for this session
@@ -382,10 +380,8 @@ pub async fn apply_proposals_to_kanban(
 
     if !is_user_title {
         // Build context from applied proposals for the namer
-        let proposal_titles: Vec<String> = proposals_to_apply
-            .iter()
-            .map(|p| p.title.clone())
-            .collect();
+        let proposal_titles: Vec<String> =
+            proposals_to_apply.iter().map(|p| p.title.clone()).collect();
         let proposals_context = proposal_titles.join("; ");
         let session_id_str = session_id.as_str().to_string();
 

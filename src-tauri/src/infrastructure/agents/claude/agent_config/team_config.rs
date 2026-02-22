@@ -169,32 +169,13 @@ pub struct ApprovedTeamPlan {
 /// Errors from team constraint validation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TeamConstraintError {
-    MaxTeammatesExceeded {
-        max: u8,
-        requested: usize,
-    },
-    ToolNotAllowed {
-        tool: String,
-        role: String,
-    },
-    McpToolNotAllowed {
-        tool: String,
-        role: String,
-    },
-    ModelExceedsCap {
-        requested: String,
-        cap: String,
-    },
-    PresetRequired {
-        role: String,
-    },
-    AgentNotInPresets {
-        agent: String,
-        allowed: Vec<String>,
-    },
-    UnknownProcess {
-        process: String,
-    },
+    MaxTeammatesExceeded { max: u8, requested: usize },
+    ToolNotAllowed { tool: String, role: String },
+    McpToolNotAllowed { tool: String, role: String },
+    ModelExceedsCap { requested: String, cap: String },
+    PresetRequired { role: String },
+    AgentNotInPresets { agent: String, allowed: Vec<String> },
+    UnknownProcess { process: String },
 }
 
 impl std::fmt::Display for TeamConstraintError {
@@ -213,16 +194,10 @@ impl std::fmt::Display for TeamConstraintError {
                 write!(f, "Model '{requested}' exceeds cap '{cap}'")
             }
             Self::PresetRequired { role } => {
-                write!(
-                    f,
-                    "Constrained mode requires preset for role '{role}'"
-                )
+                write!(f, "Constrained mode requires preset for role '{role}'")
             }
             Self::AgentNotInPresets { agent, allowed } => {
-                write!(
-                    f,
-                    "Agent '{agent}' not in allowed presets: {allowed:?}"
-                )
+                write!(f, "Agent '{agent}' not in allowed presets: {allowed:?}")
             }
             Self::UnknownProcess { process } => {
                 write!(f, "Unknown process: '{process}'")
@@ -268,10 +243,7 @@ pub fn min_model_cap(a: &str, b: &str) -> String {
 /// Get effective constraints for a process, merging with defaults.
 ///
 /// Priority: process-specific > `_defaults` > hardcoded defaults.
-pub fn get_team_constraints(
-    config: &TeamConstraintsConfig,
-    process: &str,
-) -> TeamConstraints {
+pub fn get_team_constraints(config: &TeamConstraintsConfig, process: &str) -> TeamConstraints {
     let defaults = config.defaults.as_ref();
     let process_specific = config.processes.get(process);
 
@@ -420,11 +392,12 @@ fn validate_teammate(
 ) -> Result<ApprovedTeammate, TeamConstraintError> {
     match constraints.mode {
         TeamMode::Constrained => {
-            let preset = req.preset.as_ref().ok_or_else(|| {
-                TeamConstraintError::PresetRequired {
-                    role: req.role.clone(),
-                }
-            })?;
+            let preset =
+                req.preset
+                    .as_ref()
+                    .ok_or_else(|| TeamConstraintError::PresetRequired {
+                        role: req.role.clone(),
+                    })?;
             if !constraints.presets.contains(preset) {
                 return Err(TeamConstraintError::AgentNotInPresets {
                     agent: preset.clone(),
@@ -503,7 +476,9 @@ fn apply_env_overrides_with(
         match mode.to_lowercase().as_str() {
             "dynamic" => constraints.mode = TeamMode::Dynamic,
             "constrained" => constraints.mode = TeamMode::Constrained,
-            _ => tracing::warn!(var = %format!("RALPHX_TEAM_MODE_{key}"), value = %mode, "Invalid team mode"),
+            _ => {
+                tracing::warn!(var = %format!("RALPHX_TEAM_MODE_{key}"), value = %mode, "Invalid team mode")
+            }
         }
     }
 
@@ -535,7 +510,11 @@ fn env_variant_override_with(
     let key = format!("RALPHX_PROCESS_VARIANT_{}", process.to_ascii_uppercase());
     lookup(&key).and_then(|v| {
         let trimmed = v.trim().to_string();
-        if trimmed.is_empty() { None } else { Some(trimmed) }
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed)
+        }
     })
 }
 

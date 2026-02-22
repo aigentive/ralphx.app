@@ -91,12 +91,7 @@ async fn test_get_session_messages_respects_limit() {
     // Create 10 messages
     for i in 0..10 {
         let msg = ChatMessage::user_in_session(session_id.clone(), format!("Message {}", i));
-        state
-            .app_state
-            .chat_message_repo
-            .create(msg)
-            .await
-            .unwrap();
+        state.app_state.chat_message_repo.create(msg).await.unwrap();
     }
 
     let result = get_session_messages(
@@ -145,12 +140,7 @@ async fn test_get_session_messages_default_limit() {
     // Create 60 messages
     for i in 0..60 {
         let msg = ChatMessage::user_in_session(session_id.clone(), format!("Message {}", i));
-        state
-            .app_state
-            .chat_message_repo
-            .create(msg)
-            .await
-            .unwrap();
+        state.app_state.chat_message_repo.create(msg).await.unwrap();
     }
 
     // Use default limit (should be 50)

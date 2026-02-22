@@ -11,7 +11,9 @@ use tauri::AppHandle;
 
 use crate::application::git_service::GitService;
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
-use crate::domain::entities::{IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory, TaskId};
+use crate::domain::entities::{
+    IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory, TaskId,
+};
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::error::AppResult;

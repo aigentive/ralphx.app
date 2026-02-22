@@ -10,6 +10,11 @@ pub use test_prompts::{
     WORKER_SPAWN_TEST,
 };
 
+// Re-export merge validation helpers for integration testing
+pub use crate::domain::state_machine::transition_handler::{
+    PreExecSetupResult, run_pre_execution_setup,
+};
+
 use tauri::test::{mock_builder, mock_context, noop_assets, MockRuntime};
 
 /// Create a mock Tauri app for testing purposes

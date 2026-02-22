@@ -250,7 +250,8 @@ pub async fn complete_merge(
     let (_, target_branch) = resolve_merge_branches(&task, &project, &plan_branch_repo).await;
     let repo_path = PathBuf::from(&project.working_directory);
 
-    if !GitService::is_commit_on_branch(&repo_path, &req.commit_sha, &target_branch).await
+    if !GitService::is_commit_on_branch(&repo_path, &req.commit_sha, &target_branch)
+        .await
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
     {
         return Err(json_error(
@@ -635,7 +636,8 @@ pub async fn get_task_commits(
         .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     // 5. Get commits from GitService
-    let commits = GitService::get_commits_since(&working_path, base_branch).await
+    let commits = GitService::get_commits_since(&working_path, base_branch)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // 6. Convert to response format
@@ -698,7 +700,8 @@ pub async fn get_task_diff_stats(
         .unwrap_or_else(|| PathBuf::from(&project.working_directory));
 
     // 5. Get diff stats from GitService
-    let stats = GitService::get_diff_stats(&working_path, base_branch).await
+    let stats = GitService::get_diff_stats(&working_path, base_branch)
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     Ok(Json(DiffStatsResponse {

@@ -11,15 +11,6 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::application::GitService;
-use crate::domain::entities::{
-    task_metadata::{
-        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
-        MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
-    },
-    InternalStatus, MergeStrategy, Project, Task, TaskCategory, TaskId,
-};
-use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use super::commit_messages::{build_plan_merge_commit_msg, build_squash_commit_msg};
 use super::merge_completion::complete_merge_internal;
 use super::merge_helpers::{
@@ -27,6 +18,15 @@ use super::merge_helpers::{
     has_prior_validation_failure, parse_metadata, task_targets_branch,
 };
 use super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+use crate::application::GitService;
+use crate::domain::entities::{
+    task_metadata::{
+        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
+        MergeRecoverySource, MergeRecoveryState,
+    },
+    InternalStatus, MergeStrategy, Project, Task, TaskCategory, TaskId,
+};
+use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 
 /// Result of `fetch_merge_context`: the loaded task and project.
 pub(super) struct MergeInputs {
@@ -112,8 +112,7 @@ impl<'a> super::TransitionHandler<'a> {
         let Ok(source_sha) = GitService::get_branch_sha(repo_path, source_branch).await else {
             return false;
         };
-        let Ok(true) =
-            GitService::is_commit_on_branch(repo_path, &source_sha, target_branch).await
+        let Ok(true) = GitService::is_commit_on_branch(repo_path, &source_sha, target_branch).await
         else {
             return false;
         };
@@ -198,8 +197,7 @@ impl<'a> super::TransitionHandler<'a> {
             return false;
         }
 
-        match GitService::find_commit_by_message_grep(repo_path, task_id_str, target_branch).await
-        {
+        match GitService::find_commit_by_message_grep(repo_path, task_id_str, target_branch).await {
             Ok(Some(found_sha)) => {
                 // Safety gate: don't fast-path to completion if prior validation
                 // failures exist. The commits on target may be from a merge that
@@ -777,7 +775,12 @@ impl<'a> super::TransitionHandler<'a> {
                     "strategy": format!("{:?}", project.merge_strategy),
                 });
                 self.transition_to_merge_incomplete(
-                    task, task_id, task_id_str, metadata, task_repo, true,
+                    task,
+                    task_id,
+                    task_id_str,
+                    metadata,
+                    task_repo,
+                    true,
                 )
                 .await;
             }

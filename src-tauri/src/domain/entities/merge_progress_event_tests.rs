@@ -113,10 +113,7 @@ fn merge_phase_display() {
         "programmatic_merge"
     );
     assert_eq!(format!("{}", MergePhase::finalize()), "finalize");
-    assert_eq!(
-        format!("{}", MergePhase::new("cargo_test")),
-        "cargo_test"
-    );
+    assert_eq!(format!("{}", MergePhase::new("cargo_test")), "cargo_test");
 }
 
 #[test]
@@ -186,7 +183,10 @@ fn derive_phase_id_npm_test_run() {
 
 #[test]
 fn derive_phase_id_unknown() {
-    assert_eq!(derive_phase_id("some unknown command"), "some_unknown_command");
+    assert_eq!(
+        derive_phase_id("some unknown command"),
+        "some_unknown_command"
+    );
 }
 
 #[test]
@@ -295,10 +295,7 @@ fn map_command_cargo_test() {
 fn derive_phases_from_analysis_basic() {
     let entries = vec![
         PhaseAnalysisEntry {
-            validate: vec![
-                "npm run typecheck".to_string(),
-                "npm run lint".to_string(),
-            ],
+            validate: vec!["npm run typecheck".to_string(), "npm run lint".to_string()],
         },
         PhaseAnalysisEntry {
             validate: vec![

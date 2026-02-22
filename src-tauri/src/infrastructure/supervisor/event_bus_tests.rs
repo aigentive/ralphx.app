@@ -284,8 +284,7 @@ async fn test_concurrent_publish_and_subscribe() {
         barrier.wait().await;
         let mut count = 0;
         loop {
-            match tokio::time::timeout(std::time::Duration::from_millis(100), sub.recv()).await
-            {
+            match tokio::time::timeout(std::time::Duration::from_millis(100), sub.recv()).await {
                 Ok(Ok(_)) => count += 1,
                 _ => break,
             }

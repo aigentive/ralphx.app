@@ -77,8 +77,7 @@ fn test_timeout_config_ordering() {
 #[test]
 fn test_payloads_serialize_with_seq() {
     use crate::application::chat_service::{
-        AgentChunkPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload,
-        AgentToolCallPayload,
+        AgentChunkPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
     };
 
     // Verify AgentChunkPayload includes seq field
@@ -90,7 +89,10 @@ fn test_payloads_serialize_with_seq() {
         seq: 0,
     };
     let json = serde_json::to_string(&chunk).unwrap();
-    assert!(json.contains("\"seq\":0"), "AgentChunkPayload should serialize with seq field");
+    assert!(
+        json.contains("\"seq\":0"),
+        "AgentChunkPayload should serialize with seq field"
+    );
 
     // Verify AgentToolCallPayload includes seq field
     let tool_call = AgentToolCallPayload {
@@ -106,7 +108,10 @@ fn test_payloads_serialize_with_seq() {
         seq: 1,
     };
     let json = serde_json::to_string(&tool_call).unwrap();
-    assert!(json.contains("\"seq\":1"), "AgentToolCallPayload should serialize with seq field");
+    assert!(
+        json.contains("\"seq\":1"),
+        "AgentToolCallPayload should serialize with seq field"
+    );
 
     // Verify AgentTaskStartedPayload includes seq field
     let task_started = AgentTaskStartedPayload {
@@ -121,7 +126,10 @@ fn test_payloads_serialize_with_seq() {
         seq: 2,
     };
     let json = serde_json::to_string(&task_started).unwrap();
-    assert!(json.contains("\"seq\":2"), "AgentTaskStartedPayload should serialize with seq field");
+    assert!(
+        json.contains("\"seq\":2"),
+        "AgentTaskStartedPayload should serialize with seq field"
+    );
 
     // Verify AgentTaskCompletedPayload includes seq field
     let task_completed = AgentTaskCompletedPayload {
@@ -137,7 +145,10 @@ fn test_payloads_serialize_with_seq() {
         seq: 3,
     };
     let json = serde_json::to_string(&task_completed).unwrap();
-    assert!(json.contains("\"seq\":3"), "AgentTaskCompletedPayload should serialize with seq field");
+    assert!(
+        json.contains("\"seq\":3"),
+        "AgentTaskCompletedPayload should serialize with seq field"
+    );
 }
 
 #[test]

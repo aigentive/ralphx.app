@@ -191,7 +191,6 @@ fn test_qa_settings_deserialize() {
     assert!(settings.auto_qa_for_api_tasks);
     assert!(!settings.qa_prep_enabled);
     assert_eq!(settings.browser_testing_url, "http://localhost:5173");
-
 }
 
 #[test]
@@ -319,4 +318,3 @@ fn test_task_qa_config_roundtrip() {
     let deserialized: TaskQAConfig = serde_json::from_str(&json).unwrap();
     assert_eq!(original, deserialized);
 }
-

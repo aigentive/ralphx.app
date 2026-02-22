@@ -462,8 +462,9 @@ async fn test_save_merge_context_event_with_merging_status() {
     let task_id = TaskId::from_string("t1".to_string());
     // Simulate what chat_service_streaming does for Merge context:
     // persists events with internal_status = Merging
-    let event = ActivityEvent::new_task_event(task_id.clone(), ActivityEventType::Text, "merger output")
-        .with_status(InternalStatus::Merging);
+    let event =
+        ActivityEvent::new_task_event(task_id.clone(), ActivityEventType::Text, "merger output")
+            .with_status(InternalStatus::Merging);
 
     let saved = repo.save(event.clone()).await.unwrap();
     assert_eq!(saved.internal_status, Some(InternalStatus::Merging));
@@ -483,7 +484,11 @@ async fn test_merge_context_events_queryable_by_status_filter() {
     let task_id = TaskId::from_string("t1".to_string());
 
     // Simulate merge agent producing multiple event types under Merging status
-    for event_type in [ActivityEventType::Thinking, ActivityEventType::ToolCall, ActivityEventType::Text] {
+    for event_type in [
+        ActivityEventType::Thinking,
+        ActivityEventType::ToolCall,
+        ActivityEventType::Text,
+    ] {
         repo.save(
             ActivityEvent::new_task_event(task_id.clone(), event_type, "content")
                 .with_status(InternalStatus::Merging),

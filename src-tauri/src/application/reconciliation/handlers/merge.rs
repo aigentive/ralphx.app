@@ -28,7 +28,10 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // for this task (e.g. triggered by agent completion), skip this reconciliation cycle.
         // Without this, the reconciler misinterprets the dedup guard's "skip" as a failure
         // and may incorrectly escalate (increment retry count, eventually → MergeIncomplete).
-        if self.execution_state.is_auto_complete_in_flight(task.id.as_str()) {
+        if self
+            .execution_state
+            .is_auto_complete_in_flight(task.id.as_str())
+        {
             tracing::debug!(
                 task_id = task.id.as_str(),
                 "Skipping Merging reconciliation — auto-complete already in flight"
@@ -58,7 +61,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let mut evidence = self
             .build_run_evidence(task, ChatContextType::Merge, run.as_ref())
             .await;
-        evidence.is_stale = effective_age >= chrono::Duration::seconds(reconciliation_config().merger_timeout_secs as i64);
+        evidence.is_stale = effective_age
+            >= chrono::Duration::seconds(reconciliation_config().merger_timeout_secs as i64);
 
         // Agent is running, registered, and not stale — let it work
         if evidence.run_status == Some(AgentRunStatus::Running)
@@ -140,7 +144,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
             RecoveryDecision {
                 action: RecoveryActionKind::ExecuteEntryActions,
                 reason: Some(
-                    "Auto-recovering merge run state conflict — restarting merger agent.".to_string(),
+                    "Auto-recovering merge run state conflict — restarting merger agent."
+                        .to_string(),
                 ),
             }
         } else {
@@ -246,7 +251,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
                         RecoveryDecision {
                             action: RecoveryActionKind::ExecuteEntryActions,
                             reason: Some(
-                                "Main merge deferred while agents running — now retrying.".to_string(),
+                                "Main merge deferred while agents running — now retrying."
+                                    .to_string(),
                             ),
                         },
                     )
@@ -297,7 +303,10 @@ impl<R: Runtime> ReconciliationRunner<R> {
             run_status: None,
             registry_running: false,
             can_start: true,
-            is_stale: age >= chrono::Duration::minutes(reconciliation_config().pending_merge_stale_minutes as i64),
+            is_stale: age
+                >= chrono::Duration::minutes(
+                    reconciliation_config().pending_merge_stale_minutes as i64,
+                ),
             is_deferred,
         };
         let decision = self

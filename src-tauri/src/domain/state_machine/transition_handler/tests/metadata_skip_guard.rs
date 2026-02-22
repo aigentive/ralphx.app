@@ -350,9 +350,8 @@ async fn test_empty_source_branch_triggers_deferred_merge_retry() {
     let services = TaskServices::new_mock()
         .with_task_repo(task_repo.clone())
         .with_project_repo(project_repo.clone())
-        .with_task_scheduler(
-            Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>
-        );
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
 
     let context = create_context_with_services(task.id.as_str(), project.id.as_str(), services);
     let mut machine = TaskStateMachine::new(context);
@@ -368,11 +367,14 @@ async fn test_empty_source_branch_triggers_deferred_merge_retry() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Empty-source-branch path must call on_exit to trigger try_retry_deferred_merges, \
          preventing deferred merges from being blocked"
     );
@@ -387,9 +389,9 @@ async fn test_guard_no_repos_fires_on_exit_for_deferred_retry() {
     let scheduler = Arc::new(MockTaskScheduler::new());
 
     // Services with NO task_repo/project_repo (repos unavailable)
-    let services = TaskServices::new_mock().with_task_scheduler(
-        Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
-    );
+    let services = TaskServices::new_mock()
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
     // Verify repos are not set
     assert!(
         services.task_repo.is_none(),
@@ -410,11 +412,14 @@ async fn test_guard_no_repos_fires_on_exit_for_deferred_retry() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Repos-unavailable path must still call on_exit to trigger try_retry_deferred_merges"
     );
 }

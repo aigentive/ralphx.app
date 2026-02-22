@@ -171,12 +171,9 @@ impl GitService {
             }
 
             // Continue the rebase with GIT_EDITOR=true to auto-accept all prompts
-            let continue_output = git_cmd::run_with_env(
-                &["rebase", "--continue"],
-                path,
-                &[("GIT_EDITOR", "true")],
-            )
-            .await?;
+            let continue_output =
+                git_cmd::run_with_env(&["rebase", "--continue"], path, &[("GIT_EDITOR", "true")])
+                    .await?;
 
             // Check if rebase completed successfully
             if continue_output.status.success() {

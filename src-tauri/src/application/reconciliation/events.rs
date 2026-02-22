@@ -4,16 +4,14 @@ use tauri::{Emitter, Runtime};
 use tracing::warn;
 
 use crate::domain::entities::{
-    AgentRun, AgentRunId, ChatContextType, InternalStatus, MergeFailureSource,
-    MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-    MergeRecoverySource, MergeRecoveryState, Task, TaskId,
+    AgentRun, AgentRunId, ChatContextType, InternalStatus, MergeFailureSource, MergeRecoveryEvent,
+    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource,
+    MergeRecoveryState, Task, TaskId,
 };
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::infrastructure::agents::claude::reconciliation_config;
 
-use super::policy::{
-    RecoveryContext, RecoveryEvidence, RecoveryPromptAction, RecoveryPromptEvent,
-};
+use super::policy::{RecoveryContext, RecoveryEvidence, RecoveryPromptAction, RecoveryPromptEvent};
 use super::ReconciliationRunner;
 
 impl<R: Runtime> ReconciliationRunner<R> {
@@ -242,11 +240,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .map_err(|e| e.to_string())
     }
 
-    pub(crate) async fn record_merge_timeout_event(
-        &self,
-        task: &Task,
-        _age: chrono::Duration,
-    ) {
+    pub(crate) async fn record_merge_timeout_event(&self, task: &Task, _age: chrono::Duration) {
         let mut updated = task.clone();
 
         let mut recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())

@@ -13,8 +13,8 @@ use crate::application::GitService;
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
-        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
-        MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
+        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
+        MergeRecoverySource, MergeRecoveryState,
     },
     InternalStatus, MergeValidationMode, Project, Task, TaskId,
 };
@@ -23,11 +23,11 @@ use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use super::merge_completion::complete_merge_internal;
 use super::merge_helpers::{compute_merge_worktree_path, parse_metadata};
 use super::merge_strategies::MergeOutcome;
-use crate::infrastructure::agents::claude::reconciliation_config;
 use super::merge_validation::{
     emit_merge_progress, extract_cached_validation, format_validation_warn_metadata,
     run_validation_commands, take_skip_validation_flag, ValidationFailure,
 };
+use crate::infrastructure::agents::claude::reconciliation_config;
 
 /// Bundles the parameters needed by handle_merge_outcome and its sub-handlers.
 ///
@@ -56,18 +56,38 @@ pub(super) struct MergeHandlerOptions {
 
 impl MergeHandlerOptions {
     pub fn merge() -> Self {
-        Self { strategy_label: "merge", conflict_reason: "merge_conflict", conflict_type: None, agent_prompt_suffix: "" }
+        Self {
+            strategy_label: "merge",
+            conflict_reason: "merge_conflict",
+            conflict_type: None,
+            agent_prompt_suffix: "",
+        }
     }
     pub fn rebase() -> Self {
-        Self { strategy_label: "rebase", conflict_reason: "rebase_conflict", conflict_type: Some("rebase"),
-            agent_prompt_suffix: ". After resolving each file, run `git add <file>` then `git rebase --continue`" }
+        Self {
+            strategy_label: "rebase",
+            conflict_reason: "rebase_conflict",
+            conflict_type: Some("rebase"),
+            agent_prompt_suffix:
+                ". After resolving each file, run `git add <file>` then `git rebase --continue`",
+        }
     }
     pub fn squash() -> Self {
-        Self { strategy_label: "squash", conflict_reason: "merge_conflict", conflict_type: None, agent_prompt_suffix: "" }
+        Self {
+            strategy_label: "squash",
+            conflict_reason: "merge_conflict",
+            conflict_type: None,
+            agent_prompt_suffix: "",
+        }
     }
     pub fn rebase_squash() -> Self {
-        Self { strategy_label: "rebase+squash", conflict_reason: "rebase_conflict", conflict_type: Some("rebase"),
-            agent_prompt_suffix: ". After resolving each file, run `git add <file>` then `git rebase --continue`" }
+        Self {
+            strategy_label: "rebase+squash",
+            conflict_reason: "rebase_conflict",
+            conflict_type: Some("rebase"),
+            agent_prompt_suffix:
+                ". After resolving each file, run `git add <file>` then `git rebase --continue`",
+        }
     }
 }
 
@@ -82,9 +102,12 @@ fn get_or_create_recovery(task: &Task) -> MergeRecoveryMetadata {
 
 /// Count existing AutoRetryTriggered events in recovery metadata.
 fn retry_attempt_count(recovery: &MergeRecoveryMetadata) -> u32 {
-    recovery.events.iter()
+    recovery
+        .events
+        .iter()
         .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
-        .count() as u32 + 1
+        .count() as u32
+        + 1
 }
 
 /// Transition task to MergeIncomplete, persist status change, and emit event.
@@ -103,12 +126,19 @@ async fn transition_to_merge_incomplete(
         return;
     }
     if let Err(e) = task_repo
-        .persist_status_change(task_id, InternalStatus::PendingMerge, InternalStatus::MergeIncomplete, "merge_incomplete")
+        .persist_status_change(
+            task_id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "merge_incomplete",
+        )
         .await
     {
         tracing::warn!(error = %e, "Failed to record merge incomplete transition (non-fatal)");
     }
-    event_emitter.emit_status_change(task_id_str, "pending_merge", "merge_incomplete").await;
+    event_emitter
+        .emit_status_change(task_id_str, "pending_merge", "merge_incomplete")
+        .await;
 }
 
 impl<'a> super::TransitionHandler<'a> {
@@ -119,32 +149,80 @@ impl<'a> super::TransitionHandler<'a> {
         ctx: &mut MergeContext<'_>,
     ) {
         match outcome {
-            MergeOutcome::Success { commit_sha, merge_path } => {
+            MergeOutcome::Success {
+                commit_sha,
+                merge_path,
+            } => {
                 self.handle_outcome_success(
-                    ctx.task, ctx.task_id, ctx.task_id_str, ctx.project, ctx.repo_path,
-                    ctx.source_branch, ctx.target_branch, ctx.task_repo, ctx.plan_branch_repo,
-                    &commit_sha, &merge_path, ctx.opts,
-                ).await;
+                    ctx.task,
+                    ctx.task_id,
+                    ctx.task_id_str,
+                    ctx.project,
+                    ctx.repo_path,
+                    ctx.source_branch,
+                    ctx.target_branch,
+                    ctx.task_repo,
+                    ctx.plan_branch_repo,
+                    &commit_sha,
+                    &merge_path,
+                    ctx.opts,
+                )
+                .await;
             }
-            MergeOutcome::NeedsAgent { conflict_files, merge_worktree } => {
+            MergeOutcome::NeedsAgent {
+                conflict_files,
+                merge_worktree,
+            } => {
                 self.handle_outcome_needs_agent(
-                    ctx.task, ctx.task_id, ctx.task_id_str, ctx.project, ctx.repo_path,
-                    ctx.source_branch, ctx.target_branch, ctx.task_repo,
-                    &conflict_files, merge_worktree.as_deref(), ctx.opts,
-                ).await;
+                    ctx.task,
+                    ctx.task_id,
+                    ctx.task_id_str,
+                    ctx.project,
+                    ctx.repo_path,
+                    ctx.source_branch,
+                    ctx.target_branch,
+                    ctx.task_repo,
+                    &conflict_files,
+                    merge_worktree.as_deref(),
+                    ctx.opts,
+                )
+                .await;
             }
             MergeOutcome::BranchNotFound { branch } => {
                 self.handle_outcome_branch_not_found(
-                    ctx.task, ctx.task_id, ctx.task_id_str, ctx.source_branch, ctx.target_branch, ctx.task_repo, &branch,
-                ).await;
+                    ctx.task,
+                    ctx.task_id,
+                    ctx.task_id_str,
+                    ctx.source_branch,
+                    ctx.target_branch,
+                    ctx.task_repo,
+                    &branch,
+                )
+                .await;
             }
             MergeOutcome::Deferred { reason } => {
-                self.handle_outcome_deferred(ctx.task, ctx.task_id_str, ctx.source_branch, ctx.target_branch, ctx.task_repo, &reason).await;
+                self.handle_outcome_deferred(
+                    ctx.task,
+                    ctx.task_id_str,
+                    ctx.source_branch,
+                    ctx.target_branch,
+                    ctx.task_repo,
+                    &reason,
+                )
+                .await;
             }
             MergeOutcome::GitError(e) => {
                 self.handle_outcome_git_error(
-                    ctx.task, ctx.task_id, ctx.task_id_str, ctx.source_branch, ctx.target_branch, ctx.task_repo, e, ctx.opts,
-                ).await;
+                    ctx.task,
+                    ctx.task_id,
+                    ctx.task_id_str,
+                    ctx.source_branch,
+                    ctx.target_branch,
+                    ctx.task_repo,
+                    e,
+                    ctx.opts,
+                )
+                .await;
             }
             MergeOutcome::AlreadyHandled => {}
         }
@@ -169,9 +247,15 @@ impl<'a> super::TransitionHandler<'a> {
         tracing::info!(task_id = task_id_str, commit_sha = %commit_sha, strategy = opts.strategy_label, "Merge succeeded");
 
         emit_merge_progress(
-            self.machine.context.services.app_handle.as_ref(), task_id_str,
-            MergePhase::programmatic_merge(), MergePhaseStatus::Passed,
-            format!("{} completed: {}", capitalize(opts.strategy_label), commit_sha),
+            self.machine.context.services.app_handle.as_ref(),
+            task_id_str,
+            MergePhase::programmatic_merge(),
+            MergePhaseStatus::Passed,
+            format!(
+                "{} completed: {}",
+                capitalize(opts.strategy_label),
+                commit_sha
+            ),
         );
 
         // Post-merge validation gate (runs under its own deadline, separate from git timeout)
@@ -180,8 +264,12 @@ impl<'a> super::TransitionHandler<'a> {
         if !skip_validation && *validation_mode != MergeValidationMode::Off {
             let validation_deadline_secs = reconciliation_config().validation_deadline_secs;
             let validation_timeout = std::time::Duration::from_secs(validation_deadline_secs);
-            let source_sha = GitService::get_branch_sha(repo_path, source_branch).await.ok();
-            let cached_log = source_sha.as_deref().and_then(|sha| extract_cached_validation(task, sha));
+            let source_sha = GitService::get_branch_sha(repo_path, source_branch)
+                .await
+                .ok();
+            let cached_log = source_sha
+                .as_deref()
+                .and_then(|sha| extract_cached_validation(task, sha));
 
             // Set validation_in_progress timestamp so the reconciler doesn't
             // treat this task as stale while validation commands are running.
@@ -190,15 +278,31 @@ impl<'a> super::TransitionHandler<'a> {
             // Register a cancellable token in the shared DashMap so pre_merge_cleanup
             // can cancel this validation if a new merge attempt starts for the same task.
             let validation_cancel = tokio_util::sync::CancellationToken::new();
-            self.machine.context.services.validation_tokens
+            self.machine
+                .context
+                .services
+                .validation_tokens
                 .insert(task_id_str.to_string(), validation_cancel.clone());
-            let validation_result = tokio::time::timeout(validation_timeout, run_validation_commands(
-                project, task, merge_path, task_id_str,
-                self.machine.context.services.app_handle.as_ref(), cached_log.as_deref(),
-                validation_mode, &validation_cancel,
-            )).await;
+            let validation_result = tokio::time::timeout(
+                validation_timeout,
+                run_validation_commands(
+                    project,
+                    task,
+                    merge_path,
+                    task_id_str,
+                    self.machine.context.services.app_handle.as_ref(),
+                    cached_log.as_deref(),
+                    validation_mode,
+                    &validation_cancel,
+                ),
+            )
+            .await;
             // Always clean up the token after validation completes (success, failure, or timeout).
-            self.machine.context.services.validation_tokens.remove(task_id_str);
+            self.machine
+                .context
+                .services
+                .validation_tokens
+                .remove(task_id_str);
 
             match validation_result {
                 Err(_) => {
@@ -216,10 +320,21 @@ impl<'a> super::TransitionHandler<'a> {
                         stderr: format!("Validation timed out after {}s", validation_deadline_secs),
                     };
                     self.handle_validation_failure(
-                        task, task_id, task_id_str, task_repo, &[timeout_failure], &[],
-                        source_branch, target_branch, merge_path, opts.strategy_label, validation_mode,
-                        repo_path, project,
-                    ).await;
+                        task,
+                        task_id,
+                        task_id_str,
+                        task_repo,
+                        &[timeout_failure],
+                        &[],
+                        source_branch,
+                        target_branch,
+                        merge_path,
+                        opts.strategy_label,
+                        validation_mode,
+                        repo_path,
+                        project,
+                    )
+                    .await;
                     // Clean up merge worktree after Block mode failure
                     // (AutoFix keeps worktree for the fixer agent)
                     if *validation_mode != MergeValidationMode::AutoFix && merge_path != repo_path {
@@ -233,18 +348,40 @@ impl<'a> super::TransitionHandler<'a> {
                 Ok(Some(validation)) => {
                     if !validation.all_passed {
                         if *validation_mode == MergeValidationMode::Warn {
-                            tracing::warn!(task_id = task_id_str, "Validation failed in Warn mode, proceeding");
-                            task.metadata = Some(format_validation_warn_metadata(&validation.log, source_branch, target_branch));
+                            tracing::warn!(
+                                task_id = task_id_str,
+                                "Validation failed in Warn mode, proceeding"
+                            );
+                            task.metadata = Some(format_validation_warn_metadata(
+                                &validation.log,
+                                source_branch,
+                                target_branch,
+                            ));
                         } else {
                             self.handle_validation_failure(
-                                task, task_id, task_id_str, task_repo, &validation.failures, &validation.log,
-                                source_branch, target_branch, merge_path, opts.strategy_label, validation_mode,
-                                repo_path, project,
-                            ).await;
+                                task,
+                                task_id,
+                                task_id_str,
+                                task_repo,
+                                &validation.failures,
+                                &validation.log,
+                                source_branch,
+                                target_branch,
+                                merge_path,
+                                opts.strategy_label,
+                                validation_mode,
+                                repo_path,
+                                project,
+                            )
+                            .await;
                             // Clean up merge worktree after Block mode failure
                             // (AutoFix keeps worktree for the fixer agent)
-                            if *validation_mode != MergeValidationMode::AutoFix && merge_path != repo_path {
-                                if let Err(e) = GitService::delete_worktree(repo_path, merge_path).await {
+                            if *validation_mode != MergeValidationMode::AutoFix
+                                && merge_path != repo_path
+                            {
+                                if let Err(e) =
+                                    GitService::delete_worktree(repo_path, merge_path).await
+                                {
                                     tracing::warn!(task_id = task_id_str, error = %e, "Failed to delete merge worktree after validation failure (non-fatal)");
                                 }
                             }
@@ -269,7 +406,16 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Complete merge
         let app_handle = self.machine.context.services.app_handle.as_ref();
-        if let Err(e) = complete_merge_internal(task, project, commit_sha, target_branch, task_repo, app_handle).await {
+        if let Err(e) = complete_merge_internal(
+            task,
+            project,
+            commit_sha,
+            target_branch,
+            task_repo,
+            app_handle,
+        )
+        .await
+        {
             tracing::error!(error = %e, task_id = task_id_str, strategy = opts.strategy_label, "Failed to complete merge");
             // Merge INTO existing metadata to preserve recovery history
             super::merge_helpers::merge_metadata_into(task, &serde_json::json!({
@@ -278,10 +424,16 @@ impl<'a> super::TransitionHandler<'a> {
                 "target_branch": target_branch,
             }));
             transition_to_merge_incomplete(
-                task, task_id, task_id_str, task_repo, &self.machine.context.services.event_emitter,
-            ).await;
+                task,
+                task_id,
+                task_id_str,
+                task_repo,
+                &self.machine.context.services.event_emitter,
+            )
+            .await;
         } else {
-            self.post_merge_cleanup(task_id_str, task_id, repo_path, plan_branch_repo).await;
+            self.post_merge_cleanup(task_id_str, task_id, repo_path, plan_branch_repo)
+                .await;
         }
 
         // Clean up merge worktree after merge completion (success or failure)
@@ -307,12 +459,23 @@ impl<'a> super::TransitionHandler<'a> {
         merge_worktree: Option<&Path>,
         opts: &MergeHandlerOptions,
     ) {
-        tracing::info!(task_id = task_id_str, conflict_count = conflict_files.len(), strategy = opts.strategy_label, "Conflicts detected");
+        tracing::info!(
+            task_id = task_id_str,
+            conflict_count = conflict_files.len(),
+            strategy = opts.strategy_label,
+            "Conflicts detected"
+        );
 
         emit_merge_progress(
-            self.machine.context.services.app_handle.as_ref(), task_id_str,
-            MergePhase::programmatic_merge(), MergePhaseStatus::Failed,
-            format!("{} conflicts in {} files", capitalize(opts.strategy_label), conflict_files.len()),
+            self.machine.context.services.app_handle.as_ref(),
+            task_id_str,
+            MergePhase::programmatic_merge(),
+            MergePhaseStatus::Failed,
+            format!(
+                "{} conflicts in {} files",
+                capitalize(opts.strategy_label),
+                conflict_files.len()
+            ),
         );
 
         for file in conflict_files {
@@ -320,7 +483,10 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         // Persist conflict metadata
-        let conflict_file_strings: Vec<String> = conflict_files.iter().map(|p| p.to_string_lossy().to_string()).collect();
+        let conflict_file_strings: Vec<String> = conflict_files
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
         super::merge_helpers::set_conflict_metadata(task, &conflict_file_strings, "programmatic");
 
         // Determine worktree path for agent
@@ -329,12 +495,19 @@ impl<'a> super::TransitionHandler<'a> {
         } else {
             // Checkout-free: create temp worktree for conflict resolution
             let wt_path = PathBuf::from(compute_merge_worktree_path(project, task_id_str));
-            let target_sha = GitService::get_branch_sha(repo_path, target_branch).await.unwrap_or_default();
+            let target_sha = GitService::get_branch_sha(repo_path, target_branch)
+                .await
+                .unwrap_or_default();
             let resolve_branch = format!("merge-resolve/{}", task_id_str);
-            if let Err(e) = GitService::create_branch_at(repo_path, &resolve_branch, &target_sha).await {
+            if let Err(e) =
+                GitService::create_branch_at(repo_path, &resolve_branch, &target_sha).await
+            {
                 tracing::error!(error = %e, task_id = task_id_str, "Failed to create resolve branch");
             }
-            if let Err(e) = GitService::checkout_existing_branch_worktree(repo_path, &wt_path, &resolve_branch).await {
+            if let Err(e) =
+                GitService::checkout_existing_branch_worktree(repo_path, &wt_path, &resolve_branch)
+                    .await
+            {
                 tracing::error!(error = %e, task_id = task_id_str, "Failed to create merge worktree");
             }
             // Intentional: merge may fail with conflicts — agent will resolve them in the worktree
@@ -360,21 +533,49 @@ impl<'a> super::TransitionHandler<'a> {
             return;
         }
         if let Err(e) = task_repo
-            .persist_status_change(task_id, InternalStatus::PendingMerge, InternalStatus::Merging, opts.conflict_reason)
+            .persist_status_change(
+                task_id,
+                InternalStatus::PendingMerge,
+                InternalStatus::Merging,
+                opts.conflict_reason,
+            )
             .await
         {
             tracing::warn!(error = %e, "Failed to record {} transition (non-fatal)", opts.conflict_reason);
         }
-        self.machine.context.services.event_emitter.emit_status_change(task_id_str, "pending_merge", "merging").await;
+        self.machine
+            .context
+            .services
+            .event_emitter
+            .emit_status_change(task_id_str, "pending_merge", "merging")
+            .await;
 
         // Spawn merger agent
-        let prompt = format!("Resolve {} conflicts for task: {}{}", opts.strategy_label, task_id_str, opts.agent_prompt_suffix);
-        tracing::info!(task_id = task_id_str, strategy = opts.strategy_label, "Spawning merger agent");
-        let result = self.machine.context.services.chat_service
-            .send_message(crate::domain::entities::ChatContextType::Merge, task_id_str, &prompt).await;
+        let prompt = format!(
+            "Resolve {} conflicts for task: {}{}",
+            opts.strategy_label, task_id_str, opts.agent_prompt_suffix
+        );
+        tracing::info!(
+            task_id = task_id_str,
+            strategy = opts.strategy_label,
+            "Spawning merger agent"
+        );
+        let result = self
+            .machine
+            .context
+            .services
+            .chat_service
+            .send_message(
+                crate::domain::entities::ChatContextType::Merge,
+                task_id_str,
+                &prompt,
+            )
+            .await;
         match &result {
             Ok(_) => tracing::info!(task_id = task_id_str, "Merger agent spawned"),
-            Err(e) => tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent"),
+            Err(e) => {
+                tracing::error!(task_id = task_id_str, error = %e, "Failed to spawn merger agent")
+            }
         }
     }
 
@@ -393,9 +594,14 @@ impl<'a> super::TransitionHandler<'a> {
         let mut recovery = get_or_create_recovery(task);
         let attempt = retry_attempt_count(&recovery);
         let event = MergeRecoveryEvent::new(
-            MergeRecoveryEventKind::AutoRetryTriggered, MergeRecoverySource::Auto,
-            MergeRecoveryReasonCode::BranchNotFound, format!("Branch '{}' does not exist", missing_branch),
-        ).with_target_branch(target_branch).with_source_branch(source_branch).with_attempt(attempt);
+            MergeRecoveryEventKind::AutoRetryTriggered,
+            MergeRecoverySource::Auto,
+            MergeRecoveryReasonCode::BranchNotFound,
+            format!("Branch '{}' does not exist", missing_branch),
+        )
+        .with_target_branch(target_branch)
+        .with_source_branch(source_branch)
+        .with_attempt(attempt);
         recovery.append_event(event);
 
         match recovery.update_task_metadata(task.metadata.as_deref()) {
@@ -411,17 +617,25 @@ impl<'a> super::TransitionHandler<'a> {
             }
             Err(e) => {
                 tracing::error!(task_id = task_id_str, error = %e, "Failed to serialize recovery metadata");
-                task.metadata = Some(serde_json::json!({
-                    "error": format!("Branch '{}' does not exist", missing_branch),
-                    "missing_branch": missing_branch, "source_branch": source_branch,
-                    "target_branch": target_branch, "branch_missing": true
-                }).to_string());
+                task.metadata = Some(
+                    serde_json::json!({
+                        "error": format!("Branch '{}' does not exist", missing_branch),
+                        "missing_branch": missing_branch, "source_branch": source_branch,
+                        "target_branch": target_branch, "branch_missing": true
+                    })
+                    .to_string(),
+                );
             }
         }
 
         transition_to_merge_incomplete(
-            task, task_id, task_id_str, task_repo, &self.machine.context.services.event_emitter,
-        ).await;
+            task,
+            task_id,
+            task_id_str,
+            task_repo,
+            &self.machine.context.services.event_emitter,
+        )
+        .await;
     }
 
     async fn handle_outcome_deferred(
@@ -437,19 +651,28 @@ impl<'a> super::TransitionHandler<'a> {
 
         let mut recovery = get_or_create_recovery(task);
         let event = MergeRecoveryEvent::new(
-            MergeRecoveryEventKind::Deferred, MergeRecoverySource::System,
-            MergeRecoveryReasonCode::GitError, format!("Merge deferred: {}", reason),
-        ).with_target_branch(target_branch).with_source_branch(source_branch);
+            MergeRecoveryEventKind::Deferred,
+            MergeRecoverySource::System,
+            MergeRecoveryReasonCode::GitError,
+            format!("Merge deferred: {}", reason),
+        )
+        .with_target_branch(target_branch)
+        .with_source_branch(source_branch);
         recovery.append_event_with_state(event, MergeRecoveryState::Deferred);
 
         match recovery.update_task_metadata(task.metadata.as_deref()) {
-            Ok(updated_json) => { task.metadata = Some(updated_json); }
+            Ok(updated_json) => {
+                task.metadata = Some(updated_json);
+            }
             Err(e) => {
                 tracing::error!(task_id = task_id_str, error = %e, "Failed to serialize recovery metadata");
-                task.metadata = Some(serde_json::json!({
-                    "merge_deferred": true, "error": reason,
-                    "source_branch": source_branch, "target_branch": target_branch,
-                }).to_string());
+                task.metadata = Some(
+                    serde_json::json!({
+                        "merge_deferred": true, "error": reason,
+                        "source_branch": source_branch, "target_branch": target_branch,
+                    })
+                    .to_string(),
+                );
             }
         }
 
@@ -473,7 +696,15 @@ impl<'a> super::TransitionHandler<'a> {
     ) {
         if GitService::is_branch_lock_error(&error) {
             tracing::warn!(task_id = task_id_str, error = %error, strategy = opts.strategy_label, "Branch lock, deferring");
-            self.handle_outcome_deferred(task, task_id_str, source_branch, target_branch, task_repo, &format!("branch lock: {}", error)).await;
+            self.handle_outcome_deferred(
+                task,
+                task_id_str,
+                source_branch,
+                target_branch,
+                task_repo,
+                &format!("branch lock: {}", error),
+            )
+            .await;
             return;
         }
 
@@ -482,9 +713,14 @@ impl<'a> super::TransitionHandler<'a> {
         let mut recovery = get_or_create_recovery(task);
         let attempt = retry_attempt_count(&recovery);
         let failed_event = MergeRecoveryEvent::new(
-            MergeRecoveryEventKind::AttemptFailed, MergeRecoverySource::System,
-            MergeRecoveryReasonCode::GitError, format!("Merge failed ({}): {}", opts.strategy_label, error),
-        ).with_target_branch(target_branch).with_source_branch(source_branch).with_attempt(attempt);
+            MergeRecoveryEventKind::AttemptFailed,
+            MergeRecoverySource::System,
+            MergeRecoveryReasonCode::GitError,
+            format!("Merge failed ({}): {}", opts.strategy_label, error),
+        )
+        .with_target_branch(target_branch)
+        .with_source_branch(source_branch)
+        .with_attempt(attempt);
         recovery.append_event_with_state(failed_event, MergeRecoveryState::Failed);
 
         match recovery.update_task_metadata(task.metadata.as_deref()) {
@@ -492,8 +728,14 @@ impl<'a> super::TransitionHandler<'a> {
                 if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&updated_json) {
                     if let Some(obj) = meta.as_object_mut() {
                         obj.insert("error".to_string(), serde_json::json!(error.to_string()));
-                        obj.insert("source_branch".to_string(), serde_json::json!(source_branch));
-                        obj.insert("target_branch".to_string(), serde_json::json!(target_branch));
+                        obj.insert(
+                            "source_branch".to_string(),
+                            serde_json::json!(source_branch),
+                        );
+                        obj.insert(
+                            "target_branch".to_string(),
+                            serde_json::json!(target_branch),
+                        );
                     }
                     task.metadata = Some(meta.to_string());
                 } else {
@@ -509,8 +751,13 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         transition_to_merge_incomplete(
-            task, task_id, task_id_str, task_repo, &self.machine.context.services.event_emitter,
-        ).await;
+            task,
+            task_id,
+            task_id_str,
+            task_repo,
+            &self.machine.context.services.event_emitter,
+        )
+        .await;
     }
 }
 
@@ -536,10 +783,7 @@ async fn set_validation_in_progress(
         .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
         .unwrap_or_else(|| serde_json::json!({}));
     if let Some(obj) = meta.as_object_mut() {
-        obj.insert(
-            "validation_in_progress".to_string(),
-            serde_json::json!(now),
-        );
+        obj.insert("validation_in_progress".to_string(), serde_json::json!(now));
     }
     task.metadata = Some(meta.to_string());
     task.touch();

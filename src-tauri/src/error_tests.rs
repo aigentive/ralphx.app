@@ -63,8 +63,7 @@ fn test_invalid_transition_error_serialization() {
         from: "ready".to_string(),
         to: "cancelled".to_string(),
     };
-    let json =
-        serde_json::to_string(&err).expect("Failed to serialize InvalidTransition error");
+    let json = serde_json::to_string(&err).expect("Failed to serialize InvalidTransition error");
     assert_eq!(json, "\"Invalid status transition: ready → cancelled\"");
 }
 

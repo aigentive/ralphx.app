@@ -165,8 +165,7 @@ async fn test_mock_repository_get_blockers_empty() {
 async fn test_mock_repository_get_blockers_with_deps() {
     let task_id = TaskId::new();
     let blocker_id = TaskId::new();
-    let repo =
-        MockTaskDependencyRepository::with_dependency(task_id.clone(), blocker_id.clone());
+    let repo = MockTaskDependencyRepository::with_dependency(task_id.clone(), blocker_id.clone());
 
     let result = repo.get_blockers(&task_id).await;
     assert!(result.is_ok());

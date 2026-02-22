@@ -57,5 +57,8 @@ async fn install_retry_succeeds_after_transient_failure() {
     // Retry succeeded → no failures overall; log has one entry replaced with "success"
     assert!(!had_failures, "expected no failures after successful retry");
     assert_eq!(log.len(), 1, "expected one log entry per command");
-    assert_eq!(log[0].status, "success", "retry should have overwritten status to success");
+    assert_eq!(
+        log[0].status, "success",
+        "retry should have overwritten status to success"
+    );
 }

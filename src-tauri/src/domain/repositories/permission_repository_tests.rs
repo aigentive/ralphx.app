@@ -22,11 +22,7 @@ impl PermissionRepository for MockPermissionRepository {
         Ok(())
     }
 
-    async fn resolve(
-        &self,
-        request_id: &str,
-        decision: &PermissionDecision,
-    ) -> AppResult<bool> {
+    async fn resolve(&self, request_id: &str, decision: &PermissionDecision) -> AppResult<bool> {
         let mut permissions = self.permissions.write().unwrap();
         if let Some(entry) = permissions.get_mut(request_id) {
             entry.1 = Some(decision.clone());

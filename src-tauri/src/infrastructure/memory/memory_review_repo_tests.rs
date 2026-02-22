@@ -131,11 +131,8 @@ async fn test_count_fix_actions() {
     assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 0);
 
     let fix_task_id = TaskId::from_string("fix-1".to_string());
-    let action = ReviewAction::with_target_task(
-        review_id,
-        ReviewActionType::CreatedFixTask,
-        fix_task_id,
-    );
+    let action =
+        ReviewAction::with_target_task(review_id, ReviewActionType::CreatedFixTask, fix_task_id);
     repo.add_action(&action).await.unwrap();
 
     assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 1);

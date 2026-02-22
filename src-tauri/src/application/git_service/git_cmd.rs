@@ -96,10 +96,7 @@ fn exec_with_retry(
                     return Ok(output);
                 }
                 // Transient failure: record and retry after backoff.
-                let backoff = retry_backoff
-                    .get(attempt as usize)
-                    .copied()
-                    .unwrap_or(4);
+                let backoff = retry_backoff.get(attempt as usize).copied().unwrap_or(4);
                 tracing::warn!(
                     attempt = attempt + 1,
                     max = max_retries,
@@ -199,7 +196,9 @@ pub(crate) async fn run_status(args: &[&str], cwd: &Path) -> AppResult<bool> {
         }),
     )
     .await
-    .map_err(|_| AppError::GitOperation(format!("git status check timed out after {timeout_secs}s")))?
+    .map_err(|_| {
+        AppError::GitOperation(format!("git status check timed out after {timeout_secs}s"))
+    })?
     .map_err(|e| AppError::GitOperation(format!("git task join error: {e}")))
 }
 

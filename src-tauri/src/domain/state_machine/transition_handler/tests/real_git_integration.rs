@@ -78,7 +78,9 @@ async fn test_merge_reaches_strategy_dispatch_with_real_repo() {
         .current_dir(git_repo.path())
         .output()
         .expect("git rev-parse");
-    let pre_merge_sha = String::from_utf8_lossy(&pre_merge_sha.stdout).trim().to_string();
+    let pre_merge_sha = String::from_utf8_lossy(&pre_merge_sha.stdout)
+        .trim()
+        .to_string();
 
     let setup = setup_pending_merge_with_real_repo(
         "Strategy dispatch test",
@@ -111,7 +113,9 @@ async fn test_merge_reaches_strategy_dispatch_with_real_repo() {
         .current_dir(git_repo.path())
         .output()
         .expect("git rev-parse");
-    let post_merge_sha = String::from_utf8_lossy(&post_merge_sha.stdout).trim().to_string();
+    let post_merge_sha = String::from_utf8_lossy(&post_merge_sha.stdout)
+        .trim()
+        .to_string();
 
     assert_ne!(
         pre_merge_sha, post_merge_sha,

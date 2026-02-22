@@ -418,11 +418,8 @@ async fn test_mock_repository_count_fix_actions() {
 
     // Add another fix task action
     let fix_task_id_2 = TaskId::from_string("fix-2".to_string());
-    let action2 = ReviewAction::with_target_task(
-        review_id,
-        ReviewActionType::CreatedFixTask,
-        fix_task_id_2,
-    );
+    let action2 =
+        ReviewAction::with_target_task(review_id, ReviewActionType::CreatedFixTask, fix_task_id_2);
     repo.add_action(&action2).await.unwrap();
 
     assert_eq!(repo.count_fix_actions(&task_id).await.unwrap(), 2);

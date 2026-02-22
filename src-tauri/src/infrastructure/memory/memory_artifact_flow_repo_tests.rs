@@ -36,8 +36,8 @@ async fn test_get_all_flows() {
 async fn test_get_active_flows() {
     let repo = MemoryArtifactFlowRepository::new();
     let active = create_test_flow();
-    let inactive = ArtifactFlow::new("Inactive", ArtifactFlowTrigger::on_artifact_created())
-        .set_active(false);
+    let inactive =
+        ArtifactFlow::new("Inactive", ArtifactFlowTrigger::on_artifact_created()).set_active(false);
 
     repo.create(active).await.unwrap();
     repo.create(inactive).await.unwrap();

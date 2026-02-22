@@ -66,8 +66,16 @@ pub async fn get_conversation_active_state(
     let response = if let Some(state) = cached_state {
         ActiveStateResponse {
             is_active,
-            tool_calls: state.tool_calls.into_iter().map(ActiveToolCall::from).collect(),
-            streaming_tasks: state.streaming_tasks.into_iter().map(ActiveStreamingTask::from).collect(),
+            tool_calls: state
+                .tool_calls
+                .into_iter()
+                .map(ActiveToolCall::from)
+                .collect(),
+            streaming_tasks: state
+                .streaming_tasks
+                .into_iter()
+                .map(ActiveStreamingTask::from)
+                .collect(),
             partial_text: state.partial_text,
         }
     } else {

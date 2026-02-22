@@ -2,7 +2,7 @@ use super::*;
 use crate::application::chat_service::{CachedStreamingTask, CachedToolCall};
 use crate::application::AppState;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{ChatContextType, TaskId, IdeationSessionId};
+use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
 use crate::domain::services::RunningAgentKey;
 use std::sync::Arc;
 
@@ -219,7 +219,8 @@ async fn test_get_active_state_combines_all_data() {
 
     // Create a conversation
     let task_id = TaskId::new();
-    let conversation = crate::domain::entities::ChatConversation::new_task_execution(task_id.clone());
+    let conversation =
+        crate::domain::entities::ChatConversation::new_task_execution(task_id.clone());
     let conversation_id = conversation.id.as_str().to_string();
     let context_id = conversation.context_id.clone();
     state
@@ -230,10 +231,7 @@ async fn test_get_active_state_combines_all_data() {
         .unwrap();
 
     // Register running agent
-    let key = RunningAgentKey::new(
-        ChatContextType::TaskExecution.to_string(),
-        context_id,
-    );
+    let key = RunningAgentKey::new(ChatContextType::TaskExecution.to_string(), context_id);
     state
         .app_state
         .running_agent_registry

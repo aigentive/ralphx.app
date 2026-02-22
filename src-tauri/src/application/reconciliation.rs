@@ -31,8 +31,8 @@ use crate::domain::repositories::{
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
-pub use policy::UserRecoveryAction;
 pub(crate) use policy::RecoveryPolicy;
+pub use policy::UserRecoveryAction;
 // Re-exported for tests (use super::*)
 #[cfg(test)]
 pub(crate) use policy::{RecoveryActionKind, RecoveryContext, RecoveryEvidence};

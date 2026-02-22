@@ -213,8 +213,7 @@ pub fn derive_phase_label(command: &str) -> String {
     let cmd_lower = command.to_lowercase();
 
     // TypeScript type checking
-    if cmd_lower.contains("tsc") || (cmd_lower.contains("typecheck") && cmd_lower.contains("npm"))
-    {
+    if cmd_lower.contains("tsc") || (cmd_lower.contains("typecheck") && cmd_lower.contains("npm")) {
         return "Type Check".to_string();
     }
 

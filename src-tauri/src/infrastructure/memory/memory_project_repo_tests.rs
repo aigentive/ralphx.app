@@ -268,8 +268,7 @@ async fn test_concurrent_creates_with_different_paths() {
     for i in 0..10 {
         let repo_clone = Arc::clone(&repo);
         handles.push(tokio::spawn(async move {
-            let project =
-                create_test_project(&format!("Project {}", i), &format!("/path/{}", i));
+            let project = create_test_project(&format!("Project {}", i), &format!("/path/{}", i));
             repo_clone.create(project).await
         }));
     }

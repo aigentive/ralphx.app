@@ -258,8 +258,7 @@ async fn test_create_feature_branch_success() {
         .unwrap();
 
     // Create feature branch
-    let result =
-        GitService::create_feature_branch(repo, "ralphx/my-app/plan-abc123", "main").await;
+    let result = GitService::create_feature_branch(repo, "ralphx/my-app/plan-abc123", "main").await;
     assert!(
         result.is_ok(),
         "create_feature_branch should succeed: {:?}",
@@ -431,8 +430,7 @@ async fn test_create_feature_branch_invalid_source() {
         .unwrap();
 
     // Create from non-existent source branch
-    let result =
-        GitService::create_feature_branch(repo, "feature/bad", "nonexistent-branch").await;
+    let result = GitService::create_feature_branch(repo, "feature/bad", "nonexistent-branch").await;
     assert!(
         result.is_err(),
         "Creating from non-existent source should fail"

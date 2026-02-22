@@ -20,14 +20,18 @@ use crate::domain::state_machine::{State, TransitionHandler};
 #[tokio::test]
 async fn test_step0_agent_kill_executes_without_error() {
     let (mut machine, _, _) = setup_pending_merge_repos("Step 0 test", Some("feature/test"))
-        .await.into_machine();
+        .await
+        .into_machine();
     let handler = TransitionHandler::new(&mut machine);
 
     // With repos wired, on_enter(PendingMerge) proceeds past the guard and actually
     // runs pre_merge_cleanup (step 0 = stop_agent) before trying to merge.
     // Git operations fail fast on nonexistent dir.
     let result = handler.on_enter(&State::PendingMerge).await;
-    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed even with step 0 agent kill");
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed even with step 0 agent kill"
+    );
 }
 
 // Tests early-return guard — does not reach merge strategy dispatch
@@ -120,8 +124,10 @@ async fn test_guard_no_repos_fires_on_exit_to_merge_incomplete() {
 /// by the reconciler instead.
 #[tokio::test]
 async fn test_timeout_wrappers_dont_break_existing_workflow() {
-    let (mut machine, task_repo, task_id) = setup_pending_merge_repos("Timeout wrapper test", Some("feature/test"))
-        .await.into_machine();
+    let (mut machine, task_repo, task_id) =
+        setup_pending_merge_repos("Timeout wrapper test", Some("feature/test"))
+            .await
+            .into_machine();
     let handler = TransitionHandler::new(&mut machine);
 
     // Enter PendingMerge — with repos, this runs pre_merge_cleanup (timeout-wrapped steps)
@@ -185,7 +191,9 @@ async fn test_post_merge_cleanup_triggers_scheduler() {
     services.dependency_manager = Arc::clone(&dep_manager) as Arc<dyn DependencyManager>;
     services.task_scheduler =
         Some(Arc::clone(&scheduler)
-            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>);
+            as Arc<
+                dyn crate::domain::state_machine::services::TaskScheduler,
+            >);
 
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -201,11 +209,14 @@ async fn test_post_merge_cleanup_triggers_scheduler() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_schedule_ready_tasks")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_schedule_ready_tasks")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Scheduler should be triggered after unblocking dependents"
     );
 

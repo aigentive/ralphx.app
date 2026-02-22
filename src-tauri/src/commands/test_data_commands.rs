@@ -263,8 +263,7 @@ async fn create_task(
     status: InternalStatus,
 ) -> Result<usize, String> {
     let task_category: TaskCategory = category.parse().unwrap_or(TaskCategory::Regular);
-    let mut task =
-        Task::new_with_category(project_id.clone(), title.to_string(), task_category);
+    let mut task = Task::new_with_category(project_id.clone(), title.to_string(), task_category);
     task.description = Some(description.to_string());
     task.priority = priority;
     task.internal_status = status;

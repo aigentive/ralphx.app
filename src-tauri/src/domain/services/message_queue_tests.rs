@@ -289,11 +289,23 @@ fn test_queue_front_inserts_before_existing() {
     let queue = MessageQueue::new();
 
     // Queue two regular messages
-    queue.queue(ChatContextType::Ideation, "sess-1", "User msg 1".to_string());
-    queue.queue(ChatContextType::Ideation, "sess-1", "User msg 2".to_string());
+    queue.queue(
+        ChatContextType::Ideation,
+        "sess-1",
+        "User msg 1".to_string(),
+    );
+    queue.queue(
+        ChatContextType::Ideation,
+        "sess-1",
+        "User msg 2".to_string(),
+    );
 
     // Insert priority message at front
-    queue.queue_front(ChatContextType::Ideation, "sess-1", "Recovery context".to_string());
+    queue.queue_front(
+        ChatContextType::Ideation,
+        "sess-1",
+        "Recovery context".to_string(),
+    );
 
     // Pop should return the front-inserted message first
     let first = queue.pop(ChatContextType::Ideation, "sess-1").unwrap();

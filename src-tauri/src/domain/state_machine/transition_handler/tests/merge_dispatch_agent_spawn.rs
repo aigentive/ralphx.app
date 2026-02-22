@@ -9,8 +9,8 @@
 
 use super::helpers::*;
 use crate::domain::entities::{InternalStatus, MergeStrategy, Project, ProjectId, Task};
-use crate::domain::state_machine::{State, TransitionHandler};
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::{State, TransitionHandler};
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Shared setup helpers
@@ -46,7 +46,11 @@ fn make_services_with_tracked_chat(
 ///   2. Assert chat_service.call_count() >= 1
 async fn setup_merging_machine(
     metadata_json: &str,
-) -> (Arc<MockChatService>, TaskStateMachine, Arc<MemoryTaskRepository>) {
+) -> (
+    Arc<MockChatService>,
+    TaskStateMachine,
+    Arc<MemoryTaskRepository>,
+) {
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let project_repo = Arc::new(MemoryProjectRepository::new());
 
@@ -195,7 +199,11 @@ async fn source_update_conflict_from_pending_merge_transitions_to_merging_and_sp
         .current_dir(path)
         .output();
     let _ = std::process::Command::new("git")
-        .args(["commit", "-m", "fix: main also modifies feature.rs (source update conflict)"])
+        .args([
+            "commit",
+            "-m",
+            "fix: main also modifies feature.rs (source update conflict)",
+        ])
         .current_dir(path)
         .output();
 

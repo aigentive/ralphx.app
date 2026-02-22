@@ -35,10 +35,7 @@ impl MockMethodologyRepository {
 
 #[async_trait]
 impl MethodologyRepository for MockMethodologyRepository {
-    async fn create(
-        &self,
-        methodology: MethodologyExtension,
-    ) -> AppResult<MethodologyExtension> {
+    async fn create(&self, methodology: MethodologyExtension) -> AppResult<MethodologyExtension> {
         Ok(methodology)
     }
 
@@ -95,9 +92,7 @@ fn create_test_methodology() -> MethodologyExtension {
     MethodologyExtension::new("Test Method", workflow)
         .with_description("A test methodology")
         .with_agent_profiles(["analyst", "developer"])
-        .with_phase(
-            MethodologyPhase::new("analysis", "Analysis", 0).with_agent_profile("analyst"),
-        )
+        .with_phase(MethodologyPhase::new("analysis", "Analysis", 0).with_agent_profile("analyst"))
 }
 
 fn create_active_methodology() -> MethodologyExtension {

@@ -1,8 +1,7 @@
 use super::*;
 use crate::domain::entities::TaskQA;
 use crate::domain::qa::{
-    AcceptanceCriteria, AcceptanceCriterion, QAOverallStatus, QAStepStatus, QATestStep,
-    QATestSteps,
+    AcceptanceCriteria, AcceptanceCriterion, QAOverallStatus, QAStepStatus, QATestStep, QATestSteps,
 };
 
 async fn setup_test_state() -> AppState {
@@ -233,10 +232,8 @@ async fn test_task_qa_response_conversion() {
     let mut task_qa = TaskQA::new(task_id.clone());
 
     // Add acceptance criteria
-    let criteria = AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual(
-        "AC1",
-        "Visual test",
-    )]);
+    let criteria =
+        AcceptanceCriteria::from_criteria(vec![AcceptanceCriterion::visual("AC1", "Visual test")]);
     let steps = QATestSteps::from_steps(vec![QATestStep::new(
         "QA1",
         "AC1",

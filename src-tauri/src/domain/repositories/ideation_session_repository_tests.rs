@@ -86,9 +86,7 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         Ok(self
             .sessions
             .iter()
-            .filter(|s| {
-                &s.project_id == project_id && s.status == IdeationSessionStatus::Active
-            })
+            .filter(|s| &s.project_id == project_id && s.status == IdeationSessionStatus::Active)
             .cloned()
             .collect())
     }
@@ -112,17 +110,12 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         Ok(self
             .sessions
             .iter()
-            .filter(|s| {
-                s.plan_artifact_id.as_ref().map(|id| id.as_str()) == Some(plan_artifact_id)
-            })
+            .filter(|s| s.plan_artifact_id.as_ref().map(|id| id.as_str()) == Some(plan_artifact_id))
             .cloned()
             .collect())
     }
 
-    async fn get_children(
-        &self,
-        parent_id: &IdeationSessionId,
-    ) -> AppResult<Vec<IdeationSession>> {
+    async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
         Ok(self
             .sessions
             .iter()
@@ -186,8 +179,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
 #[test]
 fn test_ideation_session_repository_trait_can_be_object_safe() {
     // Verify that IdeationSessionRepository can be used as a trait object
-    let repo: Arc<dyn IdeationSessionRepository> =
-        Arc::new(MockIdeationSessionRepository::new());
+    let repo: Arc<dyn IdeationSessionRepository> = Arc::new(MockIdeationSessionRepository::new());
     assert!(Arc::strong_count(&repo) == 1);
 }
 

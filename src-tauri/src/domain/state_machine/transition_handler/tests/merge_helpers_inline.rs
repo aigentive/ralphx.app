@@ -275,7 +275,8 @@ fn test_set_main_merge_deferred_metadata_preserves_existing_fields() {
 fn test_set_main_merge_deferred_metadata_overwrites_existing_flag() {
     let project = Project::new("test".to_string(), "/tmp".to_string());
     let mut task = Task::new(project.id, "Test task".to_string());
-    task.metadata = Some(r#"{"main_merge_deferred": false, "main_merge_deferred_at": "old-time"}"#.to_string());
+    task.metadata =
+        Some(r#"{"main_merge_deferred": false, "main_merge_deferred_at": "old-time"}"#.to_string());
 
     set_main_merge_deferred_metadata(&mut task);
 
@@ -305,7 +306,10 @@ fn test_clear_main_merge_deferred_metadata_preserves_other_fields() {
 fn test_clear_main_merge_deferred_metadata_clears_metadata_if_empty() {
     let project = Project::new("test".to_string(), "/tmp".to_string());
     let mut task = Task::new(project.id, "Test task".to_string());
-    task.metadata = Some(r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z"}"#.to_string());
+    task.metadata = Some(
+        r#"{"main_merge_deferred": true, "main_merge_deferred_at": "2026-02-15T00:00:00Z"}"#
+            .to_string(),
+    );
 
     clear_main_merge_deferred_metadata(&mut task);
 
@@ -350,10 +354,7 @@ fn test_set_conflict_metadata_creates_metadata_if_missing() {
     let mut task = Task::new(project.id, "Test task".to_string());
     assert!(task.metadata.is_none());
 
-    let conflict_files = vec![
-        "src/main.rs".to_string(),
-        "src/lib.rs".to_string(),
-    ];
+    let conflict_files = vec!["src/main.rs".to_string(), "src/lib.rs".to_string()];
     set_conflict_metadata(&mut task, &conflict_files, "programmatic");
 
     assert!(task.metadata.is_some());
@@ -377,7 +378,10 @@ fn test_set_conflict_metadata_preserves_existing_fields() {
 
     let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
     assert_eq!(meta["existing_field"], "value");
-    assert_eq!(meta["conflict_files"], serde_json::json!(["src/conflict.rs"]));
+    assert_eq!(
+        meta["conflict_files"],
+        serde_json::json!(["src/conflict.rs"])
+    );
     assert_eq!(meta["conflict_detected_by"], "agent");
 }
 

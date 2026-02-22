@@ -121,7 +121,6 @@ fn test_review_settings_deserialize() {
     assert!(settings.require_human_review);
     assert_eq!(settings.max_fix_attempts, 5);
     assert_eq!(settings.max_revision_cycles, 8);
-
 }
 
 #[test]
@@ -171,4 +170,3 @@ fn test_exceeded_max_revisions() {
     assert!(!settings.exceeded_max_revisions(1));
     assert!(settings.exceeded_max_revisions(2));
 }
-

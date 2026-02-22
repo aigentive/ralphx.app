@@ -524,7 +524,12 @@ pub async fn apply_proposal_dependencies(
         match state
             .app_state
             .proposal_dependency_repo
-            .add_dependency(&proposal_id, &depends_on_id, suggestion.reason.as_deref(), Some("auto"))
+            .add_dependency(
+                &proposal_id,
+                &depends_on_id,
+                suggestion.reason.as_deref(),
+                Some("auto"),
+            )
             .await
         {
             Ok(_) => applied_count += 1,

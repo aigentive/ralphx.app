@@ -123,7 +123,9 @@ fn test_result_session_id_ignored_when_parent_tool_use_id_set() {
 
     // No SessionId event should be emitted for a teammate result
     assert!(
-        !events.iter().any(|e| matches!(e, StreamEvent::SessionId(_))),
+        !events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::SessionId(_))),
         "Expected no SessionId event from teammate result, but got one"
     );
     assert!(
@@ -186,7 +188,9 @@ fn test_assistant_session_id_ignored_when_parent_tool_use_id_set() {
     let events = processor.process_parsed_line(teammate_msg);
 
     assert!(
-        !events.iter().any(|e| matches!(e, StreamEvent::SessionId(_))),
+        !events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::SessionId(_))),
         "Expected no SessionId event from teammate assistant message, but got one"
     );
     assert!(

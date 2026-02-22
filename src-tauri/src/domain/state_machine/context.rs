@@ -15,10 +15,10 @@ use crate::domain::repositories::{
     IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskRepository,
     TaskStepRepository,
 };
+use dashmap::DashMap;
 use std::any::Any;
 use std::collections::HashSet;
 use std::sync::Arc;
-use dashmap::DashMap;
 use tauri::{AppHandle, Runtime, Wry};
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -191,10 +191,7 @@ impl TaskServices {
 
     /// Set a shared merges_in_flight set (builder pattern).
     /// Use this to share the same dedup set across multiple TaskServices instances.
-    pub fn with_merges_in_flight(
-        mut self,
-        set: Arc<std::sync::Mutex<HashSet<String>>>,
-    ) -> Self {
+    pub fn with_merges_in_flight(mut self, set: Arc<std::sync::Mutex<HashSet<String>>>) -> Self {
         self.merges_in_flight = set;
         self
     }
@@ -207,7 +204,10 @@ impl TaskServices {
 
     /// Set shared validation tokens DashMap (builder pattern).
     /// Use this to share tokens across multiple TaskServices instances.
-    pub fn with_validation_tokens(mut self, tokens: Arc<DashMap<String, CancellationToken>>) -> Self {
+    pub fn with_validation_tokens(
+        mut self,
+        tokens: Arc<DashMap<String, CancellationToken>>,
+    ) -> Self {
         self.validation_tokens = tokens;
         self
     }
@@ -276,7 +276,10 @@ impl std::fmt::Debug for TaskServices {
             )
             .field("merge_lock", &"<Mutex<()>>")
             .field("merges_in_flight", &"<Mutex<HashSet<String>>>")
-            .field("validation_tokens", &format!("<DashMap len={}>", self.validation_tokens.len()))
+            .field(
+                "validation_tokens",
+                &format!("<DashMap len={}>", self.validation_tokens.len()),
+            )
             .field(
                 "ideation_session_repo",
                 &self

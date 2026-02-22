@@ -3,9 +3,9 @@
 // Pure functions extracted from side_effects.rs for maintainability.
 // These build conventional-commit-style messages for squash/plan merges.
 
-use crate::domain::entities::{TaskCategory, Task};
-use crate::domain::repositories::{IdeationSessionRepository, TaskRepository};
 use crate::domain::entities::IdeationSessionId;
+use crate::domain::entities::{Task, TaskCategory};
+use crate::domain::repositories::{IdeationSessionRepository, TaskRepository};
 
 /// Map a TaskCategory to its conventional commit type prefix.
 ///
@@ -30,9 +30,7 @@ pub(super) fn derive_commit_type(tasks: &[Task]) -> &'static str {
     use std::collections::HashMap;
 
     // Priority order for tie-breaking (lower index = higher priority)
-    const PRIORITY: &[&str] = &[
-        "feat", "fix", "refactor", "docs", "test", "perf", "chore",
-    ];
+    const PRIORITY: &[&str] = &["feat", "fix", "refactor", "docs", "test", "perf", "chore"];
 
     let mut votes: HashMap<&'static str, usize> = HashMap::new();
     for task in tasks {
@@ -116,7 +114,11 @@ pub(super) async fn build_plan_merge_commit_msg(
 /// Build a squash commit message for regular (non-plan-merge) tasks.
 ///
 /// Format: `$category_commit_type: {branch} ({title})`
-pub(super) fn build_squash_commit_msg(category: &TaskCategory, title: &str, source_branch: &str) -> String {
+pub(super) fn build_squash_commit_msg(
+    category: &TaskCategory,
+    title: &str,
+    source_branch: &str,
+) -> String {
     let commit_type = category_to_commit_type(category);
     format!("{}: {} ({})", commit_type, source_branch, title)
 }

@@ -13,12 +13,12 @@ use tracing::info;
 use crate::application::question_state::QuestionState;
 use crate::application::team_events;
 use crate::application::team_state_tracker::TeammateStatus;
-use crate::infrastructure::agents::claude::stream_timeouts;
 use crate::domain::entities::{
     ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
+use crate::infrastructure::agents::claude::stream_timeouts;
 use crate::infrastructure::agents::claude::{
     ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
 };
@@ -122,7 +122,11 @@ pub struct StreamOutcome {
 
 impl StreamOutcome {
     pub fn has_meaningful_output(&self) -> bool {
-        has_meaningful_output(&self.response_text, self.tool_calls.len(), &self.stderr_text)
+        has_meaningful_output(
+            &self.response_text,
+            self.tool_calls.len(),
+            &self.stderr_text,
+        )
     }
 }
 
@@ -205,12 +209,14 @@ pub async fn process_stream_background<R: Runtime>(
 
     // Parse task_id for activity persistence (for TaskExecution and Merge contexts).
     // Merge context uses the task_id as context_id, so the mapping is identical.
-    let task_id_for_persistence =
-        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
-            Some(TaskId::from_string(context_id.to_string()))
-        } else {
-            None
-        };
+    let task_id_for_persistence = if matches!(
+        context_type,
+        ChatContextType::TaskExecution | ChatContextType::Merge
+    ) {
+        Some(TaskId::from_string(context_id.to_string()))
+    } else {
+        None
+    };
 
     // Spawn stderr reader
     let _stderr_handle = app_handle.clone();
@@ -243,9 +249,9 @@ pub async fn process_stream_background<R: Runtime>(
     const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
 
     // Throttled heartbeat: update last_active_at every 5s on any parsed event
-    let heartbeat_key = running_agent_registry.as_ref().map(|_| {
-        RunningAgentKey::new(context_type.to_string(), context_id)
-    });
+    let heartbeat_key = running_agent_registry
+        .as_ref()
+        .map(|_| RunningAgentKey::new(context_type.to_string(), context_id));
     let mut last_heartbeat = std::time::Instant::now();
     const HEARTBEAT_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
 
@@ -330,7 +336,9 @@ pub async fn process_stream_background<R: Runtime>(
                 match event {
                     StreamEvent::TextChunk(text) => {
                         // Update streaming state cache
-                        streaming_state_cache.append_text(&conversation_id_str, &text).await;
+                        streaming_state_cache
+                            .append_text(&conversation_id_str, &text)
+                            .await;
 
                         if let Some(ref handle) = app_handle {
                             // Unified event
@@ -347,7 +355,10 @@ pub async fn process_stream_background<R: Runtime>(
                             stream_seq += 1;
 
                             // Activity stream event for task execution and merge
-                            if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
+                            if matches!(
+                                context_type,
+                                ChatContextType::TaskExecution | ChatContextType::Merge
+                            ) {
                                 let _ = handle.emit(
                                     events::AGENT_MESSAGE,
                                     serde_json::json!({
@@ -384,7 +395,10 @@ pub async fn process_stream_background<R: Runtime>(
                     }
                     StreamEvent::Thinking(text) => {
                         // Activity stream event for task execution and merge
-                        if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
+                        if matches!(
+                            context_type,
+                            ChatContextType::TaskExecution | ChatContextType::Merge
+                        ) {
                             if let Some(ref handle) = app_handle {
                                 let _ = handle.emit(
                                     events::AGENT_MESSAGE,
@@ -434,7 +448,9 @@ pub async fn process_stream_background<R: Runtime>(
                             diff_context: None,
                             parent_tool_use_id: parent_tool_use_id.clone(),
                         };
-                        streaming_state_cache.upsert_tool_call(&conversation_id_str, cached_tool).await;
+                        streaming_state_cache
+                            .upsert_tool_call(&conversation_id_str, cached_tool)
+                            .await;
 
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
@@ -501,7 +517,9 @@ pub async fn process_stream_background<R: Runtime>(
                             diff_context: diff_context_value.clone(),
                             parent_tool_use_id: parent_tool_use_id.clone(),
                         };
-                        streaming_state_cache.upsert_tool_call(&conversation_id_str, cached_tool).await;
+                        streaming_state_cache
+                            .upsert_tool_call(&conversation_id_str, cached_tool)
+                            .await;
 
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
@@ -522,7 +540,10 @@ pub async fn process_stream_background<R: Runtime>(
                             stream_seq += 1;
 
                             // Activity stream event for task execution and merge
-                            if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
+                            if matches!(
+                                context_type,
+                                ChatContextType::TaskExecution | ChatContextType::Merge
+                            ) {
                                 let tool_content = format!(
                                     "{} ({})",
                                     tool_call.name,
@@ -586,7 +607,9 @@ pub async fn process_stream_background<R: Runtime>(
 
                             // Update status to Running via TeamService (persistence + events)
                             if let Some(ref service) = team_service {
-                                let _ = service.update_teammate_status(tt, tn, TeammateStatus::Running).await;
+                                let _ = service
+                                    .update_teammate_status(tt, tn, TeammateStatus::Running)
+                                    .await;
                             }
 
                             // Emit agent:run_started with teammate_name for frontend
@@ -612,7 +635,9 @@ pub async fn process_stream_background<R: Runtime>(
                             status: "running".to_string(),
                             teammate_name: tm_name.clone(),
                         };
-                        streaming_state_cache.add_task(&conversation_id_str, cached_task).await;
+                        streaming_state_cache
+                            .add_task(&conversation_id_str, cached_task)
+                            .await;
 
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
@@ -640,32 +665,37 @@ pub async fn process_stream_background<R: Runtime>(
                         total_tool_use_count,
                     } => {
                         // Update streaming state cache - mark task as completed
-                        streaming_state_cache.complete_task(&conversation_id_str, &tool_use_id).await;
+                        streaming_state_cache
+                            .complete_task(&conversation_id_str, &tool_use_id)
+                            .await;
 
                         // Check if this completes a teammate Task
-                        let tm_name_for_payload = if let Some((tt, tn)) = teammate_task_map.remove(&tool_use_id) {
-                            // Update status to Idle via TeamService (persistence + events)
-                            if let Some(ref service) = team_service {
-                                let _ = service.update_teammate_status(&tt, &tn, TeammateStatus::Idle).await;
-                            }
+                        let tm_name_for_payload =
+                            if let Some((tt, tn)) = teammate_task_map.remove(&tool_use_id) {
+                                // Update status to Idle via TeamService (persistence + events)
+                                if let Some(ref service) = team_service {
+                                    let _ = service
+                                        .update_teammate_status(&tt, &tn, TeammateStatus::Idle)
+                                        .await;
+                                }
 
-                            // Emit agent:run_completed with teammate_name for frontend
-                            if let Some(ref handle) = app_handle {
-                                let _ = handle.emit(
-                                    events::AGENT_RUN_COMPLETED,
-                                    serde_json::json!({
-                                        "teammate_name": tn,
-                                        "team_name": tt,
-                                        "context_type": context_type_str,
-                                        "context_id": context_id_str,
-                                    }),
-                                );
-                            }
+                                // Emit agent:run_completed with teammate_name for frontend
+                                if let Some(ref handle) = app_handle {
+                                    let _ = handle.emit(
+                                        events::AGENT_RUN_COMPLETED,
+                                        serde_json::json!({
+                                            "teammate_name": tn,
+                                            "team_name": tt,
+                                            "context_type": context_type_str,
+                                            "context_id": context_id_str,
+                                        }),
+                                    );
+                                }
 
-                            Some(tn)
-                        } else {
-                            None
-                        };
+                                Some(tn)
+                            } else {
+                                None
+                            };
 
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
@@ -761,11 +791,16 @@ pub async fn process_stream_background<R: Runtime>(
                         }
                     }
 
-                    StreamEvent::TeamCreated { team_name, config_path: _ } => {
+                    StreamEvent::TeamCreated {
+                        team_name,
+                        config_path: _,
+                    } => {
                         // Create team via TeamService (persistence + events)
                         if let Some(ref service) = team_service {
                             if !service.team_exists(&team_name).await {
-                                let _ = service.create_team(&team_name, &context_id_str, &context_type_str).await;
+                                let _ = service
+                                    .create_team(&team_name, &context_id_str, &context_type_str)
+                                    .await;
                             }
                         } else if let Some(ref handle) = app_handle {
                             // Fallback: emit event directly if no service available
@@ -777,13 +812,29 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         }
                     }
-                    StreamEvent::TeammateSpawned { teammate_name, team_name, agent_id: _, model, color, prompt: _, agent_type: _ } => {
+                    StreamEvent::TeammateSpawned {
+                        teammate_name,
+                        team_name,
+                        agent_id: _,
+                        model,
+                        color,
+                        prompt: _,
+                        agent_type: _,
+                    } => {
                         // Register teammate via TeamService (persistence + events).
                         // May already exist from approve_team_plan — add_teammate is idempotent.
                         // NOTE: CLI worker processes are spawned in approve_team_plan (teams.rs),
                         // NOT here, to avoid double-spawn when both paths fire.
                         if let Some(ref service) = team_service {
-                            let _ = service.add_teammate(&team_name, &teammate_name, &color, &model, "team-member").await;
+                            let _ = service
+                                .add_teammate(
+                                    &team_name,
+                                    &teammate_name,
+                                    &color,
+                                    &model,
+                                    "team-member",
+                                )
+                                .await;
                         } else if let Some(ref handle) = app_handle {
                             team_events::emit_teammate_spawned(
                                 handle,
@@ -797,7 +848,12 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         }
                     }
-                    StreamEvent::TeamMessageSent { sender, recipient, content, message_type } => {
+                    StreamEvent::TeamMessageSent {
+                        sender,
+                        recipient,
+                        content,
+                        message_type,
+                    } => {
                         // Persist message and emit full-payload event via TeamService
                         use crate::application::team_state_tracker::TeamMessageType;
 
@@ -874,7 +930,10 @@ pub async fn process_stream_background<R: Runtime>(
                             stream_seq += 1;
 
                             // Activity stream event for task execution and merge
-                            if matches!(context_type, ChatContextType::TaskExecution | ChatContextType::Merge) {
+                            if matches!(
+                                context_type,
+                                ChatContextType::TaskExecution | ChatContextType::Merge
+                            ) {
                                 let result_content =
                                     serde_json::to_string(&result).unwrap_or_default();
                                 let result_metadata = serde_json::json!({
@@ -941,9 +1000,13 @@ pub async fn process_stream_background<R: Runtime>(
                     );
                     let _ = child.kill().await;
                     flush_content_before_error(
-                        &chat_message_repo, &assistant_message_id,
-                        &processor.response_text, &processor.tool_calls, &processor.content_blocks,
-                    ).await;
+                        &chat_message_repo,
+                        &assistant_message_id,
+                        &processor.response_text,
+                        &processor.tool_calls,
+                        &processor.content_blocks,
+                    )
+                    .await;
                     return Err(StreamError::ParseStall {
                         context_type,
                         elapsed_secs: timeout_config.parse_stall_timeout.as_secs(),
@@ -961,9 +1024,13 @@ pub async fn process_stream_background<R: Runtime>(
                 );
                 let _ = child.kill().await;
                 flush_content_before_error(
-                    &chat_message_repo, &assistant_message_id,
-                    &processor.response_text, &processor.tool_calls, &processor.content_blocks,
-                ).await;
+                    &chat_message_repo,
+                    &assistant_message_id,
+                    &processor.response_text,
+                    &processor.tool_calls,
+                    &processor.content_blocks,
+                )
+                .await;
                 return Err(StreamError::ParseStall {
                     context_type,
                     elapsed_secs: timeout_config.parse_stall_timeout.as_secs(),
@@ -1052,9 +1119,13 @@ pub async fn process_stream_background<R: Runtime>(
 
     // Final flush of accumulated content so post-loop error returns don't lose data
     flush_content_before_error(
-        &chat_message_repo, &assistant_message_id,
-        &outcome.response_text, &outcome.tool_calls, &outcome.content_blocks,
-    ).await;
+        &chat_message_repo,
+        &assistant_message_id,
+        &outcome.response_text,
+        &outcome.tool_calls,
+        &outcome.content_blocks,
+    )
+    .await;
 
     // Check if cancellation was requested during/after stream processing.
     // Fixes race where EOF from killed process wins the tokio::select! over
@@ -1108,8 +1179,7 @@ pub async fn process_stream_background<R: Runtime>(
             "Agent failed during execution".to_string()
         };
         // Check for recoverable provider errors before returning generic AgentExit
-        if let Some(provider_err) =
-            super::chat_service_errors::classify_provider_error(&error_msg)
+        if let Some(provider_err) = super::chat_service_errors::classify_provider_error(&error_msg)
         {
             return Err(provider_err);
         }

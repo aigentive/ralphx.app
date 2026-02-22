@@ -1,9 +1,7 @@
 // Merge retry tests: reload continuation, event emission, deferred merge regression, main merge retry
 
 use super::helpers::*;
-use crate::domain::state_machine::{
-    State, TaskEvent, TransitionHandler,
-};
+use crate::domain::state_machine::{State, TaskEvent, TransitionHandler};
 
 // ==================
 // Reload continuation tests
@@ -18,7 +16,10 @@ async fn test_reload_continuation_callback_drop() {
     execution_state.increment_running();
 
     let services = TaskServices::new_mock().with_execution_state(Arc::clone(&execution_state));
-    assert!(services.app_handle.is_none(), "Mock services should not have app_handle");
+    assert!(
+        services.app_handle.is_none(),
+        "Mock services should not have app_handle"
+    );
 
     let context = create_context_with_services("task-1", "proj-1", services);
     let mut machine = TaskStateMachine::new(context);
@@ -26,10 +27,13 @@ async fn test_reload_continuation_callback_drop() {
 
     // None should panic (graceful handling even without app_handle)
     handler.on_exit(&State::PendingMerge, &State::Merged).await;
-    handler.on_exit(&State::PendingMerge, &State::MergeIncomplete).await;
+    handler
+        .on_exit(&State::PendingMerge, &State::MergeIncomplete)
+        .await;
 
     assert_eq!(
-        execution_state.running_count(), 1,
+        execution_state.running_count(),
+        1,
         "Running count should be unchanged (PendingMerge is not agent-active)"
     );
 }
@@ -46,13 +50,22 @@ async fn test_guard_no_repos_enter_merge_states_no_panic() {
     let handler = TransitionHandler::new(&mut machine);
 
     let result = handler.on_enter(&State::PendingMerge).await;
-    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed without app_handle");
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed without app_handle"
+    );
 
     let result = handler.on_enter(&State::Merged).await;
-    assert!(result.is_ok(), "on_enter(Merged) should succeed without app_handle");
+    assert!(
+        result.is_ok(),
+        "on_enter(Merged) should succeed without app_handle"
+    );
 
     let result = handler.on_enter(&State::Merging).await;
-    assert!(result.is_ok(), "on_enter(Merging) should succeed without app_handle");
+    assert!(
+        result.is_ok(),
+        "on_enter(Merging) should succeed without app_handle"
+    );
 }
 
 // Tests early-return guard — does not reach merge strategy dispatch
@@ -69,7 +82,10 @@ async fn test_guard_no_repos_reload_recovery_no_panic() {
     let handler2 = TransitionHandler::new(&mut machine2);
 
     let result = handler2.on_enter(&State::PendingMerge).await;
-    assert!(result.is_ok(), "Re-entering PendingMerge after reload should succeed");
+    assert!(
+        result.is_ok(),
+        "Re-entering PendingMerge after reload should succeed"
+    );
 
     handler2.on_exit(&State::PendingMerge, &State::Merged).await;
 
@@ -79,11 +95,14 @@ async fn test_guard_no_repos_reload_recovery_no_panic() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Deferred merge retry should work after reload"
     );
 }
@@ -153,7 +172,8 @@ async fn test_event_emission_pending_merge_exit_preserves_execution_state() {
     handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
     assert_eq!(
-        execution_state.running_count(), 1,
+        execution_state.running_count(),
+        1,
         "PendingMerge exit should NOT decrement running count (not agent-active)"
     );
 }
@@ -174,7 +194,9 @@ async fn test_event_emission_full_merge_event_sequence() {
 
     let events = emitter.get_events();
     assert!(
-        events.iter().any(|e| e.args.first().map(|s| s.as_str()) == Some("task_completed")),
+        events
+            .iter()
+            .any(|e| e.args.first().map(|s| s.as_str()) == Some("task_completed")),
         "Event sequence should include task_completed"
     );
 
@@ -205,12 +227,16 @@ async fn test_deferred_merge_retry_on_all_pending_merge_exits() {
                 || {
                     let s = Arc::clone(&sched);
                     async move {
-                        s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                        s.get_calls()
+                            .iter()
+                            .any(|c| c.method == "try_retry_deferred_merges")
                     }
                 },
                 5000
-            ).await,
-            "Expected deferred merge retry when exiting PendingMerge to {:?}", target
+            )
+            .await,
+            "Expected deferred merge retry when exiting PendingMerge to {:?}",
+            target
         );
 
         let calls = scheduler.get_calls();
@@ -220,12 +246,16 @@ async fn test_deferred_merge_retry_on_all_pending_merge_exits() {
             .collect();
 
         assert_eq!(
-            retry_calls.len(), 1,
-            "Expected deferred merge retry when exiting PendingMerge to {:?}", target
+            retry_calls.len(),
+            1,
+            "Expected deferred merge retry when exiting PendingMerge to {:?}",
+            target
         );
         assert_eq!(
-            retry_calls[0].args, vec!["proj-1"],
-            "Deferred retry should use correct project_id for target {:?}", target
+            retry_calls[0].args,
+            vec!["proj-1"],
+            "Deferred retry should use correct project_id for target {:?}",
+            target
         );
     }
 }
@@ -246,12 +276,16 @@ async fn test_deferred_merge_retry_on_all_merging_exits() {
                 || {
                     let s = Arc::clone(&sched);
                     async move {
-                        s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                        s.get_calls()
+                            .iter()
+                            .any(|c| c.method == "try_retry_deferred_merges")
                     }
                 },
                 5000
-            ).await,
-            "Expected deferred merge retry when exiting Merging to {:?}", target
+            )
+            .await,
+            "Expected deferred merge retry when exiting Merging to {:?}",
+            target
         );
 
         let calls = scheduler.get_calls();
@@ -261,8 +295,10 @@ async fn test_deferred_merge_retry_on_all_merging_exits() {
             .collect();
 
         assert_eq!(
-            retry_calls.len(), 1,
-            "Expected deferred merge retry when exiting Merging to {:?}", target
+            retry_calls.len(),
+            1,
+            "Expected deferred merge retry when exiting Merging to {:?}",
+            target
         );
     }
 }
@@ -281,11 +317,14 @@ async fn test_deferred_merge_no_duplicate_retries() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Expected try_retry_deferred_merges to be called"
     );
     // Brief additional wait to catch any duplicate calls
@@ -298,8 +337,10 @@ async fn test_deferred_merge_no_duplicate_retries() {
         .collect();
 
     assert_eq!(
-        retry_calls.len(), 1,
-        "Single on_exit should produce exactly one deferred retry call, got {}", retry_calls.len()
+        retry_calls.len(),
+        1,
+        "Single on_exit should produce exactly one deferred retry call, got {}",
+        retry_calls.len()
     );
 }
 
@@ -326,11 +367,14 @@ async fn test_deferred_merge_not_triggered_by_non_merge_exits() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_deferred_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_deferred_merges")
                 }
             },
-            500
-        ).await;
+            500,
+        )
+        .await;
 
         let calls = scheduler.get_calls();
         let retry_calls: Vec<_> = calls
@@ -339,8 +383,11 @@ async fn test_deferred_merge_not_triggered_by_non_merge_exits() {
             .collect();
 
         assert_eq!(
-            retry_calls.len(), 0,
-            "Non-merge exit {:?} -> {:?} should NOT trigger deferred retry", from, to
+            retry_calls.len(),
+            0,
+            "Non-merge exit {:?} -> {:?} should NOT trigger deferred retry",
+            from,
+            to
         );
     }
 }
@@ -358,9 +405,8 @@ async fn test_merge_exit_triggers_main_merge_retry_when_all_idle() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let services = TaskServices::new_mock()
-        .with_task_scheduler(
-            Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
-        )
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>)
         .with_execution_state(Arc::clone(&execution_state));
 
     let context = create_context_with_services("task-1", "proj-1", services);
@@ -374,11 +420,14 @@ async fn test_merge_exit_triggers_main_merge_retry_when_all_idle() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_main_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_main_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Expected try_retry_main_merges when all agents idle (running_count == 0)"
     );
 }
@@ -393,9 +442,8 @@ async fn test_merge_exit_skips_main_merge_retry_when_agents_running() {
     execution_state.increment_running();
 
     let services = TaskServices::new_mock()
-        .with_task_scheduler(
-            Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
-        )
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>)
         .with_execution_state(Arc::clone(&execution_state));
 
     let context = create_context_with_services("task-1", "proj-1", services);
@@ -409,11 +457,14 @@ async fn test_merge_exit_skips_main_merge_retry_when_agents_running() {
         || {
             let s = Arc::clone(&sched);
             async move {
-                s.get_calls().iter().any(|c| c.method == "try_retry_main_merges")
+                s.get_calls()
+                    .iter()
+                    .any(|c| c.method == "try_retry_main_merges")
             }
         },
-        500
-    ).await;
+        500,
+    )
+    .await;
 
     let calls = scheduler.get_calls();
     let main_retry_calls: Vec<_> = calls
@@ -422,7 +473,8 @@ async fn test_merge_exit_skips_main_merge_retry_when_agents_running() {
         .collect();
 
     assert_eq!(
-        main_retry_calls.len(), 0,
+        main_retry_calls.len(),
+        0,
         "Expected NO try_retry_main_merges when agents are still running (running_count > 0)"
     );
 }
@@ -436,9 +488,8 @@ async fn test_merging_exit_triggers_main_merge_retry_when_all_idle() {
     let execution_state = Arc::new(ExecutionState::new());
 
     let services = TaskServices::new_mock()
-        .with_task_scheduler(
-            Arc::clone(&scheduler) as Arc<dyn crate::domain::state_machine::services::TaskScheduler>,
-        )
+        .with_task_scheduler(Arc::clone(&scheduler)
+            as Arc<dyn crate::domain::state_machine::services::TaskScheduler>)
         .with_execution_state(Arc::clone(&execution_state));
 
     let context = create_context_with_services("task-1", "proj-1", services);
@@ -452,11 +503,14 @@ async fn test_merging_exit_triggers_main_merge_retry_when_all_idle() {
             || {
                 let s = Arc::clone(&sched);
                 async move {
-                    s.get_calls().iter().any(|c| c.method == "try_retry_main_merges")
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_main_merges")
                 }
             },
             5000
-        ).await,
+        )
+        .await,
         "Merging exit should trigger try_retry_main_merges when all agents idle"
     );
 }

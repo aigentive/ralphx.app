@@ -393,8 +393,7 @@ async fn test_checkpoint_preserved() {
     let brief = ResearchBrief::new("Question");
     let mut process = ResearchProcess::new("Checkpoint Test", brief, "researcher");
     process.start();
-    let checkpoint_id =
-        crate::domain::entities::ArtifactId::from_string("checkpoint-artifact-1");
+    let checkpoint_id = crate::domain::entities::ArtifactId::from_string("checkpoint-artifact-1");
     process.checkpoint(checkpoint_id.clone());
 
     repo.create(process.clone()).await.unwrap();

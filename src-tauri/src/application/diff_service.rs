@@ -461,8 +461,12 @@ impl DiffService {
         // Check for active merge first (MERGE_HEAD exists)
         if Self::is_merge_in_progress(repo) {
             // Active merge: use git diff to find conflict files
-            return Self::get_conflict_files(repo)
-                .map(|paths| paths.into_iter().map(|p| p.to_string_lossy().to_string()).collect());
+            return Self::get_conflict_files(repo).map(|paths| {
+                paths
+                    .into_iter()
+                    .map(|p| p.to_string_lossy().to_string())
+                    .collect()
+            });
         }
 
         // Pre-merge preview: use merge-tree --write-tree if Git 2.38+
@@ -539,16 +543,12 @@ impl DiffService {
     fn is_git_238_or_newer() -> bool {
         static CACHE: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
         *CACHE.get_or_init(|| {
-            let output = Command::new("git")
-                .args(["--version"])
-                .output();
+            let output = Command::new("git").args(["--version"]).output();
 
             if let Ok(output) = output {
                 let version_str = String::from_utf8_lossy(&output.stdout);
                 // Parse "git version 2.38.0" or similar
-                if let Some(version_part) = version_str
-                    .to_lowercase()
-                    .strip_prefix("git version ")
+                if let Some(version_part) = version_str.to_lowercase().strip_prefix("git version ")
                 {
                     let parts: Vec<&str> = version_part.split('.').collect();
                     if parts.len() >= 2 {
@@ -627,7 +627,12 @@ impl DiffService {
     }
 
     /// Get the merge-base commit SHA between two branches.
-    fn get_merge_base(&self, repo: &Path, base_branch: &str, task_branch: &str) -> AppResult<String> {
+    fn get_merge_base(
+        &self,
+        repo: &Path,
+        base_branch: &str,
+        task_branch: &str,
+    ) -> AppResult<String> {
         let output = Command::new("git")
             .args(["merge-base", base_branch, task_branch])
             .current_dir(repo)

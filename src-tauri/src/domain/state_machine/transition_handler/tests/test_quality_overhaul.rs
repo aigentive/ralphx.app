@@ -54,7 +54,8 @@ use crate::domain::state_machine::{State, TransitionHandler};
 async fn test_stop_agent_called_on_pending_merge_entry_with_repos() {
     let (mut machine, task_repo, task_id) =
         setup_pending_merge_repos("Test merge task", Some("feature/test"))
-            .await.into_machine();
+            .await
+            .into_machine();
     let handler = TransitionHandler::new(&mut machine);
 
     // Enter PendingMerge — this will call attempt_programmatic_merge
@@ -86,7 +87,8 @@ async fn test_stop_agent_called_on_pending_merge_entry_with_repos() {
 async fn test_merge_with_nonexistent_repo_path_transitions_to_defined_state() {
     let (mut machine, task_repo, task_id) =
         setup_pending_merge_repos("Test task", Some("feature/test"))
-            .await.into_machine();
+            .await
+            .into_machine();
     let handler = TransitionHandler::new(&mut machine);
 
     let _ = handler.on_enter(&State::PendingMerge).await;
@@ -106,9 +108,9 @@ async fn test_merge_with_nonexistent_repo_path_transitions_to_defined_state() {
 #[tokio::test]
 async fn test_merge_with_no_task_branch_transitions_to_merge_incomplete() {
     // Deliberately pass None for task_branch
-    let (mut machine, task_repo, task_id) =
-        setup_pending_merge_repos("No branch task", None)
-            .await.into_machine();
+    let (mut machine, task_repo, task_id) = setup_pending_merge_repos("No branch task", None)
+        .await
+        .into_machine();
     let handler = TransitionHandler::new(&mut machine);
 
     let _ = handler.on_enter(&State::PendingMerge).await;
@@ -145,8 +147,8 @@ async fn test_merge_with_no_task_branch_transitions_to_merge_incomplete() {
 /// - MergeRecoveryEvent with BranchNotFound reason
 #[tokio::test]
 async fn test_merge_outcome_branch_not_found_transitions_correctly() {
-    use super::super::merge_strategies::MergeOutcome;
     use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -166,7 +168,8 @@ async fn test_merge_outcome_branch_not_found_transitions_correctly() {
         Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
         Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
         Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
     );
 
     let context = create_context_with_services(task_id.as_str(), "proj-1", services);
@@ -198,8 +201,7 @@ async fn test_merge_outcome_branch_not_found_transitions_correctly() {
     assert_eq!(task.internal_status, InternalStatus::MergeIncomplete);
 
     // Metadata should contain branch_missing
-    let meta: serde_json::Value =
-        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
     assert_eq!(meta.get("branch_missing"), Some(&serde_json::json!(true)));
 
     // Event emitter should have emitted status change
@@ -215,8 +217,8 @@ async fn test_merge_outcome_branch_not_found_transitions_correctly() {
 /// Test: MergeOutcome::GitError produces MergeIncomplete with error metadata.
 #[tokio::test]
 async fn test_merge_outcome_git_error_transitions_correctly() {
-    use super::super::merge_strategies::MergeOutcome;
     use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -236,7 +238,8 @@ async fn test_merge_outcome_git_error_transitions_correctly() {
         Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
         Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
         Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
     );
 
     let context = create_context_with_services(task_id.as_str(), "proj-1", services);
@@ -267,8 +270,7 @@ async fn test_merge_outcome_git_error_transitions_correctly() {
     assert_eq!(task.internal_status, InternalStatus::MergeIncomplete);
 
     // Metadata should contain the error
-    let meta: serde_json::Value =
-        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
     assert!(
         meta.get("error").is_some(),
         "Metadata should contain error field"
@@ -278,8 +280,8 @@ async fn test_merge_outcome_git_error_transitions_correctly() {
 /// Test: MergeOutcome::Deferred keeps task in PendingMerge with deferred metadata.
 #[tokio::test]
 async fn test_merge_outcome_deferred_transitions_correctly() {
-    use super::super::merge_strategies::MergeOutcome;
     use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -299,7 +301,8 @@ async fn test_merge_outcome_deferred_transitions_correctly() {
         Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
         Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
         Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
     );
 
     let context = create_context_with_services(task_id.as_str(), "proj-1", services);
@@ -335,20 +338,16 @@ async fn test_merge_outcome_deferred_transitions_correctly() {
     );
 
     // Metadata should contain merge_recovery with Deferred event
-    let meta: serde_json::Value =
-        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
     let recovery = meta.get("merge_recovery");
-    assert!(
-        recovery.is_some(),
-        "Metadata should contain merge_recovery"
-    );
+    assert!(recovery.is_some(), "Metadata should contain merge_recovery");
 }
 
 /// Test: MergeOutcome::NeedsAgent transitions task to Merging and spawns merger agent.
 #[tokio::test]
 async fn test_merge_outcome_needs_agent_transitions_correctly() {
-    use super::super::merge_strategies::MergeOutcome;
     use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
     use std::path::PathBuf;
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
@@ -432,8 +431,8 @@ async fn test_merge_outcome_needs_agent_transitions_correctly() {
 /// Test: MergeOutcome::AlreadyHandled is a no-op.
 #[tokio::test]
 async fn test_merge_outcome_already_handled_is_noop() {
-    use super::super::merge_strategies::MergeOutcome;
     use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -453,7 +452,8 @@ async fn test_merge_outcome_already_handled_is_noop() {
         Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
         Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
         Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
     );
 
     let context = create_context_with_services(task_id.as_str(), "proj-1", services);
@@ -521,7 +521,8 @@ async fn test_self_dedup_guard_prevents_double_merge() {
         Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
         Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
         Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
     )
     .with_merges_in_flight(Arc::clone(&merges_in_flight));
 
@@ -567,7 +568,8 @@ async fn test_in_flight_guard_cleanup_on_early_return() {
         Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
         Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
         Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
     )
     .with_merges_in_flight(Arc::clone(&merges_in_flight));
 
@@ -597,8 +599,8 @@ async fn test_in_flight_guard_cleanup_on_early_return() {
 /// transitioning to MergeIncomplete.
 #[tokio::test]
 async fn test_merge_outcome_git_error_branch_lock_defers() {
-    use super::super::merge_strategies::MergeOutcome;
     use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
 
     let task_repo = Arc::new(MemoryTaskRepository::new());
     let emitter = Arc::new(MockEventEmitter::new());
@@ -618,7 +620,8 @@ async fn test_merge_outcome_git_error_branch_lock_defers() {
         Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
         Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
         Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
-        Arc::new(crate::application::MockChatService::new()) as Arc<dyn crate::application::ChatService>,
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
     );
 
     let context = create_context_with_services(task_id.as_str(), "proj-1", services);
@@ -717,7 +720,8 @@ fn test_pending_merge_stale_minutes_remains_at_2() {
 async fn test_pending_merge_with_repos_completes_in_bounded_time() {
     let (mut machine, task_repo, task_id) =
         setup_pending_merge_repos("Bounded time test", Some("feature/test"))
-            .await.into_machine();
+            .await
+            .into_machine();
     let handler = TransitionHandler::new(&mut machine);
 
     let start = std::time::Instant::now();

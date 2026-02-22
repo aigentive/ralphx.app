@@ -2,10 +2,10 @@
 //
 // Extracted from side_effects.rs (lines 5722–6106).
 
-use super::helpers::*;
 use super::super::merge_helpers::{
     discover_and_attach_task_branch, resolve_merge_branches, resolve_task_base_branch,
 };
+use super::helpers::*;
 use crate::domain::entities::{PlanBranchStatus, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::infrastructure::memory::{MemoryPlanBranchRepository, MemoryTaskRepository};

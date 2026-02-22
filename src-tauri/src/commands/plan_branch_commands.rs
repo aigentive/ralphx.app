@@ -149,7 +149,8 @@ pub async fn enable_feature_branch(
     let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
 
     // Create git feature branch from base branch
-    GitService::create_feature_branch(&repo_path, &branch_name, &base_branch).await
+    GitService::create_feature_branch(&repo_path, &branch_name, &base_branch)
+        .await
         .map_err(|e| format!("Failed to create feature branch: {}", e))?;
 
     // Insert plan_branches DB record

@@ -80,8 +80,7 @@ async fn test_get_step_context() {
     state.app_state.task_repo.create(task).await.unwrap();
 
     // Create parent and sub-steps
-    let parent_step =
-        TaskStep::new(task_id.clone(), "Parent".to_string(), 0, "test".to_string());
+    let parent_step = TaskStep::new(task_id.clone(), "Parent".to_string(), 0, "test".to_string());
     let parent_id = parent_step.id.clone();
     state
         .app_state
@@ -102,10 +101,9 @@ async fn test_get_step_context() {
         .unwrap();
 
     // Get step context
-    let response =
-        get_step_context_http(State(state.clone()), Path(sub_id.as_str().to_string()))
-            .await
-            .unwrap();
+    let response = get_step_context_http(State(state.clone()), Path(sub_id.as_str().to_string()))
+        .await
+        .unwrap();
 
     assert_eq!(response.0.step.id, sub_id.as_str());
     assert_eq!(response.0.parent_step.unwrap().id, parent_id.as_str());
@@ -127,8 +125,7 @@ async fn test_get_sub_steps() {
     state.app_state.task_repo.create(task).await.unwrap();
 
     // Create parent step
-    let parent_step =
-        TaskStep::new(task_id.clone(), "Parent".to_string(), 0, "test".to_string());
+    let parent_step = TaskStep::new(task_id.clone(), "Parent".to_string(), 0, "test".to_string());
     let parent_id = parent_step.id.clone();
     state
         .app_state
@@ -147,10 +144,9 @@ async fn test_get_sub_steps() {
     state.app_state.task_step_repo.create(sub2).await.unwrap();
 
     // Get sub-steps
-    let response =
-        get_sub_steps_http(State(state.clone()), Path(parent_id.as_str().to_string()))
-            .await
-            .unwrap();
+    let response = get_sub_steps_http(State(state.clone()), Path(parent_id.as_str().to_string()))
+        .await
+        .unwrap();
 
     assert_eq!(response.0.len(), 2);
     assert_eq!(response.0[0].title, "Sub 1");

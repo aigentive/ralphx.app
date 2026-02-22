@@ -22,9 +22,9 @@ use crate::domain::repositories::{
     MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
     PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
-    SessionLinkRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskQARepository, TaskRepository, TaskStepRepository,
-    TeamMessageRepository, TeamSessionRepository, WorkflowRepository,
+    SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
+    TaskRepository, TaskStepRepository, TeamMessageRepository, TeamSessionRepository,
+    WorkflowRepository,
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry};
 use crate::error::AppResult;
@@ -57,10 +57,9 @@ use crate::infrastructure::sqlite::{
     SqlitePlanSelectionStatsRepository, SqliteProcessRepository, SqliteProjectRepository,
     SqliteProposalDependencyRepository, SqliteQuestionRepository, SqliteReviewIssueRepository,
     SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteRunningAgentRegistry,
-    SqliteSessionLinkRepository,
-    SqliteTaskDependencyRepository, SqliteTaskProposalRepository, SqliteTaskQARepository,
-    SqliteTaskRepository, SqliteTaskStepRepository, SqliteTeamMessageRepository,
-    SqliteTeamSessionRepository, SqliteWorkflowRepository,
+    SqliteSessionLinkRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
+    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
+    SqliteTeamMessageRepository, SqliteTeamSessionRepository, SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 

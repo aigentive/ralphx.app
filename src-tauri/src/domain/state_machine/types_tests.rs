@@ -152,8 +152,8 @@ fn test_qa_failure_visual_failure_creates_with_screenshot() {
 
 #[test]
 fn test_qa_failure_with_screenshot_adds_path() {
-    let failure = QaFailure::new("test_render", "Render failed")
-        .with_screenshot("screenshots/render.png");
+    let failure =
+        QaFailure::new("test_render", "Render failed").with_screenshot("screenshots/render.png");
     assert_eq!(
         failure.screenshot,
         Some("screenshots/render.png".to_string())
@@ -210,7 +210,6 @@ fn test_qa_failure_deserializes_from_json() {
     assert!(failure.screenshot.is_none());
     assert_eq!(failure.expected, Some("foo".to_string()));
     assert_eq!(failure.actual, Some("bar".to_string()));
-
 }
 
 #[test]
@@ -395,8 +394,8 @@ fn test_failed_data_default_creates_empty() {
 
 #[test]
 fn test_failed_data_with_details_adds_details() {
-    let data = FailedData::new("Compilation error")
-        .with_details("error[E0382]: borrow of moved value");
+    let data =
+        FailedData::new("Compilation error").with_details("error[E0382]: borrow of moved value");
     assert_eq!(data.error, "Compilation error");
     assert_eq!(
         data.details,
@@ -535,4 +534,3 @@ fn test_failed_data_attempt_count_zero_when_no_metadata() {
         .unwrap_or(0) as u32;
     assert_eq!(attempt_count, 0);
 }
-

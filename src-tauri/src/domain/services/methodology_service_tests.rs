@@ -27,10 +27,7 @@ impl MockMethodologyRepository {
 
 #[async_trait]
 impl MethodologyRepository for MockMethodologyRepository {
-    async fn create(
-        &self,
-        methodology: MethodologyExtension,
-    ) -> AppResult<MethodologyExtension> {
+    async fn create(&self, methodology: MethodologyExtension) -> AppResult<MethodologyExtension> {
         self.add_methodology(methodology.clone()).await;
         Ok(methodology)
     }
@@ -494,10 +491,7 @@ async fn get_templates_found() {
 
     let mut methodology = create_test_methodology();
     methodology = methodology.with_template(
-        crate::domain::entities::methodology::MethodologyTemplate::new(
-            "prd",
-            "templates/prd.md",
-        ),
+        crate::domain::entities::methodology::MethodologyTemplate::new("prd", "templates/prd.md"),
     );
     let id = methodology.id.clone();
     repo.add_methodology(methodology).await;

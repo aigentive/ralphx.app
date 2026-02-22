@@ -467,9 +467,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
             .await;
 
         // Update pre-created message — append stop note to any content already flushed
-        let (existing_content, existing_tool_calls) = read_existing_message_content(
-            chat_message_repo, pre_assistant_msg_id,
-        ).await;
+        let (existing_content, existing_tool_calls) =
+            read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
         let stop_note = if existing_content.is_empty() {
             "[Agent stopped]".to_string()
         } else {
@@ -691,13 +690,17 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         .await;
 
     // Read existing content before overwriting — append error to any content already flushed
-    let (existing_content, existing_tool_calls) = read_existing_message_content(
-        chat_message_repo, pre_assistant_msg_id,
-    ).await;
+    let (existing_content, existing_tool_calls) =
+        read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
     let error_note = if existing_content.is_empty() {
         format!("{} {}]", super::AGENT_ERROR_PREFIX, error)
     } else {
-        format!("{}\n\n{} {}]", existing_content, super::AGENT_ERROR_PREFIX, error)
+        format!(
+            "{}\n\n{} {}]",
+            existing_content,
+            super::AGENT_ERROR_PREFIX,
+            error
+        )
     };
     super::chat_service_send_background::finalize_assistant_message(
         chat_message_repo,
@@ -747,10 +750,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
                             .unwrap_or_else(|| serde_json::json!({}));
                         if let Some(obj) = metadata_obj.as_object_mut() {
-                            obj.insert(
-                                "last_agent_error".to_string(),
-                                serde_json::json!(error),
-                            );
+                            obj.insert("last_agent_error".to_string(), serde_json::json!(error));
                             obj.insert(
                                 "last_agent_error_context".to_string(),
                                 serde_json::json!("execution"),
@@ -763,14 +763,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             // Pre-compute failure metadata for timeouts so on_enter(Failed)
                             // skip guard preserves is_timeout=true via the failure_error key
                             if matches!(stream_error, Some(StreamError::Timeout { .. })) {
-                                obj.insert(
-                                    "failure_error".to_string(),
-                                    serde_json::json!(error),
-                                );
-                                obj.insert(
-                                    "is_timeout".to_string(),
-                                    serde_json::json!(true),
-                                );
+                                obj.insert("failure_error".to_string(), serde_json::json!(error));
+                                obj.insert("is_timeout".to_string(), serde_json::json!(true));
                             }
                         }
                         let mut updated_task = task.clone();
@@ -783,20 +777,25 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     // If this is a provider error → store metadata before pausing
                     if let Some(se) = stream_error {
                         if se.is_provider_error() {
-                            if let Some(mut meta) =
-                                se.provider_error_metadata(task.internal_status)
+                            if let Some(mut meta) = se.provider_error_metadata(task.internal_status)
                             {
                                 // Carry forward resume_attempts from existing metadata
                                 // so the MAX_RESUME_ATTEMPTS limit works across re-pause cycles
-                                if let Some(existing) = super::PauseReason::from_task_metadata(
-                                    task.metadata.as_deref(),
-                                ) {
-                                    if let super::PauseReason::ProviderError { resume_attempts, .. } = existing {
+                                if let Some(existing) =
+                                    super::PauseReason::from_task_metadata(task.metadata.as_deref())
+                                {
+                                    if let super::PauseReason::ProviderError {
+                                        resume_attempts,
+                                        ..
+                                    } = existing
+                                    {
                                         meta.resume_attempts = resume_attempts;
                                     }
-                                } else if let Some(existing) = super::ProviderErrorMetadata::from_task_metadata(
-                                    task.metadata.as_deref(),
-                                ) {
+                                } else if let Some(existing) =
+                                    super::ProviderErrorMetadata::from_task_metadata(
+                                        task.metadata.as_deref(),
+                                    )
+                                {
                                     meta.resume_attempts = existing.resume_attempts;
                                 }
 
@@ -811,12 +810,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                     resume_attempts: meta.resume_attempts,
                                 };
                                 let mut updated_task = task.clone();
-                                let with_legacy = meta.write_to_task_metadata(
-                                    updated_task.metadata.as_deref(),
-                                );
-                                updated_task.metadata = Some(
-                                    pause_reason.write_to_task_metadata(Some(&with_legacy)),
-                                );
+                                let with_legacy =
+                                    meta.write_to_task_metadata(updated_task.metadata.as_deref());
+                                updated_task.metadata =
+                                    Some(pause_reason.write_to_task_metadata(Some(&with_legacy)));
                                 updated_task.touch();
                                 if let Err(e) = task_repo.update(&updated_task).await {
                                     tracing::error!(
@@ -896,11 +893,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                         // Pre-check: re-fetch task state to avoid double-transition if
                         // auto-complete already resolved the task during the 500ms window.
-                        let still_stuck = task_still_needs_execution_recovery(
-                            &task_id,
-                            task_repo,
-                        )
-                        .await;
+                        let still_stuck =
+                            task_still_needs_execution_recovery(&task_id, task_repo).await;
                         if !still_stuck {
                             tracing::debug!(
                                 task_id = task_id.as_str(),
@@ -979,11 +973,10 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         _ => None,
                     };
 
-                    let mut recovery = MergeRecoveryMetadata::from_task_metadata(
-                        task.metadata.as_deref(),
-                    )
-                    .unwrap_or(None)
-                    .unwrap_or_default();
+                    let mut recovery =
+                        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                            .unwrap_or(None)
+                            .unwrap_or_default();
 
                     recovery.rate_limit_retry_after = retry_after.clone();
                     recovery.append_event_with_state(
@@ -1089,10 +1082,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
                         .unwrap_or_else(|| serde_json::json!({}));
                     if let Some(obj) = metadata_obj.as_object_mut() {
-                        obj.insert(
-                            "last_agent_error".to_string(),
-                            serde_json::json!(error),
-                        );
+                        obj.insert("last_agent_error".to_string(), serde_json::json!(error));
                         obj.insert(
                             "last_agent_error_context".to_string(),
                             serde_json::json!("review"),

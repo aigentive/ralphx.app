@@ -89,8 +89,14 @@ mod tests {
 
         // Each task should see consistent values (before == after within its critical section)
         // because the lock prevents interleaving
-        assert_eq!(b1, a1, "Task 1: counter changed while holding lock (interleaving detected)");
-        assert_eq!(b2, a2, "Task 2: counter changed while holding lock (interleaving detected)");
+        assert_eq!(
+            b1, a1,
+            "Task 1: counter changed while holding lock (interleaving detected)"
+        );
+        assert_eq!(
+            b2, a2,
+            "Task 2: counter changed while holding lock (interleaving detected)"
+        );
 
         // Total increments should be exactly 2
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 2);
@@ -142,10 +148,8 @@ mod tests {
         let shared_set: Arc<std::sync::Mutex<HashSet<String>>> =
             Arc::new(std::sync::Mutex::new(HashSet::new()));
 
-        let services1 =
-            TaskServices::new_mock().with_merges_in_flight(Arc::clone(&shared_set));
-        let services2 =
-            TaskServices::new_mock().with_merges_in_flight(Arc::clone(&shared_set));
+        let services1 = TaskServices::new_mock().with_merges_in_flight(Arc::clone(&shared_set));
+        let services2 = TaskServices::new_mock().with_merges_in_flight(Arc::clone(&shared_set));
 
         assert!(
             Arc::ptr_eq(&services1.merges_in_flight, &services2.merges_in_flight),
@@ -159,8 +163,7 @@ mod tests {
     fn test_merges_in_flight_dedup_insert_semantics() {
         use std::collections::HashSet;
 
-        let set: std::sync::Mutex<HashSet<String>> =
-            std::sync::Mutex::new(HashSet::new());
+        let set: std::sync::Mutex<HashSet<String>> = std::sync::Mutex::new(HashSet::new());
         let task_id = "task-dedup-semantics".to_string();
 
         let mut locked = set.lock().unwrap();
@@ -171,14 +174,20 @@ mod tests {
 
         // Second insert: task is already in flight — rejected (dedup fires)
         let second = locked.insert(task_id.clone());
-        assert!(!second, "Second insert should return false — dedup guard fires");
+        assert!(
+            !second,
+            "Second insert should return false — dedup guard fires"
+        );
 
         // Simulate merge completion: remove from set
         locked.remove(&task_id);
 
         // Third insert after completion: should succeed again
         let third = locked.insert(task_id.clone());
-        assert!(third, "After merge completes (remove), a fresh attempt should be accepted");
+        assert!(
+            third,
+            "After merge completes (remove), a fresh attempt should be accepted"
+        );
     }
 
     /// Verify that with_merge_lock on TaskServices produced by new_mock works correctly.

@@ -301,7 +301,10 @@ fn merge_incomplete_retry_delay_uses_exponential_backoff_and_cap() {
 
     // At high retry counts, base_delay caps at merge_incomplete_retry_max_secs (1800)
     let d10 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(10).num_seconds();
-    assert!((1800..=1800 + 1800 / 4).contains(&d10), "retry 10: got {d10}");
+    assert!(
+        (1800..=1800 + 1800 / 4).contains(&d10),
+        "retry 10: got {d10}"
+    );
 }
 
 #[test]
@@ -1121,8 +1124,10 @@ async fn reconcile_pending_merge_normal_deferred_flow_when_not_main_merge_deferr
     // Regular deferred task (not main-merge-deferred)
     let mut task = Task::new(project.id.clone(), "Regular Deferred Task".to_string());
     task.internal_status = InternalStatus::PendingMerge;
-    task.metadata =
-        Some(serde_json::json!({"merge_deferred": true, "merge_deferred_at": "2026-01-01T00:00:00Z"}).to_string());
+    task.metadata = Some(
+        serde_json::json!({"merge_deferred": true, "merge_deferred_at": "2026-01-01T00:00:00Z"})
+            .to_string(),
+    );
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     // Record status history
@@ -1167,9 +1172,7 @@ async fn reconcile_paused_task_without_provider_error_metadata_is_skipped() {
     task.metadata = Some(serde_json::json!({"some_user_key": "value"}).to_string());
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         !reconciled,
         "User-paused tasks without provider_error metadata should be skipped"
@@ -1215,9 +1218,7 @@ async fn reconcile_paused_task_with_future_retry_after_stays_paused() {
     task.metadata = Some(meta.write_to_task_metadata(None));
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         !reconciled,
         "Should not resume when retry_after is in the future"
@@ -1278,13 +1279,8 @@ async fn reconcile_paused_task_with_expired_retry_after_resumes() {
         .await
         .unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
-    assert!(
-        reconciled,
-        "Should resume when retry_after is in the past"
-    );
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
+    assert!(reconciled, "Should resume when retry_after is in the past");
 
     let updated = app_state
         .task_repo
@@ -1345,13 +1341,8 @@ async fn reconcile_paused_task_at_max_attempts_transitions_to_failed() {
         .await
         .unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
-    assert!(
-        reconciled,
-        "Should process the task (transition to Failed)"
-    );
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
+    assert!(reconciled, "Should process the task (transition to Failed)");
 
     let updated = app_state
         .task_repo
@@ -1404,13 +1395,8 @@ async fn reconcile_paused_task_not_auto_resumable_is_skipped() {
     task.metadata = Some(meta.write_to_task_metadata(None));
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
-    assert!(
-        !reconciled,
-        "Non-auto-resumable tasks should be skipped"
-    );
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
+    assert!(!reconciled, "Non-auto-resumable tasks should be skipped");
 
     let updated = app_state
         .task_repo
@@ -1575,9 +1561,7 @@ async fn reconcile_paused_user_initiated_is_skipped() {
     task.metadata = Some(reason.write_to_task_metadata(None));
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         !reconciled,
         "UserInitiated pauses should be skipped by reconciliation"
@@ -1622,9 +1606,7 @@ async fn reconcile_paused_user_initiated_task_scope_is_skipped() {
     task.metadata = Some(reason.write_to_task_metadata(None));
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         !reconciled,
         "Per-task UserInitiated pauses should be skipped"
@@ -1673,9 +1655,7 @@ async fn reconcile_paused_provider_error_new_format_resumes() {
         .await
         .unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         reconciled,
         "New-format ProviderError with expired retry_after should be processed"
@@ -1696,7 +1676,9 @@ async fn reconcile_paused_provider_error_new_format_resumes() {
 
 #[tokio::test]
 async fn reconcile_paused_provider_error_new_format_max_attempts_fails() {
-    use crate::application::chat_service::{PauseReason, ProviderErrorCategory, ProviderErrorMetadata};
+    use crate::application::chat_service::{
+        PauseReason, ProviderErrorCategory, ProviderErrorMetadata,
+    };
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -1736,13 +1718,8 @@ async fn reconcile_paused_provider_error_new_format_max_attempts_fails() {
         .await
         .unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
-    assert!(
-        reconciled,
-        "Should process the task (transition to Failed)"
-    );
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
+    assert!(reconciled, "Should process the task (transition to Failed)");
 
     let updated = app_state
         .task_repo
@@ -1799,9 +1776,7 @@ async fn reconcile_paused_provider_error_new_format_future_retry_stays_paused() 
     task.metadata = Some(reason.write_to_task_metadata(None));
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         !reconciled,
         "Should not resume when retry_after is in the future"
@@ -2011,19 +1986,24 @@ async fn reconcile_paused_provider_error_increments_resume_attempts() {
         .unwrap();
 
     // Before reconcile: verify resume_attempts = 2
-    let before = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let before = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .unwrap();
     let before_reason = PauseReason::from_task_metadata(before.metadata.as_deref()).unwrap();
     match before_reason {
-        PauseReason::ProviderError { resume_attempts, .. } => {
+        PauseReason::ProviderError {
+            resume_attempts, ..
+        } => {
             assert_eq!(resume_attempts, 2, "Should start at 2");
         }
         _ => panic!("Expected ProviderError"),
     }
 
     // Reconcile should increment resume_attempts to 3 before attempting resume
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(reconciled, "Should process the task");
 
     // After reconcile, the task should have been processed. If the resume succeeded,
@@ -2061,9 +2041,7 @@ async fn reconcile_paused_provider_error_not_auto_resumable_new_format() {
     task.metadata = Some(reason.write_to_task_metadata(None));
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         !reconciled,
         "Non-auto-resumable new-format tasks should be skipped"
@@ -2111,9 +2089,7 @@ async fn reconcile_paused_at_max_concurrent_stays_paused() {
     task.metadata = Some(reason.write_to_task_metadata(None));
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         !reconciled,
         "Should not resume when at max concurrent limit"
@@ -2189,9 +2165,7 @@ async fn reconcile_paused_with_both_old_and_new_keys_prefers_new() {
         .unwrap();
 
     // Should process via new format (not fall through to legacy handler)
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         reconciled,
         "Should process the task via new PauseReason format"
@@ -2250,9 +2224,7 @@ async fn reconcile_legacy_provider_error_key_still_works() {
     assert!(meta_json.get("provider_error").is_some());
     assert!(meta_json.get("pause_reason").is_none());
 
-    let reconciled = reconciler
-        .reconcile_paused_provider_error(&task)
-        .await;
+    let reconciled = reconciler.reconcile_paused_provider_error(&task).await;
     assert!(
         reconciled,
         "Legacy provider_error key should still be processed via backward compat"
@@ -2292,7 +2264,10 @@ async fn update_heartbeat_sets_last_active_at_in_memory_registry() {
 
     // Heartbeat not set yet
     let info = registry.get(&key).await.unwrap();
-    assert!(info.last_active_at.is_none(), "last_active_at should be None before heartbeat");
+    assert!(
+        info.last_active_at.is_none(),
+        "last_active_at should be None before heartbeat"
+    );
 
     // Write a heartbeat
     let ts = chrono::Utc::now();
@@ -2304,7 +2279,10 @@ async fn update_heartbeat_sets_last_active_at_in_memory_registry() {
         "last_active_at should be Some after heartbeat"
     );
     let delta = (info.last_active_at.unwrap() - ts).num_milliseconds().abs();
-    assert!(delta < 100, "last_active_at should match the written timestamp");
+    assert!(
+        delta < 100,
+        "last_active_at should match the written timestamp"
+    );
 }
 
 #[tokio::test]
@@ -2325,7 +2303,11 @@ async fn reconcile_merging_not_stale_when_heartbeat_is_recent() {
     let reconciler = build_reconciler(&app_state, &execution_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Task entered Merging 600s ago (2x timeout) — would normally be stale
     let mut task = Task::new(project.id.clone(), "Heartbeat Merging Task".to_string());
@@ -2391,7 +2373,11 @@ async fn reconcile_merging_stale_when_heartbeat_is_old() {
     let reconciler = build_reconciler(&app_state, &execution_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Task entered Merging "just now" via updated_at — wall-clock fallback would NOT trigger
     let mut task = Task::new(project.id.clone(), "Old Heartbeat Merging Task".to_string());
@@ -2438,9 +2424,12 @@ async fn reconcile_merging_stale_when_heartbeat_is_old() {
     );
     // Verify an AttemptFailed event was recorded
     let events = meta_json["merge_recovery"]["events"].as_array();
-    let has_attempt_failed = events.map(|evts| {
-        evts.iter().any(|e| e["kind"].as_str() == Some("attempt_failed"))
-    }).unwrap_or(false);
+    let has_attempt_failed = events
+        .map(|evts| {
+            evts.iter()
+                .any(|e| e["kind"].as_str() == Some("attempt_failed"))
+        })
+        .unwrap_or(false);
     assert!(
         has_attempt_failed,
         "An attempt_failed event should be recorded when effective_age >= merging_timeout_seconds()"
@@ -2692,10 +2681,7 @@ async fn reconcile_merge_incomplete_retries_when_below_max_validation_reverts() 
         .unwrap();
 
     // Task with validation_revert_count = 1 (< max of 2)
-    let mut task = Task::new(
-        project.id.clone(),
-        "Validation Retry OK Task".to_string(),
-    );
+    let mut task = Task::new(project.id.clone(), "Validation Retry OK Task".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
     // updated_at far in past so age > retry delay
     task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(7200);
@@ -2798,9 +2784,7 @@ fn validation_revert_count_reads_counter_from_metadata() {
         crate::domain::entities::ProjectId::new(),
         "Revert Count Task".to_string(),
     );
-    task.metadata = Some(
-        serde_json::json!({"validation_revert_count": 3}).to_string(),
-    );
+    task.metadata = Some(serde_json::json!({"validation_revert_count": 3}).to_string());
     assert_eq!(
         ReconciliationRunner::<tauri::Wry>::validation_revert_count(&task),
         3
@@ -2826,10 +2810,7 @@ fn merge_incomplete_retry_delay_includes_jitter() {
     // Call delay function many times with same retry_count.
     // With jitter, results should not all be identical.
     let delays: HashSet<i64> = (0..20)
-        .map(|_| {
-            ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(3)
-                .num_seconds()
-        })
+        .map(|_| ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(3).num_seconds())
         .collect();
     assert!(
         delays.len() > 1,
@@ -2845,8 +2826,8 @@ fn merge_incomplete_retry_delay_caps_at_configured_max() {
     // At high retry counts, base delay saturates at max.
     // Jitter adds up to base_delay/4, but total must not exceed max + max/4.
     for _ in 0..20 {
-        let delay = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(100)
-            .num_seconds();
+        let delay =
+            ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(100).num_seconds();
         assert!(
             delay <= max_secs + max_secs / 4,
             "Delay {} exceeded max {} + jitter ceiling {}",
@@ -2866,10 +2847,7 @@ fn merge_incomplete_retry_delay_caps_at_configured_max() {
 #[test]
 fn merge_conflict_retry_delay_includes_jitter() {
     let delays: HashSet<i64> = (0..20)
-        .map(|_| {
-            ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(3)
-                .num_seconds()
-        })
+        .map(|_| ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(3).num_seconds())
         .collect();
     assert!(
         delays.len() > 1,
@@ -2883,8 +2861,8 @@ fn merge_conflict_retry_delay_caps_at_configured_max() {
     let cfg = reconciliation_config();
     let max_secs = cfg.merge_conflict_retry_max_secs as i64;
     for _ in 0..20 {
-        let delay = ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(100)
-            .num_seconds();
+        let delay =
+            ReconciliationRunner::<tauri::Wry>::merge_conflict_retry_delay(100).num_seconds();
         assert!(
             delay <= max_secs + max_secs / 4,
             "Delay {} exceeded max {} + jitter ceiling {}",
@@ -2942,23 +2920,18 @@ async fn reconcile_merge_incomplete_skips_retry_when_rate_limit_active() {
         .unwrap();
 
     // Create a task in MergeIncomplete with rate_limit_retry_after set to the future
-    let mut task = Task::new(
-        project.id.clone(),
-        "Rate Limited Merge Task".to_string(),
-    );
+    let mut task = Task::new(project.id.clone(), "Rate Limited Merge Task".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
 
     let mut recovery = MergeRecoveryMetadata::new();
     recovery.rate_limit_retry_after = Some("2099-12-31T23:59:59+00:00".to_string());
     recovery.last_state = MergeRecoveryState::RateLimited;
-    recovery.append_event(
-        crate::domain::entities::MergeRecoveryEvent::new(
-            MergeRecoveryEventKind::AttemptFailed,
-            MergeRecoverySource::System,
-            MergeRecoveryReasonCode::ProviderRateLimited,
-            "Rate limit hit during merge",
-        ),
-    );
+    recovery.append_event(crate::domain::entities::MergeRecoveryEvent::new(
+        MergeRecoveryEventKind::AttemptFailed,
+        MergeRecoverySource::System,
+        MergeRecoveryReasonCode::ProviderRateLimited,
+        "Rate limit hit during merge",
+    ));
     task.metadata = Some(recovery.update_task_metadata(None).unwrap());
     app_state.task_repo.create(task.clone()).await.unwrap();
 
@@ -2999,9 +2972,7 @@ async fn reconcile_merge_incomplete_skips_retry_when_rate_limit_active() {
 
 #[tokio::test]
 async fn reconcile_merge_incomplete_proceeds_after_rate_limit_expired() {
-    use crate::domain::entities::{
-        MergeRecoveryMetadata, MergeRecoveryState, Project,
-    };
+    use crate::domain::entities::{MergeRecoveryMetadata, MergeRecoveryState, Project};
 
     let app_state = AppState::new_test();
     let execution_state = Arc::new(ExecutionState::new());
@@ -3015,10 +2986,7 @@ async fn reconcile_merge_incomplete_proceeds_after_rate_limit_expired() {
         .unwrap();
 
     // Create a task with rate_limit_retry_after set to the PAST (expired)
-    let mut task = Task::new(
-        project.id.clone(),
-        "Expired Rate Limit Task".to_string(),
-    );
+    let mut task = Task::new(project.id.clone(), "Expired Rate Limit Task".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
     // Set updated_at far in past so age > retry delay (fallback when no status history)
     task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(7200);
@@ -3053,8 +3021,8 @@ async fn reconcile_merge_incomplete_proceeds_after_rate_limit_expired() {
     );
 
     // Verify rate_limit_retry_after was cleared from metadata
-    let restored_meta = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
-        .unwrap_or(None);
+    let restored_meta =
+        MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref()).unwrap_or(None);
     if let Some(meta) = restored_meta {
         assert_eq!(
             meta.rate_limit_retry_after, None,
@@ -3079,10 +3047,7 @@ async fn rate_limited_skips_dont_count_toward_max_retries() {
         .unwrap();
 
     // Create a task with rate limit set to FUTURE — reconciler should skip
-    let mut task = Task::new(
-        project.id.clone(),
-        "Rate Limit Budget Task".to_string(),
-    );
+    let mut task = Task::new(project.id.clone(), "Rate Limit Budget Task".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
 
     let mut recovery = MergeRecoveryMetadata::new();
@@ -3249,9 +3214,7 @@ fn has_merge_retry_in_progress_returns_false_for_missing_key() {
         crate::domain::entities::ProjectId::new(),
         "Other Metadata".to_string(),
     );
-    task.metadata = Some(
-        serde_json::json!({"some_other_key": "value"}).to_string(),
-    );
+    task.metadata = Some(serde_json::json!({"some_other_key": "value"}).to_string());
     assert!(
         !ReconciliationRunner::<tauri::Wry>::has_merge_retry_in_progress(&task),
         "Metadata without merge_retry_in_progress key should return false"
@@ -3385,10 +3348,17 @@ async fn reconcile_merging_skips_when_auto_complete_in_flight() {
     let reconciler = build_reconciler(&app_state, &execution_state);
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
-    app_state.project_repo.create(project.clone()).await.unwrap();
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
 
     // Task in Merging state with old transition (would normally trigger reconciliation)
-    let mut task = Task::new(project.id.clone(), "Auto-complete in-flight task".to_string());
+    let mut task = Task::new(
+        project.id.clone(),
+        "Auto-complete in-flight task".to_string(),
+    );
     task.internal_status = InternalStatus::Merging;
     task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(600);
     app_state.task_repo.create(task.clone()).await.unwrap();
@@ -3402,7 +3372,10 @@ async fn reconcile_merging_skips_when_auto_complete_in_flight() {
         .await;
 
     // Should return true (handled/skip) not false (nothing to do)
-    assert!(result, "Reconciler should return true when auto-complete is in flight (skip this cycle)");
+    assert!(
+        result,
+        "Reconciler should return true when auto-complete is in flight (skip this cycle)"
+    );
 
     // Task should still be in Merging — no escalation, no retry increment
     let updated = app_state

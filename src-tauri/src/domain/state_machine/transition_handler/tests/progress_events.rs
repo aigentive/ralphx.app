@@ -80,7 +80,10 @@ fn derived_phases_insert_validation_between_merge_and_finalize() {
     let phases = derive_phases_from_analysis(&entries);
 
     // Find indices of key phases
-    let merge_idx = phases.iter().position(|p| p.id == "programmatic_merge").unwrap();
+    let merge_idx = phases
+        .iter()
+        .position(|p| p.id == "programmatic_merge")
+        .unwrap();
     let finalize_idx = phases.iter().position(|p| p.id == "finalize").unwrap();
     let cargo_test_idx = phases.iter().position(|p| p.id == "cargo_test").unwrap();
     let npm_lint_idx = phases.iter().position(|p| p.id == "npm_run_lint").unwrap();
@@ -117,19 +120,37 @@ fn pre_merge_phases_come_before_merge_execution_phases() {
     let entries: Vec<PhaseAnalysisEntry> = vec![];
     let phases = derive_phases_from_analysis(&entries);
 
-    let prep_idx = phases.iter().position(|p| p.id == "merge_preparation").unwrap();
-    let precond_idx = phases.iter().position(|p| p.id == "precondition_check").unwrap();
-    let freshness_idx = phases.iter().position(|p| p.id == "branch_freshness").unwrap();
+    let prep_idx = phases
+        .iter()
+        .position(|p| p.id == "merge_preparation")
+        .unwrap();
+    let precond_idx = phases
+        .iter()
+        .position(|p| p.id == "precondition_check")
+        .unwrap();
+    let freshness_idx = phases
+        .iter()
+        .position(|p| p.id == "branch_freshness")
+        .unwrap();
     let cleanup_idx = phases.iter().position(|p| p.id == "merge_cleanup").unwrap();
-    let worktree_idx = phases.iter().position(|p| p.id == "worktree_setup").unwrap();
-    let merge_idx = phases.iter().position(|p| p.id == "programmatic_merge").unwrap();
+    let worktree_idx = phases
+        .iter()
+        .position(|p| p.id == "worktree_setup")
+        .unwrap();
+    let merge_idx = phases
+        .iter()
+        .position(|p| p.id == "programmatic_merge")
+        .unwrap();
 
     // Pre-merge phases are strictly ordered before merge execution
     assert!(prep_idx < precond_idx, "preparation before precondition");
     assert!(precond_idx < freshness_idx, "precondition before freshness");
     assert!(freshness_idx < cleanup_idx, "freshness before cleanup");
     assert!(cleanup_idx < worktree_idx, "cleanup before worktree_setup");
-    assert!(worktree_idx < merge_idx, "worktree_setup before programmatic_merge");
+    assert!(
+        worktree_idx < merge_idx,
+        "worktree_setup before programmatic_merge"
+    );
 }
 
 // ==================
@@ -141,8 +162,10 @@ fn structural_phase_labels_are_human_readable() {
     let entries: Vec<PhaseAnalysisEntry> = vec![];
     let phases = derive_phases_from_analysis(&entries);
 
-    let phase_map: std::collections::HashMap<&str, &str> =
-        phases.iter().map(|p| (p.id.as_str(), p.label.as_str())).collect();
+    let phase_map: std::collections::HashMap<&str, &str> = phases
+        .iter()
+        .map(|p| (p.id.as_str(), p.label.as_str()))
+        .collect();
 
     assert_eq!(phase_map["merge_preparation"], "Preparation");
     assert_eq!(phase_map["precondition_check"], "Preconditions");

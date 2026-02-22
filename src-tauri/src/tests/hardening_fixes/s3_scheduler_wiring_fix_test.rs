@@ -13,6 +13,7 @@ use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::Layer;
 
+use crate::application::MockChatService;
 use crate::domain::state_machine::context::{TaskContext, TaskServices};
 use crate::domain::state_machine::machine::{State, TaskStateMachine};
 use crate::domain::state_machine::mocks::{
@@ -24,7 +25,6 @@ use crate::domain::state_machine::services::{
 };
 use crate::domain::state_machine::transition_handler::TransitionHandler;
 use crate::domain::state_machine::TaskEvent;
-use crate::application::MockChatService;
 
 /// A tracing Layer that captures WARN+ log messages for test inspection.
 struct CapturingLayer {
@@ -45,7 +45,11 @@ impl<S: tracing::Subscriber> Layer<S> for CapturingLayer {
                         self.0 = value.to_string();
                     }
                 }
-                fn record_debug(&mut self, field: &tracing::field::Field, value: &dyn std::fmt::Debug) {
+                fn record_debug(
+                    &mut self,
+                    field: &tracing::field::Field,
+                    value: &dyn std::fmt::Debug,
+                ) {
                     if field.name() == "message" {
                         self.0 = format!("{:?}", value);
                     }
@@ -99,9 +103,7 @@ fn build_services_with_scheduler() -> (Arc<MockTaskScheduler>, TaskServices) {
         review_starter as Arc<dyn ReviewStarter>,
         chat_service as Arc<dyn crate::application::ChatService>,
     )
-    .with_task_scheduler(
-        Arc::clone(&scheduler) as Arc<dyn TaskScheduler>
-    );
+    .with_task_scheduler(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
 
     (scheduler, services)
 }
@@ -140,7 +142,8 @@ async fn test_on_enter_merged_logs_warning_when_scheduler_missing() {
     // After fix: a warning should be emitted about missing scheduler
     let logs = captured.lock().unwrap().clone();
     let has_scheduler_warning = logs.iter().any(|msg| {
-        msg.contains("task_scheduler") && (msg.contains("not wired") || msg.contains("missing") || msg.contains("None"))
+        msg.contains("task_scheduler")
+            && (msg.contains("not wired") || msg.contains("missing") || msg.contains("None"))
     });
 
     assert!(

@@ -176,6 +176,7 @@ async fn n_spawn_failures_exhaust_retry_budget() {
     assert!(
         attempt_failed_count >= max_retries,
         "Retry budget must be exhausted: count {} >= max_retries {}",
-        attempt_failed_count, max_retries,
+        attempt_failed_count,
+        max_retries,
     );
 }

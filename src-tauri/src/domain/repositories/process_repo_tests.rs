@@ -345,8 +345,7 @@ async fn test_process_with_output_config_preserved() {
     let output = ResearchOutput::new("custom-bucket")
         .with_artifact_type(ArtifactType::Findings)
         .with_artifact_type(ArtifactType::Recommendations);
-    let process =
-        ResearchProcess::new("Output Research", brief, "researcher").with_output(output);
+    let process = ResearchProcess::new("Output Research", brief, "researcher").with_output(output);
     let repo = MockProcessRepository::with_process(process.clone());
 
     let result = repo.get_by_id(&process.id).await.unwrap().unwrap();

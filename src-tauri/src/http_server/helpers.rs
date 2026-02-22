@@ -233,9 +233,7 @@ pub async fn update_proposal_impl(
         .ideation_session_repo
         .get_by_id(&proposal.session_id)
         .await?
-        .ok_or_else(|| {
-            AppError::NotFound(format!("Session {} not found", proposal.session_id))
-        })?;
+        .ok_or_else(|| AppError::NotFound(format!("Session {} not found", proposal.session_id)))?;
     assert_session_mutable(&session)?;
 
     // Apply updates
@@ -580,12 +578,9 @@ pub async fn maybe_trigger_dependency_analysis(
         }
 
         // Fetch plan artifact summary for the session
-        let plan_summary = fetch_plan_summary_for_session(
-            &session_id_str,
-            &ideation_session_repo,
-            &artifact_repo,
-        )
-        .await;
+        let plan_summary =
+            fetch_plan_summary_for_session(&session_id_str, &ideation_session_repo, &artifact_repo)
+                .await;
 
         // Get existing dependencies
         let existing_deps = match proposal_dependency_repo

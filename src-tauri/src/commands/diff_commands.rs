@@ -198,7 +198,9 @@ pub async fn detect_merge_conflicts(
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
     let diff_service = DiffService::new();
-    diff_service.detect_conflicts(&working_path_str, task_branch, base_branch).await
+    diff_service
+        .detect_conflicts(&working_path_str, task_branch, base_branch)
+        .await
 }
 
 /// Get 3-way diff data for a file with merge conflicts.

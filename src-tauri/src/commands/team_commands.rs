@@ -4,15 +4,14 @@
 // agent team lifecycle, status, and messaging. Mutation commands use
 // TeamService (which emits events), read-only commands use raw tracker.
 
-use std::sync::Arc;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tauri::State;
 
 use crate::application::app_state::AppState;
 use crate::application::team_service::TeamService;
 use crate::application::team_state_tracker::{
-    TeammateCost, TeamMessageResponse, TeamStateTracker, TeamStatusResponse,
-    TeammateCostResponse,
+    TeamMessageResponse, TeamStateTracker, TeamStatusResponse, TeammateCost, TeammateCostResponse,
 };
 
 // ============================================================================

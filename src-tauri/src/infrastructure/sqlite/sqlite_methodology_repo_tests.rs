@@ -549,8 +549,7 @@ async fn test_seed_builtin_methodologies_includes_bmad() {
 
     repo.seed_builtin_methodologies().await.unwrap();
 
-    let bmad_id =
-        crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+    let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
     let bmad = repo.get_by_id(&bmad_id).await.unwrap();
     assert!(bmad.is_some());
 
@@ -591,8 +590,7 @@ async fn test_bmad_workflow_has_10_columns() {
 
     repo.seed_builtin_methodologies().await.unwrap();
 
-    let bmad_id =
-        crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+    let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
     let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
 
     assert_eq!(bmad.workflow.columns.len(), 10);
@@ -622,8 +620,7 @@ async fn test_bmad_phases_have_correct_columns() {
 
     repo.seed_builtin_methodologies().await.unwrap();
 
-    let bmad_id =
-        crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+    let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
     let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
 
     let analysis_phase = bmad.phase_at_order(0).unwrap();
@@ -670,8 +667,7 @@ async fn test_builtin_methodologies_have_templates() {
 
     repo.seed_builtin_methodologies().await.unwrap();
 
-    let bmad_id =
-        crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+    let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
     let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
     assert_eq!(bmad.templates.len(), 3);
 
@@ -687,8 +683,7 @@ async fn test_builtin_methodologies_have_hooks_config() {
 
     repo.seed_builtin_methodologies().await.unwrap();
 
-    let bmad_id =
-        crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
+    let bmad_id = crate::domain::entities::methodology::MethodologyId::from_string("bmad-method");
     let bmad = repo.get_by_id(&bmad_id).await.unwrap().unwrap();
     assert!(bmad.hooks_config.is_some());
     let hooks = bmad.hooks_config.unwrap();

@@ -203,7 +203,10 @@ async fn test_pause_ignored_from_failed() {
         .handle_transition(&State::Failed(FailedData::default()), &TaskEvent::Pause)
         .await;
 
-    assert!(!result.is_success(), "Failed (terminal) should NOT handle Pause");
+    assert!(
+        !result.is_success(),
+        "Failed (terminal) should NOT handle Pause"
+    );
 }
 
 // ============================================================================
@@ -233,8 +236,14 @@ async fn test_stop_from_executing_produces_stopped_not_paused() {
 #[tokio::test]
 async fn test_paused_is_not_terminal_but_stopped_is() {
     // Semantic difference: Paused can resume, Stopped requires manual restart
-    assert!(!State::Paused.is_terminal(), "Paused is NOT terminal — can resume");
-    assert!(State::Stopped.is_terminal(), "Stopped IS terminal — requires manual restart");
+    assert!(
+        !State::Paused.is_terminal(),
+        "Paused is NOT terminal — can resume"
+    );
+    assert!(
+        State::Stopped.is_terminal(),
+        "Stopped IS terminal — requires manual restart"
+    );
 }
 
 #[tokio::test]
@@ -268,9 +277,7 @@ async fn test_paused_state_does_not_handle_any_event() {
         TaskEvent::Stop,
         TaskEvent::Pause, // Self-transition: Paused cannot re-pause
     ] {
-        let result = handler
-            .handle_transition(&State::Paused, event)
-            .await;
+        let result = handler.handle_transition(&State::Paused, event).await;
         assert!(
             !result.is_success(),
             "Paused state should NOT handle {:?} — resume is done at command layer",
@@ -295,7 +302,10 @@ fn test_pause_reason_user_initiated_round_trip() {
     let metadata = reason.write_to_task_metadata(None);
     let recovered = PauseReason::from_task_metadata(Some(&metadata));
 
-    assert!(recovered.is_some(), "Should recover PauseReason from metadata");
+    assert!(
+        recovered.is_some(),
+        "Should recover PauseReason from metadata"
+    );
     assert_eq!(
         recovered.unwrap().previous_status(),
         "executing",
@@ -340,7 +350,10 @@ fn test_pause_reason_clear_removes_from_metadata() {
     let metadata_cleared = PauseReason::clear_from_task_metadata(Some(&metadata_with));
     let recovered = PauseReason::from_task_metadata(Some(&metadata_cleared));
 
-    assert!(recovered.is_none(), "PauseReason should be absent after clear");
+    assert!(
+        recovered.is_none(),
+        "PauseReason should be absent after clear"
+    );
 }
 
 #[test]
@@ -356,12 +369,18 @@ fn test_pause_reason_preserves_other_metadata_keys() {
 
     let with_pause = reason.write_to_task_metadata(Some(existing));
     let json: serde_json::Value = serde_json::from_str(&with_pause).unwrap();
-    assert_eq!(json["trigger_origin"], "scheduler", "Other keys preserved on write");
+    assert_eq!(
+        json["trigger_origin"], "scheduler",
+        "Other keys preserved on write"
+    );
     assert_eq!(json["some_key"], 42, "Numeric keys preserved on write");
 
     let cleared = PauseReason::clear_from_task_metadata(Some(&with_pause));
     let json2: serde_json::Value = serde_json::from_str(&cleared).unwrap();
-    assert_eq!(json2["trigger_origin"], "scheduler", "Other keys preserved on clear");
+    assert_eq!(
+        json2["trigger_origin"], "scheduler",
+        "Other keys preserved on clear"
+    );
     assert!(json2.get("pause_reason").is_none(), "pause_reason removed");
 }
 
@@ -472,7 +491,9 @@ async fn test_unblock_blocked_task_transitions_to_ready() {
     let services = build_task_services(&s);
     let mut machine = create_state_machine("task-unblock-1", "proj-unblock", services);
     // Manually add a blocker so context is in the "blocked" state
-    machine.context.add_blocker(Blocker::new("blocking-task-id"));
+    machine
+        .context
+        .add_blocker(Blocker::new("blocking-task-id"));
 
     let result = {
         let mut handler = create_transition_handler(&mut machine);
@@ -606,7 +627,8 @@ async fn test_blocked_task_status_persists_in_repo() {
     let s = create_hardening_services();
     let project_id = ProjectId::from_string("proj-repo-unblock".to_string());
 
-    let task = create_test_task_with_status(&project_id, "Waiting for dep", InternalStatus::Blocked);
+    let task =
+        create_test_task_with_status(&project_id, "Waiting for dep", InternalStatus::Blocked);
     let task_id = task.id.clone();
 
     s.task_repo.create(task).await.unwrap();
@@ -625,11 +647,8 @@ async fn test_pause_reason_metadata_survives_task_update() {
     let s = create_hardening_services();
     let project_id = ProjectId::from_string("proj-meta-unblock".to_string());
 
-    let mut task = create_test_task_with_status(
-        &project_id,
-        "Paused worker",
-        InternalStatus::Paused,
-    );
+    let mut task =
+        create_test_task_with_status(&project_id, "Paused worker", InternalStatus::Paused);
 
     let pause_reason = PauseReason::UserInitiated {
         previous_status: "executing".to_string(),
@@ -644,7 +663,10 @@ async fn test_pause_reason_metadata_survives_task_update() {
     let fetched = s.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
     let recovered = PauseReason::from_task_metadata(fetched.metadata.as_deref());
 
-    assert!(recovered.is_some(), "PauseReason should survive repo round-trip");
+    assert!(
+        recovered.is_some(),
+        "PauseReason should survive repo round-trip"
+    );
     assert_eq!(
         recovered.unwrap().previous_status(),
         "executing",
@@ -667,7 +689,8 @@ async fn test_full_pause_resume_scenario_with_metadata() {
     let project_id = ProjectId::from_string("proj-full-pause".to_string());
 
     // Step 1: Create task in Executing
-    let mut task = create_test_task_with_status(&project_id, "Worker task", InternalStatus::Executing);
+    let mut task =
+        create_test_task_with_status(&project_id, "Worker task", InternalStatus::Executing);
     let task_id = task.id.clone();
 
     // Step 2: Simulate pause — write pause metadata and change status
@@ -747,5 +770,8 @@ async fn test_full_unblock_scenario_with_repo() {
             .await
     };
     assert_eq!(r2.state(), Some(&State::Ready));
-    assert!(!machine.context.has_blockers(), "No blockers remain after unblock");
+    assert!(
+        !machine.context.has_blockers(),
+        "No blockers remain after unblock"
+    );
 }

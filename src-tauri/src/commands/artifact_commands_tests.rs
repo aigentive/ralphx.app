@@ -200,8 +200,8 @@ async fn test_artifact_response_serialization() {
     assert_eq!(response.bucket_id, Some("bucket-1".to_string()));
     assert_eq!(response.derived_from.len(), 1);
 
-    let json = serde_json::to_string(&response)
-        .expect("Failed to serialize artifact response in test");
+    let json =
+        serde_json::to_string(&response).expect("Failed to serialize artifact response in test");
     assert!(json.contains("\"name\":\"Test\""));
 }
 
@@ -285,9 +285,21 @@ async fn test_get_team_artifacts_by_session_filters_correctly() {
     )
     .with_bucket(bucket_id.clone());
 
-    state.artifact_repo.create(matching).await.expect("create matching");
-    state.artifact_repo.create(other).await.expect("create other");
-    state.artifact_repo.create(no_meta).await.expect("create no_meta");
+    state
+        .artifact_repo
+        .create(matching)
+        .await
+        .expect("create matching");
+    state
+        .artifact_repo
+        .create(other)
+        .await
+        .expect("create other");
+    state
+        .artifact_repo
+        .create(no_meta)
+        .await
+        .expect("create no_meta");
 
     // Query for session-abc — should return only the matching artifact
     let all = state

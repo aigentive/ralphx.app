@@ -329,7 +329,6 @@ fn test_results_from_prd_format() {
         r.steps[0].screenshot,
         Some("screenshots/qa1-result.png".into())
     );
-
 }
 
 #[test]
@@ -389,4 +388,3 @@ fn test_results_recalculate() {
     assert_eq!(r.passed_steps, 2);
     assert_eq!(r.overall_status, QAOverallStatus::Passed);
 }
-

@@ -257,14 +257,20 @@ impl ExecutionState {
     /// Returns `true` if the task was newly inserted (caller should proceed).
     /// Returns `false` if the task was already in the set (caller should skip — duplicate).
     pub fn try_start_auto_complete(&self, task_id: &str) -> bool {
-        let mut set = self.auto_completes_in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        let mut set = self
+            .auto_completes_in_flight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set.insert(task_id.to_string())
     }
 
     /// Remove a task from the auto-completes-in-flight set.
     /// Called when auto-complete finishes (success or failure).
     pub fn finish_auto_complete(&self, task_id: &str) {
-        let mut set = self.auto_completes_in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        let mut set = self
+            .auto_completes_in_flight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set.remove(task_id);
     }
 
@@ -272,7 +278,10 @@ impl ExecutionState {
     /// Used by the reconciler to skip reconciliation when auto-complete is already running
     /// (prevents misinterpreting the dedup guard's skip as a failure).
     pub fn is_auto_complete_in_flight(&self, task_id: &str) -> bool {
-        let set = self.auto_completes_in_flight.lock().unwrap_or_else(|e| e.into_inner());
+        let set = self
+            .auto_completes_in_flight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         set.contains(task_id)
     }
 
@@ -675,9 +684,8 @@ pub async fn pause_execution(
                     scope: "global".to_string(),
                 };
                 let mut updated_task = task.clone();
-                updated_task.metadata = Some(
-                    pause_reason.write_to_task_metadata(updated_task.metadata.as_deref()),
-                );
+                updated_task.metadata =
+                    Some(pause_reason.write_to_task_metadata(updated_task.metadata.as_deref()));
                 updated_task.touch();
                 let _ = app_state.task_repo.update(&updated_task).await;
 
@@ -818,8 +826,7 @@ pub async fn resume_execution(
             let restore_status = if let Some(reason) =
                 crate::application::chat_service::PauseReason::from_task_metadata(
                     task.metadata.as_deref(),
-                )
-            {
+                ) {
                 match reason.previous_status().parse::<InternalStatus>() {
                     Ok(status) => status,
                     Err(_) => {
@@ -1830,7 +1837,10 @@ async fn prune_stale_execution_registry_entries(app_state: &AppState) {
         if pid_alive {
             let _ = app_state.running_agent_registry.stop(&key).await;
         } else {
-            let _ = app_state.running_agent_registry.unregister(&key, &info.agent_run_id).await;
+            let _ = app_state
+                .running_agent_registry
+                .unregister(&key, &info.agent_run_id)
+                .await;
         }
 
         if let Some(agent_run) = run {
@@ -2014,9 +2024,12 @@ pub async fn restart_task(
     let stop_metadata = parse_stop_metadata(task.metadata.as_deref())
         .ok_or_else(|| "Task has no stop metadata - cannot smart resume".to_string())?;
 
-    let stopped_from_status = stop_metadata
-        .parse_from_status()
-        .ok_or_else(|| format!("Invalid stopped_from_status: {}", stop_metadata.stopped_from_status))?;
+    let stopped_from_status = stop_metadata.parse_from_status().ok_or_else(|| {
+        format!(
+            "Invalid stopped_from_status: {}",
+            stop_metadata.stopped_from_status
+        )
+    })?;
 
     tracing::info!(
         task_id = task_id.as_str(),
@@ -4689,7 +4702,11 @@ mod tests {
         // While paused, a blocked task becomes Ready (simulating unblock_dependents)
         let mut ready_task = Task::new(project.id.clone(), "Ready Task".to_string());
         ready_task.internal_status = InternalStatus::Ready;
-        app_state.task_repo.create(ready_task.clone()).await.unwrap();
+        app_state
+            .task_repo
+            .create(ready_task.clone())
+            .await
+            .unwrap();
 
         // can_start_task() should be false while pause flag is set (paused tasks can't race
         // with scheduler during the restoration loop)

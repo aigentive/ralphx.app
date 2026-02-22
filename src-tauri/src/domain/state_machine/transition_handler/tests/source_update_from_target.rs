@@ -2,8 +2,8 @@
 // up-to-date from their target branch before the merge runs, preventing false
 // validation failures from stale code.
 
-use super::helpers::*;
 use super::super::merge_coordination::{update_source_from_target, SourceUpdateResult};
+use super::helpers::*;
 use crate::domain::entities::Project;
 
 /// Helper: create a project entity pointing at a repo path.
@@ -25,8 +25,8 @@ async fn source_up_to_date_with_target_returns_already_up_to_date() {
 
     let result = update_source_from_target(
         repo.path(),
-        &repo.task_branch,  // source = task branch (has main's commit as ancestor)
-        "main",             // target = main
+        &repo.task_branch, // source = task branch (has main's commit as ancestor)
+        "main",            // target = main
         &project,
         "task-1",
         None,
@@ -64,8 +64,8 @@ async fn source_behind_target_gets_updated() {
 
     let result = update_source_from_target(
         path,
-        &repo.task_branch,  // source = task branch (behind main now)
-        "main",             // target = main (has new commit)
+        &repo.task_branch, // source = task branch (behind main now)
+        "main",            // target = main (has new commit)
         &project,
         "task-2",
         None,
@@ -127,8 +127,8 @@ async fn source_behind_plan_branch_gets_updated() {
     // so it's behind plan/feature-1
     let result = update_source_from_target(
         path,
-        &repo.task_branch,    // source = task branch
-        "plan/feature-1",     // target = plan branch (has extra commit)
+        &repo.task_branch, // source = task branch
+        "plan/feature-1",  // target = plan branch (has extra commit)
         &project,
         "task-3",
         None,
@@ -165,13 +165,21 @@ async fn source_behind_target_with_conflicts_returns_conflicts() {
     let path = repo.path();
 
     // Add a conflicting change on main (same file the task branch modifies)
-    std::fs::write(path.join("feature.rs"), "// main conflicting version\nfn main_feature() {}").unwrap();
+    std::fs::write(
+        path.join("feature.rs"),
+        "// main conflicting version\nfn main_feature() {}",
+    )
+    .unwrap();
     let _ = std::process::Command::new("git")
         .args(["add", "feature.rs"])
         .current_dir(path)
         .output();
     let _ = std::process::Command::new("git")
-        .args(["commit", "-m", "fix: conflicting change to feature.rs on main"])
+        .args([
+            "commit",
+            "-m",
+            "fix: conflicting change to feature.rs on main",
+        ])
         .current_dir(path)
         .output();
 
@@ -179,8 +187,8 @@ async fn source_behind_target_with_conflicts_returns_conflicts() {
 
     let result = update_source_from_target(
         path,
-        &repo.task_branch,  // source = task branch (has feature.rs with different content)
-        "main",             // target = main (also modified feature.rs)
+        &repo.task_branch, // source = task branch (has feature.rs with different content)
+        "main",            // target = main (also modified feature.rs)
         &project,
         "task-4",
         None,
@@ -206,7 +214,7 @@ async fn nonexistent_target_branch_returns_error() {
     let result = update_source_from_target(
         repo.path(),
         &repo.task_branch,
-        "nonexistent-target",  // target doesn't exist
+        "nonexistent-target", // target doesn't exist
         &project,
         "task-5",
         None,
@@ -240,7 +248,7 @@ async fn nonexistent_source_branch_returns_error() {
 
     let result = update_source_from_target(
         path,
-        "nonexistent-source",  // source doesn't exist
+        "nonexistent-source", // source doesn't exist
         "main",
         &project,
         "task-6",
@@ -278,15 +286,8 @@ async fn update_is_idempotent_second_call_returns_already_up_to_date() {
     let project = make_test_project(&repo.path_string());
 
     // First call: should update
-    let result1 = update_source_from_target(
-        path,
-        &repo.task_branch,
-        "main",
-        &project,
-        "task-7",
-        None,
-    )
-    .await;
+    let result1 =
+        update_source_from_target(path, &repo.task_branch, "main", &project, "task-7", None).await;
     assert!(
         matches!(result1, SourceUpdateResult::Updated),
         "First call should update. Got: {:?}",
@@ -294,15 +295,8 @@ async fn update_is_idempotent_second_call_returns_already_up_to_date() {
     );
 
     // Second call: should be up-to-date
-    let result2 = update_source_from_target(
-        path,
-        &repo.task_branch,
-        "main",
-        &project,
-        "task-7",
-        None,
-    )
-    .await;
+    let result2 =
+        update_source_from_target(path, &repo.task_branch, "main", &project, "task-7", None).await;
     assert!(
         matches!(result2, SourceUpdateResult::AlreadyUpToDate),
         "Second call should be AlreadyUpToDate. Got: {:?}",

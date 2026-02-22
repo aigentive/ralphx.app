@@ -149,11 +149,8 @@ fn test_validate_needs_changes_valid() {
     // needs_changes now requires issues, so use needs_changes_with_issues
     let issue = ReviewIssueInput::new("Test issue", IssueSeverity::Major)
         .with_no_step_reason("General issue");
-    let input = CompleteReviewInput::needs_changes_with_issues(
-        "Issues found",
-        "Fix the bug",
-        vec![issue],
-    );
+    let input =
+        CompleteReviewInput::needs_changes_with_issues("Issues found", "Fix the bug", vec![issue]);
     assert!(input.validate().is_ok());
     assert!(input.is_valid());
 }

@@ -112,8 +112,7 @@ async fn test_resolve_task_base_branch_merged_branch_missing_recreates_it() {
     let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
 
     assert_eq!(
-        result,
-        "ralphx/test-plan-branch/plan-session-merged-test",
+        result, "ralphx/test-plan-branch/plan-session-merged-test",
         "Should return plan branch name when Merged branch is recreated"
     );
 
@@ -288,7 +287,10 @@ async fn test_validate_plan_merge_passes_when_all_conditions_met() {
 
     let result = validate_plan_merge_preconditions(&task, &project, &plan_branch_repo_opt).await;
 
-    assert!(result.is_ok(), "Validation should pass when all conditions are met");
+    assert!(
+        result.is_ok(),
+        "Validation should pass when all conditions are met"
+    );
 }
 
 #[tokio::test]
@@ -301,7 +303,10 @@ async fn test_validate_plan_merge_passes_for_non_plan_merge_task() {
 
     let result = validate_plan_merge_preconditions(&task, &project, &plan_branch_repo_opt).await;
 
-    assert!(result.is_ok(), "Non-plan_merge tasks should always pass validation");
+    assert!(
+        result.is_ok(),
+        "Non-plan_merge tasks should always pass validation"
+    );
 }
 
 #[tokio::test]
@@ -335,7 +340,9 @@ async fn test_validate_plan_merge_fails_when_no_plan_branch_record() {
 
     assert_eq!(
         result,
-        Err(PreMergeValidationError::PlanBranchNotActive { status: "not_found".to_string() }),
+        Err(PreMergeValidationError::PlanBranchNotActive {
+            status: "not_found".to_string()
+        }),
         "Should fail with PlanBranchNotActive when no PlanBranch record exists"
     );
 }
@@ -363,7 +370,9 @@ async fn test_validate_plan_merge_fails_when_plan_branch_not_active() {
 
     assert_eq!(
         result,
-        Err(PreMergeValidationError::PlanBranchNotActive { status: "merged".to_string() }),
+        Err(PreMergeValidationError::PlanBranchNotActive {
+            status: "merged".to_string()
+        }),
         "Should fail with PlanBranchNotActive when branch status is Merged"
     );
 }
@@ -402,18 +411,30 @@ async fn test_validate_plan_merge_fails_when_feature_branch_missing_in_git() {
 fn test_pre_merge_error_message_not_empty() {
     let errors = vec![
         PreMergeValidationError::PlanBranchRepoNotWired,
-        PreMergeValidationError::PlanBranchNotActive { status: "merged".to_string() },
-        PreMergeValidationError::FeatureBranchMissing { branch_name: "feature/foo".to_string() },
+        PreMergeValidationError::PlanBranchNotActive {
+            status: "merged".to_string(),
+        },
+        PreMergeValidationError::FeatureBranchMissing {
+            branch_name: "feature/foo".to_string(),
+        },
     ];
     for err in &errors {
-        assert!(!err.message().is_empty(), "Error message should not be empty: {err:?}");
-        assert!(!err.error_code().is_empty(), "Error code should not be empty: {err:?}");
+        assert!(
+            !err.message().is_empty(),
+            "Error message should not be empty: {err:?}"
+        );
+        assert!(
+            !err.error_code().is_empty(),
+            "Error code should not be empty: {err:?}"
+        );
     }
 }
 
 #[test]
 fn test_pre_merge_error_message_contains_actionable_info() {
-    let status_err = PreMergeValidationError::PlanBranchNotActive { status: "abandoned".to_string() };
+    let status_err = PreMergeValidationError::PlanBranchNotActive {
+        status: "abandoned".to_string(),
+    };
     assert!(
         status_err.message().contains("abandoned"),
         "Error message should include the actual status"
@@ -451,7 +472,8 @@ fn test_is_merge_deferred_timed_out_returns_false_when_timestamp_missing() {
 fn test_is_merge_deferred_timed_out_returns_false_when_timestamp_invalid() {
     let project = Project::new("test".to_string(), "/tmp".to_string());
     let mut task = Task::new(project.id, "Test task".to_string());
-    task.metadata = Some(r#"{"merge_deferred": true, "merge_deferred_at": "not-a-timestamp"}"#.to_string());
+    task.metadata =
+        Some(r#"{"merge_deferred": true, "merge_deferred_at": "not-a-timestamp"}"#.to_string());
     assert!(!is_merge_deferred_timed_out(&task));
 }
 
@@ -460,7 +482,10 @@ fn test_is_merge_deferred_timed_out_returns_false_when_recent() {
     let project = Project::new("test".to_string(), "/tmp".to_string());
     let mut task = Task::new(project.id, "Test task".to_string());
     let recent = (chrono::Utc::now() - chrono::Duration::seconds(10)).to_rfc3339();
-    task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, recent));
+    task.metadata = Some(format!(
+        r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#,
+        recent
+    ));
     assert!(!is_merge_deferred_timed_out(&task));
 }
 
@@ -469,7 +494,10 @@ fn test_is_merge_deferred_timed_out_returns_true_when_expired() {
     let project = Project::new("test".to_string(), "/tmp".to_string());
     let mut task = Task::new(project.id, "Test task".to_string());
     let old = (chrono::Utc::now() - chrono::Duration::seconds(300)).to_rfc3339();
-    task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, old));
+    task.metadata = Some(format!(
+        r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#,
+        old
+    ));
     assert!(is_merge_deferred_timed_out(&task));
 }
 
@@ -493,7 +521,10 @@ fn test_is_main_merge_deferred_timed_out_returns_false_when_recent() {
     let project = Project::new("test".to_string(), "/tmp".to_string());
     let mut task = Task::new(project.id, "Test task".to_string());
     let recent = (chrono::Utc::now() - chrono::Duration::seconds(5)).to_rfc3339();
-    task.metadata = Some(format!(r#"{{"main_merge_deferred": true, "main_merge_deferred_at": "{}"}}"#, recent));
+    task.metadata = Some(format!(
+        r#"{{"main_merge_deferred": true, "main_merge_deferred_at": "{}"}}"#,
+        recent
+    ));
     assert!(!is_main_merge_deferred_timed_out(&task));
 }
 
@@ -502,7 +533,10 @@ fn test_is_main_merge_deferred_timed_out_returns_true_when_expired() {
     let project = Project::new("test".to_string(), "/tmp".to_string());
     let mut task = Task::new(project.id, "Test task".to_string());
     let old = (chrono::Utc::now() - chrono::Duration::seconds(200)).to_rfc3339();
-    task.metadata = Some(format!(r#"{{"main_merge_deferred": true, "main_merge_deferred_at": "{}"}}"#, old));
+    task.metadata = Some(format!(
+        r#"{{"main_merge_deferred": true, "main_merge_deferred_at": "{}"}}"#,
+        old
+    ));
     assert!(is_main_merge_deferred_timed_out(&task));
 }
 
@@ -521,7 +555,10 @@ fn test_is_merge_deferred_timed_out_boundary_just_before_timeout() {
     let just_before = (chrono::Utc::now()
         - chrono::Duration::seconds(DEFERRED_MERGE_TIMEOUT_SECONDS - 1))
     .to_rfc3339();
-    task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, just_before));
+    task.metadata = Some(format!(
+        r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#,
+        just_before
+    ));
     assert!(
         !is_merge_deferred_timed_out(&task),
         "Task just before timeout should not be considered timed out"
@@ -535,7 +572,10 @@ fn test_is_merge_deferred_timed_out_boundary_at_timeout() {
     let at_timeout = (chrono::Utc::now()
         - chrono::Duration::seconds(DEFERRED_MERGE_TIMEOUT_SECONDS))
     .to_rfc3339();
-    task.metadata = Some(format!(r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#, at_timeout));
+    task.metadata = Some(format!(
+        r#"{{"merge_deferred": true, "merge_deferred_at": "{}"}}"#,
+        at_timeout
+    ));
     assert!(
         is_merge_deferred_timed_out(&task),
         "Task exactly at timeout boundary should be considered timed out"

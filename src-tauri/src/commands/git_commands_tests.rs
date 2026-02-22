@@ -54,7 +54,10 @@ fn test_retry_merge_resets_loop_counters() {
 
     // Apply the same reset logic as retry_merge()
     let mut meta_obj = metadata.as_object().cloned().unwrap();
-    meta_obj.insert("merge_retry_in_progress".to_string(), serde_json::json!(chrono::Utc::now().to_rfc3339()));
+    meta_obj.insert(
+        "merge_retry_in_progress".to_string(),
+        serde_json::json!(chrono::Utc::now().to_rfc3339()),
+    );
     meta_obj.insert("validation_revert_count".to_string(), serde_json::json!(0));
     meta_obj.remove("merge_failure_source");
     if let Some(recovery_val) = meta_obj.get_mut("merge_recovery") {
@@ -71,7 +74,10 @@ fn test_retry_merge_resets_loop_counters() {
     // merge_failure_source removed
     assert!(result.get("merge_failure_source").is_none());
     // merge_recovery events cleared
-    assert_eq!(result["merge_recovery"]["events"].as_array().unwrap().len(), 0);
+    assert_eq!(
+        result["merge_recovery"]["events"].as_array().unwrap().len(),
+        0
+    );
     // merge_recovery last_state set to retrying
     assert_eq!(result["merge_recovery"]["last_state"], "retrying");
     // Other metadata keys preserved
@@ -89,7 +95,10 @@ fn test_retry_merge_resets_counters_without_merge_recovery() {
     });
 
     let mut meta_obj = metadata.as_object().cloned().unwrap();
-    meta_obj.insert("merge_retry_in_progress".to_string(), serde_json::json!(chrono::Utc::now().to_rfc3339()));
+    meta_obj.insert(
+        "merge_retry_in_progress".to_string(),
+        serde_json::json!(chrono::Utc::now().to_rfc3339()),
+    );
     meta_obj.insert("validation_revert_count".to_string(), serde_json::json!(0));
     meta_obj.remove("merge_failure_source");
     if let Some(recovery_val) = meta_obj.get_mut("merge_recovery") {
@@ -149,12 +158,17 @@ fn test_validation_revert_count_passes_after_reset() {
     let metadata_str = serde_json::json!({
         "validation_revert_count": 0,
         "merge_retry_in_progress": chrono::Utc::now().to_rfc3339(),
-    }).to_string();
+    })
+    .to_string();
 
     // Same read logic as ReconciliationRunner::validation_revert_count()
     let revert_count: u32 = serde_json::from_str::<serde_json::Value>(&metadata_str)
         .ok()
-        .and_then(|v| v.get("validation_revert_count").and_then(|c| c.as_u64()).map(|c| c as u32))
+        .and_then(|v| {
+            v.get("validation_revert_count")
+                .and_then(|c| c.as_u64())
+                .map(|c| c as u32)
+        })
         .unwrap_or(0);
 
     assert_eq!(revert_count, 0);

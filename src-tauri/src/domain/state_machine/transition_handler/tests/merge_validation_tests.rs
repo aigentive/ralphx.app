@@ -6,12 +6,13 @@
 
 use std::path::Path;
 
-use super::helpers::*;
 use super::super::merge_validation::{
     cleanup_validation_logs, extract_cached_validation, format_validation_error_metadata,
-    format_validation_warn_metadata, run_validation_commands, take_skip_validation_flag,
-    validation_log_dir, ValidationFailure, ValidationLogEntry,
+    format_validation_warn_metadata, run_pre_execution_setup, run_validation_commands,
+    take_skip_validation_flag, validation_log_dir, PreExecSetupResult, ValidationFailure,
+    ValidationLogEntry,
 };
+use super::helpers::*;
 use crate::domain::entities::MergeValidationMode;
 
 // ==================
@@ -22,8 +23,17 @@ use crate::domain::entities::MergeValidationMode;
 async fn run_validation_returns_none_when_no_analysis() {
     let project = make_project(Some("main"));
     let task = make_task(None, None);
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_none());
 }
 
@@ -32,8 +42,17 @@ async fn run_validation_returns_none_when_empty_entries() {
     let mut project = make_project(Some("main"));
     project.detected_analysis = Some("[]".to_string());
     let task = make_task(None, None);
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_none());
 }
 
@@ -43,8 +62,17 @@ async fn run_validation_returns_none_when_no_validate_commands() {
     project.detected_analysis =
         Some(r#"[{"path": ".", "label": "Test", "validate": []}]"#.to_string());
     let task = make_task(None, None);
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_none());
 }
 
@@ -58,8 +86,17 @@ async fn run_validation_prefers_custom_over_detected() {
     project.custom_analysis =
         Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
     let task = make_task(None, None);
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     assert!(result.unwrap().all_passed);
 }
@@ -82,15 +119,24 @@ async fn custom_analysis_empty_worktree_setup_not_overridden_by_detected() {
         worktree_dir.path().display()
     ));
     // custom intentionally has EMPTY worktree_setup (user removed the symlink)
-    project.custom_analysis =
-        Some(r#"[{"path": ".", "label": "Rust", "validate": ["true"], "worktree_setup": []}]"#.to_string());
+    project.custom_analysis = Some(
+        r#"[{"path": ".", "label": "Rust", "validate": ["true"], "worktree_setup": []}]"#
+            .to_string(),
+    );
 
     let task = make_task(None, None);
 
     let result = run_validation_commands(
-        &project, &task, worktree_dir.path(), "", None, None,
-        &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new(),
-    ).await;
+        &project,
+        &task,
+        worktree_dir.path(),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
 
     assert!(result.is_some());
     let r = result.unwrap();
@@ -110,8 +156,17 @@ async fn run_validation_succeeds_with_passing_command() {
     project.detected_analysis =
         Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
     let task = make_task(None, None);
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(r.all_passed);
@@ -128,8 +183,17 @@ async fn run_validation_fails_with_failing_command() {
     project.detected_analysis =
         Some(r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string());
     let task = make_task(None, None);
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -144,12 +208,22 @@ async fn run_validation_fails_with_failing_command() {
 async fn run_validation_resolves_template_vars() {
     let mut project = make_project(Some("main"));
     project.detected_analysis = Some(
-        r#"[{"path": ".", "label": "Test", "validate": ["echo {project_root} {worktree_path}"]}]"#.to_string(),
+        r#"[{"path": ".", "label": "Test", "validate": ["echo {project_root} {worktree_path}"]}]"#
+            .to_string(),
     );
     let mut task = make_task(None, None);
     task.worktree_path = Some("/tmp/wt".to_string());
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     assert!(result.unwrap().all_passed);
 }
@@ -159,8 +233,17 @@ async fn run_validation_returns_none_for_invalid_json() {
     let mut project = make_project(Some("main"));
     project.detected_analysis = Some("not valid json".to_string());
     let task = make_task(None, None);
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_none());
 }
 
@@ -245,8 +328,7 @@ fn take_skip_validation_flag_returns_true_and_clears() {
     task.metadata = Some(r#"{"skip_validation": true, "other": "data"}"#.to_string());
     assert!(take_skip_validation_flag(&mut task));
     // Flag should be cleared
-    let meta: serde_json::Value =
-        serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
+    let meta: serde_json::Value = serde_json::from_str(task.metadata.as_ref().unwrap()).unwrap();
     assert!(meta.get("skip_validation").is_none());
     assert_eq!(meta["other"], "data");
     // Second call returns false
@@ -356,9 +438,8 @@ fn extract_cached_returns_none_when_no_sha_in_metadata() {
 async fn run_validation_skips_passed_when_cached() {
     let mut project = make_project(Some("main"));
     // "true" always passes, "echo hello" always passes
-    project.detected_analysis = Some(
-        r#"[{"path": ".", "label": "Test", "validate": ["true", "echo hello"]}]"#.to_string(),
-    );
+    project.detected_analysis =
+        Some(r#"[{"path": ".", "label": "Test", "validate": ["true", "echo hello"]}]"#.to_string());
     let task = make_task(None, None);
 
     // Build a cached log where "true" passed but "echo hello" failed
@@ -389,9 +470,17 @@ async fn run_validation_skips_passed_when_cached() {
         },
     ];
 
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, Some(&cached), &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new())
-            .await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        Some(&cached),
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(r.all_passed);
@@ -412,8 +501,17 @@ async fn run_validation_reruns_all_when_no_cache() {
         Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
     let task = make_task(None, None);
 
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(r.all_passed);
@@ -429,13 +527,21 @@ async fn run_validation_reruns_all_when_no_cache() {
 async fn fail_fast_block_mode_skips_remaining_on_first_failure() {
     let mut project = make_project(Some("main"));
     // Two commands: "false" fails, "true" should be skipped in Block mode
-    project.detected_analysis = Some(
-        r#"[{"path": ".", "label": "Test", "validate": ["false", "true"]}]"#.to_string(),
-    );
+    project.detected_analysis =
+        Some(r#"[{"path": ".", "label": "Test", "validate": ["false", "true"]}]"#.to_string());
     let task = make_task(None, None);
 
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -453,13 +559,21 @@ async fn fail_fast_block_mode_skips_remaining_on_first_failure() {
 #[tokio::test]
 async fn fail_fast_autofix_mode_skips_remaining_on_first_failure() {
     let mut project = make_project(Some("main"));
-    project.detected_analysis = Some(
-        r#"[{"path": ".", "label": "Test", "validate": ["false", "true"]}]"#.to_string(),
-    );
+    project.detected_analysis =
+        Some(r#"[{"path": ".", "label": "Test", "validate": ["false", "true"]}]"#.to_string());
     let task = make_task(None, None);
 
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::AutoFix, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::AutoFix,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -472,13 +586,21 @@ async fn fail_fast_autofix_mode_skips_remaining_on_first_failure() {
 async fn warn_mode_runs_all_commands_even_after_failure() {
     let mut project = make_project(Some("main"));
     // "false" fails, "true" should still run in Warn mode
-    project.detected_analysis = Some(
-        r#"[{"path": ".", "label": "Test", "validate": ["false", "true"]}]"#.to_string(),
-    );
+    project.detected_analysis =
+        Some(r#"[{"path": ".", "label": "Test", "validate": ["false", "true"]}]"#.to_string());
     let task = make_task(None, None);
 
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Warn, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Warn,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -499,12 +621,22 @@ async fn fail_fast_skips_across_multiple_entries() {
         r#"[
             {"path": ".", "label": "Rust", "validate": ["false"]},
             {"path": ".", "label": "Node", "validate": ["true"]}
-        ]"#.to_string(),
+        ]"#
+        .to_string(),
     );
     let task = make_task(None, None);
 
-    let result =
-        run_validation_commands(&project, &task, Path::new("/tmp"), "", None, None, &MergeValidationMode::Block, &tokio_util::sync::CancellationToken::new()).await;
+    let result = run_validation_commands(
+        &project,
+        &task,
+        Path::new("/tmp"),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
     assert!(result.is_some());
     let r = result.unwrap();
     assert!(!r.all_passed);
@@ -536,21 +668,35 @@ async fn run_validation_skips_setup_when_merge_cwd_equals_project_root() {
             "label": "Frontend",
             "validate": ["true"],
             "worktree_setup": ["ln -s {project_root}/node_modules {worktree_path}/node_modules"]
-        }]"#.to_string(),
+        }]"#
+        .to_string(),
     );
     let task = make_task(None, None);
 
     // Pass project root as merge_cwd — triggers the skip guard
     let result = run_validation_commands(
-        &project, &task, dir.path(), "", None, None, &MergeValidationMode::Block,
+        &project,
+        &task,
+        dir.path(),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
         &tokio_util::sync::CancellationToken::new(),
-    ).await;
+    )
+    .await;
 
     // Validation commands should still run (setup is skipped, not validate)
-    assert!(result.is_some(), "validation should still run even when setup is skipped");
+    assert!(
+        result.is_some(),
+        "validation should still run even when setup is skipped"
+    );
     let r = result.unwrap();
     // Only validate entries in log, no setup entries
-    assert!(r.log.iter().all(|e| e.phase != "setup"), "no setup entries should appear in log");
+    assert!(
+        r.log.iter().all(|e| e.phase != "setup"),
+        "no setup entries should appear in log"
+    );
     assert!(r.all_passed, "validate command 'true' should pass");
 }
 
@@ -567,21 +713,32 @@ async fn run_validation_runs_setup_when_merge_cwd_differs_from_project_root() {
             "label": "Frontend",
             "validate": ["true"],
             "worktree_setup": ["echo setting_up_worktree"]
-        }]"#.to_string(),
+        }]"#
+        .to_string(),
     );
     let task = make_task(None, None);
 
     // Use a different path than project root — setup should run
     let result = run_validation_commands(
-        &project, &task, worktree_dir.path(), "", None, None, &MergeValidationMode::Block,
+        &project,
+        &task,
+        worktree_dir.path(),
+        "",
+        None,
+        None,
+        &MergeValidationMode::Block,
         &tokio_util::sync::CancellationToken::new(),
-    ).await;
+    )
+    .await;
 
     assert!(result.is_some());
     let r = result.unwrap();
     // Should have setup entries in the log
     let setup_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "setup").collect();
-    assert!(!setup_entries.is_empty(), "setup entries should be present when merge_cwd != project_root");
+    assert!(
+        !setup_entries.is_empty(),
+        "setup entries should be present when merge_cwd != project_root"
+    );
 }
 
 // ==================
@@ -645,9 +802,8 @@ async fn validation_retry_succeeds_on_second_attempt() {
 async fn validation_retry_both_attempts_fail() {
     let mut project = make_project(Some("main"));
     // "false" always exits with code 1, so both initial and retry fail
-    project.detected_analysis = Some(
-        r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string(),
-    );
+    project.detected_analysis =
+        Some(r#"[{"path": ".", "label": "Test", "validate": ["false"]}]"#.to_string());
     let task = make_task(None, None);
 
     let result = run_validation_commands(
@@ -683,9 +839,8 @@ async fn validation_retry_both_attempts_fail() {
 async fn validation_no_retry_when_cancelled() {
     let mut project = make_project(Some("main"));
     // Use "sleep 60" so we can cancel it
-    project.detected_analysis = Some(
-        r#"[{"path": ".", "label": "Test", "validate": ["sleep 60"]}]"#.to_string(),
-    );
+    project.detected_analysis =
+        Some(r#"[{"path": ".", "label": "Test", "validate": ["sleep 60"]}]"#.to_string());
     let task = make_task(None, None);
 
     let cancel = tokio_util::sync::CancellationToken::new();
@@ -724,9 +879,8 @@ async fn validation_no_retry_when_cancelled() {
 #[tokio::test]
 async fn validation_no_retry_when_passing() {
     let mut project = make_project(Some("main"));
-    project.detected_analysis = Some(
-        r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string(),
-    );
+    project.detected_analysis =
+        Some(r#"[{"path": ".", "label": "Test", "validate": ["true"]}]"#.to_string());
     let task = make_task(None, None);
 
     let result = run_validation_commands(
@@ -754,6 +908,59 @@ async fn validation_no_retry_when_passing() {
     );
 }
 
+// ==================
+// run_pre_execution_setup tests
+// ==================
+
+#[tokio::test]
+async fn run_pre_execution_setup_fallback_to_detected_when_custom_null() {
+    // When custom_analysis is NULL, the system should fall back to detected_analysis
+    // for worktree_setup commands. This ensures users who haven't customized their
+    // analytics still get the detected worktree setup commands.
+    let worktree_dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let mut project = make_project(Some("main"));
+    project.working_directory = project_dir.path().to_str().unwrap().to_string();
+
+    // detected_analysis has a worktree_setup command
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Rust", "validate": ["true"], "worktree_setup": ["echo setting_up_worktree"]}]"#.to_string()
+    );
+
+    // custom_analysis is NULL (user hasn't customized)
+    project.custom_analysis = None;
+
+    let mut task = make_task(None, None);
+    task.task_branch = Some("task-branch".to_string());
+
+    // Run pre-execution setup with a worktree_path different from project_root
+    let result = run_pre_execution_setup(
+        &project,
+        &task,
+        worktree_dir.path(),
+        "test-task",
+        None,
+        "",
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    assert!(
+        result.is_some(),
+        "pre-execution setup should return Some when detected_analysis exists"
+    );
+    let r = result.unwrap();
+    assert!(r.success, "pre-execution setup should succeed");
+    // Should have worktree_setup entries in the log from detected_analysis
+    let setup_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "setup").collect();
+    assert!(
+        !setup_entries.is_empty(),
+        "worktree_setup commands from detected_analysis should be executed"
+    );
+    // Verify the command is what we expect
+    assert_eq!(setup_entries[0].command, "echo setting_up_worktree");
+}
+
 // --- Validation log file writing tests ---
 
 #[test]
@@ -776,8 +983,14 @@ fn attach_failure_logs_writes_files_for_failed_command() {
 
     entry.attach_failure_logs(task_id);
 
-    assert!(entry.stdout_log_path.is_some(), "stdout_log_path should be set");
-    assert!(entry.stderr_log_path.is_some(), "stderr_log_path should be set");
+    assert!(
+        entry.stdout_log_path.is_some(),
+        "stdout_log_path should be set"
+    );
+    assert!(
+        entry.stderr_log_path.is_some(),
+        "stderr_log_path should be set"
+    );
 
     let stdout_path = std::path::Path::new(entry.stdout_log_path.as_ref().unwrap());
     let stderr_path = std::path::Path::new(entry.stderr_log_path.as_ref().unwrap());
@@ -815,8 +1028,14 @@ fn attach_failure_logs_skips_empty_outputs() {
 
     entry.attach_failure_logs(task_id);
 
-    assert!(entry.stdout_log_path.is_none(), "empty stdout should not produce a log file");
-    assert!(entry.stderr_log_path.is_none(), "empty stderr should not produce a log file");
+    assert!(
+        entry.stdout_log_path.is_none(),
+        "empty stdout should not produce a log file"
+    );
+    assert!(
+        entry.stderr_log_path.is_none(),
+        "empty stderr should not produce a log file"
+    );
 
     // Cleanup (dir may or may not exist)
     cleanup_validation_logs(task_id);
@@ -841,4 +1060,107 @@ fn cleanup_validation_logs_is_noop_when_no_directory() {
     let task_id = "nonexistent-task-id";
     // Should not panic or error
     cleanup_validation_logs(task_id);
+}
+
+// ==================
+// run_pre_execution_setup tests
+// ==================
+
+#[tokio::test]
+async fn pre_exec_setup_custom_analysis_empty_worktree_setup_not_overridden_by_detected() {
+    // When custom_analysis intentionally has empty worktree_setup [],
+    // detected_analysis's worktree_setup should NOT be merged in.
+    // This ensures the bug fix for run_pre_execution_setup is properly tested.
+    let worktree_dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let mut project = make_project(Some("main"));
+    project.working_directory = project_dir.path().to_str().unwrap().to_string();
+
+    // detected has a worktree_setup command (e.g., symlink setup)
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Rust", "install": "true", "worktree_setup": ["echo setup_command_from_detected"]}]"#.to_string()
+    );
+    // custom intentionally has EMPTY worktree_setup (user removed the commands)
+    project.custom_analysis = Some(
+        r#"[{"path": ".", "label": "Rust", "install": "true", "worktree_setup": []}]"#.to_string(),
+    );
+
+    let task = make_task(None, None);
+
+    // Use a worktree path different from project root so setup is not skipped
+    let result = run_pre_execution_setup(
+        &project,
+        &task,
+        worktree_dir.path(),
+        "test-task",
+        None,
+        "test",
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    assert!(
+        result.is_some(),
+        "run_pre_execution_setup should return Some when custom_analysis exists"
+    );
+    let r: PreExecSetupResult = result.unwrap();
+    // Setup entries in the log should be empty — custom_analysis's empty worktree_setup is respected
+    let setup_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "setup").collect();
+    assert!(
+        setup_entries.is_empty(),
+        "intentionally empty worktree_setup should NOT be overridden by detected_analysis in pre-execution setup; got {} setup entries: {:?}",
+        setup_entries.len(),
+        setup_entries.iter().map(|e| &e.command).collect::<Vec<_>>()
+    );
+    // Install phase should still run
+    let install_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "install").collect();
+    assert_eq!(
+        install_entries.len(),
+        1,
+        "install phase should have one entry"
+    );
+    assert_eq!(install_entries[0].command, "true");
+}
+
+#[tokio::test]
+async fn pre_exec_setup_uses_detected_when_custom_is_null() {
+    // When custom_analysis is NULL, detected_analysis should be used.
+    let worktree_dir = tempfile::tempdir().unwrap();
+    let project_dir = tempfile::tempdir().unwrap();
+    let mut project = make_project(Some("main"));
+    project.working_directory = project_dir.path().to_str().unwrap().to_string();
+
+    // Only detected_analysis is set
+    project.detected_analysis = Some(
+        r#"[{"path": ".", "label": "Node", "install": "true", "worktree_setup": ["echo setup_from_detected"]}]"#
+            .to_string(),
+    );
+    // custom_analysis is None
+
+    let task = make_task(None, None);
+
+    let result = run_pre_execution_setup(
+        &project,
+        &task,
+        worktree_dir.path(),
+        "test-task",
+        None,
+        "test",
+        &tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    assert!(
+        result.is_some(),
+        "run_pre_execution_setup should return Some when detected_analysis exists"
+    );
+    let r: PreExecSetupResult = result.unwrap();
+    // Setup entries should come from detected_analysis
+    let setup_entries: Vec<_> = r.log.iter().filter(|e| e.phase == "setup").collect();
+    assert_eq!(
+        setup_entries.len(),
+        1,
+        "setup phase should have one entry from detected_analysis"
+    );
+    assert_eq!(setup_entries[0].command, "echo setup_from_detected");
 }

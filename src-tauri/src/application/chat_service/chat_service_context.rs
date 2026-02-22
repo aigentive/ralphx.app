@@ -139,8 +139,7 @@ pub async fn resolve_working_directory(
                                     .file_name()
                                     .and_then(|name| name.to_str())
                                     .map(|name| {
-                                        name.starts_with("merge-")
-                                            || name.starts_with("rebase-")
+                                        name.starts_with("merge-") || name.starts_with("rebase-")
                                     })
                                     .unwrap_or(false);
 
@@ -448,7 +447,8 @@ pub async fn build_command(
     chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
 ) -> Result<SpawnableCommand, String> {
     // Compute agent_name using the resolution system (context type + optional status + team mode)
-    let agent_name = resolve_agent_with_team_mode(&conversation.context_type, entity_status, team_mode);
+    let agent_name =
+        resolve_agent_with_team_mode(&conversation.context_type, entity_status, team_mode);
     tracing::debug!(
         agent_name,
         context_type = ?conversation.context_type,
@@ -512,7 +512,10 @@ pub async fn build_command(
 
     // Add env vars for agent/task/project scope
     spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
-    spawnable.env("RALPHX_CONTEXT_TYPE", &conversation.context_type.to_string());
+    spawnable.env(
+        "RALPHX_CONTEXT_TYPE",
+        &conversation.context_type.to_string(),
+    );
     spawnable.env("RALPHX_CONTEXT_ID", &conversation.context_id);
     match conversation.context_type {
         ChatContextType::Task
@@ -598,15 +601,12 @@ pub async fn build_resume_command(
     task_repo: Arc<dyn TaskRepository>,
 ) -> Result<SpawnableCommand, String> {
     // Fetch entity status for status-aware agent resolution
-    let entity_status = get_entity_status_for_resume(
-        context_type,
-        context_id,
-        ideation_session_repo,
-        task_repo,
-    )
-    .await;
+    let entity_status =
+        get_entity_status_for_resume(context_type, context_id, ideation_session_repo, task_repo)
+            .await;
 
-    let agent_name = resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), team_mode);
+    let agent_name =
+        resolve_agent_with_team_mode(&context_type, entity_status.as_deref(), team_mode);
 
     // Re-inject context_id on resume so the agent can detect session mismatches.
     // For Ideation context, also includes <recovery_note> to trigger Phase 0 DB fallback.

@@ -26,8 +26,8 @@ use crate::application::team_state_tracker::{
     TeammateStatus,
 };
 use crate::domain::entities::{
-    Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation,
-    ArtifactRelationId, ArtifactRelationType, ArtifactType, TaskId,
+    Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactRelation, ArtifactRelationId,
+    ArtifactRelationType, ArtifactType, TaskId,
 };
 use crate::http_server::types::{
     ApproveTeamPlanRequest, ApproveTeamPlanResponse, CreateTeamArtifactRequest,
@@ -85,7 +85,10 @@ pub async fn request_team_plan(
     // Validate the plan against constraints
     let plan = validate_team_plan(&constraints, &req.process, &spawn_requests).map_err(|e| {
         warn!(process = %req.process, error = %e, "Team plan validation failed");
-        (StatusCode::BAD_REQUEST, format!("Team plan validation failed: {e}"))
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Team plan validation failed: {e}"),
+        )
     })?;
 
     let plan_id = plan.plan_id.clone();
@@ -128,10 +131,7 @@ pub async fn request_team_plan(
         .await;
 
     // Register a watch channel for this plan (before emitting event)
-    let mut rx = state
-        .team_tracker
-        .register_plan_channel(&plan_id)
-        .await;
+    let mut rx = state.team_tracker.register_plan_channel(&plan_id).await;
 
     // Emit event for frontend to show approval UI (with validated plan)
     if let Some(app_handle) = &state.app_state.app_handle {
@@ -274,7 +274,11 @@ pub async fn approve_team_plan(
         })?;
 
     // 2. Create team (or find existing) — via TeamService for DB persistence + events
-    let team_name = format!("{}-{}", plan.process, &req.context_id[..8.min(req.context_id.len())]);
+    let team_name = format!(
+        "{}-{}",
+        plan.process,
+        &req.context_id[..8.min(req.context_id.len())]
+    );
     let team_exists = state.team_service.team_exists(&team_name).await;
     if !team_exists {
         state
@@ -288,7 +292,8 @@ pub async fn approve_team_plan(
     }
 
     // 3. Resolve the working directory (worktree-aware for task contexts)
-    let working_dir = resolve_teammate_working_dir(&state, &req.context_type, &req.context_id).await;
+    let working_dir =
+        resolve_teammate_working_dir(&state, &req.context_type, &req.context_id).await;
     info!(
         plan_id = %req.plan_id,
         context_type = %req.context_type,
@@ -304,8 +309,7 @@ pub async fn approve_team_plan(
     let mut spawned_teammates = Vec::new();
 
     for pending in &plan.teammates {
-        let teammate_name =
-            generate_unique_teammate_name(&state, &team_name, &pending.role).await;
+        let teammate_name = generate_unique_teammate_name(&state, &team_name, &pending.role).await;
         let teammate_color = assign_teammate_color(&state, &team_name).await;
 
         // Register teammate in DB via TeamService (persistence + events)
@@ -329,19 +333,15 @@ pub async fn approve_team_plan(
         };
 
         // Spawn a separate CLI worker process for this teammate
-        let spawn_config = TeammateSpawnConfig::new(
-            &teammate_name,
-            &team_name,
-            &req.context_id,
-            &pending.prompt,
-        )
-        .with_model(&pending.model)
-        .with_tools(pending.tools.clone())
-        .with_mcp_tools(pending.mcp_tools.clone())
-        .with_color(&teammate_color)
-        .with_mcp_agent_type(mcp_type)
-        .with_print_mode_prompt(&pending.prompt)
-        .with_working_dir(working_dir.clone());
+        let spawn_config =
+            TeammateSpawnConfig::new(&teammate_name, &team_name, &req.context_id, &pending.prompt)
+                .with_model(&pending.model)
+                .with_tools(pending.tools.clone())
+                .with_mcp_tools(pending.mcp_tools.clone())
+                .with_color(&teammate_color)
+                .with_mcp_agent_type(mcp_type)
+                .with_print_mode_prompt(&pending.prompt)
+                .with_working_dir(working_dir.clone());
 
         let client = ClaudeCodeClient::new();
         let args = client.build_teammate_cli_args(&spawn_config);
@@ -377,20 +377,18 @@ pub async fn approve_team_plan(
 
                 // Start background stream processor for teammate stdout
                 let stream_task = match (stdout, &state.app_state.app_handle) {
-                    (Some(stdout), Some(app_handle)) => {
-                        Some(
-                            crate::application::team_stream_processor::start_teammate_stream(
-                                stdout,
-                                team_name.clone(),
-                                teammate_name.clone(),
-                                req.context_type.clone(),
-                                req.context_id.clone(),
-                                app_handle.clone(),
-                                std::sync::Arc::new(state.team_tracker.clone()),
-                                Some(state.team_service.clone()),
-                            ),
-                        )
-                    }
+                    (Some(stdout), Some(app_handle)) => Some(
+                        crate::application::team_stream_processor::start_teammate_stream(
+                            stdout,
+                            team_name.clone(),
+                            teammate_name.clone(),
+                            req.context_type.clone(),
+                            req.context_id.clone(),
+                            app_handle.clone(),
+                            std::sync::Arc::new(state.team_tracker.clone()),
+                            Some(state.team_service.clone()),
+                        ),
+                    ),
                     _ => {
                         warn!(
                             teammate = %teammate_name,
@@ -413,11 +411,7 @@ pub async fn approve_team_plan(
 
                 let _ = state
                     .team_service
-                    .update_teammate_status(
-                        &team_name,
-                        &teammate_name,
-                        TeammateStatus::Running,
-                    )
+                    .update_teammate_status(&team_name, &teammate_name, TeammateStatus::Running)
                     .await;
             }
             Err(e) => {
@@ -430,11 +424,7 @@ pub async fn approve_team_plan(
 
                 let _ = state
                     .team_service
-                    .update_teammate_status(
-                        &team_name,
-                        &teammate_name,
-                        TeammateStatus::Failed,
-                    )
+                    .update_teammate_status(&team_name, &teammate_name, TeammateStatus::Failed)
                     .await;
 
                 if let Some(app_handle) = &state.app_state.app_handle {
@@ -587,7 +577,10 @@ pub async fn request_teammate_spawn(
     // Validate as a single-teammate plan
     let _approved = validate_team_plan(&constraints, "ideation", &[spawn_req]).map_err(|e| {
         warn!(role = %req.role, error = %e, "Teammate spawn validation failed");
-        (StatusCode::BAD_REQUEST, format!("Spawn validation failed: {e}"))
+        (
+            StatusCode::BAD_REQUEST,
+            format!("Spawn validation failed: {e}"),
+        )
     })?;
 
     // 2. Find the active team
@@ -622,7 +615,13 @@ pub async fn request_teammate_spawn(
     // 5. Register teammate via TeamService (persists to DB + emits events)
     state
         .team_service
-        .add_teammate(&team_name, &teammate_name, &teammate_color, &req.model, &req.role)
+        .add_teammate(
+            &team_name,
+            &teammate_name,
+            &teammate_color,
+            &req.model,
+            &req.role,
+        )
         .await
         .map_err(|e| {
             error!(error = %e, "Failed to register teammate");
@@ -630,17 +629,13 @@ pub async fn request_teammate_spawn(
         })?;
 
     // 6. Build spawn config and spawn the process
-    let spawn_config = TeammateSpawnConfig::new(
-        &teammate_name,
-        &team_name,
-        &context_id,
-        &req.prompt,
-    )
-    .with_model(&req.model)
-    .with_tools(req.tools.clone())
-    .with_mcp_tools(req.mcp_tools.clone())
-    .with_color(&teammate_color)
-    .with_working_dir(working_dir);
+    let spawn_config =
+        TeammateSpawnConfig::new(&teammate_name, &team_name, &context_id, &req.prompt)
+            .with_model(&req.model)
+            .with_tools(req.tools.clone())
+            .with_mcp_tools(req.mcp_tools.clone())
+            .with_color(&teammate_color)
+            .with_working_dir(working_dir);
 
     let client = ClaudeCodeClient::new();
     match client.spawn_teammate_interactive(spawn_config).await {
@@ -658,20 +653,18 @@ pub async fn request_teammate_spawn(
 
             // 8. Start background stream processor if we have both stdout and app_handle
             let stream_task = match (stdout, &state.app_state.app_handle) {
-                (Some(stdout), Some(app_handle)) => {
-                    Some(
-                        crate::application::team_stream_processor::start_teammate_stream(
-                            stdout,
-                            team_name.clone(),
-                            teammate_name.clone(),
-                            "ideation".to_string(),
-                            context_id.clone(),
-                            app_handle.clone(),
-                            std::sync::Arc::new(state.team_tracker.clone()),
-                            Some(state.team_service.clone()),
-                        ),
-                    )
-                }
+                (Some(stdout), Some(app_handle)) => Some(
+                    crate::application::team_stream_processor::start_teammate_stream(
+                        stdout,
+                        team_name.clone(),
+                        teammate_name.clone(),
+                        "ideation".to_string(),
+                        context_id.clone(),
+                        app_handle.clone(),
+                        std::sync::Arc::new(state.team_tracker.clone()),
+                        Some(state.team_service.clone()),
+                    ),
+                ),
                 (None, _) => {
                     warn!(
                         teammate = %teammate_name,
@@ -712,7 +705,10 @@ pub async fn request_teammate_spawn(
 
             Ok(Json(RequestTeammateSpawnResponse {
                 success: true,
-                message: format!("Teammate '{}' spawned for team '{}'", teammate_name, team_name),
+                message: format!(
+                    "Teammate '{}' spawned for team '{}'",
+                    teammate_name, team_name
+                ),
                 teammate_name,
             }))
         }
@@ -794,7 +790,12 @@ async fn resolve_teammate_working_dir(
         }
     };
 
-    let _project = match state.app_state.project_repo.get_by_id(&task.project_id).await {
+    let _project = match state
+        .app_state
+        .project_repo
+        .get_by_id(&task.project_id)
+        .await
+    {
         Ok(Some(project)) => project,
         Ok(None) => {
             warn!(

@@ -15,7 +15,8 @@ pub trait TeamMessageRepository: Send + Sync {
     async fn create(&self, message: TeamMessageRecord) -> AppResult<TeamMessageRecord>;
 
     /// Get all messages for a session, ordered by created_at ASC
-    async fn get_by_session(&self, session_id: &TeamSessionId) -> AppResult<Vec<TeamMessageRecord>>;
+    async fn get_by_session(&self, session_id: &TeamSessionId)
+        -> AppResult<Vec<TeamMessageRecord>>;
 
     /// Get recent messages for a session (with limit), ordered oldest→newest
     async fn get_recent_by_session(

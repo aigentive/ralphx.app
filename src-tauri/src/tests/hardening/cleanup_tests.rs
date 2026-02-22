@@ -450,9 +450,7 @@ async fn test_fix_merged_plan_branch_status_triggers_recreation_on_reexecution()
     //
     // Full unit-level regression (with a real temp git repo) is in:
     //   merge_helpers.rs::tests::test_resolve_task_base_branch_merged_branch_missing_recreates_it
-    use crate::domain::entities::{
-        ArtifactId, IdeationSessionId, PlanBranch, PlanBranchStatus,
-    };
+    use crate::domain::entities::{ArtifactId, IdeationSessionId, PlanBranch, PlanBranchStatus};
 
     let s = create_hardening_services();
 
@@ -545,7 +543,8 @@ async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path()
     // path doesn't exist — the function proceeds and cleanup runs.
     // Git branch/worktree deletion will also fail (non-fatal) for the same reason.
     // What we verify is that task_branch and worktree_path are cleared in the DB.
-    let task_repo = s.task_repo.clone() as std::sync::Arc<dyn crate::domain::repositories::TaskRepository>;
+    let task_repo =
+        s.task_repo.clone() as std::sync::Arc<dyn crate::domain::repositories::TaskRepository>;
     let result = complete_merge_internal::<tauri::Wry>(
         &mut task,
         &project,

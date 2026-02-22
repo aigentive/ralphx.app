@@ -174,7 +174,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
         task.metadata
             .as_deref()
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-            .and_then(|v| v.get("validation_revert_count").and_then(|c| c.as_u64()).map(|c| c as u32))
+            .and_then(|v| {
+                v.get("validation_revert_count")
+                    .and_then(|c| c.as_u64())
+                    .map(|c| c as u32)
+            })
             .unwrap_or(0)
     }
 
@@ -290,12 +294,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()
-            .and_then(|meta| {
-                meta.events
-                    .iter()
-                    .rev()
-                    .find_map(|e| e.source_sha.clone())
-            })
+            .and_then(|meta| meta.events.iter().rev().find_map(|e| e.source_sha.clone()))
     }
 
     /// Get the current HEAD SHA of the task's source branch using GitService.

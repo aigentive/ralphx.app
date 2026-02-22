@@ -2,8 +2,7 @@ use super::*;
 
 #[test]
 fn test_status_transition_new() {
-    let transition =
-        StatusTransition::new(InternalStatus::Backlog, InternalStatus::Ready, "user");
+    let transition = StatusTransition::new(InternalStatus::Backlog, InternalStatus::Ready, "user");
 
     assert_eq!(transition.from, InternalStatus::Backlog);
     assert_eq!(transition.to, InternalStatus::Ready);
@@ -62,8 +61,7 @@ fn test_status_transition_debug() {
 
 #[test]
 fn test_status_transition_serializes_to_json() {
-    let transition =
-        StatusTransition::new(InternalStatus::Backlog, InternalStatus::Ready, "user");
+    let transition = StatusTransition::new(InternalStatus::Backlog, InternalStatus::Ready, "user");
 
     let json = serde_json::to_string(&transition).unwrap();
     assert!(json.contains("\"from\":\"backlog\""));

@@ -72,10 +72,9 @@ impl ProposalDependencyRepository for MemoryProposalDependencyRepository {
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
     ) -> AppResult<()> {
-        self.dependencies
-            .write()
-            .unwrap()
-            .retain(|(p, d, _, _)| p != &proposal_id.to_string() || d != &depends_on_id.to_string());
+        self.dependencies.write().unwrap().retain(|(p, d, _, _)| {
+            p != &proposal_id.to_string() || d != &depends_on_id.to_string()
+        });
         Ok(())
     }
 

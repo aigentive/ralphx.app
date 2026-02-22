@@ -104,21 +104,19 @@ impl StreamingStateCache {
     /// Otherwise, a new entry is added.
     pub async fn upsert_tool_call(&self, conversation_id: &str, tool_call: CachedToolCall) {
         let mut states = self.states.lock().await;
-        let state = states.entry(conversation_id.to_string()).or_insert_with(|| {
-            tracing::debug!(
-                conversation_id,
-                tool_id = %tool_call.id,
-                "StreamingStateCache: creating new state for upsert_tool_call"
-            );
-            ConversationStreamingState::new()
-        });
+        let state = states
+            .entry(conversation_id.to_string())
+            .or_insert_with(|| {
+                tracing::debug!(
+                    conversation_id,
+                    tool_id = %tool_call.id,
+                    "StreamingStateCache: creating new state for upsert_tool_call"
+                );
+                ConversationStreamingState::new()
+            });
 
         // Find existing tool call with same ID and update, or add new
-        if let Some(existing) = state
-            .tool_calls
-            .iter_mut()
-            .find(|tc| tc.id == tool_call.id)
-        {
+        if let Some(existing) = state.tool_calls.iter_mut().find(|tc| tc.id == tool_call.id) {
             *existing = tool_call;
             tracing::trace!(
                 conversation_id,
@@ -140,14 +138,16 @@ impl StreamingStateCache {
     /// Add a streaming task (subagent started event).
     pub async fn add_task(&self, conversation_id: &str, task: CachedStreamingTask) {
         let mut states = self.states.lock().await;
-        let state = states.entry(conversation_id.to_string()).or_insert_with(|| {
-            tracing::debug!(
-                conversation_id,
-                tool_use_id = %task.tool_use_id,
-                "StreamingStateCache: creating new state for add_task"
-            );
-            ConversationStreamingState::new()
-        });
+        let state = states
+            .entry(conversation_id.to_string())
+            .or_insert_with(|| {
+                tracing::debug!(
+                    conversation_id,
+                    tool_use_id = %task.tool_use_id,
+                    "StreamingStateCache: creating new state for add_task"
+                );
+                ConversationStreamingState::new()
+            });
 
         tracing::debug!(
             conversation_id,
@@ -182,14 +182,16 @@ impl StreamingStateCache {
     /// Append text to the partial content buffer.
     pub async fn append_text(&self, conversation_id: &str, text: &str) {
         let mut states = self.states.lock().await;
-        let state = states.entry(conversation_id.to_string()).or_insert_with(|| {
-            tracing::debug!(
-                conversation_id,
-                text_len = text.len(),
-                "StreamingStateCache: creating new state for append_text"
-            );
-            ConversationStreamingState::new()
-        });
+        let state = states
+            .entry(conversation_id.to_string())
+            .or_insert_with(|| {
+                tracing::debug!(
+                    conversation_id,
+                    text_len = text.len(),
+                    "StreamingStateCache: creating new state for append_text"
+                );
+                ConversationStreamingState::new()
+            });
 
         state.partial_text.push_str(text);
         state.updated_at = Utc::now();
@@ -207,10 +209,7 @@ impl StreamingStateCache {
     pub async fn clear(&self, conversation_id: &str) {
         let mut states = self.states.lock().await;
         if states.remove(conversation_id).is_some() {
-            tracing::debug!(
-                conversation_id,
-                "StreamingStateCache: cleared state"
-            );
+            tracing::debug!(conversation_id, "StreamingStateCache: cleared state");
         }
     }
 

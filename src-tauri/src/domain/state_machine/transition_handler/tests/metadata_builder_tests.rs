@@ -384,7 +384,8 @@ fn test_build_restart_metadata_clears_stop_metadata_without_note() {
 
 #[test]
 fn test_clear_stop_metadata_removes_key() {
-    let existing = r#"{"stop_metadata":"{\"stopped_from_status\":\"merging\"}","other_key":"value"}"#;
+    let existing =
+        r#"{"stop_metadata":"{\"stopped_from_status\":\"merging\"}","other_key":"value"}"#;
     let update = clear_stop_metadata();
     let result = update.merge_into(Some(existing));
 
@@ -457,10 +458,7 @@ fn test_with_u32_adds_numeric_value() {
     let result = update.merge_into(None);
 
     let parsed: Map<String, Value> = serde_json::from_str(&result).unwrap();
-    assert_eq!(
-        parsed.get("retry_count").unwrap().as_u64().unwrap(),
-        42u64
-    );
+    assert_eq!(parsed.get("retry_count").unwrap().as_u64().unwrap(), 42u64);
 }
 
 #[test]

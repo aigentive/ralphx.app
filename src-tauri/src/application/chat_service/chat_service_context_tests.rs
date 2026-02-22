@@ -190,8 +190,8 @@ async fn test_format_attachments_file_read_error() {
 // Tests for get_entity_status_for_resume
 use crate::domain::entities::{IdeationSession, IdeationSessionStatus, ProjectId};
 use crate::domain::repositories::IdeationSessionRepository;
-use async_trait::async_trait;
 use crate::error::AppResult;
+use async_trait::async_trait;
 
 // Mock for testing
 struct MockIdeationRepo {
@@ -200,7 +200,9 @@ struct MockIdeationRepo {
 
 impl MockIdeationRepo {
     fn with_session(session: IdeationSession) -> Self {
-        Self { session: Some(session) }
+        Self {
+            session: Some(session),
+        }
     }
     fn empty() -> Self {
         Self { session: None }
@@ -218,34 +220,67 @@ impl IdeationSessionRepository for MockIdeationRepo {
     async fn get_by_project(&self, _project_id: &ProjectId) -> AppResult<Vec<IdeationSession>> {
         unimplemented!()
     }
-    async fn update_status(&self, _id: &IdeationSessionId, _status: IdeationSessionStatus) -> AppResult<()> {
+    async fn update_status(
+        &self,
+        _id: &IdeationSessionId,
+        _status: IdeationSessionStatus,
+    ) -> AppResult<()> {
         unimplemented!()
     }
-    async fn update_title(&self, _id: &IdeationSessionId, _title: Option<String>, _title_source: &str) -> AppResult<()> {
+    async fn update_title(
+        &self,
+        _id: &IdeationSessionId,
+        _title: Option<String>,
+        _title_source: &str,
+    ) -> AppResult<()> {
         unimplemented!()
     }
     async fn delete(&self, _id: &IdeationSessionId) -> AppResult<()> {
         unimplemented!()
     }
-    async fn get_active_by_project(&self, _project_id: &ProjectId) -> AppResult<Vec<IdeationSession>> {
+    async fn get_active_by_project(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Vec<IdeationSession>> {
         unimplemented!()
     }
-    async fn count_by_status(&self, _project_id: &ProjectId, _status: IdeationSessionStatus) -> AppResult<u32> {
+    async fn count_by_status(
+        &self,
+        _project_id: &ProjectId,
+        _status: IdeationSessionStatus,
+    ) -> AppResult<u32> {
         unimplemented!()
     }
-    async fn update_plan_artifact_id(&self, _id: &IdeationSessionId, _plan_artifact_id: Option<String>) -> AppResult<()> {
+    async fn update_plan_artifact_id(
+        &self,
+        _id: &IdeationSessionId,
+        _plan_artifact_id: Option<String>,
+    ) -> AppResult<()> {
         unimplemented!()
     }
-    async fn get_by_plan_artifact_id(&self, _plan_artifact_id: &str) -> AppResult<Vec<IdeationSession>> {
+    async fn get_by_plan_artifact_id(
+        &self,
+        _plan_artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>> {
         unimplemented!()
     }
-    async fn get_children(&self, _parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+    async fn get_children(
+        &self,
+        _parent_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>> {
         unimplemented!()
     }
-    async fn get_ancestor_chain(&self, _session_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
+    async fn get_ancestor_chain(
+        &self,
+        _session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>> {
         unimplemented!()
     }
-    async fn set_parent(&self, _session_id: &IdeationSessionId, _parent_id: Option<&IdeationSessionId>) -> AppResult<()> {
+    async fn set_parent(
+        &self,
+        _session_id: &IdeationSessionId,
+        _parent_id: Option<&IdeationSessionId>,
+    ) -> AppResult<()> {
         unimplemented!()
     }
 }
@@ -254,7 +289,10 @@ struct MockTaskRepo;
 
 #[async_trait]
 impl TaskRepository for MockTaskRepo {
-    async fn create(&self, task: crate::domain::entities::Task) -> AppResult<crate::domain::entities::Task> {
+    async fn create(
+        &self,
+        task: crate::domain::entities::Task,
+    ) -> AppResult<crate::domain::entities::Task> {
         Ok(task)
     }
 
@@ -262,7 +300,10 @@ impl TaskRepository for MockTaskRepo {
         Ok(None)
     }
 
-    async fn get_by_project(&self, _project_id: &ProjectId) -> AppResult<Vec<crate::domain::entities::Task>> {
+    async fn get_by_project(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Vec<crate::domain::entities::Task>> {
         Ok(vec![])
     }
 
@@ -320,7 +361,10 @@ impl TaskRepository for MockTaskRepo {
         Ok(None)
     }
 
-    async fn get_next_executable(&self, _project_id: &ProjectId) -> AppResult<Option<crate::domain::entities::Task>> {
+    async fn get_next_executable(
+        &self,
+        _project_id: &ProjectId,
+    ) -> AppResult<Option<crate::domain::entities::Task>> {
         Ok(None)
     }
 
@@ -389,11 +433,17 @@ impl TaskRepository for MockTaskRepo {
         Ok(None)
     }
 
-    async fn get_oldest_ready_tasks(&self, _limit: u32) -> AppResult<Vec<crate::domain::entities::Task>> {
+    async fn get_oldest_ready_tasks(
+        &self,
+        _limit: u32,
+    ) -> AppResult<Vec<crate::domain::entities::Task>> {
         Ok(vec![])
     }
 
-    async fn get_stale_ready_tasks(&self, _threshold_secs: u64) -> AppResult<Vec<crate::domain::entities::Task>> {
+    async fn get_stale_ready_tasks(
+        &self,
+        _threshold_secs: u64,
+    ) -> AppResult<Vec<crate::domain::entities::Task>> {
         Ok(vec![])
     }
 
@@ -561,11 +611,7 @@ async fn test_build_command_with_team_mode_false() {
 fn test_build_resume_initial_prompt_ideation_includes_context_id_and_recovery_note() {
     let context_id = "test-session-123";
     let user_message = "hello";
-    let result = build_resume_initial_prompt(
-        ChatContextType::Ideation,
-        context_id,
-        user_message,
-    );
+    let result = build_resume_initial_prompt(ChatContextType::Ideation, context_id, user_message);
     assert!(result.contains(&format!("<context_id>{}</context_id>", context_id)));
     assert!(result.contains("<recovery_note>"));
     assert!(result.contains("get_session_messages"));
@@ -576,11 +622,7 @@ fn test_build_resume_initial_prompt_ideation_includes_context_id_and_recovery_no
 fn test_build_resume_initial_prompt_task_includes_context_id_no_recovery_note() {
     let context_id = "task-abc";
     let user_message = "hello";
-    let result = build_resume_initial_prompt(
-        ChatContextType::Task,
-        context_id,
-        user_message,
-    );
+    let result = build_resume_initial_prompt(ChatContextType::Task, context_id, user_message);
     assert!(result.contains(&format!("<task_id>{}</task_id>", context_id)));
     assert!(!result.contains("<recovery_note>"));
     assert!(result.contains(&format!("<user_message>{}</user_message>", user_message)));
@@ -590,11 +632,7 @@ fn test_build_resume_initial_prompt_task_includes_context_id_no_recovery_note() 
 fn test_build_resume_initial_prompt_project_includes_context_id_no_recovery_note() {
     let context_id = "project-xyz";
     let user_message = "hello";
-    let result = build_resume_initial_prompt(
-        ChatContextType::Project,
-        context_id,
-        user_message,
-    );
+    let result = build_resume_initial_prompt(ChatContextType::Project, context_id, user_message);
     assert!(result.contains(&format!("<project_id>{}</project_id>", context_id)));
     assert!(!result.contains("<recovery_note>"));
 }
@@ -603,16 +641,9 @@ fn test_build_resume_initial_prompt_project_includes_context_id_no_recovery_note
 fn test_build_resume_initial_prompt_task_execution_delegates_to_initial_prompt() {
     let context_id = "task-exec-123";
     let user_message = "execute";
-    let resume = build_resume_initial_prompt(
-        ChatContextType::TaskExecution,
-        context_id,
-        user_message,
-    );
-    let initial = build_initial_prompt(
-        ChatContextType::TaskExecution,
-        context_id,
-        user_message,
-    );
+    let resume =
+        build_resume_initial_prompt(ChatContextType::TaskExecution, context_id, user_message);
+    let initial = build_initial_prompt(ChatContextType::TaskExecution, context_id, user_message);
     assert_eq!(resume, initial);
 }
 
@@ -690,7 +721,10 @@ async fn resolve_working_directory_merge_context_accepts_rebase_prefix() {
     let project_id = ProjectId::from_string("proj-1".to_string());
     let project_dir = parent.path().join("main-repo");
     std::fs::create_dir_all(&project_dir).unwrap();
-    let mut project = Project::new("test".to_string(), project_dir.to_str().unwrap().to_string());
+    let mut project = Project::new(
+        "test".to_string(),
+        project_dir.to_str().unwrap().to_string(),
+    );
     project.id = project_id.clone();
     project.git_mode = GitMode::Worktree;
     project_repo.create(project).await.unwrap();
@@ -738,7 +772,10 @@ async fn resolve_working_directory_merge_context_accepts_merge_prefix() {
     let project_id = ProjectId::from_string("proj-1".to_string());
     let project_dir = parent.path().join("main-repo");
     std::fs::create_dir_all(&project_dir).unwrap();
-    let mut project = Project::new("test".to_string(), project_dir.to_str().unwrap().to_string());
+    let mut project = Project::new(
+        "test".to_string(),
+        project_dir.to_str().unwrap().to_string(),
+    );
     project.id = project_id.clone();
     project.git_mode = GitMode::Worktree;
     project_repo.create(project).await.unwrap();
@@ -787,7 +824,10 @@ async fn resolve_working_directory_merge_context_rejects_task_prefix() {
     let project_id = ProjectId::from_string("proj-1".to_string());
     let project_dir = parent.path().join("main-repo");
     std::fs::create_dir_all(&project_dir).unwrap();
-    let mut project = Project::new("test".to_string(), project_dir.to_str().unwrap().to_string());
+    let mut project = Project::new(
+        "test".to_string(),
+        project_dir.to_str().unwrap().to_string(),
+    );
     project.id = project_id.clone();
     project.git_mode = GitMode::Worktree;
     project_repo.create(project).await.unwrap();

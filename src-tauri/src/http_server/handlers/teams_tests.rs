@@ -35,15 +35,13 @@ fn team_artifact_type_mapping() {
     ));
 
     // Invalid type
-    assert!(
-        match "InvalidType" {
-            "TeamResearch" => Some(ArtifactType::TeamResearch),
-            "TeamAnalysis" => Some(ArtifactType::TeamAnalysis),
-            "TeamSummary" => Some(ArtifactType::TeamSummary),
-            _ => None,
-        }
-        .is_none()
-    );
+    assert!(match "InvalidType" {
+        "TeamResearch" => Some(ArtifactType::TeamResearch),
+        "TeamAnalysis" => Some(ArtifactType::TeamAnalysis),
+        "TeamSummary" => Some(ArtifactType::TeamSummary),
+        _ => None,
+    }
+    .is_none());
 }
 
 #[test]

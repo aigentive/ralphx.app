@@ -20,8 +20,7 @@ async fn test_create_and_get_job() {
     let repo = setup_test_repo().await;
     let project_id = ProjectId::from_string("test-project".to_string());
     let payload = ArchiveJobPayload::memory_snapshot("mem_123");
-    let job =
-        MemoryArchiveJob::new(project_id.clone(), ArchiveJobType::MemorySnapshot, payload);
+    let job = MemoryArchiveJob::new(project_id.clone(), ArchiveJobType::MemorySnapshot, payload);
 
     let created_job = repo.create(job.clone()).await.unwrap();
     assert_eq!(created_job.id, job.id);

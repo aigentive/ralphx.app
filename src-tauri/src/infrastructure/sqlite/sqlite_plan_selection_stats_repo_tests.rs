@@ -118,18 +118,22 @@ async fn test_get_stats_batch() {
 
     // Create second session
     let session2 = IdeationSessionId::new();
-    repo.conn.lock().await.execute(
-        "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
+    repo.conn
+        .lock()
+        .await
+        .execute(
+            "INSERT INTO ideation_sessions (id, project_id, title, status, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-        rusqlite::params![
-            session2.as_str(),
-            project_id.as_str(),
-            "Test Session 2",
-            "accepted",
-            Utc::now().to_rfc3339(),
-            Utc::now().to_rfc3339(),
-        ],
-    ).unwrap();
+            rusqlite::params![
+                session2.as_str(),
+                project_id.as_str(),
+                "Test Session 2",
+                "accepted",
+                Utc::now().to_rfc3339(),
+                Utc::now().to_rfc3339(),
+            ],
+        )
+        .unwrap();
 
     let session3 = IdeationSessionId::new(); // Not in DB
     let timestamp = Utc::now();

@@ -546,11 +546,8 @@ async fn test_reject_fix_task_creates_new_fix() {
         .unwrap();
     let issue = ReviewIssueInput::new("Missing tests", IssueSeverity::Major)
         .with_no_step_reason("General requirement");
-    let input = CompleteReviewInput::needs_changes_with_issues(
-        "Missing tests",
-        "Add tests",
-        vec![issue],
-    );
+    let input =
+        CompleteReviewInput::needs_changes_with_issues("Missing tests", "Add tests", vec![issue]);
     let fix_task_id = service
         .process_review_result(&mut review, &input)
         .await
@@ -589,8 +586,7 @@ async fn test_reject_fix_task_max_attempts_moves_to_backlog() {
     let (review_repo, task_repo, project_id, task_id) = setup();
     // Set max_fix_attempts to 1
     let settings = ReviewSettings::with_max_attempts(1);
-    let service =
-        ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
+    let service = ReviewService::with_settings(review_repo.clone(), task_repo.clone(), settings);
 
     // Create a review and fix task
     let mut review = service
@@ -599,11 +595,8 @@ async fn test_reject_fix_task_max_attempts_moves_to_backlog() {
         .unwrap();
     let issue = ReviewIssueInput::new("Missing tests", IssueSeverity::Major)
         .with_no_step_reason("General requirement");
-    let input = CompleteReviewInput::needs_changes_with_issues(
-        "Missing tests",
-        "Add tests",
-        vec![issue],
-    );
+    let input =
+        CompleteReviewInput::needs_changes_with_issues("Missing tests", "Add tests", vec![issue]);
     let fix_task_id = service
         .process_review_result(&mut review, &input)
         .await
@@ -642,11 +635,8 @@ async fn test_get_fix_attempt_count() {
         .unwrap();
     let issue = ReviewIssueInput::new("Missing tests", IssueSeverity::Major)
         .with_no_step_reason("General requirement");
-    let input = CompleteReviewInput::needs_changes_with_issues(
-        "Missing tests",
-        "Add tests",
-        vec![issue],
-    );
+    let input =
+        CompleteReviewInput::needs_changes_with_issues("Missing tests", "Add tests", vec![issue]);
     service
         .process_review_result(&mut review, &input)
         .await

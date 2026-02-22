@@ -240,18 +240,45 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     }
 
     // Stream timeouts
-    env_u64!(cfg.stream.merge_line_read_secs, "RALPHX_STREAM_MERGE_LINE_READ_SECS");
-    env_u64!(cfg.stream.merge_parse_stall_secs, "RALPHX_STREAM_MERGE_PARSE_STALL_SECS");
-    env_u64!(cfg.stream.review_line_read_secs, "RALPHX_STREAM_REVIEW_LINE_READ_SECS");
-    env_u64!(cfg.stream.review_parse_stall_secs, "RALPHX_STREAM_REVIEW_PARSE_STALL_SECS");
-    env_u64!(cfg.stream.default_line_read_secs, "RALPHX_STREAM_DEFAULT_LINE_READ_SECS");
-    env_u64!(cfg.stream.default_parse_stall_secs, "RALPHX_STREAM_DEFAULT_PARSE_STALL_SECS");
-    env_u64!(cfg.stream.team_line_read_secs, "RALPHX_STREAM_TEAM_LINE_READ_SECS");
-    env_u64!(cfg.stream.team_parse_stall_secs, "RALPHX_STREAM_TEAM_PARSE_STALL_SECS");
+    env_u64!(
+        cfg.stream.merge_line_read_secs,
+        "RALPHX_STREAM_MERGE_LINE_READ_SECS"
+    );
+    env_u64!(
+        cfg.stream.merge_parse_stall_secs,
+        "RALPHX_STREAM_MERGE_PARSE_STALL_SECS"
+    );
+    env_u64!(
+        cfg.stream.review_line_read_secs,
+        "RALPHX_STREAM_REVIEW_LINE_READ_SECS"
+    );
+    env_u64!(
+        cfg.stream.review_parse_stall_secs,
+        "RALPHX_STREAM_REVIEW_PARSE_STALL_SECS"
+    );
+    env_u64!(
+        cfg.stream.default_line_read_secs,
+        "RALPHX_STREAM_DEFAULT_LINE_READ_SECS"
+    );
+    env_u64!(
+        cfg.stream.default_parse_stall_secs,
+        "RALPHX_STREAM_DEFAULT_PARSE_STALL_SECS"
+    );
+    env_u64!(
+        cfg.stream.team_line_read_secs,
+        "RALPHX_STREAM_TEAM_LINE_READ_SECS"
+    );
+    env_u64!(
+        cfg.stream.team_parse_stall_secs,
+        "RALPHX_STREAM_TEAM_PARSE_STALL_SECS"
+    );
 
     // Reconciliation
     // Backward compat: old env key
-    env_u64!(cfg.reconciliation.merger_timeout_secs, "RALPHX_MERGER_TIMEOUT_SECS");
+    env_u64!(
+        cfg.reconciliation.merger_timeout_secs,
+        "RALPHX_MERGER_TIMEOUT_SECS"
+    );
     // New canonical key (takes precedence if both set)
     env_u64!(cfg.reconciliation.merger_timeout_secs, "RALPHX_RECONCILIATION_MERGER_TIMEOUT_SECS");
     env_u64!(cfg.reconciliation.merging_max_retries, "RALPHX_RECONCILIATION_MERGING_MAX_RETRIES");
@@ -280,14 +307,30 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     // Git
     env_u64!(cfg.git.cmd_timeout_secs, "RALPHX_GIT_CMD_TIMEOUT_SECS");
     env_u64!(cfg.git.max_retries, "RALPHX_GIT_MAX_RETRIES");
-    env_u64!(cfg.git.index_lock_stale_secs, "RALPHX_GIT_INDEX_LOCK_STALE_SECS");
-    env_u64!(cfg.git.agent_kill_settle_secs, "RALPHX_GIT_AGENT_KILL_SETTLE_SECS");
-    env_u64!(cfg.git.agent_stop_timeout_secs, "RALPHX_GIT_AGENT_STOP_TIMEOUT_SECS");
-    env_u64!(cfg.git.cleanup_worktree_timeout_secs, "RALPHX_GIT_CLEANUP_WORKTREE_TIMEOUT_SECS");
-    env_u64!(cfg.git.cleanup_git_op_timeout_secs, "RALPHX_GIT_CLEANUP_GIT_OP_TIMEOUT_SECS");
+    env_u64!(
+        cfg.git.index_lock_stale_secs,
+        "RALPHX_GIT_INDEX_LOCK_STALE_SECS"
+    );
+    env_u64!(
+        cfg.git.agent_kill_settle_secs,
+        "RALPHX_GIT_AGENT_KILL_SETTLE_SECS"
+    );
+    env_u64!(
+        cfg.git.agent_stop_timeout_secs,
+        "RALPHX_GIT_AGENT_STOP_TIMEOUT_SECS"
+    );
+    env_u64!(
+        cfg.git.cleanup_worktree_timeout_secs,
+        "RALPHX_GIT_CLEANUP_WORKTREE_TIMEOUT_SECS"
+    );
+    env_u64!(
+        cfg.git.cleanup_git_op_timeout_secs,
+        "RALPHX_GIT_CLEANUP_GIT_OP_TIMEOUT_SECS"
+    );
     // retry_backoff_secs: comma-separated list
     if let Some(v) = lookup("RALPHX_GIT_RETRY_BACKOFF_SECS") {
-        let parsed: Vec<u64> = v.split(',')
+        let parsed: Vec<u64> = v
+            .split(',')
             .filter_map(|s| s.trim().parse::<u64>().ok())
             .collect();
         if !parsed.is_empty() {
@@ -296,23 +339,59 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     }
 
     // Scheduler
-    env_u64!(cfg.scheduler.watchdog_interval_secs, "RALPHX_SCHEDULER_WATCHDOG_INTERVAL_SECS");
-    env_u64!(cfg.scheduler.watchdog_stale_threshold_secs, "RALPHX_SCHEDULER_WATCHDOG_STALE_THRESHOLD_SECS");
-    env_u64!(cfg.scheduler.max_contention_retries, "RALPHX_SCHEDULER_MAX_CONTENTION_RETRIES");
-    env_u64!(cfg.scheduler.contention_retry_delay_ms, "RALPHX_SCHEDULER_CONTENTION_RETRY_DELAY_MS");
-    env_u64!(cfg.scheduler.ready_settle_ms, "RALPHX_SCHEDULER_READY_SETTLE_MS");
-    env_u64!(cfg.scheduler.merge_settle_ms, "RALPHX_SCHEDULER_MERGE_SETTLE_MS");
+    env_u64!(
+        cfg.scheduler.watchdog_interval_secs,
+        "RALPHX_SCHEDULER_WATCHDOG_INTERVAL_SECS"
+    );
+    env_u64!(
+        cfg.scheduler.watchdog_stale_threshold_secs,
+        "RALPHX_SCHEDULER_WATCHDOG_STALE_THRESHOLD_SECS"
+    );
+    env_u64!(
+        cfg.scheduler.max_contention_retries,
+        "RALPHX_SCHEDULER_MAX_CONTENTION_RETRIES"
+    );
+    env_u64!(
+        cfg.scheduler.contention_retry_delay_ms,
+        "RALPHX_SCHEDULER_CONTENTION_RETRY_DELAY_MS"
+    );
+    env_u64!(
+        cfg.scheduler.ready_settle_ms,
+        "RALPHX_SCHEDULER_READY_SETTLE_MS"
+    );
+    env_u64!(
+        cfg.scheduler.merge_settle_ms,
+        "RALPHX_SCHEDULER_MERGE_SETTLE_MS"
+    );
 
     // Supervisor
-    env_u64!(cfg.supervisor.time_threshold_secs, "RALPHX_SUPERVISOR_TIME_THRESHOLD_SECS");
-    env_u64!(cfg.supervisor.token_threshold, "RALPHX_SUPERVISOR_TOKEN_THRESHOLD");
+    env_u64!(
+        cfg.supervisor.time_threshold_secs,
+        "RALPHX_SUPERVISOR_TIME_THRESHOLD_SECS"
+    );
+    env_u64!(
+        cfg.supervisor.token_threshold,
+        "RALPHX_SUPERVISOR_TOKEN_THRESHOLD"
+    );
     env_u64!(cfg.supervisor.max_tokens, "RALPHX_SUPERVISOR_MAX_TOKENS");
-    env_u64!(cfg.supervisor.progress_interval_secs, "RALPHX_SUPERVISOR_PROGRESS_INTERVAL_SECS");
-    env_u64!(cfg.supervisor.loop_threshold, "RALPHX_SUPERVISOR_LOOP_THRESHOLD");
-    env_u64!(cfg.supervisor.stuck_threshold, "RALPHX_SUPERVISOR_STUCK_THRESHOLD");
+    env_u64!(
+        cfg.supervisor.progress_interval_secs,
+        "RALPHX_SUPERVISOR_PROGRESS_INTERVAL_SECS"
+    );
+    env_u64!(
+        cfg.supervisor.loop_threshold,
+        "RALPHX_SUPERVISOR_LOOP_THRESHOLD"
+    );
+    env_u64!(
+        cfg.supervisor.stuck_threshold,
+        "RALPHX_SUPERVISOR_STUCK_THRESHOLD"
+    );
 
     // Limits
-    env_u64!(cfg.limits.max_resume_attempts, "RALPHX_LIMITS_MAX_RESUME_ATTEMPTS");
+    env_u64!(
+        cfg.limits.max_resume_attempts,
+        "RALPHX_LIMITS_MAX_RESUME_ATTEMPTS"
+    );
 }
 
 #[cfg(test)]

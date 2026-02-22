@@ -186,8 +186,14 @@ fn test_summarize_empty_input_returns_empty() {
 fn test_summarize_extracts_phase_headings() {
     let input = "# Title\n\n## Phase 1: Setup\nSome prose.\n\n## Phase 2: Features\nMore prose.";
     let result = summarize_plan_for_dependencies(input);
-    assert!(result.contains("## Phase 1: Setup"), "Should include phase 1 heading");
-    assert!(result.contains("## Phase 2: Features"), "Should include phase 2 heading");
+    assert!(
+        result.contains("## Phase 1: Setup"),
+        "Should include phase 1 heading"
+    );
+    assert!(
+        result.contains("## Phase 2: Features"),
+        "Should include phase 2 heading"
+    );
     assert!(result.starts_with("Plan Structure:"));
 }
 
@@ -213,16 +219,24 @@ fn test_summarize_includes_ordering_bullets() {
 #[test]
 fn test_summarize_truncates_to_1500_chars() {
     // Build a long input with many headings
-    let long_input: String = (1..=100)
-        .fold(String::new(), |mut acc, i| {
-            use std::fmt::Write;
-            writeln!(acc, "## Phase {}: Some very long phase title with lots of words here", i).unwrap();
-            acc
-        });
+    let long_input: String = (1..=100).fold(String::new(), |mut acc, i| {
+        use std::fmt::Write;
+        writeln!(
+            acc,
+            "## Phase {}: Some very long phase title with lots of words here",
+            i
+        )
+        .unwrap();
+        acc
+    });
     let result = summarize_plan_for_dependencies(&long_input);
     // Result (including "Plan Structure:\n" prefix) should be bounded
     // 1500 chars of body + "Plan Structure:\n" prefix (16 chars) = ~1516 max
-    assert!(result.len() <= 1520, "Result should be truncated, got {} chars", result.len());
+    assert!(
+        result.len() <= 1520,
+        "Result should be truncated, got {} chars",
+        result.len()
+    );
     assert!(result.starts_with("Plan Structure:"));
 }
 
@@ -237,7 +251,10 @@ fn test_summarize_no_matching_content_returns_empty() {
 fn test_summarize_h1_heading_excluded_h2_included() {
     let input = "# Main Title (excluded)\n## Phase 1 (included)\n### Sub-section (included)";
     let result = summarize_plan_for_dependencies(input);
-    assert!(!result.contains("# Main Title"), "H1 headings should not be included");
+    assert!(
+        !result.contains("# Main Title"),
+        "H1 headings should not be included"
+    );
     assert!(result.contains("## Phase 1"));
     assert!(result.contains("### Sub-section"));
 }
@@ -307,7 +324,10 @@ async fn test_fetch_plan_summary_with_plan_returns_summary() {
     )
     .await;
 
-    assert!(result.starts_with("Plan Structure:"), "Should start with Plan Structure:");
+    assert!(
+        result.starts_with("Plan Structure:"),
+        "Should start with Plan Structure:"
+    );
     assert!(result.contains("## Phase 1: Setup"));
     assert!(result.contains("## Phase 2: Features"));
 }

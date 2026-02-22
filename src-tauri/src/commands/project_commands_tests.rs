@@ -177,8 +177,7 @@ fn create_commit_on_branch(path: &std::path::Path, branch_name: &str) {
 
 #[tokio::test]
 async fn test_get_git_default_branch_nonexistent_directory() {
-    let result =
-        get_git_default_branch("/nonexistent/path/that/does/not/exist".to_string()).await;
+    let result = get_git_default_branch("/nonexistent/path/that/does/not/exist".to_string()).await;
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("does not exist"));
 }

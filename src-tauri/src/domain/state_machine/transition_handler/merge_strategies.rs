@@ -67,14 +67,18 @@ impl<'a> super::TransitionHandler<'a> {
         project: &Project,
         task_id_str: &str,
     ) -> MergeOutcome {
-        let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
+        let current_branch = GitService::get_current_branch(repo_path)
+            .await
+            .unwrap_or_default();
         if current_branch == target_branch {
             return checkout_free_merge(repo_path, source_branch, target_branch, task_id_str).await;
         }
 
         // Target not checked out — use isolated worktree
 
-        if let Some(outcome) = validate_branches(repo_path, source_branch, target_branch, task_id_str).await {
+        if let Some(outcome) =
+            validate_branches(repo_path, source_branch, target_branch, task_id_str).await
+        {
             return outcome;
         }
 
@@ -89,7 +93,9 @@ impl<'a> super::TransitionHandler<'a> {
 
         pre_delete_worktree(repo_path, &merge_wt, task_id_str).await;
 
-        match GitService::try_merge_in_worktree(repo_path, source_branch, target_branch, &merge_wt).await {
+        match GitService::try_merge_in_worktree(repo_path, source_branch, target_branch, &merge_wt)
+            .await
+        {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 // If inner function early-returned (e.g. branches_have_same_content)
                 // the worktree was never created. Create one for validation instead of
@@ -102,8 +108,12 @@ impl<'a> super::TransitionHandler<'a> {
                         "Merge worktree not created (trivial merge), creating one for validation"
                     );
                     match GitService::checkout_existing_branch_worktree(
-                        repo_path, &merge_wt, target_branch,
-                    ).await {
+                        repo_path,
+                        &merge_wt,
+                        target_branch,
+                    )
+                    .await
+                    {
                         Ok(_) => merge_wt,
                         Err(e) => {
                             tracing::error!(
@@ -167,14 +177,24 @@ impl<'a> super::TransitionHandler<'a> {
         project: &Project,
         task_id_str: &str,
     ) -> MergeOutcome {
-        let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
+        let current_branch = GitService::get_current_branch(repo_path)
+            .await
+            .unwrap_or_default();
         if current_branch == target_branch {
-            return checkout_free_fast_forward(repo_path, source_branch, target_branch, task_id_str).await;
+            return checkout_free_fast_forward(
+                repo_path,
+                source_branch,
+                target_branch,
+                task_id_str,
+            )
+            .await;
         }
 
         // Target not checked out — use worktree
 
-        if let Some(outcome) = validate_branches(repo_path, source_branch, target_branch, task_id_str).await {
+        if let Some(outcome) =
+            validate_branches(repo_path, source_branch, target_branch, task_id_str).await
+        {
             return outcome;
         }
 
@@ -199,7 +219,9 @@ impl<'a> super::TransitionHandler<'a> {
             target_branch,
             &rebase_wt,
             &merge_wt,
-        ).await {
+        )
+        .await
+        {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 // Clean up rebase worktree (no longer needed)
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
@@ -214,8 +236,12 @@ impl<'a> super::TransitionHandler<'a> {
                         "Merge worktree not created (trivial merge), creating one for validation"
                     );
                     match GitService::checkout_existing_branch_worktree(
-                        repo_path, &merge_wt, target_branch,
-                    ).await {
+                        repo_path,
+                        &merge_wt,
+                        target_branch,
+                    )
+                    .await
+                    {
                         Ok(_) => merge_wt,
                         Err(e) => {
                             tracing::error!(
@@ -279,11 +305,18 @@ impl<'a> super::TransitionHandler<'a> {
         project: &Project,
         task_id_str: &str,
     ) -> MergeOutcome {
-        let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
+        let current_branch = GitService::get_current_branch(repo_path)
+            .await
+            .unwrap_or_default();
         if current_branch == target_branch {
             return checkout_free_squash_merge(
-                repo_path, source_branch, target_branch, squash_commit_msg, task_id_str,
-            ).await;
+                repo_path,
+                source_branch,
+                target_branch,
+                squash_commit_msg,
+                task_id_str,
+            )
+            .await;
         }
 
         let merge_wt_path = compute_merge_worktree_path(project, task_id_str);
@@ -297,7 +330,9 @@ impl<'a> super::TransitionHandler<'a> {
             target_branch,
             &merge_wt,
             squash_commit_msg,
-        ).await {
+        )
+        .await
+        {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 // If inner function early-returned (branches_have_same_content)
                 // the worktree was never created. Create one for validation instead of
@@ -310,8 +345,12 @@ impl<'a> super::TransitionHandler<'a> {
                         "Merge worktree not created (trivial merge), creating one for validation"
                     );
                     match GitService::checkout_existing_branch_worktree(
-                        repo_path, &merge_wt, target_branch,
-                    ).await {
+                        repo_path,
+                        &merge_wt,
+                        target_branch,
+                    )
+                    .await
+                    {
                         Ok(_) => merge_wt,
                         Err(e) => {
                             tracing::error!(
@@ -328,12 +367,10 @@ impl<'a> super::TransitionHandler<'a> {
                     merge_path: actual_path,
                 }
             }
-            Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => {
-                MergeOutcome::NeedsAgent {
-                    conflict_files,
-                    merge_worktree: Some(merge_wt),
-                }
-            }
+            Ok(MergeAttemptResult::NeedsAgent { conflict_files }) => MergeOutcome::NeedsAgent {
+                conflict_files,
+                merge_worktree: Some(merge_wt),
+            },
             Ok(MergeAttemptResult::BranchNotFound { branch }) => {
                 MergeOutcome::BranchNotFound { branch }
             }
@@ -353,16 +390,25 @@ impl<'a> super::TransitionHandler<'a> {
         project: &Project,
         task_id_str: &str,
     ) -> MergeOutcome {
-        let current_branch = GitService::get_current_branch(repo_path).await.unwrap_or_default();
+        let current_branch = GitService::get_current_branch(repo_path)
+            .await
+            .unwrap_or_default();
         if current_branch == target_branch {
             return checkout_free_squash_merge(
-                repo_path, source_branch, target_branch, squash_commit_msg, task_id_str,
-            ).await;
+                repo_path,
+                source_branch,
+                target_branch,
+                squash_commit_msg,
+                task_id_str,
+            )
+            .await;
         }
 
         // Dual-worktree strategy: rebase worktree first, then squash merge in separate worktree
 
-        if let Some(outcome) = validate_branches(repo_path, source_branch, target_branch, task_id_str).await {
+        if let Some(outcome) =
+            validate_branches(repo_path, source_branch, target_branch, task_id_str).await
+        {
             return outcome;
         }
 
@@ -388,7 +434,9 @@ impl<'a> super::TransitionHandler<'a> {
             &rebase_wt,
             &merge_wt,
             squash_commit_msg,
-        ).await {
+        )
+        .await
+        {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 // Clean up rebase worktree (no longer needed)
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
@@ -405,8 +453,12 @@ impl<'a> super::TransitionHandler<'a> {
                         "Merge worktree not created (trivial merge), creating one for validation"
                     );
                     match GitService::checkout_existing_branch_worktree(
-                        repo_path, &merge_wt, target_branch,
-                    ).await {
+                        repo_path,
+                        &merge_wt,
+                        target_branch,
+                    )
+                    .await
+                    {
                         Ok(_) => merge_wt,
                         Err(e) => {
                             tracing::error!(

@@ -303,6 +303,8 @@ Each detected entry shows as an editable row. You can:
 
 Changes are staged locally. Click **Save** in the footer bar to persist them.
 
+**Priority:** When you customize commands by setting `custom_analysis`, it takes **complete precedence** over `detected_analysis`. Your customizations are trusted fully — including explicitly clearing fields (e.g., setting `worktree_setup: []` to skip symlink commands). No automatic merging from detected_analysis occurs into your custom configuration.
+
 ### Template Variables
 
 Use these in your command strings:

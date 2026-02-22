@@ -644,7 +644,8 @@ fn test_suggest_dependencies_empty() {
 #[test]
 fn test_suggest_dependencies_setup_before_feature() {
     let session_id = IdeationSessionId::new();
-    let setup = create_proposal_with_category(&session_id, "Setup database", ProposalCategory::Setup);
+    let setup =
+        create_proposal_with_category(&session_id, "Setup database", ProposalCategory::Setup);
     let feature =
         create_proposal_with_category(&session_id, "Add user auth", ProposalCategory::Feature);
 
@@ -863,11 +864,14 @@ async fn test_full_workflow_build_and_analyze() {
     let session_id = IdeationSessionId::new();
 
     // Create a realistic project structure
-    let setup = create_proposal_with_category(&session_id, "Setup project", ProposalCategory::Setup);
-    let feature1 = create_proposal_with_category(&session_id, "User auth", ProposalCategory::Feature);
+    let setup =
+        create_proposal_with_category(&session_id, "Setup project", ProposalCategory::Setup);
+    let feature1 =
+        create_proposal_with_category(&session_id, "User auth", ProposalCategory::Feature);
     let feature2 =
         create_proposal_with_category(&session_id, "User profile", ProposalCategory::Feature);
-    let test = create_proposal_with_category(&session_id, "Integration tests", ProposalCategory::Test);
+    let test =
+        create_proposal_with_category(&session_id, "Integration tests", ProposalCategory::Test);
 
     // Dependencies: feature1 depends on setup, feature2 depends on feature1, test depends on both features
     let deps = vec![

@@ -196,8 +196,7 @@ impl MetadataUpdate {
 
     /// Add a u32 numeric key-value pair to the update.
     pub fn with_u32(mut self, key: impl Into<String>, value: u32) -> Self {
-        self.entries
-            .insert(key.into(), Value::Number(value.into()));
+        self.entries.insert(key.into(), Value::Number(value.into()));
         self
     }
 

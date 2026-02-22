@@ -111,7 +111,9 @@ impl ResumeValidator {
         let mut result = ResumeValidationResult::new();
 
         // 1. Git state validation
-        let git_result = self.validate_git_state(task, project, worktree_path).await?;
+        let git_result = self
+            .validate_git_state(task, project, worktree_path)
+            .await?;
         result.merge(&git_result);
 
         // 2. Agent cleanup (always attempt, even if git validation failed)
@@ -126,7 +128,10 @@ impl ResumeValidator {
                     && GitService::branch_exists(&repo_path, task_branch).await
                 {
                     // Check if base branch has commits not on task branch
-                    if self.has_base_branch_moved_ahead(&repo_path, task_branch, base_branch).await? {
+                    if self
+                        .has_base_branch_moved_ahead(&repo_path, task_branch, base_branch)
+                        .await?
+                    {
                         result = result.with_warning(format!(
                             "Base branch '{}' has new commits that are not in task branch '{}'",
                             base_branch, task_branch
@@ -166,16 +171,10 @@ impl ResumeValidator {
         // 1. Check task branch exists
         if let Some(ref task_branch) = task.task_branch {
             if !GitService::branch_exists(&repo_path, task_branch).await {
-                result = result.with_error(format!(
-                    "Task branch '{}' does not exist",
-                    task_branch
-                ));
+                result = result.with_error(format!("Task branch '{}' does not exist", task_branch));
                 return Ok(result);
             }
-            debug!(
-                task_branch = task_branch.as_str(),
-                "Task branch exists"
-            );
+            debug!(task_branch = task_branch.as_str(), "Task branch exists");
         } else {
             // No branch is not necessarily an error - task may not have git isolation
             debug!("Task has no associated branch, skipping branch validation");
@@ -267,10 +266,8 @@ impl ResumeValidator {
                             error = %e,
                             "Failed to stop orphan agent"
                         );
-                        result = result.with_warning(format!(
-                            "Failed to stop {} agent: {}",
-                            context_type, e
-                        ));
+                        result = result
+                            .with_warning(format!("Failed to stop {} agent: {}", context_type, e));
                     }
                 }
             }

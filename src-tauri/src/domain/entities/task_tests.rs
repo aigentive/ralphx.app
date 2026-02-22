@@ -50,8 +50,11 @@ fn task_new_defaults_to_backlog_status() {
 
 #[test]
 fn task_new_with_category_sets_category() {
-    let task =
-        Task::new_with_category(ProjectId::new(), "Bug Fix".to_string(), TaskCategory::Regular);
+    let task = Task::new_with_category(
+        ProjectId::new(),
+        "Bug Fix".to_string(),
+        TaskCategory::Regular,
+    );
 
     assert_eq!(task.category, TaskCategory::Regular);
     assert_eq!(task.title, "Bug Fix");
@@ -125,7 +128,10 @@ fn task_set_priority_negative() {
 fn task_is_not_terminal_for_approved() {
     let mut task = Task::new(ProjectId::new(), "Test".to_string());
     task.internal_status = InternalStatus::Approved;
-    assert!(!task.is_terminal(), "Approved should NOT be terminal — it must merge to be done");
+    assert!(
+        !task.is_terminal(),
+        "Approved should NOT be terminal — it must merge to be done"
+    );
 }
 
 #[test]
@@ -153,7 +159,10 @@ fn task_is_terminal_for_stopped() {
 fn task_is_terminal_for_merge_incomplete() {
     let mut task = Task::new(ProjectId::new(), "Test".to_string());
     task.internal_status = InternalStatus::MergeIncomplete;
-    assert!(task.is_terminal(), "MergeIncomplete should be terminal for dependency unblocking");
+    assert!(
+        task.is_terminal(),
+        "MergeIncomplete should be terminal for dependency unblocking"
+    );
 }
 
 #[test]
@@ -272,7 +281,6 @@ fn task_deserializes_from_json() {
     assert_eq!(task.internal_status, InternalStatus::Executing);
     assert!(task.started_at.is_some());
     assert!(task.completed_at.is_none());
-
 }
 
 #[test]
@@ -958,4 +966,3 @@ fn task_from_row_with_null_blocked_reason() {
     assert!(task.blocked_reason.is_none());
     assert_eq!(task.internal_status, InternalStatus::Ready);
 }
-
