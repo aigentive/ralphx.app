@@ -272,16 +272,11 @@ impl<'a> super::TransitionHandler<'a> {
         if let Err(e) = complete_merge_internal(task, project, commit_sha, target_branch, task_repo, app_handle).await {
             tracing::error!(error = %e, task_id = task_id_str, strategy = opts.strategy_label, "Failed to complete merge");
             // Merge INTO existing metadata to preserve recovery history
-            let mut existing = task.metadata
-                .as_deref()
-                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                .unwrap_or_else(|| serde_json::json!({}));
-            if let Some(obj) = existing.as_object_mut() {
-                obj.insert("error".to_string(), serde_json::json!(format!("complete_merge_internal failed: {}", e)));
-                obj.insert("source_branch".to_string(), serde_json::json!(source_branch));
-                obj.insert("target_branch".to_string(), serde_json::json!(target_branch));
-            }
-            task.metadata = Some(existing.to_string());
+            super::merge_helpers::merge_metadata_into(task, &serde_json::json!({
+                "error": format!("complete_merge_internal failed: {}", e),
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+            }));
             transition_to_merge_incomplete(
                 task, task_id, task_id_str, task_repo, &self.machine.context.services.event_emitter,
             ).await;

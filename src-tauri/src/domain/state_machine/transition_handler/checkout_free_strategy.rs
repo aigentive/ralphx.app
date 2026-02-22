@@ -12,7 +12,6 @@ use std::path::Path;
 use crate::application::git_service::checkout_free::{self, CheckoutFreeMergeResult};
 use crate::application::GitService;
 use crate::error::AppError;
-use crate::infrastructure::agents::claude::git_runtime_config;
 
 use super::merge_strategies::MergeOutcome;
 
@@ -165,42 +164,5 @@ pub(super) async fn checkout_free_squash_merge(
     handle_checkout_free_result(repo_path, result, task_id, "squash").await
 }
 
-/// Pre-delete stale worktree(s) using `run_cleanup_step` for uniform timeout and logging.
-pub(super) async fn pre_delete_worktree(
-    repo_path: &Path,
-    worktree: &Path,
-    task_id: &str,
-) {
-    use super::cleanup_helpers::CleanupStepResult;
-
-    let wt_display = worktree.display().to_string();
-    let label = format!("delete_stale_worktree({})", wt_display);
-    let wt = worktree.to_path_buf();
-    let rp = repo_path.to_path_buf();
-    match super::cleanup_helpers::run_cleanup_step(
-        &label,
-        git_runtime_config().cleanup_worktree_timeout_secs,
-        task_id,
-        async move { GitService::delete_worktree(&rp, &wt).await },
-    )
-    .await
-    {
-        CleanupStepResult::Ok => {}
-        CleanupStepResult::TimedOut { elapsed } => {
-            tracing::warn!(
-                task_id = task_id,
-                worktree_path = %wt_display,
-                elapsed_ms = elapsed.as_millis() as u64,
-                "Stale worktree deletion timed out — merge worktree may fail to create"
-            );
-        }
-        CleanupStepResult::Error { ref message } => {
-            tracing::warn!(
-                task_id = task_id,
-                worktree_path = %wt_display,
-                error = %message,
-                "Stale worktree deletion failed — merge worktree may fail to create"
-            );
-        }
-    }
-}
+// Re-export from merge_helpers (moved there for shared use across multiple modules)
+pub(super) use super::merge_helpers::pre_delete_worktree;

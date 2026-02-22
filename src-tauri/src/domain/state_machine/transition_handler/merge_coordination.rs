@@ -272,15 +272,7 @@ pub(super) async fn update_plan_from_main(
     let wt_path = PathBuf::from(&wt_path_str);
 
     // Clean up any stale worktree from a prior attempt
-    if wt_path.exists() {
-        if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
-            tracing::warn!(
-                task_id = task_id_str,
-                error = %e,
-                "Failed to delete stale plan-update worktree (non-fatal)"
-            );
-        }
-    }
+    super::merge_helpers::pre_delete_worktree(repo_path, &wt_path, task_id_str).await;
 
     let result = match GitService::try_merge_in_worktree(
         repo_path,
@@ -315,15 +307,7 @@ pub(super) async fn update_plan_from_main(
     };
 
     // Clean up worktree (always, regardless of outcome)
-    if wt_path.exists() {
-        if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
-            tracing::warn!(
-                task_id = task_id_str,
-                error = %e,
-                "Failed to clean up plan-update worktree (non-fatal)"
-            );
-        }
-    }
+    super::merge_helpers::pre_delete_worktree(repo_path, &wt_path, task_id_str).await;
 
     result
 }
@@ -484,15 +468,7 @@ pub(super) async fn update_source_from_target(
     let wt_path = PathBuf::from(&wt_path_str);
 
     // Clean up any stale worktree from a prior attempt
-    if wt_path.exists() {
-        if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
-            tracing::warn!(
-                task_id = task_id_str,
-                error = %e,
-                "Failed to delete stale source-update worktree (non-fatal)"
-            );
-        }
-    }
+    super::merge_helpers::pre_delete_worktree(repo_path, &wt_path, task_id_str).await;
 
     // try_merge_in_worktree merges target_branch into source_branch
     let result = match GitService::try_merge_in_worktree(
@@ -531,15 +507,7 @@ pub(super) async fn update_source_from_target(
     };
 
     // Clean up worktree (always, regardless of outcome)
-    if wt_path.exists() {
-        if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
-            tracing::warn!(
-                task_id = task_id_str,
-                error = %e,
-                "Failed to clean up source-update worktree (non-fatal)"
-            );
-        }
-    }
+    super::merge_helpers::pre_delete_worktree(repo_path, &wt_path, task_id_str).await;
 
     result
 }
@@ -763,13 +731,8 @@ impl<'a> super::TransitionHandler<'a> {
                         "Skipping task worktree deletion — path is the main working tree"
                     );
                 } else if worktree_path_buf.exists() {
-                    // Abort any stale merge state (MERGE_HEAD) left from a prior failed
-                    // merge attempt. Without this, the next merge in this worktree fails
-                    // because git thinks a merge is already in progress.
-                    if GitService::is_merge_in_progress(&worktree_path_buf) {
-                        let _ = GitService::abort_merge(&worktree_path_buf).await;
-                        tracing::info!(task_id = task_id_str, "Aborted stale merge in task worktree");
-                    }
+                    // Abort any stale merge/rebase state left from a prior failed attempt
+                    super::merge_helpers::clean_stale_git_state(&worktree_path_buf, task_id_str).await;
                     tracing::info!(
                         task_id = task_id_str,
                         worktree_path = %worktree_path,

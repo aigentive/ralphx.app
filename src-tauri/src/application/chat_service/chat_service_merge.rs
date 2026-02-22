@@ -25,7 +25,8 @@ use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
 use crate::infrastructure::agents::claude::scheduler_config;
 use crate::domain::state_machine::transition_handler::{
-    format_validation_error_metadata, run_validation_commands,
+    format_validation_error_metadata, merge_metadata_into, parse_metadata,
+    run_validation_commands,
 };
 
 /// RAII guard that removes a task from ExecutionState::auto_completes_in_flight on drop.
@@ -772,29 +773,25 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     &target_branch,
                 );
                 // Merge error metadata into existing metadata to preserve revert count and recovery history
-                let mut merged = task
-                    .metadata
-                    .as_deref()
-                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                    .unwrap_or_else(|| serde_json::json!({}));
                 if let Ok(error_obj) = serde_json::from_str::<serde_json::Value>(&error_metadata_str) {
-                    if let (Some(target), Some(source)) = (merged.as_object_mut(), error_obj.as_object()) {
-                        for (k, v) in source {
-                            target.insert(k.clone(), v.clone());
-                        }
-                    }
+                    merge_metadata_into(&mut task, &error_obj);
                 }
                 // Increment validation_revert_count (tracks how many times we've reverted after validation failure)
-                let prev_revert_count: u32 = merged
-                    .get("validation_revert_count")
-                    .and_then(|v| v.as_u64())
+                let prev_revert_count: u32 = parse_metadata(&task)
+                    .and_then(|v| v.get("validation_revert_count")?.as_u64())
                     .unwrap_or(0) as u32;
-                if let Some(obj) = merged.as_object_mut() {
-                    obj.insert("validation_revert_count".to_string(), serde_json::json!(prev_revert_count + 1));
-                    obj.insert("merge_failure_source".to_string(), serde_json::json!("ValidationFailed"));
-                    obj.remove("revalidating");
+                merge_metadata_into(&mut task, &serde_json::json!({
+                    "validation_revert_count": prev_revert_count + 1,
+                    "merge_failure_source": "ValidationFailed",
+                }));
+                // Remove revalidating flag (merge_metadata_into only inserts, so remove manually)
+                {
+                    let mut meta = parse_metadata(&task).unwrap_or_else(|| serde_json::json!({}));
+                    if let Some(obj) = meta.as_object_mut() {
+                        obj.remove("revalidating");
+                    }
+                    task.metadata = Some(meta.to_string());
                 }
-                task.metadata = Some(merged.to_string());
                 task.touch();
                 let _ = task_repo.update(&task).await;
 
