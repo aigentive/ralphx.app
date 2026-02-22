@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/welcome-2026-02-22.png" alt="RalphX — Describe it. Ship it." width="100%">
+  <img src="assets/framed-welcome-2026-02-22.png" alt="RalphX — Describe it. Ship it." width="100%">
 </p>
 
 <p align="center">
@@ -42,7 +42,7 @@ All data stays on your machine. Local SQLite database. No cloud dependency. No t
 **Give every builder the power to develop software with AI — independent of any platform, vendor, or provider.**
 
 <p align="center">
-  <img src="assets/graph-2026-02-22.png" alt="RalphX dependency graph — critical path highlighting, tier grouping, live execution status" width="100%">
+  <img src="assets/framed-graph-2026-02-22.png" alt="RalphX dependency graph — critical path highlighting, tier grouping, live execution status" width="100%">
 </p>
 
 ---
@@ -121,8 +121,8 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 ## Screenshots
 
 <table><tr>
-<td><img src="assets/ideation-2026-02-21.png" width="100%"></td>
-<td><img src="assets/merge-2026-02-21.png" width="100%"></td>
+<td><img src="assets/framed-ideation-2026-02-21.png" width="100%"></td>
+<td><img src="assets/framed-merge-2026-02-21.png" width="100%"></td>
 </tr></table>
 
 <p align="center">
@@ -134,17 +134,17 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 <br>
 
 <p align="center">
-  <img src="assets/ai-review-2026-02-22.png" alt="AI Review" width="100%">
+  <img src="assets/framed-ai-review-2026-02-22.png" alt="AI Review" width="100%">
 </p>
 <p align="center"><em>AI Review — Reviewer agent examines diffs and files structured issues</em></p>
 
 <p align="center">
-  <img src="assets/merge-conflicts-2026-02-22.png" alt="Merge conflict resolution" width="100%">
+  <img src="assets/framed-merge-conflicts-2026-02-22.png" alt="Merge conflict resolution" width="100%">
 </p>
 <p align="center"><em>Conflict resolution — Merger agent resolves conflicts, never force-pushes</em></p>
 
 <p align="center">
-  <img src="assets/approved-2026-02-22.png" alt="Approved — code passes review" width="100%">
+  <img src="assets/framed-approved-2026-02-22.png" alt="Approved — code passes review" width="100%">
 </p>
 <p align="center"><em>Approved — code passes AI review and moves to merge</em></p>
 
