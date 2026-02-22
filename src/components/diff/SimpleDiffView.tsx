@@ -13,6 +13,7 @@ interface SimpleDiffViewProps {
   oldContent: string;
   newContent: string;
   language?: string | undefined;
+  variant?: "standard" | "conflict";
 }
 
 interface DiffLine {
@@ -155,13 +156,17 @@ function computeLCS(oldLines: string[], newLines: string[]): Match[] {
   return matches;
 }
 
+type Variant = "standard" | "conflict";
+
 /**
- * Get line background color based on type
+ * Get line background color based on type and variant
  */
-function getLineBackground(type: DiffLine["type"]): string {
+function getLineBackground(type: DiffLine["type"], variant: Variant): string {
   switch (type) {
     case "addition":
-      return "rgba(52, 199, 89, 0.12)";
+      return variant === "conflict"
+        ? "rgba(64, 156, 255, 0.12)"
+        : "rgba(52, 199, 89, 0.12)";
     case "deletion":
       return "rgba(255, 69, 58, 0.12)";
     default:
@@ -170,12 +175,14 @@ function getLineBackground(type: DiffLine["type"]): string {
 }
 
 /**
- * Get line number color based on type
+ * Get line number color based on type and variant
  */
-function getLineNumColor(type: DiffLine["type"]): string {
+function getLineNumColor(type: DiffLine["type"], variant: Variant): string {
   switch (type) {
     case "addition":
-      return "rgba(52, 199, 89, 0.6)";
+      return variant === "conflict"
+        ? "rgba(64, 156, 255, 0.6)"
+        : "rgba(52, 199, 89, 0.6)";
     case "deletion":
       return "rgba(255, 69, 58, 0.6)";
     default:
@@ -198,12 +205,12 @@ function getLinePrefix(type: DiffLine["type"]): string {
 }
 
 /**
- * Get prefix color
+ * Get prefix color based on type and variant
  */
-function getPrefixColor(type: DiffLine["type"]): string {
+function getPrefixColor(type: DiffLine["type"], variant: Variant): string {
   switch (type) {
     case "addition":
-      return "#34c759";
+      return variant === "conflict" ? "#409cff" : "#34c759";
     case "deletion":
       return "#ff453a";
     case "header":
@@ -293,14 +300,14 @@ function renderHeader(content: string) {
   );
 }
 
-function renderLine(line: DiffLine, index: number, wrapLines: boolean) {
+function renderLine(line: DiffLine, index: number, wrapLines: boolean, variant: Variant) {
 
   return (
     <div
       key={index}
       className="flex"
       style={{
-        backgroundColor: getLineBackground(line.type),
+        backgroundColor: getLineBackground(line.type, variant),
         minHeight: "20px",
       }}
     >
@@ -309,7 +316,7 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean) {
         style={{
           position: "sticky",
           left: 0,
-          color: getLineNumColor(line.type),
+          color: getLineNumColor(line.type, variant),
           backgroundColor: "hsl(220 10% 10%)",
         }}
       >
@@ -321,7 +328,7 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean) {
         style={{
           position: "sticky",
           left: 48,
-          color: getLineNumColor(line.type),
+          color: getLineNumColor(line.type, variant),
           backgroundColor: "hsl(220 10% 10%)",
           borderColor: "hsl(220 10% 15%)",
         }}
@@ -334,7 +341,7 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean) {
         style={{
           position: "sticky",
           left: 96,
-          color: getPrefixColor(line.type),
+          color: getPrefixColor(line.type, variant),
           backgroundColor: "hsl(220 10% 10%)",
         }}
       >
@@ -358,7 +365,7 @@ function renderLine(line: DiffLine, index: number, wrapLines: boolean) {
   );
 }
 
-export function SimpleDiffView({ oldContent, newContent }: SimpleDiffViewProps) {
+export function SimpleDiffView({ oldContent, newContent, variant = "standard" }: SimpleDiffViewProps) {
   const [renderLargeDiff, setRenderLargeDiff] = useState(false);
   const [expandedGaps, setExpandedGaps] = useState<Set<string>>(() => new Set());
   const [wrapLines, setWrapLines] = useState(true);
@@ -460,7 +467,8 @@ export function SimpleDiffView({ oldContent, newContent }: SimpleDiffViewProps) 
                             type: "context",
                           },
                           gapStart + gapIndex,
-                          wrapLines
+                          wrapLines,
+                          variant
                         )
                       )}
                       <button
@@ -488,7 +496,7 @@ export function SimpleDiffView({ oldContent, newContent }: SimpleDiffViewProps) 
                 <ScrollAreaPrimitive.Viewport className="w-full overflow-x-auto">
                   <div style={{ minWidth: wrapLines ? "auto" : "max-content" }}>
                     {hunk.lines.map((line, lineIndex) =>
-                      renderLine(line, hunk.start + lineIndex, wrapLines)
+                      renderLine(line, hunk.start + lineIndex, wrapLines, variant)
                     )}
                   </div>
                 </ScrollAreaPrimitive.Viewport>
