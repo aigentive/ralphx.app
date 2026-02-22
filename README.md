@@ -49,45 +49,9 @@ All data stays on your machine. Local SQLite database. No cloud dependency. No t
 
 ## How It Works
 
-```
- You describe what you want
-  |
-  v
-+-----------+
-| Ideation  |  Natural language --> task proposals with dependencies
-| Studio    |  Solo, Research Team, or Debate Team mode
-+-----+-----+
-      |
-      v
-+-----------+
-|  Kanban   |  Drag task to Planned --> execution begins
-|  Board    |  Up to 10 tasks running concurrently
-+-----+-----+
-      |
-      v
-+-----------+  Writes code in isolated git worktree
-|  Worker   |  Scoped tools: file read/write, shell
-|  Agent    |  Cannot approve its own code
-+-----+-----+
-      |
-      v
-+-----------+  Reviews diffs, files structured issues
-| Reviewer  |  File read + validation commands + verdict
-|  Agent    |  Max 3 auto-fix cycles before escalation
-+-----+-----+
-      |
-      v
-+-----------+  Merges to main, runs full validation suite
-|  Merger   |  Type check -> lint -> clippy -> tests
-|  Agent    |  Reports conflicts, never forces
-+-----+-----+
-      |
-      v
-+-----------+  Detects loops, stalls, resource waste
-|Supervisor |  Stops stuck agents via state machine
-| Watchdog  |  Escalates to you when it matters
-+-----------+
-```
+<p align="center">
+  <img src="assets/pipeline-diagram.png" alt="RalphX execution pipeline — from idea to merged code" width="100%">
+</p>
 
 Every agent has **principle-of-least-privilege** tool access enforced at three independent layers:
 
