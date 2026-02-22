@@ -5,7 +5,7 @@
 </h1>
 
 <p align="center">
-  <strong>Brief in, feature on main.</strong>
+  <strong>Describe it. Ship it.</strong>
   <br>
   The AI development infrastructure you own, not rent.
 </p>
@@ -342,7 +342,7 @@ Use it however you want. Build commercial products with it. Modify it. Distribut
 ---
 
 <p align="center">
-  <strong>RalphX</strong> — Brief in, feature on main.
+  <strong>RalphX</strong> — Describe it. Ship it.
   <br>
   <sub>Open source. Local-first. Yours.</sub>
   <br><br>
