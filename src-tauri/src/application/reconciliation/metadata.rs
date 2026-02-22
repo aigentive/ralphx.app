@@ -178,6 +178,80 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .unwrap_or(0)
     }
 
+    /// Returns true if the task's failure was caused by post-merge validation.
+    pub(crate) fn is_validation_failure(task: &Task) -> bool {
+        task.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| v.get("merge_failure_source").cloned())
+            .and_then(|v| serde_json::from_value::<MergeFailureSource>(v).ok())
+            .map(|source| matches!(source, MergeFailureSource::ValidationFailed))
+            .unwrap_or(false)
+    }
+
+    /// Count consecutive validation failures (stored in task metadata).
+    pub(crate) fn consecutive_validation_failures(task: &Task) -> u32 {
+        task.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| v.get("consecutive_validation_failures").and_then(|c| c.as_u64()).map(|c| c as u32))
+            .unwrap_or(0)
+    }
+
+    /// Get the last_retried_at timestamp from task metadata, if set.
+    pub(crate) fn last_retried_at(task: &Task) -> Option<chrono::DateTime<chrono::Utc>> {
+        task.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| v.get("last_retried_at")?.as_str().map(String::from))
+            .and_then(|ts| chrono::DateTime::parse_from_rfc3339(&ts).ok())
+            .map(|dt| dt.with_timezone(&chrono::Utc))
+    }
+
+    /// Record last_retried_at timestamp and increment consecutive_validation_failures if applicable.
+    pub(crate) async fn record_retry_metadata(
+        &self,
+        task: &Task,
+        is_validation: bool,
+    ) -> Result<(), String> {
+        let mut updated = task.clone();
+        let mut json: serde_json::Value = updated
+            .metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        if let Some(obj) = json.as_object_mut() {
+            obj.insert(
+                "last_retried_at".to_string(),
+                serde_json::json!(chrono::Utc::now().to_rfc3339()),
+            );
+            if is_validation {
+                let prev = obj
+                    .get("consecutive_validation_failures")
+                    .and_then(|v| v.as_u64())
+                    .unwrap_or(0);
+                obj.insert(
+                    "consecutive_validation_failures".to_string(),
+                    serde_json::json!(prev + 1),
+                );
+            } else {
+                // Non-validation retry resets the counter
+                obj.insert(
+                    "consecutive_validation_failures".to_string(),
+                    serde_json::json!(0),
+                );
+            }
+        }
+
+        updated.metadata = Some(json.to_string());
+        updated.touch();
+        self.task_repo
+            .update(&updated)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
     /// Get rate_limit_retry_after from merge recovery metadata, if set.
     pub(crate) fn get_rate_limit_retry_after(task: &Task) -> Option<String> {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())

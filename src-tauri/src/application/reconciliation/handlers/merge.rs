@@ -360,10 +360,60 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        let is_validation = Self::is_validation_failure(task);
+
+        // RC#4: Validation failure circuit breaker — after N consecutive validation failures,
+        // stop auto-retrying entirely and leave for human intervention.
+        if is_validation {
+            let consecutive = Self::consecutive_validation_failures(task);
+            if consecutive >= reconciliation_config().validation_failure_circuit_breaker_count as u32 {
+                debug!(
+                    task_id = task.id.as_str(),
+                    consecutive = consecutive,
+                    max = reconciliation_config().validation_failure_circuit_breaker_count,
+                    "Circuit breaker: stopping auto-retry after consecutive validation failures"
+                );
+                return false;
+            }
+        }
+
         let age = match self.latest_status_transition_age(task, status).await {
             Some(age) => age,
             None => return false,
         };
+
+        // RC#4: Validation failure cooldown — enforce minimum wait before retrying
+        // after a validation failure to prevent rapid retry loops.
+        if is_validation {
+            let cooldown = chrono::Duration::seconds(
+                reconciliation_config().validation_retry_min_cooldown_secs as i64,
+            );
+            if age < cooldown {
+                debug!(
+                    task_id = task.id.as_str(),
+                    age_secs = age.num_seconds(),
+                    cooldown_secs = reconciliation_config().validation_retry_min_cooldown_secs,
+                    "Skipping MergeIncomplete retry — validation failure cooldown not elapsed"
+                );
+                return false;
+            }
+        }
+
+        // RC#5: Starvation guard — if this task was retried recently, skip it this cycle
+        // to give other MergeIncomplete tasks a turn.
+        if let Some(last_retry) = Self::last_retried_at(task) {
+            let since_retry = chrono::Utc::now() - last_retry;
+            let guard_secs = reconciliation_config().merge_starvation_guard_secs as i64;
+            if since_retry < chrono::Duration::seconds(guard_secs) {
+                debug!(
+                    task_id = task.id.as_str(),
+                    since_retry_secs = since_retry.num_seconds(),
+                    guard_secs = guard_secs,
+                    "Skipping MergeIncomplete retry — starvation guard (recently retried)"
+                );
+                return false;
+            }
+        }
 
         let retry_count = Self::merge_incomplete_auto_retry_count(task);
         if retry_count >= reconciliation_config().merge_incomplete_max_retries as u32 {
@@ -373,6 +423,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
         let retry_delay = Self::merge_incomplete_retry_delay(retry_count);
         if age < retry_delay {
             return false;
+        }
+
+        // Record retry metadata (last_retried_at + consecutive_validation_failures tracking)
+        if let Err(e) = self.record_retry_metadata(task, is_validation).await {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to record retry metadata (last_retried_at)"
+            );
         }
 
         let attempt = retry_count + 1;

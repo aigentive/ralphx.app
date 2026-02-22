@@ -152,6 +152,12 @@ reconciliation:
   validation_deadline_secs: 1200 # Env: RALPHX_RECONCILIATION_VALIDATION_DEADLINE_SECS
   # handlers/merge.rs — grace period after merger agent run created before checking run-state vs registry (covers agent startup)
   merge_registry_grace_period_secs: 60 # Env: RALPHX_RECONCILIATION_MERGE_REGISTRY_GRACE_PERIOD_SECS
+  # handlers/merge.rs — minimum cooldown before retrying after a validation failure (prevents rapid retry loops)
+  validation_retry_min_cooldown_secs: 120 # Env: RALPHX_RECONCILIATION_VALIDATION_RETRY_MIN_COOLDOWN_SECS
+  # handlers/merge.rs — stop auto-retrying after N consecutive validation failures (circuit breaker)
+  validation_failure_circuit_breaker_count: 3 # Env: RALPHX_RECONCILIATION_VALIDATION_FAILURE_CIRCUIT_BREAKER_COUNT
+  # handlers/merge.rs — skip MergeIncomplete retry if task was retried within this many seconds (starvation guard)
+  merge_starvation_guard_secs: 60 # Env: RALPHX_RECONCILIATION_MERGE_STARVATION_GUARD_SECS
 
 git:
   # git_service/git_cmd.rs — per-command timeout to prevent hung git processes

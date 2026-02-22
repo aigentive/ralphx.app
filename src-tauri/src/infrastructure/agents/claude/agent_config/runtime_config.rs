@@ -83,6 +83,15 @@ pub struct ReconciliationConfig {
     /// Grace period (seconds) after a merge agent run is created before the reconciler
     /// checks for run-state vs registry mismatches. Covers agent startup latency.
     pub merge_registry_grace_period_secs: u64,
+    /// Minimum cooldown (seconds) after a validation failure before the reconciler retries.
+    /// Prevents rapid retry loops when validation consistently fails.
+    pub validation_retry_min_cooldown_secs: u64,
+    /// After this many consecutive validation failures, stop auto-retrying entirely
+    /// and leave for human intervention.
+    pub validation_failure_circuit_breaker_count: u64,
+    /// Starvation guard: skip a MergeIncomplete task if it was retried within this many
+    /// seconds, giving other tasks a turn in the reconciliation cycle.
+    pub merge_starvation_guard_secs: u64,
 }
 
 impl Default for ReconciliationConfig {
@@ -108,6 +117,9 @@ impl Default for ReconciliationConfig {
             attempt_merge_deadline_secs: 120,
             validation_deadline_secs: 1200,
             merge_registry_grace_period_secs: 60,
+            validation_retry_min_cooldown_secs: 120,
+            validation_failure_circuit_breaker_count: 3,
+            merge_starvation_guard_secs: 60,
         }
     }
 }
@@ -261,6 +273,9 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.attempt_merge_deadline_secs, "RALPHX_RECONCILIATION_ATTEMPT_MERGE_DEADLINE_SECS");
     env_u64!(cfg.reconciliation.validation_deadline_secs, "RALPHX_RECONCILIATION_VALIDATION_DEADLINE_SECS");
     env_u64!(cfg.reconciliation.merge_registry_grace_period_secs, "RALPHX_RECONCILIATION_MERGE_REGISTRY_GRACE_PERIOD_SECS");
+    env_u64!(cfg.reconciliation.validation_retry_min_cooldown_secs, "RALPHX_RECONCILIATION_VALIDATION_RETRY_MIN_COOLDOWN_SECS");
+    env_u64!(cfg.reconciliation.validation_failure_circuit_breaker_count, "RALPHX_RECONCILIATION_VALIDATION_FAILURE_CIRCUIT_BREAKER_COUNT");
+    env_u64!(cfg.reconciliation.merge_starvation_guard_secs, "RALPHX_RECONCILIATION_MERGE_STARVATION_GUARD_SECS");
 
     // Git
     env_u64!(cfg.git.cmd_timeout_secs, "RALPHX_GIT_CMD_TIMEOUT_SECS");

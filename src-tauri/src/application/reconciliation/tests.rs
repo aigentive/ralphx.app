@@ -3513,3 +3513,239 @@ async fn test_validation_revert_max_exceeded_skips_retry() {
         "Should not retry when validation_revert_count has reached max (ValidationFailed guard)"
     );
 }
+
+// ── RC#4: Validation failure cooldown + circuit breaker tests ──
+
+#[tokio::test]
+async fn rc4_validation_failure_no_transition_before_cooldown() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Validation Cooldown Task".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    // Mark as validation failure — should enforce 120s cooldown
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_failure_source": "validation_failed",
+            "validation_revert_count": 1,
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record RECENT status history — age will be < cooldown (120s)
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::PendingMerge,
+            InternalStatus::MergeIncomplete,
+            "merge_incomplete",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled,
+        "Should not retry validation failure before cooldown elapsed (RC#4)"
+    );
+
+    // Verify task stayed in MergeIncomplete
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Task should remain MergeIncomplete during validation cooldown"
+    );
+}
+
+#[tokio::test]
+async fn rc4_consecutive_validation_failures_circuit_breaker_stops_retry() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let circuit_breaker_count = reconciliation_config().validation_failure_circuit_breaker_count;
+
+    let mut task = Task::new(
+        project.id.clone(),
+        "Circuit Breaker Task".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+    // Set validation failure with consecutive failures at circuit breaker threshold
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_failure_source": "validation_failed",
+            "validation_revert_count": 1,
+            "consecutive_validation_failures": circuit_breaker_count,
+        })
+        .to_string(),
+    );
+    // Set updated_at far in the past so cooldown check passes
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(300);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled,
+        "Circuit breaker should stop retry after {} consecutive validation failures (RC#4)",
+        circuit_breaker_count
+    );
+
+    // Verify task stayed in MergeIncomplete
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Task should remain MergeIncomplete after circuit breaker trips"
+    );
+}
+
+// ── RC#5: Starvation guard tests ──
+
+#[tokio::test]
+async fn rc5_starvation_guard_skips_recently_retried_task() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    // Task 1: recently retried (last_retried_at = now)
+    let mut task1 = Task::new(project.id.clone(), "Recently Retried Task".to_string());
+    task1.internal_status = InternalStatus::MergeIncomplete;
+    task1.metadata = Some(
+        serde_json::json!({
+            "last_retried_at": chrono::Utc::now().to_rfc3339(),
+        })
+        .to_string(),
+    );
+    // Set updated_at far enough in the past that normal retry delay would pass
+    task1.updated_at = chrono::Utc::now() - chrono::Duration::seconds(300);
+    app_state.task_repo.create(task1.clone()).await.unwrap();
+
+    // Task 2: not recently retried (no last_retried_at)
+    let mut task2 = Task::new(project.id.clone(), "Fresh Task".to_string());
+    task2.internal_status = InternalStatus::MergeIncomplete;
+    task2.metadata = Some(serde_json::json!({}).to_string());
+    task2.updated_at = chrono::Utc::now() - chrono::Duration::seconds(300);
+    app_state.task_repo.create(task2.clone()).await.unwrap();
+
+    // Task 1 should be skipped due to starvation guard
+    let reconciled1 = reconciler
+        .reconcile_merge_incomplete_task(&task1, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        !reconciled1,
+        "Starvation guard should skip recently-retried task (RC#5)"
+    );
+
+    // Task 2 should proceed (no starvation guard blocking)
+    let reconciled2 = reconciler
+        .reconcile_merge_incomplete_task(&task2, InternalStatus::MergeIncomplete)
+        .await;
+    // Task 2 should either transition or at least not be blocked by starvation guard
+    let updated2 = app_state
+        .task_repo
+        .get_by_id(&task2.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert!(
+        updated2.internal_status == InternalStatus::PendingMerge || reconciled2,
+        "Fresh task should not be blocked by starvation guard — got status {:?}, reconciled={}",
+        updated2.internal_status,
+        reconciled2
+    );
+}
+
+#[tokio::test]
+async fn rc4_non_validation_failure_retries_normally() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(
+        project.id.clone(),
+        "Transient Git Failure Task".to_string(),
+    );
+    task.internal_status = InternalStatus::MergeIncomplete;
+    // TransientGit failure — should NOT be subject to validation cooldown or circuit breaker
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_failure_source": "transient_git",
+        })
+        .to_string(),
+    );
+    // Set updated_at far enough in the past for normal retry delay to pass
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(300);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+    assert!(
+        reconciled,
+        "Non-validation failure (TransientGit) should retry normally without validation cooldown"
+    );
+
+    // Verify the reconciler took action: task transitions to PendingMerge,
+    // then on_enter fires attempt_programmatic_merge which fails without real git
+    // and bounces back to MergeIncomplete. The key assertion is that reconciled=true
+    // (retry was attempted), proving the validation cooldown/circuit breaker did NOT block it.
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    // After the programmatic merge fails in test env, task bounces back to MergeIncomplete
+    assert!(
+        updated.internal_status == InternalStatus::PendingMerge
+            || updated.internal_status == InternalStatus::MergeIncomplete,
+        "TransientGit failure should attempt retry (got {:?})",
+        updated.internal_status
+    );
+}
