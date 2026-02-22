@@ -38,7 +38,7 @@ It started as a 196-line bash script called `ralph.sh` — a loop that orchestra
 ---
 
 <p align="center">
-  <img src="assets/graph-2026-02-21.png" alt="RalphX Graph View — task dependency visualization with critical path highlighting and real-time execution status" width="100%">
+  <img src="assets/graph-2026-02-22.png" alt="RalphX Graph View — dependency graph with critical path, tier grouping, and live execution status" width="100%">
 </p>
 
 ---
@@ -66,6 +66,54 @@ All data stays on your machine. Local SQLite database. No cloud dependency. No t
     <td width="50%">
       <img src="assets/merge-2026-02-21.png" alt="Merge Pipeline — 10-step automated merge validation">
       <p><strong>Merge Pipeline</strong> — 10-step automated merge validation: preparation, preconditions, branch freshness, worktree setup, cleanup, merge, type check, lint, clippy, tests. The Merger agent resolves conflicts and reports results in real time.</p>
+    </td>
+  </tr>
+</table>
+
+---
+
+#### Review Gates
+
+<table>
+  <tr>
+    <td width="33%">
+      <img src="assets/ai-review-2026-02-22.png" alt="AI Review in progress — Reviewer agent examining changes">
+      <p><strong>AI Review</strong> — The Reviewer agent examines diffs, runs environment checks, and steps through changes in real time. Code is analyzed before feedback reaches the Worker.</p>
+    </td>
+    <td width="33%">
+      <img src="assets/revise-2026-02-22.png" alt="Revision cycle — structured feedback delivered to the Worker">
+      <p><strong>Revision cycle</strong> — Structured feedback: specific issues, severity grades, required fixes. The Worker gets exactly what it needs to correct. Max 3 cycles before human escalation.</p>
+    </td>
+    <td width="33%">
+      <img src="assets/approved-2026-02-22.png" alt="Approved — code passes AI review and moves to merge">
+      <p><strong>Approved</strong> — Code passes AI review and moves to merge. Human escalation happens when it matters — not by default.</p>
+    </td>
+  </tr>
+</table>
+
+---
+
+#### Merge Pipeline
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="assets/pending-merge-2026-02-22.png" alt="Queued — merge starts automatically">
+      <p><strong>Queued</strong> — Merge starts automatically. Type check, lint, clippy, and tests run in sequence. Failures are visible immediately.</p>
+    </td>
+    <td width="50%">
+      <img src="assets/merge-fix-validation-2026-02-22.png" alt="Validation failure — Merger agent fixes build errors inline">
+      <p><strong>Validation failure</strong> — Build errors are fixed inline by the Merger agent. The merge branch isn't reverted.</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="assets/merge-conflicts-2026-02-22.png" alt="Conflicts — Merger agent resolves, never forces">
+      <p><strong>Conflicts</strong> — The Merger agent resolves conflicts, reports what changed, and never force-pushes. Your history stays clean.</p>
+    </td>
+    <td width="50%">
+      <img src="assets/merge-incomplete-deferred-2026-02-22.png" alt="Deferred — blocked merges defer automatically with recovery log">
+      <p><strong>Deferred</strong> — Blocked merges defer automatically with a timestamped recovery log. Retry, resolve manually, or cancel — you stay in control.</p>
     </td>
   </tr>
 </table>
@@ -164,7 +212,7 @@ AI-generated code never ships unreviewed:
 1. **AI Review** — Reviewer agent examines diffs, files structured issues with severity levels
 2. **Human Checkpoint** — Escalation point for changes that need your judgment
 3. **QA Testing** — Automated test execution and verification
-4. **Auto-fix limit** — Max 3 attempts. If the Worker can't resolve review issues in 3 cycles, it stops and asks for help.
+4. **Auto-fix limit** — Max 3 auto-fix cycles. If the Worker can't resolve review issues, it stops and escalates.
 
 ### Git Worktree Isolation
 
