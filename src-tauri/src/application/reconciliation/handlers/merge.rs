@@ -156,6 +156,35 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // Gap 4: Don't retry if the merge worktree doesn't exist — retrying is futile
+        // since the spawn will fail again with the same "no valid merge worktree" error.
+        if decision.action == RecoveryActionKind::ExecuteEntryActions {
+            if let Some(ref wt_path) = updated_task.worktree_path {
+                let wt = std::path::PathBuf::from(wt_path);
+                if !wt.exists() {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        worktree_path = %wt_path,
+                        "Merge worktree does not exist — skipping futile retry, transitioning to MergeIncomplete"
+                    );
+                    return self
+                        .apply_recovery_decision(
+                            &updated_task,
+                            status,
+                            RecoveryContext::Merge,
+                            RecoveryDecision {
+                                action: RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
+                                reason: Some(format!(
+                                    "Merge worktree {} does not exist — cannot spawn merger agent",
+                                    wt_path
+                                )),
+                            },
+                        )
+                        .await;
+                }
+            }
+        }
+
         // Gap 3: After auto-complete, check if task is still stuck in Merging
         if decision.action == RecoveryActionKind::AttemptMergeAutoComplete {
             self.apply_recovery_decision(&updated_task, status, RecoveryContext::Merge, decision)
