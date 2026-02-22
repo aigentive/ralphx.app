@@ -804,13 +804,11 @@ async fn gap6b_source_update_when_source_is_current_branch_returns_error() {
     )
     .await;
 
-    // Current behavior (pre-RC#9): returns Error because git worktree can't check out
-    // a branch that's already checked out in the main repo.
-    // After RC#9: this assertion should change to expect Updated.
+    // RC#9 fix: update_source_from_target now detects the source branch is checked out
+    // in an existing worktree and merges there instead of failing.
     assert!(
-        matches!(result, SourceUpdateResult::Error(_)),
-        "Source update when source is current branch in main repo should return Error \
-         (git worktree limitation, known issue RC#9). Got: {:?}",
+        matches!(result, SourceUpdateResult::Updated),
+        "Source update should succeed via existing-worktree fallback (RC#9 fix). Got: {:?}",
         result
     );
 }
