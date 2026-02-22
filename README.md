@@ -21,7 +21,7 @@
 
 351,000 lines of code. 10,600 automated tests. 3,637 commits. 30 days.
 
-Built by one person and a fleet of AI agents, on personal time, while working full-time as an engineer at a fintech company.
+Built by [one person](https://www.linkedin.com/in/laza-bogdan/) and a fleet of AI agents, on personal time, while working full-time as an engineer at a fintech company.
 
 It started as a 196-line bash script called `ralph.sh` — a loop that orchestrated Claude sessions. Within 24 hours it was a Tauri 2.0 desktop application. Within 30 days it was a full AI development control room: Kanban board, dependency graph, ideation studio, 24 specialized agents, a 24-state task lifecycle engine, and an automated merge pipeline.
 
