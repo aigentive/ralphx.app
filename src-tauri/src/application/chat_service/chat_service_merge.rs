@@ -42,6 +42,116 @@ impl Drop for AutoCompleteGuard {
     }
 }
 
+/// Shared context for merge auto-complete operations.
+/// Bundles the repository/service references passed through the merge pipeline.
+pub(crate) struct MergeAutoCompleteContext<'a, R: Runtime> {
+    pub task_id_str: &'a str,
+    pub task_id: TaskId,
+    pub task_repo: &'a Arc<dyn TaskRepository>,
+    pub task_dependency_repo: &'a Arc<dyn TaskDependencyRepository>,
+    pub project_repo: &'a Arc<dyn ProjectRepository>,
+    pub chat_message_repo: &'a Arc<dyn ChatMessageRepository>,
+    pub chat_attachment_repo: &'a Arc<dyn ChatAttachmentRepository>,
+    pub conversation_repo: &'a Arc<dyn ChatConversationRepository>,
+    pub agent_run_repo: &'a Arc<dyn AgentRunRepository>,
+    pub ideation_session_repo: &'a Arc<dyn IdeationSessionRepository>,
+    pub activity_event_repo: &'a Arc<dyn ActivityEventRepository>,
+    pub message_queue: &'a Arc<MessageQueue>,
+    pub running_agent_registry: &'a Arc<dyn RunningAgentRegistry>,
+    pub memory_event_repo: &'a Arc<dyn MemoryEventRepository>,
+    pub execution_state: &'a Arc<ExecutionState>,
+    pub plan_branch_repo: &'a Option<Arc<dyn PlanBranchRepository>>,
+    pub app_handle: Option<&'a AppHandle<R>>,
+}
+
+impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
+    fn build_transition_service(&self) -> TaskTransitionService<R> {
+        let service = TaskTransitionService::new(
+            Arc::clone(self.task_repo),
+            Arc::clone(self.task_dependency_repo),
+            Arc::clone(self.project_repo),
+            Arc::clone(self.chat_message_repo),
+            Arc::clone(self.chat_attachment_repo),
+            Arc::clone(self.conversation_repo),
+            Arc::clone(self.agent_run_repo),
+            Arc::clone(self.ideation_session_repo),
+            Arc::clone(self.activity_event_repo),
+            Arc::clone(self.message_queue),
+            Arc::clone(self.running_agent_registry),
+            Arc::clone(self.execution_state),
+            self.app_handle.cloned(),
+            Arc::clone(self.memory_event_repo),
+        );
+        if let Some(ref repo) = self.plan_branch_repo {
+            service.with_plan_branch_repo(Arc::clone(repo))
+        } else {
+            service
+        }
+    }
+
+    fn build_scheduler_service(&self) -> TaskSchedulerService<R> {
+        let scheduler = TaskSchedulerService::new(
+            Arc::clone(self.execution_state),
+            Arc::clone(self.project_repo),
+            Arc::clone(self.task_repo),
+            Arc::clone(self.task_dependency_repo),
+            Arc::clone(self.chat_message_repo),
+            Arc::clone(self.chat_attachment_repo),
+            Arc::clone(self.conversation_repo),
+            Arc::clone(self.agent_run_repo),
+            Arc::clone(self.ideation_session_repo),
+            Arc::clone(self.activity_event_repo),
+            Arc::clone(self.message_queue),
+            Arc::clone(self.running_agent_registry),
+            Arc::clone(self.memory_event_repo),
+            self.app_handle.cloned(),
+        );
+        if let Some(ref repo) = self.plan_branch_repo {
+            scheduler.with_plan_branch_repo(Arc::clone(repo))
+        } else {
+            scheduler
+        }
+    }
+
+    async fn transition_incomplete(&self, reason: &str) {
+        tracing::info!(
+            task_id = self.task_id_str,
+            reason = reason,
+            "transition_to_merge_incomplete: transitioning task"
+        );
+        if let Err(e) = self
+            .build_transition_service()
+            .transition_task(&self.task_id, InternalStatus::MergeIncomplete)
+            .await
+        {
+            tracing::error!(
+                task_id = self.task_id_str,
+                error = %e,
+                "transition_to_merge_incomplete: failed to transition"
+            );
+        }
+    }
+
+    async fn transition_conflict(&self, reason: &str) {
+        tracing::info!(
+            task_id = self.task_id_str,
+            reason = reason,
+            "transition_to_merge_conflict: transitioning task"
+        );
+        if let Err(e) = self
+            .build_transition_service()
+            .transition_task(&self.task_id, InternalStatus::MergeConflict)
+            .await
+        {
+            tracing::error!(
+                task_id = self.task_id_str,
+                error = %e,
+                "transition_to_merge_conflict: failed to transition"
+            );
+        }
+    }
+}
+
 /// Attempt to auto-complete a merge when the merger agent exits.
 ///
 /// Called after process_stream_background returns for ChatContextType::Merge.
@@ -51,26 +161,17 @@ impl Drop for AutoCompleteGuard {
 /// - Rebase in progress or conflict markers → transition to MergeConflict
 ///
 /// This enables "fire and forget" merge agents that don't need to call complete_merge.
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
-    task_id_str: &str,
-    task_repo: &Arc<dyn TaskRepository>,
-    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
-    project_repo: &Arc<dyn ProjectRepository>,
-    chat_message_repo: &Arc<dyn ChatMessageRepository>,
-    chat_attachment_repo: &Arc<dyn ChatAttachmentRepository>,
-    conversation_repo: &Arc<dyn ChatConversationRepository>,
-    agent_run_repo: &Arc<dyn AgentRunRepository>,
-    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: &Arc<dyn ActivityEventRepository>,
-    message_queue: &Arc<MessageQueue>,
-    running_agent_registry: &Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: &Arc<dyn MemoryEventRepository>,
-    execution_state: &Arc<ExecutionState>,
-    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-    app_handle: Option<&AppHandle<R>>,
+pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
+    ctx: &MergeAutoCompleteContext<'_, R>,
 ) {
-    let task_id = TaskId::from_string(task_id_str.to_string());
+    // Local bindings for fields used directly in the body (outside transition/service calls)
+    let task_id_str = ctx.task_id_str;
+    let task_repo = ctx.task_repo;
+    let task_dependency_repo = ctx.task_dependency_repo;
+    let project_repo = ctx.project_repo;
+    let execution_state = ctx.execution_state;
+    let plan_branch_repo = ctx.plan_branch_repo;
+    let app_handle = ctx.app_handle;
 
     // Dedup guard: prevent concurrent auto-complete calls for the same task.
     // Two trigger paths (agent completion + error handler) can fire ~9s apart,
@@ -89,7 +190,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
     };
 
     // 1. Get task - if not in Merging state, agent already handled it
-    let mut task = match task_repo.get_by_id(&task_id).await {
+    let mut task = match task_repo.get_by_id(&ctx.task_id).await {
         Ok(Some(task)) => task,
         Ok(None) => {
             tracing::warn!(
@@ -199,26 +300,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 conflict_count = files.len(),
                 "attempt_merge_auto_complete: stale rebase has real conflicts, transitioning to MergeConflict"
             );
-            transition_to_merge_conflict(
-                &task_id,
-                "Stale rebase has unresolved conflicts",
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
+            ctx.transition_conflict("Stale rebase has unresolved conflicts").await;
             return;
         }
         StaleRebaseResult::Failed { reason } => {
@@ -227,26 +309,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 reason = &reason,
                 "attempt_merge_auto_complete: stale rebase recovery failed, transitioning to MergeConflict"
             );
-            transition_to_merge_conflict(
-                &task_id,
-                &format!("Stale rebase recovery failed: {}", reason),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
+            ctx.transition_conflict(&format!("Stale rebase recovery failed: {}", reason)).await;
             return;
         }
         StaleRebaseResult::NoRebase => {
@@ -260,26 +323,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             task_id = task_id_str,
             "attempt_merge_auto_complete: rebase still in progress after recovery attempt, transitioning to MergeConflict"
         );
-        transition_to_merge_conflict(
-            &task_id,
-            "Rebase still in progress after recovery attempt",
-            task_repo,
-            task_dependency_repo,
-            project_repo,
-            chat_message_repo,
-            chat_attachment_repo,
-            conversation_repo,
-            agent_run_repo,
-            ideation_session_repo,
-            activity_event_repo,
-            message_queue,
-            running_agent_registry,
-            memory_event_repo,
-            execution_state,
-            plan_branch_repo,
-            app_handle,
-        )
-        .await;
+        ctx.transition_conflict("Rebase still in progress after recovery attempt").await;
         return;
     }
 
@@ -288,26 +332,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             task_id = task_id_str,
             "attempt_merge_auto_complete: merge in progress (MERGE_HEAD exists), transitioning to MergeConflict"
         );
-        transition_to_merge_conflict(
-            &task_id,
-            "Agent exited with incomplete merge (MERGE_HEAD exists)",
-            task_repo,
-            task_dependency_repo,
-            project_repo,
-            chat_message_repo,
-            chat_attachment_repo,
-            conversation_repo,
-            agent_run_repo,
-            ideation_session_repo,
-            activity_event_repo,
-            message_queue,
-            running_agent_registry,
-            memory_event_repo,
-            execution_state,
-            plan_branch_repo,
-            app_handle,
-        )
-        .await;
+        ctx.transition_conflict("Agent exited with incomplete merge (MERGE_HEAD exists)").await;
         return;
     }
 
@@ -317,26 +342,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 task_id = task_id_str,
                 "attempt_merge_auto_complete: conflict markers found, transitioning to MergeConflict"
             );
-            transition_to_merge_conflict(
-                &task_id,
-                "Agent exited with unresolved conflict markers",
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
+            ctx.transition_conflict("Agent exited with unresolved conflict markers").await;
             return;
         }
         Ok(false) => {
@@ -348,26 +354,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 error = %e,
                 "attempt_merge_auto_complete: failed to check conflict markers, transitioning to MergeIncomplete"
             );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!("Auto-complete failed: {}", e),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
-            .await;
+            ctx.transition_incomplete(&format!("Auto-complete failed: {}", e)).await;
             return;
         }
     }
@@ -383,26 +370,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
             task_id = task_id_str,
             "attempt_merge_auto_complete: source_branch is empty after resolve_merge_branches"
         );
-        transition_to_merge_incomplete(
-            &task_id,
-            "Auto-complete failed: could not determine source branch name",
-            task_repo,
-            task_dependency_repo,
-            project_repo,
-            chat_message_repo,
-            chat_attachment_repo,
-            conversation_repo,
-            agent_run_repo,
-            ideation_session_repo,
-            activity_event_repo,
-            message_queue,
-            running_agent_registry,
-            memory_event_repo,
-            execution_state,
-            plan_branch_repo,
-            app_handle,
-        )
-        .await;
+        ctx.transition_incomplete("Auto-complete failed: could not determine source branch name").await;
         return;
     }
 
@@ -506,29 +474,9 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     );
                 }
             }
-            let transition_service = TaskTransitionService::new(
-                Arc::clone(task_repo),
-                Arc::clone(task_dependency_repo),
-                Arc::clone(project_repo),
-                Arc::clone(chat_message_repo),
-                Arc::clone(chat_attachment_repo),
-                Arc::clone(conversation_repo),
-                Arc::clone(agent_run_repo),
-                Arc::clone(ideation_session_repo),
-                Arc::clone(activity_event_repo),
-                Arc::clone(message_queue),
-                Arc::clone(running_agent_registry),
-                Arc::clone(execution_state),
-                app_handle.cloned(),
-                Arc::clone(memory_event_repo),
-            );
-            let transition_service = if let Some(ref repo) = plan_branch_repo {
-                transition_service.with_plan_branch_repo(Arc::clone(repo))
-            } else {
-                transition_service
-            };
-            if let Err(e) = transition_service
-                .transition_task(&task_id, InternalStatus::PendingMerge)
+            if let Err(e) = ctx
+                .build_transition_service()
+                .transition_task(&ctx.task_id, InternalStatus::PendingMerge)
                 .await
             {
                 tracing::error!(
@@ -544,28 +492,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 base_branch = %base_branch,
                 "attempt_merge_auto_complete: plan branch still not up-to-date — merger agent did not resolve plan←main conflict"
             );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!(
-                    "Merger agent exited but plan branch {} was not updated from {}",
-                    plan_branch, base_branch
-                ),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
+            ctx.transition_incomplete(&format!(
+                "Merger agent exited but plan branch {} was not updated from {}",
+                plan_branch, base_branch
+            ))
             .await;
         }
         return;
@@ -624,29 +554,9 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     );
                 }
             }
-            let transition_service = TaskTransitionService::new(
-                Arc::clone(task_repo),
-                Arc::clone(task_dependency_repo),
-                Arc::clone(project_repo),
-                Arc::clone(chat_message_repo),
-                Arc::clone(chat_attachment_repo),
-                Arc::clone(conversation_repo),
-                Arc::clone(agent_run_repo),
-                Arc::clone(ideation_session_repo),
-                Arc::clone(activity_event_repo),
-                Arc::clone(message_queue),
-                Arc::clone(running_agent_registry),
-                Arc::clone(execution_state),
-                app_handle.cloned(),
-                Arc::clone(memory_event_repo),
-            );
-            let transition_service = if let Some(ref repo) = plan_branch_repo {
-                transition_service.with_plan_branch_repo(Arc::clone(repo))
-            } else {
-                transition_service
-            };
-            if let Err(e) = transition_service
-                .transition_task(&task_id, InternalStatus::PendingMerge)
+            if let Err(e) = ctx
+                .build_transition_service()
+                .transition_task(&ctx.task_id, InternalStatus::PendingMerge)
                 .await
             {
                 tracing::error!(
@@ -662,28 +572,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 target_branch = %target_branch,
                 "attempt_merge_auto_complete: source branch still not up-to-date — merger agent did not resolve source←target conflict"
             );
-            transition_to_merge_incomplete(
-                &task_id,
-                &format!(
-                    "Merger agent exited but source branch {} is not yet up-to-date with {}",
-                    source_branch, target_branch
-                ),
-                task_repo,
-                task_dependency_repo,
-                project_repo,
-                chat_message_repo,
-                chat_attachment_repo,
-                conversation_repo,
-                agent_run_repo,
-                ideation_session_repo,
-                activity_event_repo,
-                message_queue,
-                running_agent_registry,
-                memory_event_repo,
-                execution_state,
-                plan_branch_repo,
-                app_handle,
-            )
+            ctx.transition_incomplete(&format!(
+                "Merger agent exited but source branch {} is not yet up-to-date with {}",
+                source_branch, target_branch
+            ))
             .await;
         }
         return;
@@ -795,26 +687,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                 task.touch();
                 let _ = task_repo.update(&task).await;
 
-                transition_to_merge_incomplete(
-                    &task_id,
-                    "Validation re-check failed after agent fix attempt",
-                    task_repo,
-                    task_dependency_repo,
-                    project_repo,
-                    chat_message_repo,
-                    chat_attachment_repo,
-                    conversation_repo,
-                    agent_run_repo,
-                    ideation_session_repo,
-                    activity_event_repo,
-                    message_queue,
-                    running_agent_registry,
-                    memory_event_repo,
-                    execution_state,
-                    plan_branch_repo,
-                    app_handle,
-                )
-                .await;
+                ctx.transition_incomplete("Validation re-check failed after agent fix attempt").await;
                 return;
             }
             Some(result) => {
@@ -880,25 +753,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     target_branch = %target_branch,
                     "attempt_merge_auto_complete: validation recovery — failed to get target branch SHA"
                 );
-                transition_to_merge_incomplete(
-                    &task_id,
-                    &format!("Auto-complete failed: cannot resolve target branch {}: {}", target_branch, e),
-                    task_repo,
-                    task_dependency_repo,
-                    project_repo,
-                    chat_message_repo,
-                    chat_attachment_repo,
-                    conversation_repo,
-                    agent_run_repo,
-                    ideation_session_repo,
-                    activity_event_repo,
-                    message_queue,
-                    running_agent_registry,
-                    memory_event_repo,
-                    execution_state,
-                    plan_branch_repo,
-                    app_handle,
-                )
+                ctx.transition_incomplete(&format!(
+                    "Auto-complete failed: cannot resolve target branch {}: {}",
+                    target_branch, e
+                ))
                 .await;
                 return;
             }
@@ -926,28 +784,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     resolve_sha = %resolve_sha,
                     "attempt_merge_auto_complete: failed to fast-forward target branch from merge-resolve"
                 );
-                transition_to_merge_incomplete(
-                    &task_id,
-                    &format!(
-                        "Auto-complete failed: could not fast-forward {} to merge-resolve commit {}: {}",
-                        target_branch, resolve_sha, e
-                    ),
-                    task_repo,
-                    task_dependency_repo,
-                    project_repo,
-                    chat_message_repo,
-                    chat_attachment_repo,
-                    conversation_repo,
-                    agent_run_repo,
-                    ideation_session_repo,
-                    activity_event_repo,
-                    message_queue,
-                    running_agent_registry,
-                    memory_event_repo,
-                    execution_state,
-                    plan_branch_repo,
-                    app_handle,
-                )
+                ctx.transition_incomplete(&format!(
+                    "Auto-complete failed: could not fast-forward {} to merge-resolve commit {}: {}",
+                    target_branch, resolve_sha, e
+                ))
                 .await;
                 return;
             }
@@ -994,28 +834,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     target_branch = %target_branch,
                     "attempt_merge_auto_complete: task branch not merged to target, transitioning to MergeIncomplete"
                 );
-                transition_to_merge_incomplete(
-                    &task_id,
-                    &format!(
-                        "Agent exited but task branch {} not merged to {}",
-                        source_branch, target_branch
-                    ),
-                    task_repo,
-                    task_dependency_repo,
-                    project_repo,
-                    chat_message_repo,
-                    chat_attachment_repo,
-                    conversation_repo,
-                    agent_run_repo,
-                    ideation_session_repo,
-                    activity_event_repo,
-                    message_queue,
-                    running_agent_registry,
-                    memory_event_repo,
-                    execution_state,
-                    plan_branch_repo,
-                    app_handle,
-                )
+                ctx.transition_incomplete(&format!(
+                    "Agent exited but task branch {} not merged to {}",
+                    source_branch, target_branch
+                ))
                 .await;
                 return;
             }
@@ -1025,28 +847,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     source_branch = %source_branch,
                     "attempt_merge_auto_complete: source branch does not exist or cannot be resolved"
                 );
-                transition_to_merge_incomplete(
-                    &task_id,
-                    &format!(
-                        "Auto-complete failed: source branch {} does not exist or cannot be resolved",
-                        source_branch
-                    ),
-                    task_repo,
-                    task_dependency_repo,
-                    project_repo,
-                    chat_message_repo,
-                    chat_attachment_repo,
-                    conversation_repo,
-                    agent_run_repo,
-                    ideation_session_repo,
-                    activity_event_repo,
-                    message_queue,
-                    running_agent_registry,
-                    memory_event_repo,
-                    execution_state,
-                    plan_branch_repo,
-                    app_handle,
-                )
+                ctx.transition_incomplete(&format!(
+                    "Auto-complete failed: source branch {} does not exist or cannot be resolved",
+                    source_branch
+                ))
                 .await;
                 return;
             }
@@ -1056,28 +860,10 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
                     target_branch = %target_branch,
                     "attempt_merge_auto_complete: target branch does not exist or cannot be resolved"
                 );
-                transition_to_merge_incomplete(
-                    &task_id,
-                    &format!(
-                        "Auto-complete failed: target branch {} does not exist or cannot be resolved",
-                        target_branch
-                    ),
-                    task_repo,
-                    task_dependency_repo,
-                    project_repo,
-                    chat_message_repo,
-                    chat_attachment_repo,
-                    conversation_repo,
-                    agent_run_repo,
-                    ideation_session_repo,
-                    activity_event_repo,
-                    message_queue,
-                    running_agent_registry,
-                    memory_event_repo,
-                    execution_state,
-                    plan_branch_repo,
-                    app_handle,
-                )
+                ctx.transition_incomplete(&format!(
+                    "Auto-complete failed: target branch {} does not exist or cannot be resolved",
+                    target_branch
+                ))
                 .await;
                 return;
             }
@@ -1109,25 +895,9 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         // - decrements running_count (prevents concurrency limit leak)
         // - triggers try_retry_deferred_merges
         // - surfaces task in needs_attention panel
-        transition_to_merge_incomplete(
-            &task_id,
-            &format!("Auto-complete failed: complete_merge_internal error: {}", e),
-            task_repo,
-            task_dependency_repo,
-            project_repo,
-            chat_message_repo,
-            chat_attachment_repo,
-            conversation_repo,
-            agent_run_repo,
-            ideation_session_repo,
-            activity_event_repo,
-            message_queue,
-            running_agent_registry,
-            memory_event_repo,
-            execution_state,
-            plan_branch_repo,
-            app_handle,
-        )
+        ctx.transition_incomplete(&format!(
+            "Auto-complete failed: complete_merge_internal error: {}", e
+        ))
         .await;
     } else {
         // Auto-unblock tasks that were waiting on this task
@@ -1150,27 +920,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         }
 
         // Schedule newly-unblocked tasks (e.g. plan_merge tasks that just became Ready)
-        let scheduler = TaskSchedulerService::new(
-            Arc::clone(execution_state),
-            Arc::clone(project_repo),
-            Arc::clone(task_repo),
-            Arc::clone(task_dependency_repo),
-            Arc::clone(chat_message_repo),
-            Arc::clone(chat_attachment_repo),
-            Arc::clone(conversation_repo),
-            Arc::clone(agent_run_repo),
-            Arc::clone(ideation_session_repo),
-            Arc::clone(activity_event_repo),
-            Arc::clone(message_queue),
-            Arc::clone(running_agent_registry),
-            Arc::clone(memory_event_repo),
-            app_handle.cloned(),
-        );
-        let scheduler = if let Some(ref repo) = plan_branch_repo {
-            scheduler.with_plan_branch_repo(Arc::clone(repo))
-        } else {
-            scheduler
-        };
+        let scheduler = ctx.build_scheduler_service();
         let scheduler = Arc::new(scheduler);
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         // Auto-complete path is internal — no UI settle needed → merge_settle_ms
@@ -1184,164 +934,9 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
 
 /// Reconcile merge state when agent run finished but status is still Merging.
 pub(crate) async fn reconcile_merge_auto_complete<R: Runtime>(
-    task_id_str: &str,
-    task_repo: &Arc<dyn TaskRepository>,
-    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
-    project_repo: &Arc<dyn ProjectRepository>,
-    chat_message_repo: &Arc<dyn ChatMessageRepository>,
-    chat_attachment_repo: &Arc<dyn ChatAttachmentRepository>,
-    conversation_repo: &Arc<dyn ChatConversationRepository>,
-    agent_run_repo: &Arc<dyn AgentRunRepository>,
-    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: &Arc<dyn ActivityEventRepository>,
-    message_queue: &Arc<MessageQueue>,
-    running_agent_registry: &Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: &Arc<dyn MemoryEventRepository>,
-    execution_state: &Arc<ExecutionState>,
-    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-    app_handle: Option<&AppHandle<R>>,
+    ctx: &MergeAutoCompleteContext<'_, R>,
 ) {
-    attempt_merge_auto_complete(
-        task_id_str,
-        task_repo,
-        task_dependency_repo,
-        project_repo,
-        chat_message_repo,
-        chat_attachment_repo,
-        conversation_repo,
-        agent_run_repo,
-        ideation_session_repo,
-        activity_event_repo,
-        message_queue,
-        running_agent_registry,
-        memory_event_repo,
-        execution_state,
-        plan_branch_repo,
-        app_handle,
-    )
-    .await;
-}
-
-/// Helper to transition task to MergeConflict state
-#[allow(clippy::too_many_arguments)]
-async fn transition_to_merge_conflict<R: Runtime>(
-    task_id: &TaskId,
-    reason: &str,
-    task_repo: &Arc<dyn TaskRepository>,
-    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
-    project_repo: &Arc<dyn ProjectRepository>,
-    chat_message_repo: &Arc<dyn ChatMessageRepository>,
-    chat_attachment_repo: &Arc<dyn ChatAttachmentRepository>,
-    conversation_repo: &Arc<dyn ChatConversationRepository>,
-    agent_run_repo: &Arc<dyn AgentRunRepository>,
-    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: &Arc<dyn ActivityEventRepository>,
-    message_queue: &Arc<MessageQueue>,
-    running_agent_registry: &Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: &Arc<dyn MemoryEventRepository>,
-    execution_state: &Arc<ExecutionState>,
-    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-    app_handle: Option<&AppHandle<R>>,
-) {
-    tracing::info!(
-        task_id = task_id.as_str(),
-        reason = reason,
-        "transition_to_merge_conflict: transitioning task"
-    );
-
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(task_repo),
-        Arc::clone(task_dependency_repo),
-        Arc::clone(project_repo),
-        Arc::clone(chat_message_repo),
-        Arc::clone(chat_attachment_repo),
-        Arc::clone(conversation_repo),
-        Arc::clone(agent_run_repo),
-        Arc::clone(ideation_session_repo),
-        Arc::clone(activity_event_repo),
-        Arc::clone(message_queue),
-        Arc::clone(running_agent_registry),
-        Arc::clone(execution_state),
-        app_handle.cloned(),
-        Arc::clone(memory_event_repo),
-    );
-    let transition_service = if let Some(ref repo) = plan_branch_repo {
-        transition_service.with_plan_branch_repo(Arc::clone(repo))
-    } else {
-        transition_service
-    };
-
-    if let Err(e) = transition_service
-        .transition_task(task_id, InternalStatus::MergeConflict)
-        .await
-    {
-        tracing::error!(
-            task_id = task_id.as_str(),
-            error = %e,
-            "transition_to_merge_conflict: failed to transition"
-        );
-    }
-}
-
-/// Helper to transition task to MergeIncomplete state (non-conflict failures)
-#[allow(clippy::too_many_arguments)]
-async fn transition_to_merge_incomplete<R: Runtime>(
-    task_id: &TaskId,
-    reason: &str,
-    task_repo: &Arc<dyn TaskRepository>,
-    task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
-    project_repo: &Arc<dyn ProjectRepository>,
-    chat_message_repo: &Arc<dyn ChatMessageRepository>,
-    chat_attachment_repo: &Arc<dyn ChatAttachmentRepository>,
-    conversation_repo: &Arc<dyn ChatConversationRepository>,
-    agent_run_repo: &Arc<dyn AgentRunRepository>,
-    ideation_session_repo: &Arc<dyn IdeationSessionRepository>,
-    activity_event_repo: &Arc<dyn ActivityEventRepository>,
-    message_queue: &Arc<MessageQueue>,
-    running_agent_registry: &Arc<dyn RunningAgentRegistry>,
-    memory_event_repo: &Arc<dyn MemoryEventRepository>,
-    execution_state: &Arc<ExecutionState>,
-    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-    app_handle: Option<&AppHandle<R>>,
-) {
-    tracing::info!(
-        task_id = task_id.as_str(),
-        reason = reason,
-        "transition_to_merge_incomplete: transitioning task"
-    );
-
-    let transition_service = TaskTransitionService::new(
-        Arc::clone(task_repo),
-        Arc::clone(task_dependency_repo),
-        Arc::clone(project_repo),
-        Arc::clone(chat_message_repo),
-        Arc::clone(chat_attachment_repo),
-        Arc::clone(conversation_repo),
-        Arc::clone(agent_run_repo),
-        Arc::clone(ideation_session_repo),
-        Arc::clone(activity_event_repo),
-        Arc::clone(message_queue),
-        Arc::clone(running_agent_registry),
-        Arc::clone(execution_state),
-        app_handle.cloned(),
-        Arc::clone(memory_event_repo),
-    );
-    let transition_service = if let Some(ref repo) = plan_branch_repo {
-        transition_service.with_plan_branch_repo(Arc::clone(repo))
-    } else {
-        transition_service
-    };
-
-    if let Err(e) = transition_service
-        .transition_task(task_id, InternalStatus::MergeIncomplete)
-        .await
-    {
-        tracing::error!(
-            task_id = task_id.as_str(),
-            error = %e,
-            "transition_to_merge_incomplete: failed to transition"
-        );
-    }
+    attempt_merge_auto_complete(ctx).await;
 }
 
 /// Result of merge verification on target branch
