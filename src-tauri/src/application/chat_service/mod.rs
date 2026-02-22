@@ -60,7 +60,7 @@ pub use chat_service_errors::{
 pub use chat_service_helpers::{
     context_type_to_process, get_agent_name, get_assistant_role, resolve_agent_with_team_mode,
 };
-pub(crate) use chat_service_merge::reconcile_merge_auto_complete;
+pub(crate) use chat_service_merge::{MergeAutoCompleteContext, reconcile_merge_auto_complete};
 pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
 pub use chat_service_streaming::process_stream_background;

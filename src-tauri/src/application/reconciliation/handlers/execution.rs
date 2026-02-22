@@ -6,7 +6,7 @@ use std::str::FromStr;
 use tauri::{Emitter, Runtime};
 use tracing::warn;
 
-use crate::application::chat_service::reconcile_merge_auto_complete;
+use crate::application::chat_service::{MergeAutoCompleteContext, reconcile_merge_auto_complete};
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::domain::entities::{
     AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, TaskId,
@@ -1133,25 +1133,26 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 true
             }
             RecoveryActionKind::AttemptMergeAutoComplete => {
-                reconcile_merge_auto_complete(
-                    task.id.as_str(),
-                    &self.task_repo,
-                    &self.task_dep_repo,
-                    &self.project_repo,
-                    &self.chat_message_repo,
-                    &self.chat_attachment_repo,
-                    &self.chat_conversation_repo,
-                    &self.agent_run_repo,
-                    &self.ideation_session_repo,
-                    &self.activity_event_repo,
-                    &self.message_queue,
-                    &self.running_agent_registry,
-                    &self.memory_event_repo,
-                    &self.execution_state,
-                    &self.plan_branch_repo,
-                    self.app_handle.as_ref(),
-                )
-                .await;
+                let merge_ctx = MergeAutoCompleteContext {
+                    task_id_str: task.id.as_str(),
+                    task_id: task.id.clone(),
+                    task_repo: &self.task_repo,
+                    task_dependency_repo: &self.task_dep_repo,
+                    project_repo: &self.project_repo,
+                    chat_message_repo: &self.chat_message_repo,
+                    chat_attachment_repo: &self.chat_attachment_repo,
+                    conversation_repo: &self.chat_conversation_repo,
+                    agent_run_repo: &self.agent_run_repo,
+                    ideation_session_repo: &self.ideation_session_repo,
+                    activity_event_repo: &self.activity_event_repo,
+                    message_queue: &self.message_queue,
+                    running_agent_registry: &self.running_agent_registry,
+                    memory_event_repo: &self.memory_event_repo,
+                    execution_state: &self.execution_state,
+                    plan_branch_repo: &self.plan_branch_repo,
+                    app_handle: self.app_handle.as_ref(),
+                };
+                reconcile_merge_auto_complete(&merge_ctx).await;
                 true
             }
             RecoveryActionKind::Prompt => {

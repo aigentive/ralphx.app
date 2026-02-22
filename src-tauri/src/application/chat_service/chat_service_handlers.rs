@@ -355,8 +355,9 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     // Handle merge auto-completion (only for Merge context)
     if context_type == ChatContextType::Merge {
         if let Some(ref exec_state) = execution_state {
-            super::chat_service_merge::attempt_merge_auto_complete(
-                context_id,
+            let merge_ctx = super::chat_service_merge::MergeAutoCompleteContext {
+                task_id_str: context_id,
+                task_id: TaskId::from_string(context_id.to_string()),
                 task_repo,
                 task_dependency_repo,
                 project_repo,
@@ -369,11 +370,11 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                 message_queue,
                 running_agent_registry,
                 memory_event_repo,
-                exec_state,
+                execution_state: exec_state,
                 plan_branch_repo,
-                app_handle.as_ref(),
-            )
-            .await;
+                app_handle: app_handle.as_ref(),
+            };
+            super::chat_service_merge::attempt_merge_auto_complete(&merge_ctx).await;
         } else {
             tracing::warn!(
                 "Cannot auto-complete merge for task {} - no execution_state available",
@@ -1046,8 +1047,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
         // (rate-limited merges should wait for reconciler to retry after cooldown)
         if !is_rate_limited {
             if let Some(ref exec_state) = execution_state {
-                super::chat_service_merge::attempt_merge_auto_complete(
-                    context_id,
+                let merge_ctx = super::chat_service_merge::MergeAutoCompleteContext {
+                    task_id_str: context_id,
+                    task_id: TaskId::from_string(context_id.to_string()),
                     task_repo,
                     task_dependency_repo,
                     project_repo,
@@ -1060,11 +1062,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     message_queue,
                     running_agent_registry,
                     memory_event_repo,
-                    exec_state,
+                    execution_state: exec_state,
                     plan_branch_repo,
-                    app_handle.as_ref(),
-                )
-                .await;
+                    app_handle: app_handle.as_ref(),
+                };
+                super::chat_service_merge::attempt_merge_auto_complete(&merge_ctx).await;
             } else {
                 tracing::warn!(
                     "Cannot auto-complete merge for task {} on error - no execution_state available",
