@@ -286,6 +286,90 @@ impl<'a> super::TransitionHandler<'a> {
             return false;
         }
 
+        // Defense-in-depth: If task belongs to a plan, check the plan branch independently.
+        // Same rationale as check_already_merged — target_branch may have been incorrectly
+        // resolved but the task's commits already landed on the plan branch.
+        if let Some(ref session_id) = task.ideation_session_id {
+            if let Some(ref pb_repo) = plan_branch_repo {
+                if let Ok(Some(pb)) = pb_repo.get_by_session_id(session_id).await {
+                    if pb.branch_name != target_branch {
+                        if let Ok(Some(found_sha)) =
+                            GitService::find_commit_by_message_grep(
+                                repo_path,
+                                task_id_str,
+                                &pb.branch_name,
+                            )
+                            .await
+                        {
+                            if has_prior_validation_failure(task) {
+                                tracing::warn!(
+                                    task_id = task_id_str,
+                                    plan_branch = %pb.branch_name,
+                                    resolved_target = %target_branch,
+                                    found_sha = %found_sha,
+                                    "recover_deleted_source_branch: commits on plan branch but \
+                                     prior validation failures — skipping recovery"
+                                );
+                            } else {
+                                tracing::warn!(
+                                    task_id = task_id_str,
+                                    plan_branch = %pb.branch_name,
+                                    resolved_target = %target_branch,
+                                    found_sha = %found_sha,
+                                    "recover_deleted_source_branch: task commits found on plan \
+                                     branch (target mismatch detected) — recovering"
+                                );
+
+                                let merge_wt =
+                                    compute_merge_worktree_path(project, task_id_str);
+                                let merge_wt_path = Path::new(&merge_wt);
+                                if merge_wt_path.exists() {
+                                    if let Err(e) =
+                                        GitService::delete_worktree(repo_path, merge_wt_path).await
+                                    {
+                                        tracing::warn!(
+                                            error = %e,
+                                            "Failed to clean up orphaned merge worktree (non-fatal)"
+                                        );
+                                    }
+                                }
+
+                                let plan_sha =
+                                    GitService::get_branch_sha(repo_path, &pb.branch_name)
+                                        .await
+                                        .unwrap_or_else(|_| found_sha.clone());
+
+                                if let Err(e) = complete_merge_internal(
+                                    task,
+                                    project,
+                                    &plan_sha,
+                                    &pb.branch_name,
+                                    task_repo,
+                                    self.machine.context.services.app_handle.as_ref(),
+                                )
+                                .await
+                                {
+                                    tracing::error!(
+                                        error = %e,
+                                        "Failed to complete recovered task (plan branch)"
+                                    );
+                                } else {
+                                    self.post_merge_cleanup(
+                                        task_id_str,
+                                        task_id,
+                                        repo_path,
+                                        plan_branch_repo,
+                                    )
+                                    .await;
+                                }
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         match GitService::find_commit_by_message_grep(repo_path, task_id_str, target_branch).await {
             Ok(Some(found_sha)) => {
                 // Safety gate: don't fast-path to completion if prior validation
