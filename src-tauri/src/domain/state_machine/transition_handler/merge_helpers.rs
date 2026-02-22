@@ -169,7 +169,7 @@ pub(super) fn compute_task_worktree_path(project: &Project, task_id: &str) -> St
 /// Convention: `{worktree_parent}/{slug}/merge-{task_id}`
 /// This is separate from the task worktree (`task-{task_id}`) to allow
 /// the merge to happen in isolation while the task worktree is deleted.
-pub(super) fn compute_merge_worktree_path(project: &Project, task_id: &str) -> String {
+pub(crate) fn compute_merge_worktree_path(project: &Project, task_id: &str) -> String {
     let worktree_parent = project
         .worktree_parent_directory
         .as_deref()

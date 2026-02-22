@@ -763,6 +763,13 @@ impl<'a> super::TransitionHandler<'a> {
                         "Skipping task worktree deletion — path is the main working tree"
                     );
                 } else if worktree_path_buf.exists() {
+                    // Abort any stale merge state (MERGE_HEAD) left from a prior failed
+                    // merge attempt. Without this, the next merge in this worktree fails
+                    // because git thinks a merge is already in progress.
+                    if GitService::is_merge_in_progress(&worktree_path_buf) {
+                        let _ = GitService::abort_merge(&worktree_path_buf).await;
+                        tracing::info!(task_id = task_id_str, "Aborted stale merge in task worktree");
+                    }
                     tracing::info!(
                         task_id = task_id_str,
                         worktree_path = %worktree_path,

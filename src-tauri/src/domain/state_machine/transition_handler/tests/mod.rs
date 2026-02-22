@@ -82,3 +82,9 @@ mod merge_pipeline_gaps;
 
 // RC#8 + RC#9 + RC#10: task worktree cleanup, source update fallback, metadata preservation
 mod rc8_rc9_rc10_regression;
+
+// RC#12 + RC#13: stale merge worktree between merge phases
+// RC#12: merge-{id} leftover from plan_update phase blocks task_merge retry
+// RC#13: source_update_conflict doesn't clean stale merge-{id} (same as RC#6 pattern)
+// Bonus: pre_merge_cleanup aborts stale MERGE_HEAD in task worktree
+mod rc12_rc13_stale_worktree;
