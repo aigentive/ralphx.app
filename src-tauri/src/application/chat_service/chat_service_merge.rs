@@ -372,7 +372,7 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
 
     // Get main repo path and resolve merge branches early (needed for verification)
     let main_repo_path = PathBuf::from(&project.working_directory);
-    let (source_branch, target_branch) =
+    let (source_branch, mut target_branch) =
         resolve_merge_branches(&task, &project, plan_branch_repo).await;
 
     // Guard: source_branch should never be empty after resolve_merge_branches
@@ -415,6 +415,23 @@ pub(super) async fn attempt_merge_auto_complete<R: Runtime>(
         .as_ref()
         .and_then(|v| v.get("plan_update_conflict")?.as_bool())
         .unwrap_or(false);
+
+    // TOCTOU guard: use the target branch that was resolved when the merge was initiated,
+    // not the re-resolved value which may differ if plan state changed since then.
+    if let Some(stored) = task_meta_value
+        .as_ref()
+        .and_then(|v| v.get("merge_target_branch")?.as_str().map(String::from))
+    {
+        if stored != target_branch {
+            tracing::info!(
+                task_id = task_id_str,
+                resolved = %target_branch,
+                from_metadata = %stored,
+                "Using target_branch from task metadata (TOCTOU guard)"
+            );
+            target_branch = stored;
+        }
+    }
 
     if is_plan_update_conflict {
         let base_branch = task_meta_value

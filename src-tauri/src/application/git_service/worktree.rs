@@ -81,12 +81,20 @@ impl GitService {
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
-            warn!("Failed to delete worktree at {:?}: {}", worktree, stderr);
-            return Err(AppError::GitOperation(format!(
-                "Failed to delete worktree at '{}': {}",
-                worktree.to_string_lossy(),
-                stderr.trim()
-            )));
+            warn!(
+                "git worktree remove failed at {:?}: {}, trying rm -rf fallback",
+                worktree, stderr
+            );
+            if worktree.exists() {
+                if let Err(e) = tokio::fs::remove_dir_all(worktree).await {
+                    return Err(AppError::GitOperation(format!(
+                        "Failed to remove stale worktree directory at '{}': {}",
+                        worktree.to_string_lossy(),
+                        e
+                    )));
+                }
+                let _ = git_cmd::run(&["worktree", "prune"], repo).await;
+            }
         }
 
         Ok(())
