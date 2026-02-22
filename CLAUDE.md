@@ -5,9 +5,9 @@
 ## Priority Zero — Owner Strategy Alignment (NON-NEGOTIABLE)
 
 Before ANY user-facing content, documentation, UI copy, or messaging work, agents MUST read:
-- `~/.ralphx/founder/founder-profile.md` — Owner vision and non-negotiables
-- `~/.ralphx/strategy/project-goal-card.md` — Messaging architecture, positioning, ICPs, competitive landscape
-- `~/.ralphx/strategy/project-metrics.md` — Verifiable project data points
+- `@~/.ralphx/founder/founder-profile.md` — Owner vision and non-negotiables
+- `@~/.ralphx/strategy/project-goal-card.md` — Messaging architecture, positioning, ICPs, competitive landscape
+- `@~/.ralphx/strategy/project-metrics.md` — Verifiable project data points
 
 These are the **owner's directives**. They override default agent judgment on messaging.
 
@@ -23,10 +23,6 @@ ralphx/
 ├─ src/                   # Frontend (React/TS) → src/CLAUDE.md
 ├─ src-tauri/             # Backend (Rust/Tauri) → src-tauri/CLAUDE.md
 │  └─ ralphx.db           # SQLite (dev)
-├─ specs/
-│  ├─ manifest.json       # Phase tracker (SOURCE OF TRUTH)
-│  ├─ plan.md             # Master spec
-│  └─ phases/prd_*.md     # Phase PRDs
 ├─ ralphx-plugin/         # Claude plugin (agents/skills/hooks)
 └─ ralphx-mcp-server/     # TS proxy → Tauri :3847
 ```
@@ -97,16 +93,6 @@ style={{ boxShadow: "none", outline: "none" }}
 ## Key Features
 - **Active Plan** — Project-scoped plan filtering for Graph/Kanban. Docs: `docs/features/active-plan.md` | `docs/architecture/active-plan-api.md`
 - **Session Recovery** — Expired Claude session recovery with history preservation. Docs: `docs/features/session-recovery.md`
-
-## Formats
-**Manifest:** `{ "currentPhase": N, "phases": [{ "phase": N, "prd": "path", "status": "active|pending|complete" }] }`
-
-**Activity log:**
-```
-**Last Updated:** YYYY-MM-DD HH:MM:SS | **Phase:** X | **Tasks:** N/M
-### YYYY-MM-DD HH:MM:SS - Title
-**What:** - bullets  **Commands:** - `commands`
-```
 
 ## Team Mode Rules
 When delegate mode is active (TeamCreate tool available):
