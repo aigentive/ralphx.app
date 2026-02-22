@@ -264,10 +264,43 @@ impl<'a> super::TransitionHandler<'a> {
                 });
                 task.metadata = Some(metadata.to_string());
                 task.internal_status = InternalStatus::Merging;
-                // Point worktree_path at the merge worktree so the agent runs in the
-                // right directory (plan branch is already checked out there after
-                // update_plan_from_main aborted the conflicting merge).
+                // Create a merge worktree with the plan branch (target) checked out.
+                // The merger agent will run `git merge main` to reproduce and resolve conflicts.
+                // First, clean up any stale plan-update worktree that holds the plan branch —
+                // git won't allow the same branch in two worktrees simultaneously.
+                let plan_update_wt = super::merge_helpers::compute_plan_update_worktree_path(&project, task_id_str);
+                let plan_update_wt_path = std::path::PathBuf::from(&plan_update_wt);
+                if plan_update_wt_path.exists() {
+                    if let Err(e) = GitService::delete_worktree(repo_path, &plan_update_wt_path).await {
+                        tracing::warn!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "Failed to clean up stale plan-update worktree before merge worktree creation (non-fatal)"
+                        );
+                    }
+                }
                 let merge_wt = super::merge_helpers::compute_merge_worktree_path(&project, task_id_str);
+                let merge_wt_path = std::path::PathBuf::from(&merge_wt);
+                if let Err(e) = GitService::checkout_existing_branch_worktree(
+                    repo_path, &merge_wt_path, &target_branch,
+                ).await {
+                    tracing::error!(
+                        task_id = task_id_str,
+                        error = %e,
+                        target_branch = %target_branch,
+                        "Failed to create merge worktree for plan_update_conflict — falling back to MergeIncomplete"
+                    );
+                    self.transition_to_merge_incomplete(
+                        &mut task, &task_id, task_id_str,
+                        serde_json::json!({
+                            "error": format!("Failed to create merge worktree for plan update conflict: {}", e),
+                            "source_branch": source_branch,
+                            "target_branch": target_branch,
+                        }),
+                        task_repo, true,
+                    ).await;
+                    return;
+                }
                 task.worktree_path = Some(merge_wt);
                 self.persist_merge_transition(
                     &mut task, &task_id, task_id_str,

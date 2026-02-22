@@ -67,3 +67,6 @@ mod spawn_failure_recovery_tests;
 // Tests for AgentAlreadyRunning guard in on_enter(Merging) and on_enter(Reviewing)
 // RC#2: double on_enter returns no-op instead of recording spawn failure
 mod on_enter_already_running_tests;
+
+// RC#6: plan_update_conflict must create merge-* worktree before spawning merger agent
+mod plan_update_conflict_worktree;
