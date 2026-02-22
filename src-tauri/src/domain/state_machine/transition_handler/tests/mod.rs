@@ -70,3 +70,12 @@ mod on_enter_already_running_tests;
 
 // RC#6: plan_update_conflict must create merge-* worktree before spawning merger agent
 mod plan_update_conflict_worktree;
+
+// Merge pipeline gap tests: 6 gaps from test audit (real git + real DB + MockChatService)
+// Gap 1: E2E conflict resolved → Merged
+// Gap 2: Two-phase plan-update + task-merge
+// Gap 3: Worktree cleanup assertion in pre_merge_cleanup
+// Gap 4: Post-conflict auto-complete failure
+// Gap 5: Attempt counter persistence across retry cycles
+// Gap 6: Source update with existing worktree fallback
+mod merge_pipeline_gaps;
