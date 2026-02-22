@@ -177,6 +177,25 @@ impl<'a> super::TransitionHandler<'a> {
             return;
         }
 
+        // Cache resolved branches in task metadata so auto-complete uses the same target
+        // branch (TOCTOU guard: plan state can change between merge start and auto-complete)
+        {
+            let mut meta: serde_json::Value = task.metadata
+                .as_ref()
+                .and_then(|m| serde_json::from_str(m).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+            meta["merge_source_branch"] = serde_json::json!(source_branch);
+            meta["merge_target_branch"] = serde_json::json!(target_branch);
+            task.metadata = Some(meta.to_string());
+            if let Err(e) = task_repo.update(&task).await {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to cache merge branches in task metadata"
+                );
+            }
+        }
+
         // Main-merge deferral check
         let base_branch = project.base_branch.as_deref().unwrap_or("main");
         let running_count = self.machine.context.services.execution_state

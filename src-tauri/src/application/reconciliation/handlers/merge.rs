@@ -1,7 +1,7 @@
 // Merge-specific reconciliation handlers: Merging, PendingMerge, MergeIncomplete, MergeConflict.
 
 use tauri::Runtime;
-use tracing::warn;
+use tracing::{debug, warn};
 
 use crate::domain::entities::{
     AgentRunStatus, ChatContextType, InternalStatus, MergeFailureSource,
@@ -340,7 +340,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // Smart retry guard: if the incomplete was explicitly reported by the agent,
         // it was a deliberate decision — do NOT auto-retry without human intervention.
         if Self::is_agent_reported_failure(task) {
-            warn!(
+            debug!(
                 task_id = task.id.as_str(),
                 "Skipping auto-retry of MergeIncomplete — agent explicitly reported this failure (AgentReported)"
             );
@@ -351,7 +351,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // times, stop auto-retrying and surface to user — the code changes must fix the failures.
         let revert_count = Self::validation_revert_count(task);
         if revert_count >= reconciliation_config().validation_revert_max_count as u32 {
-            warn!(
+            debug!(
                 task_id = task.id.as_str(),
                 revert_count = revert_count,
                 max = reconciliation_config().validation_revert_max_count,
