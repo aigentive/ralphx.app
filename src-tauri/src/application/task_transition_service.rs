@@ -595,6 +595,7 @@ impl<R: Runtime> TaskTransitionService<R> {
 
     /// Set the plan branch repository for feature branch resolution (builder pattern).
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
+        self.chat_service.set_plan_branch_repo(Arc::clone(&repo));
         self.plan_branch_repo = Some(repo);
         self
     }

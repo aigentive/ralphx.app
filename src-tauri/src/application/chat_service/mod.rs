@@ -223,6 +223,10 @@ pub trait ChatService: Send + Sync {
     /// Override team mode at runtime (interior mutability).
     /// Default is a no-op; ClaudeChatService uses AtomicBool.
     fn set_team_mode(&self, _mode: bool) {}
+
+    /// Override plan branch repo at runtime (interior mutability).
+    /// Default is a no-op; ClaudeChatService uses std::sync::Mutex.
+    fn set_plan_branch_repo(&self, _repo: Arc<dyn PlanBranchRepository>) {}
 }
 
 // ============================================================================
@@ -251,7 +255,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     app_handle: Option<AppHandle<R>>,
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
     question_state: Option<Arc<QuestionState>>,
-    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    plan_branch_repo: std::sync::Mutex<Option<Arc<dyn PlanBranchRepository>>>,
     task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     task_step_repo: Option<Arc<dyn TaskStepRepository>>,
     model: String,
@@ -310,7 +314,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             app_handle: None,
             execution_state: None,
             question_state: None,
-            plan_branch_repo: None,
+            plan_branch_repo: std::sync::Mutex::new(None),
             task_proposal_repo: None,
             task_step_repo: None,
             model: "sonnet".to_string(),
@@ -330,8 +334,8 @@ impl<R: Runtime> ClaudeChatService<R> {
         self
     }
 
-    pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
-        self.plan_branch_repo = Some(repo);
+    pub fn with_plan_branch_repo(self, repo: Arc<dyn PlanBranchRepository>) -> Self {
+        *self.plan_branch_repo.lock().unwrap() = Some(repo);
         self
     }
 
@@ -832,7 +836,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             },
             execution_state: self.execution_state.clone(),
             question_state: self.question_state.clone(),
-            plan_branch_repo: self.plan_branch_repo.clone(),
+            plan_branch_repo: self.plan_branch_repo.lock().unwrap().clone(),
             app_handle: self.app_handle.clone(),
             run_chain_id,
             is_retry_attempt: false,
@@ -1012,6 +1016,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
     fn set_team_mode(&self, mode: bool) {
         self.team_mode.store(mode, Ordering::Relaxed);
+    }
+
+    fn set_plan_branch_repo(&self, repo: Arc<dyn PlanBranchRepository>) {
+        *self.plan_branch_repo.lock().unwrap() = Some(repo);
     }
 }
 
