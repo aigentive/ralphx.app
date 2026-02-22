@@ -32,7 +32,8 @@ pub(crate) use merge_helpers::{
     clear_main_merge_deferred_metadata, clear_merge_deferred_metadata,
     compute_merge_worktree_path, get_trigger_origin,
     has_branch_missing_metadata, has_main_merge_deferred_metadata, has_merge_deferred_metadata,
-    is_main_merge_deferred_timed_out, is_merge_deferred_timed_out, parse_metadata,
+    is_main_merge_deferred_timed_out, is_merge_deferred_timed_out, merge_metadata_into,
+    parse_metadata,
     set_conflict_metadata, set_trigger_origin, DEFERRED_MERGE_TIMEOUT_SECONDS,
 };
 

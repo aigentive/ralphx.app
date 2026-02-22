@@ -220,6 +220,26 @@ impl<'a> super::TransitionHandler<'a> {
 
         let repo_path = Path::new(&project.working_directory);
 
+        // Pre-merge cleanup: runs before freshness checks so all worktrees are
+        // cleaned before freshness checks try to create new ones.
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::MERGE_CLEANUP),
+            MergePhaseStatus::Started,
+            "Cleaning up previous merge artifacts...".to_string(),
+        );
+        self.pre_merge_cleanup(
+            task_id_str, &task, &project, repo_path, &target_branch, task_repo,
+        ).await;
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::MERGE_CLEANUP),
+            MergePhaseStatus::Passed,
+            "Cleanup complete".to_string(),
+        );
+
         // Branch freshness: ensure plan branch, update from main, update source from target
         emit_merge_progress(
             app_handle,
@@ -270,15 +290,7 @@ impl<'a> super::TransitionHandler<'a> {
                 // git won't allow the same branch in two worktrees simultaneously.
                 let plan_update_wt = super::merge_helpers::compute_plan_update_worktree_path(&project, task_id_str);
                 let plan_update_wt_path = std::path::PathBuf::from(&plan_update_wt);
-                if plan_update_wt_path.exists() {
-                    if let Err(e) = GitService::delete_worktree(repo_path, &plan_update_wt_path).await {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Failed to clean up stale plan-update worktree before merge worktree creation (non-fatal)"
-                        );
-                    }
-                }
+                super::merge_helpers::pre_delete_worktree(repo_path, &plan_update_wt_path, task_id_str).await;
                 let merge_wt = super::merge_helpers::compute_merge_worktree_path(&project, task_id_str);
                 let merge_wt_path = std::path::PathBuf::from(&merge_wt);
                 if let Err(e) = GitService::checkout_existing_branch_worktree(
@@ -376,15 +388,7 @@ impl<'a> super::TransitionHandler<'a> {
                 // RC#13: Clean up any stale merge worktree from a prior phase before
                 // creating a fresh one. Without this, checkout_existing_branch_worktree
                 // fails with "fatal: '/path/merge-{id}' already exists".
-                if merge_wt_path.exists() {
-                    if let Err(e) = GitService::delete_worktree(repo_path, &merge_wt_path).await {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Failed to clean stale merge worktree before source_update_conflict (non-fatal)"
-                        );
-                    }
-                }
+                super::merge_helpers::pre_delete_worktree(repo_path, &merge_wt_path, task_id_str).await;
                 if let Err(e) = GitService::checkout_existing_branch_worktree(
                     repo_path, &merge_wt_path, &source_branch,
                 ).await {
@@ -489,26 +493,7 @@ impl<'a> super::TransitionHandler<'a> {
         let merge_deadline = tokio::time::Instant::now()
             + std::time::Duration::from_secs(deadline_secs);
 
-        // Pre-merge cleanup
-        emit_merge_progress(
-            app_handle,
-            task_id_str,
-            MergePhase::new(MergePhase::MERGE_CLEANUP),
-            MergePhaseStatus::Started,
-            "Cleaning up previous merge artifacts...".to_string(),
-        );
-        self.pre_merge_cleanup(
-            task_id_str, &task, &project, repo_path, &target_branch, task_repo,
-        ).await;
-        emit_merge_progress(
-            app_handle,
-            task_id_str,
-            MergePhase::new(MergePhase::MERGE_CLEANUP),
-            MergePhaseStatus::Passed,
-            "Cleanup complete".to_string(),
-        );
-
-        // Check deadline after cleanup
+        // Check deadline after cleanup (pre_merge_cleanup was already run above)
         if tokio::time::Instant::now() >= merge_deadline {
             tracing::error!(
                 task_id = task_id_str,
@@ -658,17 +643,7 @@ impl<'a> super::TransitionHandler<'a> {
         trigger_on_exit: bool,
     ) {
         // Merge new metadata INTO existing metadata to preserve recovery history
-        // (merge_recovery events, validation_revert_count, attempt counters, etc.)
-        let mut existing = task.metadata
-            .as_deref()
-            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-            .unwrap_or_else(|| serde_json::json!({}));
-        if let (Some(target), Some(source)) = (existing.as_object_mut(), metadata.as_object()) {
-            for (k, v) in source {
-                target.insert(k.clone(), v.clone());
-            }
-        }
-        task.metadata = Some(existing.to_string());
+        super::merge_helpers::merge_metadata_into(task, &metadata);
         task.internal_status = InternalStatus::MergeIncomplete;
 
         if !self.persist_merge_transition(
@@ -805,15 +780,7 @@ impl<'a> super::TransitionHandler<'a> {
                 );
 
                 // Pre-delete stale worktree if it exists from a previous attempt
-                if wt_path.exists() {
-                    if let Err(e) = GitService::delete_worktree(repo_path, &wt_path).await {
-                        tracing::warn!(
-                            task_id = task_id_str,
-                            error = %e,
-                            "Failed to delete stale fixer worktree (non-fatal)"
-                        );
-                    }
-                }
+                super::merge_helpers::pre_delete_worktree(repo_path, &wt_path, task_id_str).await;
 
                 // Create worktree on the target branch (which has the merged+failing code)
                 match GitService::checkout_existing_branch_worktree(repo_path, &wt_path, target_branch).await {
@@ -857,19 +824,13 @@ impl<'a> super::TransitionHandler<'a> {
 
             // Merge new validation recovery metadata into existing metadata
             // to preserve merge_recovery history and validation_revert_count
-            let mut metadata_obj = task
-                .metadata
-                .as_deref()
-                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                .unwrap_or_else(|| serde_json::json!({}));
-            if let Some(obj) = metadata_obj.as_object_mut() {
-                obj.insert("validation_recovery".to_string(), serde_json::json!(true));
-                obj.insert("validation_failures".to_string(), serde_json::json!(failure_details));
-                obj.insert("validation_log".to_string(), serde_json::json!(log));
-                obj.insert("source_branch".to_string(), serde_json::json!(source_branch));
-                obj.insert("target_branch".to_string(), serde_json::json!(target_branch));
-            }
-            task.metadata = Some(metadata_obj.to_string());
+            super::merge_helpers::merge_metadata_into(task, &serde_json::json!({
+                "validation_recovery": true,
+                "validation_failures": failure_details,
+                "validation_log": log,
+                "source_branch": source_branch,
+                "target_branch": target_branch,
+            }));
             task.worktree_path = Some(fixer_worktree_path.to_string_lossy().to_string());
             task.internal_status = InternalStatus::Merging;
 
@@ -930,44 +891,29 @@ impl<'a> super::TransitionHandler<'a> {
 
             // Merge error metadata INTO existing metadata to preserve all existing keys
             // (merge_retry_in_progress, merge_recovery, etc.) instead of replacing.
-            let mut merged = task
-                .metadata
-                .as_deref()
-                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                .unwrap_or_else(|| serde_json::json!({}));
-            let prev_revert_count: u32 = merged
-                .get("validation_revert_count")
-                .and_then(|c| c.as_u64())
+            let prev_revert_count: u32 = super::merge_helpers::parse_metadata(task)
+                .and_then(|v| v.get("validation_revert_count")?.as_u64())
                 .unwrap_or(0) as u32;
             let revert_count = prev_revert_count + 1;
 
             let error_metadata_str = format_validation_error_metadata(failures, log, source_branch, target_branch);
             if let Ok(error_obj) = serde_json::from_str::<serde_json::Value>(&error_metadata_str) {
-                if let (Some(target), Some(source)) = (merged.as_object_mut(), error_obj.as_object()) {
-                    for (k, v) in source {
-                        target.insert(k.clone(), v.clone());
-                    }
+                super::merge_helpers::merge_metadata_into(task, &error_obj);
+            }
+            let mut extra = serde_json::json!({
+                "merge_failure_source": serde_json::to_value(MergeFailureSource::ValidationFailed)
+                    .unwrap_or(serde_json::json!("validation_failed")),
+                "validation_revert_count": revert_count,
+            });
+            // Flag unrevertable merge commits so check_already_merged() doesn't
+            // fast-path to completion with a failing merge commit on the target.
+            if revert_failed {
+                extra["merge_commit_unrevertable"] = serde_json::json!(true);
+                if let Some(ref sha) = merge_head_sha {
+                    extra["unrevertable_commit_sha"] = serde_json::json!(sha);
                 }
             }
-            if let Some(obj) = merged.as_object_mut() {
-                obj.insert(
-                    "merge_failure_source".to_string(),
-                    serde_json::to_value(MergeFailureSource::ValidationFailed)
-                        .unwrap_or(serde_json::json!("validation_failed")),
-                );
-                obj.insert("validation_revert_count".to_string(), serde_json::json!(revert_count));
-
-                // Flag unrevertable merge commits so check_already_merged() doesn't
-                // fast-path to completion with a failing merge commit on the target.
-                if revert_failed {
-                    obj.insert("merge_commit_unrevertable".to_string(), serde_json::json!(true));
-                    if let Some(ref sha) = merge_head_sha {
-                        obj.insert("unrevertable_commit_sha".to_string(), serde_json::json!(sha));
-                    }
-                }
-            }
-
-            task.metadata = Some(merged.to_string());
+            super::merge_helpers::merge_metadata_into(task, &extra);
             task.internal_status = InternalStatus::MergeIncomplete;
 
             self.persist_merge_transition(

@@ -1,4 +1,5 @@
-// Merge helper utilities: path computation, metadata parsing, branch resolution
+// Merge helper utilities: path computation, metadata parsing, branch resolution,
+// worktree cleanup, and metadata merge.
 //
 // Extracted from side_effects.rs — pure helpers with no side effects beyond metadata mutation.
 
@@ -10,6 +11,82 @@ use crate::domain::entities::InternalStatus;
 use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskCategory, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::AppResult;
+use crate::infrastructure::agents::claude::git_runtime_config;
+
+// ===== Stale git state cleanup =====
+
+/// Abort any stale MERGE_HEAD and rebase state in a worktree.
+/// Idempotent: safe to call on clean worktrees.
+pub(crate) async fn clean_stale_git_state(wt_path: &Path, task_id_str: &str) {
+    if GitService::is_rebase_in_progress(wt_path) {
+        tracing::info!(task_id = task_id_str, path = %wt_path.display(), "Aborting stale rebase");
+        if let Err(e) = GitService::abort_rebase(wt_path).await {
+            tracing::warn!(task_id = task_id_str, error = %e, "Failed to abort stale rebase (non-fatal)");
+        }
+    }
+    if GitService::is_merge_in_progress(wt_path) {
+        tracing::info!(task_id = task_id_str, path = %wt_path.display(), "Aborting stale merge");
+        if let Err(e) = GitService::abort_merge(wt_path).await {
+            tracing::warn!(task_id = task_id_str, error = %e, "Failed to abort stale merge (non-fatal)");
+        }
+    }
+}
+
+// ===== Worktree pre-deletion =====
+
+/// Pre-delete stale worktree(s) using `run_cleanup_step` for uniform timeout and logging.
+pub(crate) async fn pre_delete_worktree(
+    repo_path: &Path,
+    worktree: &Path,
+    task_id: &str,
+) {
+    use super::cleanup_helpers::CleanupStepResult;
+
+    let wt_display = worktree.display().to_string();
+    let label = format!("delete_stale_worktree({})", wt_display);
+    let wt = worktree.to_path_buf();
+    let rp = repo_path.to_path_buf();
+    match super::cleanup_helpers::run_cleanup_step(
+        &label,
+        git_runtime_config().cleanup_worktree_timeout_secs,
+        task_id,
+        async move { GitService::delete_worktree(&rp, &wt).await },
+    )
+    .await
+    {
+        CleanupStepResult::Ok => {}
+        CleanupStepResult::TimedOut { elapsed } => {
+            tracing::warn!(
+                task_id = task_id,
+                worktree_path = %wt_display,
+                elapsed_ms = elapsed.as_millis() as u64,
+                "Stale worktree deletion timed out — merge worktree may fail to create"
+            );
+        }
+        CleanupStepResult::Error { ref message } => {
+            tracing::warn!(
+                task_id = task_id,
+                worktree_path = %wt_display,
+                error = %message,
+                "Stale worktree deletion failed — merge worktree may fail to create"
+            );
+        }
+    }
+}
+
+// ===== Metadata merge =====
+
+/// Merge new_fields INTO task's existing metadata, preserving all existing keys.
+/// Prevents RC#10-class bugs where metadata replacement clobbers recovery history.
+pub(crate) fn merge_metadata_into(task: &mut Task, new_fields: &serde_json::Value) {
+    let mut existing = parse_metadata(task).unwrap_or_else(|| serde_json::json!({}));
+    if let (Some(target), Some(source)) = (existing.as_object_mut(), new_fields.as_object()) {
+        for (k, v) in source {
+            target.insert(k.clone(), v.clone());
+        }
+    }
+    task.metadata = Some(existing.to_string());
+}
 
 // ===== Pre-merge validation =====
 

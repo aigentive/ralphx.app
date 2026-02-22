@@ -245,6 +245,13 @@ impl<'a> super::TransitionHandler<'a> {
                                 let worktree_path_buf =
                                     std::path::PathBuf::from(&worktree_path);
 
+                                // Clean up stale task worktree from a prior execution attempt
+                                if worktree_path_buf.exists() {
+                                    if let Err(e) = GitService::delete_worktree(repo_path, &worktree_path_buf).await {
+                                        tracing::warn!(task_id = task_id_str, error = %e, "Failed to clean stale task worktree (non-fatal)");
+                                    }
+                                }
+
                                 // Check if branch already exists from a previous execution attempt
                                 let branch_exists =
                                     GitService::branch_exists(repo_path, &branch).await;
@@ -891,24 +898,7 @@ impl<'a> super::TransitionHandler<'a> {
                         ));
                         if wt_path.exists() {
                             // Abort stale rebase/merge from prior attempt (recovery or retry)
-                            if GitService::is_rebase_in_progress(&wt_path) {
-                                tracing::info!(
-                                    task_id = task_id,
-                                    "on_enter(Merging): Aborting stale rebase before agent spawn"
-                                );
-                                if let Err(e) = GitService::abort_rebase(&wt_path).await {
-                                    tracing::warn!(task_id = task_id, error = %e, "Failed to abort stale rebase");
-                                }
-                            }
-                            if GitService::is_merge_in_progress(&wt_path) {
-                                tracing::info!(
-                                    task_id = task_id,
-                                    "on_enter(Merging): Aborting stale merge before agent spawn"
-                                );
-                                if let Err(e) = GitService::abort_merge(&wt_path).await {
-                                    tracing::warn!(task_id = task_id, error = %e, "Failed to abort stale merge");
-                                }
-                            }
+                            super::merge_helpers::clean_stale_git_state(&wt_path, task_id).await;
 
                             // Always: remove worktree symlinks that cause false conflicts.
                             // The merger agent's validation step re-creates them via worktree_setup.
