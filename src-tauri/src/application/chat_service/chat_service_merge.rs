@@ -375,9 +375,11 @@ async fn resolve_branches_and_metadata<R: Runtime>(
 
     // TOCTOU guard: use the target branch that was resolved when the merge was initiated,
     // not the re-resolved value which may differ if plan state changed since then.
-    if let Some(stored) = meta
-        .as_ref()
-        .and_then(|v| v.get("merge_target_branch")?.as_str().map(String::from))
+    if let Some(stored) = meta.as_ref().and_then(|v| {
+        v.get("merge_target_branch")
+            .or_else(|| v.get("target_branch"))
+            .and_then(|s| s.as_str().map(String::from))
+    })
     {
         if stored != target_branch {
             tracing::info!(
