@@ -920,3 +920,48 @@ fn test_remove_stale_index_lock_zero_threshold_removes_any_lock() {
     assert!(result.unwrap(), "Any lock with threshold=0 should be removed");
     assert!(!lock_path.exists(), "Lock should be deleted");
 }
+
+// =========================================================================
+// delete_worktree fallback regression tests
+// =========================================================================
+
+/// Regression: directory exists on disk but is NOT registered with git worktree.
+/// `git worktree remove` fails (not a known worktree), so the rm-rf fallback
+/// should kick in and remove the directory, returning Ok(()).
+#[tokio::test]
+async fn test_delete_worktree_succeeds_for_unregistered_directory() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    // Create a directory that looks like a worktree path but is NOT registered with git
+    let fake_wt = temp_dir.path().join("worktrees").join("stale-task-wt");
+    std::fs::create_dir_all(&fake_wt).unwrap();
+    std::fs::write(fake_wt.join("dummy.txt"), "stale contents").unwrap();
+
+    // Precondition: directory exists
+    assert!(fake_wt.exists(), "Fake worktree dir should exist before deletion");
+
+    let result = GitService::delete_worktree(repo, &fake_wt).await;
+    assert!(result.is_ok(), "delete_worktree should succeed via rm-rf fallback: {:?}", result.err());
+
+    // Directory must be gone after the call
+    assert!(!fake_wt.exists(), "Stale worktree directory should be removed");
+}
+
+/// Regression: directory doesn't exist at all.
+/// `git worktree remove` fails (nothing to remove), directory check is false,
+/// so the function should return Ok(()) without error.
+#[tokio::test]
+async fn test_delete_worktree_succeeds_when_dir_already_gone() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    // Path that was never created
+    let nonexistent_wt = temp_dir.path().join("worktrees").join("already-gone-wt");
+    assert!(!nonexistent_wt.exists(), "Path should not exist before the call");
+
+    let result = GitService::delete_worktree(repo, &nonexistent_wt).await;
+    assert!(result.is_ok(), "delete_worktree should succeed when directory is already gone: {:?}", result.err());
+}

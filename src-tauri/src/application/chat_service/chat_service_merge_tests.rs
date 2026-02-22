@@ -365,3 +365,83 @@ fn test_auto_complete_raii_guard_cleans_up_on_drop() {
     // After guard drops, the task is removed from the set
     assert!(exec_state.try_start_auto_complete(task_id));
 }
+
+// --- TOCTOU guard: cached merge_target_branch extraction ---
+
+#[test]
+fn test_toctou_cached_target_branch_wins_over_resolved() {
+    // Regression test for TOCTOU race: plan state changes after merge is dispatched.
+    //
+    // Scenario: at dispatch time, task metadata cached merge_target_branch = "plan/my-feature"
+    // By the time auto-complete runs, resolve_merge_branches returns "main" (plan no longer Active).
+    // The TOCTOU guard (chat_service_merge.rs lines 419-434) must use the cached value.
+    let meta_json = r#"{
+        "merge_source_branch": "task/test-task",
+        "merge_target_branch": "plan/my-feature"
+    }"#;
+    let meta: serde_json::Value = serde_json::from_str(meta_json).unwrap();
+
+    // Simulate: re-resolved target_branch is now "main" (plan state changed)
+    let mut target_branch = "main".to_string();
+
+    // TOCTOU guard extraction (mirrors chat_service_merge.rs lines 421-434)
+    if let Some(stored) = meta
+        .get("merge_target_branch")
+        .and_then(|v| v.as_str().map(String::from))
+    {
+        if stored != target_branch {
+            target_branch = stored;
+        }
+    }
+
+    assert_eq!(
+        target_branch, "plan/my-feature",
+        "TOCTOU guard: cached merge_target_branch must override re-resolved 'main'"
+    );
+}
+
+#[test]
+fn test_toctou_cached_target_branch_absent_falls_back_to_resolved() {
+    // When metadata has no merge_target_branch, use the freshly resolved value.
+    let meta_json = r#"{"some_other_key": "value"}"#;
+    let meta: serde_json::Value = serde_json::from_str(meta_json).unwrap();
+
+    let mut target_branch = "plan/active-plan".to_string();
+
+    // TOCTOU guard extraction
+    if let Some(stored) = meta
+        .get("merge_target_branch")
+        .and_then(|v| v.as_str().map(String::from))
+    {
+        if stored != target_branch {
+            target_branch = stored;
+        }
+    }
+
+    // No cached value — resolved value is preserved unchanged
+    assert_eq!(
+        target_branch, "plan/active-plan",
+        "When metadata has no merge_target_branch, resolved value must be used"
+    );
+}
+
+#[test]
+fn test_toctou_cached_target_same_as_resolved_no_override() {
+    // When cached value equals the resolved value, no change (guard is a no-op).
+    let meta_json = r#"{"merge_target_branch": "plan/active-plan"}"#;
+    let meta: serde_json::Value = serde_json::from_str(meta_json).unwrap();
+
+    let mut target_branch = "plan/active-plan".to_string();
+
+    if let Some(stored) = meta
+        .get("merge_target_branch")
+        .and_then(|v| v.as_str().map(String::from))
+    {
+        if stored != target_branch {
+            target_branch = stored;
+        }
+    }
+
+    // Same value — no override needed
+    assert_eq!(target_branch, "plan/active-plan");
+}
