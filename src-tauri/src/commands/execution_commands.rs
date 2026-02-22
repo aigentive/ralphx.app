@@ -1779,6 +1779,15 @@ async fn prune_stale_execution_registry_entries(app_state: &AppState) {
             continue;
         }
 
+        // Age guard: pid=0 entries younger than 30s are in the try_register →
+        // update_agent_process window. The pruner must not race against the spawn.
+        if info.pid == 0 {
+            let age = chrono::Utc::now() - info.started_at;
+            if age < chrono::Duration::seconds(30) {
+                continue;
+            }
+        }
+
         let context_type = match ChatContextType::from_str(&key.context_type) {
             Ok(context_type) => context_type,
             Err(_) => continue,

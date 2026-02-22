@@ -343,6 +343,7 @@ async fn test_try_register_then_update_agent_process() {
         .update_agent_process(
             &key,
             54321,
+            "conv-1",
             "run-real",
             Some("/tmp/worktree".to_string()),
             Some(token.clone()),
@@ -356,6 +357,63 @@ async fn test_try_register_then_update_agent_process() {
     assert_eq!(info.agent_run_id, "run-real");
     assert_eq!(info.worktree_path.as_deref(), Some("/tmp/worktree"));
     assert!(info.cancellation_token.is_some());
+}
+
+/// TOCTOU race: try_register → pruner deletes row → update_agent_process re-inserts.
+/// Ensures the agent is tracked even if the placeholder was pruned mid-spawn.
+#[tokio::test]
+async fn test_toctou_pruner_deletes_placeholder_then_update_reinserts() {
+    let conn = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(Arc::clone(&conn));
+    let key = RunningAgentKey::new("task_execution", "task-toctou");
+
+    // Step 1: Claim the slot (placeholder pid=0)
+    let result = registry
+        .try_register(key.clone(), "conv-toctou".to_string(), "run-toctou".to_string())
+        .await;
+    assert!(result.is_ok());
+    assert!(registry.is_running(&key).await);
+
+    // Step 2: Simulate pruner deleting the placeholder row
+    {
+        let db = conn.lock().await;
+        db.execute(
+            "DELETE FROM running_agents WHERE context_type = ?1 AND context_id = ?2",
+            rusqlite::params!["task_execution", "task-toctou"],
+        )
+        .unwrap();
+    }
+    assert!(!registry.is_running(&key).await);
+
+    // Step 3: update_agent_process should re-insert the full registration
+    let token = CancellationToken::new();
+    registry
+        .update_agent_process(
+            &key,
+            12345,
+            "conv-toctou",
+            "run-real",
+            Some("/tmp/worktree-toctou".to_string()),
+            Some(token.clone()),
+        )
+        .await
+        .unwrap();
+
+    // Step 4: Verify the row was re-inserted with correct data
+    assert!(registry.is_running(&key).await);
+    let info = registry.get(&key).await.unwrap();
+    assert_eq!(info.pid, 12345);
+    assert_eq!(info.conversation_id, "conv-toctou");
+    assert_eq!(info.agent_run_id, "run-real");
+    assert_eq!(
+        info.worktree_path.as_deref(),
+        Some("/tmp/worktree-toctou")
+    );
+    assert!(info.cancellation_token.is_some());
+
+    // Only one entry in the table
+    let all = registry.list_all().await;
+    assert_eq!(all.len(), 1);
 }
 
 #[tokio::test]
