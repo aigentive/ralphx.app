@@ -74,18 +74,44 @@ pub struct StreamingSpawnResult {
 // Teammate Interactive Spawn Types
 // ============================================================================
 
+/// RalphX session/project context propagated from lead agent to teammates.
+///
+/// Carried as env vars (RALPHX_CONTEXT_ID, RALPHX_CONTEXT_TYPE, RALPHX_PROJECT_ID)
+/// so teammates can filter MCP tools and resolve project-scoped resources.
+///
+/// **Not** the same as `parent_session_id` (the lead's Claude Code session ID
+/// for team registry/messaging). Using a separate struct prevents accidentally
+/// passing `context_id` where `parent_session_id` is expected.
+#[derive(Debug, Clone, Default)]
+pub struct TeammateContext {
+    /// RalphX session ID (e.g., ideation session UUID or task ID)
+    pub context_id: String,
+    /// Context type (e.g., "ideation", "task_execution")
+    pub context_type: String,
+    /// Project ID for project-scoped resources
+    pub project_id: Option<String>,
+}
+
 /// Configuration for spawning a team teammate in interactive mode (no `-p` flag).
 ///
 /// Unlike `AgentConfig` (print mode), teammates are long-lived interactive sessions
 /// that receive messages via Claude Code's native SendMessage tool. The process stays
 /// alive until a shutdown_request is received.
+///
+/// # Construction
+///
+/// Use `new(name, team_name, prompt)` for required fields, then builder methods:
+/// - `.with_parent_session_id()` — **required** for team messaging
+/// - `.with_context()` — RalphX session context (env vars)
+/// - `.with_model()`, `.with_tools()`, etc. — optional overrides
 #[derive(Debug, Clone)]
 pub struct TeammateSpawnConfig {
     /// Teammate name (e.g., "transport-researcher")
     pub name: String,
     /// Team name (e.g., "ideation-abc123")
     pub team_name: String,
-    /// Session ID of the team lead that spawned this teammate
+    /// Lead agent's Claude Code session ID for team registry/messaging.
+    /// Set via `with_parent_session_id()` — NOT the RalphX context_id.
     pub parent_session_id: String,
     /// Lead-generated role prompt (passed via --append-system-prompt)
     pub prompt: String,
@@ -111,20 +137,25 @@ pub struct TeammateSpawnConfig {
     /// instead of interactive `--append-system-prompt` mode. Used for auto-spawning
     /// teammates detected from the lead's stream.
     pub print_mode_prompt: Option<String>,
+    /// RalphX session/project context (propagated as env vars to teammates)
+    pub context: TeammateContext,
 }
 
 impl TeammateSpawnConfig {
-    /// Create a new teammate config with required fields and sensible defaults.
+    /// Create a new teammate config with team identity and prompt.
+    ///
+    /// Use builder methods for remaining required/optional fields:
+    /// - `.with_parent_session_id()` — lead's Claude Code session ID (required)
+    /// - `.with_context()` — RalphX session/project context
     pub fn new(
         name: impl Into<String>,
         team_name: impl Into<String>,
-        parent_session_id: impl Into<String>,
         prompt: impl Into<String>,
     ) -> Self {
         Self {
             name: name.into(),
             team_name: team_name.into(),
-            parent_session_id: parent_session_id.into(),
+            parent_session_id: String::new(),
             prompt: prompt.into(),
             model: "sonnet".to_string(),
             tools: Vec::new(),
@@ -136,7 +167,24 @@ impl TeammateSpawnConfig {
             mcp_agent_type: "ideation-team-member".to_string(),
             env: HashMap::new(),
             print_mode_prompt: None,
+            context: TeammateContext::default(),
         }
+    }
+
+    /// Set the lead agent's Claude Code session ID for team messaging.
+    ///
+    /// This is the lead's actual Claude Code session ID (from the team config file
+    /// at `~/.claude/teams/{team}/config.json` → `leadSessionId`), NOT the RalphX
+    /// context_id. Teammates need this to join the team registry and receive messages.
+    pub fn with_parent_session_id(mut self, session_id: impl Into<String>) -> Self {
+        self.parent_session_id = session_id.into();
+        self
+    }
+
+    /// Set the RalphX session/project context (propagated as env vars).
+    pub fn with_context(mut self, context: TeammateContext) -> Self {
+        self.context = context;
+        self
     }
 
     /// Set the model.
@@ -788,6 +836,25 @@ impl ClaudeCodeClient {
             config.mcp_agent_type.clone(),
         );
 
+        // Context/project env vars (propagated from lead to teammates for MCP tool filtering)
+        if !config.context.context_id.is_empty() {
+            env.insert(
+                "RALPHX_CONTEXT_ID".to_string(),
+                config.context.context_id.clone(),
+            );
+        }
+        if !config.context.context_type.is_empty() {
+            env.insert(
+                "RALPHX_CONTEXT_TYPE".to_string(),
+                config.context.context_type.clone(),
+            );
+        }
+        if let Some(ref pid) = config.context.project_id {
+            if !pid.is_empty() {
+                env.insert("RALPHX_PROJECT_ID".to_string(), pid.clone());
+            }
+        }
+
         // Merge in any custom env vars from config
         for (key, value) in &config.env {
             env.insert(key.clone(), value.clone());
@@ -852,6 +919,7 @@ impl ClaudeCodeClient {
 
         // Spawn the process
         tracing::info!(
+            cmd = ?cmd,
             teammate = %config.name,
             team = %config.team_name,
             model = %config.model,

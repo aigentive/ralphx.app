@@ -38,7 +38,7 @@ use crate::http_server::types::{
 };
 use crate::infrastructure::agents::claude::{
     get_team_constraints, team_constraints_config, validate_team_plan,
-    ClaudeCodeClient, TeammateSpawnConfig, TeammateSpawnRequest,
+    ClaudeCodeClient, TeammateContext, TeammateSpawnConfig, TeammateSpawnRequest,
 };
 
 // ============================================================================
@@ -302,6 +302,14 @@ pub async fn approve_team_plan(
         "Resolved teammate working directory"
     );
 
+    // 3b. Resolve project ID for RALPHX_PROJECT_ID env var on teammates
+    let project_id = resolve_teammate_project_id(
+        &state,
+        &req.context_type,
+        &req.context_id,
+    )
+    .await;
+
     // 4. Register, spawn, and stream each teammate as a separate CLI process.
     //    This is the ONLY place where teammate worker processes are created.
     //    The lead agent's Task tool creates in-process subagents within its own
@@ -332,10 +340,24 @@ pub async fn approve_team_plan(
             "ideation-team-member"
         };
 
+        // Resolve the lead agent's real Claude Code session ID from the team config
+        // file (~/.claude/teams/{team}/config.json → leadSessionId). This is needed
+        // so the teammate can join the team registry and receive messages.
+        let parent_session_id = read_lead_session_id(&team_name, &req.context_id);
+
+        // Build RalphX session context (separate from parent_session_id)
+        let teammate_context = TeammateContext {
+            context_id: req.context_id.clone(),
+            context_type: req.context_type.clone(),
+            project_id: project_id.clone(),
+        };
+
         // Spawn an interactive CLI worker process for this teammate
         // (uses spawn_teammate_interactive for piped stdin — keeps process alive for messaging)
         let spawn_config =
-            TeammateSpawnConfig::new(&teammate_name, &team_name, &req.context_id, &pending.prompt)
+            TeammateSpawnConfig::new(&teammate_name, &team_name, &pending.prompt)
+                .with_parent_session_id(&parent_session_id)
+                .with_context(teammate_context)
                 .with_model(&pending.model)
                 .with_tools(pending.tools.clone())
                 .with_mcp_tools(pending.mcp_tools.clone())
@@ -609,9 +631,28 @@ pub async fn request_teammate_spawn(
             (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
 
-    // 6. Build spawn config and spawn the process
+    // 6. Build spawn config and spawn the process.
+    //    Resolve the lead agent's real Claude Code session ID from the team config.
+    let parent_session_id = read_lead_session_id(&team_name, &context_id);
+
+    // Resolve project ID for RALPHX_PROJECT_ID env var on teammates
+    let project_id = resolve_teammate_project_id(
+        &state,
+        &context_type,
+        &context_id,
+    )
+    .await;
+
+    let teammate_context = TeammateContext {
+        context_id: context_id.clone(),
+        context_type: context_type.clone(),
+        project_id,
+    };
+
     let spawn_config =
-        TeammateSpawnConfig::new(&teammate_name, &team_name, &context_id, &req.prompt)
+        TeammateSpawnConfig::new(&teammate_name, &team_name, &req.prompt)
+            .with_parent_session_id(&parent_session_id)
+            .with_context(teammate_context)
             .with_model(&req.model)
             .with_tools(req.tools.clone())
             .with_mcp_tools(req.mcp_tools.clone())
@@ -730,6 +771,77 @@ pub async fn request_teammate_spawn(
 // Spawn helpers
 // ============================================================================
 
+/// Read the lead agent's Claude Code session ID from the team config file.
+///
+/// Claude Code writes `~/.claude/teams/{team_name}/config.json` when the lead
+/// agent calls TeamCreate. The `leadSessionId` field is the lead's actual
+/// Claude session ID, which teammates need as `--parent-session-id` to join
+/// the team registry and receive messages.
+///
+/// Falls back to `fallback` (typically the RalphX context_id) if the config
+/// file doesn't exist or doesn't contain `leadSessionId`.
+fn read_lead_session_id(team_name: &str, fallback: &str) -> String {
+    let home = match std::env::var("HOME") {
+        Ok(h) => h,
+        Err(_) => {
+            warn!(
+                team = %team_name,
+                "HOME env not set — falling back to context_id for parent_session_id"
+            );
+            return fallback.to_string();
+        }
+    };
+
+    let config_path = PathBuf::from(&home)
+        .join(".claude")
+        .join("teams")
+        .join(team_name)
+        .join("config.json");
+
+    let contents = match std::fs::read_to_string(&config_path) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!(
+                team = %team_name,
+                path = %config_path.display(),
+                error = %e,
+                "Could not read Claude Code team config — falling back to context_id for parent_session_id"
+            );
+            return fallback.to_string();
+        }
+    };
+
+    let parsed: serde_json::Value = match serde_json::from_str(&contents) {
+        Ok(v) => v,
+        Err(e) => {
+            warn!(
+                team = %team_name,
+                error = %e,
+                "Could not parse Claude Code team config JSON — falling back to context_id for parent_session_id"
+            );
+            return fallback.to_string();
+        }
+    };
+
+    match parsed.get("leadSessionId").and_then(|v| v.as_str()) {
+        Some(id) => {
+            info!(
+                team = %team_name,
+                lead_session_id = %id,
+                "Resolved lead session ID from Claude Code team config"
+            );
+            id.to_string()
+        }
+        None => {
+            warn!(
+                team = %team_name,
+                "No leadSessionId in Claude Code team config — falling back to context_id for parent_session_id"
+            );
+            fallback.to_string()
+        }
+    }
+}
+
 /// Context types where context_id is a task ID (worktree resolution applies).
 const TASK_CONTEXT_TYPES: &[&str] = &["task_execution", "task", "review", "merge"];
 
@@ -817,6 +929,24 @@ async fn resolve_teammate_working_dir(
 /// Fallback working directory (same as TeammateSpawnConfig::new default).
 fn default_working_dir() -> PathBuf {
     std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
+}
+
+/// Resolve the project ID for a teammate's context, mirroring the lead agent's
+/// RALPHX_PROJECT_ID resolution from `chat_service_context::resolve_project_id`.
+async fn resolve_teammate_project_id(
+    state: &HttpServerState,
+    context_type: &str,
+    context_id: &str,
+) -> Option<String> {
+    use crate::domain::entities::chat_conversation::ChatContextType;
+    let ct = context_type.parse::<ChatContextType>().ok()?;
+    crate::application::chat_service::chat_service_context::resolve_project_id(
+        ct,
+        context_id,
+        state.app_state.task_repo.clone(),
+        state.app_state.ideation_session_repo.clone(),
+    )
+    .await
 }
 
 /// Color palette for teammate distinction

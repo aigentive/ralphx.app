@@ -315,9 +315,9 @@ fn test_teammate_config() -> TeammateSpawnConfig {
     TeammateSpawnConfig::new(
         "transport-researcher",
         "ideation-abc123",
-        "lead-session-uuid",
         "You are a transport research specialist. Investigate WebSocket vs SSE.",
     )
+    .with_parent_session_id("lead-session-uuid")
     .with_model("sonnet")
     .with_tools(vec![
         "Read".to_string(),
@@ -335,11 +335,11 @@ fn test_teammate_config() -> TeammateSpawnConfig {
 
 #[test]
 fn test_teammate_spawn_config_new_defaults() {
-    let config = TeammateSpawnConfig::new("researcher", "team-1", "session-1", "Do research");
+    let config = TeammateSpawnConfig::new("researcher", "team-1", "Do research");
 
     assert_eq!(config.name, "researcher");
     assert_eq!(config.team_name, "team-1");
-    assert_eq!(config.parent_session_id, "session-1");
+    assert_eq!(config.parent_session_id, ""); // Must be set via with_parent_session_id()
     assert_eq!(config.prompt, "Do research");
     assert_eq!(config.model, "sonnet");
     assert_eq!(config.color, "blue");
@@ -348,11 +348,21 @@ fn test_teammate_spawn_config_new_defaults() {
     assert!(config.tools.is_empty());
     assert!(config.mcp_tools.is_empty());
     assert!(config.env.is_empty());
+    assert!(config.context.context_id.is_empty());
+    assert!(config.context.context_type.is_empty());
+    assert!(config.context.project_id.is_none());
 }
 
 #[test]
 fn test_teammate_spawn_config_builder_chain() {
-    let config = TeammateSpawnConfig::new("dev", "team-x", "sess-1", "Code stuff")
+    let ctx = TeammateContext {
+        context_id: "ctx-123".to_string(),
+        context_type: "ideation".to_string(),
+        project_id: Some("proj-456".to_string()),
+    };
+    let config = TeammateSpawnConfig::new("dev", "team-x", "Code stuff")
+        .with_parent_session_id("sess-1")
+        .with_context(ctx)
         .with_model("haiku")
         .with_tools(vec!["Read".to_string()])
         .with_mcp_tools(vec!["get_task_context".to_string()])
@@ -363,6 +373,10 @@ fn test_teammate_spawn_config_builder_chain() {
         .with_mcp_agent_type("worker-team-member")
         .with_env("CUSTOM_VAR", "value");
 
+    assert_eq!(config.parent_session_id, "sess-1");
+    assert_eq!(config.context.context_id, "ctx-123");
+    assert_eq!(config.context.context_type, "ideation");
+    assert_eq!(config.context.project_id, Some("proj-456".to_string()));
     assert_eq!(config.model, "haiku");
     assert_eq!(config.tools, vec!["Read"]);
     assert_eq!(config.mcp_tools, vec!["get_task_context"]);
@@ -479,7 +493,7 @@ fn test_build_teammate_cli_args_has_tools() {
 #[test]
 fn test_build_teammate_cli_args_no_tools_when_empty() {
     let client = ClaudeCodeClient::new();
-    let config = TeammateSpawnConfig::new("r", "t", "s", "p");
+    let config = TeammateSpawnConfig::new("r", "t", "p");
     let args = client.build_teammate_cli_args(&config);
 
     assert!(
@@ -514,7 +528,7 @@ fn test_build_teammate_cli_args_mcp_tools_prefixed() {
 #[test]
 fn test_build_teammate_cli_args_no_allowed_tools_when_empty() {
     let client = ClaudeCodeClient::new();
-    let config = TeammateSpawnConfig::new("r", "t", "s", "p");
+    let config = TeammateSpawnConfig::new("r", "t", "p");
     let args = client.build_teammate_cli_args(&config);
 
     assert!(
@@ -617,14 +631,44 @@ fn test_build_teammate_env_vars_custom_mcp_agent_type() {
 #[test]
 fn test_build_teammate_env_vars_includes_custom_env() {
     let config = test_teammate_config()
-        .with_env("RALPHX_PROJECT_ID", "proj-123")
         .with_env("RALPHX_SESSION_ID", "sess-456");
     let env = ClaudeCodeClient::build_teammate_env_vars(&config);
 
-    assert_eq!(env.get("RALPHX_PROJECT_ID"), Some(&"proj-123".to_string()));
     assert_eq!(env.get("RALPHX_SESSION_ID"), Some(&"sess-456".to_string()));
     // Team flags still present
     assert_eq!(env.get("CLAUDECODE"), Some(&"1".to_string()));
+}
+
+#[test]
+fn test_build_teammate_env_vars_propagates_context() {
+    let ctx = TeammateContext {
+        context_id: "ctx-abc".to_string(),
+        context_type: "ideation".to_string(),
+        project_id: Some("proj-789".to_string()),
+    };
+    let config = test_teammate_config().with_context(ctx);
+    let env = ClaudeCodeClient::build_teammate_env_vars(&config);
+
+    assert_eq!(env.get("RALPHX_CONTEXT_ID"), Some(&"ctx-abc".to_string()));
+    assert_eq!(
+        env.get("RALPHX_CONTEXT_TYPE"),
+        Some(&"ideation".to_string())
+    );
+    assert_eq!(
+        env.get("RALPHX_PROJECT_ID"),
+        Some(&"proj-789".to_string())
+    );
+}
+
+#[test]
+fn test_build_teammate_env_vars_omits_empty_context() {
+    // Default context has empty strings — env vars should not be set
+    let config = test_teammate_config();
+    let env = ClaudeCodeClient::build_teammate_env_vars(&config);
+
+    assert!(!env.contains_key("RALPHX_CONTEXT_ID"));
+    assert!(!env.contains_key("RALPHX_CONTEXT_TYPE"));
+    assert!(!env.contains_key("RALPHX_PROJECT_ID"));
 }
 
 #[tokio::test]
@@ -659,9 +703,9 @@ fn test_build_teammate_cli_args_full_integration() {
     let config = TeammateSpawnConfig::new(
         "react-state-sync-researcher",
         "ideation-session-789",
-        "c43c3747-44d8-437b-9a25-911032eec2ea",
         "You are a React state management specialist. Analyze existing Zustand stores.",
     )
+    .with_parent_session_id("c43c3747-44d8-437b-9a25-911032eec2ea")
     .with_model("sonnet")
     .with_tools(vec![
         "Read".to_string(),

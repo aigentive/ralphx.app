@@ -22,7 +22,7 @@ pub use agent_config::{
 };
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{
-    StreamEvent as ClientStreamEvent, StreamingSpawnResult, TeammateSpawnConfig,
+    StreamEvent as ClientStreamEvent, StreamingSpawnResult, TeammateContext, TeammateSpawnConfig,
     TeammateSpawnResult,
 };
 
