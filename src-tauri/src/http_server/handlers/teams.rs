@@ -37,7 +37,7 @@ use crate::http_server::types::{
     SpawnedTeammateInfo, TeamArtifactSummary, TeamCompositionEntry, TeamSessionStateResponse,
 };
 use crate::infrastructure::agents::claude::{
-    apply_common_spawn_env, get_team_constraints, team_constraints_config, validate_team_plan,
+    get_team_constraints, team_constraints_config, validate_team_plan,
     ClaudeCodeClient, TeammateSpawnConfig, TeammateSpawnRequest,
 };
 
@@ -332,7 +332,8 @@ pub async fn approve_team_plan(
             "ideation-team-member"
         };
 
-        // Spawn a separate CLI worker process for this teammate
+        // Spawn an interactive CLI worker process for this teammate
+        // (uses spawn_teammate_interactive for piped stdin — keeps process alive for messaging)
         let spawn_config =
             TeammateSpawnConfig::new(&teammate_name, &team_name, &req.context_id, &pending.prompt)
                 .with_model(&pending.model)
@@ -340,39 +341,19 @@ pub async fn approve_team_plan(
                 .with_mcp_tools(pending.mcp_tools.clone())
                 .with_color(&teammate_color)
                 .with_mcp_agent_type(mcp_type)
-                .with_print_mode_prompt(&pending.prompt)
                 .with_working_dir(working_dir.clone());
 
         let client = ClaudeCodeClient::new();
-        let args = client.build_teammate_cli_args(&spawn_config);
-        let env_vars = ClaudeCodeClient::build_teammate_env_vars(&spawn_config);
-
-        let mut cmd = tokio::process::Command::new(client.cli_path().clone());
-        cmd.args(&args)
-            .current_dir(&spawn_config.working_directory)
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::piped())
-            .stdin(std::process::Stdio::null());
-
-        apply_common_spawn_env(&mut cmd);
-
-        if let Some(plugin_dir) = &spawn_config.plugin_dir {
-            cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
-        }
-
-        for (key, value) in &env_vars {
-            cmd.env(key, value);
-        }
-
-        match cmd.spawn() {
-            Ok(mut child) => {
+        match client.spawn_teammate_interactive(spawn_config).await {
+            Ok(spawn_result) => {
                 info!(
                     teammate = %teammate_name,
                     team = %team_name,
-                    pid = ?child.id(),
+                    pid = ?spawn_result.child.id(),
                     "Teammate worker process spawned in approve_team_plan"
                 );
 
+                let mut child = spawn_result.child;
                 let stdout = child.stdout.take();
 
                 // Start background stream processor for teammate stdout
@@ -401,7 +382,7 @@ pub async fn approve_team_plan(
                 let handle = TeammateHandle {
                     child,
                     stream_task,
-                    stdin: None,
+                    stdin: Some(spawn_result.stdin),
                 };
 
                 let _ = state
