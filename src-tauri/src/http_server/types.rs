@@ -911,6 +911,13 @@ pub struct RequestTeamPlanRequest {
     pub context_id: String,
     pub process: String,
     pub teammates: Vec<TeamPlanTeammate>,
+    /// Team name from the lead agent's TeamCreate call.
+    /// Must match the Claude Code team registry name so teammates join the right team.
+    pub team_name: String,
+    /// Lead agent's Claude Code session ID (from RALPHX_LEAD_SESSION_ID env var).
+    /// When present, used as parent-session-id for teammate spawns instead of
+    /// reading from the team config file.
+    pub lead_session_id: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize)]

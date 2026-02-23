@@ -540,6 +540,12 @@ pub async fn build_command(
         // spawnable.arg("--permission-mode").arg("delegate");
     }
 
+    // Pass the lead agent's Claude session ID so the MCP server can forward it
+    // to the backend for teammate spawns (avoids unreliable config file reads).
+    if let Some(ref session_id) = conversation.claude_session_id {
+        spawnable.env("RALPHX_LEAD_SESSION_ID", session_id);
+    }
+
     Ok(spawnable)
 }
 
@@ -646,6 +652,11 @@ pub async fn build_resume_command(
         // Valid choices are: acceptEdits, bypassPermissions, default, dontAsk, plan.
         // spawnable.arg("--permission-mode").arg("delegate");
     }
+
+    // Pass the lead agent's Claude session ID so the MCP server can forward it
+    // to the backend for teammate spawns (avoids unreliable config file reads).
+    // In resume flow, session_id IS the Claude session ID.
+    spawnable.env("RALPHX_LEAD_SESSION_ID", session_id);
 
     Ok(spawnable)
 }

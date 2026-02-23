@@ -127,6 +127,8 @@ pub async fn request_team_plan(
             process: req.process.clone(),
             teammates: pending_teammates,
             created_at: Utc::now(),
+            team_name: req.team_name.clone(),
+            lead_session_id: req.lead_session_id.clone(),
         })
         .await;
 
@@ -274,11 +276,8 @@ pub async fn approve_team_plan(
         })?;
 
     // 2. Create team (or find existing) — via TeamService for DB persistence + events
-    let team_name = format!(
-        "{}-{}",
-        plan.process,
-        &req.context_id[..8.min(req.context_id.len())]
-    );
+    // team_name comes from the lead agent's TeamCreate call (required field).
+    let team_name = plan.team_name.clone();
     let team_exists = state.team_service.team_exists(&team_name).await;
     if !team_exists {
         state
@@ -340,10 +339,12 @@ pub async fn approve_team_plan(
             "ideation-team-member"
         };
 
-        // Resolve the lead agent's real Claude Code session ID from the team config
-        // file (~/.claude/teams/{team}/config.json → leadSessionId). This is needed
-        // so the teammate can join the team registry and receive messages.
-        let parent_session_id = read_lead_session_id(&team_name, &req.context_id);
+        // Use the lead agent's session ID passed through the MCP flow, falling back
+        // to context_id if not available.
+        let parent_session_id = plan
+            .lead_session_id
+            .clone()
+            .unwrap_or_else(|| req.context_id.clone());
 
         // Build RalphX session context (separate from parent_session_id)
         let teammate_context = TeammateContext {
@@ -632,8 +633,9 @@ pub async fn request_teammate_spawn(
         })?;
 
     // 6. Build spawn config and spawn the process.
-    //    Resolve the lead agent's real Claude Code session ID from the team config.
-    let parent_session_id = read_lead_session_id(&team_name, &context_id);
+    //    Use context_id as fallback for parent_session_id (ad-hoc spawns don't
+    //    have lead_session_id from the plan flow).
+    let parent_session_id = context_id.clone();
 
     // Resolve project ID for RALPHX_PROJECT_ID env var on teammates
     let project_id = resolve_teammate_project_id(
@@ -770,77 +772,6 @@ pub async fn request_teammate_spawn(
 // ============================================================================
 // Spawn helpers
 // ============================================================================
-
-/// Read the lead agent's Claude Code session ID from the team config file.
-///
-/// Claude Code writes `~/.claude/teams/{team_name}/config.json` when the lead
-/// agent calls TeamCreate. The `leadSessionId` field is the lead's actual
-/// Claude session ID, which teammates need as `--parent-session-id` to join
-/// the team registry and receive messages.
-///
-/// Falls back to `fallback` (typically the RalphX context_id) if the config
-/// file doesn't exist or doesn't contain `leadSessionId`.
-fn read_lead_session_id(team_name: &str, fallback: &str) -> String {
-    let home = match std::env::var("HOME") {
-        Ok(h) => h,
-        Err(_) => {
-            warn!(
-                team = %team_name,
-                "HOME env not set — falling back to context_id for parent_session_id"
-            );
-            return fallback.to_string();
-        }
-    };
-
-    let config_path = PathBuf::from(&home)
-        .join(".claude")
-        .join("teams")
-        .join(team_name)
-        .join("config.json");
-
-    let contents = match std::fs::read_to_string(&config_path) {
-        Ok(c) => c,
-        Err(e) => {
-            warn!(
-                team = %team_name,
-                path = %config_path.display(),
-                error = %e,
-                "Could not read Claude Code team config — falling back to context_id for parent_session_id"
-            );
-            return fallback.to_string();
-        }
-    };
-
-    let parsed: serde_json::Value = match serde_json::from_str(&contents) {
-        Ok(v) => v,
-        Err(e) => {
-            warn!(
-                team = %team_name,
-                error = %e,
-                "Could not parse Claude Code team config JSON — falling back to context_id for parent_session_id"
-            );
-            return fallback.to_string();
-        }
-    };
-
-    match parsed.get("leadSessionId").and_then(|v| v.as_str()) {
-        Some(id) => {
-            info!(
-                team = %team_name,
-                lead_session_id = %id,
-                "Resolved lead session ID from Claude Code team config"
-            );
-            id.to_string()
-        }
-        None => {
-            warn!(
-                team = %team_name,
-                "No leadSessionId in Claude Code team config — falling back to context_id for parent_session_id"
-            );
-            fallback.to_string()
-        }
-    }
-}
 
 /// Context types where context_id is a task ID (worktree resolution applies).
 const TASK_CONTEXT_TYPES: &[&str] = &["task_execution", "task", "review", "merge"];
