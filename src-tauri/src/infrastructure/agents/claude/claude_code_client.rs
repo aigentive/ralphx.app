@@ -793,12 +793,11 @@ impl ClaudeCodeClient {
             args.extend(["--allowedTools".to_string(), prefixed.join(",")]);
         }
 
-        // Prompt mode: print-mode (-p) for auto-spawned teammates, interactive
-        // (--append-system-prompt) for manually spawned teammates
+        // Prompt mode: print-mode (-p) for one-shot teammates only.
+        // Interactive teammates are bare workers — no prompt. They join the team
+        // registry and pick up work from the lead via the inbox system.
         if let Some(ref prompt) = config.print_mode_prompt {
             args.extend(["-p".to_string(), prompt.clone()]);
-        } else {
-            args.extend(["--append-system-prompt".to_string(), config.prompt.clone()]);
         }
 
         // Skip permissions for automated teammates
