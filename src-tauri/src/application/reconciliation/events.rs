@@ -79,8 +79,36 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 }
             }
         } else {
-            self.lookup_latest_run_for_task_context(task, ChatContextType::TaskExecution)
-                .await
+            // Registry-aware fallback: when status_history metadata hasn't been
+            // linked yet (async race between persist_status_change and
+            // update_latest_state_history_metadata), check the running agent
+            // registry for the correct agent_run_id before falling back to
+            // the conversation-based lookup which may return a stale/cancelled run.
+            let key = crate::domain::services::RunningAgentKey::new(
+                ChatContextType::TaskExecution.to_string(),
+                task.id.as_str(),
+            );
+            if let Some(info) = self.running_agent_registry.get(&key).await {
+                match self
+                    .agent_run_repo
+                    .get_by_id(&AgentRunId::from_string(&info.agent_run_id))
+                    .await
+                {
+                    Ok(run) => run,
+                    Err(e) => {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            agent_run_id = %info.agent_run_id,
+                            error = %e,
+                            "Failed to load registry agent run for reconciliation"
+                        );
+                        None
+                    }
+                }
+            } else {
+                self.lookup_latest_run_for_task_context(task, ChatContextType::TaskExecution)
+                    .await
+            }
         };
 
         run
