@@ -37,6 +37,7 @@ vi.mock("@/lib/tauri", () => ({
     askUserQuestion: {
       resolveQuestion: vi.fn(),
       answerQuestion: vi.fn(),
+      getPendingQuestions: vi.fn().mockResolvedValue([]),
     },
   },
 }));
@@ -44,6 +45,7 @@ vi.mock("@/lib/tauri", () => ({
 import { api } from "@/lib/tauri";
 const mockResolve = vi.mocked(api.askUserQuestion.resolveQuestion);
 const mockAnswer = vi.mocked(api.askUserQuestion.answerQuestion);
+const mockGetPending = vi.mocked(api.askUserQuestion.getPendingQuestions);
 
 // Helper to emit events
 function emitEvent(eventName: string, payload: unknown) {
@@ -76,6 +78,7 @@ describe("useAskUserQuestion", () => {
     mockSubscribers.clear();
     mockResolve.mockResolvedValue(undefined);
     mockAnswer.mockResolvedValue(undefined);
+    mockGetPending.mockResolvedValue([]);
     // Reset store state
     useUiStore.setState({
       activeQuestions: {},
@@ -357,6 +360,94 @@ describe("useAskUserQuestion", () => {
     });
   });
 
+  describe("hydration from pending backend state", () => {
+    it("should display question missed while panel was unmounted", async () => {
+      const missedQuestion: AskUserQuestionPayload = {
+        requestId: "req-missed-event",
+        sessionId: TEST_SESSION,
+        question: "Which approach should we use?",
+        options: [{ label: "Alpha" }, { label: "Beta" }],
+        multiSelect: false,
+      };
+      mockGetPending.mockResolvedValueOnce([missedQuestion]);
+
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve(); // flush microtasks
+      });
+
+      expect(result.current.activeQuestion).toEqual(missedQuestion);
+    });
+
+    it("should not hydrate when pending question belongs to different session", async () => {
+      const otherSessionQuestion: AskUserQuestionPayload = {
+        requestId: "req-other",
+        sessionId: "other-session",
+        question: "Other session question",
+        options: [],
+        multiSelect: false,
+      };
+      mockGetPending.mockResolvedValueOnce([otherSessionQuestion]);
+
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.activeQuestion).toBeNull();
+    });
+
+    it("should not hydrate when currentSessionId is undefined", async () => {
+      const pendingQuestion: AskUserQuestionPayload = {
+        requestId: "req-abc",
+        sessionId: TEST_SESSION,
+        question: "Some question",
+        options: [],
+        multiSelect: false,
+      };
+      mockGetPending.mockResolvedValueOnce([pendingQuestion]);
+
+      renderHook(() => useAskUserQuestion(undefined));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(mockGetPending).not.toHaveBeenCalled();
+    });
+
+    it("should call getPendingQuestions once on mount", async () => {
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(mockGetPending).toHaveBeenCalledTimes(1);
+    });
+
+    it("should not override event-delivered question with empty backend response", async () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      // Event arrives first
+      act(() => {
+        emitEvent("agent:ask_user_question", validPayload);
+      });
+
+      // Backend returns empty (question already answered/removed)
+      mockGetPending.mockResolvedValueOnce([]);
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // The event-delivered question should still be active
+      expect(result.current.activeQuestion).toEqual(validPayload);
+    });
+  });
+
   describe("multiple sessions", () => {
     it("should store questions for different sessions independently", () => {
       renderHook(() => useAskUserQuestion(TEST_SESSION));
@@ -401,7 +492,7 @@ describe("useAskUserQuestion", () => {
       expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
     });
 
-    it("should cancel auto-dismiss timer when new question arrives for same session", async () => {
+    it("should cancel auto-dismiss timer and clear answered state when new question arrives for same session", async () => {
       useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
       const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
 
@@ -422,7 +513,7 @@ describe("useAskUserQuestion", () => {
         vi.advanceTimersByTime(1000);
       });
 
-      // New question arrives for same session
+      // New question arrives for same session — should clear stale answered state
       act(() => {
         emitEvent("agent:ask_user_question", {
           ...validPayload,
@@ -430,13 +521,19 @@ describe("useAskUserQuestion", () => {
         });
       });
 
+      // Answered state should be cleared immediately (not hidden behind old banner)
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
+
+      // New question should be active
+      expect(result.current.activeQuestion?.requestId).toBe("req-test-456");
+
       // Advance to what would have been the original timeout
       act(() => {
         vi.advanceTimersByTime(2500);
       });
 
-      // Answered question should still exist (timer was cancelled)
-      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBe("JWT tokens");
+      // Answered should still be cleared (timer was cancelled, won't fire)
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
     });
 
     it("should cancel auto-dismiss timer when user manually dismisses", async () => {

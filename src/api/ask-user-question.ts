@@ -6,7 +6,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
-import type { AskUserQuestionResponse } from "@/types/ask-user-question";
+import type { AskUserQuestionPayload, AskUserQuestionResponse } from "@/types/ask-user-question";
 
 // ============================================================================
 // Ask User Question API Object
@@ -19,6 +19,16 @@ export interface ResolveQuestionInput {
   requestId: string;
   selectedOptions: string[];
   customResponse?: string;
+}
+
+/** Raw shape returned by the backend get_pending_questions command (snake_case) */
+interface PendingQuestionInfoRaw {
+  request_id: string;
+  session_id: string;
+  question: string;
+  header?: string | null;
+  options: Array<{ value: string; label: string; description?: string }>;
+  multi_select: boolean;
 }
 
 export const askUserQuestionApi = {
@@ -49,5 +59,22 @@ export const askUserQuestionApi = {
         customResponse: input.customResponse,
       },
     });
+  },
+
+  /**
+   * Fetch all currently pending questions from the backend in-memory state.
+   * Used to hydrate the UI for questions whose Tauri events were missed
+   * (e.g., because the chat panel wasn't mounted when the event fired).
+   */
+  getPendingQuestions: async (): Promise<AskUserQuestionPayload[]> => {
+    const raw = await invoke<PendingQuestionInfoRaw[]>("get_pending_questions");
+    return raw.map((item) => ({
+      requestId: item.request_id,
+      sessionId: item.session_id,
+      question: item.question,
+      header: item.header ?? null,
+      options: item.options,
+      multiSelect: item.multi_select,
+    }));
   },
 } as const;
