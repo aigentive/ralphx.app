@@ -1114,6 +1114,32 @@ impl<R: Runtime> ReconciliationRunner<R> {
         match decision.action {
             RecoveryActionKind::None => false,
             RecoveryActionKind::ExecuteEntryActions => {
+                // Clean stale registry entry before re-spawning agent.
+                // Without this, try_register fails (old slot occupied), the message
+                // gets queued, and the conflict never resolves → infinite thrash loop.
+                let chat_context = match context {
+                    RecoveryContext::Execution => ChatContextType::TaskExecution,
+                    RecoveryContext::Review => ChatContextType::Review,
+                    RecoveryContext::Merge | RecoveryContext::PendingMerge => {
+                        ChatContextType::Merge
+                    }
+                    RecoveryContext::QaRefining | RecoveryContext::QaTesting => {
+                        ChatContextType::TaskExecution
+                    }
+                };
+                let registry_key = crate::domain::services::RunningAgentKey::new(
+                    chat_context.to_string(),
+                    task.id.as_str(),
+                );
+                if self.running_agent_registry.is_running(&registry_key).await {
+                    tracing::info!(
+                        task_id = task.id.as_str(),
+                        context_type = %chat_context,
+                        "Clearing stale registry entry before recovery re-spawn"
+                    );
+                    let _ = self.running_agent_registry.stop(&registry_key).await;
+                }
+
                 // Set trigger_origin="recovery" before resuming agent
                 let mut task_mut = task.clone();
                 set_trigger_origin(&mut task_mut, "recovery");

@@ -450,15 +450,29 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                 }
             }
 
+            // Per-task concurrency guard: prevent two concurrent scheduler invocations
+            // from both scheduling the same task (TOCTOU race on async on_enter_Executing).
+            if !self.execution_state.try_start_scheduling(task.id.as_str()) {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    "Scheduler: task already being scheduled by another caller, skipping"
+                );
+                continue;
+            }
+
             // Transition the task to the target status
             // For Executing: triggers on_enter(Executing) which spawns worker agent
             // For PendingMerge: triggers on_enter(PendingMerge) which runs attempt_programmatic_merge()
             let transition_service = self.build_transition_service();
 
-            if let Err(e) = transition_service
+            let transition_result = transition_service
                 .transition_task(&task.id, target_status)
-                .await
-            {
+                .await;
+
+            // Always release the per-task guard after transition completes
+            self.execution_state.finish_scheduling(task.id.as_str());
+
+            if let Err(e) = transition_result {
                 tracing::error!(
                     task_id = task.id.as_str(),
                     error = %e,
