@@ -103,3 +103,7 @@ mod branch_freshness_timeout;
 // Merge pipeline timeout integration tests: real git + memory repos + mock agents
 // Covers: lsof timeout, pre-merge cleanup, stale index.lock, stale worktree, full E2E
 mod merge_pipeline_timeout_tests;
+
+// PlanMerge check_already_merged guard: ensures PlanMerge tasks are not falsely
+// completed by the tautological plan-branch defense-in-depth check
+mod plan_merge_already_merged;
