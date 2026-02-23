@@ -14,6 +14,7 @@ use super::merge_orchestrator::ConcurrentGuardResult;
 use super::merge_validation::{format_validation_error_metadata, ValidationLogEntry};
 
 use super::merge_validation::{emit_merge_progress, ValidationFailure};
+use crate::domain::entities::{ActivityEvent, ActivityEventRole, ActivityEventType};
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -217,6 +218,12 @@ impl<'a> super::TransitionHandler<'a> {
             MergePhaseStatus::Passed,
             "Preconditions met".to_string(),
         );
+        self.emit_merge_activity_event(
+            task_id_str,
+            "Merge pipeline: preconditions validated",
+            MergePhase::PRECONDITION_CHECK,
+            "passed",
+        ).await;
 
         let repo_path = Path::new(&project.working_directory);
 
@@ -239,6 +246,12 @@ impl<'a> super::TransitionHandler<'a> {
             MergePhaseStatus::Passed,
             "Cleanup complete".to_string(),
         );
+        self.emit_merge_activity_event(
+            task_id_str,
+            "Merge pipeline: cleanup complete",
+            MergePhase::MERGE_CLEANUP,
+            "passed",
+        ).await;
 
         // Branch freshness: ensure plan branch, update from main, update source from target
         emit_merge_progress(
@@ -445,6 +458,12 @@ impl<'a> super::TransitionHandler<'a> {
             MergePhaseStatus::Passed,
             "Branches are up to date".to_string(),
         );
+        self.emit_merge_activity_event(
+            task_id_str,
+            "Merge pipeline: branch freshness check passed",
+            MergePhase::BRANCH_FRESHNESS,
+            "passed",
+        ).await;
 
         // "Already merged" early exit
         if self.check_already_merged(
@@ -518,6 +537,12 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Dispatch merge strategy with timeout
         let remaining = merge_deadline.saturating_duration_since(tokio::time::Instant::now());
+        self.emit_merge_activity_event(
+            task_id_str,
+            format!("Merge pipeline: merging {} into {}", source_branch, target_branch),
+            MergePhase::PROGRAMMATIC_MERGE,
+            "started",
+        ).await;
         self.dispatch_merge_strategy(
             &mut task, &task_id, task_id_str, &project, repo_path,
             &source_branch, &target_branch, &squash_commit_msg,
@@ -921,6 +946,34 @@ impl<'a> super::TransitionHandler<'a> {
                 InternalStatus::PendingMerge, InternalStatus::MergeIncomplete,
                 "validation_failed", task_repo,
             ).await;
+        }
+    }
+
+    /// Emit a system ActivityEvent for a merge pipeline phase.
+    ///
+    /// Non-fatal: if the repo is unavailable or the save fails, logs a warning and continues.
+    pub(super) async fn emit_merge_activity_event(
+        &self,
+        task_id_str: &str,
+        content: impl Into<String>,
+        phase_id: &str,
+        result: &str,
+    ) {
+        let Some(ref repo) = self.machine.context.services.activity_event_repo else {
+            return;
+        };
+        let tid = TaskId::from_string(task_id_str.to_string());
+        let metadata = serde_json::json!({ "phase_id": phase_id, "result": result }).to_string();
+        let event = ActivityEvent::new_task_event(tid, ActivityEventType::System, content)
+            .with_role(ActivityEventRole::System)
+            .with_metadata(metadata);
+        if let Err(e) = repo.save(event).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                phase_id = phase_id,
+                error = %e,
+                "Failed to save merge activity event (non-fatal)"
+            );
         }
     }
 }

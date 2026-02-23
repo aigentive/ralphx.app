@@ -23,6 +23,7 @@ import {
 import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import { useTaskStateHistory } from "@/hooks/useReviews";
+import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 import { useGitDiff } from "@/hooks/useGitDiff";
 import type { Task } from "@/types/task";
 import { BranchBadge } from "@/components/shared/BranchBadge";
@@ -170,6 +171,7 @@ function CommitSummaryCard({ taskId }: { taskId: string }) {
 
 export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: MergedTaskDetailProps) {
   const { data: history, isLoading } = useTaskStateHistory(task.id);
+  const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Use completedAt as mergedAt (merge happens after approval which sets completedAt)
@@ -259,7 +261,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
           </Button>
         </div>
         <DetailCard>
-          <ReviewTimeline history={history ?? []} />
+          <ReviewTimeline history={history ?? []} stateTransitions={stateTransitions} />
         </DetailCard>
       </section>
       </TwoColumnLayout>

@@ -23,6 +23,7 @@ import {
 import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
 import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
+import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
@@ -370,6 +371,7 @@ function ActionButtonsCard({
 export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanReviewTaskDetailProps) {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const { data: history, isLoading } = useTaskStateHistory(task.id);
+  const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
   const latestApprovedReview = getLatestApprovedReview(history);
 
   // Fetch structured issues from review issues API
@@ -437,6 +439,7 @@ export function HumanReviewTaskDetail({ task, isHistorical = false }: HumanRevie
                 filter={(e) => e.outcome === "changes_requested"}
                 showAttemptNumbers
                 emptyMessage="No previous attempts"
+                stateTransitions={stateTransitions}
               />
             </DetailCard>
           </section>

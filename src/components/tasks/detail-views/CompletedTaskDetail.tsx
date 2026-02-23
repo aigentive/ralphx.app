@@ -28,6 +28,7 @@ import { DurationDisplay } from "./shared/DurationDisplay";
 import { api } from "@/lib/tauri";
 import { useQueryClient } from "@tanstack/react-query";
 import { taskKeys } from "@/hooks/useTasks";
+import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 import {
   TaskRerunDialog,
   type TaskRerunResult,
@@ -98,6 +99,7 @@ function ActionButtonsCard({
 export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTaskDetailProps) {
   const queryClient = useQueryClient();
   const { data: history, isLoading } = useTaskStateHistory(task.id);
+  const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
 
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [isRerunDialogOpen, setIsRerunDialogOpen] = useState(false);
@@ -203,7 +205,7 @@ export function CompletedTaskDetail({ task, isHistorical = false }: CompletedTas
         <section data-testid="review-history-section">
           <SectionTitle>Review History</SectionTitle>
           <DetailCard>
-            <ReviewTimeline history={history} />
+            <ReviewTimeline history={history} stateTransitions={stateTransitions} />
           </DetailCard>
         </section>
 
