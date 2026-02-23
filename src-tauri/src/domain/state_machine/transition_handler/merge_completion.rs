@@ -8,6 +8,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 
 use crate::application::GitService;
+use crate::infrastructure::agents::claude::git_runtime_config;
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
@@ -264,7 +265,12 @@ pub(super) async fn cleanup_branch_and_worktree_internal(
         // still holds files, causing delete_worktree to fail or corrupt state).
         // Matches pre_merge_cleanup step 0 pattern (merge_coordination.rs).
         if worktree_path_buf.exists() {
-            crate::domain::services::kill_worktree_processes(&worktree_path_buf);
+            let lsof_timeout = git_runtime_config().worktree_lsof_timeout_secs;
+            crate::domain::services::kill_worktree_processes_async(
+                &worktree_path_buf,
+                lsof_timeout,
+            )
+            .await;
             // Brief settle time for process tree cleanup after SIGTERM
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }

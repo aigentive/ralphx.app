@@ -180,6 +180,25 @@ cargo fmt                      # format
 cargo clippy --all-targets --all-features -- -D warnings  # lint (REQUIRED before commit)
 ```
 
+## Real Integration Tests (Reference)
+
+Tests using real git repos + real DB (memory impls) + mocked agent spawns. Use these as patterns when adding new integration tests.
+
+| File | Tests | What's Real | What's Mocked | Pattern |
+|------|-------|-------------|---------------|---------|
+| `tests/merge_system_hardening.rs` | 23 | git (tempdir), MemoryTaskRepo, MemoryPlanBranchRepo | No agents | Standalone helpers, `setup_test_repo()` |
+| `tests/deferred_main_merge_integration.rs` | 8 | git, MemoryTaskRepo | No agents | Deferred merge retry scenarios |
+| `domain/state_machine/transition_handler/tests/real_git_integration.rs` | 8 | git, MemoryTaskRepo, merge strategy dispatch | MockChatService, MockAgentSpawner | `setup_real_git_repo()` → `PendingMergeSetup` |
+| `domain/state_machine/transition_handler/tests/orchestration_chain_tests.rs` | 3 | git, MemoryTaskRepo, full state machine | MockChatService (`.call_count()`) | Real git + real DB + mock agent spawns |
+| `domain/state_machine/transition_handler/tests/plan_update_from_main.rs` | 7 | git, `update_plan_from_main()` directly | Nothing | Pure git function tests |
+| `domain/state_machine/transition_handler/tests/source_update_from_target.rs` | 7 | git, `update_source_from_target()` directly | Nothing | Pure git function tests |
+| `domain/state_machine/transition_handler/tests/rc12_rc13_stale_worktree.rs` | 3 | git worktrees, GitService | Nothing | Worktree lifecycle tests |
+| `domain/state_machine/transition_handler/tests/merge_cleanup.rs` | 7 | State machine transitions | TaskServices::new_mock() | Cleanup step ordering |
+
+**Shared helpers:** `domain/state_machine/transition_handler/tests/helpers.rs` (414 lines) — `setup_real_git_repo()`, `PendingMergeSetup`, `RealGitRepo`, all mock services.
+
+**Pattern:** `tempfile::TempDir` + `std::process::Command` git CLI → `MemoryTaskRepository` + `MemoryProjectRepository` → `TaskServices::new_mock()` or custom `MockChatService` → `TransitionHandler::new(&mut machine)` → assert state + git.
+
 ## Allowed Clippy Lints
 derivable_impls, redundant_closure, too_many_arguments, type_complexity,
 unnecessary_literal_unwrap, bool_comparison, useless_vec, let_and_return

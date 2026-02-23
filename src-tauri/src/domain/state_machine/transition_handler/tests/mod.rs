@@ -96,3 +96,10 @@ mod rc12_rc13_stale_worktree;
 // Test 4: plan_update_conflict_retry_uses_correct_target
 // Test 5: plan_branch_repo_none_fallback_uses_metadata_guard
 mod merge_target_resolution;
+
+// Branch freshness timeout tests: config, env override, YAML deserialization
+mod branch_freshness_timeout;
+
+// Merge pipeline timeout integration tests: real git + memory repos + mock agents
+// Covers: lsof timeout, pre-merge cleanup, stale index.lock, stale worktree, full E2E
+mod merge_pipeline_timeout_tests;

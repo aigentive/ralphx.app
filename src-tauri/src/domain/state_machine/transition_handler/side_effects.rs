@@ -268,20 +268,64 @@ impl<'a> super::TransitionHandler<'a> {
         ).await;
 
         // Update plan branch from main if behind (prevents false validation failures)
-        match super::merge_coordination::update_plan_from_main(
-            repo_path,
-            &target_branch,
-            base_branch,
-            &project,
+        emit_merge_progress(
+            app_handle,
             task_id_str,
-            self.machine.context.services.app_handle.as_ref(),
-        ).await {
-            super::merge_coordination::PlanUpdateResult::AlreadyUpToDate
-            | super::merge_coordination::PlanUpdateResult::Updated
-            | super::merge_coordination::PlanUpdateResult::NotPlanBranch => {
+            MergePhase::new(MergePhase::BRANCH_FRESHNESS),
+            MergePhaseStatus::Started,
+            "Updating plan branch from main...".to_string(),
+        );
+        let freshness_timeout = std::time::Duration::from_secs(
+            reconciliation_config().branch_freshness_timeout_secs,
+        );
+        let plan_update_start = std::time::Instant::now();
+        let plan_update_result = tokio::time::timeout(
+            freshness_timeout,
+            super::merge_coordination::update_plan_from_main(
+                repo_path,
+                &target_branch,
+                base_branch,
+                &project,
+                task_id_str,
+                self.machine.context.services.app_handle.as_ref(),
+            ),
+        ).await;
+
+        let plan_update_elapsed = plan_update_start.elapsed();
+        match plan_update_result {
+            Err(_elapsed) => {
+                tracing::error!(
+                    task_id = task_id_str,
+                    timeout_secs = reconciliation_config().branch_freshness_timeout_secs,
+                    elapsed_ms = plan_update_elapsed.as_millis() as u64,
+                    "update_plan_from_main timed out — aborting merge"
+                );
+                let metadata = serde_json::json!({
+                    "error": format!(
+                        "update_plan_from_main timed out after {}s (limit: {}s)",
+                        plan_update_elapsed.as_secs(),
+                        reconciliation_config().branch_freshness_timeout_secs,
+                    ),
+                    "source_branch": source_branch,
+                    "target_branch": target_branch,
+                    "merge_failure_source": "BranchFreshnessTimeout",
+                });
+                self.transition_to_merge_incomplete(
+                    &mut task, &task_id, task_id_str, metadata, task_repo, true,
+                ).await;
+                return;
+            }
+            Ok(super::merge_coordination::PlanUpdateResult::AlreadyUpToDate)
+            | Ok(super::merge_coordination::PlanUpdateResult::Updated)
+            | Ok(super::merge_coordination::PlanUpdateResult::NotPlanBranch) => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    elapsed_ms = plan_update_elapsed.as_millis() as u64,
+                    "update_plan_from_main completed"
+                );
                 // Continue with merge
             }
-            super::merge_coordination::PlanUpdateResult::Conflicts { conflict_files } => {
+            Ok(super::merge_coordination::PlanUpdateResult::Conflicts { conflict_files }) => {
                 tracing::warn!(
                     task_id = task_id_str,
                     conflict_count = conflict_files.len(),
@@ -344,10 +388,11 @@ impl<'a> super::TransitionHandler<'a> {
                 }
                 return;
             }
-            super::merge_coordination::PlanUpdateResult::Error(err) => {
+            Ok(super::merge_coordination::PlanUpdateResult::Error(err)) => {
                 tracing::error!(
                     task_id = task_id_str,
                     error = %err,
+                    elapsed_ms = plan_update_elapsed.as_millis() as u64,
                     "Plan branch update from main failed — aborting merge to prevent stale branch"
                 );
                 // Fatal: abort merge. Proceeding with a stale plan branch causes validation
@@ -366,19 +411,60 @@ impl<'a> super::TransitionHandler<'a> {
         }
 
         // Update source branch from target if behind (prevents validation failures from stale code)
-        match super::merge_coordination::update_source_from_target(
-            repo_path,
-            &source_branch,
-            &target_branch,
-            &project,
+        emit_merge_progress(
+            app_handle,
             task_id_str,
-            self.machine.context.services.app_handle.as_ref(),
-        ).await {
-            super::merge_coordination::SourceUpdateResult::AlreadyUpToDate
-            | super::merge_coordination::SourceUpdateResult::Updated => {
+            MergePhase::new(MergePhase::BRANCH_FRESHNESS),
+            MergePhaseStatus::Started,
+            "Updating source branch from target...".to_string(),
+        );
+        let source_update_start = std::time::Instant::now();
+        let source_update_result = tokio::time::timeout(
+            freshness_timeout,
+            super::merge_coordination::update_source_from_target(
+                repo_path,
+                &source_branch,
+                &target_branch,
+                &project,
+                task_id_str,
+                self.machine.context.services.app_handle.as_ref(),
+            ),
+        ).await;
+
+        let source_update_elapsed = source_update_start.elapsed();
+        match source_update_result {
+            Err(_elapsed) => {
+                tracing::error!(
+                    task_id = task_id_str,
+                    timeout_secs = reconciliation_config().branch_freshness_timeout_secs,
+                    elapsed_ms = source_update_elapsed.as_millis() as u64,
+                    "update_source_from_target timed out — aborting merge"
+                );
+                let metadata = serde_json::json!({
+                    "error": format!(
+                        "update_source_from_target timed out after {}s (limit: {}s)",
+                        source_update_elapsed.as_secs(),
+                        reconciliation_config().branch_freshness_timeout_secs,
+                    ),
+                    "source_branch": source_branch,
+                    "target_branch": target_branch,
+                    "merge_failure_source": "BranchFreshnessTimeout",
+                });
+                self.transition_to_merge_incomplete(
+                    &mut task, &task_id, task_id_str, metadata, task_repo, true,
+                ).await;
+                return;
+            }
+            Ok(super::merge_coordination::SourceUpdateResult::AlreadyUpToDate)
+            | Ok(super::merge_coordination::SourceUpdateResult::Updated) => {
+                tracing::info!(
+                    task_id = task_id_str,
+                    elapsed_ms = source_update_elapsed.as_millis() as u64,
+                    "update_source_from_target completed"
+                );
                 // Continue with merge
             }
-            super::merge_coordination::SourceUpdateResult::Conflicts { conflict_files } => {
+            Ok(super::merge_coordination::SourceUpdateResult::Conflicts { conflict_files }) => {
                 tracing::warn!(
                     task_id = task_id_str,
                     conflict_count = conflict_files.len(),
@@ -440,10 +526,11 @@ impl<'a> super::TransitionHandler<'a> {
                 }
                 return;
             }
-            super::merge_coordination::SourceUpdateResult::Error(err) => {
+            Ok(super::merge_coordination::SourceUpdateResult::Error(err)) => {
                 tracing::warn!(
                     task_id = task_id_str,
                     error = %err,
+                    elapsed_ms = source_update_elapsed.as_millis() as u64,
                     "Source branch update from target failed (non-fatal) — proceeding with merge"
                 );
                 // Non-fatal: continue with merge anyway. The source branch may still merge cleanly.

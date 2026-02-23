@@ -355,3 +355,52 @@ async fn test_try_register_blocks_concurrent_claim() {
     assert_eq!(existing.pid, 0); // Still placeholder
     assert_eq!(existing.conversation_id, "conv-1");
 }
+
+#[tokio::test]
+async fn test_kill_worktree_processes_async_completes_within_timeout() {
+    // Use a temp dir that exists but has no processes — lsof should return quickly
+    let tmp = std::env::temp_dir().join("ralphx_test_lsof_async");
+    let _ = std::fs::create_dir_all(&tmp);
+
+    let start = std::time::Instant::now();
+    kill_worktree_processes_async(&tmp, 5).await;
+    let elapsed = start.elapsed();
+
+    // Should complete well within 5s since no heavy scanning needed
+    assert!(
+        elapsed.as_secs() < 5,
+        "Expected completion within timeout, took {:?}",
+        elapsed
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[tokio::test]
+async fn test_kill_worktree_processes_async_nonexistent_path() {
+    // Non-existent path — should not panic, just log debug
+    let bogus = std::path::PathBuf::from("/tmp/ralphx_test_nonexistent_worktree_path_12345");
+    kill_worktree_processes_async(&bogus, 2).await;
+    // If we get here without panic, the test passes
+}
+
+#[tokio::test]
+async fn test_kill_worktree_processes_async_timeout_returns_quickly() {
+    // Test that the timeout mechanism works by using a very short timeout (1s).
+    // Even if lsof somehow takes longer, we should return within ~1s.
+    let tmp = std::env::temp_dir().join("ralphx_test_lsof_timeout");
+    let _ = std::fs::create_dir_all(&tmp);
+
+    let start = std::time::Instant::now();
+    kill_worktree_processes_async(&tmp, 1).await;
+    let elapsed = start.elapsed();
+
+    // Must return within timeout + small overhead (spawn_blocking scheduling)
+    assert!(
+        elapsed.as_secs() < 3,
+        "Expected return within ~1s timeout, took {:?}",
+        elapsed
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
