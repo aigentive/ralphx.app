@@ -109,7 +109,7 @@ async fn test_resolve_task_base_branch_merged_branch_missing_recreates_it() {
     let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
         Some(plan_branch_repo.clone() as Arc<dyn PlanBranchRepository>);
 
-    let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
+    let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt, &None).await;
 
     assert_eq!(
         result, "ralphx/test-plan-branch/plan-session-merged-test",
@@ -167,7 +167,7 @@ async fn test_resolve_task_base_branch_merged_branch_exists_in_git_resets_db_sta
     let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
         Some(plan_branch_repo.clone() as Arc<dyn PlanBranchRepository>);
 
-    let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
+    let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt, &None).await;
 
     assert_eq!(
         result, plan_branch_name,
@@ -210,7 +210,7 @@ async fn test_resolve_task_base_branch_active_status_unchanged() {
     let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> =
         Some(plan_branch_repo.clone() as Arc<dyn PlanBranchRepository>);
 
-    let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
+    let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt, &None).await;
 
     assert_eq!(
         result, plan_branch_name,
@@ -226,7 +226,7 @@ async fn test_resolve_task_base_branch_no_session_id_returns_default() {
 
     let plan_branch_repo_opt: Option<Arc<dyn PlanBranchRepository>> = None;
 
-    let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt).await;
+    let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt, &None).await;
 
     assert_eq!(result, "main", "No session_id should fall back to default");
 }

@@ -37,6 +37,9 @@ pub trait PlanBranchRepository: Send + Sync {
     /// Set the merge task ID for a plan branch
     async fn set_merge_task_id(&self, id: &PlanBranchId, task_id: &TaskId) -> AppResult<()>;
 
+    /// Clear the merge task ID for a plan branch (set to NULL)
+    async fn clear_merge_task_id(&self, id: &PlanBranchId) -> AppResult<()>;
+
     /// Mark a plan branch as merged (sets status to Merged and merged_at timestamp)
     async fn set_merged(&self, id: &PlanBranchId) -> AppResult<()>;
 

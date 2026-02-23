@@ -89,6 +89,14 @@ impl PlanBranchRepository for MemoryPlanBranchRepository {
         Ok(())
     }
 
+    async fn clear_merge_task_id(&self, id: &PlanBranchId) -> AppResult<()> {
+        let mut branches = self.branches.write().await;
+        if let Some(branch) = branches.get_mut(id.as_str()) {
+            branch.merge_task_id = None;
+        }
+        Ok(())
+    }
+
     async fn set_merged(&self, id: &PlanBranchId) -> AppResult<()> {
         let mut branches = self.branches.write().await;
         if let Some(branch) = branches.get_mut(id.as_str()) {

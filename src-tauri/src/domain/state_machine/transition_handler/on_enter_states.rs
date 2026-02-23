@@ -220,8 +220,9 @@ impl<'a> super::TransitionHandler<'a> {
                                 format!("ralphx/{}/task-{}", slugify(&project.name), task_id_str);
                             // Resolve base branch: feature branch for plan tasks, project base otherwise
                             let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+                            let task_repo_ref = &self.machine.context.services.task_repo;
                             let resolved_base =
-                                resolve_task_base_branch(&task, &project, plan_branch_repo).await;
+                                resolve_task_base_branch(&task, &project, plan_branch_repo, task_repo_ref).await;
                             let base_branch = resolved_base.as_str();
                             let repo_path = Path::new(&project.working_directory);
 

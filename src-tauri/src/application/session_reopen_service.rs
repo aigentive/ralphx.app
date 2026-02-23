@@ -85,16 +85,18 @@ impl SessionReopenService {
             .cleanup_tasks(&tasks, StopMode::DirectStop, false)
             .await;
 
-        // 4. Clean plan branch (delete git branch, delete DB record)
+        // 4. Clean plan branch (delete git branch if Active, always delete DB record)
         if let Ok(Some(plan_branch)) = self.plan_branch_repo.get_by_session_id(session_id).await {
+            // Only delete git branch if Active (Merged branches are already merged into base)
             if plan_branch.status == PlanBranchStatus::Active {
                 if let Ok(Some(project)) = self.project_repo.get_by_id(&session.project_id).await {
                     let repo_path = PathBuf::from(&project.working_directory);
                     let _ = GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name)
                         .await;
                 }
-                let _ = self.plan_branch_repo.delete(&plan_branch.id).await;
             }
+            // Always delete the DB record so re-accept creates a fresh plan branch + merge task
+            let _ = self.plan_branch_repo.delete(&plan_branch.id).await;
         }
 
         // 5. Clear created_task_id on all proposals
