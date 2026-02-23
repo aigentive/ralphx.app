@@ -11,7 +11,7 @@
 // - OrchestratorService (ideation, task, project contexts)
 // - ExecutionChatService (task_execution context)
 
-mod chat_service_context;
+pub(crate) mod chat_service_context;
 mod chat_service_errors;
 mod chat_service_handlers;
 mod chat_service_helpers;
