@@ -12,7 +12,6 @@ import { EventProvider } from "@/providers/EventProvider";
 import { TaskBoard } from "@/components/tasks/TaskBoard";
 import { ReviewsPanel } from "@/components/reviews/ReviewsPanel";
 import { ExecutionControlBar } from "@/components/execution/ExecutionControlBar";
-import { TaskDetailModal } from "@/components/tasks/TaskDetailModal";
 import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { KanbanSplitLayout, Navigation } from "@/components/layout";
 import { PermissionDialog } from "@/components/PermissionDialog";
@@ -33,7 +32,6 @@ import { useChatStore } from "@/stores/chatStore";
 import { useIdeationStore, selectActiveSession } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { useProjectStore } from "@/stores/projectStore";
-import type { Task } from "@/types/task";
 import type { ChatContext, ViewType } from "@/types/chat";
 import type { ApplyProposalsInput } from "@/api/ideation.types";
 import type { UpdateProposalInput } from "@/api/ideation";
@@ -118,9 +116,6 @@ function AppContent() {
   const setReviewsPanelOpen = useUiStore((s) => s.setReviewsPanelOpen);
   const executionStatus = useUiStore((s) => s.executionStatus);
   const setExecutionStatus = useUiStore((s) => s.setExecutionStatus);
-  const activeModal = useUiStore((s) => s.activeModal);
-  const modalContext = useUiStore((s) => s.modalContext);
-  const closeModal = useUiStore((s) => s.closeModal);
   const currentView = useUiStore((s) => s.currentView);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
@@ -187,11 +182,6 @@ function AppContent() {
   const [editingProposalId, setEditingProposalId] = useState<string | null>(null);
   const editingProposal = editingProposalId
     ? allProposals[editingProposalId] ?? null
-    : null;
-
-  // Extract task from modal context for task-detail modal
-  const selectedTask = activeModal === "task-detail" && modalContext?.task
-    ? (modalContext.task as Task)
     : null;
 
   const [isExecutionLoading, setIsExecutionLoading] = useState(false);
@@ -395,13 +385,6 @@ function AppContent() {
 
   // Build chat context based on current view
   const chatContext: ChatContext = useMemo(() => {
-    if (selectedTask) {
-      return {
-        view: "task_detail",
-        projectId: currentProjectId,
-        selectedTaskId: selectedTask.id,
-      };
-    }
     if (currentView === "ideation") {
       if (activeSession) {
         return {
@@ -420,7 +403,7 @@ function AppContent() {
       view: currentView,
       projectId: currentProjectId,
     };
-  }, [selectedTask, currentView, activeSession, currentProjectId]);
+  }, [currentView, activeSession, currentProjectId]);
 
   // Phase 82: Pass currentProjectId to execution API calls for per-project scoping
   const handlePauseToggle = async () => {
@@ -1089,13 +1072,6 @@ function AppContent() {
           {currentView !== "kanban" && currentView !== "ideation" && <ChatPanel context={chatContext} />}
         </div>
       )}
-
-      {/* TaskDetailModal - renders when task-detail modal is active */}
-      <TaskDetailModal
-        task={selectedTask}
-        isOpen={!!selectedTask}
-        onClose={closeModal}
-      />
 
       {/* Project Creation Wizard */}
       <ProjectCreationWizard

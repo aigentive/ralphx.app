@@ -84,23 +84,23 @@ describe("uiStore", () => {
 
   describe("modal", () => {
     it("opens a modal with type", () => {
-      useUiStore.getState().openModal("task-detail");
+      useUiStore.getState().openModal("task-create");
 
       const state = useUiStore.getState();
-      expect(state.activeModal).toBe("task-detail");
+      expect(state.activeModal).toBe("task-create");
     });
 
     it("opens a modal with context", () => {
-      useUiStore.getState().openModal("task-detail", { taskId: "task-1" });
+      useUiStore.getState().openModal("task-create", { taskId: "task-1" });
 
       const state = useUiStore.getState();
-      expect(state.activeModal).toBe("task-detail");
+      expect(state.activeModal).toBe("task-create");
       expect(state.modalContext).toEqual({ taskId: "task-1" });
     });
 
     it("closes the modal", () => {
       useUiStore.setState({
-        activeModal: "task-detail",
+        activeModal: "task-create",
         modalContext: { taskId: "task-1" },
       });
 
@@ -112,7 +112,7 @@ describe("uiStore", () => {
     });
 
     it("replaces modal when opening new one", () => {
-      useUiStore.getState().openModal("task-detail");
+      useUiStore.getState().openModal("task-create");
       useUiStore.getState().openModal("settings");
 
       const state = useUiStore.getState();
