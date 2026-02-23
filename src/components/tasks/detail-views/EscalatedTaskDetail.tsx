@@ -22,6 +22,7 @@ import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { IssueList } from "@/components/reviews/IssueList";
 import { reviewIssuesApi } from "@/api/review-issues";
 import { useTaskStateHistory, reviewKeys } from "@/hooks/useReviews";
+import { useTaskStateTransitions } from "@/hooks/useTaskStateTransitions";
 import { taskKeys } from "@/hooks/useTasks";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
@@ -241,6 +242,7 @@ function DecisionButtonsCard({
 
 export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTaskDetailProps) {
   const { data: history, isLoading } = useTaskStateHistory(task.id);
+  const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
   const escalationReview = getLatestEscalationReview(history);
 
   // Fetch structured issues from review issues API
@@ -306,6 +308,7 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
             filter={(e) => e.outcome === "changes_requested"}
             showAttemptNumbers
             emptyMessage="No previous attempts"
+            stateTransitions={stateTransitions}
           />
         </DetailCard>
       </section>

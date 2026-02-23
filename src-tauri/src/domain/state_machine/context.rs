@@ -12,8 +12,8 @@ use super::types::Blocker;
 use crate::application::ChatService;
 use crate::commands::ExecutionState;
 use crate::domain::repositories::{
-    IdeationSessionRepository, PlanBranchRepository, ProjectRepository, TaskRepository,
-    TaskStepRepository,
+    ActivityEventRepository, IdeationSessionRepository, PlanBranchRepository, ProjectRepository,
+    TaskRepository, TaskStepRepository,
 };
 use dashmap::DashMap;
 use std::any::Any;
@@ -94,6 +94,10 @@ pub struct TaskServices {
     /// Inserted in handle_outcome_success before validation, cancelled in
     /// pre_merge_cleanup when a new merge attempt starts for the same task.
     pub validation_tokens: Arc<DashMap<String, CancellationToken>>,
+
+    /// Activity event repository for emitting merge pipeline audit events.
+    /// Optional — if not wired, merge activity events are silently skipped.
+    pub activity_event_repo: Option<Arc<dyn ActivityEventRepository>>,
 }
 
 impl TaskServices {
@@ -124,6 +128,7 @@ impl TaskServices {
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
             ideation_session_repo: None,
             validation_tokens: Arc::new(DashMap::new()),
+            activity_event_repo: None,
         }
     }
 
@@ -212,6 +217,12 @@ impl TaskServices {
         self
     }
 
+    /// Set the activity event repository for merge pipeline audit events (builder pattern).
+    pub fn with_activity_event_repo(mut self, repo: Arc<dyn ActivityEventRepository>) -> Self {
+        self.activity_event_repo = Some(repo);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -234,6 +245,7 @@ impl TaskServices {
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
             ideation_session_repo: None,
             validation_tokens: Arc::new(DashMap::new()),
+            activity_event_repo: None,
         }
     }
 }
@@ -286,6 +298,13 @@ impl std::fmt::Debug for TaskServices {
                     .ideation_session_repo
                     .as_ref()
                     .map(|_| "<IdeationSessionRepository>"),
+            )
+            .field(
+                "activity_event_repo",
+                &self
+                    .activity_event_repo
+                    .as_ref()
+                    .map(|_| "<ActivityEventRepository>"),
             )
             .finish()
     }

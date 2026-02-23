@@ -469,6 +469,10 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Passed to TaskServices so TransitionHandler can build descriptive plan merge commit messages.
     ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
 
+    /// Activity event repository for emitting merge pipeline audit events.
+    /// Cloned before being passed to ClaudeChatService so the transition handler also has access.
+    activity_event_repo: Arc<dyn ActivityEventRepository>,
+
     /// Per-task team mode override. When `Some(true)`, the chat service uses
     /// team-mode agent names (e.g., orchestrator-execution instead of worker).
     /// `Some(false)` means solo was explicitly chosen (skip metadata fallback).
@@ -520,6 +524,10 @@ impl<R: Runtime> TaskTransitionService<R> {
                 .with_repos(Arc::clone(&task_repo), Arc::clone(&project_repo))
                 .with_execution_state(Arc::clone(&execution_state)),
         );
+
+        // Clone activity_event_repo before consuming it in the chat service
+        // so the transition handler can also use it for merge pipeline audit events.
+        let activity_event_repo_for_services = Arc::clone(&activity_event_repo);
 
         // Create the unified chat service for worker spawning
         let chat_service: Arc<dyn ChatService> = {
@@ -577,6 +585,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             plan_branch_repo: None,
             step_repo: None,
             ideation_session_repo: Some(ideation_session_repo),
+            activity_event_repo: activity_event_repo_for_services,
             team_mode: None,
             merge_lock: Arc::new(tokio::sync::Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
@@ -1090,6 +1099,10 @@ impl<R: Runtime> TaskTransitionService<R> {
         if let Some(ref session_repo) = self.ideation_session_repo {
             services = services.with_ideation_session_repo(Arc::clone(session_repo));
         }
+
+        // Pass activity event repository for merge pipeline audit events
+        services =
+            services.with_activity_event_repo(Arc::clone(&self.activity_event_repo));
 
         // Create TaskContext
         let context = TaskContext::new(task_id.as_str(), task.project_id.as_str(), services);

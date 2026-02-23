@@ -53,6 +53,8 @@ pub enum ActivityEventType {
     Text,
     /// Error during execution
     Error,
+    /// System-generated event (e.g., merge pipeline steps)
+    System,
 }
 
 impl fmt::Display for ActivityEventType {
@@ -63,6 +65,7 @@ impl fmt::Display for ActivityEventType {
             ActivityEventType::ToolResult => write!(f, "tool_result"),
             ActivityEventType::Text => write!(f, "text"),
             ActivityEventType::Error => write!(f, "error"),
+            ActivityEventType::System => write!(f, "system"),
         }
     }
 }
@@ -77,6 +80,7 @@ impl std::str::FromStr for ActivityEventType {
             "tool_result" => Ok(ActivityEventType::ToolResult),
             "text" => Ok(ActivityEventType::Text),
             "error" => Ok(ActivityEventType::Error),
+            "system" => Ok(ActivityEventType::System),
             _ => Err(ParseActivityEventTypeError(s.to_string())),
         }
     }
