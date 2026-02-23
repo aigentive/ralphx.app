@@ -82,7 +82,6 @@ function saveChatVisibility(visibility: Record<ViewType, boolean>): void {
 
 /** Modal types available in the application */
 export type ModalType =
-  | "task-detail"
   | "task-create"
   | "project-settings"
   | "settings"

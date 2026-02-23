@@ -260,11 +260,11 @@ describe("Navigation integration contracts", () => {
   });
 
   it("view changes do not affect modal state", () => {
-    useUiStore.getState().openModal("task-detail", { taskId: "task-1" });
+    useUiStore.getState().openModal("task-create", { taskId: "task-1" });
 
     useUiStore.getState().setCurrentView("ideation");
 
-    expect(useUiStore.getState().activeModal).toBe("task-detail");
+    expect(useUiStore.getState().activeModal).toBe("task-create");
     expect(useUiStore.getState().modalContext).toEqual({ taskId: "task-1" });
   });
 
