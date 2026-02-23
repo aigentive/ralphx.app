@@ -233,9 +233,11 @@ function StatusBadge({ status }: { status: InternalStatus }) {
 
 interface TaskDetailOverlayProps {
   projectId: string;
+  /** Optional footer to render at the bottom of the overlay (e.g., ExecutionControlBar) */
+  footer?: React.ReactNode;
 }
 
-export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
+export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps) {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
@@ -740,6 +742,13 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                 </ErrorBoundary>
               </div>
             </ScrollArea>
+          )}
+
+          {/* Execution Control Bar - always visible at bottom of overlay */}
+          {footer && (
+            <div className="flex-shrink-0">
+              {footer}
+            </div>
           )}
         </div>
       </div>
