@@ -364,7 +364,8 @@ pub async fn approve_team_plan(
                 .with_mcp_tools(pending.mcp_tools.clone())
                 .with_color(&teammate_color)
                 .with_mcp_agent_type(mcp_type)
-                .with_working_dir(working_dir.clone());
+                .with_working_dir(working_dir.clone())
+                .with_plugin_dir(working_dir.join("ralphx-plugin"));
 
         let client = ClaudeCodeClient::new();
         match client.spawn_teammate_interactive(spawn_config).await {
@@ -659,7 +660,8 @@ pub async fn request_teammate_spawn(
             .with_tools(req.tools.clone())
             .with_mcp_tools(req.mcp_tools.clone())
             .with_color(&teammate_color)
-            .with_working_dir(working_dir);
+            .with_working_dir(working_dir.clone())
+            .with_plugin_dir(working_dir.join("ralphx-plugin"));
 
     let client = ClaudeCodeClient::new();
     match client.spawn_teammate_interactive(spawn_config).await {
@@ -778,17 +780,57 @@ const TASK_CONTEXT_TYPES: &[&str] = &["task_execution", "task", "review", "merge
 
 /// Resolve the working directory for a teammate spawn.
 ///
-/// When context_type indicates task execution and the project uses worktree mode,
-/// returns the task's worktree_path. Otherwise falls back to the project's
-/// working_directory, then std::env::current_dir().
-///
-/// Mirrors `AgenticClientSpawner::resolve_working_directory` in spawner.rs.
+/// Mirrors `chat_service_context::resolve_working_directory` — every context type
+/// resolves through the project's `working_directory` so teammates always use the
+/// same CWD as the lead agent.
 async fn resolve_teammate_working_dir(
     state: &HttpServerState,
     context_type: &str,
     context_id: &str,
 ) -> PathBuf {
-    // Only attempt task/project lookup for task-related context types
+    // Ideation context: session → project → project.working_directory
+    if context_type == "ideation" {
+        use crate::domain::entities::IdeationSessionId;
+        let session_id = IdeationSessionId::from_string(context_id);
+        if let Ok(Some(session)) = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&session_id)
+            .await
+        {
+            if let Ok(Some(project)) = state
+                .app_state
+                .project_repo
+                .get_by_id(&session.project_id)
+                .await
+            {
+                return PathBuf::from(&project.working_directory);
+            }
+        }
+        warn!(
+            context_type,
+            context_id,
+            "Teammate working dir: ideation session/project lookup failed — using default"
+        );
+        return default_working_dir();
+    }
+
+    // Project context: project → project.working_directory
+    if context_type == "project" {
+        use crate::domain::entities::ProjectId;
+        let project_id = ProjectId::from_string(context_id.to_string());
+        if let Ok(Some(project)) = state.app_state.project_repo.get_by_id(&project_id).await {
+            return PathBuf::from(&project.working_directory);
+        }
+        warn!(
+            context_type,
+            context_id,
+            "Teammate working dir: project lookup failed — using default"
+        );
+        return default_working_dir();
+    }
+
+    // Task-related contexts: task → worktree_path or project.working_directory
     if !TASK_CONTEXT_TYPES.contains(&context_type) {
         return default_working_dir();
     }
@@ -814,7 +856,7 @@ async fn resolve_teammate_working_dir(
         }
     };
 
-    let _project = match state
+    let project = match state
         .app_state
         .project_repo
         .get_by_id(&task.project_id)
@@ -846,14 +888,8 @@ async fn resolve_teammate_working_dir(
         );
         PathBuf::from(wt_path)
     } else {
-        warn!(
-            task_id = context_id,
-            project_id = %task.project_id,
-            "Safety net: Worktree mode but worktree_path is None — \
-             refusing to use project directory (main branch). \
-             Falling back to default."
-        );
-        default_working_dir()
+        // No worktree — use the project's working directory (repo root)
+        PathBuf::from(&project.working_directory)
     }
 }
 
