@@ -1,25 +1,29 @@
 /**
  * useAuditTrail hook tests
  *
- * Tests the hook that merges review notes (state history) and activity events
- * into a unified, chronologically-sorted audit trail timeline.
+ * Tests the hook that merges state transitions, review notes, and activity events
+ * into a unified, chronologically-sorted audit trail with phase derivation.
  */
 
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import React from "react";
-import { useAuditTrail } from "./useAuditTrail";
+import { useAuditTrail, derivePhases } from "./useAuditTrail";
 import { api } from "@/lib/tauri";
 import { activityEventsApi } from "@/api/activity-events";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import type { ActivityEventResponse } from "@/api/activity-events.types";
+import type { StateTransition } from "@/api/tasks";
 
-// Mock the Tauri API (review notes)
+// Mock the Tauri API (review notes + state transitions)
 vi.mock("@/lib/tauri", () => ({
   api: {
     reviews: {
       getTaskStateHistory: vi.fn(),
+    },
+    tasks: {
+      getStateTransitions: vi.fn(),
     },
   },
 }));
@@ -34,6 +38,7 @@ vi.mock("@/api/activity-events", () => ({
 }));
 
 const mockGetStateHistory = vi.mocked(api.reviews.getTaskStateHistory);
+const mockGetStateTransitions = vi.mocked(api.tasks.getStateTransitions);
 const mockListTaskEvents = vi.mocked(activityEventsApi.task.list);
 
 // ============================================================================
@@ -83,8 +88,22 @@ function createMockActivityEvent(
   };
 }
 
+function createMockTransition(
+  overrides: Partial<StateTransition> = {}
+): StateTransition {
+  return {
+    fromStatus: null,
+    toStatus: "executing",
+    trigger: "system",
+    timestamp: "2026-02-23T09:00:00+00:00",
+    ...overrides,
+  };
+}
+
+const emptyPage = { events: [] as ActivityEventResponse[], cursor: null, hasMore: false };
+
 // ============================================================================
-// Tests
+// Hook Tests
 // ============================================================================
 
 describe("useAuditTrail", () => {
@@ -93,7 +112,8 @@ describe("useAuditTrail", () => {
   });
 
   it("returns loading state initially", () => {
-    mockGetStateHistory.mockReturnValue(new Promise(() => {})); // never resolves
+    mockGetStateHistory.mockReturnValue(new Promise(() => {}));
+    mockGetStateTransitions.mockReturnValue(new Promise(() => {}));
     mockListTaskEvents.mockReturnValue(new Promise(() => {}));
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
@@ -102,6 +122,7 @@ describe("useAuditTrail", () => {
 
     expect(result.current.isLoading).toBe(true);
     expect(result.current.entries).toEqual([]);
+    expect(result.current.phases).toEqual([]);
   });
 
   it("merges review notes and activity events into unified timeline", async () => {
@@ -121,6 +142,7 @@ describe("useAuditTrail", () => {
     ];
 
     mockGetStateHistory.mockResolvedValue(reviewNotes);
+    mockGetStateTransitions.mockResolvedValue([]);
     mockListTaskEvents.mockResolvedValue({
       events: activityEvents,
       cursor: null,
@@ -136,7 +158,6 @@ describe("useAuditTrail", () => {
     });
 
     expect(result.current.entries).toHaveLength(2);
-    // Both types present
     const sources = result.current.entries.map((e) => e.source);
     expect(sources).toContain("review");
     expect(sources).toContain("activity");
@@ -161,6 +182,7 @@ describe("useAuditTrail", () => {
     ];
 
     mockGetStateHistory.mockResolvedValue(reviewNotes);
+    mockGetStateTransitions.mockResolvedValue([]);
     mockListTaskEvents.mockResolvedValue({
       events: activityEvents,
       cursor: null,
@@ -176,7 +198,6 @@ describe("useAuditTrail", () => {
     });
 
     expect(result.current.entries).toHaveLength(3);
-    // Oldest first: evt-1 (10:00), evt-2 (12:00), note-1 (14:00)
     expect(result.current.entries[0]!.id).toBe("activity-evt-1");
     expect(result.current.entries[1]!.id).toBe("activity-evt-2");
     expect(result.current.entries[2]!.id).toBe("review-note-1");
@@ -189,6 +210,7 @@ describe("useAuditTrail", () => {
     ];
 
     mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockResolvedValue([]);
     mockListTaskEvents.mockResolvedValue({
       events: activityEvents,
       cursor: null,
@@ -218,11 +240,8 @@ describe("useAuditTrail", () => {
     ];
 
     mockGetStateHistory.mockResolvedValue(reviewNotes);
-    mockListTaskEvents.mockResolvedValue({
-      events: [],
-      cursor: null,
-      hasMore: false,
-    });
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
       wrapper: createWrapper(),
@@ -239,11 +258,8 @@ describe("useAuditTrail", () => {
 
   it("handles both empty (empty state)", async () => {
     mockGetStateHistory.mockResolvedValue([]);
-    mockListTaskEvents.mockResolvedValue({
-      events: [],
-      cursor: null,
-      hasMore: false,
-    });
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
       wrapper: createWrapper(),
@@ -255,6 +271,7 @@ describe("useAuditTrail", () => {
 
     expect(result.current.entries).toEqual([]);
     expect(result.current.isEmpty).toBe(true);
+    expect(result.current.phases).toEqual([]);
   });
 
   it("properly maps review note fields to AuditEntry", async () => {
@@ -268,11 +285,8 @@ describe("useAuditTrail", () => {
     });
 
     mockGetStateHistory.mockResolvedValue([reviewNote]);
-    mockListTaskEvents.mockResolvedValue({
-      events: [],
-      cursor: null,
-      hasMore: false,
-    });
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
       wrapper: createWrapper(),
@@ -289,7 +303,6 @@ describe("useAuditTrail", () => {
     expect(entry.timestamp).toBe("2026-02-23T15:30:00+00:00");
     expect(entry.type).toBe("Changes Requested");
     expect(entry.actor).toBe("AI Reviewer");
-    // notes takes priority over summary in description
     expect(entry.description).toBe("Found 3 issues");
   });
 
@@ -303,11 +316,8 @@ describe("useAuditTrail", () => {
     });
 
     mockGetStateHistory.mockResolvedValue([reviewNote]);
-    mockListTaskEvents.mockResolvedValue({
-      events: [],
-      cursor: null,
-      hasMore: false,
-    });
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
       wrapper: createWrapper(),
@@ -332,6 +342,7 @@ describe("useAuditTrail", () => {
     });
 
     mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockResolvedValue([]);
     mockListTaskEvents.mockResolvedValue({
       events: [activityEvent],
       cursor: null,
@@ -366,11 +377,8 @@ describe("useAuditTrail", () => {
     });
 
     mockGetStateHistory.mockResolvedValue([reviewNote]);
-    mockListTaskEvents.mockResolvedValue({
-      events: [],
-      cursor: null,
-      hasMore: false,
-    });
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
       wrapper: createWrapper(),
@@ -395,11 +403,8 @@ describe("useAuditTrail", () => {
     });
 
     mockGetStateHistory.mockResolvedValue([reviewNote]);
-    mockListTaskEvents.mockResolvedValue({
-      events: [],
-      cursor: null,
-      hasMore: false,
-    });
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
       wrapper: createWrapper(),
@@ -423,11 +428,8 @@ describe("useAuditTrail", () => {
     });
 
     mockGetStateHistory.mockResolvedValue([reviewNote]);
-    mockListTaskEvents.mockResolvedValue({
-      events: [],
-      cursor: null,
-      hasMore: false,
-    });
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
       wrapper: createWrapper(),
@@ -448,6 +450,7 @@ describe("useAuditTrail", () => {
 
     expect(result.current.isLoading).toBe(false);
     expect(mockGetStateHistory).not.toHaveBeenCalled();
+    expect(mockGetStateTransitions).not.toHaveBeenCalled();
     expect(mockListTaskEvents).not.toHaveBeenCalled();
   });
 
@@ -458,16 +461,14 @@ describe("useAuditTrail", () => {
 
     expect(result.current.isLoading).toBe(false);
     expect(mockGetStateHistory).not.toHaveBeenCalled();
+    expect(mockGetStateTransitions).not.toHaveBeenCalled();
     expect(mockListTaskEvents).not.toHaveBeenCalled();
   });
 
   it("returns error from review query", async () => {
     mockGetStateHistory.mockRejectedValue(new Error("Review fetch failed"));
-    mockListTaskEvents.mockResolvedValue({
-      events: [],
-      cursor: null,
-      hasMore: false,
-    });
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
       wrapper: createWrapper(),
@@ -480,6 +481,7 @@ describe("useAuditTrail", () => {
 
   it("returns error from activity query", async () => {
     mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockResolvedValue([]);
     mockListTaskEvents.mockRejectedValue(new Error("Activity fetch failed"));
 
     const { result } = renderHook(() => useAuditTrail("task-1"), {
@@ -489,5 +491,316 @@ describe("useAuditTrail", () => {
     await waitFor(() => {
       expect(result.current.error).toBe("Activity fetch failed");
     });
+  });
+
+  it("returns error from transitions query", async () => {
+    mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockRejectedValue(new Error("Transitions fetch failed"));
+    mockListTaskEvents.mockResolvedValue(emptyPage);
+
+    const { result } = renderHook(() => useAuditTrail("task-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toBe("Transitions fetch failed");
+    });
+  });
+
+  // ============================================================================
+  // State Transition Mapping
+  // ============================================================================
+
+  it("maps state transitions to AuditEntry with source='transition'", async () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({
+        fromStatus: "backlog",
+        toStatus: "executing",
+        trigger: "system",
+        timestamp: "2026-02-23T09:00:00+00:00",
+      }),
+    ];
+
+    mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockResolvedValue(transitions);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
+
+    const { result } = renderHook(() => useAuditTrail("task-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.entries).toHaveLength(1);
+    const entry = result.current.entries[0]!;
+    expect(entry.source).toBe("transition");
+    expect(entry.type).toBe("State Change");
+    expect(entry.actor).toBe("System");
+    expect(entry.description).toBe("Backlog \u2192 Executing");
+    expect(entry.fromStatus).toBe("backlog");
+    expect(entry.toStatus).toBe("executing");
+  });
+
+  it("maps initial transition (null fromStatus) as 'Created'", async () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({
+        fromStatus: null,
+        toStatus: "backlog",
+        trigger: "user",
+        timestamp: "2026-02-23T08:00:00+00:00",
+      }),
+    ];
+
+    mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockResolvedValue(transitions);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
+
+    const { result } = renderHook(() => useAuditTrail("task-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    const entry = result.current.entries[0]!;
+    expect(entry.description).toBe("Created \u2192 Backlog");
+    expect(entry.actor).toBe("User");
+  });
+
+  // ============================================================================
+  // Three-source Merge
+  // ============================================================================
+
+  it("merges all three sources chronologically", async () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({
+        fromStatus: "backlog",
+        toStatus: "executing",
+        timestamp: "2026-02-23T09:00:00+00:00",
+      }),
+    ];
+    const reviewNotes = [
+      createMockReviewNote({
+        id: "note-1",
+        created_at: "2026-02-23T11:00:00+00:00",
+      }),
+    ];
+    const activityEvents = [
+      createMockActivityEvent({
+        id: "evt-1",
+        createdAt: "2026-02-23T10:00:00+00:00",
+      }),
+    ];
+
+    mockGetStateTransitions.mockResolvedValue(transitions);
+    mockGetStateHistory.mockResolvedValue(reviewNotes);
+    mockListTaskEvents.mockResolvedValue({
+      events: activityEvents,
+      cursor: null,
+      hasMore: false,
+    });
+
+    const { result } = renderHook(() => useAuditTrail("task-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.entries).toHaveLength(3);
+    expect(result.current.entries[0]!.source).toBe("transition");
+    expect(result.current.entries[1]!.source).toBe("activity");
+    expect(result.current.entries[2]!.source).toBe("review");
+  });
+
+  // ============================================================================
+  // Phase derivation through hook
+  // ============================================================================
+
+  it("returns phases derived from state transitions", async () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({ fromStatus: "backlog", toStatus: "executing", timestamp: "2026-02-23T09:00:00+00:00" }),
+      createMockTransition({ fromStatus: "executing", toStatus: "pending_review", timestamp: "2026-02-23T10:00:00+00:00" }),
+      createMockTransition({ fromStatus: "reviewing", toStatus: "approved", timestamp: "2026-02-23T11:00:00+00:00" }),
+      createMockTransition({ fromStatus: "approved", toStatus: "pending_merge", timestamp: "2026-02-23T12:00:00+00:00" }),
+      createMockTransition({ fromStatus: "merging", toStatus: "merged", timestamp: "2026-02-23T13:00:00+00:00" }),
+    ];
+
+    mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockResolvedValue(transitions);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
+
+    const { result } = renderHook(() => useAuditTrail("task-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.phases.map((p) => p.label)).toEqual([
+      "Execution #1",
+      "Review #1",
+      "Merge",
+    ]);
+  });
+
+  it("returns empty phases when no transitions", async () => {
+    mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockResolvedValue([]);
+    mockListTaskEvents.mockResolvedValue(emptyPage);
+
+    const { result } = renderHook(() => useAuditTrail("task-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    expect(result.current.phases).toEqual([]);
+  });
+
+  // ============================================================================
+  // Phase ID Assignment
+  // ============================================================================
+
+  it("tags entries with correct phaseId based on timestamp", async () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({ fromStatus: "backlog", toStatus: "executing", timestamp: "2026-02-23T09:00:00+00:00" }),
+      createMockTransition({ fromStatus: "executing", toStatus: "pending_review", timestamp: "2026-02-23T11:00:00+00:00" }),
+    ];
+    const activityEvents = [
+      createMockActivityEvent({ id: "evt-1", createdAt: "2026-02-23T10:00:00+00:00" }),
+      createMockActivityEvent({ id: "evt-2", createdAt: "2026-02-23T12:00:00+00:00" }),
+    ];
+
+    mockGetStateHistory.mockResolvedValue([]);
+    mockGetStateTransitions.mockResolvedValue(transitions);
+    mockListTaskEvents.mockResolvedValue({
+      events: activityEvents,
+      cursor: null,
+      hasMore: false,
+    });
+
+    const { result } = renderHook(() => useAuditTrail("task-1"), {
+      wrapper: createWrapper(),
+    });
+
+    await waitFor(() => {
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    // evt-1 at 10:00 falls within Execution #1 (09:00-11:00)
+    const evt1 = result.current.entries.find((e) => e.id === "activity-evt-1");
+    expect(evt1!.phaseId).toBe("phase-execution-1");
+
+    // evt-2 at 12:00 falls within Review #1 (11:00-null)
+    const evt2 = result.current.entries.find((e) => e.id === "activity-evt-2");
+    expect(evt2!.phaseId).toBe("phase-review-1");
+  });
+});
+
+// ============================================================================
+// Pure Function: derivePhases
+// ============================================================================
+
+describe("derivePhases", () => {
+  it("derives phases from linear transition sequence", () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({ fromStatus: "backlog", toStatus: "executing", timestamp: "2026-02-23T09:00:00+00:00" }),
+      createMockTransition({ fromStatus: "executing", toStatus: "pending_review", timestamp: "2026-02-23T10:00:00+00:00" }),
+      createMockTransition({ fromStatus: "reviewing", toStatus: "approved", timestamp: "2026-02-23T11:00:00+00:00" }),
+      createMockTransition({ fromStatus: "approved", toStatus: "pending_merge", timestamp: "2026-02-23T12:00:00+00:00" }),
+      createMockTransition({ fromStatus: "merging", toStatus: "merged", timestamp: "2026-02-23T13:00:00+00:00" }),
+    ];
+
+    const phases = derivePhases(transitions);
+
+    expect(phases.map((p) => p.label)).toEqual(["Execution #1", "Review #1", "Merge"]);
+    expect(phases[0]!.type).toBe("execution");
+    expect(phases[1]!.type).toBe("review");
+    expect(phases[2]!.type).toBe("merge");
+  });
+
+  it("derives phases for revision cycle", () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({ fromStatus: null, toStatus: "executing", timestamp: "2026-02-23T09:00:00+00:00" }),
+      createMockTransition({ fromStatus: "executing", toStatus: "revision_needed", timestamp: "2026-02-23T10:00:00+00:00" }),
+      createMockTransition({ fromStatus: "revision_needed", toStatus: "re_executing", timestamp: "2026-02-23T11:00:00+00:00" }),
+      createMockTransition({ fromStatus: "re_executing", toStatus: "reviewing", timestamp: "2026-02-23T12:00:00+00:00" }),
+      createMockTransition({ fromStatus: "reviewing", toStatus: "approved", timestamp: "2026-02-23T13:00:00+00:00" }),
+    ];
+
+    const phases = derivePhases(transitions);
+
+    expect(phases.map((p) => p.label)).toEqual([
+      "Execution #1",
+      "Review #1",
+      "Execution #2",
+      "Review #2",
+    ]);
+  });
+
+  it("returns empty phases for empty transitions", () => {
+    expect(derivePhases([])).toEqual([]);
+  });
+
+  it("returns empty phases when only idle transitions", () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({ fromStatus: null, toStatus: "backlog", timestamp: "2026-02-23T08:00:00+00:00" }),
+      createMockTransition({ fromStatus: "backlog", toStatus: "ready", timestamp: "2026-02-23T09:00:00+00:00" }),
+    ];
+
+    expect(derivePhases(transitions)).toEqual([]);
+  });
+
+  it("sets phase startTime and endTime correctly", () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({ fromStatus: "backlog", toStatus: "executing", timestamp: "2026-02-23T09:00:00+00:00" }),
+      createMockTransition({ fromStatus: "executing", toStatus: "pending_review", timestamp: "2026-02-23T10:00:00+00:00" }),
+    ];
+
+    const phases = derivePhases(transitions);
+
+    expect(phases[0]!.startTime).toBe(new Date("2026-02-23T09:00:00+00:00").getTime());
+    expect(phases[0]!.endTime).toBe(new Date("2026-02-23T10:00:00+00:00").getTime());
+    expect(phases[1]!.startTime).toBe(new Date("2026-02-23T10:00:00+00:00").getTime());
+    expect(phases[1]!.endTime).toBeNull(); // last phase is open-ended
+  });
+
+  it("preserves conversationId and agentRunId on phases", () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({
+        fromStatus: "backlog",
+        toStatus: "executing",
+        timestamp: "2026-02-23T09:00:00+00:00",
+        conversationId: "conv-1",
+        agentRunId: "run-1",
+      }),
+    ];
+
+    const phases = derivePhases(transitions);
+
+    expect(phases[0]!.conversationId).toBe("conv-1");
+    expect(phases[0]!.agentRunId).toBe("run-1");
+  });
+
+  it("updates phase status to latest transition in same group", () => {
+    const transitions: StateTransition[] = [
+      createMockTransition({ fromStatus: "approved", toStatus: "pending_merge", timestamp: "2026-02-23T09:00:00+00:00" }),
+      createMockTransition({ fromStatus: "pending_merge", toStatus: "merging", timestamp: "2026-02-23T09:30:00+00:00" }),
+      createMockTransition({ fromStatus: "merging", toStatus: "merged", timestamp: "2026-02-23T10:00:00+00:00" }),
+    ];
+
+    const phases = derivePhases(transitions);
+
+    expect(phases).toHaveLength(1);
+    expect(phases[0]!.label).toBe("Merge");
+    expect(phases[0]!.status).toBe("merged");
   });
 });
