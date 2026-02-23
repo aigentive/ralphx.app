@@ -192,7 +192,7 @@ export function GraphSplitLayout({
         )}
 
         {/* Task Detail Overlay */}
-        {selectedTaskId && <TaskDetailOverlay projectId={projectId} />}
+        {selectedTaskId && <TaskDetailOverlay projectId={projectId} footer={footer} />}
 
         {/* Task Creation Overlay */}
         {taskCreationContext && <TaskCreationOverlay projectId={projectId} />}
