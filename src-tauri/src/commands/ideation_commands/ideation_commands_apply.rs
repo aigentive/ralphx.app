@@ -467,7 +467,8 @@ pub async fn apply_proposals_to_kanban(
             Arc::clone(&state.running_agent_registry),
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
-        );
+        )
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
 
         tokio::spawn(async move {
             tokio::time::sleep(tokio::time::Duration::from_millis(600)).await;

@@ -122,6 +122,11 @@ pub struct ExecutionState {
     /// from running validation concurrently in the same worktree.
     /// Uses std::sync::Mutex (not tokio) so Drop-based guards work synchronously.
     auto_completes_in_flight: std::sync::Mutex<HashSet<String>>,
+    /// Set of task IDs currently being scheduled (transition_task in progress).
+    /// Prevents two concurrent scheduler invocations from double-scheduling the same task
+    /// when `on_enter(Executing)` is async and a stale DB read races with the first caller.
+    /// Uses std::sync::Mutex for synchronous check-and-insert atomicity.
+    scheduling_in_flight: std::sync::Mutex<HashSet<String>>,
 }
 
 impl ExecutionState {
@@ -134,6 +139,7 @@ impl ExecutionState {
             global_max_concurrent: AtomicU32::new(20),
             rate_limited_until: AtomicU64::new(0),
             auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
+            scheduling_in_flight: std::sync::Mutex::new(HashSet::new()),
         }
     }
 
@@ -146,6 +152,7 @@ impl ExecutionState {
             global_max_concurrent: AtomicU32::new(20),
             rate_limited_until: AtomicU64::new(0),
             auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
+            scheduling_in_flight: std::sync::Mutex::new(HashSet::new()),
         }
     }
 
@@ -283,6 +290,27 @@ impl ExecutionState {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         set.contains(task_id)
+    }
+
+    /// Try to claim a task for scheduling (per-task concurrency guard).
+    /// Returns `true` if the task was newly inserted (caller should proceed with transition).
+    /// Returns `false` if the task is already being scheduled (caller should skip).
+    pub fn try_start_scheduling(&self, task_id: &str) -> bool {
+        let mut set = self
+            .scheduling_in_flight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set.insert(task_id.to_string())
+    }
+
+    /// Remove a task from the scheduling-in-flight set.
+    /// Must be called after `transition_task` completes (success or error).
+    pub fn finish_scheduling(&self, task_id: &str) {
+        let mut set = self
+            .scheduling_in_flight
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set.remove(task_id);
     }
 
     /// Emit execution:status_changed event with current state
