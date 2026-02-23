@@ -22,7 +22,7 @@ import { TaskEditForm } from "./TaskEditForm";
 import { StatusDropdown } from "./StatusDropdown";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import type { Task } from "@/types/task";
-import { X, Loader2, FileText, Pencil, Archive, RotateCcw, Trash, Trash2, ScrollText } from "lucide-react";
+import { X, Loader2, FileText, Pencil, Archive, RotateCcw, Trash, Trash2 } from "lucide-react";
 import { useState, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -46,7 +46,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { AuditTrailDialog } from "./AuditTrailDialog";
 
 interface TaskDetailModalProps {
   task: Task | null;
@@ -64,7 +63,6 @@ export function TaskDetailModal({
   const [showContext, setShowContext] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [showAuditTrail, setShowAuditTrail] = useState(false);
   const { data: reviews, isLoading: reviewsLoading } = useReviewsByTaskId(
     task?.id ?? ""
   );
@@ -499,30 +497,7 @@ export function TaskDetailModal({
 
                 {/* History Section */}
                 <div data-testid="task-detail-history-section">
-                  <div className="flex items-center justify-between">
-                    <SectionTitle>History</SectionTitle>
-                    <button
-                      onClick={() => setShowAuditTrail(true)}
-                      data-testid="audit-trail-button"
-                      className="flex items-center gap-1 px-2 py-1 rounded text-[11px] transition-colors"
-                      style={{
-                        color: "var(--text-muted)",
-                        backgroundColor: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.06)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.08)";
-                        e.currentTarget.style.color = "var(--text-secondary)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.04)";
-                        e.currentTarget.style.color = "var(--text-muted)";
-                      }}
-                    >
-                      <ScrollText className="w-3 h-3" />
-                      Audit Trail
-                    </button>
-                  </div>
+                  <SectionTitle>History</SectionTitle>
                   <StateHistoryTimeline taskId={task.id} />
                 </div>
               </div>
@@ -563,13 +538,6 @@ export function TaskDetailModal({
 
       {/* Remove Confirmation Dialog */}
       <ConfirmationDialog {...confirmationDialogProps} />
-
-      {/* Audit Trail Dialog */}
-      <AuditTrailDialog
-        taskId={task.id}
-        isOpen={showAuditTrail}
-        onClose={() => setShowAuditTrail(false)}
-      />
     </Dialog>
   );
 }
