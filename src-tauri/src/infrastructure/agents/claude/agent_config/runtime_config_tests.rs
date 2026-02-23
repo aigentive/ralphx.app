@@ -13,6 +13,7 @@ fn test_all_defaults_are_sensible() {
     assert_eq!(cfg.stream.merge_line_read_secs, 600);
     assert_eq!(cfg.reconciliation.merger_timeout_secs, 1200);
     assert_eq!(cfg.reconciliation.validation_deadline_secs, 1200);
+    assert_eq!(cfg.reconciliation.branch_freshness_timeout_secs, 60);
     assert_eq!(cfg.git.cmd_timeout_secs, 60);
     assert_eq!(cfg.git.retry_backoff_secs, vec![1, 2, 4]);
     assert_eq!(cfg.scheduler.watchdog_interval_secs, 60);
@@ -161,4 +162,25 @@ team_parse_stall_secs: 3600
     let cfg: StreamTimeoutsConfig = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(cfg.merge_line_read_secs, 900);
     assert_eq!(cfg.merge_parse_stall_secs, 180);
+}
+
+#[test]
+fn test_branch_freshness_timeout_env_override() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_RECONCILIATION_BRANCH_FRESHNESS_TIMEOUT_SECS" => Some("120".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(cfg.reconciliation.branch_freshness_timeout_secs, 120);
+    // Other reconciliation fields should remain unchanged
+    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 120);
 }

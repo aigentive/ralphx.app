@@ -645,9 +645,13 @@ impl<'a> super::TransitionHandler<'a> {
         target_branch: &str,
         task_repo: &Arc<dyn TaskRepository>,
     ) {
+        let cleanup_start = std::time::Instant::now();
+        let app_handle = self.machine.context.services.app_handle.as_ref();
+
         // --- Step 0a: Cancel in-flight validation for this task ---
         // If a previous merge attempt's validation is still running, cancel it now.
         // The CancellationToken triggers process kill via spawn_cancellable_command.
+        let step_start = std::time::Instant::now();
         if let Some((_, token)) = self
             .machine
             .context
@@ -661,11 +665,24 @@ impl<'a> super::TransitionHandler<'a> {
                 "pre_merge_cleanup: cancelled in-flight validation"
             );
         }
+        tracing::info!(
+            task_id = task_id_str,
+            elapsed_ms = step_start.elapsed().as_millis() as u64,
+            "pre_merge_cleanup: step 0a complete (cancel validation)"
+        );
 
         // --- Step 0b: Stop running agents and kill worktree processes ---
         // The reviewer (or merger from a prior attempt) may still be running IN the
         // task worktree. We must stop it BEFORE attempting worktree deletion to avoid
         // git lock contention that causes the 5+ minute hang (see merge-hang RCA).
+        let step_start = std::time::Instant::now();
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::MERGE_CLEANUP),
+            MergePhaseStatus::Started,
+            "Stopping running agents...".to_string(),
+        );
         tracing::info!(
             task_id = task_id_str,
             "pre_merge_cleanup: step 0b — stopping any running agents"
@@ -715,14 +732,25 @@ impl<'a> super::TransitionHandler<'a> {
         if let Some(ref worktree_path) = task.worktree_path {
             let worktree_path_buf = PathBuf::from(worktree_path);
             if worktree_path_buf.exists() {
-                crate::domain::services::kill_worktree_processes(&worktree_path_buf);
+                let lsof_timeout = git_runtime_config().worktree_lsof_timeout_secs;
+                crate::domain::services::kill_worktree_processes_async(
+                    &worktree_path_buf,
+                    lsof_timeout,
+                )
+                .await;
             }
         }
         // Brief settle time for process tree cleanup after SIGTERM
         let agent_kill_settle_secs = git_runtime_config().agent_kill_settle_secs;
         tokio::time::sleep(std::time::Duration::from_secs(agent_kill_settle_secs)).await;
+        tracing::info!(
+            task_id = task_id_str,
+            elapsed_ms = step_start.elapsed().as_millis() as u64,
+            "pre_merge_cleanup: step 0b complete (stop agents + kill worktree processes)"
+        );
 
         // --- Step 1: Remove stale index.lock ---
+        let step_start = std::time::Instant::now();
         tracing::info!(
             task_id = task_id_str,
             "pre_merge_cleanup: step 1 — removing stale index.lock"
@@ -744,9 +772,22 @@ impl<'a> super::TransitionHandler<'a> {
                 );
             }
         }
+        tracing::info!(
+            task_id = task_id_str,
+            elapsed_ms = step_start.elapsed().as_millis() as u64,
+            "pre_merge_cleanup: step 1 complete (remove stale index.lock)"
+        );
 
         {
             // --- Step 2: Delete task worktree ---
+            let step_start = std::time::Instant::now();
+            emit_merge_progress(
+                app_handle,
+                task_id_str,
+                MergePhase::new(MergePhase::MERGE_CLEANUP),
+                MergePhaseStatus::Started,
+                "Removing stale worktrees...".to_string(),
+            );
             tracing::info!(
                 task_id = task_id_str,
                 "pre_merge_cleanup: step 2 — deleting task worktree"
@@ -795,8 +836,14 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
             }
+            tracing::info!(
+                task_id = task_id_str,
+                elapsed_ms = step_start.elapsed().as_millis() as u64,
+                "pre_merge_cleanup: step 2 complete (delete task worktree)"
+            );
 
             // --- Step 3: Prune stale worktree refs ---
+            let step_start = std::time::Instant::now();
             tracing::info!(
                 task_id = task_id_str,
                 "pre_merge_cleanup: step 3 — pruning stale worktree refs"
@@ -808,8 +855,14 @@ impl<'a> super::TransitionHandler<'a> {
                     "Failed to prune stale worktrees (non-fatal)"
                 );
             }
+            tracing::info!(
+                task_id = task_id_str,
+                elapsed_ms = step_start.elapsed().as_millis() as u64,
+                "pre_merge_cleanup: step 3 complete (prune worktree refs)"
+            );
 
             // --- Step 4: Delete own stale merge/rebase worktrees ---
+            let step_start = std::time::Instant::now();
             tracing::info!(
                 task_id = task_id_str,
                 "pre_merge_cleanup: step 4 — deleting own stale merge/rebase worktrees"
@@ -867,8 +920,21 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
             }
+            tracing::info!(
+                task_id = task_id_str,
+                elapsed_ms = step_start.elapsed().as_millis() as u64,
+                "pre_merge_cleanup: step 4 complete (delete stale worktrees)"
+            );
 
             // --- Step 5: Scan for orphaned merge worktrees ---
+            let step_start = std::time::Instant::now();
+            emit_merge_progress(
+                app_handle,
+                task_id_str,
+                MergePhase::new(MergePhase::MERGE_CLEANUP),
+                MergePhaseStatus::Started,
+                "Scanning for orphaned worktrees...".to_string(),
+            );
             tracing::info!(
                 task_id = task_id_str,
                 "pre_merge_cleanup: step 5 — scanning for orphaned merge worktrees"
@@ -934,6 +1000,11 @@ impl<'a> super::TransitionHandler<'a> {
                     );
                 }
             }
+            tracing::info!(
+                task_id = task_id_str,
+                elapsed_ms = step_start.elapsed().as_millis() as u64,
+                "pre_merge_cleanup: step 5 complete (scan orphaned worktrees)"
+            );
         }
 
         // Step 6 REMOVED: clean_working_tree(repo_path) was running `git reset --hard HEAD`
@@ -941,6 +1012,10 @@ impl<'a> super::TransitionHandler<'a> {
         // uncommitted user changes. In Worktree mode, merges happen in isolated worktrees
         // and checkout-free merges use plumbing (merge-tree/commit-tree/update-ref) that
         // don't need a clean working tree. Removing this preserves the user's local state.
-        tracing::info!(task_id = task_id_str, "pre_merge_cleanup: complete");
+        tracing::info!(
+            task_id = task_id_str,
+            total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+            "pre_merge_cleanup: complete"
+        );
     }
 }

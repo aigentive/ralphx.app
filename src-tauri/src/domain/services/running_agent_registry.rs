@@ -256,6 +256,80 @@ pub fn kill_worktree_processes(path: &Path) {
     }
 }
 
+/// Async version of `kill_worktree_processes` that wraps the blocking `lsof +D`
+/// call in `spawn_blocking` with a configurable timeout.
+///
+/// On large worktrees (especially those with `target/` directories), `lsof +D`
+/// can block for minutes. This function prevents that from eating into the merge
+/// deadline by bounding the scan.
+///
+/// On timeout, logs a warning and returns — this is non-fatal because agents
+/// have already been killed by PID before this point.
+pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
+    let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let display_path = canonical.display().to_string();
+    let start = std::time::Instant::now();
+
+    tracing::info!(
+        worktree = %display_path,
+        timeout_secs,
+        "kill_worktree_processes_async: starting lsof scan"
+    );
+
+    let canonical_clone = canonical.clone();
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        tokio::task::spawn_blocking(move || collect_pids_in_worktree(&canonical_clone)),
+    )
+    .await;
+
+    match result {
+        Ok(Ok(Ok(pids))) => {
+            let unique_pids: HashSet<u32> = pids.into_iter().collect();
+            let elapsed_ms = start.elapsed().as_millis();
+            tracing::info!(
+                worktree = %display_path,
+                elapsed_ms,
+                pid_count = unique_pids.len(),
+                "kill_worktree_processes_async: lsof scan complete"
+            );
+            for pid in unique_pids {
+                tracing::info!(
+                    pid,
+                    worktree = %display_path,
+                    "Killing lingering process from worktree (async)"
+                );
+                kill_process(pid);
+            }
+        }
+        Ok(Ok(Err(err))) => {
+            let elapsed_ms = start.elapsed().as_millis();
+            tracing::debug!(
+                worktree = %display_path,
+                elapsed_ms,
+                error = %err,
+                "kill_worktree_processes_async: could not enumerate processes"
+            );
+        }
+        Ok(Err(join_err)) => {
+            tracing::warn!(
+                worktree = %display_path,
+                error = %join_err,
+                "kill_worktree_processes_async: spawn_blocking task panicked"
+            );
+        }
+        Err(_) => {
+            let elapsed_ms = start.elapsed().as_millis();
+            tracing::warn!(
+                worktree = %display_path,
+                elapsed_ms,
+                timeout_secs,
+                "kill_worktree_processes_async: lsof scan timed out (non-fatal)"
+            );
+        }
+    }
+}
+
 /// Kill orphaned MCP server processes from previous app sessions.
 ///
 /// Pattern-matches on `node ... ralphx-mcp-server/build/index.js` to catch any

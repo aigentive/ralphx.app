@@ -92,6 +92,9 @@ pub struct ReconciliationConfig {
     /// Starvation guard: skip a MergeIncomplete task if it was retried within this many
     /// seconds, giving other tasks a turn in the reconciliation cycle.
     pub merge_starvation_guard_secs: u64,
+    /// Maximum seconds for branch freshness updates (update_plan_from_main, update_source_from_target).
+    /// If exceeded, the merge aborts to MergeIncomplete instead of hanging indefinitely.
+    pub branch_freshness_timeout_secs: u64,
 }
 
 impl Default for ReconciliationConfig {
@@ -120,6 +123,7 @@ impl Default for ReconciliationConfig {
             validation_retry_min_cooldown_secs: 120,
             validation_failure_circuit_breaker_count: 3,
             merge_starvation_guard_secs: 60,
+            branch_freshness_timeout_secs: 60,
         }
     }
 }
@@ -140,6 +144,9 @@ pub struct GitRuntimeConfig {
     pub cleanup_worktree_timeout_secs: u64,
     /// Timeout in seconds for merge/rebase worktree deletion and git clean during pre-merge cleanup.
     pub cleanup_git_op_timeout_secs: u64,
+    /// Timeout in seconds for the `lsof +D` scan in `kill_worktree_processes_async`.
+    /// On large worktrees (with `target/` dirs), lsof can block for minutes.
+    pub worktree_lsof_timeout_secs: u64,
 }
 
 impl Default for GitRuntimeConfig {
@@ -153,6 +160,7 @@ impl Default for GitRuntimeConfig {
             agent_stop_timeout_secs: 10,
             cleanup_worktree_timeout_secs: 10,
             cleanup_git_op_timeout_secs: 30,
+            worktree_lsof_timeout_secs: 10,
         }
     }
 }
@@ -303,6 +311,7 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.validation_retry_min_cooldown_secs, "RALPHX_RECONCILIATION_VALIDATION_RETRY_MIN_COOLDOWN_SECS");
     env_u64!(cfg.reconciliation.validation_failure_circuit_breaker_count, "RALPHX_RECONCILIATION_VALIDATION_FAILURE_CIRCUIT_BREAKER_COUNT");
     env_u64!(cfg.reconciliation.merge_starvation_guard_secs, "RALPHX_RECONCILIATION_MERGE_STARVATION_GUARD_SECS");
+    env_u64!(cfg.reconciliation.branch_freshness_timeout_secs, "RALPHX_RECONCILIATION_BRANCH_FRESHNESS_TIMEOUT_SECS");
 
     // Git
     env_u64!(cfg.git.cmd_timeout_secs, "RALPHX_GIT_CMD_TIMEOUT_SECS");
@@ -326,6 +335,10 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(
         cfg.git.cleanup_git_op_timeout_secs,
         "RALPHX_GIT_CLEANUP_GIT_OP_TIMEOUT_SECS"
+    );
+    env_u64!(
+        cfg.git.worktree_lsof_timeout_secs,
+        "RALPHX_GIT_WORKTREE_LSOF_TIMEOUT_SECS"
     );
     // retry_backoff_secs: comma-separated list
     if let Some(v) = lookup("RALPHX_GIT_RETRY_BACKOFF_SECS") {
