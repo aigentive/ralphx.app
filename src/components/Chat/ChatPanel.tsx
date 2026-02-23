@@ -623,6 +623,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           {/* Question Input Banner - renders above ChatInput when question is active */}
           {(activeQuestion || answeredQuestion) && (
             <QuestionInputBanner
+              key={activeQuestion?.requestId ?? 'answered'}
               question={activeQuestion ?? null}
               selectedIndices={selectedOptions}
               onChipClick={handleChipClick}

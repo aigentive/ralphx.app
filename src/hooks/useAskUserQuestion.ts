@@ -56,6 +56,24 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
     };
   }, [cancelAutoDismissTimer]);
 
+  // Hydrate on mount: fetch pending questions from backend in case the Tauri event was missed
+  // (e.g., the panel wasn't mounted when the agent called ask_user_question)
+  useEffect(() => {
+    if (!currentSessionId) return;
+
+    api.askUserQuestion.getPendingQuestions().then((questions) => {
+      const match = questions.find((q) => q.sessionId === currentSessionId);
+      if (match) {
+        cancelAutoDismissTimer();
+        setActiveQuestion(currentSessionId, match);
+      }
+    }).catch(() => {
+      // Non-critical — event listener is the primary delivery path
+    });
+  // Run once per session ID change — intentionally excludes activeQuestion to avoid loops
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentSessionId]);
+
   // Set up event listener for agent questions — stores ALL incoming questions by sessionId
   useEffect(() => {
     const unsubscribe = eventBus.subscribe<unknown>("agent:ask_user_question", (payload) => {
@@ -73,15 +91,17 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
       }
 
       // Cancel any pending auto-dismiss timer for this session (new question arrived)
+      // Also clear stale answered state so the new question isn't hidden behind it
       if (sessionId === currentSessionId) {
         cancelAutoDismissTimer();
+        clearAnsweredQuestion(sessionId);
       }
 
       setActiveQuestion(sessionId, parsed.data);
     });
 
     return unsubscribe;
-  }, [setActiveQuestion, eventBus, currentSessionId, cancelAutoDismissTimer]);
+  }, [setActiveQuestion, eventBus, currentSessionId, cancelAutoDismissTimer, clearAnsweredQuestion]);
 
   /**
    * Submit an answer to the agent's question.
