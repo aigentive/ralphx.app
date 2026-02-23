@@ -16,6 +16,7 @@ mod concurrency_tests;
 mod concurrent_execution_tests;
 mod concurrent_merge_guard_tests;
 mod error_visibility_tests;
+mod execution_plan_cascade_tests;
 mod git_isolation_tests;
 pub(crate) mod helpers;
 mod pause_resume_unblock_tests;
