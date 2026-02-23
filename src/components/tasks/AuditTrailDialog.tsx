@@ -93,8 +93,11 @@ function formatTimestamp(dateString: string): string {
 
 function formatDateRange(entries: AuditEntry[]): string {
   if (entries.length === 0) return "";
-  const first = new Date(entries[0].timestamp);
-  const last = new Date(entries[entries.length - 1].timestamp);
+  const firstEntry = entries[0];
+  const lastEntry = entries[entries.length - 1];
+  if (!firstEntry || !lastEntry) return "";
+  const first = new Date(firstEntry.timestamp);
+  const last = new Date(lastEntry.timestamp);
   const fmt = (d: Date) =>
     d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
   if (first.toDateString() === last.toDateString()) return fmt(first);

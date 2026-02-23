@@ -34,6 +34,7 @@ import {
   Loader2,
   Lightbulb,
   History,
+  ScrollText,
 } from "lucide-react";
 import {
   AlertDialog,
@@ -50,6 +51,7 @@ import { useCreateIdeationSession } from "@/hooks/useIdeation";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { logger } from "@/lib/logger";
 import { toast } from "sonner";
+import { AuditTrailDialog } from "@/components/tasks/AuditTrailDialog";
 
 // ============================================================================
 // Priority Colors (Tahoe HSL palette)
@@ -271,6 +273,7 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
 
   const [isEditing, setIsEditing] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showAuditTrail, setShowAuditTrail] = useState(false);
 
   // Derived values for history mode (historyState from store)
   const isHistoryMode = historyState !== null;
@@ -653,6 +656,19 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
                   )}
                 </Button>
               )}
+              {/* Audit Trail button */}
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={() => setShowAuditTrail(true)}
+                data-testid="task-overlay-audit-trail-button"
+                aria-label="Audit Trail"
+                title="Audit Trail"
+                style={{ color: "hsl(220 10% 50%)" }}
+                className="hover:bg-[hsla(220_10%_100%/0.05)]"
+              >
+                <ScrollText className="w-4 h-4" />
+              </Button>
               {/* Close button */}
               <Button
                 variant="ghost"
@@ -760,6 +776,13 @@ export function TaskDetailOverlay({ projectId }: TaskDetailOverlayProps) {
 
       {/* Archive/Restore Confirmation Dialog */}
       <ConfirmationDialog {...confirmationDialogProps} />
+
+      {/* Audit Trail Dialog */}
+      <AuditTrailDialog
+        taskId={task.id}
+        isOpen={showAuditTrail}
+        onClose={() => setShowAuditTrail(false)}
+      />
     </>
   );
 }
