@@ -210,3 +210,72 @@ async fn test_reopen_deletes_plan_branch_record() {
         .unwrap();
     assert!(after_reopen.is_none());
 }
+
+#[tokio::test]
+async fn test_reopen_session_with_merged_plan_branch_deletes_db_record() {
+    use crate::domain::entities::{ArtifactId, PlanBranch};
+
+    let state = AppState::new_test();
+    let project_id = ProjectId::new();
+
+    // Create session and accept it
+    let session = IdeationSession::new(project_id.clone());
+    let created = state.ideation_session_repo.create(session).await.unwrap();
+    state
+        .ideation_session_repo
+        .update_status(&created.id, IdeationSessionStatus::Accepted)
+        .await
+        .unwrap();
+
+    // Create plan branch and set it to Merged (simulates completed first accept)
+    let plan_branch = PlanBranch::new(
+        ArtifactId::new(),
+        created.id.clone(),
+        project_id,
+        "ralphx/test-project/plan-merged".to_string(),
+        "main".to_string(),
+    );
+    let created_branch = state
+        .plan_branch_repo
+        .create(plan_branch)
+        .await
+        .unwrap();
+    state
+        .plan_branch_repo
+        .set_merged(&created_branch.id)
+        .await
+        .unwrap();
+
+    // Verify plan branch is Merged
+    let found = state
+        .plan_branch_repo
+        .get_by_session_id(&created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.status, PlanBranchStatus::Merged);
+
+    // Reopen session
+    let service = build_service(&state);
+    service.reopen(&created.id).await.unwrap();
+
+    // Verify plan branch DB record is deleted even though it was Merged
+    let after_reopen = state
+        .plan_branch_repo
+        .get_by_session_id(&created.id)
+        .await
+        .unwrap();
+    assert!(
+        after_reopen.is_none(),
+        "Merged plan branch should be deleted on reopen so re-accept creates fresh merge task"
+    );
+
+    // Verify session is back to Active
+    let reopened = state
+        .ideation_session_repo
+        .get_by_id(&created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(reopened.status, IdeationSessionStatus::Active);
+}

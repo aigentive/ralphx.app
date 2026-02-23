@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::application::GitService;
 use crate::domain::entities::InternalStatus;
-use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskCategory, TaskId};
+use crate::domain::entities::{PlanBranch, PlanBranchStatus, Project, Task, TaskCategory, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::AppResult;
 use crate::infrastructure::agents::claude::git_runtime_config;
@@ -614,10 +614,16 @@ pub(crate) fn increment_revision_count(task: &mut Task) -> u32 {
 /// If the task belongs to a plan with an active feature branch, returns the feature
 /// branch name so the task branch is created from it. Otherwise falls back to the
 /// project's base branch.
+///
+/// When resetting a Merged plan branch back to Active, also validates that
+/// `merge_task_id` still references an existing task. Clears stale references
+/// left behind by session reopens that deleted the merge task without updating
+/// the plan branch record.
 pub(super) async fn resolve_task_base_branch(
     task: &Task,
     project: &Project,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    task_repo: &Option<Arc<dyn TaskRepository>>,
 ) -> String {
     let default = project.base_branch.as_deref().unwrap_or("main").to_string();
 
@@ -735,6 +741,9 @@ pub(super) async fn resolve_task_base_branch(
                     tracing::warn!(error = %e, branch = %pb.branch_name, "Failed to reset plan branch status to Active");
                 }
             }
+            // Safety net: clear stale merge_task_id if the referenced task no longer exists
+            clear_stale_merge_task_id(&pb, plan_branch_repo, task_repo).await;
+
             tracing::info!(
                 task_id = task.id.as_str(),
                 feature_branch = %pb.branch_name,
@@ -743,6 +752,54 @@ pub(super) async fn resolve_task_base_branch(
             pb.branch_name
         }
         _ => default,
+    }
+}
+
+/// Clear a plan branch's `merge_task_id` if it references a task that no longer
+/// exists or is in a terminal state (Merged). This is a safety net for stale
+/// references left behind when a session is reopened and the merge task is
+/// deleted without updating the plan branch record.
+async fn clear_stale_merge_task_id(
+    pb: &PlanBranch,
+    plan_branch_repo: &Arc<dyn PlanBranchRepository>,
+    task_repo: &Option<Arc<dyn TaskRepository>>,
+) {
+    let Some(ref merge_task_id) = pb.merge_task_id else {
+        return;
+    };
+    let Some(ref task_repo) = task_repo else {
+        return;
+    };
+
+    let should_clear = match task_repo.get_by_id(merge_task_id).await {
+        Ok(None) => {
+            tracing::warn!(
+                plan_branch_id = pb.id.as_str(),
+                merge_task_id = merge_task_id.as_str(),
+                "Plan branch merge_task_id references deleted task — clearing"
+            );
+            true
+        }
+        Ok(Some(task)) if matches!(task.internal_status, InternalStatus::Merged) => {
+            tracing::warn!(
+                plan_branch_id = pb.id.as_str(),
+                merge_task_id = merge_task_id.as_str(),
+                status = %task.internal_status,
+                "Plan branch merge_task_id references terminal task — clearing"
+            );
+            true
+        }
+        _ => false,
+    };
+
+    if should_clear {
+        if let Err(e) = plan_branch_repo.clear_merge_task_id(&pb.id).await {
+            tracing::warn!(
+                error = %e,
+                plan_branch_id = pb.id.as_str(),
+                "Failed to clear stale merge_task_id"
+            );
+        }
     }
 }
 

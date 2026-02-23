@@ -165,6 +165,23 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
         Ok(())
     }
 
+    async fn clear_merge_task_id(&self, id: &PlanBranchId) -> AppResult<()> {
+        let conn = self.conn.lock().await;
+        let rows = conn
+            .execute(
+                "UPDATE plan_branches SET merge_task_id = NULL WHERE id = ?1",
+                rusqlite::params![id.as_str()],
+            )
+            .map_err(|e| {
+                AppError::Database(format!("Failed to clear merge task id: {}", e))
+            })?;
+
+        if rows == 0 {
+            return Err(AppError::NotFound(format!("Plan branch not found: {}", id)));
+        }
+        Ok(())
+    }
+
     async fn set_merged(&self, id: &PlanBranchId) -> AppResult<()> {
         let conn = self.conn.lock().await;
         let rows = conn

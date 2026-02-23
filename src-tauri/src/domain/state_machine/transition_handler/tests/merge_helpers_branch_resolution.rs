@@ -21,7 +21,7 @@ async fn resolve_task_base_branch_returns_project_base_when_no_repo() {
     let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
     let repo: Option<Arc<dyn PlanBranchRepository>> = None;
 
-    let result = resolve_task_base_branch(&task, &project, &repo).await;
+    let result = resolve_task_base_branch(&task, &project, &repo, &None).await;
     assert_eq!(result, "develop");
 }
 
@@ -31,7 +31,7 @@ async fn resolve_task_base_branch_defaults_to_main_when_no_base_branch() {
     let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
     let repo: Option<Arc<dyn PlanBranchRepository>> = None;
 
-    let result = resolve_task_base_branch(&task, &project, &repo).await;
+    let result = resolve_task_base_branch(&task, &project, &repo, &None).await;
     assert_eq!(result, "main");
 }
 
@@ -42,7 +42,7 @@ async fn resolve_task_base_branch_returns_default_when_task_has_no_session_id() 
     let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
     let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
 
-    let result = resolve_task_base_branch(&task, &project, &repo).await;
+    let result = resolve_task_base_branch(&task, &project, &repo, &None).await;
     assert_eq!(result, "develop");
 }
 
@@ -63,7 +63,7 @@ async fn resolve_task_base_branch_falls_back_when_branch_creation_fails() {
     mem_repo.create(pb).await.unwrap();
 
     let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
-    let result = resolve_task_base_branch(&task, &project, &repo).await;
+    let result = resolve_task_base_branch(&task, &project, &repo, &None).await;
     assert_eq!(result, "main");
 }
 
@@ -105,7 +105,7 @@ async fn resolve_task_base_branch_returns_feature_branch_when_branch_exists() {
     mem_repo.create(pb).await.unwrap();
 
     let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
-    let result = resolve_task_base_branch(&task, &project, &repo).await;
+    let result = resolve_task_base_branch(&task, &project, &repo, &None).await;
     assert_eq!(result, "ralphx/test/plan-abc123");
 }
 
@@ -124,7 +124,7 @@ async fn resolve_task_base_branch_returns_default_when_branch_merged() {
     mem_repo.create(pb).await.unwrap();
 
     let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
-    let result = resolve_task_base_branch(&task, &project, &repo).await;
+    let result = resolve_task_base_branch(&task, &project, &repo, &None).await;
     assert_eq!(result, "main");
 }
 
@@ -143,7 +143,7 @@ async fn resolve_task_base_branch_returns_default_when_branch_abandoned() {
     mem_repo.create(pb).await.unwrap();
 
     let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
-    let result = resolve_task_base_branch(&task, &project, &repo).await;
+    let result = resolve_task_base_branch(&task, &project, &repo, &None).await;
     assert_eq!(result, "main");
 }
 
@@ -163,8 +163,129 @@ async fn resolve_task_base_branch_returns_default_when_no_matching_branch() {
     mem_repo.create(pb).await.unwrap();
 
     let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
-    let result = resolve_task_base_branch(&task, &project, &repo).await;
+    let result = resolve_task_base_branch(&task, &project, &repo, &None).await;
     assert_eq!(result, "main");
+}
+
+// ==================
+// stale merge_task_id cleanup tests
+// ==================
+
+#[tokio::test]
+async fn resolve_task_base_branch_clears_stale_merge_task_id_when_task_deleted() {
+    // Set up a real git repo so the Merged arm succeeds (branch exists in git)
+    let tmp = tempfile::tempdir().unwrap();
+    let repo_path = tmp.path();
+
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["branch", "ralphx/test/plan-stale"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    let mut project = make_project(Some("main"));
+    project.working_directory = repo_path.to_string_lossy().to_string();
+    let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
+
+    // Plan branch with merge_task_id pointing to a non-existent task
+    let plan_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let pb = make_plan_branch(
+        "art-1",
+        "ralphx/test/plan-stale",
+        PlanBranchStatus::Merged,
+        Some("deleted-merge-task-id"),
+    );
+    plan_repo.create(pb).await.unwrap();
+
+    // Task repo is empty — the merge task has been deleted
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+
+    let plan_opt: Option<Arc<dyn PlanBranchRepository>> = Some(plan_repo.clone());
+    let task_opt: Option<Arc<dyn TaskRepository>> = Some(task_repo);
+
+    let result = resolve_task_base_branch(&task, &project, &plan_opt, &task_opt).await;
+    assert_eq!(result, "ralphx/test/plan-stale");
+
+    // Verify merge_task_id was cleared
+    let updated = plan_repo
+        .get_by_session_id(&crate::domain::entities::IdeationSessionId::from_string("sess-1"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        updated.merge_task_id.is_none(),
+        "Stale merge_task_id should be cleared when referenced task doesn't exist"
+    );
+    assert_eq!(updated.status, PlanBranchStatus::Active);
+}
+
+#[tokio::test]
+async fn resolve_task_base_branch_keeps_valid_merge_task_id() {
+    // Set up a real git repo
+    let tmp = tempfile::tempdir().unwrap();
+    let repo_path = tmp.path();
+
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "--allow-empty", "-m", "init"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["branch", "ralphx/test/plan-valid"])
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
+    let mut project = make_project(Some("main"));
+    project.working_directory = repo_path.to_string_lossy().to_string();
+    let task = make_task_with_session(Some("art-1"), None, Some("sess-1"));
+
+    let plan_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let pb = make_plan_branch(
+        "art-1",
+        "ralphx/test/plan-valid",
+        PlanBranchStatus::Merged,
+        Some("existing-merge-task"),
+    );
+    plan_repo.create(pb).await.unwrap();
+
+    // Create the merge task in task repo so it exists
+    let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+    let merge_task = make_task_with_status("existing-merge-task", crate::domain::entities::InternalStatus::Blocked);
+    task_repo.create(merge_task).await.unwrap();
+
+    let plan_opt: Option<Arc<dyn PlanBranchRepository>> = Some(plan_repo.clone());
+    let task_opt: Option<Arc<dyn TaskRepository>> = Some(task_repo);
+
+    let result = resolve_task_base_branch(&task, &project, &plan_opt, &task_opt).await;
+    assert_eq!(result, "ralphx/test/plan-valid");
+
+    // Verify merge_task_id is NOT cleared
+    let updated = plan_repo
+        .get_by_session_id(&crate::domain::entities::IdeationSessionId::from_string("sess-1"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        updated.merge_task_id.as_ref().map(|t| t.as_str()),
+        Some("existing-merge-task"),
+        "Valid merge_task_id should not be cleared"
+    );
 }
 
 // ==================
