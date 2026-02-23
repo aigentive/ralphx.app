@@ -73,6 +73,7 @@ describe("AuditTrailDialog", () => {
     vi.clearAllMocks();
     mockUseAuditTrail.mockReturnValue({
       entries: [],
+      phases: [],
       isLoading: false,
       isEmpty: true,
       error: null,
@@ -90,6 +91,7 @@ describe("AuditTrailDialog", () => {
   it("shows loading spinner when data is loading", () => {
     mockUseAuditTrail.mockReturnValue({
       entries: [],
+      phases: [],
       isLoading: true,
       isEmpty: true,
       error: null,
@@ -123,6 +125,7 @@ describe("AuditTrailDialog", () => {
 
     mockUseAuditTrail.mockReturnValue({
       entries,
+      phases: [],
       isLoading: false,
       isEmpty: false,
       error: null,
@@ -137,6 +140,7 @@ describe("AuditTrailDialog", () => {
   it("shows empty state when no entries", () => {
     mockUseAuditTrail.mockReturnValue({
       entries: [],
+      phases: [],
       isLoading: false,
       isEmpty: true,
       error: null,
@@ -151,6 +155,7 @@ describe("AuditTrailDialog", () => {
     const onClose = vi.fn();
     mockUseAuditTrail.mockReturnValue({
       entries: [],
+      phases: [],
       isLoading: false,
       isEmpty: true,
       error: null,
@@ -175,6 +180,7 @@ describe("AuditTrailDialog", () => {
 
     mockUseAuditTrail.mockReturnValue({
       entries,
+      phases: [],
       isLoading: false,
       isEmpty: false,
       error: null,
@@ -191,7 +197,7 @@ describe("AuditTrailDialog", () => {
     ).toBe(true);
   });
 
-  it("shows source badges (Review vs Activity)", () => {
+  it("renders different card types for review vs activity sources", () => {
     const entries: AuditEntry[] = [
       createMockAuditEntry({
         id: "entry-1",
@@ -209,6 +215,7 @@ describe("AuditTrailDialog", () => {
 
     mockUseAuditTrail.mockReturnValue({
       entries,
+      phases: [],
       isLoading: false,
       isEmpty: false,
       error: null,
@@ -216,9 +223,9 @@ describe("AuditTrailDialog", () => {
 
     renderDialog({ isOpen: true });
 
-    // SourceBadge renders "Review" and "Activity" labels
-    expect(screen.getByText("Review")).toBeInTheDocument();
-    expect(screen.getByText("Activity")).toBeInTheDocument();
+    // EventCard dispatches to different card types per source
+    expect(screen.getByTestId("review-card")).toBeInTheDocument();
+    expect(screen.getByTestId("activity-card")).toBeInTheDocument();
   });
 
   it("passes taskId to useAuditTrail hook with enabled=true when open", () => {
@@ -240,6 +247,7 @@ describe("AuditTrailDialog", () => {
 
     mockUseAuditTrail.mockReturnValue({
       entries,
+      phases: [],
       isLoading: false,
       isEmpty: false,
       error: null,
@@ -261,6 +269,7 @@ describe("AuditTrailDialog", () => {
 
     mockUseAuditTrail.mockReturnValue({
       entries,
+      phases: [],
       isLoading: false,
       isEmpty: false,
       error: null,
@@ -271,7 +280,7 @@ describe("AuditTrailDialog", () => {
     expect(screen.getByText(/AI Reviewer/)).toBeInTheDocument();
   });
 
-  it("shows status badge for entries with status", () => {
+  it("renders activity entries as activity cards", () => {
     const entries: AuditEntry[] = [
       createMockAuditEntry({
         id: "entry-1",
@@ -285,6 +294,7 @@ describe("AuditTrailDialog", () => {
 
     mockUseAuditTrail.mockReturnValue({
       entries,
+      phases: [],
       isLoading: false,
       isEmpty: false,
       error: null,
@@ -292,7 +302,8 @@ describe("AuditTrailDialog", () => {
 
     renderDialog({ isOpen: true });
 
-    expect(screen.getByText("executing")).toBeInTheDocument();
+    expect(screen.getByTestId("activity-card")).toBeInTheDocument();
+    expect(screen.getByText("Working on it")).toBeInTheDocument();
   });
 
   it("shows metadata when present", () => {
@@ -306,6 +317,7 @@ describe("AuditTrailDialog", () => {
 
     mockUseAuditTrail.mockReturnValue({
       entries,
+      phases: [],
       isLoading: false,
       isEmpty: false,
       error: null,
