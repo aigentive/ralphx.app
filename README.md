@@ -108,9 +108,9 @@ RalphX manages AI agent development workflows. It was itself built by AI agents.
 <p align="center"><em>Conflict resolution — Merger agent resolves conflicts, never force-pushes</em></p>
 
 <p align="center">
-  <img src="assets/framed-approved-2026-02-22.png" alt="Approved — code passes review" width="100%">
+  <img src="assets/framed-merged-2026-02-23.png" alt="Merged — code lands on main branch" width="100%">
 </p>
-<p align="center"><em>Approved — code passes AI review and moves to merge</em></p>
+<p align="center"><em>Merged — automated pipeline lands reviewed code on main</em></p>
 
 </details>
 
