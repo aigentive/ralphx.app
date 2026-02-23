@@ -220,6 +220,13 @@ PALETTES = {
         (50, 180, 100),    # Green
         (60, 140, 160),    # Teal
     ),
+    # Deep teal → cyan (merged/completed state)
+    'merged': (
+        (20, 160, 150),    # Deep teal
+        (50, 130, 200),    # Cerulean
+        (30, 180, 130),    # Aquamarine
+        (70, 150, 190),    # Steel teal
+    ),
 }
 
 # Variation palettes for testing (--variations mode)
@@ -271,6 +278,7 @@ SCREENSHOTS = [
     ('ai-review-2026-02-22.png', 'framed-ai-review-2026-02-22.png', 'ai-review'),
     ('merge-conflicts-2026-02-22.png', 'framed-merge-conflicts-2026-02-22.png', 'merge-conflicts'),
     ('approved-2026-02-22.png', 'framed-approved-2026-02-22.png', 'approved'),
+    ('merged-2026-02-23.png', 'framed-merged-2026-02-23.png', 'merged'),
 ]
 
 
