@@ -293,6 +293,12 @@ pub struct PendingTeamPlan {
     pub process: String,
     pub teammates: Vec<PendingTeammate>,
     pub created_at: DateTime<Utc>,
+    /// Team name from the lead agent's TeamCreate call.
+    /// Used by approve_team_plan to ensure teammates join the correct team registry.
+    pub team_name: String,
+    /// Lead agent's Claude Code session ID.
+    /// When present, used as parent-session-id for teammate spawns.
+    pub lead_session_id: Option<String>,
 }
 
 /// A teammate in a pending plan (carries full spawn data)

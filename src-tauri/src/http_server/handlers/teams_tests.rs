@@ -85,6 +85,7 @@ fn request_team_plan_deserialization() {
         "context_type": "ideation",
         "context_id": "session-abc123",
         "process": "ideation-research",
+        "team_name": "test-research-team",
         "teammates": [
             {
                 "role": "frontend-researcher",
@@ -100,9 +101,31 @@ fn request_team_plan_deserialization() {
     assert_eq!(req.context_type, "ideation");
     assert_eq!(req.context_id, "session-abc123");
     assert_eq!(req.process, "ideation-research");
+    assert_eq!(req.team_name, "test-research-team");
     assert_eq!(req.teammates.len(), 1);
     assert_eq!(req.teammates[0].role, "frontend-researcher");
     assert_eq!(req.teammates[0].model, "sonnet");
+}
+
+#[test]
+fn request_team_plan_deserialization_missing_team_name_fails() {
+    let json = r#"{
+        "context_type": "ideation",
+        "context_id": "session-abc123",
+        "process": "ideation-research",
+        "teammates": [
+            {
+                "role": "frontend-researcher",
+                "tools": ["Read", "Grep"],
+                "mcp_tools": ["get_session_plan"],
+                "model": "sonnet",
+                "prompt_summary": "Research React component patterns"
+            }
+        ]
+    }"#;
+
+    let result: Result<RequestTeamPlanRequest, _> = serde_json::from_str(json);
+    assert!(result.is_err(), "team_name is required — deserialization must fail when missing");
 }
 
 #[test]
@@ -328,6 +351,8 @@ fn team_plan_request_converts_to_spawn_requests() {
                 prompt: None,
             },
         ],
+        team_name: "test-team-abc123".to_string(),
+        lead_session_id: None,
     };
 
     // Convert to spawn requests

@@ -482,8 +482,12 @@ export const ALL_TOOLS: Tool[] = [
           },
           description: "Array of teammate configurations to spawn",
         },
+        team_name: {
+          type: "string",
+          description: "Team name from the lead agent's TeamCreate call. Ensures teammates join the same team registry.",
+        },
       },
-      required: ["process", "teammates"],
+      required: ["process", "teammates", "team_name"],
     },
   },
   {

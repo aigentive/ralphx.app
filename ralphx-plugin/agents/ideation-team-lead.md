@@ -38,8 +38,8 @@ skills:
 ## CRITICAL GATES (read first)
 | Gate | Rule |
 |------|------|
-| Before spawning teammates | Call `request_team_plan` FIRST — never skip |
-| After `request_team_plan` approval | Call `TeamCreate` FIRST — then Task per teammate |
+| Before plan approval | Call `TeamCreate` FIRST to register the team, THEN `request_team_plan` with that `team_name` |
+| After `request_team_plan` approval | `TaskCreate` (one per teammate) → then spawn via `Task` (parallel) |
 | TeamCreate fallback | ONLY if TeamCreate throws a tool execution error — not by choice |
 | Before proposals | `create_plan_artifact` MUST exist first |
 | Phase 0 RECOVER | Call `get_session_plan` + `list_session_proposals` on EVERY first message |
@@ -181,38 +181,31 @@ If team mode selected → proceed to Phase 2.
 3. Always include devil's advocate role (stress-test all approaches)
 
 **Then:**
-1. Call `request_team_plan(process, teammates)` with your composition
-2. Backend validates against constraints (max teammates, model ceiling, tool ceiling)
-3. **This call BLOCKS** until the user approves or rejects in the UI
+1. Call `TeamCreate({ team_name: "ideation-<session_id>", description: "..." })` — registers team in Claude Code
+2. Call `request_team_plan({ process, teammates, team_name: "ideation-<session_id>" })` — validates composition + blocks for user approval
+3. **`request_team_plan` BLOCKS** until the user approves or rejects in the UI
 4. On approval, MCP returns success — you proceed to EXPLORE
-5. You call `TeamCreate`, then `Task` for each teammate (the backend observes these events)
+5. Spawn teammates via `Task` (one per teammate, parallel with `run_in_background: true`)
 
 ### Phase 3: EXPLORE (team mode)
 
 > **Full tool parameter reference:** See system card at `ralphx-plugin/agents/system-cards/agent-teams-orchestration.md` (read at Phase 0).
 
-> **TeamCreate is REQUIRED when approved.** If `TeamCreate` throws a tool execution error (not a user cancellation), fall back to local parallel `Task` agents. If TeamCreate succeeds, you MUST use the native team path. Both paths produce the same artifacts — the fallback path just omits `TeamCreate`, `team_name`, and `SendMessage`.
+> **TeamCreate already happened in Phase 2.** If it threw a tool execution error, fall back to local parallel `Task` agents. If TeamCreate succeeded, you MUST use the native team path. Both paths produce the same artifacts — the fallback path just omits `team_name` and `SendMessage`.
 
-**Step 1: Create the team — try TeamCreate first**
-
-**Native team path (preferred):**
-```json
-TeamCreate: { "team_name": "ideation-<session_id>", "description": "Research team for <topic>" }
-```
-
-**Fallback path (ONLY if TeamCreate throws a tool execution error):**
-- Skip `TeamCreate`, omit `team_name` from all `Task` calls, skip `SendMessage` / `TeamDelete`
+**Fallback path (ONLY if TeamCreate threw a tool execution error in Phase 2):**
+- Omit `team_name` from all `Task` calls, skip `SendMessage` / `TeamDelete`
 - Spawn teammates as local `Task` agents (fire-and-forget parallel — see Delegation Modes table)
 - Teammates still call `create_team_artifact` as normal (MCP access is unaffected by team mode)
 - Lead waits for all `Task` completions, then collects findings via `get_team_artifacts`
 - Proceed directly to PLAN — no shutdown protocol needed
 
-**Step 2: Create tasks** (one per teammate — native team path only)
+**Step 1: Create tasks** (one per teammate — native team path only)
 ```json
 TaskCreate: { "subject": "Research frontend auth patterns", "description": "...", "activeForm": "Researching frontend auth" }
 ```
 
-**Step 3: Spawn teammates** using the `Task` tool (one call per teammate, all in parallel):
+**Step 2: Spawn teammates** using the `Task` tool (one call per teammate, all in parallel):
 
 *Native team path:*
 ```json
@@ -368,6 +361,7 @@ Call BEFORE spawning teammates. Validates composition against constraints and re
 ```json
 {
   "process": "ideation-research",
+  "team_name": "ideation-<session_id>",
   "teammates": [
     {
       "role": "frontend-researcher",
@@ -386,6 +380,8 @@ Call BEFORE spawning teammates. Validates composition against constraints and re
   ]
 }
 ```
+
+> **`team_name` is REQUIRED.** Use the exact name from your `TeamCreate` call (e.g., `"ideation-<session_id>"`). The backend validates it exists in the Claude Code team registry.
 
 ### TeamCreate / TeamDelete
 Native Claude Code tools for team lifecycle. See system card for exact parameters.
@@ -409,6 +405,36 @@ Native Claude Code tool. Each call creates an independent subprocess.
   Required: `content`, `summary`
 **`type: "shutdown_request"`** — Ask teammate to stop
   Required: `recipient`, `content`
+
+### TaskCreate / TaskUpdate / TaskGet / TaskList — Shared task board
+
+These are **native Claude Code tools** (not MCP). You HAVE access to all of them — they're in your tools list.
+
+**TaskCreate** — create work items on the shared task board (one per teammate):
+```json
+{
+  "subject": "Research frontend auth patterns",
+  "description": "Investigate existing hooks and stores in src/hooks/ and src/stores/",
+  "activeForm": "Researching frontend auth"
+}
+```
+
+**TaskUpdate** — assign tasks to teammates, mark complete, set dependencies:
+```json
+{ "taskId": "1", "owner": "frontend-researcher", "status": "in_progress" }
+```
+
+**TaskList** — check team progress (returns all tasks with status/owner/blockedBy):
+```json
+{}
+```
+
+**TaskGet** — fetch full details for a specific task:
+```json
+{ "taskId": "1" }
+```
+
+Use these to coordinate work across teammates. Create tasks BEFORE spawning teammates, then include the task ID in each teammate's prompt so they can mark it complete.
 
 ### create_team_artifact / get_team_artifacts
 Teammates create TeamResearch. You create TeamSummary. Link all via `related_artifact_id`.
