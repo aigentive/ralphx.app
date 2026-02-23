@@ -1,18 +1,29 @@
 /**
  * AuditTrailDialog - Full chronological audit trail for a task
- * Shows state transitions, activity events, reviews, and merge pipeline steps
- * Enterprise-ready: exact timestamps, source badges, expandable content
+ * Near full-screen modal matching ReviewDetailModal's premium glass style.
+ * Shows state transitions, activity events, reviews, and merge pipeline steps.
  */
 
-import { useState, useCallback } from "react";
-import { ScrollText, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { useState, useCallback, useMemo } from "react";
+import {
+  ScrollText,
+  X,
+  Loader2,
+  CheckCircle2,
+  RotateCcw,
+  AlertCircle,
+  MessageSquare,
+  Terminal,
+  Brain,
+  ChevronDown,
+  ChevronRight,
+} from "lucide-react";
 import {
   Dialog,
   DialogContent,
-  DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { Button } from "@/components/ui/button";
 import { useAuditTrail, type AuditEntry } from "@/hooks/useAuditTrail";
 
 // ============================================================================
@@ -44,16 +55,18 @@ const SOURCE_STYLES = {
   },
 } as const;
 
-const TYPE_STYLES: Record<string, { color: string }> = {
-  Approved: { color: "var(--status-success)" },
-  "Changes Requested": { color: "var(--status-warning)" },
-  Rejected: { color: "var(--status-error)" },
-  error: { color: "var(--status-error)" },
-  thinking: { color: "var(--text-muted)" },
-  tool_call: { color: "var(--accent-primary)" },
-  tool_result: { color: "var(--accent-secondary, var(--text-secondary))" },
-  text: { color: "var(--text-secondary)" },
+const TYPE_ICONS: Record<string, { icon: typeof CheckCircle2; color: string }> = {
+  Approved: { icon: CheckCircle2, color: "var(--status-success)" },
+  "Changes Requested": { icon: RotateCcw, color: "var(--status-warning)" },
+  Rejected: { icon: X, color: "var(--status-error)" },
+  text: { icon: MessageSquare, color: "var(--text-muted)" },
+  tool_call: { icon: Terminal, color: "var(--accent-primary)" },
+  tool_result: { icon: Terminal, color: "var(--text-secondary)" },
+  thinking: { icon: Brain, color: "var(--text-muted)" },
+  error: { icon: AlertCircle, color: "var(--status-error)" },
 };
+
+const DEFAULT_ICON = { icon: MessageSquare, color: "var(--text-muted)" };
 
 const CONTENT_TRUNCATE_LENGTH = 200;
 
@@ -78,9 +91,30 @@ function formatTimestamp(dateString: string): string {
   }
 }
 
+function formatDateRange(entries: AuditEntry[]): string {
+  if (entries.length === 0) return "";
+  const first = new Date(entries[0].timestamp);
+  const last = new Date(entries[entries.length - 1].timestamp);
+  const fmt = (d: Date) =>
+    d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+  if (first.toDateString() === last.toDateString()) return fmt(first);
+  return `${fmt(first)} \u2014 ${fmt(last)}`;
+}
+
 // ============================================================================
 // Sub-components
 // ============================================================================
+
+function SectionTitle({ children }: { children: React.ReactNode }) {
+  return (
+    <h4
+      className="text-[11px] font-semibold uppercase tracking-wider mb-2"
+      style={{ color: "var(--text-muted)" }}
+    >
+      {children}
+    </h4>
+  );
+}
 
 function SourceBadge({ source }: { source: AuditEntry["source"] }) {
   const style = SOURCE_STYLES[source];
@@ -98,24 +132,26 @@ function SourceBadge({ source }: { source: AuditEntry["source"] }) {
   );
 }
 
-function TypeLabel({ type }: { type: string }) {
-  const style = TYPE_STYLES[type];
+function EntryIcon({ type }: { type: string }) {
+  const config = TYPE_ICONS[type] ?? DEFAULT_ICON;
+  const Icon = config.icon;
   return (
-    <span
-      className="text-[11px] font-medium"
-      style={{ color: style?.color ?? "var(--text-secondary)" }}
+    <div
+      className="flex items-center justify-center w-7 h-7 rounded-full shrink-0 mt-0.5"
+      style={{ backgroundColor: "rgba(255,255,255,0.04)" }}
     >
-      {type}
-    </span>
+      <Icon className="w-3.5 h-3.5" style={{ color: config.color }} />
+    </div>
   );
 }
 
 function EntryContent({ text }: { text: string }) {
   const [expanded, setExpanded] = useState(false);
   const needsTruncation = text.length > CONTENT_TRUNCATE_LENGTH;
-  const displayText = !expanded && needsTruncation
-    ? text.slice(0, CONTENT_TRUNCATE_LENGTH) + "..."
-    : text;
+  const displayText =
+    !expanded && needsTruncation
+      ? text.slice(0, CONTENT_TRUNCATE_LENGTH) + "..."
+      : text;
 
   const toggle = useCallback(() => setExpanded((prev) => !prev), []);
 
@@ -123,7 +159,7 @@ function EntryContent({ text }: { text: string }) {
     <div className="mt-1">
       <p
         className="text-[12px] whitespace-pre-wrap break-words"
-        style={{ color: "var(--text-secondary)", lineHeight: "1.5" }}
+        style={{ color: "rgba(255,255,255,0.6)", lineHeight: "1.5" }}
       >
         {displayText}
       </p>
@@ -148,79 +184,105 @@ function EntryContent({ text }: { text: string }) {
   );
 }
 
-function AuditEntryRow({ entry, isLast }: { entry: AuditEntry; isLast: boolean }) {
+function SummarySection({ entries }: { entries: AuditEntry[] }) {
+  const dateRange = useMemo(() => formatDateRange(entries), [entries]);
+  const reviewCount = entries.filter((e) => e.source === "review").length;
+  const activityCount = entries.filter((e) => e.source === "activity").length;
+
   return (
-    <div className="relative pl-5" style={{ paddingBottom: isLast ? 0 : "12px" }}>
-      {/* Vertical connector line */}
-      {!isLast && (
-        <div
-          className="absolute w-0.5"
-          style={{
-            left: "5px",
-            top: "14px",
-            bottom: 0,
-            backgroundColor: "var(--border-subtle)",
-          }}
-        />
-      )}
-
-      {/* Timeline dot */}
+    <div>
+      <SectionTitle>Summary</SectionTitle>
       <div
-        className="absolute rounded-full"
+        className="flex items-center gap-4 py-2.5 px-3 rounded"
         style={{
-          left: 0,
-          top: "6px",
-          width: "12px",
-          height: "12px",
-          backgroundColor: entry.source === "review"
-            ? SOURCE_STYLES.review.color
-            : "var(--border-subtle)",
-          border: "2px solid var(--bg-elevated)",
+          backgroundColor: "rgba(0,0,0,0.15)",
+          border: "1px solid rgba(255,255,255,0.05)",
         }}
-      />
-
-      {/* Timestamp */}
-      <div
-        className="text-[10px] font-mono tabular-nums"
-        style={{ color: "var(--text-muted)" }}
       >
-        {formatTimestamp(entry.timestamp)}
+        <div className="text-[12px]">
+          <span className="text-white/90 font-medium">{entries.length}</span>
+          <span className="text-white/50 ml-1">events</span>
+        </div>
+        {reviewCount > 0 && (
+          <div className="text-[12px]">
+            <span className="text-white/90 font-medium">{reviewCount}</span>
+            <span className="text-white/50 ml-1">reviews</span>
+          </div>
+        )}
+        {activityCount > 0 && (
+          <div className="text-[12px]">
+            <span className="text-white/90 font-medium">{activityCount}</span>
+            <span className="text-white/50 ml-1">activity</span>
+          </div>
+        )}
+        {dateRange && (
+          <div className="text-[11px] text-white/40 ml-auto">{dateRange}</div>
+        )}
       </div>
+    </div>
+  );
+}
 
-      {/* Badges row */}
-      <div className="flex items-center gap-1.5 mt-1">
-        <SourceBadge source={entry.source} />
-        <TypeLabel type={entry.type} />
-        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
-          by {entry.actor}
-        </span>
-      </div>
+function AuditEntryCard({ entry }: { entry: AuditEntry }) {
+  return (
+    <div
+      className="flex items-start gap-2 py-2 px-3 rounded"
+      style={{
+        backgroundColor: "rgba(0,0,0,0.15)",
+        border: "1px solid rgba(255,255,255,0.05)",
+      }}
+    >
+      <EntryIcon type={entry.type} />
 
-      {/* Status snapshot */}
-      {entry.status && (
-        <div className="mt-1">
+      <div className="flex-1 min-w-0">
+        {/* Top row: type + source badge + timestamp */}
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span
-            className="px-1.5 py-0.5 rounded text-[10px] font-mono"
-            style={{
-              backgroundColor: "rgba(255,255,255,0.04)",
-              border: "1px solid rgba(255,255,255,0.06)",
-              color: "var(--text-muted)",
-            }}
+            className="text-[11px] font-medium"
+            style={{ color: (TYPE_ICONS[entry.type] ?? DEFAULT_ICON).color }}
           >
-            {entry.status}
+            {entry.type}
+          </span>
+          <SourceBadge source={entry.source} />
+          <span className="text-[11px] text-white/40 ml-auto shrink-0">
+            {formatTimestamp(entry.timestamp)}
           </span>
         </div>
-      )}
 
-      {/* Description/Content */}
-      {entry.description && <EntryContent text={entry.description} />}
+        {/* Actor */}
+        <div className="text-[11px] text-white/50 mt-0.5">
+          by {entry.actor}
+        </div>
 
-      {/* Metadata */}
-      {entry.metadata && (
-        <p className="text-[10px] mt-0.5 italic" style={{ color: "var(--text-muted)" }}>
-          {entry.metadata}
-        </p>
-      )}
+        {/* Description (expandable) */}
+        {entry.description && <EntryContent text={entry.description} />}
+
+        {/* Status snapshot badge */}
+        {entry.status && (
+          <div className="mt-1">
+            <span
+              className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+              style={{
+                backgroundColor: "rgba(255,255,255,0.04)",
+                border: "1px solid rgba(255,255,255,0.06)",
+                color: "var(--text-muted)",
+              }}
+            >
+              {entry.status}
+            </span>
+          </div>
+        )}
+
+        {/* Metadata */}
+        {entry.metadata && (
+          <p
+            className="text-[10px] mt-0.5 italic"
+            style={{ color: "var(--text-muted)" }}
+          >
+            {entry.metadata}
+          </p>
+        )}
+      </div>
     </div>
   );
 }
@@ -234,20 +296,54 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl" data-testid="audit-trail-dialog">
-        <DialogHeader>
-          <div className="flex items-center gap-3">
-            <ScrollText className="w-5 h-5 text-[var(--accent-primary)]" />
-            <DialogTitle>Audit Trail</DialogTitle>
-          </div>
-        </DialogHeader>
-
+      <DialogContent
+        data-testid="audit-trail-dialog"
+        hideCloseButton
+        className="p-0 gap-0 overflow-hidden flex flex-col max-w-[95vw] w-[95vw] h-[95vh]"
+        style={{
+          backgroundColor: "var(--bg-surface)",
+          border: "1px solid rgba(255,255,255,0.08)",
+        }}
+      >
+        {/* Glass Header */}
         <div
-          className="px-6 py-4"
-          style={{ backgroundColor: "var(--bg-elevated)" }}
+          className="flex items-center justify-between px-4 py-3 border-b shrink-0"
+          style={{
+            borderColor: "rgba(255,255,255,0.06)",
+            background: "rgba(18,18,18,0.85)",
+            backdropFilter: "blur(20px)",
+          }}
         >
+          <div className="flex items-center gap-3">
+            <ScrollText
+              className="w-5 h-5"
+              style={{ color: "var(--accent-primary)" }}
+            />
+            <DialogTitle
+              className="text-base font-semibold text-white/90 tracking-normal"
+              style={{ letterSpacing: "-0.02em" }}
+            >
+              Audit Trail
+            </DialogTitle>
+          </div>
+          <Button
+            data-testid="dialog-close"
+            variant="ghost"
+            size="icon"
+            onClick={onClose}
+            className="w-8 h-8 text-white/50 hover:text-white/80 hover:bg-white/10"
+          >
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto min-h-0">
           {isLoading && (
-            <div className="flex justify-center py-8" data-testid="audit-trail-loading">
+            <div
+              className="flex justify-center py-16"
+              data-testid="audit-trail-loading"
+            >
               <Loader2
                 className="w-6 h-6 animate-spin"
                 style={{ color: "var(--text-muted)" }}
@@ -257,41 +353,59 @@ export function AuditTrailDialog({ taskId, isOpen, onClose }: AuditTrailDialogPr
 
           {!isLoading && isEmpty && (
             <div
-              className="flex flex-col items-center justify-center py-8 text-center"
+              className="flex flex-col items-center justify-center py-16 text-center"
               data-testid="audit-trail-empty"
             >
               <ScrollText
                 className="w-8 h-8 mb-2"
                 style={{ color: "var(--text-muted)", opacity: 0.5 }}
               />
-              <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+              <p className="text-sm text-white/50">
                 No audit events recorded yet
               </p>
-              <p className="text-xs mt-1" style={{ color: "var(--text-muted)" }}>
+              <p className="text-xs mt-1 text-white/30">
                 State transitions and activity events will appear here
               </p>
             </div>
           )}
 
           {!isLoading && !isEmpty && (
-            <ScrollArea className="max-h-[60vh]">
-              <div
-                className="p-4 rounded-lg"
-                style={{ backgroundColor: "var(--bg-surface)" }}
-                data-testid="audit-trail-timeline"
-              >
-                <div className="relative">
-                  {entries.map((entry, index) => (
-                    <AuditEntryRow
-                      key={entry.id}
-                      entry={entry}
-                      isLast={index === entries.length - 1}
-                    />
+            <div className="p-4 space-y-5">
+              <SummarySection entries={entries} />
+              <div>
+                <SectionTitle>Timeline</SectionTitle>
+                <div
+                  data-testid="audit-trail-timeline"
+                  className="space-y-2"
+                >
+                  {entries.map((entry) => (
+                    <AuditEntryCard key={entry.id} entry={entry} />
                   ))}
                 </div>
               </div>
-            </ScrollArea>
+            </div>
           )}
+        </div>
+
+        {/* Glass Footer */}
+        <div
+          className="flex items-center justify-between px-4 py-3 border-t shrink-0"
+          style={{
+            borderColor: "rgba(255,255,255,0.06)",
+            background: "rgba(18,18,18,0.85)",
+            backdropFilter: "blur(20px)",
+          }}
+        >
+          <span className="text-[12px] text-white/50">
+            {entries.length} {entries.length === 1 ? "event" : "events"}
+          </span>
+          <Button
+            variant="ghost"
+            onClick={onClose}
+            className="text-[13px] text-white/60 hover:text-white/80 hover:bg-white/10"
+          >
+            Close
+          </Button>
         </div>
       </DialogContent>
     </Dialog>
