@@ -115,7 +115,9 @@ impl<'a> super::TransitionHandler<'a> {
         if let Some(ref session_id) = task.ideation_session_id {
             if let Some(ref pb_repo) = plan_branch_repo {
                 if let Ok(Some(pb)) = pb_repo.get_by_session_id(session_id).await {
-                    if pb.branch_name != target_branch {
+                    if pb.branch_name != target_branch
+                        && task.category != TaskCategory::PlanMerge
+                    {
                         // Plan branch differs from resolved target — check plan branch too
                         if let Ok(source_sha) =
                             GitService::get_branch_sha(repo_path, source_branch).await
@@ -193,6 +195,13 @@ impl<'a> super::TransitionHandler<'a> {
                                 }
                             }
                         }
+                    } else if task.category == TaskCategory::PlanMerge {
+                        tracing::debug!(
+                            %task_id_str,
+                            plan_branch = %pb.branch_name,
+                            "check_already_merged: skipping plan branch defense-in-depth \
+                             for PlanMerge task (source IS plan branch — check is tautological)"
+                        );
                     }
                 }
             }
@@ -292,7 +301,9 @@ impl<'a> super::TransitionHandler<'a> {
         if let Some(ref session_id) = task.ideation_session_id {
             if let Some(ref pb_repo) = plan_branch_repo {
                 if let Ok(Some(pb)) = pb_repo.get_by_session_id(session_id).await {
-                    if pb.branch_name != target_branch {
+                    if pb.branch_name != target_branch
+                        && task.category != TaskCategory::PlanMerge
+                    {
                         if let Ok(Some(found_sha)) =
                             GitService::find_commit_by_message_grep(
                                 repo_path,
@@ -365,6 +376,13 @@ impl<'a> super::TransitionHandler<'a> {
                                 return true;
                             }
                         }
+                    } else if task.category == TaskCategory::PlanMerge {
+                        tracing::debug!(
+                            task_id = task_id_str,
+                            plan_branch = %pb.branch_name,
+                            "recover_deleted_source_branch: skipping plan branch defense-in-depth \
+                             for PlanMerge task (source IS plan branch — check is tautological)"
+                        );
                     }
                 }
             }
