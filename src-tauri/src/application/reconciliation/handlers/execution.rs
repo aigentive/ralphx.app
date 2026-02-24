@@ -7,6 +7,7 @@ use tauri::{Emitter, Runtime};
 use tracing::warn;
 
 use crate::application::chat_service::{MergeAutoCompleteContext, reconcile_merge_auto_complete};
+use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::domain::entities::{
     AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, TaskId,
@@ -248,6 +249,21 @@ impl<R: Runtime> ReconciliationRunner<R> {
                         context_id = key.context_id,
                         age_secs = age.num_seconds(),
                         "Skipping young pid=0 registry entry (age < 30s)"
+                    );
+                    continue;
+                }
+            }
+
+            // Skip entries with an active interactive process — the CLI is alive
+            // between turns, waiting for the next stdin message.
+            if let Some(ref ipr) = self.interactive_process_registry {
+                let ipr_key =
+                    InteractiveProcessKey::new(&key.context_type, &key.context_id);
+                if ipr.has_process(&ipr_key).await {
+                    tracing::debug!(
+                        context_type = key.context_type,
+                        context_id = key.context_id,
+                        "Skipping prune for interactive process"
                     );
                     continue;
                 }

@@ -1210,7 +1210,8 @@ pub async fn recover_task_execution(
         Arc::clone(&execution_state),
         Some(app),
     )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
 
     Ok(reconciler.recover_execution_stop(&task_id).await)
 }
@@ -1268,7 +1269,8 @@ pub async fn resolve_recovery_prompt(
         Arc::clone(&execution_state),
         Some(app),
     )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
 
     let task = match app_state.task_repo.get_by_id(&task_id).await {
         Ok(Some(task)) => task,
