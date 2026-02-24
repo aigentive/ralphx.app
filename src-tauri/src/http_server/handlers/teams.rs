@@ -377,6 +377,7 @@ pub async fn approve_team_plan(
                     "Teammate worker process spawned in approve_team_plan"
                 );
 
+                let child_pid = spawn_result.child.id();
                 let mut child = spawn_result.child;
                 let stdout = child.stdout.take();
 
@@ -403,11 +404,46 @@ pub async fn approve_team_plan(
                     });
                 }
 
+                // Process monitor: owns child, signals stream processor when Claude exits.
+                // Prevents 3600s timeout when a grandchild (e.g., Node.js MCP server) inherits
+                // the stdout pipe and holds it open after Claude exits.
+                let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+                let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<()>();
+                {
+                    let monitor_name = teammate_name.clone();
+                    let monitor_team = team_name.clone();
+                    tokio::spawn(async move {
+                        tokio::select! {
+                            biased;
+                            _ = kill_rx => {
+                                tracing::info!(
+                                    teammate = %monitor_name,
+                                    team = %monitor_team,
+                                    "Teammate process kill signal received"
+                                );
+                                let _ = child.kill().await;
+                                let _ = child.wait().await;
+                            }
+                            status = child.wait() => {
+                                tracing::info!(
+                                    teammate = %monitor_name,
+                                    team = %monitor_team,
+                                    status = ?status,
+                                    "Teammate process exited naturally"
+                                );
+                            }
+                        }
+                        // Signal stream processor to stop (pipe inheritance guard)
+                        let _ = exit_tx.send(());
+                    });
+                }
+
                 // Start background stream processor for teammate stdout
                 let stream_task = match (stdout, &state.app_state.app_handle) {
                     (Some(stdout), Some(app_handle)) => Some(
                         crate::application::team_stream_processor::start_teammate_stream(
                             stdout,
+                            exit_rx,
                             team_name.clone(),
                             teammate_name.clone(),
                             req.context_type.clone(),
@@ -427,9 +463,10 @@ pub async fn approve_team_plan(
                 };
 
                 let handle = TeammateHandle {
-                    child,
+                    kill_tx: Some(kill_tx),
                     stream_task,
                     stdin: Some(spawn_result.stdin),
+                    child_pid,
                 };
 
                 let _ = state
@@ -696,7 +733,8 @@ pub async fn request_teammate_spawn(
                 "Teammate process spawned successfully"
             );
 
-            // 7. Take stdout from child for stream processing, then create handle
+            // 7. Take stdout/stderr from child for stream processing, then create handle
+            let child_pid = spawn_result.child.id();
             let mut child = spawn_result.child;
             let stdout = child.stdout.take();
 
@@ -723,11 +761,46 @@ pub async fn request_teammate_spawn(
                 });
             }
 
+            // Process monitor: owns child, signals stream processor when Claude exits.
+            // Prevents 3600s timeout when a grandchild (e.g., Node.js MCP server) inherits
+            // the stdout pipe and holds it open after Claude exits.
+            let (kill_tx, kill_rx) = tokio::sync::oneshot::channel::<()>();
+            let (exit_tx, exit_rx) = tokio::sync::oneshot::channel::<()>();
+            {
+                let monitor_name = teammate_name.clone();
+                let monitor_team = team_name.clone();
+                tokio::spawn(async move {
+                    tokio::select! {
+                        biased;
+                        _ = kill_rx => {
+                            tracing::info!(
+                                teammate = %monitor_name,
+                                team = %monitor_team,
+                                "Teammate process kill signal received"
+                            );
+                            let _ = child.kill().await;
+                            let _ = child.wait().await;
+                        }
+                        status = child.wait() => {
+                            tracing::info!(
+                                teammate = %monitor_name,
+                                team = %monitor_team,
+                                status = ?status,
+                                "Teammate process exited naturally"
+                            );
+                        }
+                    }
+                    // Signal stream processor to stop (pipe inheritance guard)
+                    let _ = exit_tx.send(());
+                });
+            }
+
             // 8. Start background stream processor if we have both stdout and app_handle
             let stream_task = match (stdout, &state.app_state.app_handle) {
                 (Some(stdout), Some(app_handle)) => Some(
                     crate::application::team_stream_processor::start_teammate_stream(
                         stdout,
+                        exit_rx,
                         team_name.clone(),
                         teammate_name.clone(),
                         "ideation".to_string(),
@@ -755,9 +828,10 @@ pub async fn request_teammate_spawn(
 
             // 9. Create TeammateHandle and register via TeamService
             let handle = TeammateHandle {
-                child,
+                kill_tx: Some(kill_tx),
                 stream_task,
                 stdin: Some(spawn_result.stdin),
+                child_pid,
             };
 
             state

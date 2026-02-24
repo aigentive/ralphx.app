@@ -12,8 +12,8 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::io::AsyncWriteExt;
-use tokio::process::{Child, ChildStdin};
-use tokio::sync::{watch, RwLock};
+use tokio::process::ChildStdin;
+use tokio::sync::{oneshot, watch, RwLock};
 use tokio::task::JoinHandle;
 
 // ============================================================================
@@ -55,34 +55,28 @@ pub struct TeammateCost {
     pub estimated_usd: f64,
 }
 
-/// Handle to a teammate's child process (not serializable)
+/// Handle to a spawned teammate process (not serializable).
 ///
-/// Supports interactive mode via an explicit `stdin` pipe. When a teammate
-/// is spawned in interactive mode (no `-p` flag), messages are sent by writing
-/// to `stdin` instead of spawning a new process.
+/// Owns the kill channel and stdin pipe for the teammate's CLI process.
+/// The process itself is managed by a background monitoring task that owns
+/// the `Child` and signals this handle via `exit_signal` when the process exits.
+///
+/// This design prevents grandchild processes (e.g., Node.js MCP server) from
+/// holding the stdout pipe open after Claude exits: the monitoring task detects
+/// Claude's exit via `child.wait()` and signals the stream processor to stop,
+/// regardless of whether the pipe has reached EOF.
 pub struct TeammateHandle {
-    pub child: Child,
+    /// Send `()` to request process termination (triggers `child.kill()` in monitor task).
+    pub kill_tx: Option<oneshot::Sender<()>>,
     pub stream_task: Option<JoinHandle<()>>,
     /// Explicit stdin pipe for interactive mode messaging.
     /// When set, messages can be written directly to the teammate's stdin.
     pub stdin: Option<ChildStdin>,
+    /// PID of the spawned process for debug display.
+    pub child_pid: Option<u32>,
 }
 
 impl TeammateHandle {
-    /// Create a new handle from a child process, optionally capturing stdin.
-    pub fn new(mut child: Child, interactive: bool) -> Self {
-        let stdin = if interactive {
-            child.stdin.take()
-        } else {
-            None
-        };
-        Self {
-            child,
-            stream_task: None,
-            stdin,
-        }
-    }
-
     /// Write a message to the teammate's stdin pipe (interactive mode).
     ///
     /// Returns an error if the teammate has no stdin pipe or the write fails.
@@ -109,7 +103,7 @@ impl TeammateHandle {
 impl std::fmt::Debug for TeammateHandle {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TeammateHandle")
-            .field("child_pid", &self.child.id())
+            .field("child_pid", &self.child_pid)
             .field("interactive", &self.stdin.is_some())
             .finish()
     }
@@ -673,9 +667,11 @@ impl TeamStateTracker {
             .get_mut(teammate_name)
             .ok_or_else(|| TeamTrackerError::TeammateNotFound(teammate_name.to_string()))?;
 
-        // Kill the child process if running
+        // Signal kill + abort stream task
         if let Some(ref mut handle) = teammate.handle {
-            let _ = handle.child.kill().await;
+            if let Some(kill_tx) = handle.kill_tx.take() {
+                let _ = kill_tx.send(());
+            }
             if let Some(task) = handle.stream_task.take() {
                 task.abort();
             }
@@ -712,7 +708,9 @@ impl TeamStateTracker {
 
         for teammate in team.teammates.values_mut() {
             if let Some(ref mut handle) = teammate.handle {
-                let _ = handle.child.kill().await;
+                if let Some(kill_tx) = handle.kill_tx.take() {
+                    let _ = kill_tx.send(());
+                }
                 if let Some(task) = handle.stream_task.take() {
                     task.abort();
                 }

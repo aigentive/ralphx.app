@@ -11,6 +11,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::ChildStdout;
+use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 
 use crate::application::team_events;
@@ -27,6 +28,9 @@ use crate::infrastructure::agents::claude::{StreamEvent, StreamProcessor};
 ///
 /// # Arguments
 /// * `stdout` - The teammate process's piped stdout
+/// * `exit_signal` - Fires when the Claude process exits (from the process monitor task).
+///   Breaks the read loop even if a grandchild (e.g., Node.js MCP server) holds the
+///   pipe open — prevents the stream processor from blocking until the 3600s timeout.
 /// * `team_name` - Name of the team this teammate belongs to
 /// * `teammate_name` - Unique name of the teammate (used in event payloads)
 /// * `context_type` - Chat context type (e.g. "ideation")
@@ -36,6 +40,7 @@ use crate::infrastructure::agents::claude::{StreamEvent, StreamProcessor};
 /// * `team_service` - Optional TeamService for message persistence and proper event emission
 pub fn start_teammate_stream<R: Runtime>(
     stdout: ChildStdout,
+    exit_signal: oneshot::Receiver<()>,
     team_name: String,
     teammate_name: String,
     context_type: String,
@@ -84,8 +89,26 @@ pub fn start_teammate_stream<R: Runtime>(
         let mut total_input_tokens: u64 = 0;
         let mut total_output_tokens: u64 = 0;
 
+        // Pin exit_signal so it can be used repeatedly in select!
+        tokio::pin!(exit_signal);
+
         loop {
-            match lines.next_line().await {
+            // Use select! so we break when Claude exits even if a grandchild process
+            // (e.g., Node.js MCP server) holds the stdout pipe open — which would
+            // otherwise block next_line() indefinitely.
+            let line_result = tokio::select! {
+                biased;
+                _ = &mut exit_signal => {
+                    tracing::info!(
+                        teammate = %teammate_name,
+                        team = %team_name,
+                        "Claude process exited — stopping stream processor (pipe inheritance guard)"
+                    );
+                    break;
+                }
+                result = lines.next_line() => result,
+            };
+            match line_result {
                 Ok(Some(line)) => {
                     lines_seen += 1;
 
