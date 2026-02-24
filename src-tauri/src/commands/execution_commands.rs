@@ -353,6 +353,16 @@ impl ExecutionState {
         set.remove(key);
     }
 
+    /// Check if a specific interactive slot is currently idle (between turns).
+    /// Used by reconciliation to avoid overcounting idle processes as active.
+    pub fn is_interactive_idle(&self, key: &str) -> bool {
+        let set = self
+            .interactive_idle_slots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set.contains(key)
+    }
+
     /// Emit execution:status_changed event with current state
     pub fn emit_status_changed<R: Runtime>(&self, handle: &AppHandle<R>, reason: &str) {
         let blocked_until = self.provider_blocked_until_epoch();
@@ -5001,6 +5011,66 @@ mod tests {
             "Exactly one concurrent claim should succeed"
         );
         // running_count should be 2 (1 initial + 1 from the winning claim)
+        assert_eq!(state.running_count(), 2);
+    }
+
+    #[test]
+    fn test_is_interactive_idle_reflects_state() {
+        let state = ExecutionState::with_max_concurrent(5);
+        let key = "task_execution/task-1";
+
+        // Not idle initially
+        assert!(!state.is_interactive_idle(key));
+
+        // Mark idle → should show as idle
+        state.mark_interactive_idle(key);
+        assert!(state.is_interactive_idle(key));
+
+        // Claim it → no longer idle
+        assert!(state.claim_interactive_slot(key));
+        assert!(!state.is_interactive_idle(key));
+
+        // Mark idle again, then remove → no longer idle
+        state.mark_interactive_idle(key);
+        assert!(state.is_interactive_idle(key));
+        state.remove_interactive_slot(key);
+        assert!(!state.is_interactive_idle(key));
+    }
+
+    #[test]
+    fn test_force_sync_running_count_subtracts_idle_slots() {
+        // Simulates what prune_stale_running_registry_entries does:
+        // registry has 3 entries, 1 is idle → set_running_count(3 - 1 = 2)
+        let state = ExecutionState::with_max_concurrent(5);
+
+        // Simulate 3 registered processes
+        state.increment_running();
+        state.increment_running();
+        state.increment_running();
+        assert_eq!(state.running_count(), 3);
+
+        // One process goes idle (TurnComplete)
+        state.decrement_running();
+        state.mark_interactive_idle("task_execution/task-2");
+        assert_eq!(state.running_count(), 2);
+
+        // Force-sync from registry count (3 entries) minus idle (1)
+        let registry_count: u32 = 3;
+        let idle_count: u32 = if state.is_interactive_idle("task_execution/task-1") {
+            1
+        } else {
+            0
+        } + if state.is_interactive_idle("task_execution/task-2") {
+            1
+        } else {
+            0
+        } + if state.is_interactive_idle("task_execution/task-3") {
+            1
+        } else {
+            0
+        };
+        assert_eq!(idle_count, 1);
+        state.set_running_count(registry_count.saturating_sub(idle_count));
         assert_eq!(state.running_count(), 2);
     }
 }

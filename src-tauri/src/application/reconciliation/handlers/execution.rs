@@ -364,8 +364,19 @@ impl<R: Runtime> ReconciliationRunner<R> {
             );
         }
 
-        let registry_count = self.running_agent_registry.list_all().await.len() as u32;
-        self.execution_state.set_running_count(registry_count);
+        let remaining_entries = self.running_agent_registry.list_all().await;
+        let registry_count = remaining_entries.len() as u32;
+        // Subtract idle interactive processes that already freed their execution slot
+        // via TurnComplete but still have a registry entry (process alive, waiting for stdin).
+        let idle_count = remaining_entries
+            .iter()
+            .filter(|(key, _)| {
+                let slot_key = format!("{}/{}", key.context_type, key.context_id);
+                self.execution_state.is_interactive_idle(&slot_key)
+            })
+            .count() as u32;
+        self.execution_state
+            .set_running_count(registry_count.saturating_sub(idle_count));
         if removed > 0 {
             if let Some(handle) = self.app_handle.as_ref() {
                 self.execution_state
@@ -405,6 +416,19 @@ impl<R: Runtime> ReconciliationRunner<R> {
     ) -> bool {
         if status != InternalStatus::Executing && status != InternalStatus::ReExecuting {
             return false;
+        }
+
+        // Skip if there's an active interactive process — the agent is alive between turns
+        if let Some(ref ipr) = self.interactive_process_registry {
+            let ipr_key =
+                InteractiveProcessKey::new(ChatContextType::TaskExecution.to_string(), task.id.as_str());
+            if ipr.has_process(&ipr_key).await {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    "Skipping execution reconciliation: interactive process active"
+                );
+                return true;
+            }
         }
 
         let run = self.load_execution_run(task, status).await;
@@ -525,6 +549,19 @@ impl<R: Runtime> ReconciliationRunner<R> {
     ) -> bool {
         if status != InternalStatus::Reviewing {
             return false;
+        }
+
+        // Skip if there's an active interactive process — the agent is alive between turns
+        if let Some(ref ipr) = self.interactive_process_registry {
+            let ipr_key =
+                InteractiveProcessKey::new(ChatContextType::Review.to_string(), task.id.as_str());
+            if ipr.has_process(&ipr_key).await {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    "Skipping review reconciliation: interactive process active"
+                );
+                return true;
+            }
         }
 
         let run = self
