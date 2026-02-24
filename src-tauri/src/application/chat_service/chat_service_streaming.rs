@@ -309,6 +309,11 @@ pub async fn process_stream_background<R: Runtime>(
     // Used to tell the caller whether post-loop finalization should be skipped.
     let mut turns_finalized: usize = 0;
 
+    // When true, the process is legitimately idle between interactive turns
+    // (TurnComplete received, waiting for next stdin message). The timeout
+    // handler should skip the kill logic and just reset.
+    let mut between_interactive_turns: bool = false;
+
     loop {
         // Race line-read (with timeout) against cancellation token
         let line = tokio::select! {
@@ -353,6 +358,18 @@ pub async fn process_stream_background<R: Runtime>(
                             }
                         }
 
+                        // Interactive mode: process is idle between turns, waiting
+                        // for next stdin message. Don't kill it.
+                        if between_interactive_turns {
+                            tracing::debug!(
+                                conversation_id = %conversation_id_str,
+                                context_id,
+                                lines_seen,
+                                "Stream idle between interactive turns, resetting timeout"
+                            );
+                            continue;
+                        }
+
                         // Check if subagent tasks are active (sidechain work in progress).
                         // Lead stdout goes silent while Task tool subagents work — their
                         // output goes to JSONL sidechain files, not the lead's stdout.
@@ -388,6 +405,9 @@ pub async fn process_stream_background<R: Runtime>(
                 }
             }
         };
+
+        // New output arrived — we're no longer idle between turns.
+        between_interactive_turns = false;
 
         lines_seen += 1;
         if debug_lines.len() < 50 {
@@ -751,6 +771,10 @@ pub async fn process_stream_background<R: Runtime>(
                         assistant_message_id = None;
 
                         turns_finalized += 1;
+
+                        // Mark that we're now between interactive turns —
+                        // the timeout handler should not kill the process.
+                        between_interactive_turns = true;
                     }
                     StreamEvent::TaskStarted {
                         tool_use_id,

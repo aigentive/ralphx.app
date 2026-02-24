@@ -249,6 +249,7 @@ pub fn run() {
             let startup_memory_archive_repo = Arc::clone(&app_state.memory_archive_repo);
             let startup_memory_entry_repo = Arc::clone(&app_state.memory_entry_repo);
             let startup_execution_settings_repo = Arc::clone(&app_state.execution_settings_repo);
+            let startup_interactive_process_registry = Arc::clone(&app_state.interactive_process_registry);
             // Clone app handle to enable event emission in startup tasks
             let startup_app_handle = app.handle().clone();
 
@@ -471,7 +472,8 @@ pub fn run() {
                     Arc::clone(&startup_execution_state),
                     Some(reconcile_app_handle),
                 )
-                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo));
+                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
+                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry));
 
                 // One-shot startup recovery: re-queue timeout-failed tasks (attempt_count < 3).
                 // Must run before reconcile_stuck_tasks so recovered tasks are visible immediately.

@@ -21,6 +21,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Runtime};
 use tokio::sync::Mutex;
 
+use crate::application::interactive_process_registry::InteractiveProcessRegistry;
 use crate::application::TaskTransitionService;
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::repositories::{
@@ -53,6 +54,7 @@ pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     pub(crate) transition_service: Arc<TaskTransitionService<R>>,
     pub(crate) execution_state: Arc<ExecutionState>,
     pub(crate) plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    pub(crate) interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     pub(crate) app_handle: Option<AppHandle<R>>,
     pub(crate) policy: RecoveryPolicy,
     pub(crate) prompt_tracker: Arc<Mutex<HashSet<String>>>,
@@ -93,6 +95,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             transition_service,
             execution_state,
             plan_branch_repo: None,
+            interactive_process_registry: None,
             app_handle,
             policy: RecoveryPolicy,
             prompt_tracker: Arc::new(Mutex::new(HashSet::new())),
@@ -106,6 +109,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         self.plan_branch_repo = Some(repo);
+        self
+    }
+
+    pub fn with_interactive_process_registry(
+        mut self,
+        registry: Arc<InteractiveProcessRegistry>,
+    ) -> Self {
+        self.interactive_process_registry = Some(registry);
         self
     }
 }
