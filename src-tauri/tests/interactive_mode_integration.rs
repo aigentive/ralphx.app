@@ -5,6 +5,8 @@
 //
 // These tests verify the ExecutionState + InteractiveProcessRegistry contracts
 // that the reconciler relies on for correct prune/skip decisions.
+// Also includes tests for claude_session_id persistence in both interactive
+// and non-interactive modes.
 
 use std::sync::Arc;
 
@@ -12,9 +14,12 @@ use ralphx_lib::application::interactive_process_registry::{
     InteractiveProcessKey, InteractiveProcessRegistry,
 };
 use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{ChatConversation, TaskId};
+use ralphx_lib::domain::repositories::ChatConversationRepository;
 use ralphx_lib::domain::services::running_agent_registry::{
     MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry,
 };
+use ralphx_lib::infrastructure::memory::MemoryChatConversationRepository;
 
 // ========================================
 // Test 1: Reconciler skips idle interactive processes
@@ -546,6 +551,156 @@ async fn test_reconciler_pattern_with_mixed_active_and_idle() {
     let effective_running = (entries.len() as u32) - 1 - idle_count; // -1 for task-3 pruned
     state.set_running_count(effective_running);
     assert_eq!(state.running_count(), 2);
+}
+
+// ========================================
+// claude_session_id persistence tests
+// ========================================
+
+/// Simulates what the TurnComplete arm in process_stream_background does:
+/// when a TurnComplete event arrives with session_id=Some(...), it calls
+/// conversation_repo.update_claude_session_id(conversation_id, sess_id).
+#[tokio::test]
+async fn test_interactive_turn_complete_persists_session_id() {
+    let repo = MemoryChatConversationRepository::new();
+    let task_id = TaskId::from_string("task-interactive-session-1".to_string());
+    let conv = ChatConversation::new_task(task_id);
+    let conv_id = conv.id;
+
+    repo.create(conv).await.unwrap();
+
+    // Verify no session_id initially
+    let before = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert!(
+        before.claude_session_id.is_none(),
+        "claude_session_id should be None before TurnComplete"
+    );
+
+    // Simulate TurnComplete: session_id is Some → persist it
+    let session_id = "test-session-123";
+    repo.update_claude_session_id(&conv_id, session_id)
+        .await
+        .unwrap();
+
+    // Verify persisted
+    let after = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.claude_session_id,
+        Some(session_id.to_string()),
+        "claude_session_id should be persisted after TurnComplete"
+    );
+}
+
+/// The session_id_persisted flag in process_stream_background ensures only the
+/// first TurnComplete with a session_id calls update_claude_session_id.
+/// This test verifies that simulating the guard logic produces first-wins semantics.
+#[tokio::test]
+async fn test_session_id_first_capture_wins() {
+    let repo = MemoryChatConversationRepository::new();
+    let task_id = TaskId::from_string("task-interactive-session-2".to_string());
+    let conv = ChatConversation::new_task(task_id);
+    let conv_id = conv.id;
+
+    repo.create(conv).await.unwrap();
+
+    // Simulate first TurnComplete: session_id_persisted=false → persist and set flag
+    let first_session_id = "first-session-abc";
+    let mut session_id_persisted = false;
+    if !session_id_persisted {
+        repo.update_claude_session_id(&conv_id, first_session_id)
+            .await
+            .unwrap();
+        session_id_persisted = true;
+    }
+
+    // Simulate second TurnComplete: session_id_persisted=true → skip persistence
+    let second_session_id = "second-session-xyz";
+    if !session_id_persisted {
+        repo.update_claude_session_id(&conv_id, second_session_id)
+            .await
+            .unwrap();
+    }
+
+    // First session_id must win
+    let result = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(
+        result.claude_session_id,
+        Some(first_session_id.to_string()),
+        "First session_id should win — the session_id_persisted guard prevents subsequent overwrite"
+    );
+}
+
+/// The TurnComplete arm uses `if let (Some(ref sess_id), ...) = (&session_id, ...)`,
+/// so it only calls update_claude_session_id when session_id is Some.
+/// An existing session_id must not be cleared when a later TurnComplete has None.
+#[tokio::test]
+async fn test_turn_complete_with_none_session_id_does_not_clear_existing() {
+    let repo = MemoryChatConversationRepository::new();
+    let task_id = TaskId::from_string("task-interactive-session-3".to_string());
+    let conv = ChatConversation::new_task(task_id);
+    let conv_id = conv.id;
+
+    repo.create(conv).await.unwrap();
+
+    // First TurnComplete: set session_id
+    let existing_session_id = "existing-session-456";
+    repo.update_claude_session_id(&conv_id, existing_session_id)
+        .await
+        .unwrap();
+
+    // Second TurnComplete with session_id=None — simulate the if-let guard
+    let session_id_from_event: Option<String> = None;
+    if let Some(ref sess_id) = session_id_from_event {
+        // This branch is only entered when Some — will not run for None
+        repo.update_claude_session_id(&conv_id, sess_id)
+            .await
+            .unwrap();
+    }
+    // clear_claude_session_id is never called in TurnComplete path
+
+    // Existing session_id must be preserved
+    let result = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(
+        result.claude_session_id,
+        Some(existing_session_id.to_string()),
+        "Existing claude_session_id must not be cleared when TurnComplete carries no session_id"
+    );
+}
+
+/// Non-interactive (one-shot) agents persist session_id via the post-loop code in
+/// chat_service_send_background.rs: `if let Some(ref sess_id) = claude_session_id { ... }`
+/// This is the same underlying update_claude_session_id call — verify it persists.
+#[tokio::test]
+async fn test_non_interactive_post_loop_persists_session_id() {
+    let repo = MemoryChatConversationRepository::new();
+    let task_id = TaskId::from_string("task-noninteractive-session-1".to_string());
+    let conv = ChatConversation::new_task_execution(task_id);
+    let conv_id = conv.id;
+
+    repo.create(conv).await.unwrap();
+
+    // Verify no session_id initially
+    let before = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert!(
+        before.claude_session_id.is_none(),
+        "claude_session_id should be None before post-loop persistence"
+    );
+
+    // Simulate post-loop persistence (chat_service_send_background.rs Ok(outcome) branch)
+    let claude_session_id: Option<String> = Some("noninteractive-session-789".to_string());
+    if let Some(ref sess_id) = claude_session_id {
+        repo.update_claude_session_id(&conv_id, sess_id)
+            .await
+            .unwrap();
+    }
+
+    // Verify persisted
+    let after = repo.get_by_id(&conv_id).await.unwrap().unwrap();
+    assert_eq!(
+        after.claude_session_id,
+        Some("noninteractive-session-789".to_string()),
+        "Non-interactive post-loop must persist claude_session_id from StreamOutcome"
+    );
 }
 
 // ========================================

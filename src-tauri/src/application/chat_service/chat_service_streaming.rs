@@ -18,7 +18,8 @@ use crate::domain::entities::{
     ChatMessageId, TaskId,
 };
 use crate::domain::repositories::{
-    ActivityEventRepository, AgentRunRepository, ChatMessageRepository, TaskRepository,
+    ActivityEventRepository, AgentRunRepository, ChatConversationRepository,
+    ChatMessageRepository, TaskRepository,
 };
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::stream_timeouts;
@@ -212,6 +213,7 @@ pub async fn process_stream_background<R: Runtime>(
     agent_run_repo: Option<Arc<dyn AgentRunRepository>>,
     agent_run_id: Option<String>,
     execution_state: Option<Arc<crate::commands::ExecutionState>>,
+    conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
 ) -> Result<StreamOutcome, StreamError> {
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
     // Team leads wait long periods while teammates work — use team-specific timeout
@@ -322,6 +324,8 @@ pub async fn process_stream_background<R: Runtime>(
     // Set to true when an interactive process is killed while idle between
     // turns. Suppresses post-loop error returns so the exit is silent.
     let mut silent_interactive_exit: bool = false;
+    // Track whether we've already persisted session_id to the DB (only need once)
+    let mut session_id_persisted: bool = false;
 
     loop {
         // Race line-read (with timeout) against cancellation token
@@ -871,6 +875,32 @@ pub async fn process_stream_background<R: Runtime>(
                                 content_blocks_json.as_deref(),
                             )
                             .await;
+                        }
+
+                        // Persist session_id to DB on first TurnComplete
+                        if !session_id_persisted {
+                            if let (Some(ref sess_id), Some(ref repo)) =
+                                (&session_id, &conversation_repo)
+                            {
+                                if let Err(e) = repo
+                                    .update_claude_session_id(conversation_id, sess_id)
+                                    .await
+                                {
+                                    tracing::error!(
+                                        error = %e,
+                                        conversation_id = %conversation_id_str,
+                                        session_id = %sess_id,
+                                        "TurnComplete: failed to persist claude_session_id"
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        conversation_id = %conversation_id_str,
+                                        session_id = %sess_id,
+                                        "TurnComplete: persisted claude_session_id to DB"
+                                    );
+                                }
+                                session_id_persisted = true;
+                            }
                         }
 
                         // Complete the agent_run DB record so the recovery poll
