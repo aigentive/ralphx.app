@@ -354,7 +354,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         // Rate limit guard: if a provider rate limit is active, skip retry until it expires.
         // Rate-limited skips do NOT count toward max retries — the retry budget is preserved.
-        if let Some(retry_after) = Self::get_rate_limit_retry_after(task) {
+        //
+        // When the rate limit expires, we clear it from DB via clear_rate_limit_retry_after.
+        // To prevent subsequent metadata writes (record_retry_metadata, record_merge_auto_retry_event)
+        // from overwriting the cleared field using the stale `task` reference, we refresh the
+        // task's metadata in-memory. We preserve the original updated_at to avoid resetting
+        // the age used by the retry delay check.
+        let rate_limit_cleared;
+        let refreshed_task;
+        let task = if let Some(retry_after) = Self::get_rate_limit_retry_after(task) {
             if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(&retry_after) {
                 if chrono::Utc::now() < dt {
                     tracing::debug!(
@@ -372,8 +380,23 @@ impl<R: Runtime> ReconciliationRunner<R> {
                         "Failed to clear expired rate_limit_retry_after"
                     );
                 }
+                // Refresh metadata from DB so subsequent writes don't re-introduce the field,
+                // but keep the original updated_at so age calculations remain stable.
+                rate_limit_cleared = match self.task_repo.get_by_id(&task.id).await {
+                    Ok(Some(mut refreshed)) => {
+                        refreshed.updated_at = task.updated_at;
+                        refreshed
+                    }
+                    _ => task.clone(),
+                };
+                &rate_limit_cleared
+            } else {
+                refreshed_task = task.clone();
+                &refreshed_task
             }
-        }
+        } else {
+            task
+        };
 
         // Smart retry guard: if the incomplete was explicitly reported by the agent,
         // it was a deliberate decision — do NOT auto-retry without human intervention.
