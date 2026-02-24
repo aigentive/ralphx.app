@@ -803,3 +803,176 @@ fn test_build_teammate_cli_args_passes_settings_when_profile_exists() {
     serde_json::from_str::<serde_json::Value>(json_str)
         .expect("--settings value must be valid JSON");
 }
+
+// ==================== create_mcp_config Tests (Fix A) ====================
+
+/// Fix A: create_mcp_config never writes bare "node" as the command.
+/// macOS GUI apps have stripped PATH, so the command must be a full path.
+#[test]
+fn test_create_mcp_config_resolves_node_command() {
+    let tmp = tempfile::tempdir().unwrap();
+    let plugin_dir = tmp.path();
+
+    let config_path = create_mcp_config(plugin_dir, "worker")
+        .expect("create_mcp_config should succeed");
+
+    let json_str = std::fs::read_to_string(&config_path).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+    let mcp_server_name = super::claude_runtime_config().mcp_server_name.as_str();
+    let command = json["mcpServers"][mcp_server_name]["command"]
+        .as_str()
+        .expect("command field must be a string");
+
+    // The command must be either a full path (starts with /) OR the fallback
+    // bare "node" (only if none of the standard locations exist in this test env).
+    // Critical invariant: when any known node binary exists, it must use the full path.
+    let node_candidates = ["/opt/homebrew/bin/node", "/usr/local/bin/node"];
+    let any_known_node_exists = node_candidates
+        .iter()
+        .any(|p| std::path::Path::new(p).exists());
+
+    if any_known_node_exists || which::which("node").is_ok() {
+        assert_ne!(
+            command, "node",
+            "command must be resolved to a full path when node is available; got: {command}"
+        );
+        assert!(
+            command.starts_with('/'),
+            "resolved command must be an absolute path; got: {command}"
+        );
+    }
+    // If node is completely absent in this environment, bare "node" is acceptable as last resort.
+
+    // Clean up temp config file
+    let _ = std::fs::remove_file(&config_path);
+}
+
+/// Fix A: When .mcp.json has "command": "node", create_mcp_config replaces it.
+#[test]
+fn test_create_mcp_config_replaces_bare_node_from_mcp_json() {
+    let tmp = tempfile::tempdir().unwrap();
+    let plugin_dir = tmp.path();
+
+    // Write a .mcp.json that uses bare "node" command
+    let mcp_server_name = super::claude_runtime_config().mcp_server_name.as_str();
+    let mcp_json = serde_json::json!({
+        "mcpServers": {
+            mcp_server_name: {
+                "type": "stdio",
+                "command": "node",
+                "args": ["/some/path/index.js"]
+            }
+        }
+    });
+    std::fs::write(
+        plugin_dir.join(".mcp.json"),
+        serde_json::to_string(&mcp_json).unwrap(),
+    )
+    .unwrap();
+
+    let config_path = create_mcp_config(plugin_dir, "worker")
+        .expect("create_mcp_config should succeed");
+
+    let json_str = std::fs::read_to_string(&config_path).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+    let command = json["mcpServers"][mcp_server_name]["command"]
+        .as_str()
+        .expect("command field must be a string");
+
+    // "node" must have been replaced if any node binary is available
+    let node_available =
+        which::which("node").is_ok()
+            || ["/opt/homebrew/bin/node", "/usr/local/bin/node"]
+                .iter()
+                .any(|p| std::path::Path::new(p).exists());
+
+    if node_available {
+        assert_ne!(
+            command, "node",
+            "bare 'node' in .mcp.json must be replaced with full path; got: {command}"
+        );
+    }
+
+    let _ = std::fs::remove_file(&config_path);
+}
+
+/// Fix A: ${CLAUDE_PLUGIN_ROOT} template in .mcp.json args is expanded to plugin_dir.
+#[test]
+fn test_create_mcp_config_expands_plugin_root_template() {
+    let tmp = tempfile::tempdir().unwrap();
+    let plugin_dir = tmp.path();
+
+    let mcp_server_name = super::claude_runtime_config().mcp_server_name.as_str();
+    let mcp_json = serde_json::json!({
+        "mcpServers": {
+            mcp_server_name: {
+                "type": "stdio",
+                "command": "node",
+                "args": ["${CLAUDE_PLUGIN_ROOT}/build/index.js"]
+            }
+        }
+    });
+    std::fs::write(
+        plugin_dir.join(".mcp.json"),
+        serde_json::to_string(&mcp_json).unwrap(),
+    )
+    .unwrap();
+
+    let config_path = create_mcp_config(plugin_dir, "worker")
+        .expect("create_mcp_config should succeed");
+
+    let json_str = std::fs::read_to_string(&config_path).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+    let args = json["mcpServers"][mcp_server_name]["args"]
+        .as_array()
+        .expect("args must be an array");
+
+    // The ${CLAUDE_PLUGIN_ROOT} placeholder must be replaced by plugin_dir
+    let plugin_dir_str = plugin_dir.to_string_lossy();
+    let expanded = args
+        .iter()
+        .filter_map(|v| v.as_str())
+        .any(|a| a.contains(plugin_dir_str.as_ref()) && !a.contains("${CLAUDE_PLUGIN_ROOT}"));
+
+    assert!(
+        expanded,
+        "args must have ${{CLAUDE_PLUGIN_ROOT}} expanded to plugin_dir ({plugin_dir_str}); got: {args:?}"
+    );
+
+    let _ = std::fs::remove_file(&config_path);
+}
+
+/// Fix A: --agent-type is always injected into MCP args for tool filtering.
+#[test]
+fn test_create_mcp_config_injects_agent_type() {
+    let tmp = tempfile::tempdir().unwrap();
+    let plugin_dir = tmp.path();
+
+    let config_path = create_mcp_config(plugin_dir, "orchestrator-ideation")
+        .expect("create_mcp_config should succeed");
+
+    let json_str = std::fs::read_to_string(&config_path).unwrap();
+    let json: serde_json::Value = serde_json::from_str(&json_str).unwrap();
+
+    let mcp_server_name = super::claude_runtime_config().mcp_server_name.as_str();
+    let args = json["mcpServers"][mcp_server_name]["args"]
+        .as_array()
+        .expect("args must be an array");
+
+    let arg_strs: Vec<&str> = args.iter().filter_map(|v| v.as_str()).collect();
+    let agent_type_idx = arg_strs
+        .iter()
+        .position(|&a| a == "--agent-type")
+        .expect("--agent-type must be present in MCP server args");
+
+    assert!(
+        agent_type_idx + 1 < arg_strs.len(),
+        "--agent-type must be followed by a value"
+    );
+    // short name for "orchestrator-ideation" drops the "ralphx:" prefix if present
+    assert_eq!(arg_strs[agent_type_idx + 1], "orchestrator-ideation");
+
+    let _ = std::fs::remove_file(&config_path);
+}
