@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components -- pure constants/helpers file, no HMR components */
 /**
  * EventCardHelpers - Shared constants, helpers, and sub-components for EventCards.
  */

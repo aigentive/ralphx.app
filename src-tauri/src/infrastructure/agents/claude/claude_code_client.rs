@@ -1016,7 +1016,8 @@ impl ClaudeCodeClient {
             team = %config.team_name,
             model = %config.model,
             agent_type = %config.agent_type,
-            "Spawning teammate (interactive)"
+            parent_session_id = %config.parent_session_id,
+            "[TEAM_SPAWN] Spawning teammate (interactive) with --parent-session-id"
         );
 
         let mut child = cmd

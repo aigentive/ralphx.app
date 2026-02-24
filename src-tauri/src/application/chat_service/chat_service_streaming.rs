@@ -435,12 +435,122 @@ pub async fn process_stream_background<R: Runtime>(
         if debug_lines.len() < 50 {
             debug_lines.push(line.clone());
         }
+
+        // [STREAM_RAW] Log every raw stdout line for team message debugging
+        tracing::debug!(
+            conversation_id = %conversation_id_str,
+            lines_seen,
+            line_len = line.len(),
+            line_preview = %if line.len() > 200 { &line[..200] } else { &line },
+            "[STREAM_RAW] Lead stdout line"
+        );
+
         if let Some(parsed) = StreamProcessor::parse_line(&line) {
             lines_parsed += 1;
             last_parsed_at = std::time::Instant::now();
+
+            // [STREAM_MSG] Log parsed message variant
+            tracing::debug!(
+                conversation_id = %conversation_id_str,
+                lines_parsed,
+                msg_type = %format!("{:?}", &parsed.message).chars().take(80).collect::<String>(),
+                has_parent = parsed.parent_tool_use_id.is_some(),
+                is_synthetic = parsed.is_synthetic,
+                has_tool_use_result = parsed.tool_use_result.is_some(),
+                "[STREAM_MSG] Parsed stream message"
+            );
+
             let stream_events = processor.process_parsed_line(parsed);
 
             for event in stream_events {
+                // [STREAM_EVT] Log every stream event for team message debugging
+                match &event {
+                    StreamEvent::TextChunk(text) => {
+                        tracing::debug!(
+                            conversation_id = %conversation_id_str,
+                            text_len = text.len(),
+                            text_preview = %text.chars().take(100).collect::<String>(),
+                            "[STREAM_EVT] TextChunk"
+                        );
+                    }
+                    StreamEvent::ToolCallStarted { name, id, .. } => {
+                        tracing::debug!(
+                            conversation_id = %conversation_id_str,
+                            tool_name = %name,
+                            tool_id = ?id,
+                            "[STREAM_EVT] ToolCallStarted"
+                        );
+                    }
+                    StreamEvent::ToolCallCompleted { tool_call, .. } => {
+                        tracing::debug!(
+                            conversation_id = %conversation_id_str,
+                            tool_name = %tool_call.name,
+                            tool_id = ?tool_call.id,
+                            "[STREAM_EVT] ToolCallCompleted"
+                        );
+                    }
+                    StreamEvent::TeamMessageSent { sender, recipient, content, message_type } => {
+                        tracing::info!(
+                            conversation_id = %conversation_id_str,
+                            sender = %sender,
+                            recipient = ?recipient,
+                            content_len = content.len(),
+                            message_type = %message_type,
+                            "[STREAM_EVT] TeamMessageSent — lead captured team message"
+                        );
+                    }
+                    StreamEvent::TeamCreated { team_name, .. } => {
+                        tracing::info!(
+                            conversation_id = %conversation_id_str,
+                            team_name = %team_name,
+                            "[STREAM_EVT] TeamCreated"
+                        );
+                    }
+                    StreamEvent::TeammateSpawned { teammate_name, team_name, .. } => {
+                        tracing::info!(
+                            conversation_id = %conversation_id_str,
+                            teammate_name = %teammate_name,
+                            team_name = %team_name,
+                            "[STREAM_EVT] TeammateSpawned"
+                        );
+                    }
+                    StreamEvent::TurnComplete { session_id } => {
+                        tracing::info!(
+                            conversation_id = %conversation_id_str,
+                            ?session_id,
+                            response_text_len = processor.response_text.len(),
+                            tool_calls_count = processor.tool_calls.len(),
+                            content_blocks_count = processor.content_blocks.len(),
+                            "[STREAM_EVT] TurnComplete — accumulated content summary"
+                        );
+                    }
+                    StreamEvent::TaskStarted { tool_use_id, description, teammate_name, team_name, .. } => {
+                        tracing::debug!(
+                            conversation_id = %conversation_id_str,
+                            tool_use_id = %tool_use_id,
+                            description = ?description,
+                            teammate_name = ?teammate_name,
+                            team_name = ?team_name,
+                            "[STREAM_EVT] TaskStarted"
+                        );
+                    }
+                    StreamEvent::TaskCompleted { tool_use_id, agent_id, .. } => {
+                        tracing::debug!(
+                            conversation_id = %conversation_id_str,
+                            tool_use_id = %tool_use_id,
+                            agent_id = ?agent_id,
+                            "[STREAM_EVT] TaskCompleted"
+                        );
+                    }
+                    _ => {
+                        tracing::debug!(
+                            conversation_id = %conversation_id_str,
+                            event_type = %format!("{:?}", &event).chars().take(60).collect::<String>(),
+                            "[STREAM_EVT] Other event"
+                        );
+                    }
+                }
+
                 // Lazily create assistant message on first content-producing event
                 if assistant_message_id.is_none()
                     && matches!(
@@ -462,6 +572,11 @@ pub async fn process_stream_background<R: Runtime>(
                             );
                         let new_id = msg.id.as_str().to_string();
                         let _ = repo.create(msg).await;
+                        tracing::debug!(
+                            conversation_id = %conversation_id_str,
+                            assistant_message_id = %new_id,
+                            "[STREAM_EVT] Created new assistant message"
+                        );
                         assistant_message_id = Some(new_id);
                     }
                 }

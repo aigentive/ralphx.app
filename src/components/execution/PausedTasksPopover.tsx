@@ -29,6 +29,7 @@ interface PausedTasksPopoverProps {
 }
 
 /** Parse pause_reason from task.metadata JSON string, with legacy fallback */
+// eslint-disable-next-line react-refresh/only-export-components -- exported for tests
 export function parsePauseReason(task: Task): PauseReason | null {
   if (!task.metadata) return null;
   try {

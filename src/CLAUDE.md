@@ -102,6 +102,9 @@ Quality work is now split into dedicated streams. See `.claude/rules/stream-*.md
 
 **Targets:** `any` types, naming, error handling, dead code, repeated logic, lint
 
+### Zero Warnings Policy (NON-NEGOTIABLE)
+Fix ALL lint warnings and test failures before completing work — including pre-existing ones. ❌ "It's pre-existing" is not an excuse. Run `npm run lint` and `npm run typecheck` and fix everything.
+
 ### File Size Limits
 **See:** `.claude/rules/code-quality-standards.md` (single source of truth)
 

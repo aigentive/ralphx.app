@@ -17,6 +17,7 @@ import { Clock } from "lucide-react";
  * Format elapsed seconds as human-readable duration.
  * Examples: "34s", "2m 34s", "1h 12m 34s"
  */
+// eslint-disable-next-line react-refresh/only-export-components -- utility shared across components
 export function formatDuration(seconds: number): string {
   if (seconds < 0) return "0s";
 
@@ -33,6 +34,7 @@ export function formatDuration(seconds: number): string {
  * Calculate elapsed seconds between two ISO timestamps (or now).
  * Returns null if startedAt is null/invalid.
  */
+// eslint-disable-next-line react-refresh/only-export-components -- utility shared across components
 export function calcElapsedSeconds(
   startedAt: string | null,
   endedAt?: string | null

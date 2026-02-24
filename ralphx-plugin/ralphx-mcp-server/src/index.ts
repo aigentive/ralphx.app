@@ -479,6 +479,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
+      console.error(`[RalphX MCP] request_team_plan: lead_session_id=${resolvedLeadSessionId ?? "NULL"}, env_var=${leadSessionId ?? "NOT_SET"}, team=${teamName}, context_id=${RALPHX_CONTEXT_ID ?? "EMPTY"}`);
+
       result = await callTauri("team/plan", {
         context_type: RALPHX_CONTEXT_TYPE ?? "ideation",
         context_id: RALPHX_CONTEXT_ID ?? "",

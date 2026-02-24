@@ -12,8 +12,8 @@ import { z } from "zod";
  */
 export const AskUserQuestionOptionSchema = z.object({
   label: z.string().min(1),
-  value: z.string().optional(),
-  description: z.string().optional(),
+  value: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
 });
 
 export type AskUserQuestionOption = z.infer<typeof AskUserQuestionOptionSchema>;

@@ -13,27 +13,7 @@ interface PaneStreamProps {
   teammateName: string;
 }
 
-/** Extract tool call markers like [Read file.ts] from streaming text */
-function renderStreamContent(text: string): React.ReactNode[] {
-  const parts = text.split(/(\[(?:Read|Write|Edit|Bash|Glob|Grep|WebFetch|WebSearch)\s[^\]]*\])/g);
-  return parts.map((part, i) => {
-    if (/^\[(?:Read|Write|Edit|Bash|Glob|Grep|WebFetch|WebSearch)\s/.test(part)) {
-      return (
-        <span
-          key={i}
-          className="inline-block text-[9px] px-1 py-px rounded mx-0.5"
-          style={{
-            backgroundColor: "hsl(220 10% 14%)",
-            color: "hsl(14 100% 60%)",
-          }}
-        >
-          {part}
-        </span>
-      );
-    }
-    return <span key={i}>{part}</span>;
-  });
-}
+import { renderStreamContent } from "./renderStreamContent";
 
 export const PaneStream = React.memo(function PaneStream({
   contextKey,

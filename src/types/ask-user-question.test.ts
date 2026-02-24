@@ -47,6 +47,32 @@ describe("AskUserQuestionOptionSchema", () => {
       AskUserQuestionOptionSchema.parse({ label: "Test" })
     ).not.toThrow();
   });
+
+  it("should accept null description (backend serializes Option::None as null)", () => {
+    const parsed = AskUserQuestionOptionSchema.parse({
+      label: "Option A",
+      description: null,
+    });
+    expect(parsed.description).toBeNull();
+  });
+
+  it("should accept null value (backend serializes Option::None as null)", () => {
+    const parsed = AskUserQuestionOptionSchema.parse({
+      label: "Option B",
+      value: null,
+    });
+    expect(parsed.value).toBeNull();
+  });
+
+  it("should accept options with both value and description as null", () => {
+    const parsed = AskUserQuestionOptionSchema.parse({
+      label: "Option C",
+      value: null,
+      description: null,
+    });
+    expect(parsed.value).toBeNull();
+    expect(parsed.description).toBeNull();
+  });
 });
 
 describe("AskUserQuestionPayloadSchema", () => {
@@ -135,6 +161,25 @@ describe("AskUserQuestionPayloadSchema", () => {
     // requestId is required - omitting it but also omitting taskId
     const { taskId: _t, ...bare } = noRequestId;
     expect(() => AskUserQuestionPayloadSchema.parse(bare)).toThrow();
+  });
+
+  it("should parse payload with null descriptions in options (MCP backend serializes None as null)", () => {
+    const payload = {
+      requestId: "req-mcp",
+      sessionId: "session-123",
+      question: "Pick an approach",
+      header: null,
+      options: [
+        { label: "Option A", value: "a", description: null },
+        { label: "Option B", value: "b", description: null },
+        { label: "Option C", value: null, description: "Has description" },
+      ],
+      multiSelect: false,
+    };
+    const parsed = AskUserQuestionPayloadSchema.parse(payload);
+    expect(parsed.options).toHaveLength(3);
+    expect(parsed.options[0]!.description).toBeNull();
+    expect(parsed.options[2]!.value).toBeNull();
   });
 
   it("should reject payload with non-boolean multiSelect", () => {
