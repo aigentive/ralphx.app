@@ -538,16 +538,17 @@ fn test_build_teammate_cli_args_no_allowed_tools_when_empty() {
 }
 
 #[test]
-fn test_build_teammate_cli_args_has_system_prompt() {
+fn test_build_teammate_cli_args_no_append_system_prompt() {
+    // --append-system-prompt was removed (commit 959c4c8d); teammates join via
+    // the team inbox system, not a one-shot prompt injection.
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
     let args = client.build_teammate_cli_args(&config);
 
-    let prompt_idx = args
-        .iter()
-        .position(|a| a == "--append-system-prompt")
-        .expect("--append-system-prompt flag must be present");
-    assert!(args[prompt_idx + 1].contains("transport research specialist"));
+    assert!(
+        !args.contains(&"--append-system-prompt".to_string()),
+        "--append-system-prompt must not be present (removed in 959c4c8d)"
+    );
 }
 
 #[test]
@@ -739,7 +740,6 @@ fn test_build_teammate_cli_args_full_integration() {
         "--model",
         "--tools",
         "--allowedTools",
-        "--append-system-prompt",
         "--dangerously-skip-permissions",
     ];
     for flag in &required_flags {

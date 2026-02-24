@@ -330,11 +330,9 @@ pub fn sanitize_claude_user_state() {
 /// passed via `--agent-type` CLI arg (for tool filtering). Returns the temp file path.
 /// Uses UUID in filename to avoid race conditions between parallel agent spawns.
 pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf> {
-    // project_root is the parent of plugin_dir (e.g. ralphx-plugin's parent = ralphx/)
-    // Used to expand ${CLAUDE_PLUGIN_ROOT} templates in .mcp.json args — the template
-    // convention uses CLAUDE_PLUGIN_ROOT to mean the project root, not the plugin subdir.
-    let project_root = plugin_dir.parent().unwrap_or(plugin_dir);
-    let mcp_server_path = project_root.join("ralphx-mcp-server/build/index.js");
+    // ${CLAUDE_PLUGIN_ROOT} in .mcp.json means the plugin_dir itself (e.g. ralphx-plugin/).
+    // spawn_teammate_interactive sets CLAUDE_PLUGIN_ROOT=plugin_dir, so expansion must match.
+    let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
     let mcp_server_path_str = mcp_server_path.to_string_lossy().to_string();
     // Resolve node path robustly — macOS GUI apps (Dock/Finder) have stripped PATH
     // (/usr/bin:/bin only), so which::which may fail. Fall back to common install paths.
@@ -418,13 +416,13 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
         if args_vec.is_empty() {
             args_vec.push(mcp_server_path_str);
         } else {
-            // Expand ${CLAUDE_PLUGIN_ROOT} templates to the resolved project root path.
-            // The .mcp.json convention uses CLAUDE_PLUGIN_ROOT to mean the project root
-            // (parent of ralphx-plugin/), not the plugin subdir itself.
-            let project_root_str = project_root.to_string_lossy();
+            // Expand ${CLAUDE_PLUGIN_ROOT} templates to the actual plugin_dir path.
+            // .mcp.json uses ${CLAUDE_PLUGIN_ROOT} as the plugin dir (e.g. ralphx-plugin/).
+            // Must match what spawn_teammate_interactive sets: CLAUDE_PLUGIN_ROOT=plugin_dir.
+            let plugin_dir_str = plugin_dir.to_string_lossy();
             args_vec = args_vec
                 .into_iter()
-                .map(|a| a.replace("${CLAUDE_PLUGIN_ROOT}", &project_root_str))
+                .map(|a| a.replace("${CLAUDE_PLUGIN_ROOT}", &plugin_dir_str))
                 .collect();
         }
 
