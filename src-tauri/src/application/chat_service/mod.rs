@@ -1010,6 +1010,96 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         content: &str,
         client_id: Option<&str>,
     ) -> Result<QueuedMessage, ChatServiceError> {
+        // Interactive fast-path: if an interactive process exists, send immediately
+        // instead of queuing. The Claude CLI handles internal message queuing mid-turn.
+        let interactive_key =
+            InteractiveProcessKey::new(context_type.to_string(), context_id);
+        if self
+            .interactive_process_registry
+            .has_process(&interactive_key)
+            .await
+        {
+            tracing::info!(
+                %context_type,
+                context_id,
+                "queue_message: interactive process found, sending immediately via stdin"
+            );
+
+            let stdin_prompt = chat_service_context::build_initial_prompt(
+                context_type,
+                context_id,
+                content,
+            );
+            let stream_json_msg =
+                crate::infrastructure::agents::claude::format_stream_json_input(&stdin_prompt);
+
+            match self
+                .interactive_process_registry
+                .write_message(&interactive_key, &stream_json_msg)
+                .await
+            {
+                Ok(()) => {
+                    // Persist user message for conversation history
+                    let conversation = self
+                        .get_or_create_conversation(context_type, context_id)
+                        .await?;
+                    let user_msg = chat_service_context::create_user_message(
+                        context_type,
+                        context_id,
+                        content,
+                        conversation.id,
+                    );
+                    let user_msg_id = user_msg.id.as_str().to_string();
+                    let _ = self.chat_message_repo.create(user_msg).await;
+
+                    // Emit message_created so frontend shows the user message
+                    self.emit_event(
+                        "agent:message_created",
+                        AgentMessageCreatedPayload {
+                            message_id: user_msg_id,
+                            conversation_id: conversation.id.as_str().to_string(),
+                            context_type: context_type.to_string(),
+                            context_id: context_id.to_string(),
+                            role: "user".to_string(),
+                            content: content.to_string(),
+                        },
+                    );
+
+                    // Build a QueuedMessage for API compatibility
+                    let msg_id = client_id
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                    let queued_msg = QueuedMessage::with_id(msg_id.clone(), content.to_string());
+
+                    // Emit queue_sent to remove from frontend optimistic queue UI
+                    self.emit_event(
+                        "agent:queue_sent",
+                        AgentQueueSentPayload {
+                            message_id: msg_id,
+                            conversation_id: conversation.id.as_str().to_string(),
+                            context_type: context_type.to_string(),
+                            context_id: context_id.to_string(),
+                        },
+                    );
+
+                    return Ok(queued_msg);
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        %context_type,
+                        context_id,
+                        error = %e,
+                        "queue_message: interactive stdin write failed, falling back to normal queue"
+                    );
+                    // Remove broken entry, fall through to normal queue
+                    self.interactive_process_registry
+                        .remove(&interactive_key)
+                        .await;
+                }
+            }
+        }
+
+        // Normal queue path (no interactive process or stdin write failed)
         Ok(match client_id {
             Some(id) => self.message_queue.queue_with_client_id(
                 context_type,
