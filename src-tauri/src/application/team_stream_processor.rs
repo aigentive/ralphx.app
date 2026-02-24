@@ -112,6 +112,16 @@ pub fn start_teammate_stream<R: Runtime>(
                 Ok(Some(line)) => {
                     lines_seen += 1;
 
+                    // Log raw stdout line for debugging teammate output visibility
+                    tracing::debug!(
+                        teammate = %teammate_name,
+                        team = %team_name,
+                        lines_seen,
+                        line_len = line.len(),
+                        line_preview = %if line.len() > 200 { &line[..200] } else { &line },
+                        "teammate stdout line"
+                    );
+
                     if let Some(parsed) = StreamProcessor::parse_line(&line) {
                         lines_parsed += 1;
                         let stream_events = processor.process_parsed_line(parsed);
@@ -334,9 +344,16 @@ pub fn start_teammate_stream<R: Runtime>(
                         }
                     }
 
-                    // Check for result events with cost info and persist text buffer
+                    // Check for events with cost/usage info and persist text buffer.
+                    //
+                    // Token sources:
+                    // - "type": "result" — final turn cost + usage (authoritative)
+                    // - "type": "assistant" — per-message usage for real-time updates
+                    //   (emitted mid-turn when model produces each response)
                     if let Ok(raw) = serde_json::from_str::<serde_json::Value>(&line) {
-                        if raw.get("type").and_then(|t| t.as_str()) == Some("result") {
+                        let event_type = raw.get("type").and_then(|t| t.as_str());
+
+                        if event_type == Some("result") {
                             // Persist accumulated text as a teammate message on turn boundary
                             if !text_buffer.is_empty() {
                                 if let Some(ref service) = team_service {
@@ -396,6 +413,43 @@ pub fn start_teammate_stream<R: Runtime>(
                                 &context_type,
                                 &context_id,
                             );
+                        } else if event_type == Some("assistant") {
+                            // Real-time token updates from assistant message events.
+                            // These carry a top-level `message.usage` with cumulative
+                            // input/output tokens for the current turn, letting the UI
+                            // show progress before the final "result" event arrives.
+                            let updated = extract_assistant_usage(
+                                &raw,
+                                &mut total_input_tokens,
+                                &mut total_output_tokens,
+                            );
+                            if updated {
+                                let cost = TeammateCost {
+                                    input_tokens: total_input_tokens,
+                                    output_tokens: total_output_tokens,
+                                    cache_creation_tokens: 0,
+                                    cache_read_tokens: 0,
+                                    estimated_usd: total_cost_usd,
+                                };
+                                let _ = team_tracker
+                                    .update_teammate_cost(
+                                        &team_name,
+                                        &teammate_name,
+                                        cost,
+                                    )
+                                    .await;
+
+                                team_events::emit_team_cost_update(
+                                    &app_handle,
+                                    &team_name,
+                                    &teammate_name,
+                                    total_input_tokens,
+                                    total_output_tokens,
+                                    total_cost_usd,
+                                    &context_type,
+                                    &context_id,
+                                );
+                            }
                         }
                     }
 
@@ -482,6 +536,47 @@ pub fn start_teammate_stream<R: Runtime>(
             "Teammate stream processor finished"
         );
     })
+}
+
+/// Extract usage tokens from a `"type": "assistant"` event's `message.usage` field.
+///
+/// Claude Code emits assistant events with cumulative usage per-message:
+/// ```json
+/// {"type":"assistant","message":{"usage":{"input_tokens":1234,"output_tokens":567},...},...}
+/// ```
+///
+/// Updates the running totals only if the new values exceed the current totals
+/// (usage is cumulative within a turn, so later messages have higher counts).
+///
+/// Returns `true` if the totals were updated (i.e., the UI should be notified).
+fn extract_assistant_usage(
+    raw: &serde_json::Value,
+    total_input: &mut u64,
+    total_output: &mut u64,
+) -> bool {
+    let usage = raw
+        .get("message")
+        .and_then(|m| m.get("usage"));
+    let Some(usage) = usage else {
+        return false;
+    };
+
+    let input = usage.get("input_tokens").and_then(|t| t.as_u64()).unwrap_or(0);
+    let output = usage.get("output_tokens").and_then(|t| t.as_u64()).unwrap_or(0);
+
+    // Only update if the new cumulative values exceed current totals.
+    // Assistant usage is cumulative within a turn — later messages have higher counts.
+    if input > *total_input || output > *total_output {
+        if input > *total_input {
+            *total_input = input;
+        }
+        if output > *total_output {
+            *total_output = output;
+        }
+        true
+    } else {
+        false
+    }
 }
 
 #[cfg(test)]

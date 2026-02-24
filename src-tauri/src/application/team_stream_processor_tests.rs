@@ -78,3 +78,131 @@ fn test_message_type_mapping() {
     };
     assert_eq!(message_type, TeamMessageType::TeammateMessage);
 }
+
+// ============================================================================
+// extract_assistant_usage tests
+// ============================================================================
+
+#[test]
+fn test_extract_assistant_usage_updates_from_message_usage() {
+    let raw = serde_json::json!({
+        "type": "assistant",
+        "message": {
+            "usage": {
+                "input_tokens": 1500,
+                "output_tokens": 300
+            },
+            "content": [{"type": "text", "text": "hello"}]
+        }
+    });
+
+    let mut total_input = 0u64;
+    let mut total_output = 0u64;
+
+    let updated = extract_assistant_usage(&raw, &mut total_input, &mut total_output);
+
+    assert!(updated, "Should return true when totals increase");
+    assert_eq!(total_input, 1500);
+    assert_eq!(total_output, 300);
+}
+
+#[test]
+fn test_extract_assistant_usage_cumulative_only_increases() {
+    // Assistant usage is cumulative within a turn — later messages have higher counts.
+    // Earlier (lower) values should not reduce the totals.
+    let mut total_input = 2000u64;
+    let mut total_output = 500u64;
+
+    let raw = serde_json::json!({
+        "type": "assistant",
+        "message": {
+            "usage": {
+                "input_tokens": 1500,
+                "output_tokens": 300
+            }
+        }
+    });
+
+    let updated = extract_assistant_usage(&raw, &mut total_input, &mut total_output);
+
+    assert!(!updated, "Should return false when new values are lower");
+    assert_eq!(total_input, 2000, "Input should stay at higher value");
+    assert_eq!(total_output, 500, "Output should stay at higher value");
+}
+
+#[test]
+fn test_extract_assistant_usage_partial_increase() {
+    // Only input increases, output stays the same
+    let mut total_input = 1000u64;
+    let mut total_output = 500u64;
+
+    let raw = serde_json::json!({
+        "type": "assistant",
+        "message": {
+            "usage": {
+                "input_tokens": 2000,
+                "output_tokens": 300
+            }
+        }
+    });
+
+    let updated = extract_assistant_usage(&raw, &mut total_input, &mut total_output);
+
+    assert!(updated, "Should return true when at least one total increases");
+    assert_eq!(total_input, 2000, "Input should update to higher value");
+    assert_eq!(total_output, 500, "Output should stay at higher value");
+}
+
+#[test]
+fn test_extract_assistant_usage_no_usage_field() {
+    let raw = serde_json::json!({
+        "type": "assistant",
+        "message": {
+            "content": [{"type": "text", "text": "hello"}]
+        }
+    });
+
+    let mut total_input = 100u64;
+    let mut total_output = 50u64;
+
+    let updated = extract_assistant_usage(&raw, &mut total_input, &mut total_output);
+
+    assert!(!updated, "Should return false when no usage field");
+    assert_eq!(total_input, 100, "Input should be unchanged");
+    assert_eq!(total_output, 50, "Output should be unchanged");
+}
+
+#[test]
+fn test_extract_assistant_usage_no_message_field() {
+    let raw = serde_json::json!({
+        "type": "assistant"
+    });
+
+    let mut total_input = 0u64;
+    let mut total_output = 0u64;
+
+    let updated = extract_assistant_usage(&raw, &mut total_input, &mut total_output);
+
+    assert!(!updated, "Should return false when no message field");
+}
+
+#[test]
+fn test_extract_assistant_usage_zero_initial_values() {
+    // Even zero → zero should not count as an update
+    let raw = serde_json::json!({
+        "type": "assistant",
+        "message": {
+            "usage": {
+                "input_tokens": 0,
+                "output_tokens": 0
+            }
+        }
+    });
+
+    let mut total_input = 0u64;
+    let mut total_output = 0u64;
+
+    let updated = extract_assistant_usage(&raw, &mut total_input, &mut total_output);
+
+    assert!(!updated, "Should return false when values are equal (both zero)");
+}
