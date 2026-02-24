@@ -159,6 +159,8 @@ pub struct AppState {
     pub attachment_storage_path: PathBuf,
     /// Streaming state cache for hydrating frontend on navigation to active conversations
     pub streaming_state_cache: crate::application::chat_service::StreamingStateCache,
+    /// Interactive process registry for stdin-based multi-turn messaging
+    pub interactive_process_registry: Arc<crate::application::InteractiveProcessRegistry>,
     /// Tauri app handle for emitting events to frontend (None in tests)
     pub app_handle: Option<AppHandle>,
 }
@@ -316,6 +318,7 @@ impl AppState {
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
+            interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: Some(app_handle),
         })
     }
@@ -462,6 +465,7 @@ impl AppState {
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
+            interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: Some(app_handle),
         })
     }
@@ -533,6 +537,7 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
+            interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: None,
         }
     }
@@ -606,6 +611,7 @@ impl AppState {
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
+            interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: None,
         }
     }

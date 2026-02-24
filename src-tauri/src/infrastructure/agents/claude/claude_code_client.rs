@@ -68,6 +68,9 @@ pub struct StreamingSpawnResult {
     pub handle: AgentHandle,
     /// The spawned child process (stdout is piped for stream processing)
     pub child: Child,
+    /// Stdin pipe for interactive mode. `Some` when spawned via `spawn_agent_interactive()`.
+    /// `None` for standard streaming spawns (backward-compat default).
+    pub stdin: Option<tokio::process::ChildStdin>,
 }
 
 // ============================================================================
@@ -534,12 +537,23 @@ impl ClaudeCodeClient {
     ///
     /// This is used by both spawn_agent and spawn_agent_streaming to ensure
     /// consistent argument construction.
-    fn build_cli_args(&self, config: &AgentConfig, resume_session_id: Option<&str>) -> Vec<String> {
+    ///
+    /// When `interactive` is `true`, the `-p` flag is omitted so the process stays
+    /// alive for multi-turn messaging via stdin. All other flags (tools, model, etc.)
+    /// are still applied.
+    fn build_cli_args(
+        &self,
+        config: &AgentConfig,
+        resume_session_id: Option<&str>,
+        interactive: bool,
+    ) -> Vec<String> {
         sanitize_claude_user_state();
         let mut args = Vec::new();
 
-        // Prompt
-        args.extend(["-p".to_string(), config.prompt.clone()]);
+        // Prompt — omitted for interactive mode (caller sends prompt via stdin)
+        if !interactive {
+            args.extend(["-p".to_string(), config.prompt.clone()]);
+        }
 
         // Output format for streaming
         args.extend(["--output-format".to_string(), "stream-json".to_string()]);
@@ -676,7 +690,7 @@ impl ClaudeCodeClient {
             )));
         }
 
-        let args = self.build_cli_args(&config, resume_session_id);
+        let args = self.build_cli_args(&config, resume_session_id, false);
 
         // Build command
         let mut cmd = tokio::process::Command::new(&self.cli_path);
@@ -684,7 +698,7 @@ impl ClaudeCodeClient {
             .current_dir(&config.working_directory)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .stdin(Stdio::null());
+            .stdin(Stdio::piped()); // piped (was null) — supports interactive callers in task #4
         apply_common_spawn_env(&mut cmd);
         if let Some(plugin_dir) = &config.plugin_dir {
             cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
@@ -697,13 +711,92 @@ impl ClaudeCodeClient {
 
         // Spawn the process
         tracing::info!(cmd = ?cmd, "Spawning CLI agent (streaming)");
-        let child = cmd
+        let mut child = cmd
             .spawn()
             .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
 
+        // Take stdin (piped above). None is returned for standard streaming mode
+        // (backward compat). Interactive callers use spawn_agent_interactive() instead.
+        let stdin = child.stdin.take();
+
         let handle = AgentHandle::new(ClientType::ClaudeCode, config.role);
 
-        Ok(StreamingSpawnResult { handle, child })
+        Ok(StreamingSpawnResult { handle, child, stdin })
+    }
+
+    /// Spawn an agent in interactive mode (no `-p` flag, stdin kept open).
+    ///
+    /// Unlike `spawn_agent_streaming` (which uses `-p <prompt>` for one-shot turns),
+    /// this starts the Claude CLI without a prompt flag so it enters interactive/REPL
+    /// mode and waits for input via stdin. The caller sends the initial prompt via
+    /// the returned `stdin` handle and can write additional messages for multi-turn.
+    ///
+    /// The returned `StreamingSpawnResult.stdin` is always `Some` from this method.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// let result = client.spawn_agent_interactive(config, None).await?;
+    /// let mut stdin = result.stdin.unwrap();
+    /// // Send initial prompt
+    /// stdin.write_all(b"Analyze this codebase\n").await?;
+    /// // Process stdout stream-json events...
+    /// // Send a follow-up message later:
+    /// stdin.write_all(b"Now summarize your findings\n").await?;
+    /// ```
+    pub async fn spawn_agent_interactive(
+        &self,
+        config: AgentConfig,
+        resume_session_id: Option<&str>,
+    ) -> AgentResult<StreamingSpawnResult> {
+        if let Err(err) = ensure_claude_spawn_allowed() {
+            return Err(AgentError::SpawnNotAllowed(err));
+        }
+
+        // Check if CLI is available first
+        if !self.cli_path.exists() && which::which(&self.cli_path).is_err() {
+            return Err(AgentError::CliNotAvailable(format!(
+                "claude CLI not found at {:?}",
+                self.cli_path
+            )));
+        }
+
+        // Build args without -p (interactive=true)
+        let args = self.build_cli_args(&config, resume_session_id, true);
+
+        // Build command with stdin piped for message delivery
+        let mut cmd = tokio::process::Command::new(&self.cli_path);
+        cmd.args(&args)
+            .current_dir(&config.working_directory)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .stdin(Stdio::piped()); // Piped — caller writes prompt + future messages
+        apply_common_spawn_env(&mut cmd);
+        if let Some(plugin_dir) = &config.plugin_dir {
+            cmd.env("CLAUDE_PLUGIN_ROOT", plugin_dir);
+        }
+
+        for (key, value) in &config.env {
+            cmd.env(key, value);
+        }
+
+        tracing::info!(cmd = ?cmd, "Spawning CLI agent (interactive, no -p)");
+        let mut child = cmd
+            .spawn()
+            .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
+
+        // stdin must be present — we configured Stdio::piped() above
+        let stdin = child.stdin.take().ok_or_else(|| {
+            AgentError::SpawnFailed("Failed to capture stdin pipe for interactive agent".to_string())
+        })?;
+
+        let handle = AgentHandle::new(ClientType::ClaudeCode, config.role);
+
+        Ok(StreamingSpawnResult {
+            handle,
+            child,
+            stdin: Some(stdin),
+        })
     }
 
     /// Check if the Claude CLI is available

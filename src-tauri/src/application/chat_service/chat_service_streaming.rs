@@ -14,9 +14,12 @@ use crate::application::question_state::QuestionState;
 use crate::application::team_events;
 use crate::application::team_state_tracker::TeammateStatus;
 use crate::domain::entities::{
-    ActivityEvent, ActivityEventType, ChatContextType, ChatConversationId, ChatMessageId, TaskId,
+    ActivityEvent, ActivityEventType, AgentRunId, ChatContextType, ChatConversationId,
+    ChatMessageId, TaskId,
 };
-use crate::domain::repositories::{ActivityEventRepository, ChatMessageRepository, TaskRepository};
+use crate::domain::repositories::{
+    ActivityEventRepository, AgentRunRepository, ChatMessageRepository, TaskRepository,
+};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::stream_timeouts;
 use crate::infrastructure::agents::claude::{
@@ -118,6 +121,11 @@ pub struct StreamOutcome {
     pub content_blocks: Vec<ContentBlockItem>,
     pub session_id: Option<String>,
     pub stderr_text: String,
+    /// Number of turns fully finalized during interactive streaming
+    /// (via `TurnComplete` events). When > 0 and `response_text` is empty,
+    /// the post-loop caller should skip re-finalization and duplicate
+    /// `run_completed` emission.
+    pub turns_finalized: usize,
 }
 
 impl StreamOutcome {
@@ -189,13 +197,15 @@ pub async fn process_stream_background<R: Runtime>(
     activity_event_repo: Option<Arc<dyn ActivityEventRepository>>,
     task_repo: Option<Arc<dyn TaskRepository>>,
     chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
-    assistant_message_id: Option<String>,
+    mut assistant_message_id: Option<String>,
     question_state: Option<Arc<QuestionState>>,
     cancellation_token: CancellationToken,
     team_service: Option<std::sync::Arc<crate::application::TeamService>>,
     team_mode: bool,
     streaming_state_cache: StreamingStateCache,
     running_agent_registry: Option<Arc<dyn RunningAgentRegistry>>,
+    agent_run_repo: Option<Arc<dyn AgentRunRepository>>,
+    agent_run_id: Option<String>,
 ) -> Result<StreamOutcome, StreamError> {
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
     // Team leads wait long periods while teammates work — use team-specific timeout
@@ -295,6 +305,10 @@ pub async fn process_stream_background<R: Runtime>(
     // lets the timeout handler know work is still happening.
     let mut active_task_tracker = ActiveTaskTracker::default();
 
+    // Count of turns fully finalized in the loop (interactive mode).
+    // Used to tell the caller whether post-loop finalization should be skipped.
+    let mut turns_finalized: usize = 0;
+
     loop {
         // Race line-read (with timeout) against cancellation token
         let line = tokio::select! {
@@ -385,6 +399,31 @@ pub async fn process_stream_background<R: Runtime>(
             let stream_events = processor.process_parsed_line(parsed);
 
             for event in stream_events {
+                // Lazily create assistant message on first content-producing event
+                if assistant_message_id.is_none()
+                    && matches!(
+                        event,
+                        StreamEvent::TextChunk(_)
+                            | StreamEvent::Thinking(_)
+                            | StreamEvent::ToolCallStarted { .. }
+                    )
+                {
+                    if let Some(ref repo) = chat_message_repo {
+                        let msg =
+                            super::chat_service_context::create_assistant_message(
+                                context_type,
+                                context_id,
+                                "",
+                                conversation_id.clone(),
+                                &[],
+                                &[],
+                            );
+                        let new_id = msg.id.as_str().to_string();
+                        let _ = repo.create(msg).await;
+                        assistant_message_id = Some(new_id);
+                    }
+                }
+
                 match event {
                     StreamEvent::TextChunk(text) => {
                         // Update streaming state cache
@@ -644,6 +683,74 @@ pub async fn process_stream_background<R: Runtime>(
                     }
                     StreamEvent::SessionId(_) => {
                         // Captured in processor.finish()
+                    }
+                    StreamEvent::TurnComplete { session_id } => {
+                        tracing::info!(
+                            conversation_id = %conversation_id_str,
+                            ?session_id,
+                            "TurnComplete: finalizing assistant message for interactive turn"
+                        );
+
+                        // Finalize the current assistant message with accumulated content
+                        if let (Some(ref repo), Some(ref msg_id)) =
+                            (&chat_message_repo, &assistant_message_id)
+                        {
+                            let role = super::chat_service_helpers::get_assistant_role(
+                                &context_type,
+                            )
+                            .to_string();
+                            let tool_calls_json =
+                                serde_json::to_string(&processor.tool_calls).ok();
+                            let content_blocks_json =
+                                serde_json::to_string(&processor.content_blocks).ok();
+                            super::chat_service_send_background::finalize_assistant_message(
+                                repo,
+                                app_handle.as_ref(),
+                                &event_ctx,
+                                msg_id,
+                                &role,
+                                &processor.response_text,
+                                tool_calls_json.as_deref(),
+                                content_blocks_json.as_deref(),
+                            )
+                            .await;
+                        }
+
+                        // Complete the agent_run DB record so the recovery poll
+                        // (`useChatRecovery`) no longer sees status=running.
+                        if let (Some(ref repo), Some(ref run_id)) =
+                            (&agent_run_repo, &agent_run_id)
+                        {
+                            let _ = repo
+                                .complete(&AgentRunId::from_string(run_id))
+                                .await;
+                        }
+
+                        // Emit run_completed so the frontend exits "responding" state
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                events::AGENT_RUN_COMPLETED,
+                                super::chat_service_types::AgentRunCompletedPayload {
+                                    conversation_id: conversation_id_str.clone(),
+                                    context_type: context_type_str.clone(),
+                                    context_id: context_id_str.clone(),
+                                    claude_session_id: session_id,
+                                    run_chain_id: None,
+                                },
+                            );
+                        }
+
+                        // Clear streaming state cache (same as normal run_completed path)
+                        streaming_state_cache.clear(&conversation_id_str).await;
+
+                        // Reset processor for the next turn (preserves session_id)
+                        processor.reset_for_next_turn();
+
+                        // Clear assistant message ID — a new one will be lazily
+                        // created when the next content-producing event arrives.
+                        assistant_message_id = None;
+
+                        turns_finalized += 1;
                     }
                     StreamEvent::TaskStarted {
                         tool_use_id,
@@ -1164,6 +1271,7 @@ pub async fn process_stream_background<R: Runtime>(
         content_blocks: result.content_blocks,
         session_id: result.session_id,
         stderr_text: stderr_content,
+        turns_finalized,
     };
 
     // Final flush of accumulated content so post-loop error returns don't lose data

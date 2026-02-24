@@ -84,8 +84,13 @@ fn test_processor_session_id_from_result() {
 
     let events = processor.process_message(msg);
 
-    assert_eq!(events.len(), 1);
+    // Result message emits both SessionId and TurnComplete for the lead
+    assert_eq!(events.len(), 2);
     assert!(matches!(&events[0], StreamEvent::SessionId(id) if id == "result-session"));
+    assert!(matches!(
+        &events[1],
+        StreamEvent::TurnComplete { session_id } if *session_id == Some("result-session".to_string())
+    ));
 
     let result = processor.finish();
     assert_eq!(result.session_id, Some("result-session".to_string()));

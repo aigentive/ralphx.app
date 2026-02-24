@@ -223,6 +223,15 @@ impl StreamProcessor {
                         self.session_id = session_id.clone();
                         events.push(StreamEvent::SessionId(id.clone()));
                     }
+
+                    // Emit TurnComplete so the stream handler can finalize the
+                    // assistant message and emit run_completed. In interactive mode
+                    // (multi-turn), this signals the end of one turn while the CLI
+                    // process stays alive for more. In single-turn mode, EOF follows
+                    // immediately after.
+                    events.push(StreamEvent::TurnComplete {
+                        session_id: self.session_id.clone(),
+                    });
                 }
                 if is_error {
                     self.result_is_error = true;
@@ -468,6 +477,30 @@ impl StreamProcessor {
         }
 
         events
+    }
+
+    /// Reset accumulated state for the next interactive turn.
+    /// Preserves `session_id` (stable across turns) but clears all content,
+    /// tool calls, and error state so the next turn starts fresh.
+    pub fn reset_for_next_turn(&mut self) {
+        // Flush any pending text block
+        if !self.current_text_block.is_empty() {
+            self.content_blocks.push(ContentBlockItem::Text {
+                text: self.current_text_block.clone(),
+            });
+            self.current_text_block.clear();
+        }
+        self.response_text.clear();
+        self.tool_calls.clear();
+        self.content_blocks.clear();
+        self.current_tool_name.clear();
+        self.current_tool_id = None;
+        self.current_tool_input.clear();
+        self.in_thinking_block = false;
+        self.current_thinking_block.clear();
+        self.result_is_error = false;
+        self.result_errors.clear();
+        self.result_subtype = None;
     }
 
     /// Get the final result after stream is complete

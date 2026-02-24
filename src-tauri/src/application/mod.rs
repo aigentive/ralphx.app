@@ -10,6 +10,7 @@ pub mod dependency_service;
 pub mod diff_service;
 pub mod git_service;
 pub mod ideation_service;
+pub mod interactive_process_registry;
 pub mod memory_archive_service;
 pub mod memory_orchestration;
 pub mod permission_state;
@@ -46,6 +47,7 @@ pub use git_service::{
     checkout_free::CheckoutFreeMergeResult, CommitInfo, DiffStats, GitService, MergeAttemptResult,
     MergeResult, RebaseResult,
 };
+pub use interactive_process_registry::{InteractiveProcessKey, InteractiveProcessRegistry};
 pub use ideation_service::{
     CreateProposalOptions, IdeationService, SessionStats, SessionWithData, UpdateProposalOptions,
 };

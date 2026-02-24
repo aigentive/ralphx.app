@@ -26,6 +26,9 @@ mod chat_service_streaming;
 mod chat_service_types;
 mod streaming_state_cache;
 
+use crate::application::interactive_process_registry::{
+    InteractiveProcessKey, InteractiveProcessRegistry,
+};
 use crate::application::question_state::QuestionState;
 use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
@@ -267,6 +270,8 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     team_service: Option<std::sync::Arc<crate::application::TeamService>>,
     /// Cache for streaming state, used to hydrate frontend on navigation.
     streaming_state_cache: StreamingStateCache,
+    /// Registry of interactive processes with open stdin handles for multi-turn messaging.
+    interactive_process_registry: Arc<InteractiveProcessRegistry>,
 }
 
 impl<R: Runtime> ClaudeChatService<R> {
@@ -321,6 +326,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             team_mode: AtomicBool::new(false),
             team_service: None,
             streaming_state_cache: StreamingStateCache::new(),
+            interactive_process_registry: Arc::new(InteractiveProcessRegistry::new()),
         }
     }
 
@@ -387,6 +393,14 @@ impl<R: Runtime> ClaudeChatService<R> {
         self
     }
 
+    pub fn with_interactive_process_registry(
+        mut self,
+        registry: Arc<InteractiveProcessRegistry>,
+    ) -> Self {
+        self.interactive_process_registry = registry;
+        self
+    }
+
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
         self.app_handle = Some(app_handle);
         self
@@ -426,7 +440,9 @@ impl<R: Runtime> ClaudeChatService<R> {
         .await
     }
 
-    /// Create a spawnable Claude CLI command.
+    /// Create a spawnable Claude CLI command (one-shot mode with `-p`).
+    /// Kept for fallback/non-interactive spawn paths (queue resume, retry).
+    #[allow(dead_code)]
     async fn build_command(
         &self,
         conversation: &ChatConversation,
@@ -436,6 +452,30 @@ impl<R: Runtime> ClaudeChatService<R> {
         project_id: Option<&str>,
     ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_command(
+            &self.cli_path,
+            &self.plugin_dir,
+            conversation,
+            user_message,
+            working_directory,
+            entity_status,
+            project_id,
+            self.team_mode.load(Ordering::Relaxed),
+            Arc::clone(&self.chat_attachment_repo),
+        )
+        .await
+        .map_err(ChatServiceError::SpawnFailed)
+    }
+
+    /// Create a spawnable interactive CLI command (no `-p`, stdin kept open).
+    async fn build_interactive_command(
+        &self,
+        conversation: &ChatConversation,
+        user_message: &str,
+        working_directory: &Path,
+        entity_status: Option<&str>,
+        project_id: Option<&str>,
+    ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
+        chat_service_context::build_interactive_command(
             &self.cli_path,
             &self.plugin_dir,
             conversation,
@@ -509,7 +549,98 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             "chat_service.send_message conversation"
         );
 
-        // 1b. Atomic guard: claim the agent slot to prevent TOCTOU race.
+        // 1b. Interactive fast-path: if an interactive process is already running
+        //     for this context, write the message directly to its stdin.
+        //     The Claude CLI handles internal queuing of messages sent mid-turn.
+        let interactive_key =
+            InteractiveProcessKey::new(context_type.to_string(), context_id);
+        if self
+            .interactive_process_registry
+            .has_process(&interactive_key)
+            .await
+        {
+            tracing::info!(
+                %context_type,
+                context_id,
+                "chat_service.send_message: interactive process found, writing to stdin"
+            );
+
+            // Build the prompt with context wrapping, then format as stream-json input.
+            // The interactive process uses `-p - --input-format stream-json`, so each
+            // message must be a single-line JSON object.
+            let stdin_prompt = chat_service_context::build_initial_prompt(
+                context_type,
+                context_id,
+                message,
+            );
+            let stream_json_msg =
+                crate::infrastructure::agents::claude::format_stream_json_input(&stdin_prompt);
+
+            match self
+                .interactive_process_registry
+                .write_message(&interactive_key, &stream_json_msg)
+                .await
+            {
+                Ok(()) => {
+                    // Store user message for conversation history
+                    let user_msg = chat_service_context::create_user_message(
+                        context_type,
+                        context_id,
+                        message,
+                        conversation.id,
+                    );
+                    let user_msg_id = user_msg.id.as_str().to_string();
+                    let _ = self.chat_message_repo.create(user_msg).await;
+
+                    // Emit message_created event for frontend
+                    self.emit_event(
+                        "agent:message_created",
+                        AgentMessageCreatedPayload {
+                            message_id: user_msg_id,
+                            conversation_id: conversation.id.as_str().to_string(),
+                            context_type: context_type.to_string(),
+                            context_id: context_id.to_string(),
+                            role: "user".to_string(),
+                            content: message.to_string(),
+                        },
+                    );
+
+                    // Emit run_started so frontend shows activity spinner
+                    let interactive_run_id = uuid::Uuid::new_v4().to_string();
+                    self.emit_event(
+                        "agent:run_started",
+                        AgentRunStartedPayload {
+                            run_id: interactive_run_id,
+                            conversation_id: conversation.id.as_str().to_string(),
+                            context_type: context_type.to_string(),
+                            context_id: context_id.to_string(),
+                            run_chain_id: None,
+                            parent_run_id: None,
+                        },
+                    );
+
+                    return Ok(SendResult {
+                        conversation_id: conversation.id.as_str().to_string(),
+                        agent_run_id: uuid::Uuid::new_v4().to_string(),
+                        is_new_conversation: false,
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        %context_type,
+                        context_id,
+                        error = %e,
+                        "chat_service.send_message: interactive stdin write failed, \
+                         falling back to new spawn"
+                    );
+                    // Remove the broken entry so we don't keep trying
+                    self.interactive_process_registry.remove(&interactive_key).await;
+                    // Fall through to normal spawn path
+                }
+            }
+        }
+
+        // 1c. Atomic guard: claim the agent slot to prevent TOCTOU race.
         //     If an agent is already registered for this context, queue the message.
         //     Create the AgentRun early so its ID can be stored in the slot for ownership tracking.
         let agent_run = AgentRun::new(conversation.id);
@@ -747,10 +878,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
         tracing::debug!(
             cli_path = %self.cli_path.display(),
-            "chat_service.send_message building command"
+            "chat_service.send_message building interactive command"
         );
         let spawnable = match self
-            .build_command(
+            .build_interactive_command(
                 &conversation,
                 message,
                 &working_directory,
@@ -764,15 +895,22 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 cleanup_and_err!(e);
             }
         };
-        tracing::info!(cmd = ?spawnable, "Spawning CLI agent");
-        let child = match spawnable.spawn().await {
-            Ok(child) => child,
+        tracing::info!(cmd = ?spawnable, "Spawning CLI agent (interactive)");
+        let (child, child_stdin) = match spawnable.spawn_interactive().await {
+            Ok(pair) => pair,
             Err(e) => {
-                tracing::error!(error = %e, "chat_service.send_message spawn failed");
+                tracing::error!(error = %e, "chat_service.send_message interactive spawn failed");
                 cleanup_and_err!(ChatServiceError::SpawnFailed(e.to_string()));
             }
         };
-        tracing::debug!(pid = ?child.id(), "chat_service.send_message spawn ok");
+        tracing::debug!(pid = ?child.id(), "chat_service.send_message interactive spawn ok");
+
+        // Register stdin in the interactive process registry for future message delivery
+        let interactive_key_for_register =
+            InteractiveProcessKey::new(context_type.to_string(), context_id);
+        self.interactive_process_registry
+            .register(interactive_key_for_register, child_stdin)
+            .await;
 
         let registry_worktree = working_directory.to_string_lossy().to_string();
 
@@ -847,6 +985,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             cancellation_token,
             team_service: self.team_service.clone(),
             streaming_state_cache: self.streaming_state_cache.clone(),
+            interactive_process_registry: Some(Arc::clone(&self.interactive_process_registry)),
         };
 
         // 9. Process stream in background (extracted to separate module)
@@ -964,6 +1103,11 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         context_id: &str,
     ) -> Result<bool, ChatServiceError> {
         let key = RunningAgentKey::new(context_type.to_string(), context_id);
+
+        // Also remove from interactive process registry (closes stdin pipe)
+        let interactive_key =
+            InteractiveProcessKey::new(context_type.to_string(), context_id);
+        self.interactive_process_registry.remove(&interactive_key).await;
 
         match self.running_agent_registry.stop(&key).await {
             Ok(Some(info)) => {

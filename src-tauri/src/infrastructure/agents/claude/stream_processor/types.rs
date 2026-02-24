@@ -280,6 +280,10 @@ pub enum StreamEvent {
     },
     /// Team deleted (from TeamDelete tool result)
     TeamDeleted { team_name: String },
+    /// Turn completed — the lead's result event signals the end of one
+    /// agentic turn in interactive (multi-turn) mode. The CLI process stays
+    /// alive for subsequent turns.
+    TurnComplete { session_id: Option<String> },
 }
 
 // ============================================================================

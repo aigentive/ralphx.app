@@ -336,9 +336,11 @@ pub fn start_teammate_stream<R: Runtime>(
                                 | StreamEvent::HookBlock { .. }
                                 | StreamEvent::TeamCreated { .. }
                                 | StreamEvent::TeammateSpawned { .. }
-                                | StreamEvent::TeamDeleted { .. } => {
-                                    // Hook and team events from teammates are not forwarded
-                                    // (hooks run on the lead, team events only relevant from lead's stream)
+                                | StreamEvent::TeamDeleted { .. }
+                                | StreamEvent::TurnComplete { .. } => {
+                                    // Hook, team, and turn-complete events from teammates are not forwarded
+                                    // (hooks run on the lead, team events only relevant from lead's stream,
+                                    // turn completion is handled by the lead's stream processor)
                                 }
                             }
                         }

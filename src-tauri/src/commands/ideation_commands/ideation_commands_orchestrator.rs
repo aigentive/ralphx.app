@@ -62,7 +62,8 @@ pub async fn send_orchestrator_message(
     )
     .with_app_handle(app)
     .with_plan_branch_repo(state.plan_branch_repo.clone())
-    .with_task_proposal_repo(state.task_proposal_repo.clone());
+    .with_task_proposal_repo(state.task_proposal_repo.clone())
+    .with_interactive_process_registry(state.interactive_process_registry.clone());
 
     // Check if service is available
     if !chat_service.is_available().await {

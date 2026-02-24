@@ -641,6 +641,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                             tokio_util::sync::CancellationToken::new(),
                                         team_service: None, // Recovery retries don't need team events
                                         streaming_state_cache: super::StreamingStateCache::new(), // Fresh cache for retry
+                                        interactive_process_registry: None, // Retries don't use interactive mode
                                     },
                                 );
 
