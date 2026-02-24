@@ -16,7 +16,8 @@ use crate::domain::repositories::{
     ChatAttachmentRepository, IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
 use crate::infrastructure::agents::claude::{
-    build_spawnable_command, mcp_agent_type, ContentBlockItem, SpawnableCommand, ToolCall,
+    build_spawnable_command, build_spawnable_interactive_command, mcp_agent_type,
+    ContentBlockItem, SpawnableCommand, ToolCall,
 };
 
 use crate::infrastructure::agents::claude::agent_names;
@@ -542,6 +543,88 @@ pub async fn build_command(
 
     // Pass the lead agent's Claude session ID so the MCP server can forward it
     // to the backend for teammate spawns (avoids unreliable config file reads).
+    if let Some(ref session_id) = conversation.claude_session_id {
+        spawnable.env("RALPHX_LEAD_SESSION_ID", session_id);
+    }
+
+    Ok(spawnable)
+}
+
+/// Build an interactive CLI command (no `-p` flag, stdin kept open for multi-turn).
+///
+/// Same as `build_command()` but uses `build_spawnable_interactive_command()` so the
+/// process stays alive for follow-up messages via stdin. Call `spawn_interactive()`
+/// on the returned `SpawnableCommand` to get a `(Child, ChildStdin)` pair.
+pub async fn build_interactive_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    conversation: &ChatConversation,
+    user_message: &str,
+    working_directory: &Path,
+    entity_status: Option<&str>,
+    project_id: Option<&str>,
+    team_mode: bool,
+    chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
+) -> Result<SpawnableCommand, String> {
+    let agent_name =
+        resolve_agent_with_team_mode(&conversation.context_type, entity_status, team_mode);
+
+    // Interactive mode: never resume with --resume session_id because the process stays
+    // alive. Resume is only needed when re-spawning after a process death. For the first
+    // spawn, the conversation.claude_session_id is set after the stream reports it.
+    let resume_session: Option<&str> = None;
+
+    // Fetch pending attachments
+    let attachments = chat_attachment_repo
+        .find_by_conversation_id(&conversation.id)
+        .await
+        .map_err(|e| format!("Failed to fetch attachments: {}", e))?
+        .into_iter()
+        .filter(|a| a.message_id.is_none())
+        .collect::<Vec<_>>();
+
+    let attachment_context = format_attachments_for_agent(&attachments).await?;
+
+    let initial_prompt = build_initial_prompt(
+        conversation.context_type,
+        &conversation.context_id,
+        user_message,
+    );
+    let prompt = format!("{}{}", initial_prompt, attachment_context);
+
+    let mut spawnable = build_spawnable_interactive_command(
+        cli_path,
+        plugin_dir,
+        &prompt,
+        Some(agent_name),
+        resume_session,
+        working_directory,
+    )?;
+
+    // Same env vars as build_command()
+    spawnable.env("RALPHX_AGENT_TYPE", mcp_agent_type(agent_name));
+    spawnable.env(
+        "RALPHX_CONTEXT_TYPE",
+        &conversation.context_type.to_string(),
+    );
+    spawnable.env("RALPHX_CONTEXT_ID", &conversation.context_id);
+    match conversation.context_type {
+        ChatContextType::Task
+        | ChatContextType::TaskExecution
+        | ChatContextType::Review
+        | ChatContextType::Merge => {
+            spawnable.env("RALPHX_TASK_ID", &conversation.context_id);
+        }
+        _ => {}
+    }
+    if let Some(pid) = project_id {
+        spawnable.env("RALPHX_PROJECT_ID", pid);
+    }
+
+    if team_mode {
+        spawnable.env("CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS", "1");
+    }
+
     if let Some(ref session_id) = conversation.claude_session_id {
         spawnable.env("RALPHX_LEAD_SESSION_ID", session_id);
     }

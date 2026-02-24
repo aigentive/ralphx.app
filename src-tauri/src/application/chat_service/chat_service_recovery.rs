@@ -162,6 +162,8 @@ pub(super) async fn attempt_session_recovery(
         false,                                      // not team mode
         StreamingStateCache::new(),                 // fresh cache for recovery (no UI to hydrate)
         None,                                       // no heartbeat for recovery sessions
+        None,                                       // no agent_run_repo for recovery
+        None,                                       // no agent_run_id for recovery
     )
     .await
     {

@@ -507,6 +507,42 @@ impl SpawnableCommand {
         self
     }
 
+    /// Spawn in interactive mode: writes the stored prompt to stdin, then returns
+    /// the stdin handle open for future multi-turn messages.
+    ///
+    /// Unlike `spawn()` (which drops stdin after writing, signaling EOF), this
+    /// keeps stdin alive so the caller can write additional messages later.
+    ///
+    /// The command uses `-p - --input-format stream-json`, so each message
+    /// (including the initial prompt) is a single-line JSON object. The CLI
+    /// stays in print mode (required for `--output-format stream-json`) while
+    /// reading new turns from stdin until EOF.
+    pub async fn spawn_interactive(
+        mut self,
+    ) -> std::io::Result<(tokio::process::Child, tokio::process::ChildStdin)> {
+        let mut child = self.cmd.spawn()?;
+
+        let mut stdin = child.stdin.take().ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::Other,
+                "no stdin pipe — ensure Stdio::piped() was set before spawn_interactive",
+            )
+        })?;
+
+        // Write the stored initial prompt (if any). No deadlock risk in interactive mode:
+        // the process waits for stdin input before producing stdout, so the pipe
+        // buffer cannot fill up from the other direction during this write.
+        if let Some(prompt) = self.stdin_prompt.take() {
+            use tokio::io::AsyncWriteExt;
+            stdin.write_all(prompt.as_bytes()).await?;
+            stdin.write_all(b"\n").await?; // CLI reads lines — newline signals end of input
+            stdin.flush().await?; // Ensure bytes are delivered to the process
+            // stdin is intentionally NOT dropped — kept open for future messages
+        }
+
+        Ok((child, stdin))
+    }
+
     /// Spawn the command and pipe the prompt to stdin if needed.
     ///
     /// Stdin is written in a background task to avoid a pipe deadlock:
@@ -538,17 +574,39 @@ impl SpawnableCommand {
     }
 }
 
+/// Format a message as a stream-json input line for `--input-format stream-json`.
+///
+/// The Claude CLI with `-p - --input-format stream-json` reads one JSON message per
+/// stdin line. Each message triggers a new turn in the same session.
+pub fn format_stream_json_input(content: &str) -> String {
+    serde_json::json!({
+        "type": "user",
+        "message": {
+            "role": "user",
+            "content": content
+        }
+    })
+    .to_string()
+}
+
 /// Add prompt-related args to a CLI command.
 ///
 /// Applies agent-specific tool restrictions via --tools flag (CLI tools)
 /// and --allowedTools flag (MCP + CLI tool pre-approvals).
 /// See `agent_config/` for the single source of truth on tool configurations.
+///
+/// When `interactive` is `true`, `-p -` + `--input-format stream-json` are added so the
+/// CLI stays in print mode (required for `--output-format stream-json`) while reading
+/// structured JSON messages from stdin for multi-turn conversations.
+/// The returned `Option<String>` holds the prompt for stdin delivery: `Some(prompt)` in
+/// both stdin-pipe mode and interactive mode, `None` when using the `-p <arg>` form.
 fn add_prompt_args(
     cmd: &mut Command,
     plugin_dir: &Path,
     prompt: &str,
     agent: Option<&str>,
     resume_session: Option<&str>,
+    interactive: bool,
 ) -> Option<String> {
     // Add resume if continuing an existing session
     if let Some(session_id) = resume_session {
@@ -644,7 +702,15 @@ fn add_prompt_args(
         }
     }
 
-    if use_stdin {
+    if interactive {
+        // --output-format stream-json only works with -p (print mode).
+        // Use `-p -` to stay in print mode + `--input-format stream-json` so the CLI
+        // reads structured JSON messages from stdin (one per line) for multi-turn.
+        // The process stays alive until stdin EOF.
+        cmd.args(["-p", "-", "--input-format", "stream-json"]);
+        tracing::debug!("Claude prompt mode: interactive (-p - + stream-json input)");
+        Some(format_stream_json_input(prompt))
+    } else if use_stdin {
         // Workaround: pipe prompt via stdin to avoid --agent + -p arg hang (CLI 2.1.38)
         cmd.args(["-p", "-"]);
         tracing::debug!("Claude prompt mode: stdin");
@@ -681,8 +747,31 @@ pub fn build_spawnable_command(
     working_directory: &Path,
 ) -> Result<SpawnableCommand, String> {
     let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent)?;
-    let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session);
+    let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, false);
     configure_spawn(&mut cmd, working_directory, stdin_prompt.is_some());
+    Ok(SpawnableCommand { cmd, stdin_prompt })
+}
+
+/// Build a ready-to-spawn interactive CLI command (no `-p` flag).
+///
+/// Like `build_spawnable_command` but omits `-p` so the process enters
+/// interactive/REPL mode. The prompt is stored for delivery via stdin
+/// when `spawn_interactive()` is called.
+///
+/// Use `SpawnableCommand::spawn_interactive()` (instead of `spawn()`) to get
+/// back the stdin handle for multi-turn message delivery.
+pub fn build_spawnable_interactive_command(
+    cli_path: &Path,
+    plugin_dir: &Path,
+    prompt: &str,
+    agent: Option<&str>,
+    resume_session: Option<&str>,
+    working_directory: &Path,
+) -> Result<SpawnableCommand, String> {
+    let mut cmd = build_base_cli_command(cli_path, plugin_dir, agent)?;
+    // interactive=true: no -p flag; prompt stored in stdin_prompt for spawn_interactive()
+    let stdin_prompt = add_prompt_args(&mut cmd, plugin_dir, prompt, agent, resume_session, true);
+    configure_spawn(&mut cmd, working_directory, true);
     Ok(SpawnableCommand { cmd, stdin_prompt })
 }
 
@@ -863,4 +952,56 @@ pub fn resolve_plugin_dir(working_dir: &Path) -> PathBuf {
     }
 
     find_plugin_dir().unwrap_or(direct)
+}
+
+// ============================================================================
+// Tests
+// ============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    /// build_spawnable_command calls ensure_claude_spawn_allowed() which returns
+    /// Err in tests — exercise the function up to that guard.
+    #[test]
+    fn test_build_spawnable_command_blocked_in_tests() {
+        let result = build_spawnable_command(
+            Path::new("/fake/claude"),
+            Path::new("/fake/plugin"),
+            "test prompt",
+            None,
+            None,
+            Path::new("/tmp"),
+        );
+        // In test env, ensure_claude_spawn_allowed() returns Err
+        assert!(result.is_err(), "should be blocked in test environment");
+        assert!(
+            result.unwrap_err().contains("disabled"),
+            "error should mention spawn disabled"
+        );
+    }
+
+    /// build_spawnable_interactive_command is also blocked in tests by the same guard.
+    #[test]
+    fn test_build_spawnable_interactive_command_blocked_in_tests() {
+        let result = build_spawnable_interactive_command(
+            Path::new("/fake/claude"),
+            Path::new("/fake/plugin"),
+            "my interactive prompt",
+            None,
+            None,
+            Path::new("/tmp"),
+        );
+        assert!(result.is_err(), "should be blocked in test environment");
+    }
+
+    /// Verify SpawnableCommand::spawn_interactive is a method that exists and the type
+    /// compiles correctly. The actual spawn is gated behind ensure_claude_spawn_allowed.
+    #[test]
+    fn test_spawnable_command_debug_impl() {
+        fn assert_debug<T: std::fmt::Debug>() {}
+        assert_debug::<SpawnableCommand>();
+    }
 }

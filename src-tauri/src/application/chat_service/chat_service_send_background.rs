@@ -14,6 +14,9 @@ use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_streaming::process_stream_background;
 use super::chat_service_types::{AgentMessageCreatedPayload, AgentRunCompletedPayload};
 use super::{event_context, has_meaningful_output, EventContextPayload, StreamingStateCache};
+use crate::application::interactive_process_registry::{
+    InteractiveProcessKey, InteractiveProcessRegistry,
+};
 use crate::application::memory_orchestration::trigger_memory_pipelines;
 use crate::application::question_state::QuestionState;
 use crate::commands::ExecutionState;
@@ -82,6 +85,8 @@ pub(super) struct BackgroundRunContext<R: Runtime> {
     pub team_service: Option<std::sync::Arc<crate::application::TeamService>>,
     // Streaming state cache for frontend hydration
     pub streaming_state_cache: StreamingStateCache,
+    // Interactive process registry for stdin cleanup on process exit
+    pub interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
 }
 
 /// Returns true when `--resume` was used (stored is Some) AND the stream returned a different
@@ -167,6 +172,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             cancellation_token,
             team_service,
             streaming_state_cache,
+            interactive_process_registry,
         } = ctx;
         let BackgroundRunRepos {
             chat_message_repo,
@@ -234,6 +240,8 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             team_mode,
             streaming_state_cache.clone(),
             Some(Arc::clone(&running_agent_registry)),
+            Some(Arc::clone(&agent_run_repo)),
+            Some(agent_run_id.clone()),
         )
         .await;
 
@@ -255,6 +263,20 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         // Unregister the process when done (ownership check: only removes our own slot)
         running_agent_registry.unregister(&registry_key, &agent_run_id).await;
 
+        // Remove interactive stdin handle so future messages trigger a new spawn
+        if let Some(ref ipr) = interactive_process_registry {
+            let ipr_key = InteractiveProcessKey::new(
+                context_type.to_string(),
+                &context_id,
+            );
+            ipr.remove(&ipr_key).await;
+            tracing::debug!(
+                %context_type,
+                context_id = %context_id,
+                "Removed interactive process stdin on stream exit"
+            );
+        }
+
         match result {
             Ok(outcome) => {
                 let response_text = outcome.response_text;
@@ -262,6 +284,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 let content_blocks = outcome.content_blocks;
                 let claude_session_id = outcome.session_id;
                 let stderr_text = outcome.stderr_text;
+                let turns_finalized = outcome.turns_finalized;
                 // Debug: Log what we got from stream processing
                 tracing::info!(
                     "[CHAT_SERVICE] Stream complete: context={}/{}, response_len={}, tool_calls={}, session_id={:?}",
@@ -359,9 +382,21 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     }
                 }
 
-                // Update pre-created assistant message with final content
+                // Update pre-created assistant message with final content.
+                // When turns were finalized during interactive streaming, the original
+                // pre_assistant_msg was already finalized in the TurnComplete handler.
+                // The processor was reset, so response_text is empty. Skip overwriting.
+                let has_output = has_meaningful_output(&response_text, tool_calls.len(), &stderr_text);
+                let skip_post_loop_finalization = turns_finalized > 0 && !has_output;
+
                 let assistant_role = get_assistant_role(&context_type).to_string();
-                if has_meaningful_output(&response_text, tool_calls.len(), &stderr_text) {
+                if skip_post_loop_finalization {
+                    tracing::debug!(
+                        turns_finalized,
+                        "Skipping post-loop finalization — {} turn(s) already finalized in stream loop",
+                        turns_finalized,
+                    );
+                } else if has_output {
                     let tool_calls_json = serde_json::to_string(&tool_calls).ok();
                     let content_blocks_json = serde_json::to_string(&content_blocks).ok();
                     finalize_assistant_message(
@@ -393,28 +428,34 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 }
 
                 // Treat zero-output runs as failed executions for autonomous task/review flows.
-                let has_output = has_meaningful_output(&response_text, tool_calls.len(), &stderr_text);
-                if !has_output
-                    && (context_type == ChatContextType::TaskExecution
-                        || context_type == ChatContextType::Review)
-                {
-                    let _ = agent_run_repo
-                        .fail(
-                            &AgentRunId::from_string(&agent_run_id),
-                            "Agent completed with no output",
-                        )
-                        .await;
-                } else {
-                    let _ = agent_run_repo
-                        .complete(&AgentRunId::from_string(&agent_run_id))
-                        .await;
+                // Note: when interactive turns were finalized, has_output is false (processor was reset)
+                // but the run actually succeeded — override the flag for the run status check.
+                let effective_has_output = has_output || turns_finalized > 0;
+                // When turns were finalized in the stream loop, agent_run was already
+                // completed in the TurnComplete handler — skip duplicate completion.
+                if !skip_post_loop_finalization {
+                    if !effective_has_output
+                        && (context_type == ChatContextType::TaskExecution
+                            || context_type == ChatContextType::Review)
+                    {
+                        let _ = agent_run_repo
+                            .fail(
+                                &AgentRunId::from_string(&agent_run_id),
+                                "Agent completed with no output",
+                            )
+                            .await;
+                    } else {
+                        let _ = agent_run_repo
+                            .complete(&AgentRunId::from_string(&agent_run_id))
+                            .await;
+                    }
                 }
 
                 // Handle task state transitions and merge auto-completion
                 super::chat_service_handlers::handle_stream_success(
                     context_type,
                     &context_id,
-                    has_output,
+                    effective_has_output,
                     &execution_state,
                     &task_repo,
                     &task_dependency_repo,
@@ -448,24 +489,27 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     );
                 }
 
-                // Only emit run_completed if there's no queue to process
-                // If there IS a queue, we'll emit run_completed after all queue messages are processed
+                // Only emit run_completed if there's no queue to process.
+                // If there IS a queue, we'll emit run_completed after all queue messages are processed.
+                // When turns were already finalized in the stream loop, skip the duplicate emission.
                 if !will_process_queue {
                     // Clear streaming state cache - stream completed successfully
                     let conv_id_str = conversation_id.as_str();
                     streaming_state_cache.clear(&conv_id_str).await;
 
-                    if let Some(ref handle) = app_handle {
-                        let _ = handle.emit(
-                            "agent:run_completed",
-                            AgentRunCompletedPayload {
-                                conversation_id: conversation_id.as_str().to_string(),
-                                context_type: context_type.to_string(),
-                                context_id: context_id.clone(),
-                                claude_session_id: effective_session_id.clone(),
-                                run_chain_id: run_chain_id.clone(),
-                            },
-                        );
+                    if !skip_post_loop_finalization {
+                        if let Some(ref handle) = app_handle {
+                            let _ = handle.emit(
+                                "agent:run_completed",
+                                AgentRunCompletedPayload {
+                                    conversation_id: conversation_id.as_str().to_string(),
+                                    context_type: context_type.to_string(),
+                                    context_id: context_id.clone(),
+                                    claude_session_id: effective_session_id.clone(),
+                                    run_chain_id: run_chain_id.clone(),
+                                },
+                            );
+                        }
                     }
 
                     // Trigger memory pipelines (no queue processing path)
