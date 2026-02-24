@@ -381,7 +381,7 @@ describe("useChatPanelContext", () => {
             projectId: "project-1",
             ideationSessionId: undefined,
             selectedTaskId: "task-1",
-            isExecutionMode: true,
+            isExecutionMode: false, // Non-agent context: sorts by lastMessageAt not createdAt
             isReviewMode: false,
             isMergeMode: false,
             isHistoryMode: false,

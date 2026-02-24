@@ -72,6 +72,10 @@ export function useChatPanelContext({
   // Streaming tasks - subagent Task tool calls during agent execution
   const [streamingTasks, setStreamingTasks] = useState<Map<string, StreamingTask>>(new Map());
 
+  // Finalizing state - true between agent:message_created (clears streaming) and query refetch completing
+  // Keeps the last-assistant-message filter active to prevent text duplication flash
+  const [isFinalizing, setIsFinalizing] = useState(false);
+
   // Build chat context based on selected task or ideation session
   const chatContext: ChatContext = useMemo(() => {
     if (ideationSessionId) {
@@ -156,6 +160,7 @@ export function useChatPanelContext({
       setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
       setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
       setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
+      setIsFinalizing(false);
 
       // Cancel and remove the old conversation's agent run query to prevent
       // stale cached data from triggering recovery effects in the new context
@@ -350,6 +355,8 @@ export function useChatPanelContext({
     setStreamingContentBlocks,
     streamingTasks,
     setStreamingTasks,
+    isFinalizing,
+    setIsFinalizing,
     autoSelectConversation,
     /** Override agent run ID for scroll positioning in history mode */
     overrideAgentRunId,

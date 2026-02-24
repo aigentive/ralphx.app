@@ -775,4 +775,448 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(scrollIntoViewMock).not.toHaveBeenCalled();
     });
   });
+
+  describe("non-diff tool call inline rendering (Bug 3 fix)", () => {
+    // Uses "webfetch" as the tool name — it's non-diff, non-task, and not in the
+    // widget registry, so it falls through to the generic ToolCallIndicator renderer
+    // which has data-testid="tool-call-indicator".
+    const GENERIC_TOOL_NAME = "webfetch";
+
+    it("renders non-diff tool call block as ToolCallIndicator inline", () => {
+      const blocks: StreamingContentBlock[] = [
+        {
+          type: "tool_use",
+          toolCall: { id: "tc-1", name: GENERIC_TOOL_NAME, arguments: { url: "https://example.com" }, result: "page content" },
+        },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
+    });
+
+    it("renders text and tool call in correct visual order (text → tool → text)", () => {
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "First I will fetch the page." },
+        {
+          type: "tool_use",
+          toolCall: { id: "tc-1", name: GENERIC_TOOL_NAME, arguments: { url: "https://example.com" }, result: "content" },
+        },
+        { type: "text", text: "The page contains useful info." },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      const text1 = screen.getByText(/First I will fetch the page/);
+      const toolCall = screen.getByTestId("tool-call-indicator");
+      const text2 = screen.getByText(/The page contains useful info/);
+
+      // Verify DOM order: text1 < toolCall < text2
+      expect(text1.compareDocumentPosition(toolCall) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(toolCall.compareDocumentPosition(text2) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("shows loading spinner for in-progress (no result) tool call", () => {
+      const blocks: StreamingContentBlock[] = [
+        {
+          type: "tool_use",
+          // result is undefined — tool still running
+          toolCall: { id: "tc-1", name: GENERIC_TOOL_NAME, arguments: { url: "https://example.com" } },
+        },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
+      // Loading spinner (animate-spin class) should be present for in-progress tool calls
+      const spinner = document.querySelector(".animate-spin");
+      expect(spinner).toBeInTheDocument();
+    });
+
+    it("does not show loading spinner for completed (has result) tool call", () => {
+      const blocks: StreamingContentBlock[] = [
+        {
+          type: "tool_use",
+          toolCall: { id: "tc-1", name: GENERIC_TOOL_NAME, arguments: { url: "https://example.com" }, result: "page content" },
+        },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
+      // No spinner — tool has a result (completed)
+      const spinner = document.querySelector(".animate-spin");
+      expect(spinner).not.toBeInTheDocument();
+    });
+
+    it("does not render TypingIndicator when content blocks are present", () => {
+      const blocks: StreamingContentBlock[] = [
+        {
+          type: "tool_use",
+          toolCall: { id: "tc-1", name: GENERIC_TOOL_NAME, arguments: { url: "https://example.com" } },
+        },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          streamingToolCalls={[{ id: "tc-1", name: GENERIC_TOOL_NAME, arguments: { url: "https://example.com" } }]}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+    });
+
+    it("renders multiple non-diff tool calls in order", () => {
+      const blocks: StreamingContentBlock[] = [
+        {
+          type: "tool_use",
+          toolCall: { id: "tc-1", name: GENERIC_TOOL_NAME, arguments: { url: "https://a.com" }, result: "page a" },
+        },
+        {
+          type: "tool_use",
+          toolCall: { id: "tc-2", name: GENERIC_TOOL_NAME, arguments: { url: "https://b.com" }, result: "page b" },
+        },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isSending={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      const indicators = screen.getAllByTestId("tool-call-indicator");
+      expect(indicators).toHaveLength(2);
+    });
+  });
+
+  describe("empty content guard — streaming Footer text blocks", () => {
+    // Use empty messages list so no pre-existing copy buttons interfere
+    const noMessages: ChatMessageData[] = [];
+
+    it("does not render a TextBubble for empty streaming text blocks", () => {
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "" },
+      ];
+
+      const { container } = render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={noMessages}
+          isAgentRunning={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      // Empty text block produces no TextBubble (.rounded-xl)
+      expect(container.querySelector(".rounded-xl")).not.toBeInTheDocument();
+    });
+
+    it("does not render a TextBubble for whitespace-only streaming text blocks", () => {
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "   \n  " },
+      ];
+
+      const { container } = render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={noMessages}
+          isAgentRunning={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      expect(container.querySelector(".rounded-xl")).not.toBeInTheDocument();
+    });
+
+    it("renders non-empty streaming text blocks normally", () => {
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "I am thinking..." },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={noMessages}
+          isAgentRunning={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      expect(screen.getByText(/I am thinking/)).toBeInTheDocument();
+    });
+
+    it("renders only non-empty blocks when mixed with empty ones", () => {
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "" },
+        { type: "text", text: "Actual content here" },
+        { type: "text", text: "   " },
+      ];
+
+      const { container } = render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={noMessages}
+          isAgentRunning={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      expect(screen.getByText("Actual content here")).toBeInTheDocument();
+      // Only one TextBubble (.rounded-xl) from the one non-empty block
+      const bubbles = container.querySelectorAll(".rounded-xl");
+      expect(bubbles).toHaveLength(1);
+    });
+  });
+
+  describe("isFinalizing prop — shouldFilterLastAssistant bridge", () => {
+    // Verifies the fix: isFinalizing=true passed directly as prop (not derived from a ref via broken useEffect)
+    // keeps the last-assistant-message filter active through the timing window between
+    // agent:message_created clearing streaming state and the query refetch completing.
+    const makeMessages = (): ChatMessageData[] => [
+      { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+      { id: "msg-2", role: "assistant", content: "Accumulated response text from DB", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
+    ];
+
+    it("filters last assistant message from DB when isFinalizing=true (no streaming blocks active)", () => {
+      // This is the critical scenario: streaming cleared, isFinalizing=true, query not yet refetched.
+      // Without this filter, the DB message (with all accumulated text) would leak through and appear
+      // alongside the now-empty streaming Footer — text duplication flash.
+      const messages = makeMessages();
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={false}
+          streamingContentBlocks={[]}
+          isFinalizing={true}
+        />
+      );
+
+      // Last assistant DB message must be filtered to prevent duplication
+      expect(screen.queryByText("Accumulated response text from DB")).not.toBeInTheDocument();
+      // User message is still visible
+      expect(screen.getByText("Hello")).toBeInTheDocument();
+    });
+
+    it("does NOT filter last assistant message when isFinalizing=false and no streaming", () => {
+      const messages = makeMessages();
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={false}
+          streamingContentBlocks={[]}
+          isFinalizing={false}
+        />
+      );
+
+      // Filter is NOT active — DB message should render normally
+      expect(screen.getByText("Accumulated response text from DB")).toBeInTheDocument();
+    });
+
+    it("filters last assistant message when both isFinalizing=true and streaming are active", () => {
+      const messages = makeMessages();
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "Streaming content still active..." },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={true}
+          streamingContentBlocks={blocks}
+          isFinalizing={true}
+        />
+      );
+
+      // shouldFilterLastAssistant = hasActiveStreaming(true) || isFinalizing(true) = true
+      expect(screen.queryByText("Accumulated response text from DB")).not.toBeInTheDocument();
+      expect(screen.getByText(/Streaming content still active/)).toBeInTheDocument();
+    });
+
+    it("transitions from filtered to visible when isFinalizing changes false→true→false", () => {
+      // Simulates the full lifecycle:
+      // 1. Streaming active → DB message filtered
+      // 2. message_created fires → streaming cleared + isFinalizing=true → DB message still filtered
+      // 3. Query refetch completes + 500ms → isFinalizing=false → DB message visible
+      const messages = makeMessages();
+
+      // Phase 1: Active streaming — DB message filtered
+      const { rerender } = render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={true}
+          streamingContentBlocks={[{ type: "text", text: "Streaming..." }]}
+          isFinalizing={false}
+        />
+      );
+      expect(screen.queryByText("Accumulated response text from DB")).not.toBeInTheDocument();
+
+      // Phase 2: Streaming cleared + isFinalizing=true (same batch as message_created)
+      rerender(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={false}
+          streamingContentBlocks={[]}
+          isFinalizing={true}
+        />
+      );
+      // DB message still filtered — isFinalizing bridges the timing gap
+      expect(screen.queryByText("Accumulated response text from DB")).not.toBeInTheDocument();
+
+      // Phase 3: Refetch complete, 500ms elapsed → isFinalizing=false
+      rerender(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={false}
+          streamingContentBlocks={[]}
+          isFinalizing={false}
+        />
+      );
+      // DB message now visible — smooth transition, no flash
+      expect(screen.getByText("Accumulated response text from DB")).toBeInTheDocument();
+    });
+
+    it("defaults isFinalizing to false (prop is optional)", () => {
+      const messages = makeMessages();
+
+      // Render without isFinalizing prop (uses default = false)
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={false}
+          streamingContentBlocks={[]}
+          // isFinalizing omitted — defaults to false
+        />
+      );
+
+      // Default behavior: message visible when not finalizing
+      expect(screen.getByText("Accumulated response text from DB")).toBeInTheDocument();
+    });
+  });
+
+  describe("empty content guard — timeline filter for isAgentRunning", () => {
+    const makeMessagesWithEmptyLastAssistant = (): ChatMessageData[] => [
+      { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+      { id: "msg-2", role: "assistant", content: "Sure, let me help.", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
+      { id: "msg-3", role: "user", content: "Go!", createdAt: new Date(2026, 0, 1, 12, 2).toISOString(), toolCalls: null, contentBlocks: null },
+      { id: "msg-4", role: "assistant", content: "", createdAt: new Date(2026, 0, 1, 12, 3).toISOString(), toolCalls: null, contentBlocks: null },
+    ];
+
+    it("filters empty last assistant message when isAgentRunning is true", () => {
+      const messages = makeMessagesWithEmptyLastAssistant();
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={true}
+          streamingContentBlocks={[]}
+        />
+      );
+
+      // The pre-created empty assistant message (msg-4) is filtered from timeline
+      // Other non-empty messages remain visible
+      expect(screen.getByText("Sure, let me help.")).toBeInTheDocument();
+      expect(screen.getByText("Hello")).toBeInTheDocument();
+      expect(screen.getByText("Go!")).toBeInTheDocument();
+    });
+
+    it("does NOT filter non-empty last assistant message when isAgentRunning is true", () => {
+      const messages: ChatMessageData[] = [
+        { id: "msg-1", role: "user", content: "Hi", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+        { id: "msg-2", role: "assistant", content: "I have a response!", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={true}
+          streamingContentBlocks={[]}
+        />
+      );
+
+      // Non-empty last assistant message must NOT be filtered
+      expect(screen.getByText("I have a response!")).toBeInTheDocument();
+    });
+
+    it("does NOT filter last assistant when isAgentRunning is false (guard does not activate)", () => {
+      const messages = makeMessagesWithEmptyLastAssistant();
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={false}
+          streamingContentBlocks={[]}
+        />
+      );
+
+      // Previous non-empty messages still visible; component doesn't crash
+      expect(screen.getByText("Sure, let me help.")).toBeInTheDocument();
+      expect(screen.getByTestId("integrated-chat-messages")).toBeInTheDocument();
+    });
+
+    it("filters last assistant message when streaming is active (existing behavior preserved)", () => {
+      const messages: ChatMessageData[] = [
+        { id: "msg-1", role: "user", content: "Hi", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+        { id: "msg-2", role: "assistant", content: "Partial content", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
+      ];
+
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "Streaming now..." },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={true}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      // During active streaming, last assistant is always filtered (existing behavior)
+      expect(screen.queryByText("Partial content")).not.toBeInTheDocument();
+      // Only the streaming block shows
+      expect(screen.getByText(/Streaming now/)).toBeInTheDocument();
+    });
+  });
 });

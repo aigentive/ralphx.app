@@ -323,6 +323,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const [streamingToolCalls, setStreamingToolCalls] = useState<ToolCall[]>([]);
   const [streamingContentBlocks, setStreamingContentBlocks] = useState<StreamingContentBlock[]>([]);
   const [streamingTasks, setStreamingTasks] = useState<Map<string, StreamingTask>>(new Map());
+  const [isFinalizing, setIsFinalizing] = useState(false);
 
   // Unified actions hook (replaces useChatPanelHandlers action logic)
   const {
@@ -355,9 +356,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     setStreamingTasks(new Map());
   }, [handleStopAgent]);
 
-  // Ref to track conversation ID that's finalizing (between message_created and query refetch)
-  const finalizingConversationRef = useRef<string | null>(null);
-
   // Unified event subscriptions (replaces useChatPanelHandlers event logic)
   useChatEvents({
     activeConversationId,
@@ -366,7 +364,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     setStreamingToolCalls,
     setStreamingContentBlocks,
     setStreamingTasks,
-    finalizingConversationRef,
+    setIsFinalizing,
   });
 
   // Hook events — listen for agent:hook Tauri events scoped to active conversation
@@ -561,7 +559,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               streamingContentBlocks={streamingContentBlocks}
               hookEvents={hookEvents}
               activeHooks={activeHooksList}
-              finalizingConversationRef={finalizingConversationRef}
+              isFinalizing={isFinalizing}
               teamFilter={activeTeam ? teamFilter : undefined}
               contextKey={activeTeam ? contextKey : undefined}
             />
