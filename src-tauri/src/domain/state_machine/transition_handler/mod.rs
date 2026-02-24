@@ -89,7 +89,6 @@ impl<'a> TransitionHandler<'a> {
             task_repo: ctx.services.task_repo.clone(),
             project_repo: ctx.services.project_repo.clone(),
             task_scheduler: ctx.services.task_scheduler.clone(),
-            execution_state: ctx.services.execution_state.clone(),
         }
     }
 

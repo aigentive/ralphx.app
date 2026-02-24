@@ -395,7 +395,7 @@ async fn test_kill_worktree_processes_async_timeout_returns_quickly() {
     kill_worktree_processes_async(&tmp, 1).await;
     let elapsed = start.elapsed();
 
-    // Must return within timeout + small overhead (spawn_blocking scheduling)
+    // Must return within timeout + small overhead (async dispatch overhead)
     assert!(
         elapsed.as_secs() < 3,
         "Expected return within ~1s timeout, took {:?}",

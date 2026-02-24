@@ -695,3 +695,85 @@ async fn test_has_unresolved_blockers_treats_failed_as_unresolved() {
         "Failed blockers must be treated as unresolved (hard-block)"
     );
 }
+
+// ============================================================================
+// RC5: Event-driven transition logging
+// Verify that the three primary event-driven transitions succeed and return the
+// correct status. The INFO log added to transition_task_with_metadata fires on
+// the success path, so a passing test confirms the log line is reachable.
+// ============================================================================
+
+/// RC5 guard: Executing → PendingReview (ExecutionComplete event path).
+#[tokio::test]
+async fn test_executing_to_pending_review_transition_succeeds() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "RC5 Executing Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let updated = service
+        .transition_task_with_metadata(&task.id, InternalStatus::PendingReview, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::PendingReview,
+        "RC5: Executing → PendingReview must succeed and persist"
+    );
+}
+
+/// RC5 guard: Reviewing → ReviewPassed (ReviewComplete event path).
+#[tokio::test]
+async fn test_reviewing_to_review_passed_transition_succeeds() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "RC5 Reviewing Task".to_string());
+    task.internal_status = InternalStatus::Reviewing;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let updated = service
+        .transition_task_with_metadata(&task.id, InternalStatus::ReviewPassed, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::ReviewPassed,
+        "RC5: Reviewing → ReviewPassed must succeed and persist"
+    );
+}
+
+/// RC5 guard: ReviewPassed → Approved (HumanApprove event path).
+#[tokio::test]
+async fn test_review_passed_to_approved_transition_succeeds() {
+    let app_state = AppState::new_test();
+    let service = build_test_service(&app_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "RC5 ReviewPassed Task".to_string());
+    task.internal_status = InternalStatus::ReviewPassed;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let updated = service
+        .transition_task_with_metadata(&task.id, InternalStatus::Approved, None)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Approved,
+        "RC5: ReviewPassed → Approved must succeed and persist"
+    );
+}

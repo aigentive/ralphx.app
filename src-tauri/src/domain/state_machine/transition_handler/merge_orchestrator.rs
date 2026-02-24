@@ -876,6 +876,8 @@ impl<'a> super::TransitionHandler<'a> {
             strategy = ?project.merge_strategy,
             source_branch = %source_branch,
             target_branch = %target_branch,
+            remaining_ms = remaining.as_millis() as u64,
+            deadline_secs,
             "Dispatching merge strategy"
         );
 

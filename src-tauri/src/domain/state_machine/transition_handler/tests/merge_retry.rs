@@ -432,14 +432,20 @@ async fn test_merge_exit_triggers_main_merge_retry_when_all_idle() {
     );
 }
 
-/// Exiting PendingMerge skips try_retry_main_merges when agents are still running.
+/// Exiting PendingMerge ALWAYS calls try_retry_main_merges, even when agents are running.
+///
+/// The running_count guard was removed from spawn_deferred_merge_retry to fix a TOCTOU race:
+/// by the time the tokio::spawn future runs, auto-transitions (e.g. PendingReview→Reviewing)
+/// may have already incremented running_count. The authoritative deferral gate is
+/// check_main_merge_deferral() inside attempt_programmatic_merge(), which reads running_count
+/// fresh at merge-start time and re-defers correctly if agents are still active.
 #[tokio::test]
-async fn test_merge_exit_skips_main_merge_retry_when_agents_running() {
+async fn test_merge_exit_always_triggers_main_merge_retry_regardless_of_running_count() {
     use crate::commands::ExecutionState;
 
     let scheduler = Arc::new(MockTaskScheduler::new());
     let execution_state = Arc::new(ExecutionState::new());
-    execution_state.increment_running();
+    execution_state.increment_running(); // running_count > 0 — retry must still fire
 
     let services = TaskServices::new_mock()
         .with_task_scheduler(Arc::clone(&scheduler)
@@ -451,31 +457,21 @@ async fn test_merge_exit_skips_main_merge_retry_when_agents_running() {
     let handler = TransitionHandler::new(&mut machine);
     handler.on_exit(&State::PendingMerge, &State::Merged).await;
 
-    // Negative test: wait briefly to confirm main merge retry does NOT fire
     let sched = Arc::clone(&scheduler);
-    let _ = wait_for_condition(
-        || {
-            let s = Arc::clone(&sched);
-            async move {
-                s.get_calls()
-                    .iter()
-                    .any(|c| c.method == "try_retry_main_merges")
-            }
-        },
-        500,
-    )
-    .await;
-
-    let calls = scheduler.get_calls();
-    let main_retry_calls: Vec<_> = calls
-        .iter()
-        .filter(|c| c.method == "try_retry_main_merges")
-        .collect();
-
-    assert_eq!(
-        main_retry_calls.len(),
-        0,
-        "Expected NO try_retry_main_merges when agents are still running (running_count > 0)"
+    assert!(
+        wait_for_condition(
+            || {
+                let s = Arc::clone(&sched);
+                async move {
+                    s.get_calls()
+                        .iter()
+                        .any(|c| c.method == "try_retry_main_merges")
+                }
+            },
+            5000,
+        )
+        .await,
+        "Expected try_retry_main_merges even when running_count > 0 (TOCTOU fix: guard is inside check_main_merge_deferral)"
     );
 }
 

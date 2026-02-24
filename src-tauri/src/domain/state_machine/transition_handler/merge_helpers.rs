@@ -40,6 +40,12 @@ pub(crate) async fn pre_delete_worktree(
     worktree: &Path,
     task_id: &str,
 ) {
+    // Skip silently if the path was never created — avoids spurious WARN-level
+    // "git worktree remove: not a working tree" logs on paths that don't exist.
+    if !worktree.exists() {
+        return;
+    }
+
     use super::cleanup_helpers::CleanupStepResult;
 
     let wt_display = worktree.display().to_string();
@@ -258,7 +264,7 @@ pub(crate) fn compute_merge_worktree_path(project: &Project, task_id: &str) -> S
 /// Convention: `{worktree_parent}/{slug}/rebase-{task_id}`
 /// This is separate from the merge worktree (`merge-{task_id}`) to allow
 /// the rebase and merge steps to use different worktrees.
-pub(super) fn compute_rebase_worktree_path(project: &Project, task_id: &str) -> String {
+pub(crate) fn compute_rebase_worktree_path(project: &Project, task_id: &str) -> String {
     let worktree_parent = project
         .worktree_parent_directory
         .as_deref()

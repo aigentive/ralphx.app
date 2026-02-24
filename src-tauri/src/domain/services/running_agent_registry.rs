@@ -233,6 +233,53 @@ fn collect_pids_in_worktree(path: &Path) -> Result<Vec<u32>, String> {
     }
 }
 
+/// Async version of pid collection using `tokio::process::Command` with `kill_on_drop(true)`.
+///
+/// Unlike the blocking `std::process::Command::output()`, this function is properly
+/// cancellable: when the wrapping `tokio::time::timeout` fires and drops this future,
+/// the `lsof` child process is immediately sent SIGKILL via the `kill_on_drop` flag.
+/// This prevents lsof from continuing to consume the merge deadline after the timeout.
+async fn collect_pids_in_worktree_async(path: &Path) -> Result<Vec<u32>, String> {
+    #[cfg(unix)]
+    {
+        let child = tokio::process::Command::new("lsof")
+            .args(["-t", "+D", path.to_str().unwrap_or("")])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .map_err(|e| format!("lsof spawn failure: {}", e))?;
+
+        let output = child
+            .wait_with_output()
+            .await
+            .map_err(|e| format!("lsof wait failure: {}", e))?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "lsof exited with {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+
+        let text = String::from_utf8_lossy(&output.stdout);
+        let mut pids = Vec::new();
+        for line in text.lines() {
+            if let Ok(pid) = line.trim().parse::<u32>() {
+                pids.push(pid);
+            }
+        }
+        Ok(pids)
+    }
+
+    #[cfg(not(unix))]
+    {
+        let _ = path;
+        Ok(Vec::new())
+    }
+}
+
 pub fn kill_worktree_processes(path: &Path) {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     match collect_pids_in_worktree(&canonical) {
@@ -256,12 +303,12 @@ pub fn kill_worktree_processes(path: &Path) {
     }
 }
 
-/// Async version of `kill_worktree_processes` that wraps the blocking `lsof +D`
-/// call in `spawn_blocking` with a configurable timeout.
+/// Async version of `kill_worktree_processes` with a cancellable lsof scan.
 ///
-/// On large worktrees (especially those with `target/` directories), `lsof +D`
-/// can block for minutes. This function prevents that from eating into the merge
-/// deadline by bounding the scan.
+/// Uses `tokio::process::Command` with `kill_on_drop(true)` so that when the
+/// configurable timeout fires, the `lsof` child process is immediately sent SIGKILL
+/// rather than continuing to run (the old `spawn_blocking` approach left the OS
+/// process alive after the Tokio future timed out).
 ///
 /// On timeout, logs a warning and returns — this is non-fatal because agents
 /// have already been killed by PID before this point.
@@ -276,15 +323,16 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
         "kill_worktree_processes_async: starting lsof scan"
     );
 
-    let canonical_clone = canonical.clone();
+    // Use the async version directly — no spawn_blocking needed.
+    // When the timeout fires and drops the future, kill_on_drop sends SIGKILL to lsof.
     let result = tokio::time::timeout(
         std::time::Duration::from_secs(timeout_secs),
-        tokio::task::spawn_blocking(move || collect_pids_in_worktree(&canonical_clone)),
+        collect_pids_in_worktree_async(&canonical),
     )
     .await;
 
     match result {
-        Ok(Ok(Ok(pids))) => {
+        Ok(Ok(pids)) => {
             let unique_pids: HashSet<u32> = pids.into_iter().collect();
             let elapsed_ms = start.elapsed().as_millis();
             tracing::info!(
@@ -302,7 +350,7 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
                 kill_process(pid);
             }
         }
-        Ok(Ok(Err(err))) => {
+        Ok(Err(err)) => {
             let elapsed_ms = start.elapsed().as_millis();
             tracing::debug!(
                 worktree = %display_path,
@@ -311,20 +359,13 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
                 "kill_worktree_processes_async: could not enumerate processes"
             );
         }
-        Ok(Err(join_err)) => {
-            tracing::warn!(
-                worktree = %display_path,
-                error = %join_err,
-                "kill_worktree_processes_async: spawn_blocking task panicked"
-            );
-        }
         Err(_) => {
             let elapsed_ms = start.elapsed().as_millis();
             tracing::warn!(
                 worktree = %display_path,
                 elapsed_ms,
                 timeout_secs,
-                "kill_worktree_processes_async: lsof scan timed out (non-fatal)"
+                "kill_worktree_processes_async: lsof scan timed out — lsof process killed (non-fatal)"
             );
         }
     }
