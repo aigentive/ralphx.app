@@ -339,12 +339,28 @@ pub async fn approve_team_plan(
             "ideation-team-member"
         };
 
-        // Use the lead agent's session ID passed through the MCP flow, falling back
-        // to context_id if not available.
-        let parent_session_id = plan
-            .lead_session_id
-            .clone()
-            .unwrap_or_else(|| req.context_id.clone());
+        // Use the lead agent's session ID passed through the MCP flow.
+        // Fallback chain: MCP env var → Claude Code team config file → context_id.
+        let source;
+        let parent_session_id = if let Some(ref sid) = plan.lead_session_id {
+            source = "mcp_env_var";
+            sid.clone()
+        } else if let Some(sid) = resolve_lead_session_from_config(&team_name) {
+            source = "team_config_file";
+            sid
+        } else {
+            source = "context_id_fallback";
+            req.context_id.clone()
+        };
+
+        tracing::info!(
+            parent_session_id = %parent_session_id,
+            source = %source,
+            lead_session_id_from_mcp = ?plan.lead_session_id,
+            context_id = %req.context_id,
+            team = %team_name,
+            "[TEAM_SPAWN] Resolved parent_session_id for teammate (plan flow)"
+        );
 
         // Build RalphX session context (separate from parent_session_id)
         let teammate_context = TeammateContext {
@@ -704,9 +720,23 @@ pub async fn request_teammate_spawn(
         })?;
 
     // 6. Build spawn config and spawn the process.
-    //    Use context_id as fallback for parent_session_id (ad-hoc spawns don't
-    //    have lead_session_id from the plan flow).
-    let parent_session_id = context_id.clone();
+    //    Resolve lead session ID from Claude Code team config, falling back to context_id.
+    let source;
+    let parent_session_id = if let Some(sid) = resolve_lead_session_from_config(&team_name) {
+        source = "team_config_file";
+        sid
+    } else {
+        source = "context_id_fallback";
+        context_id.clone()
+    };
+
+    tracing::info!(
+        parent_session_id = %parent_session_id,
+        source = %source,
+        context_id = %context_id,
+        team = %team_name,
+        "[TEAM_SPAWN] Resolved parent_session_id for teammate (ad-hoc flow)"
+    );
 
     // Resolve project ID for RALPHX_PROJECT_ID env var on teammates
     let project_id = resolve_teammate_project_id(
@@ -1073,6 +1103,30 @@ async fn find_active_team(state: &HttpServerState) -> Result<(String, String, St
         }
     }
     Err("No active team found. Create a team before spawning teammates.".to_string())
+}
+
+/// Read the lead's Claude Code session ID from the team config file.
+///
+/// Claude Code's `TeamCreate` tool writes `~/.claude/teams/{name}/config.json`
+/// with a `leadSessionId` field. This is the most reliable source when the
+/// `RALPHX_LEAD_SESSION_ID` env var wasn't set (first spawn, session_id not yet known).
+fn resolve_lead_session_from_config(team_name: &str) -> Option<String> {
+    let home = std::env::var("HOME").ok()?;
+    let config_path = PathBuf::from(home)
+        .join(".claude/teams")
+        .join(team_name)
+        .join("config.json");
+    let content = std::fs::read_to_string(&config_path).ok()?;
+    let config: serde_json::Value = serde_json::from_str(&content).ok()?;
+    let session_id = config.get("leadSessionId")?.as_str().map(|s| s.to_string());
+    if session_id.is_some() {
+        tracing::info!(
+            team = %team_name,
+            config_path = %config_path.display(),
+            "[TEAM_SPAWN] Resolved leadSessionId from Claude Code team config"
+        );
+    }
+    session_id
 }
 
 /// Generate a unique teammate name, appending a suffix if needed.

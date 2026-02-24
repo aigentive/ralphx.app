@@ -575,6 +575,7 @@ pub struct MarkIssueAddressedRequest {
 pub struct QuestionOptionInput {
     pub value: String,
     pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
 }
 

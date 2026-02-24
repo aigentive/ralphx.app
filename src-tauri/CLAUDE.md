@@ -139,6 +139,9 @@ Quality work is now split into dedicated streams. See `.claude/rules/stream-*.md
 
 **Targets:** clippy, error handling (domain variants), naming, dead code, helpers
 
+### Zero Warnings Policy (NON-NEGOTIABLE)
+Fix ALL clippy warnings and test failures before completing work — including pre-existing ones. ❌ "It's pre-existing" is not an excuse. Run `cargo clippy --all-targets --all-features -- -D warnings` and fix everything.
+
 ### File Size Limits
 **See:** `.claude/rules/code-quality-standards.md` (single source of truth)
 

@@ -92,7 +92,7 @@ Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool
 | 5 | ❌ Fragile string comparisons — use enum variants (`matches!(err, MyError::Variant)`), error codes, or named constants for external strings |
 | 6 | Full timestamps in activity log |
 | 7 | Status changes → TransitionHandler ONLY. ❌ Direct DB update |
-| 8 | Lint before commit: `src-tauri/` → cargo clippy \| `src/` → npm run lint. Tests: `timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 \| tail -40`. ❌ `cargo check` \| ❌ full `cargo test` (hang) |
+| 8 | **Zero lint/test warnings (NON-NEGOTIABLE):** Fix ALL lint warnings and test failures before completing work — including pre-existing ones. ❌ "It's pre-existing" is not an excuse. Stale warnings delay future work and compound. `src-tauri/` → cargo clippy \| `src/` → npm run lint. Tests: `timeout 10m cargo test --lib --manifest-path src-tauri/Cargo.toml 2>&1 \| tail -40`. ❌ `cargo check` \| ❌ full `cargo test` (hang) |
 | 9 | ❌ Start/stop dev server — user manages manually |
 | 10 | Multi-stream: `./ralph-streams.sh <stream>` (features/refactor/polish/verify/hygiene) → `.claude/rules/stream-*.md` |
 | 11 | New pattern → add one-liner to relevant CLAUDE.md. Pattern name + rule only. |

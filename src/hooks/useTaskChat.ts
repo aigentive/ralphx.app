@@ -166,7 +166,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
         setActiveConversation(mostRecent.id);
       }
     }
-  }, [activeConversationId, conversations.data, setActiveConversation, contextKey]);
+  }, [activeConversationId, conversations.data, setActiveConversation, contextKey, contextType]);
 
   // Sync agent running state based on backend status
   const isRunning = agentRunStatus.data?.status === "running";

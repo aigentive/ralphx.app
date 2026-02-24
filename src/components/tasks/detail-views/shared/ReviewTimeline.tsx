@@ -41,7 +41,7 @@ const TRAIL_MILESTONES: { status: string; label: string }[] = [
  * Returns true if the given "changes_requested" review has been superseded
  * by a subsequent state transition (e.g. re_executing, approved, merged).
  */
-export function isReviewStale(
+function isReviewStale(
   review: ReviewNoteResponse,
   stateTransitions: StateTransition[]
 ): boolean {
