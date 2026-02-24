@@ -311,14 +311,27 @@ pub async fn process_stream_background<R: Runtime>(
 
     // When true, the process is legitimately idle between interactive turns
     // (TurnComplete received, waiting for next stdin message). The timeout
-    // handler should skip the kill logic and just reset.
+    // handler should kill silently instead of returning an error.
     let mut between_interactive_turns: bool = false;
+    // Set to true when an interactive process is killed while idle between
+    // turns. Suppresses post-loop error returns so the exit is silent.
+    let mut silent_interactive_exit: bool = false;
 
     loop {
         // Race line-read (with timeout) against cancellation token
         let line = tokio::select! {
             biased;
             _ = cancellation_token.cancelled() => {
+                if between_interactive_turns {
+                    tracing::info!(
+                        conversation_id = %conversation_id_str,
+                        lines_seen,
+                        "Interactive process idle between turns — silent exit on cancellation"
+                    );
+                    let _ = child.kill().await;
+                    silent_interactive_exit = true;
+                    break;
+                }
                 tracing::info!(
                     conversation_id = %conversation_id_str,
                     lines_seen,
@@ -358,16 +371,19 @@ pub async fn process_stream_background<R: Runtime>(
                             }
                         }
 
-                        // Interactive mode: process is idle between turns, waiting
-                        // for next stdin message. Don't kill it.
+                        // Interactive mode: process is idle between turns. Kill
+                        // silently and exit as a normal completion — not an error.
                         if between_interactive_turns {
-                            tracing::debug!(
+                            tracing::info!(
                                 conversation_id = %conversation_id_str,
                                 context_id,
                                 lines_seen,
-                                "Stream idle between interactive turns, resetting timeout"
+                                timeout_secs = timeout_config.line_read_timeout.as_secs(),
+                                "Interactive process idle between turns — silent exit on timeout"
                             );
-                            continue;
+                            let _ = child.kill().await;
+                            silent_interactive_exit = true;
+                            break;
                         }
 
                         // Check if subagent tasks are active (sidechain work in progress).
@@ -1311,8 +1327,9 @@ pub async fn process_stream_background<R: Runtime>(
     // Check if cancellation was requested during/after stream processing.
     // Fixes race where EOF from killed process wins the tokio::select! over
     // the cancellation token, causing the loop to break instead of returning
-    // Err(Cancelled). If the token is cancelled, always return Cancelled.
-    if cancellation_token.is_cancelled() {
+    // Err(Cancelled). If the token is cancelled, always return Cancelled —
+    // unless this was a silent interactive exit (already handled above).
+    if cancellation_token.is_cancelled() && !silent_interactive_exit {
         return Err(StreamError::Cancelled);
     }
 
@@ -1376,7 +1393,7 @@ pub async fn process_stream_background<R: Runtime>(
         });
     }
 
-    if !status.success() && !has_output {
+    if !status.success() && !has_output && !silent_interactive_exit {
         let stderr_trimmed = outcome.stderr_text.trim().to_string();
         // Check for recoverable provider errors in stderr
         if let Some(provider_err) =
