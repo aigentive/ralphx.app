@@ -6,14 +6,12 @@
 use async_trait::async_trait;
 use rusqlite::Connection;
 use std::collections::HashMap;
-use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use crate::domain::services::{
-    is_process_alive, kill_process, kill_worktree_processes, RunningAgentInfo, RunningAgentKey,
-    RunningAgentRegistry,
+    is_process_alive, kill_process, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
 };
 
 /// SQLite-backed implementation of RunningAgentRegistry.
@@ -60,7 +58,7 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                 .ok();
             drop(conn);
 
-            if let Some((old_pid, old_worktree)) = existing {
+            if let Some((old_pid, _old_worktree)) = existing {
                 if old_pid != pid && is_process_alive(old_pid) {
                     tracing::warn!(
                         old_pid,
@@ -74,13 +72,6 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
                         let mut tokens = self.tokens.lock().await;
                         if let Some(old_token) = tokens.remove(&key) {
                             old_token.cancel();
-                        }
-                    }
-                    // Kill worktree processes if applicable
-                    if let Some(ref path) = old_worktree {
-                        let worktree = PathBuf::from(path);
-                        if worktree.exists() {
-                            kill_worktree_processes(&worktree);
                         }
                     }
                     kill_process(old_pid);
@@ -261,12 +252,11 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
             if let Some(ref token) = agent_info.cancellation_token {
                 token.cancel();
             }
-            if let Some(ref path) = agent_info.worktree_path {
-                let worktree = PathBuf::from(path);
-                if worktree.exists() {
-                    kill_worktree_processes(&worktree);
-                }
-            }
+            // Note: worktree process cleanup (lsof scan) is intentionally NOT done here.
+            // kill_worktree_processes() is a synchronous blocking call that can hang the Tokio
+            // thread indefinitely. pre_merge_cleanup step 0b handles the worktree scan via
+            // kill_worktree_processes_async (with timeout + kill_on_drop). stop() only needs
+            // to send SIGTERM — sufficient for cooperative cancellation.
             kill_process(agent_info.pid);
         }
 
@@ -373,12 +363,6 @@ impl RunningAgentRegistry for SqliteRunningAgentRegistry {
 
         let mut stopped = Vec::new();
         for (key, info) in &entries {
-            if let Some(ref path) = info.worktree_path {
-                let worktree = PathBuf::from(path);
-                if worktree.exists() {
-                    kill_worktree_processes(&worktree);
-                }
-            }
             kill_process(info.pid);
             stopped.push(key.clone());
         }

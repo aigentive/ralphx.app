@@ -57,6 +57,38 @@ async fn test_guard_no_repos_skips_step0_settle_sleep() {
     );
 }
 
+/// pre_merge_cleanup step 0b emits two-phase progress: agent cancellation then lsof scan.
+///
+/// Validates that the code path after the agent-stop loop (the orphaned-process scan)
+/// runs without error. Progress events are no-ops without a real AppHandle, but the
+/// flow compiles and executes correctly. This is the RC-B regression guard.
+#[tokio::test]
+async fn test_step0b_two_phase_progress_no_regression() {
+    let (mut machine, _, _) = setup_pending_merge_repos("Step 0b two-phase", Some("feature/test"))
+        .await
+        .into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    // With repos wired, on_enter(PendingMerge) runs:
+    //   1. stop_agent for Review + Merge (fast, no agents running)
+    //   2. emit "Scanning worktree for orphaned processes..."  ← RC-B addition
+    //   3. kill_worktree_processes_async (worktree path from task may not exist → no-op)
+    // All steps must complete without blocking or panicking.
+    let start = std::time::Instant::now();
+    let result = handler.on_enter(&State::PendingMerge).await;
+    let elapsed = start.elapsed();
+
+    assert!(
+        result.is_ok(),
+        "on_enter(PendingMerge) should succeed with two-phase step 0b"
+    );
+    assert!(
+        elapsed.as_secs() < 30,
+        "step 0b should not block indefinitely, took {}s",
+        elapsed.as_secs()
+    );
+}
+
 // ==================
 // 120s merge deadline
 // ==================
