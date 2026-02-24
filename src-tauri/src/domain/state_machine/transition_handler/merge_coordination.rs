@@ -728,7 +728,19 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
         }
-        // Kill any lingering processes with files open in the task worktree
+        // Agents have been signalled — now scan for OS-level processes still holding
+        // worktree files open (e.g., kill_on_drop:false agents that outlived their handle).
+        emit_merge_progress(
+            app_handle,
+            task_id_str,
+            MergePhase::new(MergePhase::MERGE_CLEANUP),
+            MergePhaseStatus::Started,
+            "Scanning worktree for orphaned processes...".to_string(),
+        );
+        tracing::info!(
+            task_id = task_id_str,
+            "pre_merge_cleanup: agents stopped, scanning worktree for orphaned processes"
+        );
         if let Some(ref worktree_path) = task.worktree_path {
             let worktree_path_buf = PathBuf::from(worktree_path);
             if worktree_path_buf.exists() {

@@ -440,6 +440,49 @@ async fn test_try_register_cleanup_on_spawn_failure() {
     assert!(result.is_ok());
 }
 
+/// RC-A regression: stop() must NOT call kill_worktree_processes (blocking lsof +D).
+///
+/// Pre-fix: SqliteRunningAgentRegistry::stop() called kill_worktree_processes(&worktree)
+/// synchronously — blocking the Tokio thread via std::process::Command::output().
+/// When pointed at a large directory tree, lsof +D could block for minutes, rendering
+/// the agent_stop_timeout_secs guard in pre_merge_cleanup ineffective.
+///
+/// Post-fix: stop() only cancels the token + sends SIGTERM. Worktree lsof scanning
+/// is handled exclusively by kill_worktree_processes_async in pre_merge_cleanup step 0b.
+#[tokio::test]
+async fn test_stop_completes_without_blocking_lsof_scan() {
+    let conn = setup_conn();
+    let registry = SqliteRunningAgentRegistry::new(conn);
+    let key = RunningAgentKey::new("review", "task-rc-a-stop");
+
+    // Register with worktree_path pointing at /tmp (exists).
+    // Old code: triggered lsof +D /tmp — could take 10+ seconds.
+    // New code: skips lsof entirely — must complete in well under 1s.
+    registry
+        .register(
+            key.clone(),
+            2_000_000, // non-existent PID — kill_process handles "No such process" gracefully
+            "conv-rca".to_string(),
+            "run-rca".to_string(),
+            Some("/tmp".to_string()),
+            None,
+        )
+        .await;
+
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        registry.stop(&key),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "stop() timed out after 1s — blocking lsof scan may still be present"
+    );
+    assert!(result.unwrap().is_ok());
+    assert!(!registry.is_running(&key).await);
+}
+
 #[tokio::test]
 async fn test_try_register_blocks_concurrent_claim() {
     let conn = setup_conn();
