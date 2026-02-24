@@ -330,12 +330,25 @@ pub fn sanitize_claude_user_state() {
 /// passed via `--agent-type` CLI arg (for tool filtering). Returns the temp file path.
 /// Uses UUID in filename to avoid race conditions between parallel agent spawns.
 pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf> {
-    let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
+    // project_root is the parent of plugin_dir (e.g. ralphx-plugin's parent = ralphx/)
+    // Used to expand ${CLAUDE_PLUGIN_ROOT} templates in .mcp.json args — the template
+    // convention uses CLAUDE_PLUGIN_ROOT to mean the project root, not the plugin subdir.
+    let project_root = plugin_dir.parent().unwrap_or(plugin_dir);
+    let mcp_server_path = project_root.join("ralphx-mcp-server/build/index.js");
     let mcp_server_path_str = mcp_server_path.to_string_lossy().to_string();
+    // Resolve node path robustly — macOS GUI apps (Dock/Finder) have stripped PATH
+    // (/usr/bin:/bin only), so which::which may fail. Fall back to common install paths.
     let node_command = which::which("node")
         .ok()
         .and_then(|p| p.to_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| "node".to_string());
+        .unwrap_or_else(|| {
+            for candidate in ["/opt/homebrew/bin/node", "/usr/local/bin/node"] {
+                if std::path::Path::new(candidate).exists() {
+                    return candidate.to_string();
+                }
+            }
+            "node".to_string()
+        });
 
     // Strip plugin prefix for MCP server's --agent-type param
     let short_name = mcp_agent_type(agent_type);
@@ -376,12 +389,21 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
                 serde_json::Value::String("stdio".to_string()),
             );
         }
-        if !server_obj.contains_key("command") {
-            server_obj.insert(
-                "command".to_string(),
-                serde_json::Value::String(node_command),
-            );
-        }
+        // Always resolve bare "node" to its full path so macOS GUI apps (which have
+        // stripped PATH) can find node even when it's installed via nvm/Homebrew.
+        let current_command = server_obj
+            .get("command")
+            .and_then(|v| v.as_str())
+            .unwrap_or("node");
+        let resolved_command = if current_command == "node" {
+            node_command.clone()
+        } else {
+            current_command.to_string()
+        };
+        server_obj.insert(
+            "command".to_string(),
+            serde_json::Value::String(resolved_command),
+        );
 
         let mut args_vec: Vec<String> = server_obj
             .get("args")
@@ -395,6 +417,15 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
 
         if args_vec.is_empty() {
             args_vec.push(mcp_server_path_str);
+        } else {
+            // Expand ${CLAUDE_PLUGIN_ROOT} templates to the resolved project root path.
+            // The .mcp.json convention uses CLAUDE_PLUGIN_ROOT to mean the project root
+            // (parent of ralphx-plugin/), not the plugin subdir itself.
+            let project_root_str = project_root.to_string_lossy();
+            args_vec = args_vec
+                .into_iter()
+                .map(|a| a.replace("${CLAUDE_PLUGIN_ROOT}", &project_root_str))
+                .collect();
         }
 
         // Always pass/override --agent-type for MCP-side tool filtering.

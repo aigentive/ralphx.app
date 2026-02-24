@@ -380,6 +380,29 @@ pub async fn approve_team_plan(
                 let mut child = spawn_result.child;
                 let stdout = child.stdout.take();
 
+                // Drain stderr in background to capture crash messages without deadlock.
+                // Logs any output at error level when the process exits.
+                if let Some(stderr) = child.stderr.take() {
+                    let name = teammate_name.clone();
+                    let team = team_name.clone();
+                    tokio::spawn(async move {
+                        use tokio::io::{AsyncBufReadExt, BufReader};
+                        let mut lines = BufReader::new(stderr).lines();
+                        let mut output = Vec::new();
+                        while let Ok(Some(line)) = lines.next_line().await {
+                            output.push(line);
+                        }
+                        if !output.is_empty() {
+                            tracing::error!(
+                                teammate = %name,
+                                team = %team,
+                                stderr = %output.join("\n"),
+                                "Teammate process stderr (crash/MCP init error)"
+                            );
+                        }
+                    });
+                }
+
                 // Start background stream processor for teammate stdout
                 let stream_task = match (stdout, &state.app_state.app_handle) {
                     (Some(stdout), Some(app_handle)) => Some(
@@ -676,6 +699,29 @@ pub async fn request_teammate_spawn(
             // 7. Take stdout from child for stream processing, then create handle
             let mut child = spawn_result.child;
             let stdout = child.stdout.take();
+
+            // Drain stderr in background to capture crash messages without deadlock.
+            // Logs any output at error level when the process exits.
+            if let Some(stderr) = child.stderr.take() {
+                let name = teammate_name.clone();
+                let team = team_name.clone();
+                tokio::spawn(async move {
+                    use tokio::io::{AsyncBufReadExt, BufReader};
+                    let mut lines = BufReader::new(stderr).lines();
+                    let mut output = Vec::new();
+                    while let Ok(Some(line)) = lines.next_line().await {
+                        output.push(line);
+                    }
+                    if !output.is_empty() {
+                        tracing::error!(
+                            teammate = %name,
+                            team = %team,
+                            stderr = %output.join("\n"),
+                            "Teammate process stderr (crash/MCP init error)"
+                        );
+                    }
+                });
+            }
 
             // 8. Start background stream processor if we have both stdout and app_handle
             let stream_task = match (stdout, &state.app_state.app_handle) {
