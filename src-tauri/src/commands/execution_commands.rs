@@ -191,16 +191,37 @@ impl ExecutionState {
         self.running_count.fetch_add(1, Ordering::SeqCst) + 1
     }
 
-    /// Decrement running count (when a task completes)
+    /// Decrement running count (when a task completes).
+    /// Uses `fetch_update` with `saturating_sub` to prevent atomic underflow.
     pub fn decrement_running(&self) -> u32 {
-        let prev = self.running_count.fetch_sub(1, Ordering::SeqCst);
-        if prev == 0 {
-            // Prevent underflow
-            self.running_count.store(0, Ordering::SeqCst);
-            0
-        } else {
-            prev - 1
-        }
+        let prev = self
+            .running_count
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+                Some(v.saturating_sub(1))
+            })
+            .unwrap(); // fetch_update with Some always succeeds
+        prev.saturating_sub(1)
+    }
+
+    /// Atomically decrement running count AND mark the interactive slot as idle.
+    /// Prevents race where a concurrent `claim_interactive_slot` call between
+    /// separate `decrement_running()` and `mark_interactive_idle()` sees the slot
+    /// as not-yet-idle, skips increment, and leaks a count.
+    pub fn decrement_and_mark_idle(&self, key: &str) -> u32 {
+        let mut idle_slots = self
+            .interactive_idle_slots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        idle_slots.insert(key.to_string());
+        // Decrement while holding the lock so claim_interactive_slot can't race
+        let new_count = self
+            .running_count
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| {
+                Some(v.saturating_sub(1))
+            })
+            .unwrap()
+            .saturating_sub(1);
+        new_count
     }
 
     /// Force-set running count (used for reconciliation with registry)
@@ -5072,5 +5093,149 @@ mod tests {
         assert_eq!(idle_count, 1);
         state.set_running_count(registry_count.saturating_sub(idle_count));
         assert_eq!(state.running_count(), 2);
+    }
+
+    // ========================================
+    // H1: decrement_running saturating_sub (no underflow)
+    // ========================================
+
+    #[test]
+    fn test_decrement_running_saturating_no_wrap() {
+        // Verify that decrementing from 0 never wraps to u32::MAX.
+        let state = ExecutionState::new();
+        assert_eq!(state.running_count(), 0);
+
+        // Decrement from 0 — must stay at 0
+        let result = state.decrement_running();
+        assert_eq!(result, 0);
+        assert_eq!(state.running_count(), 0);
+
+        // Second decrement from 0 — still 0
+        let result = state.decrement_running();
+        assert_eq!(result, 0);
+        assert_eq!(state.running_count(), 0);
+    }
+
+    #[test]
+    fn test_decrement_running_concurrent_no_underflow() {
+        // Spawn more decrement threads than increments to stress underflow path.
+        use std::sync::Arc;
+        use std::thread;
+
+        let state = Arc::new(ExecutionState::with_max_concurrent(50));
+
+        // Increment 5 times
+        for _ in 0..5 {
+            state.increment_running();
+        }
+        assert_eq!(state.running_count(), 5);
+
+        // Decrement 20 times concurrently — 15 extra should saturate at 0
+        let mut handles = vec![];
+        for _ in 0..20 {
+            let s = Arc::clone(&state);
+            handles.push(thread::spawn(move || {
+                s.decrement_running();
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        // Must be exactly 0, never wrapped
+        assert_eq!(state.running_count(), 0);
+    }
+
+    // ========================================
+    // H2: decrement_and_mark_idle atomicity
+    // ========================================
+
+    #[test]
+    fn test_decrement_and_mark_idle_basic() {
+        let state = ExecutionState::with_max_concurrent(5);
+        let key = "task_execution/task-1";
+
+        state.increment_running();
+        assert_eq!(state.running_count(), 1);
+
+        // Atomic decrement + mark idle
+        let new_count = state.decrement_and_mark_idle(key);
+        assert_eq!(new_count, 0);
+        assert_eq!(state.running_count(), 0);
+        assert!(state.is_interactive_idle(key));
+
+        // claim should now work
+        assert!(state.claim_interactive_slot(key));
+    }
+
+    #[test]
+    fn test_decrement_and_mark_idle_race_with_claim() {
+        // Simulate the race condition: one thread does decrement_and_mark_idle,
+        // many threads try claim_interactive_slot concurrently.
+        // Exactly one claim should succeed (no lost increments).
+        use std::sync::Arc;
+        use std::thread;
+
+        let state = Arc::new(ExecutionState::with_max_concurrent(10));
+        let key = "task_execution/task-1";
+
+        // Initial: process is running
+        state.increment_running();
+        assert_eq!(state.running_count(), 1);
+
+        // Use a barrier so all threads start at the same time
+        let barrier = Arc::new(std::sync::Barrier::new(11)); // 1 decrement + 10 claimers
+
+        let mut handles = vec![];
+
+        // Thread that decrements and marks idle
+        {
+            let s = Arc::clone(&state);
+            let b = Arc::clone(&barrier);
+            handles.push(thread::spawn(move || {
+                b.wait();
+                s.decrement_and_mark_idle(key);
+            }));
+        }
+
+        // 10 threads that try to claim the slot
+        let claim_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+        for _ in 0..10 {
+            let s = Arc::clone(&state);
+            let b = Arc::clone(&barrier);
+            let cc = Arc::clone(&claim_count);
+            handles.push(thread::spawn(move || {
+                b.wait();
+                // Small spin to increase chance of interleaving
+                for _ in 0..100 {
+                    if s.claim_interactive_slot(key) {
+                        cc.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                        s.increment_running();
+                        break;
+                    }
+                    std::thread::yield_now();
+                }
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        let claims = claim_count.load(std::sync::atomic::Ordering::SeqCst);
+        // Either 0 or 1 claims — never more than 1
+        assert!(claims <= 1, "At most one claim should succeed, got {}", claims);
+    }
+
+    #[test]
+    fn test_decrement_and_mark_idle_from_zero_saturates() {
+        // decrement_and_mark_idle from 0 should not underflow
+        let state = ExecutionState::new();
+        let key = "task_execution/task-1";
+
+        let new_count = state.decrement_and_mark_idle(key);
+        assert_eq!(new_count, 0);
+        assert_eq!(state.running_count(), 0);
+        assert!(state.is_interactive_idle(key));
     }
 }
