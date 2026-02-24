@@ -83,6 +83,11 @@ mod merge_pipeline_gaps;
 // RC#8 + RC#9 + RC#10: task worktree cleanup, source update fallback, metadata preservation
 mod rc8_rc9_rc10_regression;
 
+// RC#4: rebase worktree double-delete ownership contract
+// Inner (try_rebase_squash_merge_in_worktree Step 5) removed — outer caller owns lifecycle.
+// pre_delete_worktree guards with exists() to skip paths never created.
+mod rc4_rebase_double_delete;
+
 // RC#12 + RC#13: stale merge worktree between merge phases
 // RC#12: merge-{id} leftover from plan_update phase blocks task_merge retry
 // RC#13: source_update_conflict doesn't clean stale merge-{id} (same as RC#6 pattern)
@@ -107,3 +112,14 @@ mod merge_pipeline_timeout_tests;
 // PlanMerge check_already_merged guard: ensures PlanMerge tasks are not falsely
 // completed by the tautological plan-branch defense-in-depth check
 mod plan_merge_already_merged;
+
+// Integration tests for merge pipeline failure scenarios from logs-21:
+//   RC2 authoritative deferral gate (running_count > 0 defers merge to main)
+//   RC5 retry pipeline (MergeIncomplete → PendingMerge → Merged)
+//   RC5 log message distinctness (structural grep-ability guard)
+mod merge_pipeline_failure_scenarios;
+
+// RC pipeline integration tests: RC1 lsof kill_on_drop + RC2 TOCTOU retry scenarios
+// Scenario 1 (RC1): cleanup timeout doesn't kill merge attempt; kill_on_drop terminates lsof
+// Scenario 2 (RC2): try_retry_main_merges always fires regardless of running_count
+mod rc_pipeline_integration_tests;

@@ -21,7 +21,6 @@ pub(crate) struct ExitContext {
     pub task_repo: Option<Arc<dyn crate::domain::repositories::TaskRepository>>,
     pub project_repo: Option<Arc<dyn crate::domain::repositories::ProjectRepository>>,
     pub task_scheduler: Option<Arc<dyn crate::domain::state_machine::services::TaskScheduler>>,
-    pub execution_state: Option<Arc<crate::commands::ExecutionState>>,
 }
 
 /// Clear trigger_origin metadata when exiting agent-active states.
@@ -54,7 +53,6 @@ pub(crate) fn spawn_deferred_merge_retry(ctx: &ExitContext, from: &State, to: &S
     let project_id = ctx.project_id.clone();
     let from_state = format!("{:?}", from);
     let to_state = format!("{:?}", to);
-    let execution_state_clone = ctx.execution_state.as_ref().map(Arc::clone);
 
     tracing::info!(
         task_id = %ctx.task_id,
@@ -65,13 +63,18 @@ pub(crate) fn spawn_deferred_merge_retry(ctx: &ExitContext, from: &State, to: &S
 
     tokio::spawn(async move {
         scheduler.try_retry_deferred_merges(&project_id).await;
-        if execution_state_clone
-            .as_ref()
-            .map(|s| s.running_count() == 0)
-            .unwrap_or(false)
-        {
-            scheduler.try_retry_main_merges().await;
-        }
+        // Always attempt main merge retry — do NOT guard with running_count == 0 here.
+        //
+        // The previous guard was a TOCTOU: by the time this spawned future evaluates
+        // running_count, an auto-transition (e.g. PendingReview→Reviewing, 72ms window
+        // observed in logs) may have already incremented running_count to 1, causing
+        // try_retry_main_merges to be skipped entirely and the main merge task to remain
+        // stuck with main_merge_deferred metadata until the reconciler retries (~minutes).
+        //
+        // The authoritative deferral gate is check_main_merge_deferral() inside
+        // attempt_programmatic_merge(), which reads running_count fresh at merge-start time
+        // and correctly re-defers if agents are still running when the merge would begin.
+        scheduler.try_retry_main_merges().await;
     });
 }
 

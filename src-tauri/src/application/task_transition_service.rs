@@ -742,6 +742,16 @@ impl<R: Runtime> TaskTransitionService<R> {
         }
         tracing::debug!("Task status persisted to database");
 
+        // Log every confirmed state change at INFO level so the full state history is
+        // visible in logs regardless of trigger type. Uses a distinct message from the
+        // auto-transition log (~line 995) so grep can tell event-driven from timer-driven.
+        tracing::info!(
+            task_id = task_id.as_str(),
+            from = old_status.as_str(),
+            to = new_status.as_str(),
+            "Status transition confirmed"
+        );
+
         // 5. Emit event for UI update
         if let Some(ref handle) = self._app_handle {
             let _ = handle.emit(

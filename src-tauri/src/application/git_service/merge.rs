@@ -274,12 +274,8 @@ impl GitService {
             )));
         }
 
-        // Step 5: Rebase succeeded — delete rebase worktree
-        if let Err(e) = Self::delete_worktree(repo, rebase_worktree_path).await {
-            debug!("Failed to delete rebase worktree (non-fatal): {}", e);
-        }
-
-        // Step 6: Create merge worktree on target, squash merge
+        // Step 5: Create merge worktree on target, squash merge
+        // Note: rebase worktree lifecycle is owned by the outer caller (rebase_squash_worktree_strategy).
         Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch).await?;
 
         let squash_output =
@@ -300,7 +296,7 @@ impl GitService {
             )));
         }
 
-        // Step 7: Commit
+        // Step 6: Commit
         let commit_output =
             match git_cmd::run(&["commit", "-m", commit_message], merge_worktree_path).await {
                 Ok(output) => output,

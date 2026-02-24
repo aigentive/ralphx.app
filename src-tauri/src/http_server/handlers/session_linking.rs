@@ -451,7 +451,12 @@ pub async fn get_parent_session_context(
 
     // Verify the session has a parent
     let parent_id = session.parent_session_id.ok_or_else(|| {
-        error!("Session {} does not have a parent", session_id.as_str());
+        // Top-level (root) sessions have no parent — this is a normal caller error,
+        // not an application fault. Downgraded from ERROR to debug to avoid noise.
+        tracing::debug!(
+            session_id = session_id.as_str(),
+            "Session does not have a parent"
+        );
         json_error(
             StatusCode::NOT_FOUND,
             "Session does not have a parent session",
