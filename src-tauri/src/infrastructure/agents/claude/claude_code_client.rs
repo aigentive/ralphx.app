@@ -900,7 +900,7 @@ impl ClaudeCodeClient {
         cmd.args(&args)
             .current_dir(&config.working_directory)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::null()) // Must NOT be piped — unread pipe buffer fills up and deadlocks the process
             .stdin(Stdio::piped()); // Piped for message injection (NOT null)
 
         // Apply common RalphX spawn env vars
