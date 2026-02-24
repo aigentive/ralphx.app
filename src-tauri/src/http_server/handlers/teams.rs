@@ -355,12 +355,22 @@ pub async fn approve_team_plan(
 
         // Spawn an interactive CLI worker process for this teammate
         // (uses spawn_teammate_interactive for piped stdin — keeps process alive for messaging)
+
+        // Always inject team communication tools regardless of plan specification.
+        // Without these, teammates cannot send messages or coordinate via task lists.
+        let mut tools = pending.tools.clone();
+        for required in ["SendMessage", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"] {
+            if !tools.contains(&required.to_string()) {
+                tools.push(required.to_string());
+            }
+        }
+
         let spawn_config =
             TeammateSpawnConfig::new(&teammate_name, &team_name, &pending.prompt)
                 .with_parent_session_id(&parent_session_id)
                 .with_context(teammate_context)
                 .with_model(&pending.model)
-                .with_tools(pending.tools.clone())
+                .with_tools(tools)
                 .with_mcp_tools(pending.mcp_tools.clone())
                 .with_color(&teammate_color)
                 .with_mcp_agent_type(mcp_type)
@@ -712,12 +722,21 @@ pub async fn request_teammate_spawn(
         project_id,
     };
 
+    // Always inject team communication tools regardless of spawn request specification.
+    // Without these, teammates cannot send messages or coordinate via task lists.
+    let mut tools = req.tools.clone();
+    for required in ["SendMessage", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet"] {
+        if !tools.contains(&required.to_string()) {
+            tools.push(required.to_string());
+        }
+    }
+
     let spawn_config =
         TeammateSpawnConfig::new(&teammate_name, &team_name, &req.prompt)
             .with_parent_session_id(&parent_session_id)
             .with_context(teammate_context)
             .with_model(&req.model)
-            .with_tools(req.tools.clone())
+            .with_tools(tools)
             .with_mcp_tools(req.mcp_tools.clone())
             .with_color(&teammate_color)
             .with_working_dir(working_dir.clone())
