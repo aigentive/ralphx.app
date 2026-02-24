@@ -798,16 +798,15 @@ pub async fn process_stream_background<R: Runtime>(
                         // Only for contexts that use execution slots.
                         if super::uses_execution_slot(context_type) {
                             if let Some(ref exec_state) = execution_state {
-                                exec_state.decrement_running();
-                                // Mark this context as idle so send_message/queue_message
-                                // know to re-increment only once (prevents double-increment
-                                // on rapid burst messages while agent is active).
+                                // Atomically decrement + mark idle to prevent race where
+                                // a concurrent claim_interactive_slot between two separate
+                                // calls would skip increment and leak a count.
                                 let slot_key = format!("{}/{}", context_type, context_id_str);
-                                exec_state.mark_interactive_idle(&slot_key);
+                                let new_count = exec_state.decrement_and_mark_idle(&slot_key);
                                 tracing::debug!(
                                     %context_type,
                                     context_id = context_id_str.as_str(),
-                                    new_count = exec_state.running_count(),
+                                    new_count,
                                     "TurnComplete: decremented running count (idle between turns)"
                                 );
                                 if let Some(ref handle) = app_handle {
