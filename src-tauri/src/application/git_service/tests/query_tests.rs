@@ -368,3 +368,124 @@ async fn test_find_commit_by_message_grep_returns_none_when_not_found() {
         .unwrap();
     assert_eq!(result, None);
 }
+
+// =========================================================================
+// find_commit_by_message_grep — loose-match false positive regression test
+// =========================================================================
+//
+// Demonstrates that grepping for just a task UUID (e.g. "abc-123-xyz") is
+// too loose: a newer commit that merely *mentions* the UUID in its body
+// (e.g. a rollback note) wins the `git log -1` race and becomes the
+// "found" SHA, despite being completely unrelated to the task's own
+// squash commit.
+//
+// The fix is to pass `source_branch` (e.g. "ralphx/ralphx/task-abc-123-xyz")
+// as the grep pattern instead of just the task ID. The squash commit message
+// format is:
+//   `feat: <source_branch> (<title>)`
+// so the branch name is an exact verbatim substring — no false positives.
+
+#[tokio::test]
+async fn test_find_commit_by_message_grep_loose_task_id_matches_unrelated_commit() {
+    // ----- ARRANGE: two commits — only one is the real task squash commit -----
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    super::init_test_repo(repo);
+
+    let task_id = "abc-123-xyz";
+    let source_branch = "ralphx/ralphx/task-abc-123-xyz";
+
+    // Commit 1 — the legitimate task squash commit.
+    // Message format mirrors build_squash_commit_msg: `<type>: <branch> (<title>)`
+    std::fs::write(repo.join("work.txt"), "task work").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args([
+            "commit",
+            "-m",
+            &format!("feat: {} (Implement feature X)", source_branch),
+        ])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let real_task_sha = {
+        let out = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // Commit 2 — an unrelated commit that merely *mentions* the task ID.
+    // Simulates a rollback note, conflict annotation, or revert message.
+    // It is NEWER than commit 1, so `git log -1 --grep=<task_id>` returns it.
+    std::fs::write(repo.join("work.txt"), "rolled back").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args([
+            "commit",
+            "-m",
+            &format!(
+                "fix: rolled back changes related to {} due to conflicts",
+                task_id
+            ),
+        ])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let rollback_sha = {
+        let out = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    let branch = {
+        let out = Command::new("git")
+            .args(["branch", "--show-current"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // ----- BUG: loose grep (task_id only) returns the WRONG commit -----
+    // The rollback commit is newer and its message contains `task_id`,
+    // so git log -1 returns it instead of the real task commit.
+    let loose_result = GitService::find_commit_by_message_grep(repo, task_id, &branch)
+        .await
+        .unwrap();
+    assert_eq!(
+        loose_result,
+        Some(rollback_sha.clone()),
+        "loose grep returns the newer, unrelated rollback commit — not the real task commit"
+    );
+
+    // ----- FIX: precise grep (source_branch) returns the CORRECT commit -----
+    // The rollback commit does not contain the full branch path, so no false match.
+    let precise_result =
+        GitService::find_commit_by_message_grep(repo, source_branch, &branch)
+            .await
+            .unwrap();
+    assert_eq!(
+        precise_result,
+        Some(real_task_sha),
+        "precise grep (source_branch) returns the real task squash commit"
+    );
+    assert_ne!(
+        precise_result.as_deref(),
+        Some(rollback_sha.as_str()),
+        "precise grep must not return the rollback commit"
+    );
+}

@@ -46,7 +46,9 @@ use super::merge_validation::emit_merge_progress;
 /// 6. Emits task:merged and task:status_changed events
 ///
 /// # Errors
-/// Returns `AppError::InvalidState` if the commit is not on the target branch.
+/// Returns `AppError::Validation` if the commit is not on the target branch.
+/// Returns `AppError::GitOperation` if git verification itself fails (protects against
+/// ghost merges — setting Merged status without confirmation is a data integrity error).
 pub async fn complete_merge_internal<R: tauri::Runtime>(
     task: &mut Task,
     project: &Project,
@@ -84,15 +86,21 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
             )));
         }
         Err(e) => {
-            tracing::warn!(
+            // Fatal: git verification failed — we cannot confirm the merge succeeded.
+            // Setting Merged status without verification risks data corruption (ghost merge).
+            // The caller will handle the error; reconciliation will retry the merge.
+            tracing::error!(
                 task_id = task_id_str,
                 error = %e,
                 commit_sha = %commit_sha,
                 target_branch = %target_branch,
-                "complete_merge_internal: failed to verify commit on target branch, proceeding (non-fatal)"
+                "complete_merge_internal: git verification failed — rejecting Merged \
+                 status to protect data integrity"
             );
-            // Non-fatal: git verification failed, but we don't want to block legitimate merges
-            // The caller has already verified the merge in most cases
+            return Err(AppError::GitOperation(format!(
+                "Cannot confirm merge: git verification of commit {} on branch {} failed: {}",
+                commit_sha, target_branch, e
+            )));
         }
     }
 
@@ -331,6 +339,96 @@ pub(super) async fn cleanup_branch_and_worktree_internal(
         tracing::info!(
             task_id = task_id_str,
             "Cleared task_branch and worktree_path after merge cleanup"
+        );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::entities::{InternalStatus, MergeStrategy, Project, ProjectId, Task};
+    use crate::infrastructure::memory::MemoryTaskRepository;
+
+    fn make_test_repo() -> (tempfile::TempDir, String) {
+        let dir = tempfile::TempDir::new().expect("create temp dir");
+        let path = dir.path();
+        for args in [
+            vec!["init", "-b", "main"],
+            vec!["config", "user.email", "t@t.com"],
+            vec!["config", "user.name", "T"],
+        ] {
+            let _ = std::process::Command::new("git")
+                .args(&args)
+                .current_dir(path)
+                .output();
+        }
+        std::fs::write(path.join("README.md"), "# test").unwrap();
+        for args in [vec!["add", "."], vec!["commit", "-m", "init"]] {
+            let _ = std::process::Command::new("git")
+                .args(&args)
+                .current_dir(path)
+                .output();
+        }
+        let path_str = path.to_string_lossy().to_string();
+        (dir, path_str)
+    }
+
+    /// V2 fix: complete_merge_internal must return Err when git verification fails,
+    /// NOT fall through to set Merged status.
+    ///
+    /// Before the fix: Err from is_commit_on_branch was treated as non-fatal, and
+    /// the function proceeded to set task.internal_status = Merged. This allowed
+    /// ghost merges when git verification was unavailable or errored.
+    ///
+    /// After the fix: Err returns AppError::GitOperation — task stays in its prior
+    /// state, reconciliation retries, data integrity is preserved.
+    #[tokio::test]
+    async fn complete_merge_internal_returns_err_when_git_verification_fails() {
+        let (_dir, repo_path_str) = make_test_repo();
+
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let project_id = ProjectId::from_string("proj-v2".to_string());
+
+        let mut task = Task::new(project_id.clone(), "V2 test task".to_string());
+        task.internal_status = InternalStatus::PendingMerge;
+        let _task_id = task.id.clone();
+        task_repo.create(task.clone()).await.unwrap();
+
+        let mut project = Project::new("v2-project".to_string(), repo_path_str);
+        project.id = project_id;
+        project.base_branch = Some("main".to_string());
+        project.merge_strategy = MergeStrategy::Merge;
+
+        // Pass an INVALID commit SHA — git verification will return Err (not Ok(false)),
+        // because `git merge-base --is-ancestor invalid_sha main` exits with a non-0/1 code.
+        let invalid_sha = "0000000000000000000000000000000000000000";
+        let task_repo_arc: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+        task_repo_arc.create(task.clone()).await.unwrap();
+
+        let result = complete_merge_internal::<tauri::Wry>(
+            &mut task,
+            &project,
+            invalid_sha,
+            "main",
+            &task_repo_arc,
+            None,
+        )
+        .await;
+
+        // Must return Err — git verification failed
+        assert!(
+            result.is_err(),
+            "complete_merge_internal must return Err when git verification fails (V2 fix). \
+             Got Ok(()) which means Merged status was set without confirmation."
+        );
+
+        // Task status must NOT have been updated to Merged
+        assert_ne!(
+            task.internal_status,
+            InternalStatus::Merged,
+            "Task internal_status must NOT be Merged when git verification fails. \
+             Got {:?}",
+            task.internal_status,
         );
     }
 }
