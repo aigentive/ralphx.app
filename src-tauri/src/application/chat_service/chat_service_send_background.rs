@@ -243,6 +243,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             Some(Arc::clone(&agent_run_repo)),
             Some(agent_run_id.clone()),
             execution_state.clone(),
+            Some(Arc::clone(&conversation_repo)),
         )
         .await;
 

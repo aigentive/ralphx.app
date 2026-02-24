@@ -260,6 +260,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         None, // Queue processing doesn't complete agent_run
                         None,
                         None, // Queue processing doesn't track execution slots
+                        None, // Queue processing doesn't persist session_id
                     )
                     .await
                     {
