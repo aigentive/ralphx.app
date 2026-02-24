@@ -242,6 +242,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             Some(Arc::clone(&running_agent_registry)),
             Some(Arc::clone(&agent_run_repo)),
             Some(agent_run_id.clone()),
+            execution_state.clone(),
         )
         .await;
 
@@ -277,8 +278,15 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             );
         }
 
+        // Clean up interactive idle slot tracking
+        if let Some(ref exec) = execution_state {
+            let slot_key = format!("{}/{}", context_type, context_id);
+            exec.remove_interactive_slot(&slot_key);
+        }
+
         match result {
             Ok(outcome) => {
+                let execution_slot_held = outcome.execution_slot_held;
                 let response_text = outcome.response_text;
                 let tool_calls = outcome.tool_calls;
                 let content_blocks = outcome.content_blocks;
@@ -448,6 +456,22 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                         let _ = agent_run_repo
                             .complete(&AgentRunId::from_string(&agent_run_id))
                             .await;
+                    }
+                }
+
+                // When TurnComplete freed the execution slot and the process exited
+                // while idle, re-increment temporarily so that the state transition's
+                // on_exit decrement produces the correct final count (net zero).
+                if !execution_slot_held
+                    && super::uses_execution_slot(context_type)
+                {
+                    if let Some(ref exec) = execution_state {
+                        exec.increment_running();
+                        tracing::debug!(
+                            %context_type,
+                            context_id = %context_id,
+                            "Re-incremented before state transition to prevent double-decrement"
+                        );
                     }
                 }
 

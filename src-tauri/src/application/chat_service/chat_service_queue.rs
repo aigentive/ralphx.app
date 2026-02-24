@@ -259,6 +259,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         None, // Queue processing doesn't have registry in scope
                         None, // Queue processing doesn't complete agent_run
                         None,
+                        None, // Queue processing doesn't track execution slots
                     )
                     .await
                     {

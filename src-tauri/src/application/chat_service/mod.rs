@@ -98,6 +98,19 @@ pub(crate) fn has_meaningful_output(
     !response_text.trim().is_empty()
 }
 
+/// Returns true for context types that consume execution slots (running count).
+/// TaskExecution, Review, Merge, and Ideation are tracked against max_concurrent.
+/// Task chat and Project chat are lightweight conversational agents — excluded.
+pub(crate) fn uses_execution_slot(context_type: ChatContextType) -> bool {
+    matches!(
+        context_type,
+        ChatContextType::TaskExecution
+            | ChatContextType::Review
+            | ChatContextType::Merge
+            | ChatContextType::Ideation
+    )
+}
+
 /// Shared event payload context used by background and streaming modules.
 #[derive(Debug, Clone)]
 pub(crate) struct EventContextPayload {
@@ -582,6 +595,22 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 .await
             {
                 Ok(()) => {
+                    // Re-increment running count only if the process was idle
+                    // (TurnComplete decremented and marked idle). If the agent is
+                    // already active (mid-turn), skip — prevents double-increment
+                    // on rapid burst messages.
+                    if uses_execution_slot(context_type) {
+                        if let Some(ref exec) = self.execution_state {
+                            let slot_key = format!("{}/{}", context_type, context_id);
+                            if exec.claim_interactive_slot(&slot_key) {
+                                exec.increment_running();
+                                if let Some(ref handle) = self.app_handle {
+                                    exec.emit_status_changed(handle, "interactive_turn_resumed");
+                                }
+                            }
+                        }
+                    }
+
                     // Store user message for conversation history
                     let user_msg = chat_service_context::create_user_message(
                         context_type,
@@ -850,10 +879,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // This tracks concurrency for agent-active states (Executing, Reviewing, ReExecuting)
         // The count is decremented in TransitionHandler::on_exit when leaving these states
         // IMPORTANT: Must increment before spawn to ensure scheduling respects capacity
-        if matches!(
-            context_type,
-            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
-        ) {
+        if uses_execution_slot(context_type) {
             if let Some(ref exec) = self.execution_state {
                 exec.increment_running();
                 running_incremented = true;
@@ -1039,6 +1065,20 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 .await
             {
                 Ok(()) => {
+                    // Re-increment running count only if the process was idle.
+                    // Same guard as send_message fast-path: prevents double-increment.
+                    if uses_execution_slot(context_type) {
+                        if let Some(ref exec) = self.execution_state {
+                            let slot_key = format!("{}/{}", context_type, context_id);
+                            if exec.claim_interactive_slot(&slot_key) {
+                                exec.increment_running();
+                                if let Some(ref handle) = self.app_handle {
+                                    exec.emit_status_changed(handle, "interactive_turn_resumed");
+                                }
+                            }
+                        }
+                    }
+
                     // Persist user message for conversation history
                     let conversation = self
                         .get_or_create_conversation(context_type, context_id)
