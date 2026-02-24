@@ -9,7 +9,7 @@
  */
 
 import React, { useState, useMemo } from "react";
-import { Wrench, ChevronDown, ChevronRight, FileText, Terminal, FileEdit, Search, FolderSearch } from "lucide-react";
+import { Wrench, ChevronDown, ChevronRight, FileText, Terminal, FileEdit, Search, FolderSearch, Loader2 } from "lucide-react";
 import { createSummary, formatValue, getToolVerb } from "./ToolCallIndicator.helpers";
 import { isDiffToolCall, isTaskToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
@@ -27,6 +27,8 @@ interface ToolCallIndicatorProps {
   className?: string;
   /** Compact mode for rendering inside task cards — smaller padding, text, icons */
   compact?: boolean;
+  /** Streaming mode — tool call is still in progress (no result yet). Shows loading spinner. */
+  isStreaming?: boolean;
 }
 
 // ============================================================================
@@ -58,7 +60,7 @@ function ToolIcon({ name, hasError, size = 14 }: { name: string; hasError: boole
   }
 }
 
-export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCall, className = "", compact = false }: ToolCallIndicatorProps) {
+export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCall, className = "", compact = false, isStreaming = false }: ToolCallIndicatorProps) {
   // Hooks must be called unconditionally (React rules-of-hooks)
   const [isExpanded, setIsExpanded] = useState(false);
   const summary = useMemo(() => createSummary(toolCall), [toolCall]);
@@ -147,6 +149,15 @@ export const ToolCallIndicator = React.memo(function ToolCallIndicator({ toolCal
           >
             {verb}
           </span>
+
+          {/* Streaming indicator — tool call in progress */}
+          {isStreaming && !hasError && (
+            <Loader2
+              size={compact ? 10 : 12}
+              className="animate-spin ml-auto flex-shrink-0"
+              style={{ color: "hsl(14 100% 60%)" }}
+            />
+          )}
 
           {/* Error indicator */}
           {hasError && (

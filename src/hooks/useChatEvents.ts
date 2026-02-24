@@ -36,8 +36,8 @@ interface UseChatEventsProps {
   setStreamingToolCalls: Dispatch<SetStateAction<ToolCall[]>>;
   setStreamingContentBlocks: Dispatch<SetStateAction<StreamingContentBlock[]>>;
   setStreamingTasks: Dispatch<SetStateAction<Map<string, StreamingTask>>>;
-  /** Ref to track conversation ID that's currently finalizing (between message_created and query refetch) */
-  finalizingConversationRef: React.MutableRefObject<string | null>;
+  /** Setter to mark the conversation as finalizing (between message_created and query refetch) */
+  setIsFinalizing: Dispatch<SetStateAction<boolean>>;
 }
 
 // ============================================================================
@@ -51,7 +51,7 @@ export function useChatEvents({
   setStreamingToolCalls,
   setStreamingContentBlocks,
   setStreamingTasks,
-  finalizingConversationRef,
+  setIsFinalizing,
 }: UseChatEventsProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
@@ -384,18 +384,16 @@ export function useChatEvents({
     // ── agent:message_created ────────────────────────────────────────
     // Clear streaming state for assistant messages to prevent duplicate display.
     //
-    // Atomic swap strategy: Mark conversation as "finalizing" in ref BEFORE clearing
-    // streaming state. The ref persists through the query refetch window (500ms), allowing
-    // ChatMessageList to continue filtering the last assistant message until the DB query
-    // completes. This prevents duplicates during the timing window between clearing state
-    // and query refetch completion.
+    // Direct state strategy: Set isFinalizing=true in the same React batch as clearing
+    // streaming state. This ensures the last-assistant-message filter stays active through
+    // the timing window between streaming state clear and query refetch completion.
     //
     // Timeline:
     // 1. Streaming active: streamingContentBlocks visible, last DB assistant message filtered
-    // 2. agent:message_created fires: set finalizingConversationRef → clear streaming state → invalidate query
-    // 3. Streaming state clears synchronously, but ref persists → filter still applies
-    // 4. Query refetch completes: new DB message appears
-    // 5. After 500ms: clear ref → filter no longer applies
+    // 2. agent:message_created fires: setIsFinalizing(true) + clear streaming state (same batch)
+    // 3. Re-render: hasActiveStreaming=false, isFinalizing=true → filter still applies
+    // 4. Query refetch completes: new DB message appears correctly
+    // 5. After 500ms: setIsFinalizing(false) → filter removed
     // Result: smooth swap, no duplicate or flash
     unsubscribes.push(
       bus.subscribe<{
@@ -408,19 +406,15 @@ export function useChatEvents({
         if (!isRelevant(payload)) return;
 
         if (payload.role === "assistant") {
-          // Mark conversation as finalizing BEFORE clearing state
-          // This ref persists through the query refetch window, keeping the filter active
-          finalizingConversationRef.current = payload.conversation_id;
-
+          // Set isFinalizing=true in same batch as clearing streaming state
+          setIsFinalizing(true);
           setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
           setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
           setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
 
-          // Clear the finalizing ref after query refetch completes (500ms delay)
+          // Clear finalizing state after query refetch window (500ms)
           setTimeout(() => {
-            if (finalizingConversationRef.current === payload.conversation_id) {
-              finalizingConversationRef.current = null;
-            }
+            setIsFinalizing(false);
           }, 500);
         }
 
@@ -472,13 +466,13 @@ export function useChatEvents({
       setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
       setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
       setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
-      finalizingConversationRef.current = null;
+      setIsFinalizing(false);
       unsubscribes.forEach((unsub) => unsub());
     };
   }, [
     bus, queryClient, activeConversationId, contextId, contextType,
     supportsStreamingText, supportsSubagentTasks,
     setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks,
-    finalizingConversationRef,
+    setIsFinalizing,
   ]);
 }

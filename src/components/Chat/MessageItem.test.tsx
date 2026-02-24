@@ -158,3 +158,72 @@ describe("MessageItem - Attachment Integration", () => {
     expect(screen.getByText("read_file")).toBeInTheDocument();
   });
 });
+
+describe("MessageItem - Empty content guard (legacy rendering path)", () => {
+  const createdAt = new Date().toISOString();
+
+  it("does NOT render TextBubble for assistant with empty content", () => {
+    const { container } = render(
+      <MessageItem role="assistant" content="" createdAt={createdAt} />
+    );
+
+    // No bubble element should appear
+    const bubble = container.querySelector(".rounded-xl");
+    expect(bubble).not.toBeInTheDocument();
+  });
+
+  it("does NOT render TextBubble for assistant with whitespace-only content", () => {
+    const { container } = render(
+      <MessageItem role="assistant" content="   " createdAt={createdAt} />
+    );
+
+    const bubble = container.querySelector(".rounded-xl");
+    expect(bubble).not.toBeInTheDocument();
+  });
+
+  it("does NOT render TextBubble for assistant with newline-only content", () => {
+    // Use curly braces so JSX treats the value as a JS expression (escape sequences)
+    const { container } = render(
+      <MessageItem role="assistant" content={"\n\t  \n"} createdAt={createdAt} />
+    );
+
+    const bubble = container.querySelector(".rounded-xl");
+    expect(bubble).not.toBeInTheDocument();
+  });
+
+  it("renders TextBubble for assistant with non-empty content", () => {
+    render(
+      <MessageItem role="assistant" content="Hello there" createdAt={createdAt} />
+    );
+
+    expect(screen.getByText("Hello there")).toBeInTheDocument();
+  });
+
+  it("renders TextBubble for user even when content is empty (user always shows)", () => {
+    const { container } = render(
+      <MessageItem role="user" content="" createdAt={createdAt} />
+    );
+
+    // User bubbles use the same TextBubble — the guard only skips assistant empty bubbles
+    const bubble = container.querySelector(".rounded-xl");
+    expect(bubble).toBeInTheDocument();
+  });
+
+  it("renders tool calls alongside empty assistant content (no text bubble, but tool cards show)", () => {
+    // Use a tool name not in the widget registry so generic ToolCallIndicator renders
+    const toolCalls = [
+      { id: "tc-1", name: "read_file", arguments: { path: "/foo.ts" }, result: "content" },
+    ];
+    const { container } = render(
+      <MessageItem role="assistant" content="" createdAt={createdAt} toolCalls={toolCalls} />
+    );
+
+    // Generic ToolCallIndicator (data-testid="tool-call-indicator") should render
+    expect(container.querySelector('[data-testid="tool-call-indicator"]')).toBeInTheDocument();
+    // But no TextBubble (.rounded-xl) for the empty content
+    const textBubbles = container.querySelectorAll(".rounded-xl");
+    // Only the tool call card renders, no text bubble
+    // ToolCallIndicator uses rounded-lg, TextBubble uses rounded-xl
+    expect(textBubbles).toHaveLength(0);
+  });
+});

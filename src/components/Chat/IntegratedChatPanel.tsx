@@ -159,6 +159,8 @@ export function IntegratedChatPanel({
     setStreamingContentBlocks,
     streamingTasks,
     setStreamingTasks,
+    isFinalizing,
+    setIsFinalizing,
     autoSelectConversation,
     // overrideAgentRunId is available but we use taskHistoryState.timestamp for scroll positioning
   } = useChatPanelContext({
@@ -416,11 +418,6 @@ export function IntegratedChatPanel({
     setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
   }, [handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
 
-  // Ref to track conversation ID that's finalizing (between message_created and query refetch)
-  // Used to persist filtering state through the timing window where streaming state is cleared
-  // but the query refetch hasn't completed yet
-  const finalizingConversationRef = useRef<string | null>(null);
-
   useChatEvents({
     activeConversationId,
     contextId: currentContextId,
@@ -428,7 +425,7 @@ export function IntegratedChatPanel({
     setStreamingToolCalls,
     setStreamingContentBlocks,
     setStreamingTasks,
-    finalizingConversationRef,
+    setIsFinalizing,
   });
 
   // Ask user question state — scoped to current context (ideation session, task, or project)
@@ -637,17 +634,25 @@ export function IntegratedChatPanel({
               streamingTasks={streamingTasks}
               streamingContentBlocks={streamingContentBlocks}
               scrollToTimestamp={isHistoryMode ? taskHistoryState?.timestamp : null}
-              finalizingConversationRef={finalizingConversationRef}
+              isFinalizing={isFinalizing}
               teamFilter={activeTeam ? teamFilter : undefined}
               contextKey={activeTeam ? storeContextKey : undefined}
             />
           )}
 
           {/* StreamingToolIndicator — outside scroll container so it's always visible.
-              Filters out Task calls (shown as TaskSubagentCard) and diff calls (shown inline). */}
+              Filters out Task calls (shown as TaskSubagentCard), diff calls (shown inline),
+              and any tool calls already rendered inline via streamingContentBlocks to avoid duplication. */}
           {(isSending || isAgentRunning) && (() => {
+            // IDs of tool calls already rendered inline from streamingContentBlocks
+            const inlineToolIds = new Set(
+              streamingContentBlocks
+                ?.filter((b) => b.type === "tool_use")
+                .map((b) => b.type === "tool_use" ? b.toolCall.id : "") ?? []
+            );
             const otherToolCalls = streamingToolCalls.filter(
-              (tc) => tc.name.toLowerCase() !== "task" &&
+              (tc) => !inlineToolIds.has(tc.id) &&
+                      tc.name.toLowerCase() !== "task" &&
                       (!isDiffToolCall(tc.name) || tc.arguments == null)
             );
             return otherToolCalls.length > 0 ? (

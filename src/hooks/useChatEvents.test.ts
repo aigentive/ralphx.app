@@ -5,7 +5,7 @@
  * streaming text, lifecycle clearing, error handling, and context filtering.
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { ContextType } from "@/types/chat-conversation";
 import type { ToolCall } from "@/components/Chat/ToolCallIndicator";
@@ -88,7 +88,7 @@ interface DefaultProps {
   setStreamingToolCalls: ReturnType<typeof vi.fn>;
   setStreamingContentBlocks: ReturnType<typeof vi.fn>;
   setStreamingTasks: ReturnType<typeof vi.fn>;
-  finalizingConversationRef: React.MutableRefObject<string | null>;
+  setIsFinalizing: ReturnType<typeof vi.fn>;
 }
 
 function makeProps(overrides?: Partial<DefaultProps>): DefaultProps {
@@ -99,14 +99,14 @@ function makeProps(overrides?: Partial<DefaultProps>): DefaultProps {
     setStreamingToolCalls: vi.fn(),
     setStreamingContentBlocks: vi.fn(),
     setStreamingTasks: vi.fn(),
-    finalizingConversationRef: { current: null },
+    setIsFinalizing: vi.fn(),
     ...overrides,
   };
 }
 
 /**
  * Renders the hook and clears the initial mount calls on all setters.
- * The effect fires on mount and clears streaming state (3 calls).
+ * The effect fires on mount and clears streaming state (3 calls + setIsFinalizing).
  * This helper lets tests focus on event-driven behavior without counting mount effects.
  */
 function renderAndClear(props: DefaultProps) {
@@ -114,6 +114,7 @@ function renderAndClear(props: DefaultProps) {
   props.setStreamingToolCalls.mockClear();
   props.setStreamingContentBlocks.mockClear();
   props.setStreamingTasks.mockClear();
+  props.setIsFinalizing.mockClear();
   return result;
 }
 
@@ -146,6 +147,10 @@ describe("useChatEvents", () => {
       supportsSubagentTasks: true,
       supportsDiffViews: true,
     };
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   // --------------------------------------------------------------------------
@@ -434,7 +439,7 @@ describe("useChatEvents", () => {
   });
 
   // --------------------------------------------------------------------------
-  // 4. Message created clears streaming state
+  // 4. Message created clears streaming state and sets isFinalizing
   // --------------------------------------------------------------------------
   describe("agent:message_created", () => {
     it("should clear streaming content blocks, tool calls, and tasks on assistant message", () => {
@@ -471,6 +476,71 @@ describe("useChatEvents", () => {
         new Map([["t1", { toolUseId: "t1", description: "", subagentType: "", model: "", status: "running" as const, startedAt: 0, childToolCalls: [] }]]),
       );
       expect(taskResult.size).toBe(0);
+    });
+
+    it("should set isFinalizing=true on assistant message_created (same batch as clearing state)", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "assistant",
+        });
+      });
+
+      // setIsFinalizing(true) should be called once immediately
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+      expect(props.setIsFinalizing).toHaveBeenCalledWith(true);
+    });
+
+    it("should set isFinalizing=false after 500ms timeout", () => {
+      vi.useFakeTimers();
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "assistant",
+        });
+      });
+
+      // Initially called with true
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+      expect(props.setIsFinalizing).toHaveBeenLastCalledWith(true);
+
+      // Advance 500ms — timeout fires
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      // Now called with false (the timeout cleared it)
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(2);
+      expect(props.setIsFinalizing).toHaveBeenLastCalledWith(false);
+    });
+
+    it("should NOT set isFinalizing on user message", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "user",
+        });
+      });
+
+      // User messages should not trigger clearing of streaming state or finalizing
+      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
+      expect(props.setStreamingToolCalls).not.toHaveBeenCalled();
+      expect(props.setStreamingTasks).not.toHaveBeenCalled();
+      expect(props.setIsFinalizing).not.toHaveBeenCalled();
+      // But invalidateQueries should still be called
+      expect(mockInvalidateQueries).toHaveBeenCalled();
     });
 
     it("should NOT clear streaming state on user message", () => {
@@ -917,10 +987,11 @@ describe("useChatEvents", () => {
 
       unmount();
 
-      // Cleanup uses functional updaters for all three
+      // Cleanup uses functional updaters for all three + resets isFinalizing
       expect(props.setStreamingToolCalls).toHaveBeenCalled();
       expect(props.setStreamingContentBlocks).toHaveBeenCalled();
       expect(props.setStreamingTasks).toHaveBeenCalled();
+      expect(props.setIsFinalizing).toHaveBeenCalledWith(false);
 
       // All subscriptions should be removed
       for (const [, handlers] of subscriptions) {

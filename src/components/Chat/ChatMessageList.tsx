@@ -8,7 +8,7 @@
  * - Streaming tool calls / typing indicator footer
  */
 
-import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { HookEventMessage } from "./HookEventMessage";
@@ -16,6 +16,7 @@ import {
   TypingIndicator,
   FailedRunBanner,
 } from "./IntegratedChatPanel.components";
+import { ToolCallIndicator } from "./ToolCallIndicator";
 import type { ToolCall } from "./ToolCallIndicator";
 import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import type { ContentBlockItem } from "./MessageItem";
@@ -94,8 +95,8 @@ interface ChatMessageListProps {
   hookEvents?: HookEvent[];
   /** Currently running hooks — optional, interleaved chronologically */
   activeHooks?: HookStartedEvent[];
-  /** Ref to track conversation that's finalizing (between message_created and query refetch) */
-  finalizingConversationRef?: React.MutableRefObject<string | null>;
+  /** Whether the conversation is finalizing (between message_created and query refetch) */
+  isFinalizing?: boolean;
   /** Team filter for message filtering (team mode) */
   teamFilter?: "all" | "lead" | string | undefined;
   /** Context key for team store lookup (team mode) */
@@ -121,7 +122,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       scrollToTimestamp,
       hookEvents = EMPTY_HOOK_EVENTS,
       activeHooks = EMPTY_ACTIVE_HOOKS,
-      finalizingConversationRef,
+      isFinalizing = false,
       teamFilter,
       contextKey,
     },
@@ -134,14 +135,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
-
-    // Track finalizing state to avoid accessing ref during render.
-    // Guard against redundant setState to prevent unnecessary re-renders.
-    const [isFinalizing, setIsFinalizing] = useState(false);
-    useEffect(() => {
-      const next = finalizingConversationRef?.current === conversationId;
-      setIsFinalizing((prev) => (prev === next ? prev : next));
-    }, [finalizingConversationRef, conversationId]);
 
     // Team system messages for inline display
     const teamMsgSelector = useMemo(
@@ -227,9 +220,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // message_created clearing state and query refetch completing), exclude the last
     // assistant message from DB to prevent duplication with streamingContentBlocks.
     //
-    // The finalizingConversationRef persists through the timing window where streaming state
-    // is cleared but the query refetch hasn't completed yet. This prevents duplicates during
-    // that critical window.
+    // isFinalizing is set to true (in the same React batch as clearing streaming state)
+    // by useChatEvents on agent:message_created, and reset to false after 500ms. This
+    // keeps the filter active through the timing window where streaming state is cleared
+    // but the query refetch hasn't completed yet.
+    //
+    // Additionally, when isAgentRunning but no streaming content exists yet (the window
+    // between DB empty-message creation and the first streaming event), filter the last
+    // assistant message if its content is empty/whitespace — prevents the empty "pill" flash.
     const hasActiveStreaming = (streamingContentBlocks && streamingContentBlocks.length > 0) ||
                               (streamingTasks && streamingTasks.size > 0);
     const shouldFilterLastAssistant = hasActiveStreaming || isFinalizing;
@@ -237,9 +235,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const timeline = useMemo((): TimelineItem[] => {
       const items: TimelineItem[] = [];
 
-      // If we have active streaming OR conversation is finalizing, exclude the last assistant message
-      // from DB (it's being rendered in streamingContentBlocks, or about to appear from DB)
-      const filteredMessages = shouldFilterLastAssistant
+      // Exclude the last assistant message from DB when:
+      // (a) active streaming/finalizing — it's being rendered in streamingContentBlocks
+      // (b) agent is running + last assistant is empty — prevents empty "pill" before first chunk
+      const filteredMessages = (shouldFilterLastAssistant || isAgentRunning)
         ? (() => {
             // Find the last assistant message index
             let lastAssistantIdx = -1;
@@ -249,9 +248,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                 break;
               }
             }
-            // If found, exclude it
             if (lastAssistantIdx >= 0) {
-              return messages.filter((_, idx) => idx !== lastAssistantIdx);
+              const lastMsg = messages[lastAssistantIdx]!;
+              // Always filter when streaming/finalizing; only filter empty msg when only running
+              if (shouldFilterLastAssistant || !lastMsg.content.trim()) {
+                return messages.filter((_, idx) => idx !== lastAssistantIdx);
+              }
             }
             return messages;
           })()
@@ -320,7 +322,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, streamingContentBlocks, streamingTasks, conversationId, attachmentsMap, teamFilter, teamMessages]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, isAgentRunning, streamingContentBlocks, streamingTasks, conversationId, attachmentsMap, teamFilter, teamMessages]);
 
     // Explicit initial scroll — fires when conversation changes to ensure
     // the last message is visible after layout settles.
@@ -365,6 +367,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
             {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
+                // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
+                if (!block.text.trim()) return null;
                 return (
                   <MessageItem
                     key={`streaming-text-${idx}`}
@@ -384,7 +388,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                 if (!task) return null;
                 return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
               }
-              // tool_use block — render as diff view if it's Edit/Write, otherwise skip (handled by StreamingToolIndicator)
+              // tool_use block — diff calls render as DiffToolCallView, all others render as ToolCallIndicator
               if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
                 return (
                   <DiffToolCallView
@@ -395,10 +399,18 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   />
                 );
               }
-              return null;
+              // Non-diff tool call — render inline to preserve visual ordering with text blocks
+              return (
+                <ToolCallIndicator
+                  key={`streaming-tool-${idx}`}
+                  toolCall={block.toolCall}
+                  isStreaming={block.toolCall.result == null && !block.toolCall.error}
+                  className="mb-2"
+                />
+              );
             })}
 
-            {/* Typing indicator — shows when thinking but no tool calls are active yet.
+            {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet.
                 StreamingToolIndicator is now rendered outside the scroll container by parent panels. */}
             {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
               <TypingIndicator />
@@ -543,6 +555,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
             {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
+                // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
+                if (!block.text.trim()) return null;
                 return (
                   <MessageItem
                     key={`streaming-text-${idx}`}
@@ -560,7 +574,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                 if (!task) return null;
                 return <TaskSubagentCard key={`streaming-task-${block.toolUseId}`} task={task} />;
               }
-              // tool_use block — render as diff view if it's Edit/Write
+              // tool_use block — diff calls render as DiffToolCallView, all others render as ToolCallIndicator
               if (isDiffToolCall(block.toolCall.name) && block.toolCall.arguments != null) {
                 return (
                   <DiffToolCallView
@@ -571,10 +585,18 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                   />
                 );
               }
-              return null;
+              // Non-diff tool call — render inline to preserve visual ordering with text blocks
+              return (
+                <ToolCallIndicator
+                  key={`streaming-tool-${idx}`}
+                  toolCall={block.toolCall}
+                  isStreaming={block.toolCall.result == null && !block.toolCall.error}
+                  className="mb-2"
+                />
+              );
             })}
 
-            {/* Typing indicator — shows when thinking but no tool calls are active yet.
+            {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet.
                 StreamingToolIndicator is now rendered outside the scroll container by parent panels. */}
             {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
               <TypingIndicator />
@@ -582,7 +604,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             <div ref={messagesEndRef} />
           </div>
           {/* Scroll-to-bottom button — same position as production branch */}
-          {!isAtBottom && timeline.length > 0 && !scrollToTimestamp && (
+          {!isAtBottom && timeline.length > 5 && !scrollToTimestamp && (
             <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">
               <Button
                 variant="outline"
@@ -626,7 +648,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         />
         {/* Scroll-to-bottom button — OUTSIDE Virtuoso to avoid Footer feedback loop.
             isAtBottom/scrollToBottom/timeline.length are NOT in virtuosoComponents deps. */}
-        {!isAtBottom && timeline.length > 0 && !scrollToTimestamp && (
+        {!isAtBottom && timeline.length > 5 && !scrollToTimestamp && (
           <div className="absolute bottom-4 left-0 right-0 flex justify-center z-10 pointer-events-none">
             <Button
               variant="outline"

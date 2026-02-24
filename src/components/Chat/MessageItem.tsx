@@ -167,7 +167,11 @@ export const MessageItem = React.memo(function MessageItem({
                 ))}
               </div>
             )}
-            <TextBubble text={content} isUser={isUser} />
+            {/* Skip empty/whitespace-only bubbles for assistant messages
+                (backend pre-creates empty assistant msg before streaming starts) */}
+            {(isUser || content.trim().length > 0) && (
+              <TextBubble text={content} isUser={isUser} />
+            )}
           </>
         )}
 
