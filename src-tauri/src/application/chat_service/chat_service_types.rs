@@ -52,6 +52,8 @@ pub mod events {
     pub const TEAM_DISBANDED: &str = "team:disbanded";
     /// Team cost update event
     pub const TEAM_COST_UPDATE: &str = "team:cost_update";
+    /// Team artifact created event
+    pub const TEAM_ARTIFACT_CREATED: &str = "team:artifact_created";
 }
 
 // ============================================================================
@@ -299,6 +301,15 @@ pub struct TeamCostUpdatePayload {
     pub estimated_usd: f64,
     pub context_type: String,
     pub context_id: String,
+}
+
+/// Payload for team:artifact_created event
+#[derive(Debug, Clone, Serialize)]
+pub struct TeamArtifactCreatedPayload {
+    pub artifact_id: String,
+    pub session_id: String,
+    pub artifact_type: String,
+    pub title: String,
 }
 
 // ============================================================================

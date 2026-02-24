@@ -33,6 +33,7 @@ import type { TeamMetadata } from "./PlanDisplay";
 import { TeamResearchView } from "./TeamResearchView";
 import { getTeamArtifacts } from "@/api/team";
 import type { TeamArtifactSummary } from "@/api/team";
+import { useTeamStore } from "@/stores/teamStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
@@ -302,7 +303,9 @@ export function PlanningView({
   }, [session?.planArtifactId, planArtifactId]);
 
   // Fetch team artifact summaries for team-ideated sessions
+  // Refetches when artifactVersion bumps (from team:artifact_created events)
   const [teamArtifacts, setTeamArtifacts] = useState<TeamArtifactSummary[]>([]);
+  const artifactVersion = useTeamStore((s) => s.artifactVersion[session?.id ?? ""] ?? 0);
   useEffect(() => {
     if (!session?.id || !session.teamMode || session.teamMode === "solo") {
       setTeamArtifacts([]);
@@ -322,7 +325,7 @@ export function PlanningView({
       });
 
     return () => { cancelled = true; };
-  }, [session?.id, session?.teamMode]);
+  }, [session?.id, session?.teamMode, artifactVersion]);
 
   // Tab state for plan vs research content
   const [activeTab, setActiveTab] = useState<"plan" | "research">("plan");

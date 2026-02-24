@@ -413,6 +413,13 @@ export interface TeamCostUpdatePayload {
   context_type: string; context_id: string;
 }
 
+export interface TeamArtifactCreatedPayload {
+  artifact_id: string;
+  session_id: string;
+  artifact_type: string;
+  title: string;
+}
+
 export interface TeamPlanRequestedPayload {
   plan_id: string;
   process: string;

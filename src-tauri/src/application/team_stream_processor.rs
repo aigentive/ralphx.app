@@ -112,19 +112,51 @@ pub fn start_teammate_stream<R: Runtime>(
                 Ok(Some(line)) => {
                     lines_seen += 1;
 
-                    // Log raw stdout line for debugging teammate output visibility
-                    tracing::debug!(
+                    // DIAGNOSTIC: Log every raw stdout line at INFO level
+                    // to verify teammate output is reaching the stream processor
+                    let line_preview: &str = if line.len() > 200 { &line[..200] } else { &line };
+                    tracing::info!(
                         teammate = %teammate_name,
                         team = %team_name,
                         lines_seen,
                         line_len = line.len(),
-                        line_preview = %if line.len() > 200 { &line[..200] } else { &line },
-                        "teammate stdout line"
+                        line_preview = %line_preview,
+                        "[TEAMMATE_STREAM] raw stdout line"
                     );
 
                     if let Some(parsed) = StreamProcessor::parse_line(&line) {
                         lines_parsed += 1;
                         let stream_events = processor.process_parsed_line(parsed);
+
+                        // DIAGNOSTIC: Log parsed event count per line
+                        if !stream_events.is_empty() {
+                            let event_names: Vec<&str> = stream_events.iter().map(|e| match e {
+                                StreamEvent::TextChunk(_) => "TextChunk",
+                                StreamEvent::Thinking(_) => "Thinking",
+                                StreamEvent::ToolCallStarted { .. } => "ToolCallStarted",
+                                StreamEvent::ToolCallCompleted { .. } => "ToolCallCompleted",
+                                StreamEvent::ToolResultReceived { .. } => "ToolResultReceived",
+                                StreamEvent::SessionId(_) => "SessionId",
+                                StreamEvent::TaskStarted { .. } => "TaskStarted",
+                                StreamEvent::TaskCompleted { .. } => "TaskCompleted",
+                                StreamEvent::TeamMessageSent { .. } => "TeamMessageSent",
+                                StreamEvent::TeamCreated { .. } => "TeamCreated",
+                                StreamEvent::TeammateSpawned { .. } => "TeammateSpawned",
+                                StreamEvent::TeamDeleted { .. } => "TeamDeleted",
+                                StreamEvent::TurnComplete { .. } => "TurnComplete",
+                                StreamEvent::HookStarted { .. } => "HookStarted",
+                                StreamEvent::HookCompleted { .. } => "HookCompleted",
+                                StreamEvent::HookBlock { .. } => "HookBlock",
+                            }).collect();
+                            tracing::info!(
+                                teammate = %teammate_name,
+                                team = %team_name,
+                                lines_seen,
+                                event_count = stream_events.len(),
+                                events = ?event_names,
+                                "[TEAMMATE_STREAM] parsed events"
+                            );
+                        }
 
                         for event in stream_events {
                             match event {
@@ -132,6 +164,13 @@ pub fn start_teammate_stream<R: Runtime>(
                                     // Emit "running" status on first text output
                                     if !has_emitted_running {
                                         has_emitted_running = true;
+                                        tracing::info!(
+                                            teammate = %teammate_name,
+                                            team = %team_name,
+                                            context_type = %context_type,
+                                            context_id = %context_id,
+                                            "[TEAMMATE_STREAM] first text chunk — emitting Running status"
+                                        );
                                         let _ = team_tracker
                                             .update_teammate_status(
                                                 &team_name,
@@ -152,7 +191,18 @@ pub fn start_teammate_stream<R: Runtime>(
                                     // Accumulate text for persistence on turn boundary
                                     text_buffer.push_str(&text);
 
-                                    let _ = app_handle.emit(
+                                    let text_preview: &str = if text.len() > 100 { &text[..100] } else { &text };
+                                    tracing::info!(
+                                        teammate = %teammate_name,
+                                        team = %team_name,
+                                        text_len = text.len(),
+                                        text_preview = %text_preview,
+                                        context_type = %context_type,
+                                        context_id = %context_id,
+                                        "[TEAMMATE_STREAM] emitting agent:chunk"
+                                    );
+
+                                    let emit_result = app_handle.emit(
                                         "agent:chunk",
                                         serde_json::json!({
                                             "teammate_name": teammate_name,
@@ -161,6 +211,13 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "context_id": context_id,
                                         }),
                                     );
+                                    if let Err(ref e) = emit_result {
+                                        tracing::error!(
+                                            teammate = %teammate_name,
+                                            error = %e,
+                                            "[TEAMMATE_STREAM] agent:chunk emit FAILED"
+                                        );
+                                    }
                                 }
                                 StreamEvent::Thinking(text) => {
                                     // Emit thinking as a chunk with a marker so frontend
@@ -344,6 +401,16 @@ pub fn start_teammate_stream<R: Runtime>(
                                 }
                             }
                         }
+                    } else {
+                        // DIAGNOSTIC: Line was NOT parseable as a StreamMessage
+                        tracing::info!(
+                            teammate = %teammate_name,
+                            team = %team_name,
+                            lines_seen,
+                            line_len = line.len(),
+                            line_preview = %if line.len() > 200 { &line[..200] } else { &line },
+                            "[TEAMMATE_STREAM] line NOT parsed (not a stream-json message)"
+                        );
                     }
 
                     // Check for events with cost/usage info and persist text buffer.
@@ -455,13 +522,16 @@ pub fn start_teammate_stream<R: Runtime>(
                         }
                     }
 
-                    // Periodic progress logging
-                    if lines_seen % 100 == 0 {
-                        tracing::debug!(
+                    // Periodic progress logging (every 50 lines at INFO level for diagnostics)
+                    if lines_seen % 50 == 0 {
+                        tracing::info!(
                             teammate = %teammate_name,
+                            team = %team_name,
                             lines_seen,
                             lines_parsed,
-                            "Teammate stream progress"
+                            text_buffer_len = text_buffer.len(),
+                            total_cost_usd,
+                            "[TEAMMATE_STREAM] progress"
                         );
                     }
                 }
@@ -488,7 +558,11 @@ pub fn start_teammate_stream<R: Runtime>(
                         team = %team_name,
                         lines_seen,
                         lines_parsed,
-                        "Teammate stdout closed (process exited)"
+                        text_buffer_len = text_buffer.len(),
+                        total_cost_usd,
+                        total_input_tokens,
+                        total_output_tokens,
+                        "[TEAMMATE_STREAM] stdout closed (EOF) — final stats"
                     );
                     break;
                 }
