@@ -3,6 +3,7 @@
 use tauri::Runtime;
 use tracing::{debug, warn};
 
+use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::domain::entities::{
     AgentRunStatus, ChatContextType, InternalStatus, MergeFailureSource,
 };
@@ -22,6 +23,19 @@ impl<R: Runtime> ReconciliationRunner<R> {
     ) -> bool {
         if status != InternalStatus::Merging {
             return false;
+        }
+
+        // Skip if there's an active interactive process — the agent is alive between turns
+        if let Some(ref ipr) = self.interactive_process_registry {
+            let ipr_key =
+                InteractiveProcessKey::new(ChatContextType::Merge.to_string(), task.id.as_str());
+            if ipr.has_process(&ipr_key).await {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    "Skipping merge reconciliation: interactive process active"
+                );
+                return true;
+            }
         }
 
         // Auto-complete in-flight guard: if attempt_merge_auto_complete is already running
