@@ -1234,6 +1234,20 @@ pub async fn create_team_artifact(
         "Team artifact created"
     );
 
+    // Emit Tauri event so the frontend can live-update artifact lists
+    if let Some(app_handle) = &state.app_state.app_handle {
+        use crate::application::chat_service::{events, TeamArtifactCreatedPayload};
+        let _ = app_handle.emit(
+            events::TEAM_ARTIFACT_CREATED,
+            TeamArtifactCreatedPayload {
+                artifact_id: artifact_id.clone(),
+                session_id: req.session_id.clone(),
+                artifact_type: req.artifact_type.clone(),
+                title: req.title.clone(),
+            },
+        );
+    }
+
     Ok(Json(CreateTeamArtifactResponse { artifact_id }))
 }
 

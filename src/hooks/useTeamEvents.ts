@@ -22,6 +22,7 @@ import { buildStoreKey } from "@/lib/chat-context-registry";
 import type { ContextType } from "@/types/chat-conversation";
 import type { Unsubscribe } from "@/lib/event-bus";
 import type {
+  TeamArtifactCreatedPayload,
   TeamCreatedPayload,
   TeamDisbandedPayload,
   TeamTeammateSpawnedPayload,
@@ -44,6 +45,7 @@ export function useTeamEvents(contextKey: string | null) {
   const disbandTeam = useTeamStore((s) => s.disbandTeam);
   const setTeamActive = useChatStore((s) => s.setTeamActive);
   const setPendingPlan = useTeamStore((s) => s.setPendingPlan);
+  const bumpArtifactVersion = useTeamStore((s) => s.bumpArtifactVersion);
 
   // Derive isTeamActive from the teamStore so effect 2 re-runs when team is created
   const selectActive = useCallback(
@@ -231,11 +233,23 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
+    // team:artifact_created — bump version counter so artifact lists refetch
+    // Matches by session_id (which equals the context_id portion of contextKey)
+    unsubs.push(
+      bus.subscribe<TeamArtifactCreatedPayload>("team:artifact_created", (payload) => {
+        // contextKey format: "prefix:contextId" — extract contextId for matching
+        const contextId = contextKey.split(":").slice(1).join(":");
+        if (payload.session_id === contextId) {
+          bumpArtifactVersion(payload.session_id);
+        }
+      }),
+    );
+
     return () => unsubs.forEach((u) => u());
   }, [
     bus, contextKey, isTeamActive, matchKey,
     updateTeammateStatus,
     appendTeammateChunk, clearTeammateStream, updateTeammateCost,
-    addTeamMessage,
+    addTeamMessage, bumpArtifactVersion,
   ]);
 }

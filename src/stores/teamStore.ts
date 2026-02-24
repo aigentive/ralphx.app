@@ -69,6 +69,8 @@ interface ActiveTeam {
 interface TeamState {
   activeTeams: Record<string, ActiveTeam>;
   pendingPlans: Record<string, PendingTeamPlan>;
+  /** Bumped when a team:artifact_created event arrives for a session */
+  artifactVersion: Record<string, number>;
 }
 
 interface TeamActions {
@@ -86,6 +88,7 @@ interface TeamActions {
   setPendingPlan: (contextKey: string, plan: PendingTeamPlan) => void;
   clearPendingPlan: (contextKey: string) => void;
   hydrateFromHistory: (contextKey: string, history: TeamHistoryResponse) => void;
+  bumpArtifactVersion: (sessionId: string) => void;
 }
 
 // ============================================================================
@@ -98,6 +101,7 @@ export const useTeamStore = create<TeamState & TeamActions>()(
   immer((set, get) => ({
     activeTeams: {},
     pendingPlans: {},
+    artifactVersion: {},
 
     createTeam: (contextKey, teamName, leadName) =>
       set((state) => {
@@ -268,6 +272,11 @@ export const useTeamStore = create<TeamState & TeamActions>()(
           isHistorical: true,
         };
       }),
+
+    bumpArtifactVersion: (sessionId) =>
+      set((state) => {
+        state.artifactVersion[sessionId] = (state.artifactVersion[sessionId] ?? 0) + 1;
+      }),
   }))
 );
 
@@ -326,3 +335,8 @@ export const selectTotalTeammateCount = (state: TeamState): number =>
     (sum, team) => sum + Object.keys(team.teammates).length,
     0,
   );
+
+/** Returns artifact version counter for a session (bumped on team:artifact_created) */
+export const selectArtifactVersion = (sessionId: string) =>
+  (state: TeamState): number =>
+    state.artifactVersion[sessionId] ?? 0;

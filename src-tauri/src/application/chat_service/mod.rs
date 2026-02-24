@@ -72,8 +72,8 @@ pub use chat_service_types::{
     AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
     AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
     ChatConversationWithMessages, ChatServiceError, SendResult, TeamCostUpdatePayload,
-    TeamCreatedPayload, TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload,
-    TeamTeammateShutdownPayload, TeamTeammateSpawnedPayload,
+    TeamArtifactCreatedPayload, TeamCreatedPayload, TeamDisbandedPayload, TeamMessagePayload,
+    TeamTeammateIdlePayload, TeamTeammateShutdownPayload, TeamTeammateSpawnedPayload,
 };
 pub use streaming_state_cache::{
     CachedStreamingTask, CachedToolCall, ConversationStreamingState, StreamingStateCache,
