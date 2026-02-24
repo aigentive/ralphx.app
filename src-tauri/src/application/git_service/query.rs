@@ -335,4 +335,38 @@ impl GitService {
             Ok(Some(sha))
         }
     }
+
+    /// Count commits reachable from `source` that are NOT reachable from `base`.
+    ///
+    /// Runs `git rev-list --count base..source`. A result of 0 means `source` has no
+    /// unique commits beyond `base` — the branch never diverged or all its work is
+    /// already incorporated in `base`.
+    ///
+    /// Used by `check_already_merged` to prevent a false positive where `source_sha`
+    /// happens to be an ancestor of `target` (e.g. plan branch was never diverged from
+    /// main) but no real merge ever took place.
+    pub async fn count_commits_not_on_branch(
+        repo: &Path,
+        source: &str,
+        base: &str,
+    ) -> AppResult<u32> {
+        let range = format!("{}..{}", base, source);
+        let output = git_cmd::run(&["rev-list", "--count", &range], repo).await?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to count commits not on branch ({}): {}",
+                range, stderr
+            )));
+        }
+
+        let count_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        count_str.parse::<u32>().map_err(|e| {
+            AppError::GitOperation(format!(
+                "Failed to parse commit count '{}': {}",
+                count_str, e
+            ))
+        })
+    }
 }

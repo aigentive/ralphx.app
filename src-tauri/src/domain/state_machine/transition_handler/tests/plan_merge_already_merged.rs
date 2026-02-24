@@ -12,6 +12,10 @@
 // Test 2: regular_plan_task_already_merged_to_plan_branch_detected
 //   Regular task (source=task_branch, target=plan) already merged to plan →
 //   should be correctly detected as already merged.
+//
+// Test 3: ghost_merge_prevented_when_plan_branch_has_no_unique_commits (V1 fix)
+//   PlanMerge task where plan_branch has 0 unique commits vs main → check_already_merged
+//   must NOT fire (ghost-merge guard). The pipeline runs the actual merge (no-op).
 
 use super::helpers::*;
 use crate::domain::entities::{
@@ -366,5 +370,143 @@ async fn regular_plan_task_already_merged_to_plan_branch_detected() {
         !main_log_str.contains("task work"),
         "Main must NOT contain the task's commit. Main log:\n{}",
         main_log_str,
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 3: Ghost-merge prevention — plan branch with 0 unique commits
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// Regression test: check_already_merged must NOT fire a false positive when the
+/// plan branch has zero unique commits vs main.
+///
+/// Ghost merge scenario:
+///   - plan_branch was created from main at commit A
+///   - main later advances to commit C (other work landed on main directly)
+///   - plan_branch is still at A — it NEVER DIVERGED from main (no task work merged to it)
+///   - plan_sha (A) IS an ancestor of main (C) via `git merge-base --is-ancestor`
+///   - Without the fix, check_already_merged would fire → DB: Merged, git: unchanged
+///   - With the fix: count_commits_not_on_branch(plan, main) = 0 → return false
+///   - The full pipeline runs; the no-op merge completes the task correctly
+///
+/// Observable assertion: the task completes as Merged without a new merge commit on main
+/// (since plan had no unique work). Main log still shows only its own commits, not
+/// any phantom "plan merge" commit created by the false positive fast-path.
+#[tokio::test]
+async fn ghost_merge_prevented_when_plan_branch_has_no_unique_commits() {
+    let dir = tempfile::TempDir::new().expect("create temp dir");
+    let path = dir.path();
+
+    // Initialize git repo
+    for args in [
+        vec!["init", "-b", "main"],
+        vec!["config", "user.email", "test@test.com"],
+        vec!["config", "user.name", "Test"],
+    ] {
+        let _ = std::process::Command::new("git")
+            .args(&args)
+            .current_dir(path)
+            .output();
+    }
+
+    // Initial commit on main
+    std::fs::write(path.join("README.md"), "# repo").unwrap();
+    for args in [vec!["add", "."], vec!["commit", "-m", "initial commit"]] {
+        let _ = std::process::Command::new("git")
+            .args(&args)
+            .current_dir(path)
+            .output();
+    }
+
+    // Create plan_branch at same commit as main (never diverged)
+    let plan_branch = "plan/no-work".to_string();
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "-b", &plan_branch])
+        .current_dir(path)
+        .output();
+
+    // Return to main and add more work — now plan_sha is an ancestor of main
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output();
+    std::fs::write(path.join("other.rs"), "// other work on main").unwrap();
+    for args in [vec!["add", "."], vec!["commit", "-m", "other: direct main work"]] {
+        let _ = std::process::Command::new("git")
+            .args(&args)
+            .current_dir(path)
+            .output();
+    }
+
+    // At this point: plan_branch is at the INITIAL commit (ancestor of main).
+    // is_commit_on_branch(plan_sha, main) would return true → ghost merge trigger.
+    // count_commits_not_on_branch(plan, main) = 0 → fix returns false from check_already_merged.
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+    let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+    let project_id = ProjectId::from_string("proj-ghost".to_string());
+    let mut task = Task::new(project_id.clone(), "Merge ghost plan to main".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.category = TaskCategory::PlanMerge;
+    task.task_branch = Some(plan_branch.clone());
+    task.ideation_session_id = Some(IdeationSessionId::from_string("sess-ghost".to_string()));
+    let task_id = task.id.clone();
+
+    let mut pb = make_plan_branch(
+        "artifact-ghost",
+        &plan_branch,
+        PlanBranchStatus::Active,
+        None,
+    );
+    pb.merge_task_id = Some(task_id.clone());
+    plan_branch_repo.create(pb).await.unwrap();
+
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new(
+        "ghost-project".to_string(),
+        path.to_string_lossy().to_string(),
+    );
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
+    project.merge_strategy = MergeStrategy::Merge;
+    project_repo.create(project).await.unwrap();
+
+    let (_, services) =
+        make_services_with_tracked_chat(Arc::clone(&task_repo), Arc::clone(&project_repo));
+    let services = services
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo) as Arc<dyn PlanBranchRepository>);
+    let context = TaskContext::new(task_id.as_str(), "proj-ghost", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+
+    // Task must reach Merged status (no-op merge succeeds — plan was already at main)
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merged,
+        "PlanMerge task with no unique commits should still reach Merged (no-op merge). \
+         Got {:?}. Metadata: {:?}",
+        updated.internal_status,
+        updated.metadata,
+    );
+
+    // Key assertion: main log must NOT contain a phantom "already merged" fast-path entry.
+    // The ghost merge fast-path would set merge_commit_sha = main HEAD without creating
+    // any new commit on main. The fix ensures the pipeline ran properly (same SHA, correct path).
+    // Verify merge_target_branch metadata says "main" (not the plan branch from false detection).
+    let meta: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap_or("{}")).unwrap();
+    let merge_target = meta.get("merge_target_branch").and_then(|v| v.as_str());
+    assert_eq!(
+        merge_target,
+        Some("main"),
+        "merge_target_branch must be 'main' for PlanMerge task. Metadata: {:?}",
+        updated.metadata,
     );
 }

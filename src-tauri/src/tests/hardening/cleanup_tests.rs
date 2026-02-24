@@ -9,7 +9,7 @@
 // - Documenting gaps where cleanup doesn't happen
 
 use super::helpers::*;
-use crate::domain::entities::{InternalStatus, ProjectId};
+use crate::domain::entities::{InternalStatus, Project, ProjectId};
 use crate::domain::repositories::{PlanBranchRepository, ProjectRepository, TaskRepository};
 use crate::domain::state_machine::events::TaskEvent;
 use crate::domain::state_machine::machine::State;
@@ -523,6 +523,39 @@ async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path()
     // to the now-deleted values. When the task was later reopened and
     // re-executed, on_enter(Executing) saw task.task_branch.is_some() and
     // skipped branch setup entirely, then failed trying to use the deleted branch.
+    //
+    // NOTE: V2 fix — complete_merge_internal now requires git verification to pass
+    // (non-fatal Err is now fatal). Use a real git repo so verification succeeds;
+    // branch/worktree deletion still fails gracefully for non-existent paths.
+    let tmp = tempfile::TempDir::new().expect("create temp dir");
+    let repo_path = tmp.path();
+    for args in [
+        vec!["init", "-b", "main"],
+        vec!["config", "user.email", "t@t.com"],
+        vec!["config", "user.name", "T"],
+    ] {
+        let _ = std::process::Command::new("git")
+            .args(&args)
+            .current_dir(repo_path)
+            .output();
+    }
+    std::fs::write(repo_path.join("README.md"), "# test").unwrap();
+    for args in [vec!["add", "."], vec!["commit", "-m", "init"]] {
+        let _ = std::process::Command::new("git")
+            .args(&args)
+            .current_dir(repo_path)
+            .output();
+    }
+    // Get the real HEAD commit SHA on main
+    let head_sha_output = std::process::Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo_path)
+        .output()
+        .expect("git rev-parse HEAD");
+    let head_sha = String::from_utf8_lossy(&head_sha_output.stdout)
+        .trim()
+        .to_string();
+
     let s = create_hardening_services();
 
     let project_id = ProjectId::from_string("proj-fix-cleanup".to_string());
@@ -535,20 +568,25 @@ async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path()
     task.worktree_path = Some("/tmp/ralphx-worktrees/task-fix-cleanup".to_string());
     s.task_repo.create(task.clone()).await.unwrap();
 
-    let project = create_test_project("proj-fix-cleanup");
+    // Use real repo path so git verification passes; set base_branch = "main"
+    let mut project = Project::new(
+        "proj-fix-cleanup".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
+    project.id = project_id;
+    project.base_branch = Some("main".to_string());
     s.project_repo.create(project.clone()).await.unwrap();
 
-    // Call complete_merge_internal directly with a fake commit SHA.
-    // GitService::is_commit_on_branch will fail (non-fatal) because the repo
-    // path doesn't exist — the function proceeds and cleanup runs.
-    // Git branch/worktree deletion will also fail (non-fatal) for the same reason.
-    // What we verify is that task_branch and worktree_path are cleared in the DB.
+    // Call complete_merge_internal with the real HEAD SHA on main.
+    // is_commit_on_branch succeeds (HEAD is on main). Branch/worktree deletion
+    // fails gracefully (non-existent paths). We verify task_branch + worktree_path
+    // are cleared in the DB even when the git cleanup steps fail.
     let task_repo =
         s.task_repo.clone() as std::sync::Arc<dyn crate::domain::repositories::TaskRepository>;
     let result = complete_merge_internal::<tauri::Wry>(
         &mut task,
         &project,
-        "deadbeef000000000000000000000000deadbeef",
+        &head_sha,
         "main",
         &task_repo,
         None,
@@ -557,7 +595,7 @@ async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path()
 
     assert!(
         result.is_ok(),
-        "complete_merge_internal should succeed even when git operations fail: {:?}",
+        "complete_merge_internal should succeed when commit is verified on branch: {:?}",
         result
     );
 

@@ -215,6 +215,51 @@ impl<'a> super::TransitionHandler<'a> {
             return false;
         };
 
+        // Ghost-merge guard: if source has 0 unique commits not on target, the source
+        // branch never genuinely diverged — source_sha is an ancestor of target for
+        // trivial reasons (e.g. plan branch was created from main and never advanced).
+        // Firing the "already merged" fast-path here is a false positive: DB records
+        // Merged but no plan work actually landed on the target. Return false so the
+        // pipeline runs properly (no-op merge or proper error).
+        match GitService::count_commits_not_on_branch(repo_path, source_branch, target_branch).await {
+            Ok(0) => {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    source_sha = %source_sha,
+                    "check_already_merged: source SHA is ancestor of target but source has \
+                     0 unique commits — branch never genuinely diverged, skipping fast-path \
+                     to prevent ghost merge"
+                );
+                return false;
+            }
+            Ok(count) => {
+                tracing::debug!(
+                    task_id = task_id_str,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    unique_commits = count,
+                    "check_already_merged: source has {} unique commits — \
+                     proceeding with already-merged detection",
+                    count
+                );
+            }
+            Err(e) => {
+                // Non-fatal: if we can't count commits, fall through to the standard
+                // checks. Failing open is safer than blocking a legitimate
+                // already-merged detection.
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    "check_already_merged: could not count unique commits (non-fatal), \
+                     proceeding with already-merged detection"
+                );
+            }
+        }
+
         // Don't fast-path to completion if prior validation failures exist.
         // The target branch may contain broken code — proceeding would mark
         // the task as Merged with failing code on the target.
@@ -307,7 +352,7 @@ impl<'a> super::TransitionHandler<'a> {
                         if let Ok(Some(found_sha)) =
                             GitService::find_commit_by_message_grep(
                                 repo_path,
-                                task_id_str,
+                                source_branch,
                                 &pb.branch_name,
                             )
                             .await
@@ -388,7 +433,7 @@ impl<'a> super::TransitionHandler<'a> {
             }
         }
 
-        match GitService::find_commit_by_message_grep(repo_path, task_id_str, target_branch).await {
+        match GitService::find_commit_by_message_grep(repo_path, source_branch, target_branch).await {
             Ok(Some(found_sha)) => {
                 // Safety gate: don't fast-path to completion if prior validation
                 // failures exist. The commits on target may be from a merge that

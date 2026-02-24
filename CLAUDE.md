@@ -124,5 +124,6 @@ Script: `scripts/frame-screenshots.py` | Assets: `assets/` | Add new entries to 
 
 ## Misc
 - DB: `sqlite3 src-tauri/ralphx.db "SELECT * FROM table_name;"`
+- Debug logs: `scripts/find-debug-logs.sh -a "<agent-name>" -d "YYYY-MM-DD" -v` — find Claude debug logs by agent name/date/keywords
 - Slash commands: `/activate-prd <path>` — switch PRD | `/create-prd` — PRD wizard
 - Claude Code docs: `docs/claude-code/`: cli-reference.md, hooks.md, settings.md, sub-agents.md, plugins.md, skills.md
