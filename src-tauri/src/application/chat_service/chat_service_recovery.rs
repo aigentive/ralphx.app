@@ -164,6 +164,7 @@ pub(super) async fn attempt_session_recovery(
         None,                                       // no heartbeat for recovery sessions
         None,                                       // no agent_run_repo for recovery
         None,                                       // no agent_run_id for recovery
+        None,                                       // no execution state for recovery
     )
     .await
     {

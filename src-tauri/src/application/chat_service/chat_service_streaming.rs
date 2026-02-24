@@ -126,6 +126,11 @@ pub struct StreamOutcome {
     /// the post-loop caller should skip re-finalization and duplicate
     /// `run_completed` emission.
     pub turns_finalized: usize,
+    /// Whether the execution slot is still held when the stream exits.
+    /// False when TurnComplete decremented the slot and no new message arrived
+    /// to re-increment it (process was idle between turns at exit time).
+    /// Used by the caller to prevent double-decrement in on_exit.
+    pub execution_slot_held: bool,
 }
 
 impl StreamOutcome {
@@ -206,6 +211,7 @@ pub async fn process_stream_background<R: Runtime>(
     running_agent_registry: Option<Arc<dyn RunningAgentRegistry>>,
     agent_run_repo: Option<Arc<dyn AgentRunRepository>>,
     agent_run_id: Option<String>,
+    execution_state: Option<Arc<crate::commands::ExecutionState>>,
 ) -> Result<StreamOutcome, StreamError> {
     let mut timeout_config = StreamTimeoutConfig::for_context(&context_type);
     // Team leads wait long periods while teammates work — use team-specific timeout
@@ -788,6 +794,28 @@ pub async fn process_stream_background<R: Runtime>(
 
                         turns_finalized += 1;
 
+                        // Free the execution slot while process is idle between turns.
+                        // Only for contexts that use execution slots.
+                        if super::uses_execution_slot(context_type) {
+                            if let Some(ref exec_state) = execution_state {
+                                exec_state.decrement_running();
+                                // Mark this context as idle so send_message/queue_message
+                                // know to re-increment only once (prevents double-increment
+                                // on rapid burst messages while agent is active).
+                                let slot_key = format!("{}/{}", context_type, context_id_str);
+                                exec_state.mark_interactive_idle(&slot_key);
+                                tracing::debug!(
+                                    %context_type,
+                                    context_id = context_id_str.as_str(),
+                                    new_count = exec_state.running_count(),
+                                    "TurnComplete: decremented running count (idle between turns)"
+                                );
+                                if let Some(ref handle) = app_handle {
+                                    exec_state.emit_status_changed(handle, "interactive_turn_idle");
+                                }
+                            }
+                        }
+
                         // Mark that we're now between interactive turns —
                         // the timeout handler should not kill the process.
                         between_interactive_turns = true;
@@ -1305,6 +1333,11 @@ pub async fn process_stream_background<R: Runtime>(
         );
     }
 
+    // The execution slot is held unless we're idle between interactive turns
+    // (TurnComplete decremented and no new message re-incremented).
+    let execution_slot_held = !between_interactive_turns
+        || !super::uses_execution_slot(context_type);
+
     let outcome = StreamOutcome {
         response_text: result.response_text,
         tool_calls: result.tool_calls,
@@ -1312,6 +1345,7 @@ pub async fn process_stream_background<R: Runtime>(
         session_id: result.session_id,
         stderr_text: stderr_content,
         turns_finalized,
+        execution_slot_held,
     };
 
     // Final flush of accumulated content so post-loop error returns don't lose data

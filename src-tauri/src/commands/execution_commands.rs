@@ -127,6 +127,14 @@ pub struct ExecutionState {
     /// when `on_enter(Executing)` is async and a stale DB read races with the first caller.
     /// Uses std::sync::Mutex for synchronous check-and-insert atomicity.
     scheduling_in_flight: std::sync::Mutex<HashSet<String>>,
+    /// Set of interactive process context keys (format: "{context_type}/{context_id}")
+    /// whose execution slot has been released by TurnComplete (process is idle between turns).
+    /// Used to prevent double-increment when multiple messages arrive while the agent is active.
+    /// - `mark_interactive_idle(key)`: called by TurnComplete after decrementing
+    /// - `claim_interactive_slot(key)`: called by send_message/queue_message fast-path;
+    ///   returns true if slot was idle (caller should increment), false if already active
+    /// - `remove_interactive_slot(key)`: called on process exit cleanup
+    interactive_idle_slots: std::sync::Mutex<HashSet<String>>,
 }
 
 impl ExecutionState {
@@ -140,6 +148,7 @@ impl ExecutionState {
             rate_limited_until: AtomicU64::new(0),
             auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
             scheduling_in_flight: std::sync::Mutex::new(HashSet::new()),
+            interactive_idle_slots: std::sync::Mutex::new(HashSet::new()),
         }
     }
 
@@ -153,6 +162,7 @@ impl ExecutionState {
             rate_limited_until: AtomicU64::new(0),
             auto_completes_in_flight: std::sync::Mutex::new(HashSet::new()),
             scheduling_in_flight: std::sync::Mutex::new(HashSet::new()),
+            interactive_idle_slots: std::sync::Mutex::new(HashSet::new()),
         }
     }
 
@@ -311,6 +321,36 @@ impl ExecutionState {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         set.remove(task_id);
+    }
+
+    /// Mark an interactive process as idle (execution slot released by TurnComplete).
+    /// The key format is "{context_type}/{context_id}".
+    pub fn mark_interactive_idle(&self, key: &str) {
+        let mut set = self
+            .interactive_idle_slots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set.insert(key.to_string());
+    }
+
+    /// Atomically claim an interactive slot if the process is idle.
+    /// Returns `true` if the slot was idle (removed from set — caller should increment running).
+    /// Returns `false` if the slot was already active (not in set — caller should NOT increment).
+    pub fn claim_interactive_slot(&self, key: &str) -> bool {
+        let mut set = self
+            .interactive_idle_slots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set.remove(key)
+    }
+
+    /// Remove an interactive slot from tracking (process exited).
+    pub fn remove_interactive_slot(&self, key: &str) {
+        let mut set = self
+            .interactive_idle_slots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        set.remove(key);
     }
 
     /// Emit execution:status_changed event with current state
@@ -4806,5 +4846,161 @@ mod tests {
             execution_state.can_start_task(),
             "can_start_task() must be true after resume with capacity available"
         );
+    }
+
+    // ========================================
+    // Interactive idle slot tracking tests
+    // ========================================
+
+    #[test]
+    fn test_interactive_slot_claim_when_idle() {
+        let state = ExecutionState::new();
+        let key = "task_execution/task-1";
+
+        // Initially not idle — claim should return false
+        assert!(!state.claim_interactive_slot(key));
+
+        // Mark idle → claim should return true (once)
+        state.mark_interactive_idle(key);
+        assert!(state.claim_interactive_slot(key));
+
+        // Second claim should return false (already claimed)
+        assert!(!state.claim_interactive_slot(key));
+    }
+
+    #[test]
+    fn test_interactive_slot_rapid_burst_no_double_increment() {
+        // Simulates: TurnComplete decrements → 3 rapid messages arrive
+        // Only the first message should trigger increment.
+        let state = ExecutionState::with_max_concurrent(5);
+        let key = "task_execution/task-1";
+
+        // Initial state: 1 running (process just spawned)
+        state.increment_running();
+        assert_eq!(state.running_count(), 1);
+
+        // TurnComplete fires → decrement + mark idle
+        state.decrement_running();
+        state.mark_interactive_idle(key);
+        assert_eq!(state.running_count(), 0);
+
+        // First message → claim succeeds → increment
+        assert!(state.claim_interactive_slot(key));
+        state.increment_running();
+        assert_eq!(state.running_count(), 1);
+
+        // Second message (rapid burst) → claim fails → no increment
+        assert!(!state.claim_interactive_slot(key));
+        assert_eq!(state.running_count(), 1);
+
+        // Third message → still no increment
+        assert!(!state.claim_interactive_slot(key));
+        assert_eq!(state.running_count(), 1);
+    }
+
+    #[test]
+    fn test_interactive_slot_full_lifecycle() {
+        // Full lifecycle: spawn → TurnComplete → resume → TurnComplete → exit
+        let state = ExecutionState::with_max_concurrent(2);
+        let key = "task_execution/task-1";
+
+        // 1. Process spawns, initial increment
+        state.increment_running();
+        assert_eq!(state.running_count(), 1);
+
+        // 2. TurnComplete → decrement + mark idle
+        state.decrement_running();
+        state.mark_interactive_idle(key);
+        assert_eq!(state.running_count(), 0);
+        assert!(state.can_start_task()); // Slot freed
+
+        // 3. User sends next message → claim + increment
+        assert!(state.claim_interactive_slot(key));
+        state.increment_running();
+        assert_eq!(state.running_count(), 1);
+
+        // 4. Second TurnComplete → decrement + mark idle
+        state.decrement_running();
+        state.mark_interactive_idle(key);
+        assert_eq!(state.running_count(), 0);
+
+        // 5. Process exits while idle → remove slot tracking
+        // No increment needed (slot already free), just cleanup
+        state.remove_interactive_slot(key);
+        assert_eq!(state.running_count(), 0);
+        assert!(!state.claim_interactive_slot(key)); // Gone
+    }
+
+    #[test]
+    fn test_interactive_slot_multiple_contexts_independent() {
+        let state = ExecutionState::with_max_concurrent(5);
+        let key1 = "task_execution/task-1";
+        let key2 = "review/task-2";
+
+        // Both idle
+        state.mark_interactive_idle(key1);
+        state.mark_interactive_idle(key2);
+
+        // Claim key1 — key2 still idle
+        assert!(state.claim_interactive_slot(key1));
+        assert!(state.claim_interactive_slot(key2));
+
+        // Both claimed — neither claimable
+        assert!(!state.claim_interactive_slot(key1));
+        assert!(!state.claim_interactive_slot(key2));
+    }
+
+    #[test]
+    fn test_interactive_slot_remove_clears_idle() {
+        let state = ExecutionState::new();
+        let key = "task_execution/task-1";
+
+        state.mark_interactive_idle(key);
+        state.remove_interactive_slot(key);
+
+        // After removal, claim should return false
+        assert!(!state.claim_interactive_slot(key));
+    }
+
+    #[test]
+    fn test_interactive_slot_concurrent_claims_exactly_one_wins() {
+        // Verify that concurrent claim attempts on the same key
+        // result in exactly one increment (no race condition).
+        use std::sync::Arc;
+        use std::thread;
+
+        let state = Arc::new(ExecutionState::with_max_concurrent(10));
+        let key = "task_execution/task-1";
+
+        state.mark_interactive_idle(key);
+        state.increment_running(); // Start at 1
+
+        let mut handles = vec![];
+        let claim_count = Arc::new(std::sync::atomic::AtomicU32::new(0));
+
+        // Spawn 10 threads all trying to claim the same slot
+        for _ in 0..10 {
+            let state = Arc::clone(&state);
+            let claim_count = Arc::clone(&claim_count);
+            handles.push(thread::spawn(move || {
+                if state.claim_interactive_slot(key) {
+                    state.increment_running();
+                    claim_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                }
+            }));
+        }
+
+        for h in handles {
+            h.join().unwrap();
+        }
+
+        // Exactly one thread should have won the claim
+        assert_eq!(
+            claim_count.load(std::sync::atomic::Ordering::SeqCst),
+            1,
+            "Exactly one concurrent claim should succeed"
+        );
+        // running_count should be 2 (1 initial + 1 from the winning claim)
+        assert_eq!(state.running_count(), 2);
     }
 }
