@@ -130,6 +130,38 @@ impl StreamOutcome {
     }
 }
 
+/// Tracks the number of active subagent tasks (Task tool calls) in flight.
+///
+/// When the lead agent spawns sidechain subagents via the Task tool, its stdout
+/// goes silent while the subagents work (their output goes to JSONL sidechain
+/// files, not the lead's stdout). Without tracking, the stream timeout kills
+/// the lead agent even though work is actively happening.
+///
+/// Incremented on `TaskStarted`, decremented on `TaskCompleted`.
+/// The timeout handler checks `has_active_tasks()` to bypass the timeout.
+#[derive(Debug, Default)]
+pub(crate) struct ActiveTaskTracker {
+    count: usize,
+}
+
+impl ActiveTaskTracker {
+    pub(crate) fn task_started(&mut self) {
+        self.count += 1;
+    }
+
+    pub(crate) fn task_completed(&mut self) {
+        self.count = self.count.saturating_sub(1);
+    }
+
+    pub(crate) fn has_active_tasks(&self) -> bool {
+        self.count > 0
+    }
+
+    pub(crate) fn count(&self) -> usize {
+        self.count
+    }
+}
+
 // ============================================================================
 // Background stream processing
 // ============================================================================
@@ -258,6 +290,11 @@ pub async fn process_stream_background<R: Runtime>(
     // Track Task tool_use_id → (team_name, teammate_name) for teammate lifecycle
     let mut teammate_task_map: HashMap<String, (String, String)> = HashMap::new();
 
+    // Track active subagent tasks (Task tool calls) to prevent timeout during sidechain work.
+    // When the lead spawns in-process subagents, stdout goes silent — this tracker
+    // lets the timeout handler know work is still happening.
+    let mut active_task_tracker = ActiveTaskTracker::default();
+
     loop {
         // Race line-read (with timeout) against cancellation token
         let line = tokio::select! {
@@ -300,6 +337,21 @@ pub async fn process_stream_background<R: Runtime>(
                                 );
                                 continue;
                             }
+                        }
+
+                        // Check if subagent tasks are active (sidechain work in progress).
+                        // Lead stdout goes silent while Task tool subagents work — their
+                        // output goes to JSONL sidechain files, not the lead's stdout.
+                        if active_task_tracker.has_active_tasks() {
+                            tracing::info!(
+                                conversation_id = %conversation_id_str,
+                                context_id,
+                                lines_seen,
+                                active_tasks = active_task_tracker.count(),
+                                "Stream no output but {} active subagent task(s), resetting timeout",
+                                active_task_tracker.count()
+                            );
+                            continue;
                         }
 
                         tracing::warn!(
@@ -601,6 +653,9 @@ pub async fn process_stream_background<R: Runtime>(
                         teammate_name: tm_name,
                         team_name: tm_team,
                     } => {
+                        // Track active subagent tasks for timeout bypass
+                        active_task_tracker.task_started();
+
                         // Track teammate Task calls for lifecycle management
                         if let (Some(ref tn), Some(ref tt)) = (&tm_name, &tm_team) {
                             teammate_task_map.insert(tool_use_id.clone(), (tt.clone(), tn.clone()));
@@ -664,6 +719,9 @@ pub async fn process_stream_background<R: Runtime>(
                         total_tokens,
                         total_tool_use_count,
                     } => {
+                        // Track active subagent tasks for timeout bypass
+                        active_task_tracker.task_completed();
+
                         // Update streaming state cache - mark task as completed
                         streaming_state_cache
                             .complete_task(&conversation_id_str, &tool_use_id)
@@ -980,40 +1038,31 @@ pub async fn process_stream_background<R: Runtime>(
             }
         } else if lines_seen > 0 && last_parsed_at.elapsed() >= timeout_config.parse_stall_timeout {
             // Check if agent is waiting for user input on a pending question
-            if let Some(ref qs) = question_state {
-                if qs.has_pending_for_session(context_id).await {
-                    tracing::info!(
-                        conversation_id = %conversation_id_str,
-                        context_id,
-                        lines_seen,
-                        "Stream parse stall but pending question exists, resetting stall timer"
-                    );
-                    last_parsed_at = std::time::Instant::now();
-                    // Continue processing — the next timeout will be reset
-                } else {
-                    tracing::warn!(
-                        conversation_id = %conversation_id_str,
-                        lines_seen,
-                        lines_parsed,
-                        stall_secs = timeout_config.parse_stall_timeout.as_secs(),
-                        "Stream parse stall: received stdout but no parseable events, killing agent"
-                    );
-                    let _ = child.kill().await;
-                    flush_content_before_error(
-                        &chat_message_repo,
-                        &assistant_message_id,
-                        &processor.response_text,
-                        &processor.tool_calls,
-                        &processor.content_blocks,
-                    )
-                    .await;
-                    return Err(StreamError::ParseStall {
-                        context_type,
-                        elapsed_secs: timeout_config.parse_stall_timeout.as_secs(),
-                        lines_seen,
-                        lines_parsed,
-                    });
-                }
+            let has_pending_question = if let Some(ref qs) = question_state {
+                qs.has_pending_for_session(context_id).await
+            } else {
+                false
+            };
+
+            if has_pending_question {
+                tracing::info!(
+                    conversation_id = %conversation_id_str,
+                    context_id,
+                    lines_seen,
+                    "Stream parse stall but pending question exists, resetting stall timer"
+                );
+                last_parsed_at = std::time::Instant::now();
+                // Continue processing — the next timeout will be reset
+            } else if active_task_tracker.has_active_tasks() {
+                tracing::info!(
+                    conversation_id = %conversation_id_str,
+                    context_id,
+                    lines_seen,
+                    active_tasks = active_task_tracker.count(),
+                    "Stream parse stall but {} active subagent task(s), resetting stall timer",
+                    active_task_tracker.count()
+                );
+                last_parsed_at = std::time::Instant::now();
             } else {
                 tracing::warn!(
                     conversation_id = %conversation_id_str,

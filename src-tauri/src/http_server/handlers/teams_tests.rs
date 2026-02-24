@@ -374,3 +374,4 @@ fn team_plan_request_converts_to_spawn_requests() {
     assert_eq!(spawn_requests[0].role, "researcher");
     assert_eq!(spawn_requests[1].model, "haiku");
 }
+

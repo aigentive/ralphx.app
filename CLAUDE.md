@@ -44,6 +44,26 @@ ralphx/
 | **Shared safety helpers** | Extract guard logic to shared fn — ❌ duplicate across paths. |
 | **Debate before implementing** | Non-trivial fixes → spawn Alpha (minimal) vs Beta (comprehensive). |
 | **Verify end-to-end** | After fix, verify user-visible behavior changed. Stale logs/UI can make working fixes look broken. |
+| **Dual-spawn architecture** | Agent teams need BOTH in-process Task subagents (do actual work, write to sidechain JSONL) AND external CLI processes (registry workers, `approve_team_plan`). ❌ Remove either — both are required by design. See `src-tauri/manual_agent_teams_process.txt`. |
+| **Sidechain output capture** | In-process Task subagents write to `~/.claude/projects/<slug>/<session>/subagents/agent-*.jsonl`, NOT to parent stdout. The lead's stream reader only sees parent stdout. If lead timeout (`team_line_read_secs`) kills the team, subagent work is lost even though the JSONL shows full conversations. |
+
+## Agent Teams Architecture (CRITICAL — READ THIS)
+
+RalphX agent teams use a **dual-spawn model**. Both components are required:
+
+| Component | Purpose | Spawned By | Output |
+|-----------|---------|------------|--------|
+| In-process Task subagents | Do actual work (research, code, etc.) | Lead agent's `Task` tool | Sidechain JSONL (`~/.claude/projects/.../subagents/agent-*.jsonl`) |
+| External CLI processes | Registry workers, `approve_team_plan`, message delivery | `tokio::process::Command` in backend | Stdout stream read by backend |
+
+**Why both?** The Task tool creates in-process subagents that can use all Claude Code tools but write output to sidechain JSONL files (not parent stdout). The external CLI processes join the team registry and handle coordination tasks that need to be visible to the backend's stream reader.
+
+**Known issue:** The lead's stream reader (`process_stream_background`) only monitors parent stdout. Sidechain subagent activity doesn't count as "activity" for the `team_line_read_secs` timeout (default 3600s). If subagents work for >1 hour without the lead producing stdout output, the lead gets killed, losing the ability to capture subagent results.
+
+❌ NEVER remove the external CLI process spawning — it's not redundant, it's BY DESIGN
+❌ NEVER treat "0 tokens" on external CLI processes as a bug — they may be registry workers
+✅ Reference: `src-tauri/manual_agent_teams_process.txt` shows the manual equivalent
+✅ Debug logs: `scripts/find-debug-logs.sh -s "session title"` to find agent debug files + conversation JSONLs
 
 ## MCP Architecture
 ```

@@ -175,3 +175,76 @@ fn test_seq_values_are_monotonic() {
     assert!(seq3 > seq2, "seq must be strictly increasing");
     assert!(seq4 > seq3, "seq must be strictly increasing");
 }
+
+// --- ActiveTaskTracker tests ---
+
+#[test]
+fn test_active_task_tracker_empty_by_default() {
+    let tracker = ActiveTaskTracker::default();
+    assert!(!tracker.has_active_tasks());
+    assert_eq!(tracker.count(), 0);
+}
+
+#[test]
+fn test_active_task_tracker_counts_started_tasks() {
+    let mut tracker = ActiveTaskTracker::default();
+    tracker.task_started();
+    assert!(tracker.has_active_tasks());
+    assert_eq!(tracker.count(), 1);
+
+    tracker.task_started();
+    assert_eq!(tracker.count(), 2);
+}
+
+#[test]
+fn test_active_task_tracker_decrements_on_completed() {
+    let mut tracker = ActiveTaskTracker::default();
+    tracker.task_started();
+    tracker.task_started();
+    tracker.task_completed();
+    assert!(tracker.has_active_tasks());
+    assert_eq!(tracker.count(), 1);
+
+    tracker.task_completed();
+    assert!(!tracker.has_active_tasks());
+    assert_eq!(tracker.count(), 0);
+}
+
+#[test]
+fn test_active_task_tracker_saturates_at_zero() {
+    let mut tracker = ActiveTaskTracker::default();
+    tracker.task_completed(); // No active tasks, should not underflow
+    assert!(!tracker.has_active_tasks());
+    assert_eq!(tracker.count(), 0);
+}
+
+#[test]
+fn test_active_task_tracker_prevents_timeout_during_sidechain() {
+    // Scenario: Lead spawns 2 Task tool subagents (frontend-researcher, backend-researcher).
+    // Both TaskStarted events arrive → count = 2.
+    // During sidechain work, no stdout lines → timeout would fire.
+    // But has_active_tasks() returns true → timeout should be bypassed.
+    let mut tracker = ActiveTaskTracker::default();
+
+    // Lead spawns both researchers
+    tracker.task_started(); // frontend-researcher
+    tracker.task_started(); // backend-researcher
+    assert!(
+        tracker.has_active_tasks(),
+        "Should prevent timeout while subagents are active"
+    );
+
+    // First researcher completes
+    tracker.task_completed();
+    assert!(
+        tracker.has_active_tasks(),
+        "Should still prevent timeout with 1 active subagent"
+    );
+
+    // Second researcher completes
+    tracker.task_completed();
+    assert!(
+        !tracker.has_active_tasks(),
+        "Should allow timeout when all subagents done"
+    );
+}
