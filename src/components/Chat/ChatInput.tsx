@@ -109,14 +109,6 @@ function LoadingSpinner() {
   );
 }
 
-function StopIcon() {
-  return (
-    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor">
-      <rect x="3" y="3" width="10" height="10" rx="1" />
-    </svg>
-  );
-}
-
 // ============================================================================
 // Component
 // ============================================================================
@@ -333,79 +325,37 @@ export function ChatInput({
           }}
         />
 
-        {/* Send/Stop Button - macOS Tahoe flat styling */}
-        {/* Three-branch logic:
-            1. Agent running + question active → Send + mini Stop
-            2. Agent running + no question → Stop only
-            3. Not running → Send only
-        */}
-        {isAgentRunning && questionMode ? (
-          // Branch 1: Agent running + question active → Send + mini Stop
-          <div className="flex gap-1 items-center">
+        {/* Action buttons - Stop pill (when agent running) + Send (always) */}
+        <div className="flex gap-2 items-center">
+          {isAgentRunning && onStop && !isReadOnly && (
             <button
-              data-testid="chat-input-stop-secondary"
+              data-testid="chat-input-stop"
               type="button"
               onClick={onStop}
               aria-label="Stop agent"
-              className="rounded-lg transition-colors shrink-0 w-[28px] h-[28px] flex items-center justify-center hover:brightness-110"
+              className="shrink-0 h-[32px] px-3 rounded-full flex items-center gap-1.5 transition-colors"
               style={{
-                /* Secondary stop: muted red with hover to full opacity */
-                background: "hsla(0 70% 55% / 0.3)",
+                background: "hsla(0 70% 55% / 0.15)",
                 color: "hsl(0 70% 55%)",
                 boxShadow: "none",
               }}
               onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-                const target = e.currentTarget as HTMLButtonElement;
-                target.style.background = "hsl(0 70% 55%)";
-                target.style.color = "white";
+                e.currentTarget.style.background = "hsla(0 70% 55% / 0.3)";
               }}
               onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-                const target = e.currentTarget as HTMLButtonElement;
-                target.style.background = "hsla(0 70% 55% / 0.3)";
-                target.style.color = "hsl(0 70% 55%)";
+                e.currentTarget.style.background = "hsla(0 70% 55% / 0.15)";
               }}
             >
-              <StopIcon />
+              <span
+                className="w-[6px] h-[6px] rounded-full animate-pulse"
+                style={{ background: "hsl(0 70% 55%)" }}
+              />
+              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
+                <rect x="3" y="3" width="10" height="10" rx="1" />
+              </svg>
+              <span className="text-[11px] font-medium">Stop</span>
             </button>
-            <button
-              data-testid="chat-input-send"
-              type="button"
-              onClick={handleSend}
-              disabled={!canSend}
-              aria-label="Send message"
-              aria-busy={isSending}
-              className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
-              style={{
-                /* macOS Tahoe: flat solid color */
-                background: canSend
-                  ? "hsl(14 100% 60%)"
-                  : "hsla(14 100% 60% / 0.3)",
-                color: "white",
-                boxShadow: "none",
-              }}
-            >
-              {isSending ? <LoadingSpinner /> : <SendIcon />}
-            </button>
-          </div>
-        ) : isAgentRunning && onStop && !isReadOnly ? (
-          // Branch 2: Agent running + no question → Stop only
-          <button
-            data-testid="chat-input-stop"
-            type="button"
-            onClick={onStop}
-            aria-label="Stop agent"
-            className="px-3 py-2 rounded-lg transition-colors shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
-            style={{
-              /* macOS Tahoe: flat solid color */
-              background: "hsl(0 70% 55%)",
-              color: "white",
-              boxShadow: "none",
-            }}
-          >
-            <StopIcon />
-          </button>
-        ) : (
-          // Branch 3: Not running → Send only
+          )}
           <button
             data-testid="chat-input-send"
             type="button"
@@ -415,7 +365,6 @@ export function ChatInput({
             aria-busy={isSending}
             className="px-3 py-2 rounded-lg transition-colors disabled:opacity-40 shrink-0 h-[38px] flex items-center justify-center hover:brightness-110"
             style={{
-              /* macOS Tahoe: flat solid color */
               background: canSend
                 ? "hsl(14 100% 60%)"
                 : "hsla(14 100% 60% / 0.3)",
@@ -425,7 +374,7 @@ export function ChatInput({
           >
             {isSending ? <LoadingSpinner /> : <SendIcon />}
           </button>
-        )}
+        </div>
       </div>
 
       {/* Attachment Gallery - compact variant, shown below textarea */}
