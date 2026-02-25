@@ -76,6 +76,9 @@ pub use task_transition_service::TaskTransitionService;
 pub use team_service::TeamService;
 pub use team_state_tracker::TeamStateTracker;
 
+#[cfg(test)]
+mod app_state_shared_state_tests;
+
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
 pub use chat_service::{
     AgentChunkPayload, AgentErrorPayload, AgentMessageCreatedPayload, AgentQueueSentPayload,

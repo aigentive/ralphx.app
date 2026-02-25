@@ -5,7 +5,9 @@
 // A recent bug had interactive_process_registry NOT shared — registrations
 // on one instance were invisible to the other.
 
-use super::*;
+use std::sync::Arc;
+
+use crate::application::AppState;
 use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::domain::entities::ChatContextType;
 

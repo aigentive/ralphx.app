@@ -119,6 +119,9 @@ async fn create_task(state: State<'_, AppState>, input: CreateTaskInput) -> Resu
 5. User Allow/Deny → `resolve_permission_request` command
 6. Backend signals MCP → returns decision to Claude
 
+### Test File Separation (NON-NEGOTIABLE)
+❌ NEVER add `#[cfg(test)] mod` or `#[path = "..."]` test includes in production source files. Tests go in dedicated `*_tests.rs` files that import from `crate::` — zero modifications to the file under test. This codebase is large enough without test coupling in app code.
+
 ### Conventions
 - Types: PascalCase | Functions: snake_case | Files: snake_case
 - Enums: `#[serde(rename_all="snake_case")]`
