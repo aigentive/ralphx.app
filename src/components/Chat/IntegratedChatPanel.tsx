@@ -25,9 +25,7 @@ import type { Task } from "@/types/task";
 import type { ContextType } from "@/types/chat-conversation";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
-import { Square } from "lucide-react";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
-import { Button } from "@/components/ui/button";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
@@ -463,11 +461,15 @@ export function IntegratedChatPanel({
 
   // Handle stopping agent - clear streaming state
   const handleStopAgentWrapper = useCallback(async () => {
+    // Stop all teammates when team is active, otherwise just stop the lead agent
+    if (isTeamActive) {
+      teamActions.stopTeam.mutate();
+    }
     await handleStopAgent();
     setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
     setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
     setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
-  }, [handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
+  }, [isTeamActive, teamActions, handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
 
   useChatEvents({
     activeConversationId,
@@ -781,25 +783,6 @@ export function IntegratedChatPanel({
                 answeredValue={answeredQuestion}
                 onDismissAnswered={clearAnswered}
               />
-            )}
-
-            {/* Compact toolbar: Stop All (team mode only, shown only when agents are running) */}
-            {isTeamActive && teammates.length > 0 && !isHistoryMode &&
-              (isAgentRunning || teammates.some((m) => m.status === "running" || m.status === "spawning")) && (
-              <div
-                className="flex items-center justify-end px-3 py-1.5"
-                style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.04)" }}
-              >
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => teamActions.stopTeam.mutate()}
-                  className="text-[11px] h-6 gap-1 px-2"
-                >
-                  <Square className="w-3 h-3" />
-                  Stop All
-                </Button>
-              </div>
             )}
 
             {/* Chat Input */}
