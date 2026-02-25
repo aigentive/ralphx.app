@@ -76,6 +76,7 @@ async fn test_update_teammates() {
         },
         spawned_at: "2024-01-01T00:00:00Z".to_string(),
         last_activity_at: "2024-01-01T00:01:00Z".to_string(),
+        conversation_id: None,
     }];
     repo.update_teammates(&id, &teammates).await.unwrap();
 

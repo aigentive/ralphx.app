@@ -60,6 +60,7 @@ fn teammate_snapshot_serializes() {
         },
         spawned_at: "2024-01-01T00:00:00Z".to_string(),
         last_activity_at: "2024-01-01T00:01:00Z".to_string(),
+        conversation_id: Some("conv-123".to_string()),
     };
     let json = serde_json::to_string(&snap).unwrap();
     assert!(json.contains("worker-1"));
@@ -69,6 +70,25 @@ fn teammate_snapshot_serializes() {
     assert_eq!(parsed.color, "#ff6b35");
     assert_eq!(parsed.role, "coder");
     assert_eq!(parsed.cost.input_tokens, 1000);
+    assert_eq!(parsed.conversation_id.as_deref(), Some("conv-123"));
+}
+
+#[test]
+fn teammate_snapshot_deserializes_without_conversation_id() {
+    // Existing JSON blobs in DB won't have conversation_id — #[serde(default)] handles this
+    let json = r##"{
+        "name": "worker-1",
+        "color": "#ff6b35",
+        "model": "sonnet",
+        "role": "coder",
+        "status": "idle",
+        "cost": {"input_tokens":0,"output_tokens":0,"cache_creation_tokens":0,"cache_read_tokens":0,"estimated_usd":0.0},
+        "spawned_at": "2024-01-01T00:00:00Z",
+        "last_activity_at": "2024-01-01T00:01:00Z"
+    }"##;
+    let parsed: TeammateSnapshot = serde_json::from_str(json).unwrap();
+    assert_eq!(parsed.name, "worker-1");
+    assert!(parsed.conversation_id.is_none());
 }
 
 #[test]

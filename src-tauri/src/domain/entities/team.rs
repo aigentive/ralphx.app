@@ -78,6 +78,11 @@ pub struct TeammateSnapshot {
     pub cost: TeammateCost,
     pub spawned_at: String,
     pub last_activity_at: String,
+    /// Conversation ID linking to this teammate's chat_conversations row.
+    /// Added after v37 — `#[serde(default)]` ensures existing JSON blobs
+    /// without this field deserialize as None.
+    #[serde(default)]
+    pub conversation_id: Option<String>,
 }
 
 /// A team session — one row per active/historical team

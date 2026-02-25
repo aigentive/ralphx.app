@@ -279,6 +279,9 @@ impl TeamService {
 
         self.tracker.stop_teammate(team_name, teammate_name).await?;
 
+        // Persist AFTER stop so snapshot captures "shutdown" status
+        self.persist_teammates(team_name).await;
+
         if let (Some(ref handle), Some((ctx_type, ctx_id))) = (&self.app_handle, ctx) {
             team_events::emit_teammate_shutdown(
                 handle,
@@ -304,6 +307,9 @@ impl TeamService {
         };
 
         self.tracker.stop_team(team_name).await?;
+
+        // Persist AFTER stop so snapshot captures "shutdown" status (not stale "idle")
+        self.persist_teammates(team_name).await;
 
         if let (Some(ref handle), Some((ctx_type, ctx_id))) = (&self.app_handle, ctx) {
             for name in &teammate_names {
@@ -335,6 +341,9 @@ impl TeamService {
         let disbanded_sid = self.resolve_session_id(team_name).await;
 
         self.tracker.disband_team(team_name).await?;
+
+        // Persist AFTER disband so snapshot captures final "shutdown" status
+        self.persist_teammates(team_name).await;
 
         // Persist disbanded state
         if let (Some(ref repo), Some(sid)) = (&self.session_repo, disbanded_sid) {
@@ -547,6 +556,7 @@ impl TeamService {
                 cost: t.cost.clone(),
                 spawned_at: t.spawned_at.clone(),
                 last_activity_at: t.last_activity_at.clone(),
+                conversation_id: t.conversation_id.clone(),
             })
             .collect();
         if let Err(e) = repo.update_teammates(&sid, &snapshots).await {
