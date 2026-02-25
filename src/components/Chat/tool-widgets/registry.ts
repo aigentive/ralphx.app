@@ -25,6 +25,8 @@ import { GlobWidget } from "./GlobWidget";
 import { ReadWidget } from "./ReadWidget";
 import { BashWidget } from "./BashWidget";
 import { SkillWidget } from "./SkillWidget";
+import { SendMessageWidget } from "./SendMessageWidget";
+import { TaskCreateWidget, TaskUpdateWidget, TaskListWidget } from "./TeamTaskWidgets";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -83,6 +85,12 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "mcp__ralphx__get_proposal": IdeationWidget,
   "mcp__ralphx__get_session_plan": IdeationWidget,
   "mcp__ralphx__analyze_session_dependencies": IdeationWidget,
+  // SendMessage tool → SendMessageWidget (team message card)
+  "sendmessage": SendMessageWidget,
+  // Task management tools → TeamTaskWidgets
+  "taskcreate": TaskCreateWidget,
+  "taskupdate": TaskUpdateWidget,
+  "tasklist": TaskListWidget,
 };
 
 /**
