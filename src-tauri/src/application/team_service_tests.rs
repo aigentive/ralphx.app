@@ -1,4 +1,5 @@
 use super::*;
+use crate::infrastructure::memory::MemoryTeamMessageRepository;
 
 fn test_service() -> TeamService {
     TeamService::new_without_events(Arc::new(TeamStateTracker::new()))
@@ -296,6 +297,61 @@ async fn test_disband_sets_all_teammates_shutdown() {
             t.name
         );
     }
+}
+
+/// Regression: persist_message must not silently drop messages when the calling
+/// TeamService instance has an empty session_id_cache because create_team was
+/// called on a DIFFERENT TeamService sharing the same tracker + repos.
+///
+/// Production scenario:
+///  - Tauri service calls create_team via chat_service_streaming → populates its cache
+///  - HTTP service checks team_exists → true → skips create_team → empty cache
+///  - HTTP service calls add_teammate_message → must fall back to DB for session ID
+#[tokio::test]
+async fn test_persist_message_db_fallback_when_cache_empty() {
+    let tracker = Arc::new(TeamStateTracker::new());
+    let session_repo: Arc<dyn crate::domain::repositories::TeamSessionRepository> =
+        Arc::new(crate::infrastructure::memory::MemoryTeamSessionRepository::new());
+    let message_repo: Arc<dyn crate::domain::repositories::TeamMessageRepository> =
+        Arc::new(MemoryTeamMessageRepository::new());
+
+    // Service A: simulates the Tauri service that creates the team and populates its cache
+    let svc_a = TeamService::new_with_repos_for_testing(
+        tracker.clone(),
+        Arc::clone(&session_repo),
+        Arc::clone(&message_repo),
+    );
+    svc_a.create_team("team-x", "ctx-99", "ideation").await.unwrap();
+
+    // Service B: simulates the HTTP service — same tracker + repos, but fresh empty cache
+    let svc_b = TeamService::new_with_repos_for_testing(
+        tracker.clone(),
+        Arc::clone(&session_repo),
+        Arc::clone(&message_repo),
+    );
+
+    // svc_b must find the session via DB fallback and persist the message
+    let msg = svc_b
+        .add_teammate_message(
+            "team-x",
+            "researcher-1",
+            None,
+            "Here are the results",
+            TeamMessageType::TeammateMessage,
+        )
+        .await
+        .unwrap();
+    assert_eq!(msg.sender, "researcher-1");
+    assert_eq!(msg.content, "Here are the results");
+
+    // Verify message was actually persisted to the DB (not just in-memory tracker)
+    use crate::domain::repositories::TeamMessageRepository;
+    let sessions = session_repo.get_by_context("ideation", "ctx-99").await.unwrap();
+    let sid = &sessions[0].id;
+    let persisted = message_repo.get_by_session(sid).await.unwrap();
+    assert_eq!(persisted.len(), 1);
+    assert_eq!(persisted[0].sender, "researcher-1");
+    assert_eq!(persisted[0].content, "Here are the results");
 }
 
 #[tokio::test]
