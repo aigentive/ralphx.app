@@ -141,13 +141,26 @@ export const useTeamStore = create<TeamState & TeamActions>()(
     appendTeammateChunk: (contextKey, name, text) =>
       set((state) => {
         const team = state.activeTeams[contextKey];
-        if (team) {
-          const mate = team.teammates[name];
-          if (mate) {
-            // eslint-disable-next-line no-control-regex
-            mate.streamingText += text.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
-          }
+        if (!team) return;
+        if (!team.teammates[name]) {
+          // Auto-create teammate on first chunk — race condition guard.
+          // Handles the case where agent:chunk arrives before team:teammate_spawned
+          // (e.g. frontend was not mounted when the initial spawn event fired).
+          team.teammates[name] = {
+            name,
+            color: "#94a3b8",
+            model: "unknown",
+            roleDescription: "teammate",
+            status: "running",
+            currentActivity: null,
+            tokensUsed: 0,
+            estimatedCostUsd: 0,
+            streamingText: "",
+          };
         }
+        const mate = team.teammates[name]!;
+        // eslint-disable-next-line no-control-regex
+        mate.streamingText += text.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
       }),
 
     clearTeammateStream: (contextKey, name) =>
