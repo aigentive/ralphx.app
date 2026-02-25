@@ -200,11 +200,13 @@ pub fn run() {
             let shared_question_state = Arc::clone(&app_state.question_state);
             let shared_permission_state = Arc::clone(&app_state.permission_state);
             let shared_message_queue = Arc::clone(&app_state.message_queue);
+            let shared_interactive_process_registry = Arc::clone(&app_state.interactive_process_registry);
             let mut http_app_state_inner =
                 AppState::new_production(app_handle).expect("Failed to initialize AppState for HTTP server");
             http_app_state_inner.question_state = shared_question_state;
             http_app_state_inner.permission_state = shared_permission_state;
             http_app_state_inner.message_queue = shared_message_queue;
+            http_app_state_inner.interactive_process_registry = shared_interactive_process_registry;
             let http_app_state = Arc::new(http_app_state_inner);
             // Spawn HTTP server with pre-cloned state
             tauri::async_runtime::spawn(async move {
