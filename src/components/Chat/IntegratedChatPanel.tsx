@@ -282,7 +282,11 @@ export function IntegratedChatPanel({
       context_type: string;
       context_id: string;
       conversation_id: string;
+      teammate_name?: string | null;
     }>("agent:run_started", (payload) => {
+      // Ignore teammate run_started — their conversations are handled via team filter tabs
+      if (payload.teammate_name) return;
+
       // Existing exact match
       if (
         payload.context_type === currentContextType &&
