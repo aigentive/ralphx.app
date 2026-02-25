@@ -768,7 +768,9 @@ pub fn summarize_plan_for_dependencies(text: &str) -> String {
     const MAX_CHARS: usize = 1500;
     let truncated = if body.chars().count() > MAX_CHARS {
         let cut: String = body.chars().take(MAX_CHARS).collect();
-        // Trim to last newline to avoid mid-line cut
+        // Trim to last newline to avoid mid-line cut.
+        // `rfind('\n')` returns a byte index at an ASCII character boundary, so
+        // `cut[..pos]` is always a valid UTF-8 slice.
         match cut.rfind('\n') {
             Some(pos) => cut[..pos].to_string(),
             None => cut,

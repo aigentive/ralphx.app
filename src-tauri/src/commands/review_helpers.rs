@@ -18,7 +18,9 @@ pub fn parse_issues_from_notes(
         return (None, Some(notes_text.clone()));
     }
 
-    // Find the end of the JSON line (first newline)
+    // Find the end of the JSON line (first newline).
+    // `find('\n')` returns a byte index at an ASCII character boundary, so
+    // `notes_text[..newline_pos]` is always a valid UTF-8 slice.
     if let Some(newline_pos) = notes_text.find('\n') {
         let json_part = &notes_text[..newline_pos];
         let feedback_part = notes_text[newline_pos + 1..].to_string();

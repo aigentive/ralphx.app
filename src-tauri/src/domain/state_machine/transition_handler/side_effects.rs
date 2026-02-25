@@ -7,9 +7,8 @@
 // - merge_validation: post-merge validation gate (setup + validate phases)
 // - merge_orchestrator: sub-functions extracted from attempt_programmatic_merge
 
-use super::merge_helpers::{
-    resolve_merge_branches, truncate_str, validate_plan_merge_preconditions,
-};
+use super::merge_helpers::{resolve_merge_branches, validate_plan_merge_preconditions};
+use crate::utils::truncate_str;
 use super::merge_orchestrator::ConcurrentGuardResult;
 use super::merge_validation::{format_validation_error_metadata, ValidationLogEntry};
 

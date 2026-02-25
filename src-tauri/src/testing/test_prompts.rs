@@ -5,6 +5,8 @@
 // achieving ~98% cost savings in integration tests while still verifying
 // agent communication and state machine transitions.
 
+use crate::utils::truncate_str;
+
 /// Minimal prompt that verifies agent received input and can respond
 pub const ECHO_MARKER: &str = "Respond with exactly: TEST_ECHO_OK";
 
@@ -59,7 +61,7 @@ pub fn assert_marker(output: &str, marker: &str) {
         output.contains(marker),
         "Expected output to contain '{}', got: {}...",
         marker,
-        &output[..output.len().min(200)]
+        truncate_str(output, 200)
     );
 }
 

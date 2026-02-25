@@ -28,6 +28,7 @@ use crate::infrastructure::agents::claude::{
 };
 use tokio_util::sync::CancellationToken;
 
+use crate::utils::truncate_str;
 use super::chat_service_errors::StreamError;
 use super::streaming_state_cache::{CachedStreamingTask, CachedToolCall, StreamingStateCache};
 use super::{
@@ -445,7 +446,7 @@ pub async fn process_stream_background<R: Runtime>(
             conversation_id = %conversation_id_str,
             lines_seen,
             line_len = line.len(),
-            line_preview = %if line.len() > 200 { &line[..200] } else { &line },
+            line_preview = %truncate_str(&line, 200),
             "[STREAM_RAW] Lead stdout line"
         );
 
