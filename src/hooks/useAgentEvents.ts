@@ -46,13 +46,16 @@ export function useAgentEvents(activeConversationId: string | null) {
     // issues with mismatched tool calls/results and partial content.
 
     // Listen for run started - set agent running state to true and update conversation cache
+    // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
       bus.subscribe<{
         run_id: string;
         context_type: string;
         context_id: string;
         conversation_id: string;
+        teammate_name?: string | null;
       }>("agent:run_started", (payload) => {
+        if (payload.teammate_name) return;
         const { context_type, context_id: eventContextId, conversation_id } = payload;
 
         // Build context key from the event payload
@@ -133,13 +136,16 @@ export function useAgentEvents(activeConversationId: string | null) {
 
     // Listen for run completion
     // Unified event: agent:run_completed (replaces chat:run_completed)
+    // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
       bus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
         status: string;
+        teammate_name?: string | null;
       }>("agent:run_completed", (payload) => {
+        if (payload.teammate_name) return;
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload
@@ -187,13 +193,16 @@ export function useAgentEvents(activeConversationId: string | null) {
     // Listen for agent stopped - defensive cleanup if agent:run_completed emission regresses.
     // Backend emits agent:stopped immediately on SIGTERM, before agent:run_completed.
     // This ensures running state clears even if the subsequent run_completed is lost.
+    // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
       bus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
         agent_run_id: string;
+        teammate_name?: string | null;
       }>("agent:stopped", (payload) => {
+        if (payload.teammate_name) return;
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
@@ -213,13 +222,16 @@ export function useAgentEvents(activeConversationId: string | null) {
 
     // Listen for agent errors
     // Unified event: agent:error
+    // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
       bus.subscribe<{
         context_type: string;
         context_id: string;
         conversation_id: string;
         error: string;
+        teammate_name?: string | null;
       }>("agent:error", (payload) => {
+        if (payload.teammate_name) return;
         const { conversation_id, context_type, context_id: eventContextId } = payload;
 
         // Build context key from the event payload

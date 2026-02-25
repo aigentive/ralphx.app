@@ -2,7 +2,7 @@
  * TeamFilterTabs — Per-teammate message filter tabs
  *
  * Dynamic tabs from active team's member list:
- * [All] [Lead] [coder-1] [coder-2] ...
+ * [Lead] [coder-1] [coder-2] ...
  * Color indicator dots per teammate.
  */
 
@@ -10,7 +10,7 @@ import React from "react";
 import { cn } from "@/lib/utils";
 import type { TeammateState, TeammateStatus } from "@/stores/teamStore";
 
-export type TeamFilterValue = "all" | "lead" | string;
+export type TeamFilterValue = "lead" | string;
 
 const STATUS_DOT_COLORS: Record<TeammateStatus, string> = {
   running: "hsl(142 71% 45%)",
@@ -39,12 +39,6 @@ export const TeamFilterTabs = React.memo(function TeamFilterTabs({
         borderTop: "1px solid hsl(220 10% 14%)",
       }}
     >
-      {/* All tab */}
-      <FilterChip
-        label="All"
-        isActive={activeFilter === "all"}
-        onClick={() => onFilterChange("all")}
-      />
       {/* Lead tab */}
       <FilterChip
         label="Lead"

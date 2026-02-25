@@ -1,7 +1,7 @@
 /**
  * TeamContextBar — Contextual top bar for team mode.
  *
- * "All"/"Lead" tab: compact summary (counts + cost).
+ * "Lead" tab: compact summary (counts + cost).
  * Teammate tab: detail row(s) with status, model, activity, stop.
  */
 
@@ -36,7 +36,7 @@ function formatTokens(tokens: number): string {
 }
 
 // ============================================================================
-// Summary mode — "all" / "lead" tab
+// Summary mode — "lead" tab
 // ============================================================================
 
 function TeamSummaryRow({ contextKey, isHistorical }: { contextKey: string; isHistorical: boolean }) {
@@ -129,7 +129,7 @@ export const TeamContextBar = React.memo(function TeamContextBar({
   isHistorical = false,
   onStopTeammate,
 }: TeamContextBarProps) {
-  const isSummary = activeFilter === "all" || activeFilter === "lead";
+  const isSummary = activeFilter === "lead";
 
   return (
     <div className="px-3 py-1.5 shrink-0" style={{ borderBottom: "1px solid hsl(220 10% 14%)" }}>
