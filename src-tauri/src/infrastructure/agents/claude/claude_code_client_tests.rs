@@ -389,15 +389,28 @@ fn test_teammate_spawn_config_builder_chain() {
 }
 
 #[test]
-fn test_build_teammate_cli_args_no_print_flag() {
+fn test_build_teammate_cli_args_interactive_stdin_flags() {
     let client = ClaudeCodeClient::new();
     let config = test_teammate_config();
     let args = client.build_teammate_cli_args(&config);
 
-    // CRITICAL: No -p flag — interactive mode
+    // Interactive mode: -p - and --input-format stream-json are required so that
+    // the process stays in print mode (needed for --output-format stream-json) and
+    // reads structured JSON messages from stdin.
+    let p_pos = args.iter().position(|a| a == "-p");
+    assert!(p_pos.is_some(), "Teammate args must contain -p flag");
+    assert_eq!(
+        args.get(p_pos.unwrap() + 1).map(String::as_str),
+        Some("-"),
+        "-p must be followed by - (stdin) for interactive teammates"
+    );
     assert!(
-        !args.contains(&"-p".to_string()),
-        "Teammate args must NOT contain -p flag (interactive mode)"
+        args.contains(&"--input-format".to_string()),
+        "Teammate args must contain --input-format"
+    );
+    assert!(
+        args.contains(&"stream-json".to_string()),
+        "Teammate args must contain stream-json as --input-format value"
     );
 }
 
@@ -723,8 +736,12 @@ fn test_build_teammate_cli_args_full_integration() {
 
     let args = client.build_teammate_cli_args(&config);
 
-    // Verify NO -p flag
-    assert!(!args.contains(&"-p".to_string()));
+    // Interactive mode: -p - and --input-format stream-json must be present
+    let p_pos = args.iter().position(|a| a == "-p");
+    assert!(p_pos.is_some(), "args must contain -p");
+    assert_eq!(args.get(p_pos.unwrap() + 1).map(String::as_str), Some("-"));
+    assert!(args.contains(&"--input-format".to_string()));
+    assert!(args.contains(&"stream-json".to_string()));
 
     // Verify all required flags are present
     let required_flags = vec![

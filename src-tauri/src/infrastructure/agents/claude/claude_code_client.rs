@@ -886,11 +886,22 @@ impl ClaudeCodeClient {
             args.extend(["--allowedTools".to_string(), prefixed.join(",")]);
         }
 
-        // Prompt mode: print-mode (-p) for one-shot teammates only.
-        // Interactive teammates are bare workers — no prompt. They join the team
-        // registry and pick up work from the lead via the inbox system.
+        // Prompt mode: -p is REQUIRED for --output-format stream-json to produce output.
+        // One-shot: -p <prompt> for single-turn teammates.
+        // Interactive: -p - with --input-format stream-json enables print mode so stdout
+        // emits stream-json events. Work is delivered via the team inbox (SendMessage),
+        // not via stdin — stdin stays open for future message injection if needed.
         if let Some(ref prompt) = config.print_mode_prompt {
+            // One-shot mode: prompt passed directly via -p
             args.extend(["-p".to_string(), prompt.clone()]);
+        } else {
+            // Interactive mode: -p - enables print mode (required for stream-json output)
+            args.extend([
+                "-p".to_string(),
+                "-".to_string(),
+                "--input-format".to_string(),
+                "stream-json".to_string(),
+            ]);
         }
 
         // Skip permissions for automated teammates
