@@ -346,9 +346,13 @@ impl TeamStateTracker {
         }
     }
 
-    /// Store a validated team plan pending user approval
+    /// Store a validated team plan pending user approval.
+    /// Also cleans up stale plans older than 30 minutes to prevent memory leaks.
     pub async fn store_pending_plan(&self, plan: PendingTeamPlan) {
         let mut plans = self.pending_plans.write().await;
+        // Cleanup stale plans (older than 30 minutes)
+        let stale_cutoff = Utc::now() - chrono::Duration::minutes(30);
+        plans.retain(|_id, p| p.created_at > stale_cutoff);
         plans.insert(plan.plan_id.clone(), plan);
     }
 

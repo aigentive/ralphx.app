@@ -170,8 +170,8 @@ pub async fn request_team_plan(
 
         // Check timeout
         if start.elapsed() >= timeout {
-            // Cleanup: remove pending plan and channel
-            state.team_tracker.take_pending_plan(&plan_id).await;
+            // Cleanup: remove the watch channel only — keep the pending plan alive
+            // so the user can still approve it after the MCP poll times out.
             state.team_tracker.remove_plan_channel(&plan_id).await;
 
             return Ok(Json(RequestTeamPlanResponse {
@@ -179,7 +179,7 @@ pub async fn request_team_plan(
                 plan_id,
                 team_name: None,
                 teammates_spawned: vec![],
-                message: "Team plan timed out waiting for user approval (5 min)".to_string(),
+                message: "Team plan timed out waiting for user approval (5 min). Plan is still pending — user can still approve in the UI.".to_string(),
             }));
         }
 
@@ -196,15 +196,15 @@ pub async fn request_team_plan(
                 ));
             }
             Err(_) => {
-                // Timeout
-                state.team_tracker.take_pending_plan(&plan_id).await;
+                // Timeout — remove the watch channel only, keep the pending plan
+                // so the user can still approve it from the UI.
                 state.team_tracker.remove_plan_channel(&plan_id).await;
                 return Ok(Json(RequestTeamPlanResponse {
                     success: false,
                     plan_id,
                     team_name: None,
                     teammates_spawned: vec![],
-                    message: "Team plan timed out waiting for user approval (5 min)".to_string(),
+                    message: "Team plan timed out waiting for user approval (5 min). Plan is still pending — user can still approve in the UI.".to_string(),
                 }));
             }
         }
