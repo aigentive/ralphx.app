@@ -106,6 +106,28 @@ pub fn start_teammate_stream<R: Runtime>(
                                 conv_id.as_str(),
                             )
                             .await;
+                        // Re-emit team:teammate_spawned with conversation_id now known
+                        if let Ok(team_status) = team_tracker.get_team_status(&team_name).await {
+                            if let Some(tm) = team_status.teammates.iter().find(|t| t.name == teammate_name) {
+                                let conv_id_string = conv_id.as_str();
+                                team_events::emit_teammate_spawned(
+                                    &app_handle,
+                                    &team_name,
+                                    &teammate_name,
+                                    &tm.color,
+                                    &tm.model,
+                                    &tm.role,
+                                    &context_type,
+                                    &context_id,
+                                    Some(&conv_id_string),
+                                );
+                                tracing::info!(
+                                    teammate = %teammate_name,
+                                    conversation_id = %conv_id_string,
+                                    "Re-emitted teammate_spawned with conversation_id"
+                                );
+                            }
+                        }
                         Some(conv_id)
                     }
                     Err(e) => {
