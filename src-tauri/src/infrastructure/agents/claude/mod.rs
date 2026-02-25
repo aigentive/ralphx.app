@@ -39,6 +39,7 @@ use tracing::{info, warn};
 /// Apply common Claude CLI environment flags for RalphX-managed spawns.
 pub fn apply_common_spawn_env(cmd: &mut Command) {
     cmd.env("CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "1");
+    cmd.env("CLAUDE_CODE_ENABLE_TASKS", "1");
     cmd.env("DEBUG", "true");
 }
 
