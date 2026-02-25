@@ -248,10 +248,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const timeline = useMemo((): TimelineItem[] => {
       const items: TimelineItem[] = [];
 
-      // Exclude the last assistant message from DB when:
-      // (a) active streaming/finalizing — it's being rendered in streamingContentBlocks
-      // (b) agent is running + last assistant is empty — prevents empty "pill" before first chunk
-      const filteredMessages = (shouldFilterLastAssistant || isAgentRunning)
+      // Exclude the last assistant message from DB when active streaming/finalizing —
+      // it's being rendered live in streamingContentBlocks. Do NOT filter based solely on
+      // isAgentRunning: during team sessions the lead runs for extended periods, and filtering
+      // without active streaming blocks hides historical assistant messages between turns.
+      const filteredMessages = shouldFilterLastAssistant
         ? (() => {
             // Find the last assistant message index
             let lastAssistantIdx = -1;
@@ -262,11 +263,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               }
             }
             if (lastAssistantIdx >= 0) {
-              const lastMsg = messages[lastAssistantIdx]!;
-              // Always filter when streaming/finalizing; only filter empty msg when only running
-              if (shouldFilterLastAssistant || !lastMsg.content.trim()) {
-                return messages.filter((_, idx) => idx !== lastAssistantIdx);
-              }
+              return messages.filter((_, idx) => idx !== lastAssistantIdx);
             }
             return messages;
           })()
@@ -338,7 +335,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, isAgentRunning, attachmentsMap, teamFilter, teamMessages, isTeammateTab]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, attachmentsMap, teamFilter, teamMessages, isTeammateTab]);
 
     // Explicit initial scroll — fires when conversation changes to ensure
     // the last message is visible after layout settles.
