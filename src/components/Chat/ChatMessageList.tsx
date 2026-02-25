@@ -426,8 +426,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             })}
 
             {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet.
-                StreamingToolIndicator is now rendered outside the scroll container by parent panels. */}
-            {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+                StreamingToolIndicator is now rendered outside the scroll container by parent panels.
+                Suppressed on teammate tabs — teammate overlay handles their streaming display. */}
+            {!isTeammateTab && (isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
               <TypingIndicator />
             )}
 
@@ -509,7 +510,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     if (isTestEnv) {
       return (
         <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
-          {isFilteredTabEmpty && hasTeammateStream && (
+          {isTeammateTab && hasTeammateStream && (
             <div className="flex-1 overflow-y-auto px-2.5 py-2" data-testid="teammate-stream-view" style={{ backgroundColor: "hsl(220 10% 6%)" }}>
               <pre
                 className="text-[11px] leading-relaxed whitespace-pre-wrap break-words m-0"
@@ -579,7 +580,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
           <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+            {/* Suppressed on teammate tabs — teammate overlay handles their streaming display. */}
+            {!isTeammateTab && streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
                 if (!block.text.trim()) return null;
@@ -623,8 +625,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
             })}
 
             {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet.
-                StreamingToolIndicator is now rendered outside the scroll container by parent panels. */}
-            {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+                StreamingToolIndicator is now rendered outside the scroll container by parent panels.
+                Suppressed on teammate tabs — teammate overlay handles their streaming display. */}
+            {!isTeammateTab && (isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
               <TypingIndicator />
             )}
             <div ref={messagesEndRef} />
