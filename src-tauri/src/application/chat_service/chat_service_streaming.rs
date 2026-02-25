@@ -1213,7 +1213,12 @@ pub async fn process_stream_background<R: Runtime>(
                                     "team-member",
                                 )
                                 .await;
-                        } else if let Some(ref handle) = app_handle {
+                        }
+                        // Always re-emit team:teammate_spawned so the frontend creates the
+                        // filter tab immediately. The teammate may already be registered from
+                        // approve_team_plan (add_teammate returns TeammateAlreadyExists), but
+                        // we re-emit here so the frontend recovers if it missed the initial event.
+                        if let Some(ref handle) = app_handle {
                             team_events::emit_teammate_spawned(
                                 handle,
                                 &team_name,
