@@ -474,6 +474,11 @@ impl TeamService {
         self.tracker.get_teammate_count(team_name).await
     }
 
+    /// Find an active (non-disbanded) team by its context_id.
+    pub async fn find_team_by_context_id(&self, context_id: &str) -> Option<String> {
+        self.tracker.find_team_by_context_id(context_id).await
+    }
+
     // ========================================================================
     // Internal helpers
     // ========================================================================

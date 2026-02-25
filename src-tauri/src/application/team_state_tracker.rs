@@ -775,6 +775,16 @@ impl TeamStateTracker {
         teams.contains_key(team_name)
     }
 
+    /// Find an active (non-disbanded) team by its context_id.
+    /// Returns the team name if found.
+    pub async fn find_team_by_context_id(&self, context_id: &str) -> Option<String> {
+        let teams = self.teams.read().await;
+        teams
+            .values()
+            .find(|t| t.context_id == context_id && t.phase != TeamPhase::Disbanded)
+            .map(|t| t.name.clone())
+    }
+
     /// Send a message to a teammate's stdin (interactive mode).
     ///
     /// Returns an error if the teammate doesn't exist, has no handle,
