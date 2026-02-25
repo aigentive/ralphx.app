@@ -158,7 +158,7 @@ impl TeamService {
         if let Some(ref handle) = self.app_handle {
             let (ctx_type, ctx_id) = self.get_team_context(team_name).await?;
             team_events::emit_teammate_spawned(
-                handle, team_name, name, color, model, role, &ctx_type, &ctx_id,
+                handle, team_name, name, color, model, role, &ctx_type, &ctx_id, None,
             );
         }
         Ok(())

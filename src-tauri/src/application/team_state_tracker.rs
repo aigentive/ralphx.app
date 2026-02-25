@@ -120,6 +120,8 @@ pub struct TeammateState {
     pub handle: Option<TeammateHandle>,
     pub spawned_at: DateTime<Utc>,
     pub last_activity_at: DateTime<Utc>,
+    /// Conversation ID for this teammate's chat history (set by stream processor)
+    pub conversation_id: Option<String>,
 }
 
 impl std::fmt::Debug for TeammateState {
@@ -132,6 +134,7 @@ impl std::fmt::Debug for TeammateState {
             .field("status", &self.status)
             .field("cost", &self.cost)
             .field("has_handle", &self.handle.is_some())
+            .field("conversation_id", &self.conversation_id)
             .finish()
     }
 }
@@ -219,6 +222,9 @@ pub struct TeammateStatusResponse {
     pub cost: TeammateCost,
     pub spawned_at: String,
     pub last_activity_at: String,
+    /// Conversation ID for this teammate's persisted chat history
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
 }
 
 /// Serializable snapshot of team state
@@ -438,6 +444,7 @@ impl TeamStateTracker {
                 handle: None,
                 spawned_at: now,
                 last_activity_at: now,
+                conversation_id: None,
             },
         );
 
@@ -493,6 +500,25 @@ impl TeamStateTracker {
         Ok(())
     }
 
+    /// Set the conversation_id for a teammate (called by stream processor after creating conversation)
+    pub async fn set_teammate_conversation_id(
+        &self,
+        team_name: &str,
+        teammate_name: &str,
+        conversation_id: String,
+    ) -> Result<(), TeamTrackerError> {
+        let mut teams = self.teams.write().await;
+        let team = teams
+            .get_mut(team_name)
+            .ok_or_else(|| TeamTrackerError::TeamNotFound(team_name.to_string()))?;
+        let teammate = team
+            .teammates
+            .get_mut(teammate_name)
+            .ok_or_else(|| TeamTrackerError::TeammateNotFound(teammate_name.to_string()))?;
+        teammate.conversation_id = Some(conversation_id);
+        Ok(())
+    }
+
     /// Update teammate cost
     pub async fn update_teammate_cost(
         &self,
@@ -539,6 +565,7 @@ impl TeamStateTracker {
                     cost: t.cost.clone(),
                     spawned_at: t.spawned_at.to_rfc3339(),
                     last_activity_at: t.last_activity_at.to_rfc3339(),
+                    conversation_id: t.conversation_id.clone(),
                 })
                 .collect(),
             phase: team.phase,
