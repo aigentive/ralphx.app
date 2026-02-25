@@ -82,6 +82,8 @@ pub fn start_teammate_stream<R: Runtime>(
         // Accumulate text output for persistence on turn boundaries
         let mut text_buffer = String::new();
         let mut has_emitted_running = false;
+        // Fix B: tracks TurnComplete → Idle state between turns
+        let mut is_idle = false;
 
         // Track cumulative cost from result events
         let mut total_cost_usd: f64 = 0.0;
@@ -158,6 +160,35 @@ pub fn start_teammate_stream<R: Runtime>(
                         }
 
                         for event in stream_events {
+                            // Fix B: Transition back to Running when activity resumes after TurnComplete idle
+                            if is_idle
+                                && matches!(
+                                    event,
+                                    StreamEvent::TextChunk(_)
+                                        | StreamEvent::Thinking(_)
+                                        | StreamEvent::ToolCallStarted { .. }
+                                        | StreamEvent::ToolCallCompleted { .. }
+                                        | StreamEvent::ToolResultReceived { .. }
+                                )
+                            {
+                                is_idle = false;
+                                let _ = team_tracker
+                                    .update_teammate_status(
+                                        &team_name,
+                                        &teammate_name,
+                                        TeammateStatus::Running,
+                                    )
+                                    .await;
+                                let _ = app_handle.emit(
+                                    "agent:run_started",
+                                    serde_json::json!({
+                                        "teammate_name": teammate_name,
+                                        "context_type": context_type,
+                                        "context_id": context_id,
+                                    }),
+                                );
+                            }
+
                             match event {
                                 StreamEvent::TextChunk(text) => {
                                     // Emit "running" status on first text output
@@ -387,16 +418,40 @@ pub fn start_teammate_stream<R: Runtime>(
                                         );
                                     }
                                 }
+                                StreamEvent::TurnComplete { .. } => {
+                                    // Fix A: Teammate went idle between turns — update status and emit events
+                                    is_idle = true;
+                                    let _ = team_tracker
+                                        .update_teammate_status(
+                                            &team_name,
+                                            &teammate_name,
+                                            TeammateStatus::Idle,
+                                        )
+                                        .await;
+                                    let _ = app_handle.emit(
+                                        "agent:run_completed",
+                                        serde_json::json!({
+                                            "teammate_name": teammate_name,
+                                            "context_type": context_type,
+                                            "context_id": context_id,
+                                        }),
+                                    );
+                                    team_events::emit_teammate_idle(
+                                        &app_handle,
+                                        &team_name,
+                                        &teammate_name,
+                                        &context_type,
+                                        &context_id,
+                                    );
+                                }
                                 StreamEvent::HookStarted { .. }
                                 | StreamEvent::HookCompleted { .. }
                                 | StreamEvent::HookBlock { .. }
                                 | StreamEvent::TeamCreated { .. }
                                 | StreamEvent::TeammateSpawned { .. }
-                                | StreamEvent::TeamDeleted { .. }
-                                | StreamEvent::TurnComplete { .. } => {
-                                    // Hook, team, and turn-complete events from teammates are not forwarded
-                                    // (hooks run on the lead, team events only relevant from lead's stream,
-                                    // turn completion is handled by the lead's stream processor)
+                                | StreamEvent::TeamDeleted { .. } => {
+                                    // Hook and team events from teammates are not forwarded
+                                    // (hooks run on the lead, team events only relevant from lead's stream)
                                 }
                             }
                         }

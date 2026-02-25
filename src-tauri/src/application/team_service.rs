@@ -297,11 +297,20 @@ impl TeamService {
 
     /// Disband a team (stop all + mark disbanded) and emit team:disbanded.
     pub async fn disband_team(&self, team_name: &str) -> Result<(), TeamTrackerError> {
-        // Capture context before mutation
+        // Capture context and teammate names before mutation for event emission
         let ctx = if self.app_handle.is_some() {
             Some(self.get_team_context(team_name).await?)
         } else {
             None
+        };
+        let teammate_names: Vec<String> = if self.app_handle.is_some() {
+            self.tracker
+                .get_team_status(team_name)
+                .await
+                .map(|s| s.teammates.iter().map(|t| t.name.clone()).collect())
+                .unwrap_or_default()
+        } else {
+            vec![]
         };
 
         self.tracker.disband_team(team_name).await?;
@@ -316,6 +325,10 @@ impl TeamService {
         }
 
         if let (Some(ref handle), Some((ctx_type, ctx_id))) = (&self.app_handle, ctx) {
+            // Emit per-teammate shutdown events before the team:disbanded event
+            for name in &teammate_names {
+                team_events::emit_teammate_shutdown(handle, team_name, name, &ctx_type, &ctx_id);
+            }
             team_events::emit_team_disbanded(handle, team_name, &ctx_type, &ctx_id);
         }
         Ok(())
