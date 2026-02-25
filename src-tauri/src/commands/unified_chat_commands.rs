@@ -33,6 +33,10 @@ pub struct SendAgentMessageInput {
     pub context_type: String,
     pub context_id: String,
     pub content: String,
+    /// Optional target for team message routing.
+    /// When set to a teammate name, the message is routed to that teammate's stdin
+    /// instead of the lead's. "lead" or None routes to the lead (default behavior).
+    pub target: Option<String>,
 }
 
 /// Response from send_agent_message command
@@ -62,6 +66,8 @@ pub struct QueueAgentMessageInput {
     pub content: String,
     /// Client-provided ID for tracking (optional, allows frontend/backend to use same ID)
     pub client_id: Option<String>,
+    /// Optional target for team message routing (teammate name or "lead").
+    pub target: Option<String>,
 }
 
 /// Response for queued message
@@ -235,6 +241,40 @@ pub async fn send_agent_message(
         return Err(
             "Claude CLI is not available. Please ensure 'claude' is installed and in your PATH."
                 .to_string(),
+        );
+    }
+
+    // Route to teammate stdin when target is a specific teammate (not "lead")
+    let target = input.target.as_deref();
+    if let Some(teammate_name) = target.filter(|t| *t != "lead") {
+        // Find the active team for this context
+        if let Some(team_name) = team_service.find_team_by_context_id(&input.context_id).await {
+            let formatted =
+                crate::infrastructure::agents::claude::format_stream_json_input(&input.content);
+            team_service
+                .send_stdin_message(&team_name, teammate_name, &formatted)
+                .await
+                .map_err(|e| format!("Failed to send to teammate {}: {}", teammate_name, e))?;
+
+            tracing::info!(
+                teammate = %teammate_name,
+                team = %team_name,
+                "Routed user message to teammate stdin"
+            );
+
+            // Return a synthetic response — the teammate's stream processor handles
+            // conversation persistence and event emission.
+            return Ok(SendAgentMessageResponse {
+                conversation_id: String::new(),
+                agent_run_id: uuid::Uuid::new_v4().to_string(),
+                is_new_conversation: false,
+            });
+        }
+        // Team not found for context — fall through to normal lead path
+        tracing::warn!(
+            target = %teammate_name,
+            context_id = %input.context_id,
+            "No active team found for context, falling back to lead"
         );
     }
 

@@ -15,6 +15,9 @@ use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
 use tracing::Instrument;
 
+use crate::application::interactive_process_registry::{
+    InteractiveProcessKey, InteractiveProcessRegistry,
+};
 use crate::application::team_events;
 use crate::application::team_service::TeamService;
 use crate::application::team_state_tracker::{
@@ -24,7 +27,9 @@ use crate::domain::entities::{
     ChatContextType, ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, MessageRole,
 };
 use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
-use crate::infrastructure::agents::claude::{ContentBlockItem, StreamEvent, StreamProcessor, ToolCall};
+use crate::infrastructure::agents::claude::{
+    format_stream_json_input, ContentBlockItem, StreamEvent, StreamProcessor, ToolCall,
+};
 use crate::utils::truncate_str;
 
 /// Start a background task that reads a teammate's stdout and emits Tauri events.
@@ -46,6 +51,8 @@ use crate::utils::truncate_str;
 /// * `team_service` - Optional TeamService for message persistence and proper event emission
 /// * `chat_conversation_repo` - For creating per-teammate conversations
 /// * `chat_message_repo` - For persisting assistant messages with content_blocks
+/// * `interactive_process_registry` - Optional registry for nudging the lead's stdin when
+///   a teammate sends a message targeting the lead
 pub fn start_teammate_stream<R: Runtime>(
     stdout: ChildStdout,
     exit_signal: oneshot::Receiver<()>,
@@ -58,6 +65,7 @@ pub fn start_teammate_stream<R: Runtime>(
     team_service: Option<Arc<TeamService>>,
     chat_conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
     chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!(
         "teammate_stream",
@@ -610,6 +618,35 @@ pub fn start_teammate_stream<R: Runtime>(
                                                 "context_id": context_id,
                                             }),
                                         );
+                                    }
+
+                                    // Auto-nudge lead's stdin when a teammate sends a message
+                                    // targeting the lead (or broadcasts). This wakes up the
+                                    // lead's Claude CLI so it sees the teammate's message.
+                                    if let Some(ref registry) = interactive_process_registry {
+                                        let key = InteractiveProcessKey::new(
+                                            &context_type,
+                                            &context_id,
+                                        );
+                                        let nudge_text = format!(
+                                            "[Team message from {}]: {}",
+                                            sender,
+                                            truncate_str(&content, 500),
+                                        );
+                                        let nudge = format_stream_json_input(&nudge_text);
+                                        if let Err(e) = registry.write_message(&key, &nudge).await
+                                        {
+                                            tracing::debug!(
+                                                error = %e,
+                                                sender = %sender,
+                                                "Could not nudge lead stdin (may be idle or not interactive)"
+                                            );
+                                        } else {
+                                            tracing::info!(
+                                                sender = %sender,
+                                                "Nudged lead stdin with teammate message"
+                                            );
+                                        }
                                     }
                                 }
                                 StreamEvent::TurnComplete { .. } => {

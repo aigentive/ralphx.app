@@ -61,9 +61,9 @@ fn test_detect_teammate_spawned_from_tool_result() {
 fn test_detect_team_message_sent_from_tool_result() {
     let result = serde_json::json!({
         "success": true,
-        "recipients": ["researcher"],
         "routing": {
             "sender": "team-lead",
+            "target": "researcher",
             "content": "Please investigate the bug"
         }
     });
@@ -89,7 +89,6 @@ fn test_detect_team_message_sent_from_tool_result() {
 fn test_detect_team_message_sent_broadcast() {
     let result = serde_json::json!({
         "success": true,
-        "recipients": ["researcher", "coder", "tester"],
         "routing": {
             "sender": "team-lead",
             "content": "All stop — blocking issue found"
