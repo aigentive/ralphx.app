@@ -63,7 +63,6 @@ import { TeamPlanApproval } from "./TeamPlanApproval";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
-import { TargetSelector, type TargetValue } from "./TargetSelector";
 import { useTeamHistory } from "@/hooks/useTeamHistory";
 import { getTeamStatus } from "@/api/team";
 
@@ -188,7 +187,7 @@ export function IntegratedChatPanel({
   const teammates = useTeamStore(teammatesSelector);
   const pendingPlan = useTeamStore((s) => s.pendingPlans[storeContextKey]);
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
-  const [sendTarget, setSendTarget] = useState<TargetValue>("lead");
+  const sendTarget = teamFilter === "all" || teamFilter === "lead" || !teamFilter ? "lead" : teamFilter;
 
   // Track whether the team in this context is historical (hydrated from backend)
   const activeTeamSelector = useMemo(() => selectActiveTeam(storeContextKey), [storeContextKey]);
@@ -728,7 +727,7 @@ export function IntegratedChatPanel({
               contextKey={storeContextKey}
               isHistorical={isTeamHistorical}
               onMessageTeammate={(name) => {
-                setSendTarget(name);
+                setTeamFilter(name);
               }}
               onStopTeammate={(name) => {
                 teamActions.stopTeammate.mutate(name);
@@ -784,28 +783,22 @@ export function IntegratedChatPanel({
               />
             )}
 
-            {/* Compact toolbar: Target Selector + Stop All (team mode only) */}
-            {isTeamActive && teammates.length > 0 && !isHistoryMode && (
+            {/* Compact toolbar: Stop All (team mode only, shown only when agents are running) */}
+            {isTeamActive && teammates.length > 0 && !isHistoryMode &&
+              (isAgentRunning || teammates.some((m) => m.status === "running" || m.status === "spawning")) && (
               <div
-                className="flex items-center justify-between px-3 py-1.5"
+                className="flex items-center justify-end px-3 py-1.5"
                 style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.04)" }}
               >
-                <TargetSelector
-                  teammates={teammates}
-                  value={sendTarget}
-                  onChange={setSendTarget}
-                />
-                {(isAgentRunning || teammates.some((m) => m.status === "running" || m.status === "spawning")) && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => teamActions.stopTeam.mutate()}
-                    className="text-[11px] h-6 gap-1 px-2"
-                  >
-                    <Square className="w-3 h-3" />
-                    Stop All
-                  </Button>
-                )}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => teamActions.stopTeam.mutate()}
+                  className="text-[11px] h-6 gap-1 px-2"
+                >
+                  <Square className="w-3 h-3" />
+                  Stop All
+                </Button>
               </div>
             )}
 
