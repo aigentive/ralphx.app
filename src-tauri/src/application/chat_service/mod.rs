@@ -934,6 +934,11 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // Register stdin in the interactive process registry for future message delivery
         let interactive_key_for_register =
             InteractiveProcessKey::new(context_type.to_string(), context_id);
+        tracing::info!(
+            context_type = %context_type,
+            context_id,
+            "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
+        );
         self.interactive_process_registry
             .register(interactive_key_for_register, child_stdin)
             .await;
