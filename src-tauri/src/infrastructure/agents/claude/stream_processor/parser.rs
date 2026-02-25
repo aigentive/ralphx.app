@@ -192,31 +192,27 @@ pub(crate) fn detect_team_event(
         });
     }
 
-    // SendMessage result: { "success": true, "recipients": [...], "routing": { "sender": "...", "content": "..." } }
+    // SendMessage result: { "success": true, "routing": { "sender": "...", "target": "...", "content": "..." } }
     if result.get("success").and_then(|s| s.as_bool()) == Some(true)
         && result.get("routing").is_some()
     {
         let routing = &result["routing"];
-        let recipients = result.get("recipients").and_then(|r| r.as_array());
+        let target = routing.get("target").and_then(|t| t.as_str());
         return Some(StreamEvent::TeamMessageSent {
             sender: routing
                 .get("sender")
                 .and_then(|s| s.as_str())
                 .unwrap_or("")
                 .to_string(),
-            recipient: if recipients.map_or(false, |r| r.len() == 1) {
-                recipients
-                    .and_then(|r| r[0].as_str())
-                    .map(|s| s.to_string())
-            } else {
-                None
-            },
+            recipient: target
+                .filter(|t| *t != "*")
+                .map(|s| s.trim_start_matches('@').to_string()),
             content: routing
                 .get("content")
                 .and_then(|s| s.as_str())
                 .unwrap_or("")
                 .to_string(),
-            message_type: if recipients.map_or(false, |r| r.len() > 1) {
+            message_type: if target.is_none() || target == Some("*") {
                 "broadcast"
             } else {
                 "message"

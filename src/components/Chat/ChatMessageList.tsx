@@ -289,7 +289,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         const filteredTeamMsgs = teamFilter
           ? teamMessages.filter((msg) => {
               if (teamFilter === "lead") {
-                return msg.from === "lead" || msg.to === "lead" || msg.from === "system" || msg.from === "user";
+                // Lead sees ALL team messages (lead is the orchestrator)
+                return true;
               }
               return msg.from === teamFilter || msg.to === teamFilter || msg.to === "*";
             })
