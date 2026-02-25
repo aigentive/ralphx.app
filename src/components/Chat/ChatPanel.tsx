@@ -41,7 +41,7 @@ import { useAgentHookEvents, useHookEventsStore } from "@/hooks/useAgentHookEven
 import { useChatAttachments } from "@/hooks/useChatAttachments";
 import { useTeamEvents } from "@/hooks/useTeamEvents";
 import { useTeamActions } from "@/hooks/useTeamActions";
-import { TeamActivityPanel } from "./TeamActivityPanel";
+import { TeamContextBar } from "./TeamContextBar";
 import { TeamPlanApproval } from "./TeamPlanApproval";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
@@ -524,12 +524,15 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           </div>
         </div>
 
-        {/* Team Filter Tabs (team mode only) */}
+        {/* Team Context Bar (team mode only) */}
         {isTeamActive && teammates.length > 0 && (
-          <TeamFilterTabs
-            teammates={teammates}
+          <TeamContextBar
+            contextKey={contextKey}
             activeFilter={teamFilter}
-            onFilterChange={setTeamFilter}
+            isHistorical={isTeamHistorical}
+            onStopTeammate={(name) => {
+              teamActions.stopTeammate.mutate(name);
+            }}
           />
         )}
 
@@ -590,17 +593,12 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           />
         )}
 
-        {/* Team Activity Panel (team mode only) */}
+        {/* Team Filter Tabs (team mode — above input area) */}
         {isTeamActive && teammates.length > 0 && (
-          <TeamActivityPanel
-            contextKey={contextKey}
-            isHistorical={isTeamHistorical}
-            onMessageTeammate={(name) => {
-              setTeamFilter(name);
-            }}
-            onStopTeammate={(name) => {
-              teamActions.stopTeammate.mutate(name);
-            }}
+          <TeamFilterTabs
+            teammates={teammates}
+            activeFilter={teamFilter}
+            onFilterChange={setTeamFilter}
           />
         )}
 

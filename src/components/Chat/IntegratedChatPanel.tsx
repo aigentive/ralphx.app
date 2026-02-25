@@ -56,7 +56,7 @@ import { selectIsTeamActive } from "@/stores/chatStore";
 import { useTeamStore, selectTeammates, selectActiveTeam, selectTeammateByName, type TeammateStatus } from "@/stores/teamStore";
 import { useTeamEvents } from "@/hooks/useTeamEvents";
 import { useTeamActions } from "@/hooks/useTeamActions";
-import { TeamActivityPanel } from "./TeamActivityPanel";
+import { TeamContextBar } from "./TeamContextBar";
 import { TeamPlanApproval } from "./TeamPlanApproval";
 import { StreamingToolIndicator } from "./StreamingToolIndicator";
 import { isDiffToolCall } from "./DiffToolCallView.utils";
@@ -674,12 +674,15 @@ export function IntegratedChatPanel({
             />
           </div>
 
-          {/* Team Filter Tabs (team mode only) */}
+          {/* Team Context Bar (team mode only) */}
           {isTeamActive && teammates.length > 0 && (
-            <TeamFilterTabs
-              teammates={teammates}
+            <TeamContextBar
+              contextKey={storeContextKey}
               activeFilter={teamFilter}
-              onFilterChange={setTeamFilter}
+              isHistorical={isTeamHistorical}
+              onStopTeammate={(name) => {
+                teamActions.stopTeammate.mutate(name);
+              }}
             />
           )}
 
@@ -746,20 +749,6 @@ export function IntegratedChatPanel({
             />
           )}
 
-          {/* Team Activity Panel (team mode only) */}
-          {isTeamActive && teammates.length > 0 && (
-            <TeamActivityPanel
-              contextKey={storeContextKey}
-              isHistorical={isTeamHistorical}
-              onMessageTeammate={(name) => {
-                setTeamFilter(name);
-              }}
-              onStopTeammate={(name) => {
-                teamActions.stopTeammate.mutate(name);
-              }}
-            />
-          )}
-
           {/* Child Session Notification - shows when follow-up is created (ideation mode only) */}
           {ideationSessionId && !isHistoryMode && (
             <ChildSessionNotification
@@ -773,6 +762,15 @@ export function IntegratedChatPanel({
             <PreviousRunBanner
               agentRunStatus={agentRunQuery.data?.status ?? null}
               contextType={isMergeMode ? "merge" : isReviewMode ? "review" : "execution"}
+            />
+          )}
+
+          {/* Team Filter Tabs (team mode — above input area) */}
+          {isTeamActive && teammates.length > 0 && (
+            <TeamFilterTabs
+              teammates={teammates}
+              activeFilter={teamFilter}
+              onFilterChange={setTeamFilter}
             />
           )}
 
