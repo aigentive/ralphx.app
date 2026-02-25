@@ -637,3 +637,7 @@ impl AppState {
 #[cfg(test)]
 #[path = "app_state_tests.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "app_state_shared_state_tests.rs"]
+mod shared_state_tests;
