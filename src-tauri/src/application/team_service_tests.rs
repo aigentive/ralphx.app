@@ -262,3 +262,56 @@ async fn test_cleanup_stale_teams_no_match() {
         super::super::team_state_tracker::TeamPhase::Disbanded
     );
 }
+
+#[tokio::test]
+async fn test_disband_sets_all_teammates_shutdown() {
+    // Verifies disband_team transitions every teammate to Shutdown before marking Disbanded.
+    // This mirrors the per-teammate emit_teammate_shutdown loop in team_service.rs.
+    let svc = test_service();
+    svc.create_team("t1", "ctx-1", "ideation").await.unwrap();
+    svc.add_teammate("t1", "worker1", "#ff0000", "sonnet", "code")
+        .await
+        .unwrap();
+    svc.add_teammate("t1", "worker2", "#00ff00", "sonnet", "code")
+        .await
+        .unwrap();
+    svc.add_teammate("t1", "worker3", "#0000ff", "opus", "explore")
+        .await
+        .unwrap();
+
+    svc.disband_team("t1").await.unwrap();
+
+    let status = svc.get_team_status("t1").await.unwrap();
+    assert_eq!(
+        status.phase,
+        super::super::team_state_tracker::TeamPhase::Disbanded,
+        "team phase must be Disbanded"
+    );
+    // Every teammate must be Shutdown (per-teammate events precede team:disbanded)
+    for t in &status.teammates {
+        assert_eq!(
+            t.status,
+            TeammateStatus::Shutdown,
+            "teammate {} must be Shutdown after disband",
+            t.name
+        );
+    }
+}
+
+#[tokio::test]
+async fn test_disband_empty_team_succeeds() {
+    // Disband a team with no teammates — no panic, phase → Disbanded
+    let svc = test_service();
+    svc.create_team("empty-team", "ctx-1", "ideation")
+        .await
+        .unwrap();
+
+    svc.disband_team("empty-team").await.unwrap();
+
+    let status = svc.get_team_status("empty-team").await.unwrap();
+    assert_eq!(
+        status.phase,
+        super::super::team_state_tracker::TeamPhase::Disbanded
+    );
+    assert!(status.teammates.is_empty());
+}

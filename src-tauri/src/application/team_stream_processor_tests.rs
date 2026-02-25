@@ -206,3 +206,67 @@ fn test_extract_assistant_usage_zero_initial_values() {
 
     assert!(!updated, "Should return false when values are equal (both zero)");
 }
+
+// ============================================================================
+// truncate_str tests
+// ============================================================================
+
+#[test]
+fn test_truncate_str_shorter_than_limit() {
+    assert_eq!(truncate_str("hello", 200), "hello");
+}
+
+#[test]
+fn test_truncate_str_exactly_at_limit() {
+    let s = "a".repeat(200);
+    assert_eq!(truncate_str(&s, 200), s.as_str());
+}
+
+#[test]
+fn test_truncate_str_longer_than_limit() {
+    let s = "a".repeat(300);
+    let result = truncate_str(&s, 200);
+    assert_eq!(result.len(), 200);
+    assert_eq!(result, "a".repeat(200).as_str());
+}
+
+#[test]
+fn test_truncate_str_empty() {
+    assert_eq!(truncate_str("", 200), "");
+}
+
+#[test]
+fn test_truncate_str_multibyte_at_boundary() {
+    // "→" is 3 bytes (UTF-8: E2 86 92)
+    // "a" * 199 + "→" = 199 + 3 = 202 bytes total
+    // truncate at 200 bytes: can't split "→", so must truncate to 199 bytes
+    let mut s = "a".repeat(199);
+    s.push('→');
+    let result = truncate_str(&s, 200);
+    assert_eq!(result.len(), 199, "must not split multi-byte char at boundary");
+    assert_eq!(result, "a".repeat(199).as_str());
+}
+
+#[test]
+fn test_truncate_str_only_multibyte_chars() {
+    // "→" is 3 bytes; 5 × "→" = 15 bytes
+    // truncate at 10 bytes: 3 chars fit (9 bytes), 4th would overflow
+    let s = "→".repeat(5);
+    let result = truncate_str(&s, 10);
+    assert_eq!(result.len(), 9, "3 × 3-byte chars = 9 bytes fit in 10-byte limit");
+    assert_eq!(result, "→".repeat(3).as_str());
+}
+
+#[test]
+fn test_truncate_str_limit_zero() {
+    // Zero limit → always return empty
+    assert_eq!(truncate_str("hello", 0), "");
+}
+
+#[test]
+fn test_truncate_str_multibyte_first_char_exceeds_limit() {
+    // Single 4-byte char (emoji) with limit of 3 → empty result
+    let s = "😀"; // U+1F600, 4 bytes
+    let result = truncate_str(s, 3);
+    assert_eq!(result, "", "4-byte char cannot fit in 3-byte limit");
+}

@@ -326,3 +326,72 @@ async fn test_default_creates_new_tracker() {
     let teams = tracker.list_teams().await;
     assert!(teams.is_empty());
 }
+
+#[tokio::test]
+async fn test_teammate_status_idle_to_running_cycle() {
+    // Models the TurnComplete → Idle → (activity) → Running cycle
+    // from team_stream_processor.rs: Fix B
+    let tracker = TeamStateTracker::new();
+    tracker
+        .create_team("team1", "ctx-1", "ideation")
+        .await
+        .unwrap();
+    tracker
+        .add_teammate("team1", "worker", "#ff6b35", "opus", "code")
+        .await
+        .unwrap();
+
+    // Spawning → Running (first text chunk)
+    tracker
+        .update_teammate_status("team1", "worker", TeammateStatus::Running)
+        .await
+        .unwrap();
+    let status = tracker.get_team_status("team1").await.unwrap();
+    assert_eq!(status.teammates[0].status, TeammateStatus::Running);
+
+    // Running → Idle (TurnComplete received)
+    tracker
+        .update_teammate_status("team1", "worker", TeammateStatus::Idle)
+        .await
+        .unwrap();
+    let status = tracker.get_team_status("team1").await.unwrap();
+    assert_eq!(status.teammates[0].status, TeammateStatus::Idle);
+
+    // Idle → Running (next activity after TurnComplete)
+    tracker
+        .update_teammate_status("team1", "worker", TeammateStatus::Running)
+        .await
+        .unwrap();
+    let status = tracker.get_team_status("team1").await.unwrap();
+    assert_eq!(status.teammates[0].status, TeammateStatus::Running);
+}
+
+#[tokio::test]
+async fn test_multiple_idle_running_cycles() {
+    // Verifies the cycle can repeat (multiple turns from same teammate)
+    let tracker = TeamStateTracker::new();
+    tracker
+        .create_team("team1", "ctx-1", "ideation")
+        .await
+        .unwrap();
+    tracker
+        .add_teammate("team1", "agent", "#ff6b35", "sonnet", "code")
+        .await
+        .unwrap();
+
+    for _ in 0..3 {
+        tracker
+            .update_teammate_status("team1", "agent", TeammateStatus::Running)
+            .await
+            .unwrap();
+        let s = tracker.get_team_status("team1").await.unwrap();
+        assert_eq!(s.teammates[0].status, TeammateStatus::Running);
+
+        tracker
+            .update_teammate_status("team1", "agent", TeammateStatus::Idle)
+            .await
+            .unwrap();
+        let s = tracker.get_team_status("team1").await.unwrap();
+        assert_eq!(s.teammates[0].status, TeammateStatus::Idle);
+    }
+}
