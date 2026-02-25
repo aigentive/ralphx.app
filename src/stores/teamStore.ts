@@ -259,6 +259,7 @@ export const useTeamStore = create<TeamState & TeamActions>()(
         const teammates: Record<string, TeammateState> = {};
         let totalTokens = 0;
         let totalCostUsd = 0;
+        const isTerminal = session.disbandedAt != null;
 
         for (const snap of session.teammates) {
           const tokens = snap.cost.input_tokens + snap.cost.output_tokens;
@@ -269,11 +270,11 @@ export const useTeamStore = create<TeamState & TeamActions>()(
             color: snap.color,
             model: snap.model,
             roleDescription: snap.role,
-            status: (snap.status as TeammateStatus) || "shutdown",
+            status: isTerminal ? "shutdown" : (snap.status as TeammateStatus) || "shutdown",
             currentActivity: null,
             tokensUsed: tokens,
             estimatedCostUsd: snap.cost.estimated_usd,
-            conversationId: null,
+            conversationId: snap.conversationId ?? null,
           };
         }
 

@@ -208,6 +208,9 @@ pub struct TeammateSnapshotResponse {
     pub cost: TeammateCost,
     pub spawned_at: String,
     pub last_activity_at: String,
+    /// Conversation ID for this teammate's persisted chat history
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
 }
 
 /// Response for a single team message record
@@ -291,6 +294,7 @@ pub async fn get_team_history(
                     cost: t.cost.clone(),
                     spawned_at: t.spawned_at.clone(),
                     last_activity_at: t.last_activity_at.clone(),
+                    conversation_id: t.conversation_id.clone(),
                 })
                 .collect();
 

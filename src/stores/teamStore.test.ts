@@ -139,10 +139,15 @@ describe("teamStore", () => {
       expect(mate.conversationId).toBe("conv-123");
     });
 
-    it("does nothing if teammate does not exist", () => {
+    it("auto-creates teammate entry when teammate does not exist (race guard)", () => {
       useTeamStore.getState().createTeam(CONTEXT_KEY, "team", "lead");
-      useTeamStore.getState().setTeammateConversationId(CONTEXT_KEY, "nonexistent", "conv-123");
-      expect(useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["nonexistent"]).toBeUndefined();
+      useTeamStore.getState().setTeammateConversationId(CONTEXT_KEY, "late-joiner", "conv-123");
+
+      const mate = useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["late-joiner"]!;
+      expect(mate).toBeDefined();
+      expect(mate.conversationId).toBe("conv-123");
+      expect(mate.status).toBe("running");
+      expect(mate.model).toBe("unknown");
     });
   });
 
@@ -346,6 +351,172 @@ describe("teamStore", () => {
 
       const team = useTeamStore.getState().activeTeams[CONTEXT_KEY];
       expect(team!.leadName).toBe("task-xyz");
+    });
+
+    it("hydrates conversationId from teammate snapshots", () => {
+      const history = {
+        session: {
+          id: "session-conv",
+          teamName: "task-conv",
+          leadName: "lead",
+          contextType: "task_execution",
+          contextId: "conv-test",
+          phase: "disbanded",
+          createdAt: "2026-02-15T10:00:00+00:00",
+          disbandedAt: "2026-02-15T11:00:00+00:00",
+          teammates: [
+            {
+              name: "coder-1",
+              color: "#3b82f6",
+              model: "sonnet",
+              role: "Auth",
+              status: "shutdown",
+              cost: { input_tokens: 1000, output_tokens: 500, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0.01 },
+              spawnedAt: "2026-02-15T10:00:00+00:00",
+              lastActivityAt: "2026-02-15T10:30:00+00:00",
+              conversationId: "conv-abc-123",
+            },
+            {
+              name: "coder-2",
+              color: "#10b981",
+              model: "opus",
+              role: "DB",
+              status: "shutdown",
+              cost: { input_tokens: 2000, output_tokens: 800, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0.02 },
+              spawnedAt: "2026-02-15T10:01:00+00:00",
+              lastActivityAt: "2026-02-15T10:31:00+00:00",
+              conversationId: "conv-def-456",
+            },
+          ],
+        },
+        messages: [],
+      };
+
+      useTeamStore.getState().hydrateFromHistory(CONTEXT_KEY, history);
+
+      const team = useTeamStore.getState().activeTeams[CONTEXT_KEY]!;
+      expect(team.teammates["coder-1"]!.conversationId).toBe("conv-abc-123");
+      expect(team.teammates["coder-2"]!.conversationId).toBe("conv-def-456");
+    });
+
+    it("forces all teammates to shutdown when disbandedAt is set", () => {
+      const history = {
+        session: {
+          id: "session-terminal",
+          teamName: "task-terminal",
+          leadName: "lead",
+          contextType: "task_execution",
+          contextId: "terminal-test",
+          phase: "disbanded",
+          createdAt: "2026-02-15T10:00:00+00:00",
+          disbandedAt: "2026-02-15T11:00:00+00:00",
+          teammates: [
+            {
+              name: "coder-idle",
+              color: "#3b82f6",
+              model: "sonnet",
+              role: "worker",
+              status: "idle",
+              cost: { input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0 },
+              spawnedAt: "2026-02-15T10:00:00+00:00",
+              lastActivityAt: "2026-02-15T10:30:00+00:00",
+            },
+            {
+              name: "coder-running",
+              color: "#10b981",
+              model: "sonnet",
+              role: "worker",
+              status: "running",
+              cost: { input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0 },
+              spawnedAt: "2026-02-15T10:00:00+00:00",
+              lastActivityAt: "2026-02-15T10:30:00+00:00",
+            },
+          ],
+        },
+        messages: [],
+      };
+
+      useTeamStore.getState().hydrateFromHistory(CONTEXT_KEY, history);
+
+      const team = useTeamStore.getState().activeTeams[CONTEXT_KEY]!;
+      expect(team.teammates["coder-idle"]!.status).toBe("shutdown");
+      expect(team.teammates["coder-running"]!.status).toBe("shutdown");
+    });
+
+    it("handles missing conversationId for backward compatibility", () => {
+      const history = {
+        session: {
+          id: "session-compat",
+          teamName: "task-compat",
+          leadName: "lead",
+          contextType: "task_execution",
+          contextId: "compat-test",
+          phase: "disbanded",
+          createdAt: "2026-02-15T10:00:00+00:00",
+          disbandedAt: null,
+          teammates: [{
+            name: "coder-1",
+            color: "#3b82f6",
+            model: "sonnet",
+            role: "worker",
+            status: "idle",
+            cost: { input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0 },
+            spawnedAt: "2026-02-15T10:00:00+00:00",
+            lastActivityAt: "2026-02-15T10:30:00+00:00",
+            // No conversationId field at all
+          }],
+        },
+        messages: [],
+      };
+
+      useTeamStore.getState().hydrateFromHistory(CONTEXT_KEY, history);
+
+      const team = useTeamStore.getState().activeTeams[CONTEXT_KEY]!;
+      expect(team.teammates["coder-1"]!.conversationId).toBeNull();
+    });
+
+    it("preserves snapshot status when disbandedAt is not set", () => {
+      const history = {
+        session: {
+          id: "session-live",
+          teamName: "task-live",
+          leadName: "lead",
+          contextType: "task_execution",
+          contextId: "live-test",
+          phase: "active",
+          createdAt: "2026-02-15T10:00:00+00:00",
+          disbandedAt: null,
+          teammates: [
+            {
+              name: "coder-idle",
+              color: "#3b82f6",
+              model: "sonnet",
+              role: "worker",
+              status: "idle",
+              cost: { input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0 },
+              spawnedAt: "2026-02-15T10:00:00+00:00",
+              lastActivityAt: "2026-02-15T10:30:00+00:00",
+            },
+            {
+              name: "coder-running",
+              color: "#10b981",
+              model: "sonnet",
+              role: "worker",
+              status: "running",
+              cost: { input_tokens: 0, output_tokens: 0, cache_creation_tokens: 0, cache_read_tokens: 0, estimated_usd: 0 },
+              spawnedAt: "2026-02-15T10:00:00+00:00",
+              lastActivityAt: "2026-02-15T10:30:00+00:00",
+            },
+          ],
+        },
+        messages: [],
+      };
+
+      useTeamStore.getState().hydrateFromHistory(CONTEXT_KEY, history);
+
+      const team = useTeamStore.getState().activeTeams[CONTEXT_KEY]!;
+      expect(team.teammates["coder-idle"]!.status).toBe("idle");
+      expect(team.teammates["coder-running"]!.status).toBe("running");
     });
 
     it("skips hydration if team already exists", () => {

@@ -76,6 +76,7 @@ export const TeammateSnapshotSchema = z.object({
   cost: TeammateCostSchema,
   spawnedAt: z.string(),
   lastActivityAt: z.string(),
+  conversationId: z.string().nullable().optional(),
 });
 
 export const TeamSessionHistorySchema = z.object({
