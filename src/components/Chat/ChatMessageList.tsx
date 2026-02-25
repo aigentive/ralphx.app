@@ -32,7 +32,9 @@ import type { MessageAttachment } from "./MessageAttachments";
 import { useTeamStore, selectTeammateByName, selectTeamMessages, EMPTY_TEAM_MESSAGES } from "@/stores/teamStore";
 import type { TeamMessage } from "@/stores/teamStore";
 import { TeamMessageBubble } from "./TeamMessageBubble";
-import { renderStreamContent } from "@/components/Team/renderStreamContent";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { markdownComponents } from "./MessageItem.markdown";
 
 // ============================================================================
 // Constants
@@ -512,12 +514,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
           {isTeammateTab && hasTeammateStream && (
             <div className="flex-1 overflow-y-auto px-2.5 py-2" data-testid="teammate-stream-view" style={{ backgroundColor: "hsl(220 10% 6%)" }}>
-              <pre
-                className="text-[11px] leading-relaxed whitespace-pre-wrap break-words m-0"
-                style={{ color: "hsl(220 10% 70%)", fontFamily: "SF Mono, ui-monospace, monospace" }}
+              <div
+                className="text-[12px] [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[12px]"
+                style={{ color: "hsl(220 10% 70%)" }}
               >
-                {renderStreamContent(activeTeammate!.streamingText)}
-              </pre>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                  {activeTeammate!.streamingText}
+                </ReactMarkdown>
+              </div>
             </div>
           )}
           {isFilteredTabEmpty && !hasTeammateStream && (
@@ -654,12 +658,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
         {isTeammateTab && hasTeammateStream && (
           <div className="absolute inset-0 overflow-y-auto px-2.5 py-2 z-10" data-testid="teammate-stream-view" style={{ backgroundColor: "hsl(220 10% 6%)" }}>
-            <pre
-              className="text-[11px] leading-relaxed whitespace-pre-wrap break-words m-0"
-              style={{ color: "hsl(220 10% 70%)", fontFamily: "SF Mono, ui-monospace, monospace" }}
+            <div
+              className="text-[12px] [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[12px]"
+              style={{ color: "hsl(220 10% 70%)" }}
             >
-              {renderStreamContent(activeTeammate!.streamingText)}
-            </pre>
+              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                {activeTeammate!.streamingText}
+              </ReactMarkdown>
+            </div>
           </div>
         )}
         {isFilteredTabEmpty && !hasTeammateStream && (
