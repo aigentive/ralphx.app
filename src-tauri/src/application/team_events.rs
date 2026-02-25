@@ -40,6 +40,7 @@ pub fn emit_teammate_spawned<R: Runtime>(
     role: &str,
     context_type: &str,
     context_id: &str,
+    conversation_id: Option<&str>,
 ) {
     let _ = app_handle.emit(
         events::TEAM_TEAMMATE_SPAWNED,
@@ -51,6 +52,7 @@ pub fn emit_teammate_spawned<R: Runtime>(
             role: role.to_string(),
             context_type: context_type.to_string(),
             context_id: context_id.to_string(),
+            conversation_id: conversation_id.map(|s| s.to_string()),
         },
     );
 }

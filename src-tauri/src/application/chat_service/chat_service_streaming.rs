@@ -1228,6 +1228,7 @@ pub async fn process_stream_background<R: Runtime>(
                                 "team-member",
                                 &context_type_str,
                                 &context_id_str,
+                                None,
                             );
                         }
                     }

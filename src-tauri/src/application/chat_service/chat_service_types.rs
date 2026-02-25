@@ -249,6 +249,9 @@ pub struct TeamTeammateSpawnedPayload {
     pub role: String,
     pub context_type: String,
     pub context_id: String,
+    /// Conversation ID for this teammate's persisted chat history
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub conversation_id: Option<String>,
 }
 
 /// Payload for team:teammate_idle event
