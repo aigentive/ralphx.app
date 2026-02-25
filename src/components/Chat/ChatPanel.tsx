@@ -20,7 +20,6 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Hammer,
-  Square,
 } from "lucide-react";
 import { AGENT_WORKER } from "@/constants/agents";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
@@ -348,13 +347,16 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     handleEditLastQueued(queuedMessages);
   }, [handleEditLastQueued, queuedMessages]);
 
-  // Wrapper for stop that clears streaming state
+  // Wrapper for stop that clears streaming state and stops team if active
   const handleStopAgentWrapper = useCallback(async () => {
+    if (isTeamActive) {
+      teamActions.stopTeam.mutate();
+    }
     await handleStopAgent();
     setStreamingToolCalls([]);
     setStreamingContentBlocks([]);
     setStreamingTasks(new Map());
-  }, [handleStopAgent]);
+  }, [isTeamActive, teamActions, handleStopAgent]);
 
   // Unified event subscriptions (replaces useChatPanelHandlers event logic)
   useChatEvents({
@@ -626,25 +628,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               answeredValue={answeredQuestion}
               onDismissAnswered={clearAnswered}
             />
-          )}
-
-          {/* Compact toolbar: Stop All (team mode only, shown only when agents are running) */}
-          {isTeamActive && teammates.length > 0 &&
-            (isAgentRunning || teammates.some((m) => m.status === "running" || m.status === "spawning")) && (
-            <div
-              className="flex items-center justify-end px-3 py-1.5"
-              style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.04)" }}
-            >
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => teamActions.stopTeam.mutate()}
-                className="text-[11px] h-6 gap-1 px-2"
-              >
-                <Square className="w-3 h-3" />
-                Stop All
-              </Button>
-            </div>
           )}
 
           {/* Chat Input */}
