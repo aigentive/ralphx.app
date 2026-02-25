@@ -129,11 +129,25 @@ export const useTeamStore = create<TeamState & TeamActions>()(
         const team = state.activeTeams[contextKey];
         if (team) {
           const mate = team.teammates[name];
-          if (mate) {
-            mate.status = status;
-            if (activity !== undefined) {
-              mate.currentActivity = activity;
-            }
+          if (!mate) {
+            // Auto-create teammate on status update — race condition guard.
+            // Handles the case where agent:run_started arrives before team:teammate_spawned.
+            team.teammates[name] = {
+              name,
+              status,
+              color: "#94a3b8",
+              model: "unknown",
+              roleDescription: "teammate",
+              currentActivity: activity ?? null,
+              tokensUsed: 0,
+              estimatedCostUsd: 0,
+              streamingText: "",
+            };
+            return;
+          }
+          mate.status = status;
+          if (activity !== undefined) {
+            mate.currentActivity = activity;
           }
         }
       }),

@@ -3,6 +3,7 @@
 // Emits team:* events via Tauri AppHandle at the appropriate lifecycle points.
 // These functions wrap TeamStateTracker operations with event emission.
 
+use serde_json::json;
 use tauri::{AppHandle, Emitter, Runtime};
 
 use super::chat_service::events;
@@ -188,8 +189,28 @@ pub fn emit_teammate_status_change<R: Runtime>(
                 context_id,
             );
         }
-        // Running, Spawning, Completed don't have dedicated events
-        _ => {}
+        TeammateStatus::Running => {
+            let _ = app_handle.emit(
+                "agent:run_started",
+                json!({
+                    "teammate_name": teammate_name,
+                    "context_type": context_type,
+                    "context_id": context_id,
+                }),
+            );
+        }
+        TeammateStatus::Completed => {
+            let _ = app_handle.emit(
+                "agent:run_completed",
+                json!({
+                    "teammate_name": teammate_name,
+                    "context_type": context_type,
+                    "context_id": context_id,
+                }),
+            );
+        }
+        // Spawning has its own dedicated emission path
+        TeammateStatus::Spawning => {}
     }
 }
 
