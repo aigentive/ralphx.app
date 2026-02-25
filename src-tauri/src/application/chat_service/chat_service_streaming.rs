@@ -1218,6 +1218,16 @@ pub async fn process_stream_background<R: Runtime>(
                         // filter tab immediately. The teammate may already be registered from
                         // approve_team_plan (add_teammate returns TeammateAlreadyExists), but
                         // we re-emit here so the frontend recovers if it missed the initial event.
+                        // Try to include conversation_id if the stream processor already created one.
+                        let conv_id = if let Some(ref service) = team_service {
+                            service.tracker()
+                                .get_team_status(&team_name).await.ok()
+                                .and_then(|s| s.teammates.iter()
+                                    .find(|t| t.name == teammate_name)
+                                    .and_then(|t| t.conversation_id.clone()))
+                        } else {
+                            None
+                        };
                         if let Some(ref handle) = app_handle {
                             team_events::emit_teammate_spawned(
                                 handle,
@@ -1228,7 +1238,7 @@ pub async fn process_stream_background<R: Runtime>(
                                 "team-member",
                                 &context_type_str,
                                 &context_id_str,
-                                None,
+                                conv_id.as_deref(),
                             );
                         }
                     }

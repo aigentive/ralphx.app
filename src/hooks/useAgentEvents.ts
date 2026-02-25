@@ -89,46 +89,44 @@ export function useAgentEvents(activeConversationId: string | null) {
       }>("agent:message_created", (payload) => {
         const { conversation_id, message_id, role, content } = payload;
 
-        // Filter by context type if needed (all contexts use the same event now)
-        // If this is for the active conversation, handle based on role
-        if (conversation_id === activeConversationId) {
-          // Only optimistically append user messages to prevent duplicates during streaming
-          // For assistant messages, just invalidate to refetch from DB
-          if (role === "user") {
-            queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
-              chatKeys.conversation(activeConversationId),
-              (oldData) => {
-                if (!oldData) return oldData;
+        // Always invalidate the conversation query for this message's conversation.
+        // This handles both lead and teammate conversations — teammate messages
+        // have their own conversation_id that won't match activeConversationId.
+        if (role === "user" && conversation_id === activeConversationId) {
+          // Optimistic append for user messages in the active conversation only
+          queryClient.setQueryData<{ conversation: ChatConversation; messages: ChatMessageResponse[] }>(
+            chatKeys.conversation(activeConversationId),
+            (oldData) => {
+              if (!oldData) return oldData;
 
-                // Check if message already exists
-                if (oldData.messages.some(m => m.id === message_id)) {
-                  return oldData;
-                }
-
-                const newMessage: ChatMessageResponse = {
-                  id: message_id,
-                  conversationId: conversation_id,
-                  sessionId: null,
-                  projectId: null,
-                  taskId: null,
-                  role: role as "user" | "assistant" | "system",
-                  content: content || "",
-                  metadata: null,
-                  parentMessageId: null,
-                  createdAt: new Date().toISOString(),
-                  toolCalls: null,
-                  contentBlocks: null,
-                  sender: null,
-                };
-                return { ...oldData, messages: [...oldData.messages, newMessage] };
+              // Check if message already exists
+              if (oldData.messages.some(m => m.id === message_id)) {
+                return oldData;
               }
-            );
-          } else {
-            // For assistant messages, invalidate to refetch from DB (prevents duplicates)
-            queryClient.invalidateQueries({
-              queryKey: chatKeys.conversation(activeConversationId),
-            });
-          }
+
+              const newMessage: ChatMessageResponse = {
+                id: message_id,
+                conversationId: conversation_id,
+                sessionId: null,
+                projectId: null,
+                taskId: null,
+                role: role as "user" | "assistant" | "system",
+                content: content || "",
+                metadata: null,
+                parentMessageId: null,
+                createdAt: new Date().toISOString(),
+                toolCalls: null,
+                contentBlocks: null,
+                sender: null,
+              };
+              return { ...oldData, messages: [...oldData.messages, newMessage] };
+            }
+          );
+        } else {
+          // For assistant messages or non-active conversations, invalidate to refetch from DB
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
         }
       })
     );

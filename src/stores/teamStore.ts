@@ -119,6 +119,14 @@ export const useTeamStore = create<TeamState & TeamActions>()(
       set((state) => {
         const team = state.activeTeams[contextKey];
         if (team) {
+          const existing = team.teammates[teammate.name];
+          if (existing) {
+            // Upsert: update conversationId if new value is non-null
+            if (teammate.conversationId) {
+              existing.conversationId = teammate.conversationId;
+            }
+            return;
+          }
           team.teammates[teammate.name] = teammate;
         }
       }),
@@ -158,6 +166,21 @@ export const useTeamStore = create<TeamState & TeamActions>()(
           const mate = team.teammates[name];
           if (mate) {
             mate.conversationId = conversationId;
+          } else {
+            // Auto-create teammate with conversationId — race guard.
+            // Handles the case where agent:run_started (with conversation_id)
+            // arrives before team:teammate_spawned has populated the store.
+            team.teammates[name] = {
+              name,
+              status: "running",
+              color: "#94a3b8",
+              model: "unknown",
+              roleDescription: "teammate",
+              currentActivity: null,
+              tokensUsed: 0,
+              estimatedCostUsd: 0,
+              conversationId,
+            };
           }
         }
       }),

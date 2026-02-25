@@ -345,7 +345,6 @@ async fn test_persist_message_db_fallback_when_cache_empty() {
     assert_eq!(msg.content, "Here are the results");
 
     // Verify message was actually persisted to the DB (not just in-memory tracker)
-    use crate::domain::repositories::TeamMessageRepository;
     let sessions = session_repo.get_by_context("ideation", "ctx-99").await.unwrap();
     let sid = &sessions[0].id;
     let persisted = message_repo.get_by_session(sid).await.unwrap();
