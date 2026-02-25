@@ -26,7 +26,8 @@ import { ReadWidget } from "./ReadWidget";
 import { BashWidget } from "./BashWidget";
 import { SkillWidget } from "./SkillWidget";
 import { SendMessageWidget } from "./SendMessageWidget";
-import { TaskCreateWidget, TaskUpdateWidget, TaskListWidget } from "./TeamTaskWidgets";
+import { TaskCreateWidget, TaskUpdateWidget, TaskListWidget, TeamCreateWidget, TeamDeleteWidget } from "./TeamTaskWidgets";
+import { SessionContextWidget, TeamSessionStateWidget, SearchMemoriesWidget, TeamPlanWidget } from "./McpContextWidgets";
 
 /** Registry type: tool name (lowercase) → React component */
 export type ToolCallWidgetRegistry = Record<string, ComponentType<ToolCallWidgetProps>>;
@@ -91,6 +92,15 @@ export const TOOL_CALL_WIDGETS: ToolCallWidgetRegistry = {
   "taskcreate": TaskCreateWidget,
   "taskupdate": TaskUpdateWidget,
   "tasklist": TaskListWidget,
+  // Team lifecycle tools → TeamTaskWidgets
+  "teamcreate": TeamCreateWidget,
+  "teamdelete": TeamDeleteWidget,
+  // MCP context/session/memory tools → McpContextWidgets
+  "mcp__ralphx__get_parent_session_context": SessionContextWidget,
+  "mcp__ralphx__get_team_session_state": TeamSessionStateWidget,
+  "mcp__ralphx__search_memories": SearchMemoriesWidget,
+  // MCP team plan tool → McpContextWidgets (WidgetCard with teammate list)
+  "mcp__ralphx__request_team_plan": TeamPlanWidget,
 };
 
 /**
