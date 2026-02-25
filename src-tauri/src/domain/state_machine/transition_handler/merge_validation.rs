@@ -31,7 +31,7 @@ use crate::domain::entities::{
     Project, Task,
 };
 
-use super::merge_helpers::truncate_str;
+use crate::utils::truncate_str;
 
 /// Outcome of a cancellable shell command execution.
 ///
@@ -248,12 +248,12 @@ pub struct PreExecSetupResult {
     pub log: Vec<ValidationLogEntry>,
 }
 
-/// Truncate a string to `max_len` chars, appending "... (truncated)" if needed.
+/// Truncate a string to `max_len` bytes, appending "... (truncated)" if needed.
 fn truncate_output(s: &str, max_len: usize) -> String {
     if s.len() <= max_len {
         s.to_string()
     } else {
-        format!("{}... (truncated)", &s[..max_len])
+        format!("{}... (truncated)", truncate_str(s, max_len))
     }
 }
 

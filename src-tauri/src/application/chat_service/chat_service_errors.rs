@@ -7,6 +7,7 @@
 use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatus};
 use crate::error::AppError;
 use crate::infrastructure::agents::claude::limits_config;
+use crate::utils::truncate_str;
 use serde::{Deserialize, Serialize};
 
 /// Claude CLI error message indicating an expired/invalid session.
@@ -500,14 +501,17 @@ fn parse_retry_after_from_message(error_text: &str) -> Option<String> {
     if let Some(idx) = error_text.find("reset at ") {
         let after = &error_text[idx + "reset at ".len()..];
         // Try to grab "YYYY-MM-DD HH:MM:SS" (19 chars)
-        if after.len() >= 19 {
-            let candidate = &after[..19];
+        if let Some(candidate) = after.get(..19) {
             // Validate it looks like a datetime
             if candidate.chars().nth(4) == Some('-') && candidate.chars().nth(10) == Some(' ') {
-                // Convert to RFC3339
-                let rfc3339 = format!("{}T{}+00:00", &candidate[..10], &candidate[11..]);
-                if chrono::DateTime::parse_from_rfc3339(&rfc3339).is_ok() {
-                    return Some(rfc3339);
+                // Convert to RFC3339; positions 0..10 and 11..19 are ASCII-verified above
+                if let (Some(date_part), Some(time_part)) =
+                    (candidate.get(..10), candidate.get(11..))
+                {
+                    let rfc3339 = format!("{}T{}+00:00", date_part, time_part);
+                    if chrono::DateTime::parse_from_rfc3339(&rfc3339).is_ok() {
+                        return Some(rfc3339);
+                    }
                 }
             }
         }
@@ -518,7 +522,7 @@ fn parse_retry_after_from_message(error_text: &str) -> Option<String> {
 /// Truncate error message to reasonable length for storage.
 fn truncate_error_message(msg: &str) -> String {
     if msg.len() > 500 {
-        format!("{}...", &msg[..500])
+        format!("{}...", truncate_str(msg, 500))
     } else {
         msg.to_string()
     }

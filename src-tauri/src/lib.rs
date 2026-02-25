@@ -29,6 +29,7 @@ pub mod error;
 pub mod http_server;
 pub mod infrastructure;
 pub mod testing;
+pub mod utils;
 
 // Re-export common types
 pub use application::AppState;

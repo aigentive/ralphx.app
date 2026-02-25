@@ -21,6 +21,7 @@ use crate::application::team_state_tracker::{
     TeamMessageType, TeamStateTracker, TeammateCost, TeammateStatus,
 };
 use crate::infrastructure::agents::claude::{StreamEvent, StreamProcessor};
+use crate::utils::truncate_str;
 
 /// Start a background task that reads a teammate's stdout and emits Tauri events.
 ///
@@ -668,17 +669,6 @@ pub fn start_teammate_stream<R: Runtime>(
     }.instrument(span))
 }
 
-/// Truncate a UTF-8 string to at most `max_bytes` bytes, respecting char boundaries.
-fn truncate_str(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let mut end = max_bytes;
-    while !s.is_char_boundary(end) && end > 0 {
-        end -= 1;
-    }
-    &s[..end]
-}
 
 /// Extract usage tokens from a `"type": "assistant"` event's `message.usage` field.
 ///

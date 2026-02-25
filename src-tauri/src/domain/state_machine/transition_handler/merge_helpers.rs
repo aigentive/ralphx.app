@@ -208,17 +208,6 @@ pub(super) fn slugify(name: &str) -> String {
         .to_string()
 }
 
-/// Truncate a string to at most `max_bytes` bytes at a valid char boundary.
-pub(super) fn truncate_str(s: &str, max_bytes: usize) -> &str {
-    if s.len() <= max_bytes {
-        return s;
-    }
-    let mut end = max_bytes;
-    while !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    &s[..end]
-}
 
 /// Expand `~/` prefix to the user's home directory
 pub(super) fn expand_home(path: &str) -> String {
