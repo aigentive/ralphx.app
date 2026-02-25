@@ -795,7 +795,7 @@ export function IntegratedChatPanel({
                   value={sendTarget}
                   onChange={setSendTarget}
                 />
-                {teammates.some((m) => m.status !== "shutdown") && (
+                {(isAgentRunning || teammates.some((m) => m.status === "running" || m.status === "spawning")) && (
                   <Button
                     variant="ghost"
                     size="sm"
