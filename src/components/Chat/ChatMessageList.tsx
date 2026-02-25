@@ -273,8 +273,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       // Apply team filter if active
       const teamFilteredMessages = teamFilter && teamFilter !== "all"
         ? filteredMessages.filter((msg) => {
-            // User messages always show in every tab (directed at lead, relevant context for all views)
-            if (msg.role === "user") return true;
+            // User messages: show on lead tab and all tab, filter out on teammate tabs
+            // (teammate output is shown via teamStore streaming text + team_event timeline items)
+            if (msg.role === "user") return !isTeammateTab;
             if (teamFilter === "lead") {
               // Lead produces all chat_messages (assistant role) — no sender field needed
               return msg.role === "assistant";
@@ -335,7 +336,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, isAgentRunning, attachmentsMap, teamFilter, teamMessages]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, isAgentRunning, attachmentsMap, teamFilter, teamMessages, isTeammateTab]);
 
     // Explicit initial scroll — fires when conversation changes to ensure
     // the last message is visible after layout settles.
@@ -378,7 +379,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         return (
           <div className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+            {/* Only show lead's streaming content on lead tab, not on teammate tabs */}
+            {!isTeammateTab && streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
                 if (!block.text.trim()) return null;
@@ -435,7 +437,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     }), [
       failedRun, onDismissFailedRun,
       streamingToolCalls.length, streamingTasks, streamingContentBlocks,
-      isSending, isAgentRunning,
+      isSending, isAgentRunning, isTeammateTab,
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
@@ -647,7 +649,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     return (
       <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
-        {isFilteredTabEmpty && hasTeammateStream && (
+        {isTeammateTab && hasTeammateStream && (
           <div className="absolute inset-0 overflow-y-auto px-2.5 py-2 z-10" data-testid="teammate-stream-view" style={{ backgroundColor: "hsl(220 10% 6%)" }}>
             <pre
               className="text-[11px] leading-relaxed whitespace-pre-wrap break-words m-0"
