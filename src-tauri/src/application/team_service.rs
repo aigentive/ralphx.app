@@ -77,6 +77,24 @@ impl TeamService {
         }
     }
 
+    /// Create a TeamService with repos but without event emission (for tests).
+    ///
+    /// Allows testing DB persistence logic without requiring a real Tauri AppHandle.
+    #[cfg(test)]
+    pub fn new_with_repos_for_testing(
+        tracker: Arc<TeamStateTracker>,
+        session_repo: Arc<dyn crate::domain::repositories::TeamSessionRepository>,
+        message_repo: Arc<dyn crate::domain::repositories::TeamMessageRepository>,
+    ) -> Self {
+        Self {
+            tracker,
+            app_handle: None,
+            session_repo: Some(session_repo),
+            message_repo: Some(message_repo),
+            session_id_cache: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+
     /// Access the underlying tracker (for read-only delegation or handle ops).
     pub fn tracker(&self) -> &TeamStateTracker {
         &self.tracker
@@ -313,14 +331,15 @@ impl TeamService {
             vec![]
         };
 
+        // Resolve session ID before disbanding (tracker still has team context)
+        let disbanded_sid = self.resolve_session_id(team_name).await;
+
         self.tracker.disband_team(team_name).await?;
 
         // Persist disbanded state
-        if let Some(ref repo) = self.session_repo {
-            if let Some(sid) = self.cached_session_id(team_name).await {
-                if let Err(e) = repo.set_disbanded(&sid).await {
-                    warn!("Failed to persist team disbanded: {e}");
-                }
+        if let (Some(ref repo), Some(sid)) = (&self.session_repo, disbanded_sid) {
+            if let Err(e) = repo.set_disbanded(&sid).await {
+                warn!("Failed to persist team disbanded: {e}");
             }
         }
 
@@ -468,9 +487,32 @@ impl TeamService {
         Ok((status.context_type, status.context_id))
     }
 
-    /// Get cached session ID for a team.
-    async fn cached_session_id(&self, team_name: &str) -> Option<TeamSessionId> {
-        self.session_id_cache.read().await.get(team_name).cloned()
+    /// Get cached session ID for a team, with DB fallback on cache miss.
+    ///
+    /// The in-memory cache is populated by `create_team`. However, two separate
+    /// `TeamService` instances share the same `TeamStateTracker` (shared Arc) —
+    /// the Tauri command service and the HTTP server service. If `create_team` was
+    /// called on one instance (e.g. Tauri service via chat_service_streaming), the
+    /// other instance's cache is empty. This DB fallback prevents silent message loss
+    /// when `persist_message` or `persist_teammates` is called on the non-creating
+    /// instance (e.g. HTTP service's stream processor).
+    async fn resolve_session_id(&self, team_name: &str) -> Option<TeamSessionId> {
+        // Fast path: in-memory cache
+        if let Some(sid) = self.session_id_cache.read().await.get(team_name).cloned() {
+            return Some(sid);
+        }
+        // Slow path: query DB via session repo (only possible when repo is available)
+        let repo = self.session_repo.as_ref()?;
+        let (ctx_type, ctx_id) = self.get_team_context(team_name).await.ok()?;
+        let sessions = repo.get_by_context(&ctx_type, &ctx_id).await.ok()?;
+        let session = sessions.into_iter().last()?;
+        let sid = session.id.clone();
+        // Populate cache for future calls
+        self.session_id_cache
+            .write()
+            .await
+            .insert(team_name.to_string(), sid.clone());
+        Some(sid)
     }
 
     /// Snapshot current teammates from tracker and persist to DB.
@@ -479,7 +521,7 @@ impl TeamService {
             Some(ref r) => r,
             None => return,
         };
-        let sid = match self.cached_session_id(team_name).await {
+        let sid = match self.resolve_session_id(team_name).await {
             Some(s) => s,
             None => return,
         };
@@ -513,7 +555,7 @@ impl TeamService {
             Some(ref r) => r,
             None => return,
         };
-        let sid = match self.cached_session_id(team_name).await {
+        let sid = match self.resolve_session_id(team_name).await {
             Some(s) => s,
             None => return,
         };
