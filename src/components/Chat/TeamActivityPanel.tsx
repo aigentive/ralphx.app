@@ -2,13 +2,13 @@
  * TeamActivityPanel — Live teammate status panel (collapsible)
  *
  * Collapsed (default): compact summary bar with teammate count, status, cost.
- * Expanded: full view with teammate cards, cost breakdown, and Stop All button.
+ * Expanded: full view with teammate cards and cost breakdown.
+ * Stop All is rendered externally in the compact input toolbar.
  */
 
 import React, { useState, useMemo, useCallback } from "react";
-import { Square, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Button } from "@/components/ui/button";
 import { useTeamStore, selectActiveTeam, selectTeammates } from "@/stores/teamStore";
 import { TeammateCard } from "./TeammateCard";
 import type { TeammateState } from "@/stores/teamStore";
@@ -17,7 +17,6 @@ interface TeamActivityPanelProps {
   contextKey: string;
   onMessageTeammate?: ((name: string) => void) | undefined;
   onStopTeammate?: ((name: string) => void) | undefined;
-  onStopAll?: (() => void) | undefined;
   isHistorical?: boolean | undefined;
 }
 
@@ -29,7 +28,6 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
   contextKey,
   onMessageTeammate,
   onStopTeammate,
-  onStopAll,
   isHistorical = false,
 }: TeamActivityPanelProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
@@ -155,20 +153,6 @@ export const TeamActivityPanel = React.memo(function TeamActivityPanel({
         )}
       </AnimatePresence>
 
-      {/* Actions — always visible */}
-      {!isHistorical && onStopAll && activeCount > 0 && (
-        <div className="flex items-center gap-2 px-3 py-2 shrink-0" style={{ borderTop: "1px solid hsl(220 10% 14%)" }}>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onStopAll}
-            className="text-[11px] h-7 gap-1.5"
-          >
-            <Square className="w-3 h-3" />
-            Stop All
-          </Button>
-        </div>
-      )}
     </div>
   );
 });
