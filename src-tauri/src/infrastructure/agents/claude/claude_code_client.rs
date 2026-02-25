@@ -889,8 +889,9 @@ impl ClaudeCodeClient {
         // Prompt mode: -p is REQUIRED for --output-format stream-json to produce output.
         // One-shot: -p <prompt> for single-turn teammates.
         // Interactive: -p - with --input-format stream-json enables print mode so stdout
-        // emits stream-json events. Work is delivered via the team inbox (SendMessage),
-        // not via stdin — stdin stays open for future message injection if needed.
+        // emits stream-json events. The initial prompt is sent via stdin to activate stdout
+        // output — without it Claude Code waits for stdin and team inbox messages (SendMessage)
+        // don't generate stdout. Subsequent work arrives via the team inbox.
         if let Some(ref prompt) = config.print_mode_prompt {
             // One-shot mode: prompt passed directly via -p
             args.extend(["-p".to_string(), prompt.clone()]);
@@ -1036,9 +1037,33 @@ impl ClaudeCodeClient {
             .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
 
         // Take stdin pipe before returning
-        let stdin = child.stdin.take().ok_or_else(|| {
+        let mut stdin = child.stdin.take().ok_or_else(|| {
             AgentError::SpawnFailed("Failed to capture stdin pipe for teammate".to_string())
         })?;
+
+        // Write initial prompt to stdin to activate print mode output.
+        // With -p - --input-format stream-json, Claude Code waits for the first stdin
+        // message before producing stream-json on stdout. Team inbox messages (SendMessage)
+        // are processed but don't generate stdout output until the first stdin turn activates it.
+        if !config.prompt.is_empty() && config.print_mode_prompt.is_none() {
+            use tokio::io::AsyncWriteExt;
+            let formatted = super::format_stream_json_input(&config.prompt);
+            stdin.write_all(formatted.as_bytes()).await.map_err(|e| {
+                AgentError::SpawnFailed(format!(
+                    "Failed to write initial prompt to teammate stdin: {e}"
+                ))
+            })?;
+            stdin.write_all(b"\n").await.map_err(|e| {
+                AgentError::SpawnFailed(format!(
+                    "Failed to write newline to teammate stdin: {e}"
+                ))
+            })?;
+            stdin.flush().await.map_err(|e| {
+                AgentError::SpawnFailed(format!(
+                    "Failed to flush teammate stdin: {e}"
+                ))
+            })?;
+        }
 
         let handle = AgentHandle::new(
             ClientType::ClaudeCode,
