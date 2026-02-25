@@ -13,6 +13,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::ChildStdout;
 use tokio::sync::oneshot;
 use tokio::task::JoinHandle;
+use tracing::Instrument;
 
 use crate::application::team_events;
 use crate::application::team_service::TeamService;
@@ -56,8 +57,6 @@ pub fn start_teammate_stream<R: Runtime>(
     );
 
     tokio::spawn(async move {
-        let _guard = span.enter();
-
         tracing::info!(
             teammate = %teammate_name,
             team = %team_name,
@@ -114,7 +113,7 @@ pub fn start_teammate_stream<R: Runtime>(
 
                     // DIAGNOSTIC: Log every raw stdout line at INFO level
                     // to verify teammate output is reaching the stream processor
-                    let line_preview: &str = if line.len() > 200 { &line[..200] } else { &line };
+                    let line_preview: &str = truncate_str(&line, 200);
                     tracing::info!(
                         teammate = %teammate_name,
                         team = %team_name,
@@ -191,7 +190,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                     // Accumulate text for persistence on turn boundary
                                     text_buffer.push_str(&text);
 
-                                    let text_preview: &str = if text.len() > 100 { &text[..100] } else { &text };
+                                    let text_preview: &str = truncate_str(&text, 100);
                                     tracing::info!(
                                         teammate = %teammate_name,
                                         team = %team_name,
@@ -408,7 +407,7 @@ pub fn start_teammate_stream<R: Runtime>(
                             team = %team_name,
                             lines_seen,
                             line_len = line.len(),
-                            line_preview = %if line.len() > 200 { &line[..200] } else { &line },
+                            line_preview = %truncate_str(&line, 200),
                             "[TEAMMATE_STREAM] line NOT parsed (not a stream-json message)"
                         );
                     }
@@ -611,7 +610,19 @@ pub fn start_teammate_stream<R: Runtime>(
             total_output_tokens,
             "Teammate stream processor finished"
         );
-    })
+    }.instrument(span))
+}
+
+/// Truncate a UTF-8 string to at most `max_bytes` bytes, respecting char boundaries.
+fn truncate_str(s: &str, max_bytes: usize) -> &str {
+    if s.len() <= max_bytes {
+        return s;
+    }
+    let mut end = max_bytes;
+    while !s.is_char_boundary(end) && end > 0 {
+        end -= 1;
+    }
+    &s[..end]
 }
 
 /// Extract usage tokens from a `"type": "assistant"` event's `message.usage` field.
