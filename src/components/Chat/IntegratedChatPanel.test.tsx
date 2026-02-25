@@ -46,6 +46,11 @@ vi.mock("@/hooks/useChat", () => ({
     switchConversation: vi.fn(),
     createConversation: vi.fn(),
   }),
+  useConversation: () => ({
+    data: undefined,
+    isLoading: false,
+    error: null,
+  }),
   chatKeys: {
     all: ["chat"],
     conversationList: (type: string, id: string) => ["chat", "conversations", type, id],
@@ -73,8 +78,6 @@ const mockChatPanelContext = {
   activeConversationId: null as string | null,
   streamingToolCalls: [] as unknown[],
   setStreamingToolCalls: vi.fn(),
-  streamingText: "",
-  setStreamingText: vi.fn(),
   streamingTasks: new Map(),
   setStreamingTasks: vi.fn(),
   autoSelectConversation: vi.fn(),

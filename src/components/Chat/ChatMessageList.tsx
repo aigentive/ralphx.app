@@ -32,9 +32,6 @@ import type { MessageAttachment } from "./MessageAttachments";
 import { useTeamStore, selectTeammateByName, selectTeamMessages, EMPTY_TEAM_MESSAGES } from "@/stores/teamStore";
 import type { TeamMessage } from "@/stores/teamStore";
 import { TeamMessageBubble } from "./TeamMessageBubble";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
-import { markdownComponents } from "./MessageItem.markdown";
 
 // ============================================================================
 // Constants
@@ -145,16 +142,6 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       [contextKey],
     );
     const teamMessages = useTeamStore(teamMsgSelector);
-
-    // Active teammate streaming text (for teammate tab view)
-    const isTeammateTab = !!teamFilter && teamFilter !== "all" && teamFilter !== "lead";
-    const activeTeammateSelector = useMemo(
-      () => isTeammateTab && contextKey
-        ? selectTeammateByName(contextKey, teamFilter!)
-        : () => null,
-      [contextKey, teamFilter, isTeammateTab],
-    );
-    const activeTeammate = useTeamStore(activeTeammateSelector);
 
     // Fetch attachments for all messages
     const { data: attachmentsMap } = useMessageAttachments(messages, conversationId);
@@ -269,22 +256,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           })()
         : messages;
 
-      // Apply team filter if active
-      const teamFilteredMessages = teamFilter && teamFilter !== "all"
-        ? filteredMessages.filter((msg) => {
-            // User messages: show on lead tab and all tab, filter out on teammate tabs
-            // (teammate output is shown via teamStore streaming text + team_event timeline items)
-            if (msg.role === "user") return !isTeammateTab;
-            if (teamFilter === "lead") {
-              // Lead produces all chat_messages (assistant role) — no sender field needed
-              return msg.role === "assistant";
-            }
-            // Teammate tab: chat_messages don't have sender attribution,
-            // so no chat messages match here. Teammate output is shown via
-            // teamStore streaming text + team_event timeline items below.
-            return false;
-          })
-        : filteredMessages;
+      // Team filter: each tab (lead/teammate) loads its own conversation's messages via
+      // useConversation, so all messages in the data set belong to that conversation.
+      // No per-message filtering needed — the conversation switch handles the scoping.
+      const teamFilteredMessages = filteredMessages;
 
       for (const msg of teamFilteredMessages) {
         // Enrich message with attachments if available
@@ -335,7 +310,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
 
       return items;
-    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, attachmentsMap, teamFilter, teamMessages, isTeammateTab]);
+    }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, attachmentsMap, teamFilter, teamMessages]);
 
     // Explicit initial scroll — fires when conversation changes to ensure
     // the last message is visible after layout settles.
@@ -378,8 +353,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         return (
           <div className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {/* Only show lead's streaming content on lead tab, not on teammate tabs */}
-            {!isTeammateTab && streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
                 if (!block.text.trim()) return null;
@@ -424,10 +398,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               );
             })}
 
-            {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet.
-                StreamingToolIndicator is now rendered outside the scroll container by parent panels.
-                Suppressed on teammate tabs — teammate overlay handles their streaming display. */}
-            {!isTeammateTab && (isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+            {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet */}
+            {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
               <TypingIndicator />
             )}
 
@@ -437,14 +409,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     }), [
       failedRun, onDismissFailedRun,
       streamingToolCalls.length, streamingTasks, streamingContentBlocks,
-      isSending, isAgentRunning, isTeammateTab,
+      isSending, isAgentRunning,
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
-    // For teammate tabs: show streaming text if available, otherwise show empty state.
     const isFilteredTabEmpty = teamFilter && teamFilter !== "all" && timeline.length === 0 && messages.length > 0;
-    const hasTeammateStream = isTeammateTab && !!activeTeammate?.streamingText;
-    const emptyTabLabel = isFilteredTabEmpty && !hasTeammateStream
+    const emptyTabLabel = isFilteredTabEmpty
       ? (teamFilter === "lead" ? "Lead" : teamFilter)
       : null;
 
@@ -509,19 +479,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     if (isTestEnv) {
       return (
         <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
-          {isTeammateTab && hasTeammateStream && (
-            <div className="flex-1 overflow-y-auto px-2.5 py-2" data-testid="teammate-stream-view" style={{ backgroundColor: "hsl(220 10% 6%)" }}>
-              <div
-                className="text-[12px] [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[12px]"
-                style={{ color: "hsl(220 10% 70%)" }}
-              >
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {activeTeammate!.streamingText}
-                </ReactMarkdown>
-              </div>
-            </div>
-          )}
-          {isFilteredTabEmpty && !hasTeammateStream && (
+          {isFilteredTabEmpty && (
             <div className="flex-1 flex items-center justify-center h-full" data-testid="teammate-tab-empty">
               <span className="text-sm" style={{ color: "hsl(220 10% 40%)" }}>
                 No messages from {emptyTabLabel} yet
@@ -581,8 +539,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
           <div className="px-3 pb-3 w-full" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
-            {/* Suppressed on teammate tabs — teammate overlay handles their streaming display. */}
-            {!isTeammateTab && streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
+            {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
                 // Skip empty/whitespace-only text blocks (e.g. pre-stream flush artifacts)
                 if (!block.text.trim()) return null;
@@ -625,10 +582,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               );
             })}
 
-            {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet.
-                StreamingToolIndicator is now rendered outside the scroll container by parent panels.
-                Suppressed on teammate tabs — teammate overlay handles their streaming display. */}
-            {!isTeammateTab && (isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+            {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet */}
+            {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
               <TypingIndicator />
             )}
             <div ref={messagesEndRef} />
@@ -653,19 +608,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     return (
       <div className="flex-1 overflow-hidden relative" data-testid="integrated-chat-messages">
-        {isTeammateTab && hasTeammateStream && (
-          <div className="absolute inset-0 overflow-y-auto px-2.5 py-2 z-10" data-testid="teammate-stream-view" style={{ backgroundColor: "hsl(220 10% 6%)" }}>
-            <div
-              className="text-[12px] [&_h1]:text-[14px] [&_h2]:text-[13px] [&_h3]:text-[12px]"
-              style={{ color: "hsl(220 10% 70%)" }}
-            >
-              <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                {activeTeammate!.streamingText}
-              </ReactMarkdown>
-            </div>
-          </div>
-        )}
-        {isFilteredTabEmpty && !hasTeammateStream && (
+        {isFilteredTabEmpty && (
           <div className="absolute inset-0 flex items-center justify-center" data-testid="teammate-tab-empty">
             <span className="text-sm" style={{ color: "hsl(220 10% 40%)" }}>
               No messages from {emptyTabLabel} yet

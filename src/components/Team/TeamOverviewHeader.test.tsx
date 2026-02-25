@@ -25,7 +25,7 @@ function makeMate(name: string, status: TeammateState["status"], color = "#4ade8
     currentActivity: null,
     tokensUsed: 0,
     estimatedCostUsd: 0,
-    streamingText: "",
+    conversationId: null,
   };
 }
 

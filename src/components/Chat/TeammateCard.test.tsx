@@ -17,7 +17,7 @@ function makeTeammate(overrides: Partial<TeammateState> = {}): TeammateState {
     currentActivity: "Writing auth.ts",
     tokensUsed: 50000,
     estimatedCostUsd: 0.3,
-    streamingText: "",
+    conversationId: null,
     ...overrides,
   };
 }

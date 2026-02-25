@@ -163,7 +163,7 @@ describe("useTeamEvents", () => {
   // 3. Effect 1: team:disbanded
   // --------------------------------------------------------------------------
   describe("Effect 1: team:disbanded", () => {
-    it("should mark team as historical but keep data and isTeamActive", () => {
+    it("should mark team as historical, keep data, and close isTeamActive gate", () => {
       renderHook(() => useTeamEvents(CONTEXT_KEY));
 
       // First create a team
@@ -184,8 +184,8 @@ describe("useTeamEvents", () => {
       const team = useTeamStore.getState().activeTeams[CONTEXT_KEY];
       expect(team).toBeDefined();
       expect(team?.isHistorical).toBe(true);
-      // isTeamActive stays true so TeamActivityPanel keeps rendering
-      expect(useChatStore.getState().isTeamActive[CONTEXT_KEY]).toBeTruthy();
+      // isTeamActive is set to false so gated subscriptions (Effect 2) are cleaned up
+      expect(useChatStore.getState().isTeamActive[CONTEXT_KEY]).toBeFalsy();
     });
   });
 
@@ -273,9 +273,9 @@ describe("useTeamEvents", () => {
   });
 
   // --------------------------------------------------------------------------
-  // 6. agent:run_completed → teammate idle + clear stream
+  // 6. agent:run_completed → teammate idle
   // --------------------------------------------------------------------------
-  it("should set teammate to idle and clear stream on agent:run_completed", () => {
+  it("should set teammate to idle on agent:run_completed", () => {
     renderHook(() => useTeamEvents(CONTEXT_KEY));
 
     act(() => {
@@ -288,14 +288,6 @@ describe("useTeamEvents", () => {
       });
     });
 
-    // Simulate some streaming text
-    act(() => {
-      fireEvent("agent:chunk", {
-        ...makePayload(), teammate_name: "w1", text: "hello",
-      });
-    });
-    expect(useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["w1"]!.streamingText).toBe("hello");
-
     act(() => {
       fireEvent("agent:run_completed", {
         ...makePayload(), teammate_name: "w1",
@@ -304,7 +296,6 @@ describe("useTeamEvents", () => {
 
     const mate = useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["w1"];
     expect(mate!.status).toBe("idle");
-    expect(mate!.streamingText).toBe("");
   });
 
   // --------------------------------------------------------------------------
@@ -424,9 +415,9 @@ describe("useTeamEvents", () => {
   });
 
   // --------------------------------------------------------------------------
-  // 11. agent:chunk → teammate streaming text
+  // 11. agent:run_started with conversation_id → sets teammate conversationId
   // --------------------------------------------------------------------------
-  it("should append streaming text on agent:chunk with teammate_name", () => {
+  it("should set teammate conversationId on agent:run_started with conversation_id", () => {
     renderHook(() => useTeamEvents(CONTEXT_KEY));
 
     act(() => {
@@ -440,20 +431,19 @@ describe("useTeamEvents", () => {
     });
 
     act(() => {
-      fireEvent("agent:chunk", { ...makePayload(), teammate_name: "w1", text: "Hello " });
-    });
-    act(() => {
-      fireEvent("agent:chunk", { ...makePayload(), teammate_name: "w1", text: "world" });
+      fireEvent("agent:run_started", {
+        ...makePayload(), teammate_name: "w1", conversation_id: "conv-abc",
+      });
     });
 
     const mate = useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["w1"];
-    expect(mate!.streamingText).toBe("Hello world");
+    expect(mate!.conversationId).toBe("conv-abc");
   });
 
   // --------------------------------------------------------------------------
-  // 12. agent:chunk without teammate_name is ignored
+  // 12. team:teammate_spawned with conversation_id → sets conversationId
   // --------------------------------------------------------------------------
-  it("should ignore agent:chunk without teammate_name", () => {
+  it("should set conversationId from team:teammate_spawned event", () => {
     renderHook(() => useTeamEvents(CONTEXT_KEY));
 
     act(() => {
@@ -463,15 +453,12 @@ describe("useTeamEvents", () => {
       fireEvent("team:teammate_spawned", {
         ...makePayload(), team_name: "t", teammate_name: "w1",
         color: "#f00", model: "sonnet", role: "coder",
+        conversation_id: "conv-xyz",
       });
     });
 
-    act(() => {
-      fireEvent("agent:chunk", { ...makePayload(), text: "ignored" });
-    });
-
     const mate = useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["w1"];
-    expect(mate!.streamingText).toBe("");
+    expect(mate!.conversationId).toBe("conv-xyz");
   });
 
   // --------------------------------------------------------------------------

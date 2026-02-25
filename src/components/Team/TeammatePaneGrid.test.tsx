@@ -26,7 +26,7 @@ function makeMate(name: string): TeammateState {
     currentActivity: null,
     tokensUsed: 0,
     estimatedCostUsd: 0,
-    streamingText: "",
+    conversationId: null,
   };
 }
 
