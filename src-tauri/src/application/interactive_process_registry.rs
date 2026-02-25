@@ -128,6 +128,21 @@ impl InteractiveProcessRegistry {
         let processes = self.processes.lock().await;
         processes.len()
     }
+
+    /// Log all registered process keys at info level for diagnostics.
+    pub async fn log_registered_keys(&self, label: &str) {
+        let processes = self.processes.lock().await;
+        let keys: Vec<String> = processes
+            .keys()
+            .map(|k| format!("{}/{}", k.context_type, k.context_id))
+            .collect();
+        tracing::info!(
+            label = %label,
+            count = processes.len(),
+            keys = ?keys,
+            "[IPR_DIAG] Registered interactive processes"
+        );
+    }
 }
 
 #[cfg(test)]

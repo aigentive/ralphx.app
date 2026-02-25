@@ -63,7 +63,7 @@ export const TeamMessageBubble = React.memo(function TeamMessageBubble({
           </span>
           <span className="text-[11px]" style={{ color: "hsl(220 10% 40%)" }}>→</span>
           <span className="text-[11px] font-medium" style={{ color: "hsl(220 10% 60%)" }}>
-            {to}
+            {to === "*" ? "all" : to}
           </span>
           {timestamp && (
             <span className="text-[10px] ml-auto" style={{ color: "hsl(220 10% 35%)" }}>

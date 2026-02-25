@@ -623,30 +623,60 @@ pub fn start_teammate_stream<R: Runtime>(
                                     // Auto-nudge lead's stdin when a teammate sends a message
                                     // targeting the lead (or broadcasts). This wakes up the
                                     // lead's Claude CLI so it sees the teammate's message.
+                                    //
+                                    // IMPORTANT: The lead's stdin is registered under the LEAD's
+                                    // context (from chat_service), not the teammate's. We must
+                                    // look up the lead's context from the team tracker.
                                     if let Some(ref registry) = interactive_process_registry {
-                                        let key = InteractiveProcessKey::new(
-                                            &context_type,
-                                            &context_id,
-                                        );
-                                        let nudge_text = format!(
-                                            "[Team message from {}]: {}",
-                                            sender,
-                                            truncate_str(&content, 500),
-                                        );
-                                        let nudge = format_stream_json_input(&nudge_text);
-                                        if let Err(e) = registry.write_message(&key, &nudge).await
-                                        {
-                                            tracing::debug!(
-                                                error = %e,
-                                                sender = %sender,
-                                                "Could not nudge lead stdin (may be idle or not interactive)"
-                                            );
-                                        } else {
-                                            tracing::info!(
-                                                sender = %sender,
-                                                "Nudged lead stdin with teammate message"
-                                            );
+                                        match team_tracker.get_team_status(&team_name).await {
+                                            Ok(team_status) => {
+                                                let key = InteractiveProcessKey::new(
+                                                    &team_status.context_type,
+                                                    &team_status.context_id,
+                                                );
+                                                tracing::info!(
+                                                    teammate = %teammate_name,
+                                                    sender = %sender,
+                                                    lead_context_type = %team_status.context_type,
+                                                    lead_context_id = %team_status.context_id,
+                                                    "[TEAM_NUDGE] Attempting lead stdin nudge"
+                                                );
+                                                let nudge_text = format!(
+                                                    "[Team message from {}]: {}",
+                                                    sender,
+                                                    truncate_str(&content, 500),
+                                                );
+                                                let nudge = format_stream_json_input(&nudge_text);
+                                                if let Err(e) = registry.write_message(&key, &nudge).await
+                                                {
+                                                    tracing::warn!(
+                                                        error = %e,
+                                                        sender = %sender,
+                                                        lead_context_type = %team_status.context_type,
+                                                        lead_context_id = %team_status.context_id,
+                                                        "[TEAM_NUDGE] Failed to write to lead stdin"
+                                                    );
+                                                } else {
+                                                    tracing::info!(
+                                                        sender = %sender,
+                                                        "[TEAM_NUDGE] Successfully nudged lead stdin"
+                                                    );
+                                                }
+                                            }
+                                            Err(e) => {
+                                                tracing::warn!(
+                                                    error = %e,
+                                                    team = %team_name,
+                                                    sender = %sender,
+                                                    "[TEAM_NUDGE] Could not resolve lead context from team tracker"
+                                                );
+                                            }
                                         }
+                                    } else {
+                                        tracing::warn!(
+                                            sender = %sender,
+                                            "[TEAM_NUDGE] No InteractiveProcessRegistry available"
+                                        );
                                     }
                                 }
                                 StreamEvent::TurnComplete { .. } => {
