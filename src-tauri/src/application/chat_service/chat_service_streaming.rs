@@ -358,7 +358,17 @@ pub async fn process_stream_background<R: Runtime>(
             read_result = timeout(timeout_config.line_read_timeout, lines.next_line()) => {
                 match read_result {
                     Ok(Ok(Some(line))) => line,
-                    Ok(Ok(None)) => break, // EOF — stream ended normally
+                    Ok(Ok(None)) => {
+                        tracing::info!(
+                            conversation_id = %conversation_id_str,
+                            context_id,
+                            lines_seen,
+                            lines_parsed,
+                            between_interactive_turns,
+                            "[STREAM_EOF] stdout closed — process exited"
+                        );
+                        break;
+                    }
                     Ok(Err(e)) => {
                         tracing::error!(
                             conversation_id = %conversation_id_str,
@@ -1187,6 +1197,26 @@ pub async fn process_stream_background<R: Runtime>(
                                 &team_name,
                                 &context_id_str,
                                 &context_type_str,
+                            );
+                        }
+
+                        // Dynamic team_mode upgrade: when the lead creates a team mid-session,
+                        // upgrade the line-read timeout from default (600s) to team (3600s).
+                        // The lead was spawned before the team existed, so team_mode was false
+                        // at spawn time. Without this, the lead gets killed after 10 min idle.
+                        if !team_mode {
+                            let cfg = stream_timeouts();
+                            let old_secs = timeout_config.line_read_timeout.as_secs();
+                            timeout_config.line_read_timeout =
+                                Duration::from_secs(cfg.team_line_read_secs);
+                            timeout_config.parse_stall_timeout =
+                                Duration::from_secs(cfg.team_parse_stall_secs);
+                            tracing::info!(
+                                conversation_id = %conversation_id_str,
+                                team_name = %team_name,
+                                old_timeout_secs = old_secs,
+                                new_timeout_secs = cfg.team_line_read_secs,
+                                "[TEAM_TIMEOUT] Upgraded line-read timeout on TeamCreated"
                             );
                         }
                     }

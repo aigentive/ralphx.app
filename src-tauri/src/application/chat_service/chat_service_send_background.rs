@@ -265,18 +265,51 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         // Unregister the process when done (ownership check: only removes our own slot)
         running_agent_registry.unregister(&registry_key, &agent_run_id).await;
 
-        // Remove interactive stdin handle so future messages trigger a new spawn
+        // Remove interactive stdin handle so future messages trigger a new spawn.
+        // EXCEPTION: if a team is still active for this context, keep the IPR entry
+        // so teammate→lead nudges can still attempt delivery. The entry will be
+        // cleaned up when the team is disbanded or the next send_message detects
+        // a broken pipe and removes it.
         if let Some(ref ipr) = interactive_process_registry {
             let ipr_key = InteractiveProcessKey::new(
                 context_type.to_string(),
                 &context_id,
             );
-            ipr.remove(&ipr_key).await;
-            tracing::debug!(
-                %context_type,
-                context_id = %context_id,
-                "Removed interactive process stdin on stream exit"
-            );
+
+            let team_still_active = if team_mode {
+                if let Some(ref service) = team_service {
+                    let teams = service.list_teams().await;
+                    let mut found = false;
+                    for tn in &teams {
+                        if let Ok(status) = service.get_team_status(tn).await {
+                            if status.context_id == context_id {
+                                found = true;
+                                break;
+                            }
+                        }
+                    }
+                    found
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            if team_still_active {
+                tracing::warn!(
+                    %context_type,
+                    context_id = %context_id,
+                    "[IPR_KEEP] Keeping interactive process stdin — team still active for context"
+                );
+            } else {
+                ipr.remove(&ipr_key).await;
+                tracing::info!(
+                    %context_type,
+                    context_id = %context_id,
+                    "[IPR_REMOVE] Removed interactive process stdin on stream exit"
+                );
+            }
         }
 
         // Clean up interactive idle slot tracking
