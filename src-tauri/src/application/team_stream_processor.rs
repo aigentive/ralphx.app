@@ -20,7 +20,11 @@ use crate::application::team_service::TeamService;
 use crate::application::team_state_tracker::{
     TeamMessageType, TeamStateTracker, TeammateCost, TeammateStatus,
 };
-use crate::infrastructure::agents::claude::{StreamEvent, StreamProcessor};
+use crate::domain::entities::{
+    ChatContextType, ChatConversation, ChatConversationId, ChatMessage, ChatMessageId, MessageRole,
+};
+use crate::domain::repositories::{ChatConversationRepository, ChatMessageRepository};
+use crate::infrastructure::agents::claude::{ContentBlockItem, StreamEvent, StreamProcessor, ToolCall};
 use crate::utils::truncate_str;
 
 /// Start a background task that reads a teammate's stdout and emits Tauri events.
@@ -40,6 +44,8 @@ use crate::utils::truncate_str;
 /// * `app_handle` - Tauri AppHandle for emitting events to the frontend
 /// * `team_tracker` - TeamStateTracker for updating teammate cost/status
 /// * `team_service` - Optional TeamService for message persistence and proper event emission
+/// * `chat_conversation_repo` - For creating per-teammate conversations
+/// * `chat_message_repo` - For persisting assistant messages with content_blocks
 pub fn start_teammate_stream<R: Runtime>(
     stdout: ChildStdout,
     exit_signal: oneshot::Receiver<()>,
@@ -50,6 +56,8 @@ pub fn start_teammate_stream<R: Runtime>(
     app_handle: AppHandle<R>,
     team_tracker: Arc<TeamStateTracker>,
     team_service: Option<Arc<TeamService>>,
+    chat_conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
+    chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!(
         "teammate_stream",
@@ -64,6 +72,105 @@ pub fn start_teammate_stream<R: Runtime>(
             "Starting teammate stdout stream processor"
         );
 
+        // --- Create per-teammate conversation and pre-create assistant message ---
+        // Uses the same pattern as the lead's streaming pipeline.
+        let teammate_conversation_id: Option<ChatConversationId> =
+            if let Some(ref conv_repo) = chat_conversation_repo {
+                // Build a unique context_id for this teammate's conversation
+                let teammate_ctx_id = format!("teammate:{}:{}", team_name, teammate_name);
+                let conv = ChatConversation {
+                    id: ChatConversationId::new(),
+                    context_type: ChatContextType::Ideation,
+                    context_id: teammate_ctx_id,
+                    claude_session_id: None,
+                    title: Some(format!("Teammate: {}", teammate_name)),
+                    message_count: 0,
+                    last_message_at: None,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                    parent_conversation_id: None,
+                };
+                let conv_id = conv.id;
+                match conv_repo.create(conv).await {
+                    Ok(_created) => {
+                        tracing::info!(
+                            teammate = %teammate_name,
+                            conversation_id = %conv_id,
+                            "Created per-teammate conversation"
+                        );
+                        // Store conversation_id in teammate state
+                        let _ = team_tracker
+                            .set_teammate_conversation_id(
+                                &team_name,
+                                &teammate_name,
+                                conv_id.as_str(),
+                            )
+                            .await;
+                        Some(conv_id)
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            teammate = %teammate_name,
+                            error = %e,
+                            "Failed to create teammate conversation"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+        let conversation_id_str = teammate_conversation_id
+            .as_ref()
+            .map(|id| id.as_str());
+
+        // Pre-create empty assistant message (crash recovery pattern)
+        let mut assistant_message_id: Option<String> =
+            if let (Some(ref msg_repo), Some(ref conv_id)) =
+                (&chat_message_repo, &teammate_conversation_id)
+            {
+                let msg = ChatMessage {
+                    id: ChatMessageId::new(),
+                    session_id: None,
+                    project_id: None,
+                    task_id: None,
+                    conversation_id: Some(*conv_id),
+                    role: MessageRole::Orchestrator,
+                    content: String::new(),
+                    metadata: None,
+                    parent_message_id: None,
+                    tool_calls: None,
+                    content_blocks: None,
+                    created_at: chrono::Utc::now(),
+                };
+                let msg_id = msg.id.as_str().to_string();
+                match msg_repo.create(msg).await {
+                    Ok(_) => {
+                        tracing::info!(
+                            teammate = %teammate_name,
+                            assistant_message_id = %msg_id,
+                            "Pre-created assistant message for teammate"
+                        );
+                        Some(msg_id)
+                    }
+                    Err(e) => {
+                        tracing::error!(
+                            teammate = %teammate_name,
+                            error = %e,
+                            "Failed to pre-create assistant message"
+                        );
+                        None
+                    }
+                }
+            } else {
+                None
+            };
+
+        // Debounced flush for incremental persistence (every 2 seconds)
+        let mut last_flush = std::time::Instant::now();
+        const FLUSH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(2);
+
         // Emit agent:run_started so the frontend knows this teammate is running
         let _ = app_handle.emit(
             "agent:run_started",
@@ -71,6 +178,7 @@ pub fn start_teammate_stream<R: Runtime>(
                 "teammate_name": teammate_name,
                 "context_type": context_type,
                 "context_id": context_id,
+                "conversation_id": conversation_id_str,
             }),
         );
 
@@ -173,6 +281,33 @@ pub fn start_teammate_stream<R: Runtime>(
                                 )
                             {
                                 is_idle = false;
+
+                                // Pre-create new assistant message for this turn
+                                if assistant_message_id.is_none() {
+                                    if let (Some(ref msg_repo), Some(ref conv_id)) =
+                                        (&chat_message_repo, &teammate_conversation_id)
+                                    {
+                                        let msg = ChatMessage {
+                                            id: ChatMessageId::new(),
+                                            session_id: None,
+                                            project_id: None,
+                                            task_id: None,
+                                            conversation_id: Some(*conv_id),
+                                            role: MessageRole::Orchestrator,
+                                            content: String::new(),
+                                            metadata: None,
+                                            parent_message_id: None,
+                                            tool_calls: None,
+                                            content_blocks: None,
+                                            created_at: chrono::Utc::now(),
+                                        };
+                                        let new_id = msg.id.as_str().to_string();
+                                        if msg_repo.create(msg).await.is_ok() {
+                                            assistant_message_id = Some(new_id);
+                                        }
+                                    }
+                                }
+
                                 let _ = team_tracker
                                     .update_teammate_status(
                                         &team_name,
@@ -186,6 +321,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                         "teammate_name": teammate_name,
                                         "context_type": context_type,
                                         "context_id": context_id,
+                                        "conversation_id": conversation_id_str,
                                     }),
                                 );
                             }
@@ -240,6 +376,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "text": text,
                                             "context_type": context_type,
                                             "context_id": context_id,
+                                            "conversation_id": conversation_id_str,
                                         }),
                                     );
                                     if let Err(ref e) = emit_result {
@@ -248,6 +385,21 @@ pub fn start_teammate_stream<R: Runtime>(
                                             error = %e,
                                             "[TEAMMATE_STREAM] agent:chunk emit FAILED"
                                         );
+                                    }
+
+                                    // Debounced flush: persist content_blocks to DB every 2s
+                                    if assistant_message_id.is_some()
+                                        && last_flush.elapsed() >= FLUSH_INTERVAL
+                                    {
+                                        flush_teammate_message(
+                                            &chat_message_repo,
+                                            &assistant_message_id,
+                                            &processor.response_text,
+                                            &processor.tool_calls,
+                                            &processor.content_blocks,
+                                        )
+                                        .await;
+                                        last_flush = std::time::Instant::now();
                                     }
                                 }
                                 StreamEvent::Thinking(text) => {
@@ -260,6 +412,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "text": text,
                                             "context_type": context_type,
                                             "context_id": context_id,
+                                            "conversation_id": conversation_id_str,
                                         }),
                                     );
                                 }
@@ -278,6 +431,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "context_type": context_type,
                                             "context_id": context_id,
                                             "parent_tool_use_id": parent_tool_use_id,
+                                            "conversation_id": conversation_id_str,
                                         }),
                                     );
                                 }
@@ -295,8 +449,24 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "context_type": context_type,
                                             "context_id": context_id,
                                             "parent_tool_use_id": parent_tool_use_id,
+                                            "conversation_id": conversation_id_str,
                                         }),
                                     );
+
+                                    // Debounced flush after tool call completion
+                                    if assistant_message_id.is_some()
+                                        && last_flush.elapsed() >= FLUSH_INTERVAL
+                                    {
+                                        flush_teammate_message(
+                                            &chat_message_repo,
+                                            &assistant_message_id,
+                                            &processor.response_text,
+                                            &processor.tool_calls,
+                                            &processor.content_blocks,
+                                        )
+                                        .await;
+                                        last_flush = std::time::Instant::now();
+                                    }
                                 }
                                 StreamEvent::ToolResultReceived {
                                     tool_use_id,
@@ -314,6 +484,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "context_type": context_type,
                                             "context_id": context_id,
                                             "parent_tool_use_id": parent_tool_use_id,
+                                            "conversation_id": conversation_id_str,
                                         }),
                                     );
                                 }
@@ -420,6 +591,50 @@ pub fn start_teammate_stream<R: Runtime>(
                                     }
                                 }
                                 StreamEvent::TurnComplete { .. } => {
+                                    // Finalize assistant message with accumulated content
+                                    if let (Some(ref msg_repo), Some(ref msg_id)) =
+                                        (&chat_message_repo, &assistant_message_id)
+                                    {
+                                        let tool_calls_json =
+                                            serde_json::to_string(&processor.tool_calls).ok();
+                                        let content_blocks_json =
+                                            serde_json::to_string(&processor.content_blocks).ok();
+                                        let _ = msg_repo
+                                            .update_content(
+                                                &ChatMessageId::from_string(msg_id.clone()),
+                                                &processor.response_text,
+                                                tool_calls_json.as_deref(),
+                                                content_blocks_json.as_deref(),
+                                            )
+                                            .await;
+
+                                        // Emit agent:message_created so frontend can load from DB
+                                        if let Some(ref conv_id) = conversation_id_str {
+                                            let _ = app_handle.emit(
+                                                "agent:message_created",
+                                                serde_json::json!({
+                                                    "message_id": msg_id,
+                                                    "conversation_id": conv_id,
+                                                    "context_type": context_type,
+                                                    "context_id": context_id,
+                                                    "role": "orchestrator",
+                                                    "content": processor.response_text,
+                                                    "teammate_name": teammate_name,
+                                                }),
+                                            );
+                                        }
+                                    }
+
+                                    // Reset processor for next turn (preserves session_id)
+                                    processor.reset_for_next_turn();
+
+                                    // Clear assistant message — new one will be pre-created
+                                    // when next turn's content arrives
+                                    assistant_message_id = None;
+
+                                    // Reset running flag for next turn
+                                    has_emitted_running = false;
+
                                     // Fix A: Teammate went idle between turns — update status and emit events
                                     is_idle = true;
                                     let _ = team_tracker
@@ -435,6 +650,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                             "teammate_name": teammate_name,
                                             "context_type": context_type,
                                             "context_id": context_id,
+                                            "conversation_id": conversation_id_str,
                                         }),
                                     );
                                     team_events::emit_teammate_idle(
@@ -493,8 +709,6 @@ pub fn start_teammate_stream<R: Runtime>(
                                 }
                                 text_buffer.clear();
                             }
-                            // Reset running flag for next turn
-                            has_emitted_running = false;
                             // Extract cost_usd from result event
                             if let Some(cost) = raw.get("cost_usd").and_then(|c| c.as_f64()) {
                                 total_cost_usd += cost;
@@ -607,6 +821,16 @@ pub fn start_teammate_stream<R: Runtime>(
                         text_buffer.clear();
                     }
 
+                    // Finalize any remaining assistant message content
+                    flush_teammate_message(
+                        &chat_message_repo,
+                        &assistant_message_id,
+                        &processor.response_text,
+                        &processor.tool_calls,
+                        &processor.content_blocks,
+                    )
+                    .await;
+
                     // EOF — stdout closed, teammate process exited
                     tracing::info!(
                         teammate = %teammate_name,
@@ -640,6 +864,7 @@ pub fn start_teammate_stream<R: Runtime>(
                 "teammate_name": teammate_name,
                 "context_type": context_type,
                 "context_id": context_id,
+                "conversation_id": conversation_id_str,
             }),
         );
 
@@ -708,6 +933,30 @@ fn extract_assistant_usage(
         true
     } else {
         false
+    }
+}
+
+/// Flush accumulated content to the assistant message in the DB.
+///
+/// Mirrors the lead's `flush_content_before_error` pattern from `chat_service_streaming.rs`.
+async fn flush_teammate_message(
+    chat_message_repo: &Option<Arc<dyn ChatMessageRepository>>,
+    assistant_message_id: &Option<String>,
+    response_text: &str,
+    tool_calls: &[ToolCall],
+    content_blocks: &[ContentBlockItem],
+) {
+    if let (Some(ref repo), Some(ref msg_id)) = (chat_message_repo, assistant_message_id) {
+        let current_tools = serde_json::to_string(tool_calls).ok();
+        let current_blocks = serde_json::to_string(content_blocks).ok();
+        let _ = repo
+            .update_content(
+                &ChatMessageId::from_string(msg_id.clone()),
+                response_text,
+                current_tools.as_deref(),
+                current_blocks.as_deref(),
+            )
+            .await;
     }
 }
 
