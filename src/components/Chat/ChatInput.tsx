@@ -145,9 +145,7 @@ export function ChatInput({
     ? "Viewing historical state (read-only)"
     : questionMode
       ? `Type 1-${questionMode.optionCount} or a custom response...`
-      : isAgentRunning
-        ? `${placeholder} (will be queued)`
-        : placeholder;
+      : placeholder;
 
   // Auto-focus on mount if requested
   useEffect(() => {
@@ -295,9 +293,9 @@ export function ChatInput({
   return (
     <div data-testid="chat-input" className="flex flex-col">
       <div className="flex gap-2 items-end">
-        {/* Unified container: attachment icon + textarea share one input field */}
+        {/* Unified container: attachment icon + textarea + stop button share one input field */}
         <div
-          className="flex-1 flex items-center rounded-lg transition-colors"
+          className="flex-1 flex items-end rounded-lg transition-colors"
           style={{
             background: "hsl(220 10% 12%)",
             border: isFocused
@@ -307,7 +305,7 @@ export function ChatInput({
           }}
         >
           {enableAttachments && (
-            <div className="pl-1 flex-shrink-0">
+            <div className="pl-1 pb-1 flex-shrink-0">
               <ChatAttachmentPicker
                 {...(onFilesSelected !== undefined && { onFilesSelected })}
                 disabled={isReadOnly}
@@ -335,45 +333,40 @@ export function ChatInput({
               color: "hsl(220 10% 90%)",
               border: "none",
               minHeight: "36px",
-              maxHeight: "100px",
+              maxHeight: "120px",
               overflowY: "auto",
               boxShadow: "none",
               outline: "none",
             }}
           />
+
+          {/* Stop icon — inside container, right side, subtle icon only */}
+          {isAgentRunning && onStop && !isReadOnly && (
+            <div className="pr-1 pb-1 flex-shrink-0">
+              <button
+                data-testid="chat-input-stop"
+                type="button"
+                onClick={onStop}
+                aria-label="Stop agent"
+                className="p-1.5 rounded transition-colors"
+                style={{ color: "hsl(220 10% 40%)" }}
+                onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.currentTarget.style.color = "#ff6b35";
+                }}
+                onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
+                  e.currentTarget.style.color = "hsl(220 10% 40%)";
+                }}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+                  <rect x="3" y="3" width="10" height="10" rx="1" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Action buttons - Stop pill (when agent running) + Send (always) */}
-        <div className="flex gap-2 items-center">
-          {isAgentRunning && onStop && !isReadOnly && (
-            <button
-              data-testid="chat-input-stop"
-              type="button"
-              onClick={onStop}
-              aria-label="Stop agent"
-              className="shrink-0 h-[32px] px-3 rounded-full flex items-center gap-1.5 transition-colors"
-              style={{
-                background: "hsla(0 70% 55% / 0.15)",
-                color: "hsl(0 70% 55%)",
-                boxShadow: "none",
-              }}
-              onMouseEnter={(e: React.MouseEvent<HTMLButtonElement>) => {
-                e.currentTarget.style.background = "hsla(0 70% 55% / 0.3)";
-              }}
-              onMouseLeave={(e: React.MouseEvent<HTMLButtonElement>) => {
-                e.currentTarget.style.background = "hsla(0 70% 55% / 0.15)";
-              }}
-            >
-              <span
-                className="w-[6px] h-[6px] rounded-full animate-pulse"
-                style={{ background: "hsl(0 70% 55%)" }}
-              />
-              <svg width="10" height="10" viewBox="0 0 16 16" fill="currentColor">
-                <rect x="3" y="3" width="10" height="10" rx="1" />
-              </svg>
-              <span className="text-[11px] font-medium">Stop</span>
-            </button>
-          )}
+        {/* Send button */}
+        <div className="flex items-center">
           <button
             data-testid="chat-input-send"
             type="button"
