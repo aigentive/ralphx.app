@@ -387,6 +387,7 @@ export interface TeamCreatedPayload {
 export interface TeamTeammateSpawnedPayload {
   team_name: string; teammate_name: string; color: string;
   model: string; role: string; context_type: string; context_id: string;
+  conversation_id?: string | null;
 }
 
 export interface TeamTeammateIdlePayload {

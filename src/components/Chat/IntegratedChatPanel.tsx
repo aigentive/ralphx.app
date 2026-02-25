@@ -12,7 +12,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type VirtuosoHandle } from "react-virtuoso";
-import { useChat, chatKeys } from "@/hooks/useChat";
+import { useChat, useConversation, chatKeys } from "@/hooks/useChat";
 import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectIsSending } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
@@ -53,7 +53,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatAttachments } from "@/hooks/useChatAttachments";
 import { ideationApi } from "@/api/ideation";
 import { selectIsTeamActive } from "@/stores/chatStore";
-import { useTeamStore, selectTeammates, selectActiveTeam, type TeammateStatus } from "@/stores/teamStore";
+import { useTeamStore, selectTeammates, selectActiveTeam, selectTeammateByName, type TeammateStatus } from "@/stores/teamStore";
 import { useTeamEvents } from "@/hooks/useTeamEvents";
 import { useTeamActions } from "@/hooks/useTeamActions";
 import { TeamActivityPanel } from "./TeamActivityPanel";
@@ -187,6 +187,15 @@ export function IntegratedChatPanel({
   const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
   const sendTarget = teamFilter === "all" || teamFilter === "lead" || !teamFilter ? "lead" : teamFilter;
 
+  // Teammate tab: resolve the teammate's conversation_id for standard chat pipeline
+  const isTeammateTab = !!teamFilter && teamFilter !== "all" && teamFilter !== "lead";
+  const activeTeammateSelector = useMemo(
+    () => isTeammateTab ? selectTeammateByName(storeContextKey, teamFilter) : () => null,
+    [storeContextKey, teamFilter, isTeammateTab],
+  );
+  const activeTeammate = useTeamStore(activeTeammateSelector);
+  const teammateConversationId = isTeammateTab ? (activeTeammate?.conversationId ?? null) : null;
+
   // Track whether the team in this context is historical (hydrated from backend)
   const activeTeamSelector = useMemo(() => selectActiveTeam(storeContextKey), [storeContextKey]);
   const activeTeam = useTeamStore(activeTeamSelector);
@@ -241,7 +250,7 @@ export function IntegratedChatPanel({
             currentActivity: null,
             tokensUsed: mate.cost.input_tokens + mate.cost.output_tokens,
             estimatedCostUsd: mate.cost.estimated_usd,
-            streamingText: "",
+            conversationId: mate.conversation_id ?? null,
           });
         }
         setTeamActive(storeContextKey, true);
@@ -399,14 +408,24 @@ export function IntegratedChatPanel({
     clearAttachments,
   } = useChatAttachments(activeConversationId ?? "");
 
+  // Load teammate conversation messages when on a teammate tab
+  const teammateConversation = useConversation(teammateConversationId);
+
+  // Effective conversation ID: teammate's when on teammate tab, lead's otherwise
+  const effectiveConversationId = isTeammateTab ? teammateConversationId : activeConversationId;
+
   // Memoize messagesData to avoid dependency chain issues in useEffect hooks
   // No time-based filtering needed - we switch context types based on historical state
   const messagesData = useMemo(
-    () =>
-      activeConversationId && isConversationInCurrentContext
+    () => {
+      if (isTeammateTab) {
+        return teammateConversation.data?.messages ?? [];
+      }
+      return activeConversationId && isConversationInCurrentContext
         ? (activeConversation.data?.messages ?? [])
-        : [],
-    [activeConversationId, isConversationInCurrentContext, activeConversation.data?.messages]
+        : [];
+    },
+    [isTeammateTab, teammateConversation.data?.messages, activeConversationId, isConversationInCurrentContext, activeConversation.data?.messages]
   );
 
   // Debug logging for history mode
@@ -472,7 +491,7 @@ export function IntegratedChatPanel({
   }, [isTeamActive, teamActions, handleStopAgent, setStreamingToolCalls, setStreamingContentBlocks, setStreamingTasks]);
 
   useChatEvents({
-    activeConversationId,
+    activeConversationId: effectiveConversationId,
     contextId: currentContextId,
     contextType: currentContextType,
     setStreamingToolCalls,
@@ -678,7 +697,7 @@ export function IntegratedChatPanel({
             <ChatMessageList
               ref={virtuosoRef}
               messages={sortedMessages}
-              conversationId={activeConversationId}
+              conversationId={effectiveConversationId}
               failedRun={failedRunProp}
               onDismissFailedRun={setDismissedErrorId}
               isSending={isSending}

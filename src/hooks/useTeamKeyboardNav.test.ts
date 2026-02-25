@@ -55,7 +55,7 @@ function setupTeamWithTeammates(names: string[]) {
               currentActivity: null,
               tokensUsed: 0,
               estimatedCostUsd: 0,
-              streamingText: "",
+              conversationId: null,
             },
           ]),
         ),

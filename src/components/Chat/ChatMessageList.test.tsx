@@ -180,7 +180,6 @@ describe("ChatMessageList - Scroll Behavior", () => {
           {...defaultProps}
           isAgentRunning={true}
           streamingToolCalls={[]}
-          streamingText={undefined}
         />
       );
 
@@ -725,13 +724,12 @@ describe("ChatMessageList - Scroll Behavior", () => {
         />
       );
 
-      // Add streaming text
+      // Add streaming content
       rerender(
         <ChatMessageList
           {...defaultProps}
           isSending={true}
           streamingToolCalls={[{ id: "1", name: "Read", arguments: {} }]}
-          streamingText="Response..."
         />
       );
 

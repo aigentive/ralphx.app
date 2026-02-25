@@ -24,7 +24,7 @@ function makeMate(overrides?: Partial<TeammateState>): TeammateState {
     currentActivity: null,
     tokensUsed: 0,
     estimatedCostUsd: 0,
-    streamingText: "",
+    conversationId: null,
     ...overrides,
   };
 }

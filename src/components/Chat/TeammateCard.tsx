@@ -39,7 +39,7 @@ export const TeammateCard = React.memo(function TeammateCard({
   onMessage,
   onStop,
 }: TeammateCardProps) {
-  const { name, color, model, roleDescription, status, currentActivity, tokensUsed, estimatedCostUsd, streamingText } = teammate;
+  const { name, color, model, roleDescription, status, currentActivity, tokensUsed, estimatedCostUsd } = teammate;
   const statusConfig = STATUS_CONFIG[status];
   const isShutdown = status === "shutdown";
   const canStop = status === "running" || status === "idle";
@@ -94,21 +94,6 @@ export const TeammateCard = React.memo(function TeammateCard({
         <p className="text-[11px] mb-1 truncate" style={{ color: "hsl(220 10% 45%)" }}>
           {currentActivity}
         </p>
-      )}
-
-      {/* Streaming text — last ~200 chars of live output */}
-      {streamingText && status === "running" && (
-        <div
-          className="text-[10px] leading-tight mb-1 max-h-[3.5em] overflow-hidden"
-          style={{
-            color: "hsl(220 10% 40%)",
-            fontFamily: "SF Mono, ui-monospace, monospace",
-            whiteSpace: "pre-wrap",
-            wordBreak: "break-word",
-          }}
-        >
-          {streamingText.length > 200 ? `…${streamingText.slice(-200)}` : streamingText}
-        </div>
       )}
 
       {/* Cost */}

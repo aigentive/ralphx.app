@@ -38,8 +38,7 @@ export function useTeamEvents(contextKey: string | null) {
   const createTeam = useTeamStore((s) => s.createTeam);
   const addTeammate = useTeamStore((s) => s.addTeammate);
   const updateTeammateStatus = useTeamStore((s) => s.updateTeammateStatus);
-  const appendTeammateChunk = useTeamStore((s) => s.appendTeammateChunk);
-  const clearTeammateStream = useTeamStore((s) => s.clearTeammateStream);
+  const setTeammateConversationId = useTeamStore((s) => s.setTeammateConversationId);
   const updateTeammateCost = useTeamStore((s) => s.updateTeammateCost);
   const addTeamMessage = useTeamStore((s) => s.addTeamMessage);
   const disbandTeam = useTeamStore((s) => s.disbandTeam);
@@ -124,7 +123,7 @@ export function useTeamEvents(contextKey: string | null) {
             currentActivity: null,
             tokensUsed: 0,
             estimatedCostUsd: 0,
-            streamingText: "",
+            conversationId: payload.conversation_id ?? null,
           });
         }
       }),
@@ -140,14 +139,19 @@ export function useTeamEvents(contextKey: string | null) {
     const unsubs: Unsubscribe[] = [];
 
     // agent:run_started — route to teammate status when teammate_name present
+    // Also capture conversation_id if present (may arrive before team:teammate_spawned)
     unsubs.push(
       bus.subscribe<{
         context_type: string;
         context_id: string;
         teammate_name?: string | null;
+        conversation_id?: string | null;
       }>("agent:run_started", (payload) => {
         if (payload.teammate_name && matchKey(payload)) {
           updateTeammateStatus(contextKey, payload.teammate_name, "running");
+          if (payload.conversation_id) {
+            setTeammateConversationId(contextKey, payload.teammate_name, payload.conversation_id);
+          }
         }
       }),
     );
@@ -161,7 +165,6 @@ export function useTeamEvents(contextKey: string | null) {
       }>("agent:run_completed", (payload) => {
         if (payload.teammate_name && matchKey(payload)) {
           updateTeammateStatus(contextKey, payload.teammate_name, "idle");
-          clearTeammateStream(contextKey, payload.teammate_name);
         }
       }),
     );
@@ -219,20 +222,6 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
-    // agent:chunk — route teammate streaming text
-    unsubs.push(
-      bus.subscribe<{
-        context_type: string;
-        context_id: string;
-        teammate_name?: string | null;
-        text: string;
-      }>("agent:chunk", (payload) => {
-        if (payload.teammate_name && matchKey(payload)) {
-          appendTeammateChunk(contextKey, payload.teammate_name, payload.text);
-        }
-      }),
-    );
-
     // team:artifact_created — bump version counter so artifact lists refetch
     // Matches by session_id (which equals the context_id portion of contextKey)
     unsubs.push(
@@ -248,8 +237,8 @@ export function useTeamEvents(contextKey: string | null) {
     return () => unsubs.forEach((u) => u());
   }, [
     bus, contextKey, isTeamActive, matchKey,
-    updateTeammateStatus,
-    appendTeammateChunk, clearTeammateStream, updateTeammateCost,
+    updateTeammateStatus, setTeammateConversationId,
+    updateTeammateCost,
     addTeamMessage, bumpArtifactVersion,
   ]);
 }

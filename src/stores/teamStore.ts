@@ -25,7 +25,7 @@ export interface TeammateState {
   currentActivity: string | null;
   tokensUsed: number;
   estimatedCostUsd: number;
-  streamingText: string;
+  conversationId: string | null;
 }
 
 export interface TeamMessage {
@@ -77,8 +77,7 @@ interface TeamActions {
   createTeam: (contextKey: string, teamName: string, leadName: string) => void;
   addTeammate: (contextKey: string, teammate: TeammateState) => void;
   updateTeammateStatus: (contextKey: string, name: string, status: TeammateStatus, activity?: string) => void;
-  appendTeammateChunk: (contextKey: string, name: string, text: string) => void;
-  clearTeammateStream: (contextKey: string, name: string) => void;
+  setTeammateConversationId: (contextKey: string, name: string, conversationId: string) => void;
   updateTeammateCost: (contextKey: string, name: string, tokens: number, costUsd: number) => void;
   addTeamMessage: (contextKey: string, message: TeamMessage) => void;
   removeTeammate: (contextKey: string, name: string) => void;
@@ -141,7 +140,7 @@ export const useTeamStore = create<TeamState & TeamActions>()(
               currentActivity: activity ?? null,
               tokensUsed: 0,
               estimatedCostUsd: 0,
-              streamingText: "",
+              conversationId: null,
             };
             return;
           }
@@ -152,38 +151,13 @@ export const useTeamStore = create<TeamState & TeamActions>()(
         }
       }),
 
-    appendTeammateChunk: (contextKey, name, text) =>
-      set((state) => {
-        const team = state.activeTeams[contextKey];
-        if (!team) return;
-        if (!team.teammates[name]) {
-          // Auto-create teammate on first chunk — race condition guard.
-          // Handles the case where agent:chunk arrives before team:teammate_spawned
-          // (e.g. frontend was not mounted when the initial spawn event fired).
-          team.teammates[name] = {
-            name,
-            color: "#94a3b8",
-            model: "unknown",
-            roleDescription: "teammate",
-            status: "running",
-            currentActivity: null,
-            tokensUsed: 0,
-            estimatedCostUsd: 0,
-            streamingText: "",
-          };
-        }
-        const mate = team.teammates[name]!;
-        // eslint-disable-next-line no-control-regex
-        mate.streamingText += text.replace(/\u001b\[[0-9;]*[A-Za-z]/g, "");
-      }),
-
-    clearTeammateStream: (contextKey, name) =>
+    setTeammateConversationId: (contextKey, name, conversationId) =>
       set((state) => {
         const team = state.activeTeams[contextKey];
         if (team) {
           const mate = team.teammates[name];
           if (mate) {
-            mate.streamingText = "";
+            mate.conversationId = conversationId;
           }
         }
       }),
@@ -276,7 +250,7 @@ export const useTeamStore = create<TeamState & TeamActions>()(
             currentActivity: null,
             tokensUsed: tokens,
             estimatedCostUsd: snap.cost.estimated_usd,
-            streamingText: "",
+            conversationId: null,
           };
         }
 

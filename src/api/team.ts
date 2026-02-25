@@ -32,6 +32,7 @@ export const TeammateStatusSchema = z.object({
   cost: TeammateCostSchema,
   spawned_at: z.string(),
   last_activity_at: z.string(),
+  conversation_id: z.string().nullable().optional(),
 });
 
 export const TeamMessageSchema = z.object({

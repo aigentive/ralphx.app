@@ -22,7 +22,7 @@ function makeTeammate(overrides: Partial<TeammateState> = {}): TeammateState {
     currentActivity: null,
     tokensUsed: 0,
     estimatedCostUsd: 0,
-    streamingText: "",
+    conversationId: null,
     ...overrides,
   };
 }
@@ -126,61 +126,23 @@ describe("teamStore", () => {
     });
   });
 
-  // ── appendTeammateChunk ─────────────────────────────────────────
+  // ── setTeammateConversationId ───────────────────────────────────
 
-  describe("appendTeammateChunk", () => {
-    it("appends streaming text", () => {
+  describe("setTeammateConversationId", () => {
+    it("sets conversation ID on teammate", () => {
       useTeamStore.getState().createTeam(CONTEXT_KEY, "team", "lead");
       useTeamStore.getState().addTeammate(CONTEXT_KEY, makeTeammate({ name: "coder-1" }));
 
-      useTeamStore.getState().appendTeammateChunk(CONTEXT_KEY, "coder-1", "Hello ");
-      useTeamStore.getState().appendTeammateChunk(CONTEXT_KEY, "coder-1", "World");
+      useTeamStore.getState().setTeammateConversationId(CONTEXT_KEY, "coder-1", "conv-123");
 
       const mate = useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["coder-1"]!;
-      expect(mate.streamingText).toBe("Hello World");
+      expect(mate.conversationId).toBe("conv-123");
     });
 
-    it("auto-creates teammate on first chunk if not yet registered (race condition guard)", () => {
+    it("does nothing if teammate does not exist", () => {
       useTeamStore.getState().createTeam(CONTEXT_KEY, "team", "lead");
-      // Intentionally skip addTeammate to simulate agent:chunk arriving before team:teammate_spawned
-
-      useTeamStore.getState().appendTeammateChunk(CONTEXT_KEY, "late-mate", "Hello");
-
-      const team = useTeamStore.getState().activeTeams[CONTEXT_KEY]!;
-      expect(team.teammates["late-mate"]).toBeDefined();
-      expect(team.teammates["late-mate"]!.name).toBe("late-mate");
-      expect(team.teammates["late-mate"]!.streamingText).toBe("Hello");
-      expect(team.teammates["late-mate"]!.status).toBe("running");
-    });
-
-    it("continues appending after auto-create", () => {
-      useTeamStore.getState().createTeam(CONTEXT_KEY, "team", "lead");
-
-      useTeamStore.getState().appendTeammateChunk(CONTEXT_KEY, "late-mate", "Part 1 ");
-      useTeamStore.getState().appendTeammateChunk(CONTEXT_KEY, "late-mate", "Part 2");
-
-      const mate = useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["late-mate"]!;
-      expect(mate.streamingText).toBe("Part 1 Part 2");
-    });
-
-    it("does nothing if team does not exist", () => {
-      useTeamStore.getState().appendTeammateChunk("nonexistent", "mate", "text");
-      expect(useTeamStore.getState().activeTeams["nonexistent"]).toBeUndefined();
-    });
-  });
-
-  // ── clearTeammateStream ─────────────────────────────────────────
-
-  describe("clearTeammateStream", () => {
-    it("clears streaming text", () => {
-      useTeamStore.getState().createTeam(CONTEXT_KEY, "team", "lead");
-      useTeamStore.getState().addTeammate(CONTEXT_KEY, makeTeammate({ name: "coder-1" }));
-      useTeamStore.getState().appendTeammateChunk(CONTEXT_KEY, "coder-1", "some text");
-
-      useTeamStore.getState().clearTeammateStream(CONTEXT_KEY, "coder-1");
-
-      const mate = useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["coder-1"]!;
-      expect(mate.streamingText).toBe("");
+      useTeamStore.getState().setTeammateConversationId(CONTEXT_KEY, "nonexistent", "conv-123");
+      expect(useTeamStore.getState().activeTeams[CONTEXT_KEY]!.teammates["nonexistent"]).toBeUndefined();
     });
   });
 
