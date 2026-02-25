@@ -184,11 +184,11 @@ export function IntegratedChatPanel({
   const teammatesSelector = useMemo(() => selectTeammates(storeContextKey), [storeContextKey]);
   const teammates = useTeamStore(teammatesSelector);
   const pendingPlan = useTeamStore((s) => s.pendingPlans[storeContextKey]);
-  const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
-  const sendTarget = teamFilter === "all" || teamFilter === "lead" || !teamFilter ? "lead" : teamFilter;
+  const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("lead");
+  const sendTarget = teamFilter === "lead" || !teamFilter ? "lead" : teamFilter;
 
   // Teammate tab: resolve the teammate's conversation_id for standard chat pipeline
-  const isTeammateTab = !!teamFilter && teamFilter !== "all" && teamFilter !== "lead";
+  const isTeammateTab = !!teamFilter && teamFilter !== "lead";
   const activeTeammateSelector = useMemo(
     () => isTeammateTab ? selectTeammateByName(storeContextKey, teamFilter) : () => null,
     [storeContextKey, teamFilter, isTeammateTab],

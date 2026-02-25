@@ -214,8 +214,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const teammatesSelector = useMemo(() => selectTeammates(contextKey), [contextKey]);
   const teammates = useTeamStore(teammatesSelector);
   const pendingPlan = useTeamStore((s) => s.pendingPlans[contextKey]);
-  const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("all");
-  const sendTarget = teamFilter === "all" || teamFilter === "lead" || !teamFilter ? "lead" : teamFilter;
+  const [teamFilter, setTeamFilter] = useState<TeamFilterValue>("lead");
+  const sendTarget = teamFilter === "lead" || !teamFilter ? "lead" : teamFilter;
 
   // Track whether the team in this context is historical
   const activeTeamSelector = useMemo(() => selectActiveTeam(contextKey), [contextKey]);

@@ -23,12 +23,12 @@ function makeTeammate(overrides: Partial<TeammateState> = {}): TeammateState {
 }
 
 describe("TeamFilterTabs", () => {
-  it("renders All and Lead tabs", () => {
+  it("renders Lead tab (no All tab)", () => {
     render(
-      <TeamFilterTabs teammates={[]} activeFilter="all" onFilterChange={vi.fn()} />,
+      <TeamFilterTabs teammates={[]} activeFilter="lead" onFilterChange={vi.fn()} />,
     );
-    expect(screen.getByText("All")).toBeInTheDocument();
     expect(screen.getByText("Lead")).toBeInTheDocument();
+    expect(screen.queryByText("All")).not.toBeInTheDocument();
   });
 
   it("renders teammate tabs with names", () => {
@@ -37,25 +37,16 @@ describe("TeamFilterTabs", () => {
       makeTeammate({ name: "coder-2", color: "#10b981" }),
     ];
     render(
-      <TeamFilterTabs teammates={teammates} activeFilter="all" onFilterChange={vi.fn()} />,
+      <TeamFilterTabs teammates={teammates} activeFilter="lead" onFilterChange={vi.fn()} />,
     );
     expect(screen.getByText("coder-1")).toBeInTheDocument();
     expect(screen.getByText("coder-2")).toBeInTheDocument();
   });
 
-  it("calls onFilterChange with 'all' when All clicked", () => {
-    const onChange = vi.fn();
-    render(
-      <TeamFilterTabs teammates={[]} activeFilter="lead" onFilterChange={onChange} />,
-    );
-    fireEvent.click(screen.getByText("All"));
-    expect(onChange).toHaveBeenCalledWith("all");
-  });
-
   it("calls onFilterChange with 'lead' when Lead clicked", () => {
     const onChange = vi.fn();
     render(
-      <TeamFilterTabs teammates={[]} activeFilter="all" onFilterChange={onChange} />,
+      <TeamFilterTabs teammates={[]} activeFilter="lead" onFilterChange={onChange} />,
     );
     fireEvent.click(screen.getByText("Lead"));
     expect(onChange).toHaveBeenCalledWith("lead");
@@ -65,7 +56,7 @@ describe("TeamFilterTabs", () => {
     const onChange = vi.fn();
     const teammates = [makeTeammate({ name: "coder-1" })];
     render(
-      <TeamFilterTabs teammates={teammates} activeFilter="all" onFilterChange={onChange} />,
+      <TeamFilterTabs teammates={teammates} activeFilter="lead" onFilterChange={onChange} />,
     );
     fireEvent.click(screen.getByText("coder-1"));
     expect(onChange).toHaveBeenCalledWith("coder-1");
@@ -74,7 +65,7 @@ describe("TeamFilterTabs", () => {
   it("renders color dot for teammate tabs", () => {
     const teammates = [makeTeammate({ name: "coder-1", color: "#3b82f6" })];
     const { container } = render(
-      <TeamFilterTabs teammates={teammates} activeFilter="all" onFilterChange={vi.fn()} />,
+      <TeamFilterTabs teammates={teammates} activeFilter="lead" onFilterChange={vi.fn()} />,
     );
     const dots = container.querySelectorAll("span.rounded-full");
     expect(dots.length).toBeGreaterThanOrEqual(1);

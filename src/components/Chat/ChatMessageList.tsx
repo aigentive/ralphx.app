@@ -98,7 +98,7 @@ interface ChatMessageListProps {
   /** Whether the conversation is finalizing (between message_created and query refetch) */
   isFinalizing?: boolean;
   /** Team filter for message filtering (team mode) */
-  teamFilter?: "all" | "lead" | string | undefined;
+  teamFilter?: "lead" | string | undefined;
   /** Context key for team store lookup (team mode) */
   contextKey?: string | undefined;
 }
@@ -286,7 +286,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
       // Interleave team system messages (filtered by teammate tab)
       if (teamMessages.length > 0) {
-        const filteredTeamMsgs = teamFilter && teamFilter !== "all"
+        const filteredTeamMsgs = teamFilter
           ? teamMessages.filter((msg) => {
               if (teamFilter === "lead") {
                 return msg.from === "lead" || msg.to === "lead" || msg.from === "system" || msg.from === "user";
@@ -413,7 +413,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
-    const isFilteredTabEmpty = teamFilter && teamFilter !== "all" && timeline.length === 0 && messages.length > 0;
+    const isFilteredTabEmpty = teamFilter && teamFilter !== "lead" && timeline.length === 0 && messages.length > 0;
     const emptyTabLabel = isFilteredTabEmpty
       ? (teamFilter === "lead" ? "Lead" : teamFilter)
       : null;
