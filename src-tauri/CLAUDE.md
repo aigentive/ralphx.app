@@ -29,6 +29,19 @@ src-tauri/src/
 Commands (Tauri IPC) → Application Services → Domain Layer ← NO INFRA DEPS → Infrastructure
 ```
 
+### Dual AppState — Shared In-Memory State (CRITICAL)
+
+`lib.rs` creates TWO `AppState` instances: one for Tauri commands, one for the HTTP/MCP server. They have **separate DB connections** but MUST share in-memory state. When adding new in-memory state to `AppState`, you MUST share it in `lib.rs:200-208` or the HTTP server and Tauri commands will operate on different data.
+
+| Shared State | Purpose | What Breaks If Not Shared |
+|---|---|---|
+| `question_state` | MCP question/answer flow | MCP questions never reach Tauri UI |
+| `permission_state` | MCP permission requests | Permission prompts never shown |
+| `message_queue` | Queued chat messages | Messages lost between IPC/HTTP |
+| `interactive_process_registry` | Lead stdin handles for nudging | Teammate→lead nudge fails (different HashMap) |
+
+**Rule:** Any `Arc<T>` field on `AppState` that coordinates between Tauri commands and HTTP handlers MUST be cloned from the primary AppState to the HTTP AppState in `lib.rs`. ❌ Relying on `new_production()` defaults — each call creates independent instances.
+
 ## Patterns
 
 ### Repository Pattern
