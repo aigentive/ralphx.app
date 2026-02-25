@@ -53,7 +53,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useChatAttachments } from "@/hooks/useChatAttachments";
 import { ideationApi } from "@/api/ideation";
 import { selectIsTeamActive } from "@/stores/chatStore";
-import { useTeamStore, selectTeammates, selectActiveTeam } from "@/stores/teamStore";
+import { useTeamStore, selectTeammates, selectActiveTeam, type TeammateStatus } from "@/stores/teamStore";
 import { useTeamEvents } from "@/hooks/useTeamEvents";
 import { useTeamActions } from "@/hooks/useTeamActions";
 import { TeamActivityPanel } from "./TeamActivityPanel";
@@ -63,6 +63,7 @@ import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { TeamFilterTabs, type TeamFilterValue } from "./TeamFilterTabs";
 import { TargetSelector, type TargetValue } from "./TargetSelector";
 import { useTeamHistory } from "@/hooks/useTeamHistory";
+import { getTeamStatus } from "@/api/team";
 
 // Stable empty array to avoid new reference on every render when tasks query returns undefined
 const EMPTY_TASKS: never[] = [];
@@ -195,16 +196,65 @@ export function IntegratedChatPanel({
   // Team events subscription — always pass contextKey so team:created is never missed
   useTeamEvents(storeContextKey);
 
-  // Hydrate historical team activity when no live team is active
+  // Rehydrate team state on mount — handles both live and historical teams.
+  // If the user navigated away and missed the team:created event, isTeamActive
+  // and teamName are unset. We query the most recent session from history:
+  //   - disbandedAt === null → team still active → fetch live status and hydrate as live
+  //     (unlocks Effect 2 in useTeamEvents and useTeamStatus polling)
+  //   - disbandedAt !== null → team done → hydrate as historical
   const { data: teamHistory } = useTeamHistory(currentContextType, currentContextId);
   const hydrateFromHistory = useTeamStore((s) => s.hydrateFromHistory);
+  const createTeam = useTeamStore((s) => s.createTeam);
+  const addTeammate = useTeamStore((s) => s.addTeammate);
   const setTeamActive = useChatStore((s) => s.setTeamActive);
 
   useEffect(() => {
     if (!teamHistory?.session || isTeamActive) return;
-    hydrateFromHistory(storeContextKey, teamHistory);
-    setTeamActive(storeContextKey, true);
-  }, [teamHistory, isTeamActive, storeContextKey, hydrateFromHistory, setTeamActive]);
+
+    const session = teamHistory.session;
+
+    if (session.disbandedAt) {
+      // Team is disbanded — hydrate as historical view
+      hydrateFromHistory(storeContextKey, teamHistory);
+      setTeamActive(storeContextKey, true);
+      return;
+    }
+
+    // Team still active in backend — rehydrate as live
+    let cancelled = false;
+    void getTeamStatus(session.teamName)
+      .then((liveStatus) => {
+        if (cancelled) return;
+        if (!liveStatus) {
+          // Team no longer in live tracker (e.g. app restarted) — fall back to historical
+          hydrateFromHistory(storeContextKey, teamHistory);
+          setTeamActive(storeContextKey, true);
+          return;
+        }
+        createTeam(storeContextKey, liveStatus.name, liveStatus.lead_name ?? liveStatus.name);
+        for (const mate of liveStatus.teammates) {
+          addTeammate(storeContextKey, {
+            name: mate.name,
+            color: mate.color,
+            model: mate.model,
+            roleDescription: mate.role,
+            status: (mate.status as TeammateStatus) || "idle",
+            currentActivity: null,
+            tokensUsed: mate.cost.input_tokens + mate.cost.output_tokens,
+            estimatedCostUsd: mate.cost.estimated_usd,
+            streamingText: "",
+          });
+        }
+        setTeamActive(storeContextKey, true);
+      })
+      .catch(() => {
+        if (cancelled) return;
+        // On error fetching live status, fall back to historical
+        hydrateFromHistory(storeContextKey, teamHistory);
+        setTeamActive(storeContextKey, true);
+      });
+    return () => { cancelled = true; };
+  }, [teamHistory, isTeamActive, storeContextKey, hydrateFromHistory, setTeamActive, createTeam, addTeammate]);
 
   // Team actions
   const teamActions = useTeamActions(
