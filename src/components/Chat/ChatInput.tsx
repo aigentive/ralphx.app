@@ -285,6 +285,9 @@ export function ChatInput({
     [handleSend, value, hasQueuedMessages, onEditLastQueued]
   );
 
+  // Track focus state for unified container border highlight
+  const [isFocused, setIsFocused] = useState(false);
+
   // Allow typing and queueing when agent is running, but not in read-only mode
   const isDisabled = isReadOnly || (isSending && !isAgentRunning);
   const canSend = value.trim().length > 0 && !isReadOnly && (!isSending || isAgentRunning);
@@ -292,38 +295,53 @@ export function ChatInput({
   return (
     <div data-testid="chat-input" className="flex flex-col">
       <div className="flex gap-2 items-end">
-        {/* Attachment Picker - to the left of textarea */}
-        {enableAttachments && (
-          <ChatAttachmentPicker
-            {...(onFilesSelected !== undefined && { onFilesSelected })}
-            disabled={isReadOnly}
-          />
-        )}
-
-        {/* Textarea - macOS Tahoe flat styling */}
-        <textarea
-          ref={textareaRef}
-          data-testid="chat-input-textarea"
-          value={value}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          disabled={isDisabled}
-          placeholder={effectivePlaceholder}
-          rows={1}
-          aria-label="Message input"
-          className="flex-1 px-3 py-2 text-[13px] resize-none rounded-lg outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0"
+        {/* Unified container: attachment icon + textarea share one input field */}
+        <div
+          className="flex-1 flex items-center rounded-lg transition-colors"
           style={{
-            /* macOS Tahoe: flat solid color, no gradient */
             background: "hsl(220 10% 12%)",
-            color: "hsl(220 10% 90%)",
-            border: "none",
+            border: isFocused
+              ? "1px solid hsla(14 100% 60% / 0.5)"
+              : "1px solid hsl(220 10% 18%)",
             minHeight: "38px",
-            maxHeight: "100px",
-            overflowY: "auto",
-            boxShadow: "none",
-            outline: "none",
           }}
-        />
+        >
+          {enableAttachments && (
+            <div className="pl-1 flex-shrink-0">
+              <ChatAttachmentPicker
+                {...(onFilesSelected !== undefined && { onFilesSelected })}
+                disabled={isReadOnly}
+                subtle={true}
+              />
+            </div>
+          )}
+
+          {/* Textarea - transparent inside the unified container */}
+          <textarea
+            ref={textareaRef}
+            data-testid="chat-input-textarea"
+            value={value}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setIsFocused(true)}
+            onBlur={() => setIsFocused(false)}
+            disabled={isDisabled}
+            placeholder={effectivePlaceholder}
+            rows={1}
+            aria-label="Message input"
+            className="flex-1 px-3 py-2 text-[13px] resize-none outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 focus:border-0"
+            style={{
+              background: "transparent",
+              color: "hsl(220 10% 90%)",
+              border: "none",
+              minHeight: "36px",
+              maxHeight: "100px",
+              overflowY: "auto",
+              boxShadow: "none",
+              outline: "none",
+            }}
+          />
+        </div>
 
         {/* Action buttons - Stop pill (when agent running) + Send (always) */}
         <div className="flex gap-2 items-center">

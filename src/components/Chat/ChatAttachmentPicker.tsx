@@ -24,6 +24,8 @@ export interface ChatAttachmentPickerProps {
   maxFiles?: number;
   /** Maximum file size in bytes (default 10MB) */
   maxFileSize?: number;
+  /** Subtle mode: icon-only, no orange fill — for use inside a unified input container */
+  subtle?: boolean;
 }
 
 // ============================================================================
@@ -62,6 +64,7 @@ export function ChatAttachmentPicker({
   disabled = false,
   maxFiles = DEFAULT_MAX_FILES,
   maxFileSize = DEFAULT_MAX_FILE_SIZE,
+  subtle = false,
 }: ChatAttachmentPickerProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragging, setIsDragging] = useState(false);
@@ -195,17 +198,24 @@ export function ChatAttachmentPicker({
           onClick={handleButtonClick}
           disabled={disabled}
           aria-label="Attach files"
-          className="rounded-lg transition-colors disabled:opacity-40 shrink-0 w-[38px] h-[38px] flex items-center justify-center hover:brightness-110"
-          style={{
-            /* macOS Tahoe: flat solid color */
-            background: disabled
-              ? "hsla(14 100% 60% / 0.3)"
-              : "hsl(14 100% 60%)",
-            color: "white",
-            boxShadow: "none",
-          }}
+          className={
+            subtle
+              ? "rounded transition-all disabled:opacity-40 shrink-0 w-[30px] h-[30px] flex items-center justify-center"
+              : "rounded-lg transition-colors disabled:opacity-40 shrink-0 w-[38px] h-[38px] flex items-center justify-center hover:brightness-110"
+          }
+          style={
+            subtle
+              ? { background: "transparent", color: "hsl(220 10% 45%)", boxShadow: "none" }
+              : {
+                  background: disabled ? "hsla(14 100% 60% / 0.3)" : "hsl(14 100% 60%)",
+                  color: "white",
+                  boxShadow: "none",
+                }
+          }
+          onMouseEnter={subtle && !disabled ? (e) => { e.currentTarget.style.color = "hsl(14 100% 60%)"; } : undefined}
+          onMouseLeave={subtle ? (e) => { e.currentTarget.style.color = "hsl(220 10% 45%)"; } : undefined}
         >
-          <Paperclip size={16} />
+          <Paperclip size={subtle ? 15 : 16} />
         </button>
 
         {/* Drop overlay - shown when dragging files over zone */}
