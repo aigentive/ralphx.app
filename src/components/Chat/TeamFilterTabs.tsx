@@ -8,9 +8,18 @@
 
 import React from "react";
 import { cn } from "@/lib/utils";
-import type { TeammateState } from "@/stores/teamStore";
+import type { TeammateState, TeammateStatus } from "@/stores/teamStore";
 
 export type TeamFilterValue = "all" | "lead" | string;
+
+const STATUS_DOT_COLORS: Record<TeammateStatus, string> = {
+  running: "hsl(142 71% 45%)",
+  spawning: "hsl(142 71% 45%)",
+  idle: "hsl(48 96% 53%)",
+  completed: "hsl(220 10% 40%)",
+  shutdown: "hsl(220 10% 40%)",
+  failed: "hsl(220 10% 40%)",
+};
 
 interface TeamFilterTabsProps {
   teammates: TeammateState[];
@@ -27,7 +36,7 @@ export const TeamFilterTabs = React.memo(function TeamFilterTabs({
     <div
       className="flex items-center gap-1 px-3 py-1.5 overflow-x-auto shrink-0"
       style={{
-        borderBottom: "1px solid hsl(220 10% 14%)",
+        borderTop: "1px solid hsl(220 10% 14%)",
       }}
     >
       {/* All tab */}
@@ -47,7 +56,7 @@ export const TeamFilterTabs = React.memo(function TeamFilterTabs({
         <FilterChip
           key={mate.name}
           label={mate.name}
-          color={mate.color}
+          color={STATUS_DOT_COLORS[mate.status]}
           isActive={activeFilter === mate.name}
           onClick={() => onFilterChange(mate.name)}
         />
