@@ -25,7 +25,9 @@ import type { Task } from "@/types/task";
 import type { ContextType } from "@/types/chat-conversation";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
+import { Square } from "lucide-react";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
+import { Button } from "@/components/ui/button";
 import { ConversationSelector } from "./ConversationSelector";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { ChatInput } from "./ChatInput";
@@ -731,9 +733,6 @@ export function IntegratedChatPanel({
               onStopTeammate={(name) => {
                 teamActions.stopTeammate.mutate(name);
               }}
-              onStopAll={() => {
-                teamActions.stopTeam.mutate();
-              }}
             />
           )}
 
@@ -785,14 +784,28 @@ export function IntegratedChatPanel({
               />
             )}
 
-            {/* Target Selector (team mode only) */}
+            {/* Compact toolbar: Target Selector + Stop All (team mode only) */}
             {isTeamActive && teammates.length > 0 && !isHistoryMode && (
-              <div className="px-3 pt-2">
+              <div
+                className="flex items-center justify-between px-3 py-1.5"
+                style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.04)" }}
+              >
                 <TargetSelector
                   teammates={teammates}
                   value={sendTarget}
                   onChange={setSendTarget}
                 />
+                {teammates.some((m) => m.status !== "shutdown") && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => teamActions.stopTeam.mutate()}
+                    className="text-[11px] h-6 gap-1 px-2"
+                  >
+                    <Square className="w-3 h-3" />
+                    Stop All
+                  </Button>
+                )}
               </div>
             )}
 
@@ -816,7 +829,7 @@ export function IntegratedChatPanel({
                         ? "Ask about this task..."
                         : "Send a message..."
                 }
-                showHelperText={showHelperTextAlways || queuedMessages.length > 0 || !!activeQuestion}
+                showHelperText={showHelperTextAlways}
                 {...(activeQuestion ? {
                   value: questionInputValue,
                   onChange: setQuestionInputValue,

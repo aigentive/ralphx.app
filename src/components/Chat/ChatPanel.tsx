@@ -20,6 +20,7 @@ import {
   PanelRightClose,
   PanelRightOpen,
   Hammer,
+  Square,
 } from "lucide-react";
 import { AGENT_WORKER } from "@/constants/agents";
 import { StatusActivityBadge, type AgentType } from "./StatusActivityBadge";
@@ -599,9 +600,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             onStopTeammate={(name) => {
               teamActions.stopTeammate.mutate(name);
             }}
-            onStopAll={() => {
-              teamActions.stopTeam.mutate();
-            }}
           />
         )}
 
@@ -631,14 +629,28 @@ function ChatPanelContent({ context }: ChatPanelProps) {
             />
           )}
 
-          {/* Target Selector (team mode only) */}
+          {/* Compact toolbar: Target Selector + Stop All (team mode only) */}
           {isTeamActive && teammates.length > 0 && (
-            <div className="px-3 pt-2">
+            <div
+              className="flex items-center justify-between px-3 py-1.5"
+              style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.04)" }}
+            >
               <TargetSelector
                 teammates={teammates}
                 value={sendTarget}
                 onChange={setSendTarget}
               />
+              {teammates.some((m) => m.status !== "shutdown") && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => teamActions.stopTeam.mutate()}
+                  className="text-[11px] h-6 gap-1 px-2"
+                >
+                  <Square className="w-3 h-3" />
+                  Stop All
+                </Button>
+              )}
             </div>
           )}
 
@@ -657,7 +669,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                   ? "Message worker... (will be sent when current response completes)"
                   : "Send a message..."
               }
-              showHelperText={queuedMessages.length > 0 || !!activeQuestion}
+              showHelperText={false}
               enableAttachments={true}
               attachments={attachments}
               onFilesSelected={uploadFiles}
