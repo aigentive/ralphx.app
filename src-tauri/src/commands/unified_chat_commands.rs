@@ -19,7 +19,7 @@ use tauri::State;
 
 use crate::application::{AppState, ChatService, ClaudeChatService, SendResult};
 use crate::commands::ExecutionState;
-use crate::domain::entities::{ChatContextType, ChatConversation, IdeationSessionId};
+use crate::domain::entities::{ChatContextType, ChatConversation, IdeationSessionId, TaskId};
 use crate::domain::services::QueuedMessage;
 
 // ============================================================================
@@ -231,6 +231,26 @@ pub async fn send_agent_message(
         let session_id = IdeationSessionId::from_string(&input.context_id);
         if let Ok(Some(session)) = state.ideation_session_repo.get_by_id(&session_id).await {
             let is_team = session.team_mode.as_deref().is_some_and(|m| m != "solo");
+            if is_team {
+                service = service.with_team_mode(true);
+            }
+        }
+    }
+
+    // For execution contexts, check if the task's metadata has agent_variant = "team"
+    if context_type == ChatContextType::TaskExecution {
+        let task_id = TaskId::from_string(input.context_id.clone());
+        if let Ok(Some(task)) = state.task_repo.get_by_id(&task_id).await {
+            let is_team = task
+                .metadata
+                .as_ref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .and_then(|meta| {
+                    meta.get("agent_variant")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s == "team")
+                })
+                .unwrap_or(false);
             if is_team {
                 service = service.with_team_mode(true);
             }
