@@ -243,10 +243,12 @@ export function ChatInput({
       await onSend(trimmedValue);
     } else if (isAgentRunning && onQueue) {
       // Agent running, no question — queue the message
+      console.info("[ChatInput] QUEUE path: isAgentRunning=true, routing to onQueue");
       onQueue(trimmedValue);
       clearInput();
     } else {
       // Normal send flow - clear immediately, don't wait for response
+      console.info("[ChatInput] SEND path: isAgentRunning=%s, hasOnQueue=%s", isAgentRunning, !!onQueue);
       clearInput();
       try {
         await onSend(trimmedValue);

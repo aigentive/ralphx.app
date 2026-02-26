@@ -217,6 +217,13 @@ pub async fn send_agent_message(
     team_service: State<'_, std::sync::Arc<crate::application::TeamService>>,
     app: tauri::AppHandle,
 ) -> Result<SendAgentMessageResponse, String> {
+    tracing::info!(
+        context_type = %input.context_type,
+        context_id = %input.context_id,
+        content_len = input.content.len(),
+        target = ?input.target,
+        "[SEND_MSG] send_agent_message command invoked"
+    );
     let context_type = parse_context_type(&input.context_type)?;
 
     let mut service = create_chat_service(
@@ -319,6 +326,12 @@ pub async fn queue_agent_message(
     execution_state: State<'_, Arc<ExecutionState>>,
     app: tauri::AppHandle,
 ) -> Result<QueuedMessageResponse, String> {
+    tracing::info!(
+        context_type = %input.context_type,
+        context_id = %input.context_id,
+        content_len = input.content.len(),
+        "[QUEUE_MSG] queue_agent_message command invoked"
+    );
     let context_type = parse_context_type(&input.context_type)?;
 
     let service = create_chat_service(&state, app, &execution_state, None);

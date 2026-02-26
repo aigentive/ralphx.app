@@ -557,7 +557,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         context_id: &str,
         message: &str,
     ) -> Result<SendResult, ChatServiceError> {
-        tracing::debug!(
+        tracing::info!(
             %context_type,
             context_id,
             message_len = message.len(),
@@ -578,7 +578,20 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         //     The Claude CLI handles internal queuing of messages sent mid-turn.
         let interactive_key =
             InteractiveProcessKey::new(context_type.to_string(), context_id);
-        if self.ipr().has_process(&interactive_key).await {
+        let ipr_ref = self.ipr();
+        let has_ipr_entry = ipr_ref.has_process(&interactive_key).await;
+        tracing::info!(
+            %context_type,
+            context_id,
+            gate = "GATE_1_IPR",
+            has_ipr_entry,
+            "[GATE_TRACE] Gate 1 (IPR lookup)"
+        );
+        if !has_ipr_entry {
+            // Diagnostic: dump all registered IPR keys when lookup fails
+            ipr_ref.log_registered_keys("GATE_1_MISS").await;
+        }
+        if has_ipr_entry {
             tracing::info!(
                 %context_type,
                 context_id,
@@ -680,6 +693,12 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         let run_chain_id = agent_run.run_chain_id.clone();
 
         let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
+        tracing::info!(
+            %context_type,
+            context_id,
+            gate = "GATE_2_REGISTRY",
+            "[GATE_TRACE] Gate 2 (running_agent_registry.try_register)"
+        );
         if let Err(_existing) = self
             .running_agent_registry
             .try_register(
@@ -692,7 +711,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             tracing::warn!(
                 %context_type,
                 context_id,
-                "chat_service.send_message agent already running — auto-queuing message"
+                gate = "GATE_2_BLOCKED",
+                existing_pid = _existing.pid,
+                existing_run_id = %_existing.agent_run_id,
+                "[GATE_TRACE] Gate 2 blocked — agent already running, queuing message"
             );
             let queued = self
                 .message_queue
@@ -713,6 +735,12 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
 
         // From here on, we hold the agent slot. Any early return must unregister.
+        tracing::warn!(
+            %context_type,
+            context_id,
+            gate = "GATE_3_SPAWN",
+            "[GATE_TRACE] Gate 3 reached — no IPR entry, no running agent. Will spawn new process."
+        );
         let mut running_incremented = false;
 
         // Cleanup macro: unregisters slot + decrements running count on failure.
