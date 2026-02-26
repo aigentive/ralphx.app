@@ -1243,6 +1243,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     execution_state: &self.execution_state,
                     plan_branch_repo: &self.plan_branch_repo,
                     app_handle: self.app_handle.as_ref(),
+                    interactive_process_registry: &None,
                 };
                 reconcile_merge_auto_complete(&merge_ctx).await;
                 true

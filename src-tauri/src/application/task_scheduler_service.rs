@@ -37,7 +37,7 @@ use crate::domain::repositories::{
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 
-use super::TaskTransitionService;
+use super::{InteractiveProcessRegistry, TaskTransitionService};
 use crate::domain::state_machine::transition_handler::{get_trigger_origin, set_trigger_origin};
 
 /// Production implementation of TaskScheduler for auto-scheduling Ready tasks.
@@ -64,6 +64,8 @@ pub struct TaskSchedulerService<R: Runtime = tauri::Wry> {
     app_handle: Option<AppHandle<R>>,
     /// Optional plan branch repository for feature branch resolution.
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    /// Optional shared AppState InteractiveProcessRegistry for stdin message delivery.
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     /// Self-reference for propagating scheduler through build_transition_service().
     /// Set after Arc-wrapping via set_self_ref(). Uses Mutex since it's written once at init.
     self_ref: Mutex<Option<Arc<dyn TaskScheduler>>>,
@@ -117,6 +119,7 @@ impl<R: Runtime> TaskSchedulerService<R> {
             memory_event_repo,
             app_handle,
             plan_branch_repo: None,
+            interactive_process_registry: None,
             self_ref: Mutex::new(None),
             active_project_id: RwLock::new(None),
             scheduling_lock: TokioMutex::new(()),
@@ -127,6 +130,15 @@ impl<R: Runtime> TaskSchedulerService<R> {
     /// Set the plan branch repository for feature branch resolution (builder pattern).
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         self.plan_branch_repo = Some(repo);
+        self
+    }
+
+    /// Set the shared InteractiveProcessRegistry (builder pattern).
+    pub fn with_interactive_process_registry(
+        mut self,
+        ipr: Arc<InteractiveProcessRegistry>,
+    ) -> Self {
+        self.interactive_process_registry = Some(ipr);
         self
     }
 
@@ -339,6 +351,9 @@ impl<R: Runtime> TaskSchedulerService<R> {
         );
         if let Some(ref repo) = self.plan_branch_repo {
             service = service.with_plan_branch_repo(Arc::clone(repo));
+        }
+        if let Some(ref ipr) = self.interactive_process_registry {
+            service = service.with_interactive_process_registry(Arc::clone(ipr));
         }
         if let Some(ref sched) = *self.self_ref.lock().unwrap() {
             service = service.with_task_scheduler(Arc::clone(sched));

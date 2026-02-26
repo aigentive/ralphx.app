@@ -243,6 +243,10 @@ pub trait ChatService: Send + Sync {
     /// Override plan branch repo at runtime (interior mutability).
     /// Default is a no-op; ClaudeChatService uses std::sync::Mutex.
     fn set_plan_branch_repo(&self, _repo: Arc<dyn PlanBranchRepository>) {}
+
+    /// Override the InteractiveProcessRegistry at runtime (interior mutability).
+    /// Default is a no-op; ClaudeChatService uses std::sync::Mutex.
+    fn set_interactive_process_registry(&self, _registry: Arc<InteractiveProcessRegistry>) {}
 }
 
 // ============================================================================
@@ -284,7 +288,9 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     /// Cache for streaming state, used to hydrate frontend on navigation.
     streaming_state_cache: StreamingStateCache,
     /// Registry of interactive processes with open stdin handles for multi-turn messaging.
-    interactive_process_registry: Arc<InteractiveProcessRegistry>,
+    /// Wrapped in Mutex for interior mutability so TaskTransitionService can inject the
+    /// shared AppState registry after construction (same pattern as plan_branch_repo).
+    interactive_process_registry: std::sync::Mutex<Arc<InteractiveProcessRegistry>>,
 }
 
 impl<R: Runtime> ClaudeChatService<R> {
@@ -339,7 +345,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             team_mode: AtomicBool::new(false),
             team_service: None,
             streaming_state_cache: StreamingStateCache::new(),
-            interactive_process_registry: Arc::new(InteractiveProcessRegistry::new()),
+            interactive_process_registry: std::sync::Mutex::new(Arc::new(InteractiveProcessRegistry::new())),
         }
     }
 
@@ -410,8 +416,13 @@ impl<R: Runtime> ClaudeChatService<R> {
         mut self,
         registry: Arc<InteractiveProcessRegistry>,
     ) -> Self {
-        self.interactive_process_registry = registry;
+        self.interactive_process_registry = std::sync::Mutex::new(registry);
         self
+    }
+
+    /// Returns a clone of the current InteractiveProcessRegistry Arc.
+    fn ipr(&self) -> Arc<InteractiveProcessRegistry> {
+        Arc::clone(&*self.interactive_process_registry.lock().unwrap())
     }
 
     pub fn with_app_handle(mut self, app_handle: AppHandle<R>) -> Self {
@@ -567,11 +578,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         //     The Claude CLI handles internal queuing of messages sent mid-turn.
         let interactive_key =
             InteractiveProcessKey::new(context_type.to_string(), context_id);
-        if self
-            .interactive_process_registry
-            .has_process(&interactive_key)
-            .await
-        {
+        if self.ipr().has_process(&interactive_key).await {
             tracing::info!(
                 %context_type,
                 context_id,
@@ -589,11 +596,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             let stream_json_msg =
                 crate::infrastructure::agents::claude::format_stream_json_input(&stdin_prompt);
 
-            match self
-                .interactive_process_registry
-                .write_message(&interactive_key, &stream_json_msg)
-                .await
-            {
+            match self.ipr().write_message(&interactive_key, &stream_json_msg).await {
                 Ok(()) => {
                     // Re-increment running count only if the process was idle
                     // (TurnComplete decremented and marked idle). If the agent is
@@ -663,7 +666,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                          falling back to new spawn"
                     );
                     // Remove the broken entry so we don't keep trying
-                    self.interactive_process_registry.remove(&interactive_key).await;
+                    self.ipr().remove(&interactive_key).await;
                     // Fall through to normal spawn path
                 }
             }
@@ -939,7 +942,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             context_id,
             "[IPR_REGISTER] Registering lead stdin in InteractiveProcessRegistry"
         );
-        self.interactive_process_registry
+        self.ipr()
             .register(interactive_key_for_register, child_stdin)
             .await;
 
@@ -1016,7 +1019,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             cancellation_token,
             team_service: self.team_service.clone(),
             streaming_state_cache: self.streaming_state_cache.clone(),
-            interactive_process_registry: Some(Arc::clone(&self.interactive_process_registry)),
+            interactive_process_registry: Some(self.ipr()),
         };
 
         // 9. Process stream in background (extracted to separate module)
@@ -1045,11 +1048,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // instead of queuing. The Claude CLI handles internal message queuing mid-turn.
         let interactive_key =
             InteractiveProcessKey::new(context_type.to_string(), context_id);
-        if self
-            .interactive_process_registry
-            .has_process(&interactive_key)
-            .await
-        {
+        if self.ipr().has_process(&interactive_key).await {
             tracing::info!(
                 %context_type,
                 context_id,
@@ -1064,11 +1063,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             let stream_json_msg =
                 crate::infrastructure::agents::claude::format_stream_json_input(&stdin_prompt);
 
-            match self
-                .interactive_process_registry
-                .write_message(&interactive_key, &stream_json_msg)
-                .await
-            {
+            match self.ipr().write_message(&interactive_key, &stream_json_msg).await {
                 Ok(()) => {
                     // Re-increment running count only if the process was idle.
                     // Same guard as send_message fast-path: prevents double-increment.
@@ -1137,9 +1132,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         "queue_message: interactive stdin write failed, falling back to normal queue"
                     );
                     // Remove broken entry, fall through to normal queue
-                    self.interactive_process_registry
-                        .remove(&interactive_key)
-                        .await;
+                    self.ipr().remove(&interactive_key).await;
                 }
             }
         }
@@ -1242,7 +1235,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // Also remove from interactive process registry (closes stdin pipe)
         let interactive_key =
             InteractiveProcessKey::new(context_type.to_string(), context_id);
-        self.interactive_process_registry.remove(&interactive_key).await;
+        self.ipr().remove(&interactive_key).await;
 
         match self.running_agent_registry.stop(&key).await {
             Ok(Some(info)) => {
@@ -1299,6 +1292,10 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
     fn set_plan_branch_repo(&self, repo: Arc<dyn PlanBranchRepository>) {
         *self.plan_branch_repo.lock().unwrap() = Some(repo);
+    }
+
+    fn set_interactive_process_registry(&self, registry: Arc<InteractiveProcessRegistry>) {
+        *self.interactive_process_registry.lock().unwrap() = registry;
     }
 }
 

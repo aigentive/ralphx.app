@@ -287,7 +287,8 @@ pub fn run() {
                     startup_memory_event_repo.clone(),
                     Some(startup_app_handle.clone()),
                 )
-                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo)));
+                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
+                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)));
                 scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn domain::state_machine::services::TaskScheduler>);
                 let task_scheduler: Arc<dyn domain::state_machine::services::TaskScheduler> = scheduler_concrete;
 
@@ -353,7 +354,8 @@ pub fn run() {
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
-                .with_step_repo(Arc::clone(&startup_step_repo)));
+                .with_step_repo(Arc::clone(&startup_step_repo))
+                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)));
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
@@ -456,7 +458,8 @@ pub fn run() {
                     )
                     .with_task_scheduler(Arc::clone(&task_scheduler))
                     .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
-                    .with_step_repo(Arc::clone(&startup_step_repo)));
+                    .with_step_repo(Arc::clone(&startup_step_repo))
+                    .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)));
 
                 let reconcile_runner = ReconciliationRunner::new(
                     reconcile_task_repo,
