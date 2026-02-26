@@ -218,8 +218,6 @@ pub fn start_teammate_stream<R: Runtime>(
         let mut lines_seen: usize = 0;
         let mut lines_parsed: usize = 0;
 
-        // Accumulate text output for persistence on turn boundaries
-        let mut text_buffer = String::new();
         let mut has_emitted_running = false;
         // Fix B: tracks TurnComplete → Idle state between turns
         let mut is_idle = false;
@@ -384,9 +382,6 @@ pub fn start_teammate_stream<R: Runtime>(
                                             &context_id,
                                         );
                                     }
-
-                                    // Accumulate text for persistence on turn boundary
-                                    text_buffer.push_str(&text);
 
                                     let text_preview: &str = truncate_str(&text, 100);
                                     tracing::info!(
@@ -783,21 +778,6 @@ pub fn start_teammate_stream<R: Runtime>(
                         let event_type = raw.get("type").and_then(|t| t.as_str());
 
                         if event_type == Some("result") {
-                            // Persist accumulated text as a teammate message on turn boundary
-                            if !text_buffer.is_empty() {
-                                if let Some(ref service) = team_service {
-                                    let _ = service
-                                        .add_teammate_message(
-                                            &team_name,
-                                            &teammate_name,
-                                            None,
-                                            &text_buffer,
-                                            TeamMessageType::TeammateMessage,
-                                        )
-                                        .await;
-                                }
-                                text_buffer.clear();
-                            }
                             // Extract cost_usd from result event
                             if let Some(cost) = raw.get("cost_usd").and_then(|c| c.as_f64()) {
                                 total_cost_usd += cost;
@@ -887,29 +867,12 @@ pub fn start_teammate_stream<R: Runtime>(
                             team = %team_name,
                             lines_seen,
                             lines_parsed,
-                            text_buffer_len = text_buffer.len(),
                             total_cost_usd,
                             "[TEAMMATE_STREAM] progress"
                         );
                     }
                 }
                 Ok(None) => {
-                    // Persist any remaining text buffer before closing
-                    if !text_buffer.is_empty() {
-                        if let Some(ref service) = team_service {
-                            let _ = service
-                                .add_teammate_message(
-                                    &team_name,
-                                    &teammate_name,
-                                    None,
-                                    &text_buffer,
-                                    TeamMessageType::TeammateMessage,
-                                )
-                                .await;
-                        }
-                        text_buffer.clear();
-                    }
-
                     // Finalize any remaining assistant message content
                     flush_teammate_message(
                         &chat_message_repo,
@@ -926,7 +889,6 @@ pub fn start_teammate_stream<R: Runtime>(
                         team = %team_name,
                         lines_seen,
                         lines_parsed,
-                        text_buffer_len = text_buffer.len(),
                         total_cost_usd,
                         total_input_tokens,
                         total_output_tokens,
