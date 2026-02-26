@@ -153,6 +153,43 @@ vi.mock("@/stores/chatStore", () => ({
 vi.mock("@/stores/teamStore", () => ({
   useTeamStore: vi.fn(() => ({ teammates: [] })),
   selectTeammates: vi.fn(() => () => []),
+  selectActiveTeam: vi.fn(() => () => null),
+  selectTeammateByName: vi.fn(() => () => null),
+  selectTeamMessages: vi.fn(() => () => []),
+  EMPTY_TEAM_MESSAGES: [],
+}));
+
+vi.mock("@/hooks/useTeamEvents", () => ({
+  useTeamEvents: vi.fn(),
+}));
+
+vi.mock("@/hooks/useTeamActions", () => ({
+  useTeamActions: () => ({
+    stopTeam: { mutate: vi.fn() },
+    stopTeammate: { mutate: vi.fn() },
+  }),
+}));
+
+vi.mock("@/hooks/useTeamHistory", () => ({
+  useTeamHistory: () => ({ data: null, isLoading: false }),
+}));
+
+vi.mock("@/hooks/useAgentHookEvents", () => ({
+  useAgentHookEvents: vi.fn(),
+  useHookEventsStore: vi.fn((selector: (s: { events: unknown[]; activeHooks: Map<string, unknown> }) => unknown) =>
+    selector({ events: [], activeHooks: new Map() })
+  ),
+}));
+
+vi.mock("@/hooks/useAskUserQuestion", () => ({
+  useAskUserQuestion: () => ({
+    activeQuestion: null,
+    answeredQuestion: undefined,
+    submitAnswer: vi.fn(),
+    dismissQuestion: vi.fn(),
+    clearAnswered: vi.fn(),
+    isLoading: false,
+  }),
 }));
 
 vi.mock("@/stores/uiStore", () => ({

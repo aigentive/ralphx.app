@@ -87,7 +87,7 @@ export const CHAT_CONTEXT_REGISTRY: Record<ContextType, ChatContextConfig> = {
   },
   task_execution: {
     storeKeyPrefix: "task_execution",
-    placeholder: "Message worker... (will be sent when current response completes)",
+    placeholder: "Message worker...",
     label: "Execution",
     agentType: "worker",
     supportsStreamingText: true,

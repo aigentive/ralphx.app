@@ -21,6 +21,7 @@ import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { api } from "@/lib/tauri";
+import { getContextConfig } from "@/lib/chat-context-registry";
 import type { Task } from "@/types/task";
 import type { ContextType } from "@/types/chat-conversation";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
@@ -817,15 +818,7 @@ export function IntegratedChatPanel({
                 hasQueuedMessages={queuedMessages.length > 0}
                 onEditLastQueued={handleEditLastQueuedWrapper}
                 isReadOnly={isHistoryMode}
-                placeholder={
-                  ideationSessionId
-                    ? "Send a message..."
-                    : isExecutionMode
-                      ? "Message worker... (will be sent when current response completes)"
-                      : selectedTaskId
-                        ? "Ask about this task..."
-                        : "Send a message..."
-                }
+                placeholder={getContextConfig(currentContextType).placeholder}
                 showHelperText={showHelperTextAlways}
                 {...(activeQuestion ? {
                   value: questionInputValue,

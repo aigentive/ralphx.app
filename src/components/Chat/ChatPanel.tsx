@@ -32,7 +32,7 @@ import { ResizeablePanel } from "./ResizeablePanel";
 import { useResizePanel } from "./useResizePanel";
 import { useChatActions } from "@/hooks/useChatActions";
 import { useChatEvents } from "@/hooks/useChatEvents";
-import { resolveContextType, buildStoreKey } from "@/lib/chat-context-registry";
+import { resolveContextType, buildStoreKey, getContextConfig } from "@/lib/chat-context-registry";
 import type { ToolCall } from "./ToolCallIndicator";
 import type { StreamingTask, StreamingContentBlock } from "@/types/streaming-task";
 import { useAskUserQuestion } from "@/hooks/useAskUserQuestion";
@@ -638,11 +638,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               isSending={isSending || isSubmittingAnswer}
               hasQueuedMessages={queuedMessages.length > 0}
               onEditLastQueued={handleEditLastQueuedWrapper}
-              placeholder={
-                isExecutionMode
-                  ? "Message worker... (will be sent when current response completes)"
-                  : "Send a message..."
-              }
+              placeholder={getContextConfig(contextType).placeholder}
               showHelperText={false}
               enableAttachments={true}
               attachments={attachments}
