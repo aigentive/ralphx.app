@@ -88,7 +88,7 @@ pub fn start_teammate_stream<R: Runtime>(
                 let teammate_ctx_id = format!("teammate:{}:{}", team_name, teammate_name);
                 let conv = ChatConversation {
                     id: ChatConversationId::new(),
-                    context_type: ChatContextType::Ideation,
+                    context_type: context_type.parse::<ChatContextType>().unwrap_or(ChatContextType::Ideation),
                     context_id: teammate_ctx_id,
                     claude_session_id: None,
                     title: Some(format!("Teammate: {}", teammate_name)),
