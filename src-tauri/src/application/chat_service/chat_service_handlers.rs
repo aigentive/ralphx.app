@@ -26,6 +26,7 @@ use crate::domain::repositories::{
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
     TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
+use crate::application::InteractiveProcessRegistry;
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::error::AppError;
@@ -108,6 +109,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
     app_handle: &Option<AppHandle<R>>,
+    interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
 ) {
     // Handle task state transition (only for TaskExecution)
     if context_type == ChatContextType::TaskExecution {
@@ -137,6 +139,9 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     if let Some(ref repo) = plan_branch_repo {
                         scheduler_svc = scheduler_svc.with_plan_branch_repo(Arc::clone(repo));
                     }
+                    if let Some(ref ipr) = interactive_process_registry {
+                        scheduler_svc = scheduler_svc.with_interactive_process_registry(Arc::clone(ipr));
+                    }
                     let scheduler_concrete = Arc::new(scheduler_svc);
                     scheduler_concrete
                         .set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
@@ -161,6 +166,11 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     .with_task_scheduler(task_scheduler);
                     let transition_service = if let Some(ref repo) = plan_branch_repo {
                         transition_service.with_plan_branch_repo(Arc::clone(repo))
+                    } else {
+                        transition_service
+                    };
+                    let transition_service = if let Some(ref ipr) = interactive_process_registry {
+                        transition_service.with_interactive_process_registry(Arc::clone(ipr))
                     } else {
                         transition_service
                     };
@@ -331,6 +341,11 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     } else {
                         transition_service
                     };
+                    let transition_service = if let Some(ref ipr) = interactive_process_registry {
+                        transition_service.with_interactive_process_registry(Arc::clone(ipr))
+                    } else {
+                        transition_service
+                    };
 
                     if let Err(e) = transition_service
                         .transition_task(&task_id, InternalStatus::Escalated)
@@ -373,6 +388,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                 execution_state: exec_state,
                 plan_branch_repo,
                 app_handle: app_handle.as_ref(),
+                interactive_process_registry,
             };
             super::chat_service_merge::attempt_merge_auto_complete(&merge_ctx).await;
         } else {
@@ -450,6 +466,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     agent_name: Option<&str>,
     team_mode: bool,
     run_chain_id: Option<String>,
+    interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
 ) -> bool {
     // Handle cancellation: skip all recovery/transitions, just mark as stopped
     if matches!(stream_error, Some(StreamError::Cancelled)) {
@@ -878,6 +895,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     } else {
                         transition_service
                     };
+                    let transition_service = if let Some(ref ipr) = interactive_process_registry {
+                        transition_service.with_interactive_process_registry(Arc::clone(ipr))
+                    } else {
+                        transition_service
+                    };
 
                     if let Err(transition_err) = transition_service
                         .transition_task(&task_id, target_status)
@@ -1059,6 +1081,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     execution_state: exec_state,
                     plan_branch_repo,
                     app_handle: app_handle.as_ref(),
+                    interactive_process_registry,
                 };
                 super::chat_service_merge::attempt_merge_auto_complete(&merge_ctx).await;
             } else {
@@ -1136,6 +1159,11 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     );
                     let transition_service = if let Some(ref repo) = plan_branch_repo {
                         transition_service.with_plan_branch_repo(Arc::clone(repo))
+                    } else {
+                        transition_service
+                    };
+                    let transition_service = if let Some(ref ipr) = interactive_process_registry {
+                        transition_service.with_interactive_process_registry(Arc::clone(ipr))
                     } else {
                         transition_service
                     };

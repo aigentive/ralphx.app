@@ -400,6 +400,7 @@ pub async fn retry_merge(
     let execution_state_clone = Arc::clone(execution_state.inner());
     let app_handle_opt = state.app_handle.clone();
     let task_id_for_spawn = task_id_parsed.clone();
+    let ipr = Arc::clone(&state.interactive_process_registry);
 
     // Spawn background task for merge execution
     tokio::spawn(async move {
@@ -420,6 +421,7 @@ pub async fn retry_merge(
             memory_event_repo,
             execution_state_clone,
             app_handle_opt,
+            ipr,
         )
         .await;
     });
@@ -449,6 +451,7 @@ async fn execute_merge_retry_background(
     memory_event_repo: Arc<dyn crate::domain::repositories::MemoryEventRepository>,
     execution_state: Arc<ExecutionState>,
     app_handle_opt: Option<tauri::AppHandle>,
+    interactive_process_registry: Arc<crate::application::InteractiveProcessRegistry>,
 ) {
     tracing::info!(
         task_id = task_id.as_str(),
@@ -473,7 +476,8 @@ async fn execute_merge_retry_background(
             Arc::clone(&memory_event_repo),
             app_handle_opt.clone(),
         )
-        .with_plan_branch_repo(Arc::clone(&plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&interactive_process_registry)),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
@@ -495,7 +499,8 @@ async fn execute_merge_retry_background(
         Arc::clone(&memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&interactive_process_registry));
 
     let result = transition_service
         .transition_task(&task_id, InternalStatus::PendingMerge)
@@ -721,7 +726,8 @@ fn create_transition_service(
             Arc::clone(&state.memory_event_repo),
             state.app_handle.clone(),
         )
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
@@ -744,6 +750,7 @@ fn create_transition_service(
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry))
 }
 
 /// Clean up git resources (branch/worktree) for a task

@@ -446,7 +446,8 @@ pub async fn approve_task_for_review(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
@@ -469,7 +470,8 @@ pub async fn approve_task_for_review(
         Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     let old_status = task.internal_status.as_str().to_string();
     transition_service
@@ -555,7 +557,8 @@ pub async fn request_task_changes_for_review(
         Some(app.clone()),
         Arc::clone(&state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     let old_status = task.internal_status.as_str().to_string();
     transition_service

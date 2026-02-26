@@ -20,6 +20,7 @@ use crate::domain::repositories::{
     MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
     TaskRepository,
 };
+use crate::application::InteractiveProcessRegistry;
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -63,6 +64,7 @@ pub(crate) struct MergeAutoCompleteContext<'a, R: Runtime> {
     pub execution_state: &'a Arc<ExecutionState>,
     pub plan_branch_repo: &'a Option<Arc<dyn PlanBranchRepository>>,
     pub app_handle: Option<&'a AppHandle<R>>,
+    pub interactive_process_registry: &'a Option<Arc<InteractiveProcessRegistry>>,
 }
 
 impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
@@ -83,8 +85,13 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
             self.app_handle.cloned(),
             Arc::clone(self.memory_event_repo),
         );
-        if let Some(ref repo) = self.plan_branch_repo {
+        let service = if let Some(ref repo) = self.plan_branch_repo {
             service.with_plan_branch_repo(Arc::clone(repo))
+        } else {
+            service
+        };
+        if let Some(ref ipr) = self.interactive_process_registry {
+            service.with_interactive_process_registry(Arc::clone(ipr))
         } else {
             service
         }
@@ -107,8 +114,13 @@ impl<'a, R: Runtime> MergeAutoCompleteContext<'a, R> {
             Arc::clone(self.memory_event_repo),
             self.app_handle.cloned(),
         );
-        if let Some(ref repo) = self.plan_branch_repo {
+        let scheduler = if let Some(ref repo) = self.plan_branch_repo {
             scheduler.with_plan_branch_repo(Arc::clone(repo))
+        } else {
+            scheduler
+        };
+        if let Some(ref ipr) = self.interactive_process_registry {
+            scheduler.with_interactive_process_registry(Arc::clone(ipr))
         } else {
             scheduler
         }

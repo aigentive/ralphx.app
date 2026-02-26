@@ -530,6 +530,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &plan_branch_repo,
                     &task_step_repo,
                     &app_handle,
+                    &interactive_process_registry,
                 )
                 .await;
 
@@ -711,6 +712,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     agent_name.as_deref(),
                     team_mode,
                     run_chain_id.clone(),
+                    &interactive_process_registry,
                 )
                 .await;
             }

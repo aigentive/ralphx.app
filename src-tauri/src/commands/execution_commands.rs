@@ -749,7 +749,8 @@ pub async fn pause_execution(
         app_state.app_handle.clone(),
         Arc::clone(&app_state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
 
     // Find all tasks in agent-active states (scoped to project if specified)
     let projects_to_process = if let Some(ref pid) = effective_project_id {
@@ -890,7 +891,8 @@ pub async fn resume_execution(
         app_state.app_handle.clone(),
         Arc::clone(&app_state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
 
     // Find all Paused tasks (scoped to project if specified) and restore them
     // Note: Stopped tasks are NOT restored - they require manual restart
@@ -1072,7 +1074,8 @@ pub async fn resume_execution(
             Arc::clone(&app_state.memory_event_repo),
             app_state.app_handle.clone(),
         )
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
     );
     scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
     // Set active project scope before scheduling to prevent cross-project scheduling
@@ -1151,7 +1154,8 @@ pub async fn stop_execution(
         app_state.app_handle.clone(),
         Arc::clone(&app_state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry));
 
     // Find all tasks in agent-active states (scoped to project if specified)
     let projects_to_process = if let Some(ref pid) = effective_project_id {
@@ -1261,7 +1265,8 @@ pub async fn recover_task_execution(
             app_state.app_handle.clone(),
             Arc::clone(&app_state.memory_event_repo),
         )
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
     );
 
     let reconciler = ReconciliationRunner::new(
@@ -1320,7 +1325,8 @@ pub async fn resolve_recovery_prompt(
             app_state.app_handle.clone(),
             Arc::clone(&app_state.memory_event_repo),
         )
-        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
     );
 
     let reconciler = ReconciliationRunner::new(
@@ -1391,7 +1397,8 @@ pub async fn set_max_concurrent(
                 Arc::clone(&app_state.memory_event_repo),
                 app_state.app_handle.clone(),
             )
-            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+            .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
         );
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         // Set active project scope before scheduling to prevent cross-project scheduling
@@ -1484,7 +1491,8 @@ pub async fn update_execution_settings(
                     Arc::clone(&app_state.memory_event_repo),
                     app_state.app_handle.clone(),
                 )
-                .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+                .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+                .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
             );
             scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
             // Set active project scope before scheduling to prevent cross-project scheduling
@@ -1669,7 +1677,8 @@ pub async fn update_global_execution_settings(
                 Arc::clone(&app_state.memory_event_repo),
                 app_state.app_handle.clone(),
             )
-            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo)),
+            .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo))
+            .with_interactive_process_registry(Arc::clone(&app_state.interactive_process_registry)),
         );
         scheduler.set_self_ref(Arc::clone(&scheduler) as Arc<dyn TaskScheduler>);
         // Set active project scope before scheduling to prevent cross-project scheduling
@@ -2170,7 +2179,8 @@ pub async fn restart_task(
         state.app_handle.clone(),
         Arc::clone(&state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     // 7. Transition to target status: clear stop metadata and optionally store restart_note
     let restart_metadata = build_restart_metadata(note.as_deref());

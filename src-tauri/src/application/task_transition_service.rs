@@ -15,7 +15,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
 
-use crate::application::{ChatService, ClaudeChatService};
+use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
 use crate::domain::repositories::{
@@ -479,6 +479,13 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// `None` means unset — fall back to task metadata `agent_variant`.
     team_mode: Option<bool>,
 
+    /// Shared InteractiveProcessRegistry from AppState.
+    /// When set via `with_interactive_process_registry`, injected into the chat
+    /// service so state-machine-spawned agents (execution/review/merge) register
+    /// their stdin in the same registry that `send_agent_message` checks.
+    /// `None` means the chat service uses its own private registry (test default).
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+
     /// Shared tokio mutex for the concurrent merge guard critical section.
     /// Serializes the check-and-set in the worktree-mode merge guard so two tasks
     /// cannot both read "no blocker" simultaneously (eliminates TOCTOU race).
@@ -587,6 +594,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             ideation_session_repo: Some(ideation_session_repo),
             activity_event_repo: activity_event_repo_for_services,
             team_mode: None,
+            interactive_process_registry: None,
             merge_lock: Arc::new(tokio::sync::Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
             validation_tokens: Arc::new(dashmap::DashMap::new()),
@@ -622,6 +630,20 @@ impl<R: Runtime> TaskTransitionService<R> {
     pub fn with_team_mode(mut self, team_mode: bool) -> Self {
         self.team_mode = Some(team_mode);
         self
+    }
+
+    /// Inject the shared AppState InteractiveProcessRegistry (builder pattern).
+    ///
+    /// When set, state-machine-spawned agents (execution/review/merge) register their
+    /// stdin in this registry so that `send_agent_message` can deliver messages via
+    /// the fast stdin path (Gate 1) instead of queuing them.
+    pub fn with_interactive_process_registry(self, ipr: Arc<InteractiveProcessRegistry>) -> Self {
+        self.chat_service
+            .set_interactive_process_registry(Arc::clone(&ipr));
+        // Store for downstream builders (e.g. TaskSchedulerService) to propagate
+        let mut s = self;
+        s.interactive_process_registry = Some(ipr);
+        s
     }
 
     /// Transition a task to a new status, triggering appropriate entry actions.

@@ -235,7 +235,8 @@ pub async fn move_task(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
@@ -259,7 +260,8 @@ pub async fn move_task(
         Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(Arc::clone(&task_scheduler))
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     // ALWAYS set team_mode based on explicit UI selection so it overrides
     // env var defaults and stale metadata. Some(true) = team, Some(false) = solo.
@@ -664,7 +666,8 @@ pub async fn block_task(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
@@ -687,7 +690,8 @@ pub async fn block_task(
         Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     // Transition to Blocked status
     let mut blocked_task = transition_service
@@ -812,7 +816,8 @@ pub async fn unblock_task(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
@@ -835,7 +840,8 @@ pub async fn unblock_task(
         Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     // Transition to Ready status
     let mut unblocked_task = transition_service
@@ -1040,7 +1046,8 @@ fn build_task_stopper(
         Some(app.clone()),
         Arc::clone(&state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     Arc::new(TransitionTaskStopper { transition_service })
 }
@@ -1094,7 +1101,8 @@ pub async fn pause_task(
         state.app_handle.clone(),
         Arc::clone(&state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     // Transition to Paused
     let updated_task = transition_service
@@ -1162,7 +1170,8 @@ pub async fn stop_task(
         state.app_handle.clone(),
         Arc::clone(&state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     // Transition to Stopped with context capture
     let updated_task = transition_service
@@ -1262,7 +1271,8 @@ pub async fn cancel_tasks_in_group(
         Some(app.clone()),
         Arc::clone(&state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     let mut cancelled_count = 0;
 
@@ -1389,7 +1399,8 @@ pub async fn resume_task(
             Arc::clone(&state.memory_event_repo),
             Some(app.clone()),
         )
-        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
 
@@ -1410,7 +1421,8 @@ pub async fn resume_task(
         Arc::clone(&state.memory_event_repo),
     )
     .with_task_scheduler(scheduler_concrete as Arc<dyn TaskScheduler>)
-    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     // Transition to restore status
     transition_service

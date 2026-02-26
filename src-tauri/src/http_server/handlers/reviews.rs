@@ -165,7 +165,8 @@ pub async fn complete_review(
             Arc::clone(&state.app_state.memory_event_repo),
             state.app_state.app_handle.as_ref().cloned(),
         )
-        .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo)),
+        .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry)),
     );
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
@@ -187,7 +188,8 @@ pub async fn complete_review(
         Arc::clone(&state.app_state.memory_event_repo),
     )
     .with_task_scheduler(task_scheduler)
-    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
 
     let new_status = match outcome {
         ReviewToolOutcome::Approved => {
@@ -389,7 +391,8 @@ pub async fn approve_task(
         state.app_state.app_handle.as_ref().cloned(),
         Arc::clone(&state.app_state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
 
     transition_service
         .transition_task(&task_id, InternalStatus::Approved)
@@ -483,7 +486,8 @@ pub async fn request_task_changes(
         state.app_state.app_handle.as_ref().cloned(),
         Arc::clone(&state.app_state.memory_event_repo),
     )
-    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo));
+    .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
 
     transition_service
         .transition_task(&task_id, InternalStatus::RevisionNeeded)
