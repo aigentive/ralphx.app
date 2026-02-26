@@ -9,6 +9,8 @@
 
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
+
+use crate::commands::ExecutionState;
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::ChildStdout;
 use tokio::sync::oneshot;
@@ -53,6 +55,8 @@ use crate::utils::truncate_str;
 /// * `chat_message_repo` - For persisting assistant messages with content_blocks
 /// * `interactive_process_registry` - Optional registry for nudging the lead's stdin when
 ///   a teammate sends a message targeting the lead
+/// * `execution_state` - Optional execution state for updating running count when the lead
+///   is nudged (mirrors the claim_interactive_slot + increment_running pattern in chat_service)
 pub fn start_teammate_stream<R: Runtime>(
     stdout: ChildStdout,
     exit_signal: oneshot::Receiver<()>,
@@ -66,6 +70,7 @@ pub fn start_teammate_stream<R: Runtime>(
     chat_conversation_repo: Option<Arc<dyn ChatConversationRepository>>,
     chat_message_repo: Option<Arc<dyn ChatMessageRepository>>,
     interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+    execution_state: Option<Arc<ExecutionState>>,
 ) -> JoinHandle<()> {
     let span = tracing::info_span!(
         "teammate_stream",
@@ -656,6 +661,37 @@ pub fn start_teammate_stream<R: Runtime>(
                                                         sender = %sender,
                                                         "[TEAM_NUDGE] Successfully nudged lead stdin"
                                                     );
+                                                    // Update execution state: the lead is now
+                                                    // processing a message. Mirror the pattern
+                                                    // from chat_service/mod.rs send_message
+                                                    // fast-path to prevent running_count=0 while
+                                                    // the lead responds to a team nudge.
+                                                    if let Some(ref exec) = execution_state {
+                                                        let slot_key = format!(
+                                                            "{}/{}",
+                                                            team_status.context_type,
+                                                            team_status.context_id
+                                                        );
+                                                        if exec.claim_interactive_slot(&slot_key) {
+                                                            exec.increment_running();
+                                                            exec.emit_status_changed(
+                                                                &app_handle,
+                                                                "team_nudge_resumed",
+                                                            );
+                                                            tracing::info!(
+                                                                sender = %sender,
+                                                                slot_key = %slot_key,
+                                                                running_count = exec.running_count(),
+                                                                "[TEAM_NUDGE] Claimed idle slot, incremented running_count"
+                                                            );
+                                                        } else {
+                                                            tracing::debug!(
+                                                                sender = %sender,
+                                                                slot_key = %slot_key,
+                                                                "[TEAM_NUDGE] Lead already active (slot not idle), skipping increment"
+                                                            );
+                                                        }
+                                                    }
                                                 }
                                             }
                                             Err(e) => {

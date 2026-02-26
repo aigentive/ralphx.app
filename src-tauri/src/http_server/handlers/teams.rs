@@ -480,6 +480,7 @@ pub async fn approve_team_plan(
                             Some(std::sync::Arc::clone(&state.app_state.chat_conversation_repo)),
                             Some(std::sync::Arc::clone(&state.app_state.chat_message_repo)),
                             Some(std::sync::Arc::clone(&state.app_state.interactive_process_registry)),
+                            Some(std::sync::Arc::clone(&state.execution_state)),
                         ),
                     ),
                     _ => {
@@ -863,6 +864,7 @@ pub async fn request_teammate_spawn(
                         Some(std::sync::Arc::clone(&state.app_state.chat_conversation_repo)),
                         Some(std::sync::Arc::clone(&state.app_state.chat_message_repo)),
                         Some(std::sync::Arc::clone(&state.app_state.interactive_process_registry)),
+                        Some(std::sync::Arc::clone(&state.execution_state)),
                     ),
                 ),
                 (None, _) => {
