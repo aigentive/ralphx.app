@@ -12,6 +12,7 @@ export const AGENT_CHUNK = "agent:chunk";
 export const AGENT_TOOL_CALL = "agent:tool_call";
 export const AGENT_RUN_STARTED = "agent:run_started";
 export const AGENT_RUN_COMPLETED = "agent:run_completed";
+export const AGENT_TURN_COMPLETED = "agent:turn_completed";
 export const AGENT_MESSAGE_CREATED = "agent:message_created";
 export const AGENT_ERROR = "agent:error";
 export const AGENT_QUEUE_SENT = "agent:queue_sent";

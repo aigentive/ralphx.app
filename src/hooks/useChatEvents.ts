@@ -443,6 +443,25 @@ export function useChatEvents({
       })
     );
 
+    // ── agent:turn_completed ────────────────────────────────────────
+    // Clear streaming state on turn completion (agent still alive in interactive mode)
+    unsubscribes.push(
+      bus.subscribe<{
+        conversation_id: string;
+        context_id?: string;
+        context_type?: string;
+      }>("agent:turn_completed", (payload) => {
+        if (!isRelevant(payload)) return;
+
+        setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
+        setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
+        setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(payload.conversation_id),
+        });
+      })
+    );
+
     // ── agent:error ──────────────────────────────────────────────────
     // Clear streaming state on error
     unsubscribes.push(
