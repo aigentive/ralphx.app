@@ -436,7 +436,8 @@ pub fn run() {
                     Arc::clone(&startup_execution_state),
                 )
                 .with_app_handle(chat_resumption_app_handle)
-                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo));
+                .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
+                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry));
 
                 chat_resumption.run().await;
 
