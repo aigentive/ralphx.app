@@ -924,10 +924,15 @@ pub async fn process_stream_background<R: Runtime>(
                                 .await;
                         }
 
-                        // Emit run_completed so the frontend exits "responding" state
+                        // Emit turn_completed (NOT run_completed) for interactive turns.
+                        // The process is still alive and waiting for stdin — emitting
+                        // run_completed would cause the frontend to set isAgentRunning=false,
+                        // making the next user message go through sendAgentMessage (which
+                        // creates a new conversation for TaskExecution contexts) instead
+                        // of queueAgentMessage (which delivers via existing stdin).
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
-                                events::AGENT_RUN_COMPLETED,
+                                "agent:turn_completed",
                                 super::chat_service_types::AgentRunCompletedPayload {
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),

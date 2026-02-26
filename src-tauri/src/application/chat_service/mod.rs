@@ -563,19 +563,14 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             message_len = message.len(),
             "chat_service.send_message start"
         );
-        // 1. Get or create conversation
-        let conversation = self
-            .get_or_create_conversation(context_type, context_id)
-            .await?;
-        tracing::debug!(
-            conversation_id = conversation.id.as_str(),
-            session_id = ?conversation.claude_session_id,
-            "chat_service.send_message conversation"
-        );
 
-        // 1b. Interactive fast-path: if an interactive process is already running
-        //     for this context, write the message directly to its stdin.
-        //     The Claude CLI handles internal queuing of messages sent mid-turn.
+        // 1. Interactive fast-path (Gate 1): if an interactive process is already
+        //    running for this context, write the message directly to its stdin.
+        //    IMPORTANT: Do this BEFORE get_or_create_conversation() because for
+        //    TaskExecution/Merge contexts, that call creates a FRESH conversation
+        //    (force_fresh=true). When reusing an existing process via stdin, we
+        //    must use the EXISTING conversation to avoid the frontend thinking a
+        //    new execution started.
         let interactive_key =
             InteractiveProcessKey::new(context_type.to_string(), context_id);
         let ipr_ref = self.ipr();
@@ -626,6 +621,35 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             }
                         }
                     }
+
+                    // Use the EXISTING conversation — not a force-fresh one.
+                    // The interactive process was spawned with a conversation, so
+                    // get_active_for_context should always find it.
+                    let existing_conv = self
+                        .conversation_repo
+                        .get_active_for_context(context_type, context_id)
+                        .await
+                        .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+
+                    let conversation = match existing_conv {
+                        Some(conv) => {
+                            tracing::debug!(
+                                conversation_id = conv.id.as_str(),
+                                "Gate 1: reusing existing conversation for interactive process"
+                            );
+                            conv
+                        }
+                        None => {
+                            // Edge case: IPR has process but no conversation found.
+                            // Create one as fallback (shouldn't happen in practice).
+                            tracing::warn!(
+                                %context_type,
+                                context_id,
+                                "Gate 1: no existing conversation found despite IPR entry, creating new"
+                            );
+                            self.get_or_create_conversation(context_type, context_id).await?
+                        }
+                    };
 
                     // Store user message for conversation history
                     let user_msg = chat_service_context::create_user_message(
@@ -685,7 +709,19 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             }
         }
 
-        // 1c. Atomic guard: claim the agent slot to prevent TOCTOU race.
+        // 2. Get or create conversation (only reached when Gate 1 misses or fails).
+        //    For TaskExecution/Merge this creates a fresh conversation (force_fresh=true),
+        //    which is correct for new spawns.
+        let conversation = self
+            .get_or_create_conversation(context_type, context_id)
+            .await?;
+        tracing::debug!(
+            conversation_id = conversation.id.as_str(),
+            session_id = ?conversation.claude_session_id,
+            "chat_service.send_message conversation (new spawn path)"
+        );
+
+        // 2b. Atomic guard: claim the agent slot to prevent TOCTOU race.
         //     If an agent is already registered for this context, queue the message.
         //     Create the AgentRun early so its ID can be stored in the slot for ownership tracking.
         let agent_run = AgentRun::new(conversation.id);

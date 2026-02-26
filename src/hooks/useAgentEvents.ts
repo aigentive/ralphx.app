@@ -171,6 +171,34 @@ export function useAgentEvents(activeConversationId: string | null) {
       })
     );
 
+    // Listen for turn completion (interactive mode - agent still alive)
+    // Similar to run_completed but does NOT clear isAgentRunning — the process is still running
+    // Skip teammate events — useTeamEvents handles those independently
+    unsubscribes.push(
+      bus.subscribe<{
+        context_type: string;
+        context_id: string;
+        conversation_id: string;
+        status: string;
+        teammate_name?: string | null;
+      }>("agent:turn_completed", (payload) => {
+        if (payload.teammate_name) return;
+        const { conversation_id } = payload;
+
+        // Do NOT set isAgentRunning = false — the agent is still alive between turns
+        // Just invalidate queries to pick up messages flushed after the completed turn
+        if (conversation_id === activeConversationId) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.agentRun(activeConversationId),
+          });
+
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(activeConversationId),
+          });
+        }
+      })
+    );
+
     // Listen for queue_sent - backend notifies us when it sends a queued message
     // This allows us to update the optimistic UI by removing the sent message
     // Since frontend and backend use the same ID, we can match exactly by ID
