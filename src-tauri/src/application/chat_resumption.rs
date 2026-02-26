@@ -16,7 +16,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Runtime};
 use tracing::{info, warn};
 
-use crate::application::{ChatService, ClaudeChatService};
+use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::execution_commands::{ExecutionState, AGENT_ACTIVE_STATUSES};
 use crate::domain::entities::{ChatContextType, InterruptedConversation, TaskId};
 use crate::domain::repositories::{
@@ -46,6 +46,7 @@ pub struct ChatResumptionRunner<R: Runtime = tauri::Wry> {
     memory_event_repo: Arc<dyn MemoryEventRepository>,
     execution_state: Arc<ExecutionState>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     app_handle: Option<AppHandle<R>>,
 }
 
@@ -82,12 +83,19 @@ impl<R: Runtime> ChatResumptionRunner<R> {
             memory_event_repo,
             execution_state,
             plan_branch_repo: None,
+            interactive_process_registry: None,
             app_handle: None,
         }
     }
 
     pub fn with_plan_branch_repo(mut self, repo: Arc<dyn PlanBranchRepository>) -> Self {
         self.plan_branch_repo = Some(repo);
+        self
+    }
+
+    /// Set the shared InteractiveProcessRegistry (builder pattern).
+    pub fn with_interactive_process_registry(mut self, ipr: Arc<InteractiveProcessRegistry>) -> Self {
+        self.interactive_process_registry = Some(ipr);
         self
     }
 
@@ -270,6 +278,9 @@ impl<R: Runtime> ChatResumptionRunner<R> {
         }
         if let Some(ref repo) = self.plan_branch_repo {
             service = service.with_plan_branch_repo(Arc::clone(repo));
+        }
+        if let Some(ref ipr) = self.interactive_process_registry {
+            service = service.with_interactive_process_registry(Arc::clone(ipr));
         }
 
         service
