@@ -15,6 +15,9 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, info, warn};
 
 use crate::application::git_service::{git_cmd, GitService};
+use crate::application::interactive_process_registry::{
+    InteractiveProcessKey, InteractiveProcessRegistry,
+};
 use crate::domain::entities::{Project, Task};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::error::AppResult;
@@ -78,6 +81,7 @@ impl Default for ResumeValidationResult {
 /// - Agent cleanup: kill orphan processes, reset counters
 pub struct ResumeValidator {
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
 }
 
 impl ResumeValidator {
@@ -85,7 +89,14 @@ impl ResumeValidator {
     pub fn new(running_agent_registry: Arc<dyn RunningAgentRegistry>) -> Self {
         Self {
             running_agent_registry,
+            interactive_process_registry: None,
         }
+    }
+
+    /// Set the interactive process registry for IPR cleanup on stop (builder pattern).
+    pub fn with_interactive_process_registry(mut self, ipr: Arc<InteractiveProcessRegistry>) -> Self {
+        self.interactive_process_registry = Some(ipr);
+        self
     }
 
     /// Validate that a task can be safely resumed.
@@ -241,6 +252,13 @@ impl ResumeValidator {
                     context_type = context_type,
                     "Stopping orphan agent for task"
                 );
+
+                // Remove from interactive process registry first — closes stdin pipe
+                // so the process doesn't linger waiting for input after SIGTERM.
+                if let Some(ref ipr) = self.interactive_process_registry {
+                    let ipr_key = InteractiveProcessKey::new(context_type, task.id.as_str());
+                    ipr.remove(&ipr_key).await;
+                }
 
                 match self.running_agent_registry.stop(&key).await {
                     Ok(Some(_)) => {

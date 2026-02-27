@@ -631,6 +631,7 @@ impl AppState {
     /// Create a ResumeValidator for task resume validation
     pub fn resume_validator(&self) -> ResumeValidator {
         ResumeValidator::new(Arc::clone(&self.running_agent_registry))
+            .with_interactive_process_registry(Arc::clone(&self.interactive_process_registry))
     }
 }
 

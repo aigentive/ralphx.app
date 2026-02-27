@@ -1064,6 +1064,23 @@ impl<R: Runtime> ReconciliationRunner<R> {
             task.id.as_str(),
         );
 
+        // Skip recovery if the process has an active interactive slot — it's alive
+        // between turns, waiting for the next stdin message. Stopping it would kill
+        // a healthy interactive agent.
+        if let Some(ref ipr) = self.interactive_process_registry {
+            let ipr_key = InteractiveProcessKey::new(
+                ChatContextType::TaskExecution.to_string(),
+                task.id.as_str(),
+            );
+            if ipr.has_process(&ipr_key).await {
+                tracing::debug!(
+                    task_id = task_id.as_str(),
+                    "Skipping recovery stop — active interactive process"
+                );
+                return false;
+            }
+        }
+
         let registry_running = self.running_agent_registry.is_running(&key).await;
         if registry_running {
             let _ = self.running_agent_registry.stop(&key).await;
@@ -1184,6 +1201,24 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     chat_context.to_string(),
                     task.id.as_str(),
                 );
+
+                // Skip recovery re-spawn if the process has an active interactive
+                // slot — the agent is alive between turns and doesn't need respawning.
+                if let Some(ref ipr) = self.interactive_process_registry {
+                    let ipr_key = InteractiveProcessKey::new(
+                        chat_context.to_string(),
+                        task.id.as_str(),
+                    );
+                    if ipr.has_process(&ipr_key).await {
+                        tracing::debug!(
+                            task_id = task.id.as_str(),
+                            context_type = %chat_context,
+                            "Skipping recovery re-spawn — active interactive process"
+                        );
+                        return false;
+                    }
+                }
+
                 if self.running_agent_registry.is_running(&registry_key).await {
                     tracing::info!(
                         task_id = task.id.as_str(),

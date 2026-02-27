@@ -596,7 +596,8 @@ pub async fn permanently_delete_task(
         Arc::clone(&state.project_repo),
         Arc::clone(&state.running_agent_registry),
         Some(app),
-    );
+    )
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     cleanup_service
         .cleanup_single_task(&task, StopMode::Graceful, true)
@@ -907,6 +908,7 @@ pub async fn cleanup_task(
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
     )
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry))
     .with_task_stopper(stopper);
 
     service
@@ -968,6 +970,7 @@ pub async fn cleanup_tasks_in_group(
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
     )
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry))
     .with_task_stopper(stopper);
 
     let report = service

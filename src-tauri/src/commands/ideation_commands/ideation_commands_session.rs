@@ -185,7 +185,8 @@ pub async fn delete_ideation_session(
         Arc::clone(&state.project_repo),
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
-    );
+    )
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
     let report = cleanup_service
         .cleanup_tasks(&tasks, StopMode::DirectStop, true)
         .await;
@@ -272,7 +273,8 @@ pub async fn reopen_ideation_session(
         Arc::clone(&state.project_repo),
         Arc::clone(&state.running_agent_registry),
         Some(app.clone()),
-    );
+    )
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
 
     let service = SessionReopenService::new(
         Arc::clone(&state.task_repo),

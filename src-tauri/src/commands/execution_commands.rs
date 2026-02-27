@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::RwLock;
 
+use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::application::reconciliation::UserRecoveryAction;
 use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
@@ -731,6 +732,8 @@ pub async fn pause_execution(
     // Kill all running agent processes immediately via registry
     // This ensures agents are terminated even if transition fails
     app_state.running_agent_registry.stop_all().await;
+    // Also clear all interactive process entries — their stdin pipes are now dead
+    app_state.interactive_process_registry.clear().await;
 
     // Build transition service for proper state machine transitions
     let transition_service = TaskTransitionService::new(
@@ -1136,6 +1139,8 @@ pub async fn stop_execution(
     // Kill all running agent processes immediately via registry
     // This ensures agents are terminated even if transition fails
     app_state.running_agent_registry.stop_all().await;
+    // Also clear all interactive process entries — their stdin pipes are now dead
+    app_state.interactive_process_registry.clear().await;
 
     // Build transition service for proper state machine transitions
     let transition_service = TaskTransitionService::new(
@@ -1901,6 +1906,20 @@ async fn prune_stale_execution_registry_entries(app_state: &AppState) {
         if info.pid == 0 {
             let age = chrono::Utc::now() - info.started_at;
             if age < chrono::Duration::seconds(30) {
+                continue;
+            }
+        }
+
+        // Skip entries with an active interactive process — the CLI is alive
+        // between turns, waiting for the next stdin message.
+        {
+            let ipr_key = InteractiveProcessKey::new(&key.context_type, &key.context_id);
+            if app_state.interactive_process_registry.has_process(&ipr_key).await {
+                tracing::debug!(
+                    context_type = key.context_type,
+                    context_id = key.context_id,
+                    "Skipping prune for interactive process"
+                );
                 continue;
             }
         }
