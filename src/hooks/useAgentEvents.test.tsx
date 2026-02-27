@@ -644,6 +644,128 @@ describe("useAgentEvents", () => {
     });
   });
 
+  describe("turn_completed → run_completed sequence (process dies between turns)", () => {
+    it("run_started → turn_completed → run_completed settles isAgentRunning=false", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+
+      act(() => {
+        emitEvent("agent:turn_completed", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "turn_complete",
+        });
+      });
+
+      // Still running — process is alive between turns
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      // Process died — should be cleared
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBeUndefined();
+    });
+
+    it("rapid burst: turn_completed ×3 keeps isAgentRunning=true throughout", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+
+      act(() => {
+        emitEvent("agent:turn_completed", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "turn_complete",
+        });
+        emitEvent("agent:turn_completed", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "turn_complete",
+        });
+        emitEvent("agent:turn_completed", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "turn_complete",
+        });
+      });
+
+      // Still running after burst — agent stays alive between turns
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+    });
+
+    it("turn_completed followed by agent:error clears isAgentRunning", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+        });
+      });
+
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+
+      act(() => {
+        emitEvent("agent:turn_completed", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "turn_complete",
+        });
+      });
+
+      // Still alive between turns
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+
+      act(() => {
+        emitEvent("agent:error", {
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          error: "Process crashed after turn",
+        });
+      });
+
+      // Error clears the running state
+      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBeUndefined();
+    });
+  });
+
   describe("cleanup", () => {
     it("unsubscribes from events on unmount", () => {
       const wrapper = createWrapper();
