@@ -118,6 +118,8 @@ function validateTaskScope(
     // Issue tools (worker + reviewer agents)
     "get_task_issues",
     "get_issue_progress",
+    // Execution complete (worker agent)
+    "execution_complete",
   ];
 
   if (!taskScopedTools.includes(toolName)) {
@@ -538,6 +540,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         phase,
         artifact_ids,
       });
+    } else if (name === "execution_complete") {
+      // POST /api/execution/tasks/:task_id/complete
+      const { task_id, summary } = args as { task_id: string; summary?: string };
+      result = await callTauri(`execution/tasks/${task_id}/complete`, { summary: summary || "" });
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});

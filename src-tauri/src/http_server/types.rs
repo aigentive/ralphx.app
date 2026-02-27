@@ -1156,6 +1156,21 @@ impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStrea
 }
 
 // ============================================================================
+// Request/Response Types - Execution Complete
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct ExecutionCompleteRequest {
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExecutionCompleteResponse {
+    pub success: bool,
+    pub message: String,
+}
+
+// ============================================================================
 // Common Response Types
 // ============================================================================
 

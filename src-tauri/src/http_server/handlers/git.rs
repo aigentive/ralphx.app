@@ -469,7 +469,16 @@ pub async fn report_conflict(
         .await
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
-    // 4. Emit events
+    // 4. Close stdin via IPR to signal EOF to the merger agent
+    {
+        use crate::application::interactive_process_registry::InteractiveProcessKey;
+        let key = InteractiveProcessKey::new("merge", task_id.as_str());
+        if state.app_state.interactive_process_registry.remove(&key).await.is_some() {
+            tracing::info!("IPR removed for merger on task {} (conflict)", task_id.as_str());
+        }
+    }
+
+    // 5. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(
             "merge:conflict",
@@ -570,7 +579,16 @@ pub async fn report_incomplete(
         .await
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
-    // 4. Emit events
+    // 4. Close stdin via IPR to signal EOF to the merger agent
+    {
+        use crate::application::interactive_process_registry::InteractiveProcessKey;
+        let key = InteractiveProcessKey::new("merge", task_id.as_str());
+        if state.app_state.interactive_process_registry.remove(&key).await.is_some() {
+            tracing::info!("IPR removed for merger on task {} (incomplete)", task_id.as_str());
+        }
+    }
+
+    // 5. Emit events
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(
             "merge:incomplete",

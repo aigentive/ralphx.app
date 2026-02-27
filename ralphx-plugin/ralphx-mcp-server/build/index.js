@@ -93,6 +93,8 @@ function validateTaskScope(toolName, args) {
         // Issue tools (worker + reviewer agents)
         "get_task_issues",
         "get_issue_progress",
+        // Execution complete (worker agent)
+        "execution_complete",
     ];
     if (!taskScopedTools.includes(toolName)) {
         return null; // No validation needed
@@ -446,6 +448,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 phase,
                 artifact_ids,
             });
+        }
+        else if (name === "execution_complete") {
+            // POST /api/execution/tasks/:task_id/complete
+            const { task_id, summary } = args;
+            result = await callTauri(`execution/tasks/${task_id}/complete`, { summary: summary || "" });
         }
         else {
             // Default: POST request

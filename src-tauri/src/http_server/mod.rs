@@ -163,6 +163,11 @@ pub async fn start_http_server(
         // Project analysis endpoints (project-analyzer + worker/reviewer/merger agents)
         .route("/api/projects/:id/analysis", get(get_project_analysis))
         .route("/api/projects/:id/analysis", post(save_project_analysis))
+        // Execution complete endpoint (worker agent exit signal)
+        .route(
+            "/api/execution/tasks/:task_id/complete",
+            post(execution_complete_http),
+        )
         // Execution settings endpoints (Phase 82)
         .route("/api/execution/global-settings", get(get_global_settings))
         .route(

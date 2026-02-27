@@ -1335,6 +1335,7 @@ export const TOOL_ALLOWLIST = {
         "get_step_progress",
         "get_step_context",
         "get_sub_steps",
+        "execution_complete",
         // issue tools (re-execution workflow)
         "get_task_issues",
         "mark_issue_in_progress",
