@@ -88,6 +88,7 @@ export const GrepWidget = React.memo(function GrepWidget({
     <WidgetCard
       header={header}
       compact={compact}
+      alwaysExpanded={fileCount <= 3}
     >
       <FileList files={parsed.paths} />
     </WidgetCard>

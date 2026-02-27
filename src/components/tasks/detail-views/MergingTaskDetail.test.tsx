@@ -10,6 +10,7 @@ import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, cleanup } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import { MergingTaskDetail } from "./MergingTaskDetail";
 import type { Task } from "@/types/task";
 import type { MergeProgressEvent } from "@/types/events";
@@ -97,6 +98,8 @@ function renderWithProviders(ui: React.ReactElement) {
 describe("MergingTaskDetail", () => {
   beforeEach(() => {
     mockListeners.clear();
+    // Mock invoke to return resolved promises for hydration calls
+    vi.mocked(invoke).mockResolvedValue(undefined);
   });
 
   describe("progress rendering", () => {
@@ -536,7 +539,9 @@ describe("MergingTaskDetail", () => {
       });
       renderWithProviders(<MergingTaskDetail task={task} />);
 
-      expect(screen.getByText("ralphx/ralphx/task-123")).toBeInTheDocument();
+      // BranchBadge strips "ralphx/<slug>/" prefix; full name is in title attr
+      expect(screen.getByText("task-123")).toBeInTheDocument();
+      expect(screen.getByTitle("ralphx/ralphx/task-123")).toBeInTheDocument();
     });
   });
 

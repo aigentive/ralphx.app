@@ -19,7 +19,7 @@ const mockSetActivePlan = vi.fn().mockResolvedValue(undefined);
 const mockActivePlanByProject: Record<string, string | null> = {};
 
 vi.mock("@/hooks/useDependencyGraph", () => ({
-  useDependencyGraph: () => ({ data: null, isFetching: false }),
+  useDependencyGraph: () => ({ data: { proposals: [], edges: [], warnings: [] }, isFetching: false }),
 }));
 
 // Mock for useIdeation - will be replaced per-test for reopen tests
@@ -104,6 +104,30 @@ vi.mock("./AcceptedSessionBanner", () => ({
   AcceptedSessionBanner: () => <div data-testid="accepted-session-banner" />,
 }));
 
+vi.mock("./AcceptModal", () => ({
+  AcceptModal: ({ isOpen, onAccept, sessionId, proposals }: {
+    isOpen: boolean;
+    onAccept: (options: { sessionId: string; proposalIds: string[]; targetColumn: string; preserveDependencies: boolean }) => void;
+    sessionId: string;
+    proposals: Array<{ id: string }>;
+  }) =>
+    isOpen ? (
+      <button
+        data-testid="accept-modal-confirm"
+        onClick={() =>
+          onAccept({
+            sessionId,
+            proposalIds: proposals.map((p) => p.id),
+            targetColumn: "backlog",
+            preserveDependencies: true,
+          })
+        }
+      >
+        Confirm Accept
+      </button>
+    ) : null,
+}));
+
 vi.mock("./PlanDisplay", () => ({
   PlanDisplay: () => <div data-testid="plan-display" />,
 }));
@@ -146,6 +170,8 @@ vi.mock("@/stores/projectStore", () => ({
     };
     return selector ? selector(state) : state;
   }),
+  selectActiveProject: (state: Record<string, unknown>) =>
+    state.activeProjectId ? state.projects?.[state.activeProjectId as string] ?? null : null,
 }));
 
 vi.mock("@/components/ui/ResizeHandle", () => ({
@@ -276,7 +302,10 @@ describe("PlanningView", () => {
     const user = userEvent.setup();
     render(<PlanningView {...defaultProps} onApply={onApply} />);
 
+    // Click "Accept Plan" to open the modal
     await user.click(screen.getByRole("button", { name: "Accept Plan" }));
+    // Click confirm in the modal
+    await user.click(screen.getByTestId("accept-modal-confirm"));
 
     expect(onApply).toHaveBeenCalledWith({
       sessionId: "session-1",
@@ -325,7 +354,9 @@ describe("PlanningView", () => {
     const user = userEvent.setup();
     render(<PlanningView {...defaultProps} onApply={onApply} />);
 
+    // Click "Accept Plan" to open the modal, then confirm
     await user.click(screen.getByRole("button", { name: "Accept Plan" }));
+    await user.click(screen.getByTestId("accept-modal-confirm"));
 
     // Wait for async operations to complete
     await vi.waitFor(() => {

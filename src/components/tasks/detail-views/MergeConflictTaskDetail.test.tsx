@@ -11,9 +11,9 @@ import { MergeConflictTaskDetail } from "./MergeConflictTaskDetail";
 import type { Task } from "@/types/task";
 import { invoke } from "@tauri-apps/api/core";
 
-// Mock Tauri API
+// Mock Tauri API — default to returning resolved promise (matches real invoke behavior)
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
+  invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
 const mockInvoke = vi.mocked(invoke);
@@ -53,9 +53,23 @@ function TestWrapper({ children }: { children: React.ReactNode }) {
   );
 }
 
+/** Helper: set up invoke mock that handles conflict detection and rejects a specific command */
+function mockInvokeWithRejection(rejectCmd: string, rejection: unknown) {
+  mockInvoke.mockImplementation((cmd: string) => {
+    if (cmd === "detect_merge_conflicts") return Promise.resolve([]);
+    if (cmd === rejectCmd) return Promise.reject(rejection);
+    return Promise.resolve(undefined);
+  });
+}
+
 describe("MergeConflictTaskDetail", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default invoke mock: return empty array for conflict detection, undefined for others
+    mockInvoke.mockImplementation((cmd: string) => {
+      if (cmd === "detect_merge_conflicts") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
   });
 
   it("renders container with status banner", () => {
@@ -152,8 +166,7 @@ describe("MergeConflictTaskDetail", () => {
   describe("handleResolveConflicts error handling", () => {
     it("displays extracted message for string rejection (non-Error)", async () => {
       const user = userEvent.setup();
-      // Tauri rejects with plain strings for backend errors
-      mockInvoke.mockRejectedValueOnce("Git merge failed: conflict in src/main.rs");
+      mockInvokeWithRejection("resolve_merge_conflict", "Git merge failed: conflict in src/main.rs");
 
       const task = createTestTask();
       render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
@@ -161,14 +174,13 @@ describe("MergeConflictTaskDetail", () => {
       await user.click(screen.getByTestId("resolve-conflict-button"));
 
       await waitFor(() => {
-        // extractErrorMessage extracts the string value directly
         expect(screen.getByText("Git merge failed: conflict in src/main.rs")).toBeInTheDocument();
       });
     });
 
     it("displays extracted message for object rejection with .message", async () => {
       const user = userEvent.setup();
-      mockInvoke.mockRejectedValueOnce({ message: "Branch not found" });
+      mockInvokeWithRejection("resolve_merge_conflict", { message: "Branch not found" });
 
       const task = createTestTask();
       render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
@@ -176,14 +188,13 @@ describe("MergeConflictTaskDetail", () => {
       await user.click(screen.getByTestId("resolve-conflict-button"));
 
       await waitFor(() => {
-        // extractErrorMessage extracts .message from plain objects
         expect(screen.getByText("Branch not found")).toBeInTheDocument();
       });
     });
 
     it("displays fallback for unknown rejection type", async () => {
       const user = userEvent.setup();
-      mockInvoke.mockRejectedValueOnce(42);
+      mockInvokeWithRejection("resolve_merge_conflict", 42);
 
       const task = createTestTask();
       render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
@@ -197,7 +208,7 @@ describe("MergeConflictTaskDetail", () => {
 
     it("displays Error instance message", async () => {
       const user = userEvent.setup();
-      mockInvoke.mockRejectedValueOnce(new Error("Connection timeout"));
+      mockInvokeWithRejection("resolve_merge_conflict", new Error("Connection timeout"));
 
       const task = createTestTask();
       render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
@@ -213,8 +224,7 @@ describe("MergeConflictTaskDetail", () => {
   describe("handleRetryMerge error handling", () => {
     it("displays extracted message for string rejection (non-Error)", async () => {
       const user = userEvent.setup();
-      // Tauri rejects with plain strings for backend errors
-      mockInvoke.mockRejectedValueOnce("Merge target branch is locked");
+      mockInvokeWithRejection("retry_merge", "Merge target branch is locked");
 
       const task = createTestTask();
       render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
@@ -222,14 +232,13 @@ describe("MergeConflictTaskDetail", () => {
       await user.click(screen.getByTestId("retry-merge-button"));
 
       await waitFor(() => {
-        // extractErrorMessage extracts the string value directly
         expect(screen.getByText("Merge target branch is locked")).toBeInTheDocument();
       });
     });
 
     it("displays extracted message for object rejection with .message", async () => {
       const user = userEvent.setup();
-      mockInvoke.mockRejectedValueOnce({ message: "Permission denied" });
+      mockInvokeWithRejection("retry_merge", { message: "Permission denied" });
 
       const task = createTestTask();
       render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
@@ -237,14 +246,13 @@ describe("MergeConflictTaskDetail", () => {
       await user.click(screen.getByTestId("retry-merge-button"));
 
       await waitFor(() => {
-        // extractErrorMessage extracts .message from plain objects
         expect(screen.getByText("Permission denied")).toBeInTheDocument();
       });
     });
 
     it("displays fallback for unknown rejection type", async () => {
       const user = userEvent.setup();
-      mockInvoke.mockRejectedValueOnce(undefined);
+      mockInvokeWithRejection("retry_merge", undefined);
 
       const task = createTestTask();
       render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
@@ -258,7 +266,7 @@ describe("MergeConflictTaskDetail", () => {
 
     it("displays Error instance message", async () => {
       const user = userEvent.setup();
-      mockInvoke.mockRejectedValueOnce(new Error("Network error"));
+      mockInvokeWithRejection("retry_merge", new Error("Network error"));
 
       const task = createTestTask();
       render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });
@@ -274,9 +282,16 @@ describe("MergeConflictTaskDetail", () => {
   describe("error clearing", () => {
     it("clears previous error when action succeeds", async () => {
       const user = userEvent.setup();
-      // First call rejects, second resolves
-      mockInvoke.mockRejectedValueOnce(new Error("First failure"));
-      mockInvoke.mockResolvedValueOnce(undefined);
+      // First click rejects resolve_merge_conflict, then we reset to succeed
+      let shouldReject = true;
+      mockInvoke.mockImplementation((cmd: string) => {
+        if (cmd === "detect_merge_conflicts") return Promise.resolve([]);
+        if (cmd === "resolve_merge_conflict" && shouldReject) {
+          shouldReject = false;
+          return Promise.reject(new Error("First failure"));
+        }
+        return Promise.resolve(undefined);
+      });
 
       const task = createTestTask();
       render(<MergeConflictTaskDetail task={task} />, { wrapper: TestWrapper });

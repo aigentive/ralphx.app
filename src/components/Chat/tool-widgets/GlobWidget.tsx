@@ -88,6 +88,7 @@ export const GlobWidget = React.memo(function GlobWidget({
     <WidgetCard
       header={header}
       compact={compact}
+      alwaysExpanded={fileCount <= 3}
     >
       <FileList files={parsed.paths} />
     </WidgetCard>

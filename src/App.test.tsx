@@ -219,6 +219,15 @@ vi.mock("@/hooks", () => ({
   }),
 }));
 
+// Mock useAskUserQuestion to prevent Tauri API calls
+vi.mock("@/hooks/useAskUserQuestion", () => ({
+  useAskUserQuestion: vi.fn().mockReturnValue({
+    pendingQuestion: null,
+    isLoading: false,
+    respond: vi.fn(),
+  }),
+}));
+
 // Reset stores before each test
 function resetStores() {
   useUiStore.setState({

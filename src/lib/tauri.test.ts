@@ -287,6 +287,8 @@ describe("api.tasks", () => {
       expect(mockInvoke).toHaveBeenCalledWith("move_task", {
         taskId: "task-1",
         toStatus: "ready",
+        agentVariant: null,
+        note: null,
       });
     });
   });
