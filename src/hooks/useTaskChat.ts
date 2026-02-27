@@ -173,7 +173,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
 
   useEffect(() => {
     // Only set to true based on backend status (for initial load recovery)
-    // Don't set to false here - let the agent:run_completed event handle that
+    // Don't set to false here - let the agent:run_completed event (or agent:turn_completed in interactive mode) handle that
     if (isRunning) {
       setAgentRunning(contextKey, true);
     }

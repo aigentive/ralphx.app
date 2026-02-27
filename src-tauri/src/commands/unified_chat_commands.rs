@@ -8,7 +8,7 @@
 // - agent:chunk - Streaming text chunk
 // - agent:tool_call - Tool invocation
 // - agent:message_created - Message persisted
-// - agent:run_completed - Agent finished successfully
+// - agent:run_completed - Agent finished successfully (or agent:turn_completed in interactive mode)
 // - agent:error - Agent failed
 // - agent:queue_sent - Queued message sent
 
@@ -207,7 +207,7 @@ fn parse_context_type(context_type: &str) -> Result<ChatContextType, String> {
 /// - agent:chunk - Streaming text chunks
 /// - agent:tool_call - Tool invocations
 /// - agent:message_created - When messages are persisted
-/// - agent:run_completed - When agent finishes
+/// - agent:run_completed or agent:turn_completed (interactive) - When agent finishes
 /// - agent:error - On failure
 #[tauri::command]
 pub async fn send_agent_message(
@@ -520,7 +520,7 @@ pub async fn is_chat_service_available(
 ///
 /// Events emitted:
 /// - agent:stopped - When agent is terminated
-/// - agent:run_completed - So frontend knows agent is no longer running
+/// - agent:run_completed or agent:turn_completed (interactive) - So frontend knows agent is no longer running
 #[tauri::command]
 pub async fn stop_agent(
     context_type: String,

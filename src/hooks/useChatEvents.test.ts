@@ -594,6 +594,35 @@ describe("useChatEvents", () => {
   });
 
   // --------------------------------------------------------------------------
+  // 5b. Turn completed clears streaming state
+  // --------------------------------------------------------------------------
+  describe("agent:turn_completed", () => {
+    it("should clear all streaming state on turn completion", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:turn_completed", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // All three use functional updaters
+      expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+
+      // Verify updaters clear non-empty state
+      const toolCallResult = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, [
+        { id: "tc1", name: "Read", arguments: {} },
+      ]);
+      expect(toolCallResult).toEqual([]);
+      expect(mockInvalidateQueries).toHaveBeenCalled();
+    });
+  });
+
+  // --------------------------------------------------------------------------
   // 6. Error clears streaming tool calls
   // --------------------------------------------------------------------------
   describe("agent:error", () => {
