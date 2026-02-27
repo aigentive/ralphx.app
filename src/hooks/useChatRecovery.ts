@@ -97,19 +97,6 @@ export function useChatRecovery({
     }
   }, [activeConversationId, agentRunStatus, isConversationInCurrentContext, setAgentRunning, storeContextKey, currentContextType, currentContextId]);
 
-  // Recovery fallback: poll conversation while agent is running (backend status)
-  useEffect(() => {
-    if (!activeConversationId || agentRunStatus !== "running") return undefined;
-
-    const intervalId = setInterval(() => {
-      queryClient.invalidateQueries({
-        queryKey: chatKeys.conversation(activeConversationId),
-      });
-    }, 2000);
-
-    return () => clearInterval(intervalId);
-  }, [activeConversationId, agentRunStatus, queryClient]);
-
   // Recovery fallback: keep conversation list fresh while agent is running
   useEffect(() => {
     if (isHistoryMode || !isAgentContext) return undefined;
@@ -124,9 +111,11 @@ export function useChatRecovery({
     return () => clearInterval(intervalId);
   }, [currentContextType, isAgentRunning, isAgentContext, isHistoryMode, queryClient, selectedTaskId]);
 
-  // Live updates: poll active conversation while agent is running (store state)
+  // Live updates: poll active conversation while agent is running (store state or backend status).
+  // Consolidates two previously-separate intervals that both polled the same query key.
   useEffect(() => {
-    if (!activeConversationId || !isAgentRunning) return undefined;
+    if (!activeConversationId) return undefined;
+    if (!isAgentRunning && agentRunStatus !== "running") return undefined;
 
     const intervalId = setInterval(() => {
       queryClient.invalidateQueries({
@@ -135,7 +124,7 @@ export function useChatRecovery({
     }, 2000);
 
     return () => clearInterval(intervalId);
-  }, [activeConversationId, isAgentRunning, queryClient]);
+  }, [activeConversationId, isAgentRunning, agentRunStatus, queryClient]);
 
   // If a run is active but no conversation is selected, keep refreshing the list
   useEffect(() => {

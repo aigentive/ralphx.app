@@ -179,6 +179,105 @@ fn test_processor_thinking_block_verbose() {
     assert!(matches!(&events[2], StreamEvent::SessionId(id) if id == "sess-456"));
 }
 
+/// When Claude CLI emits both streaming delta events AND a verbose `assistant` summary,
+/// the `TextChunk` must not be emitted twice and `response_text` must contain the text once.
+#[test]
+fn test_verbose_mode_no_double_emission() {
+    let mut processor = StreamProcessor::new();
+
+    // Step 1: streaming deltas arrive first (the normal live-stream path)
+    let delta1 = StreamMessage::ContentBlockDelta {
+        index: Some(0),
+        delta: ContentDelta {
+            delta_type: "text_delta".to_string(),
+            text: Some("Hello ".to_string()),
+            partial_json: None,
+        },
+    };
+    let delta2 = StreamMessage::ContentBlockDelta {
+        index: Some(0),
+        delta: ContentDelta {
+            delta_type: "text_delta".to_string(),
+            text: Some("world".to_string()),
+            partial_json: None,
+        },
+    };
+
+    let delta_events1 = processor.process_message(delta1);
+    let delta_events2 = processor.process_message(delta2);
+
+    assert_eq!(delta_events1.len(), 1);
+    assert!(matches!(&delta_events1[0], StreamEvent::TextChunk(t) if t == "Hello "));
+    assert_eq!(delta_events2.len(), 1);
+    assert!(matches!(&delta_events2[0], StreamEvent::TextChunk(t) if t == "world"));
+
+    // Step 2: verbose assistant message arrives with the same full text
+    let verbose_msg = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Hello world".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+
+    let verbose_events = processor.process_message(verbose_msg);
+
+    // The verbose message should emit NO TextChunk (deltas already did)
+    let text_chunk_count = verbose_events
+        .iter()
+        .filter(|e| matches!(e, StreamEvent::TextChunk(_)))
+        .count();
+    assert_eq!(
+        text_chunk_count, 0,
+        "TextChunk must not be emitted again when deltas already streamed the text"
+    );
+
+    // response_text must contain the text exactly once
+    let result = processor.finish();
+    assert_eq!(
+        result.response_text, "Hello world",
+        "response_text must contain the text exactly once"
+    );
+}
+
+/// When Claude CLI runs in verbose-only mode (no streaming deltas, only an `assistant` message),
+/// the `TextChunk` event must be emitted and `response_text` must be populated correctly.
+#[test]
+fn test_verbose_only_text_emission() {
+    let mut processor = StreamProcessor::new();
+
+    let msg = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Verbose response".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+
+    let events = processor.process_message(msg);
+
+    // Must emit exactly one TextChunk
+    let text_chunks: Vec<_> = events
+        .iter()
+        .filter_map(|e| {
+            if let StreamEvent::TextChunk(t) = e {
+                Some(t.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(text_chunks, vec!["Verbose response"]);
+
+    // response_text must be populated
+    let result = processor.finish();
+    assert_eq!(result.response_text, "Verbose response");
+}
+
 #[test]
 fn test_system_without_subtype_still_works() {
     let mut processor = StreamProcessor::new();

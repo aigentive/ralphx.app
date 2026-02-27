@@ -28,6 +28,12 @@ function fireEvent<T>(event: string, payload: T) {
 }
 
 const mockInvalidateQueries = vi.fn();
+let mockQueryData: { messages: Array<{ id: string }> } | undefined = undefined;
+const mockGetQueryData = vi.fn(() => mockQueryData);
+const cacheSubscribers: Array<(event: { type: string; query: { queryKey: unknown[] } }) => void> = [];
+function fireCacheEvent(event: { type: string; query: { queryKey: unknown[] } }) {
+  for (const fn of cacheSubscribers) fn(event);
+}
 
 vi.mock("@/providers/EventProvider", () => ({
   useEventBus: () => ({
@@ -48,6 +54,16 @@ vi.mock("@/providers/EventProvider", () => ({
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
     invalidateQueries: mockInvalidateQueries,
+    getQueryData: mockGetQueryData,
+    getQueryCache: () => ({
+      subscribe: (fn: (event: { type: string; query: { queryKey: unknown[] } }) => void) => {
+        cacheSubscribers.push(fn);
+        return () => {
+          const idx = cacheSubscribers.indexOf(fn);
+          if (idx >= 0) cacheSubscribers.splice(idx, 1);
+        };
+      },
+    }),
   }),
 }));
 
@@ -141,6 +157,9 @@ describe("useChatEvents", () => {
   beforeEach(() => {
     subscriptions.clear();
     mockInvalidateQueries.mockClear();
+    mockGetQueryData.mockClear();
+    mockQueryData = undefined;
+    cacheSubscribers.length = 0;
     // Default: full feature flags (task_execution context)
     mockContextConfig = {
       supportsStreamingText: true,
@@ -495,7 +514,7 @@ describe("useChatEvents", () => {
       expect(props.setIsFinalizing).toHaveBeenCalledWith(true);
     });
 
-    it("should set isFinalizing=false after 500ms timeout", () => {
+    it("should set isFinalizing=false after 3s safety timeout when no message_id provided", () => {
       vi.useFakeTimers();
       const props = makeProps();
       renderAndClear(props);
@@ -505,6 +524,7 @@ describe("useChatEvents", () => {
           conversation_id: CONV_ID,
           context_id: CTX_ID,
           role: "assistant",
+          // No message_id — falls back to safety timeout only
         });
       });
 
@@ -512,12 +532,170 @@ describe("useChatEvents", () => {
       expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
       expect(props.setIsFinalizing).toHaveBeenLastCalledWith(true);
 
-      // Advance 500ms — timeout fires
+      // Advance 2999ms — timeout has NOT yet fired
       act(() => {
-        vi.advanceTimersByTime(500);
+        vi.advanceTimersByTime(2999);
+      });
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+
+      // Advance 1ms more — 3s total, safety timeout fires
+      act(() => {
+        vi.advanceTimersByTime(1);
       });
 
-      // Now called with false (the timeout cleared it)
+      // Now called with false (the safety timeout cleared it)
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(2);
+      expect(props.setIsFinalizing).toHaveBeenLastCalledWith(false);
+    });
+
+    it("should clear isFinalizing when query cache returns data containing the message_id", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // No initial query data
+      mockQueryData = undefined;
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "assistant",
+          message_id: "msg-assistant-new",
+        });
+      });
+
+      // isFinalizing set to true; cache subscriber registered
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+      expect(props.setIsFinalizing).toHaveBeenCalledWith(true);
+      expect(cacheSubscribers).toHaveLength(1);
+
+      // Simulate query refetch completing with the new assistant message
+      mockQueryData = { messages: [{ id: "msg-assistant-new" }] };
+
+      act(() => {
+        fireCacheEvent({
+          type: "updated",
+          query: { queryKey: ["chat", "conversations", CONV_ID] },
+        });
+      });
+
+      // isFinalizing cleared (no timers needed)
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(2);
+      expect(props.setIsFinalizing).toHaveBeenLastCalledWith(false);
+      // Cache subscriber unregistered
+      expect(cacheSubscribers).toHaveLength(0);
+    });
+
+    it("should ignore cache events for a different conversation_id", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      mockQueryData = undefined;
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "assistant",
+          message_id: "msg-xyz",
+        });
+      });
+
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+
+      // Fire cache event for a different conversation
+      act(() => {
+        fireCacheEvent({
+          type: "updated",
+          query: { queryKey: ["chat", "conversations", "other-conv-id"] },
+        });
+      });
+
+      // isFinalizing should NOT be cleared yet
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+    });
+
+    it("should ignore cache events with type other than 'updated'", () => {
+      vi.useFakeTimers();
+      const props = makeProps();
+      renderAndClear(props);
+
+      // No initial query data — so race guard doesn't trigger, cache subscriber is set up
+      mockQueryData = undefined;
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "assistant",
+          message_id: "msg-xyz",
+        });
+      });
+
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+      expect(props.setIsFinalizing).toHaveBeenCalledWith(true);
+
+      // Populate the data, but fire a non-'updated' event — should be ignored
+      mockQueryData = { messages: [{ id: "msg-xyz" }] };
+      act(() => {
+        fireCacheEvent({
+          type: "added",
+          query: { queryKey: ["chat", "conversations", CONV_ID] },
+        });
+      });
+
+      // isFinalizing should NOT be cleared by a non-'updated' event
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+    });
+
+    it("should clear isFinalizing immediately via race guard if query already has the message", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // Data is already present before the event fires (race condition)
+      mockQueryData = { messages: [{ id: "msg-already-there" }] };
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "assistant",
+          message_id: "msg-already-there",
+        });
+      });
+
+      // setIsFinalizing(true) then setIsFinalizing(false) in the same act()
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(2);
+      expect(props.setIsFinalizing).toHaveBeenNthCalledWith(1, true);
+      expect(props.setIsFinalizing).toHaveBeenNthCalledWith(2, false);
+      // No cache subscriber needed since race guard caught it
+      expect(cacheSubscribers).toHaveLength(0);
+    });
+
+    it("should still set 3s safety timeout even when message_id is present", () => {
+      vi.useFakeTimers();
+      const props = makeProps();
+      renderAndClear(props);
+
+      mockQueryData = undefined; // Query never returns the message
+
+      act(() => {
+        fireEvent("agent:message_created", {
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+          role: "assistant",
+          message_id: "msg-never-arrives",
+        });
+      });
+
+      expect(props.setIsFinalizing).toHaveBeenCalledTimes(1);
+      expect(props.setIsFinalizing).toHaveBeenCalledWith(true);
+
+      // Advance 3s — safety timeout fires since query never returned the message
+      act(() => {
+        vi.advanceTimersByTime(3000);
+      });
+
       expect(props.setIsFinalizing).toHaveBeenCalledTimes(2);
       expect(props.setIsFinalizing).toHaveBeenLastCalledWith(false);
     });

@@ -571,12 +571,17 @@ export function IntegratedChatPanel({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  // Sort messages by createdAt - render in chronological order, no grouping
+  // Sort messages by createdAt for historical display.
+  // During active streaming, preserve insertion order to prevent optimistic messages
+  // from jumping around due to client/server clock skew.
   const sortedMessages = useMemo(() => {
+    if (isAgentRunning || isSending) {
+      return [...messagesData];
+    }
     return [...messagesData].sort((a, b) =>
       new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
     );
-  }, [messagesData]);
+  }, [messagesData, isAgentRunning, isSending]);
 
   // Loading state: show skeleton when conversations list is loading OR active conversation is loading
   const isConversationsLoading = conversations.isLoading;

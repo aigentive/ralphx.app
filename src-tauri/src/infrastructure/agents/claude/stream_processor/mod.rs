@@ -251,11 +251,17 @@ impl StreamProcessor {
                 for content in message.content {
                     match content {
                         AssistantContent::Text { text } => {
-                            self.response_text.push_str(&text);
-                            // Add as content block directly (verbose mode gives us complete blocks)
-                            self.content_blocks
-                                .push(ContentBlockItem::Text { text: text.clone() });
-                            events.push(StreamEvent::TextChunk(text));
+                            if self.response_text.is_empty() {
+                                // Verbose-only path: no deltas were streamed before this message.
+                                // Emit TextChunk and populate response_text from this content.
+                                self.response_text.push_str(&text);
+                                self.content_blocks
+                                    .push(ContentBlockItem::Text { text: text.clone() });
+                                events.push(StreamEvent::TextChunk(text));
+                            }
+                            // else: content_block_delta events already streamed the text,
+                            // populated response_text, and emitted TextChunk events.
+                            // Skip re-emission to prevent duplicate text and double TextChunk events.
                         }
                         AssistantContent::ToolUse { id, name, input } => {
                             // Detect Task tool_use and emit TaskStarted

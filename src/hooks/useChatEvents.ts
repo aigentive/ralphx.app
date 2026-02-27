@@ -70,6 +70,9 @@ export function useChatEvents({
 
     const unsubscribes: Unsubscribe[] = [];
 
+    // Track pending finalization cleanups so they can be cancelled on effect teardown
+    const activeCancelFns: Array<() => void> = [];
+
     // Helper: check if event matches current context
     const isRelevant = (payload: { conversation_id?: string; context_id?: string }) =>
       payload.conversation_id === activeConversationId &&
@@ -91,7 +94,7 @@ export function useChatEvents({
         parent_tool_use_id?: string | null;
         seq?: number;
       }>("agent:tool_call", (payload) => {
-        const { tool_name, tool_id, arguments: args, result, conversation_id, diff_context, parent_tool_use_id } = payload;
+        const { tool_name, tool_id, arguments: args, result, diff_context, parent_tool_use_id } = payload;
 
         if (!isRelevant(payload)) return;
 
@@ -145,9 +148,6 @@ export function useChatEvents({
             return changed ? next : prev;
           });
 
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
-          });
           return;
         }
 
@@ -266,10 +266,8 @@ export function useChatEvents({
             });
           }
         }
-
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(conversation_id),
-        });
+        // No per-tool-call invalidation: tool calls are visible via streaming state.
+        // DB refetch happens only at turn completion (agent:run_completed).
       })
     );
 
@@ -384,38 +382,82 @@ export function useChatEvents({
     // ── agent:message_created ────────────────────────────────────────
     // Clear streaming state for assistant messages to prevent duplicate display.
     //
-    // Direct state strategy: Set isFinalizing=true in the same React batch as clearing
-    // streaming state. This ensures the last-assistant-message filter stays active through
-    // the timing window between streaming state clear and query refetch completion.
-    //
-    // Timeline:
+    // Query-aware finalization strategy:
     // 1. Streaming active: streamingContentBlocks visible, last DB assistant message filtered
     // 2. agent:message_created fires: setIsFinalizing(true) + clear streaming state (same batch)
     // 3. Re-render: hasActiveStreaming=false, isFinalizing=true → filter still applies
-    // 4. Query refetch completes: new DB message appears correctly
-    // 5. After 500ms: setIsFinalizing(false) → filter removed
-    // Result: smooth swap, no duplicate or flash
+    // 4. Subscribe to query cache; when the refetch returns data containing the new message_id,
+    //    call setIsFinalizing(false) and unsubscribe.
+    // 5. Safety timeout (3s) clears isFinalizing if the query never returns the expected message.
+    // Result: smooth swap with no fixed-delay race condition.
     unsubscribes.push(
       bus.subscribe<{
         conversation_id?: string;
         context_id?: string;
         context_type?: string;
         role?: string;
+        message_id?: string;
       }>("agent:message_created", (payload) => {
         if (!payload.conversation_id) return;
         if (!isRelevant(payload)) return;
 
         if (payload.role === "assistant") {
+          const convId = payload.conversation_id;
+          const assistantMessageId = payload.message_id;
+
           // Set isFinalizing=true in same batch as clearing streaming state
           setIsFinalizing(true);
           setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
           setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
           setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
 
-          // Clear finalizing state after query refetch window (500ms)
-          setTimeout(() => {
+          let cleanupDone = false;
+          let safetyTimerId: ReturnType<typeof setTimeout> | undefined;
+          let unsubscribeCache: (() => void) | undefined;
+
+          const clearFinalizing = () => {
+            if (cleanupDone) return;
+            cleanupDone = true;
             setIsFinalizing(false);
-          }, 500);
+            if (safetyTimerId !== undefined) {
+              clearTimeout(safetyTimerId);
+              safetyTimerId = undefined;
+            }
+            if (unsubscribeCache) {
+              unsubscribeCache();
+              unsubscribeCache = undefined;
+            }
+            const idx = activeCancelFns.indexOf(clearFinalizing);
+            if (idx >= 0) activeCancelFns.splice(idx, 1);
+          };
+
+          activeCancelFns.push(clearFinalizing);
+
+          // Safety fallback — prevents isFinalizing from being stuck forever
+          safetyTimerId = setTimeout(clearFinalizing, 3000);
+
+          if (assistantMessageId) {
+            const targetKey = chatKeys.conversation(convId);
+
+            // Race guard: check if the query already has the message before subscribing
+            const existing = queryClient.getQueryData<{ messages: Array<{ id: string }> }>(targetKey);
+            if (existing?.messages?.some(m => m.id === assistantMessageId)) {
+              clearFinalizing();
+            } else {
+              // Subscribe to query cache updates — clear isFinalizing when the new
+              // assistant message appears in the refetched conversation data.
+              unsubscribeCache = queryClient.getQueryCache().subscribe((event) => {
+                if (event.type !== "updated") return;
+                const evKey = event.query.queryKey;
+                if (!Array.isArray(evKey) || evKey.length < 3 || evKey[2] !== convId) return;
+                const data = queryClient.getQueryData<{ messages: Array<{ id: string }> }>(targetKey);
+                if (data?.messages?.some(m => m.id === assistantMessageId)) {
+                  clearFinalizing();
+                }
+              });
+            }
+          }
+          // If no message_id in payload, the safety timeout alone handles cleanup
         }
 
         queryClient.invalidateQueries({
@@ -486,6 +528,8 @@ export function useChatEvents({
       setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
       setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
       setIsFinalizing(false);
+      // Cancel any pending finalization watchers (timers + cache subscriptions)
+      activeCancelFns.slice().forEach(fn => fn());
       unsubscribes.forEach((unsub) => unsub());
     };
   }, [
