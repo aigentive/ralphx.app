@@ -15,6 +15,9 @@ use crate::domain::entities::{
     IdeationSessionId, InternalStatus, ProjectId, Task, TaskCategory, TaskId,
 };
 use crate::domain::repositories::{ProjectRepository, TaskRepository};
+use crate::application::interactive_process_registry::{
+    InteractiveProcessKey, InteractiveProcessRegistry,
+};
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::error::AppResult;
 
@@ -101,6 +104,7 @@ pub struct TaskCleanupService {
     task_repo: Arc<dyn TaskRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     running_agent_registry: Arc<dyn RunningAgentRegistry>,
+    interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
     app_handle: Option<AppHandle>,
     /// Optional task stopper for Graceful mode. When set, Graceful stop will
     /// transition tasks to Stopped via the state machine (triggering on_exit
@@ -119,9 +123,16 @@ impl TaskCleanupService {
             task_repo,
             project_repo,
             running_agent_registry,
+            interactive_process_registry: None,
             app_handle,
             task_stopper: None,
         }
+    }
+
+    /// Set the interactive process registry for IPR cleanup on stop (builder pattern).
+    pub fn with_interactive_process_registry(mut self, ipr: Arc<InteractiveProcessRegistry>) -> Self {
+        self.interactive_process_registry = Some(ipr);
+        self
     }
 
     /// Set the task stopper for Graceful mode (builder pattern).
@@ -330,6 +341,14 @@ impl TaskCleanupService {
             InternalStatus::Merging => "merge",
             _ => "task_execution",
         };
+
+        // Remove from interactive process registry first — closes stdin pipe
+        // so the process doesn't linger waiting for input after SIGTERM.
+        if let Some(ref ipr) = self.interactive_process_registry {
+            let ipr_key = InteractiveProcessKey::new(context_type, task.id.as_str());
+            ipr.remove(&ipr_key).await;
+        }
+
         let key = RunningAgentKey::new(context_type, task.id.as_str());
         let _ = self.running_agent_registry.stop(&key).await;
 
