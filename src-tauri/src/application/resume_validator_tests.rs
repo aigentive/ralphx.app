@@ -151,3 +151,139 @@ fn test_truncate_status_output_long() {
     assert!(truncated.contains("... and 10 more files"));
     assert!(!truncated.contains("file19.txt"));
 }
+
+// ── IPR cleanup tests ──────────────────────────────────────────────────
+
+/// Helper for creating test stdin pipes (real subprocess for IPR testing)
+async fn create_test_stdin() -> (tokio::process::ChildStdin, tokio::process::Child) {
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to spawn cat");
+    let stdin = child.stdin.take().expect("no stdin");
+    (stdin, child)
+}
+
+/// cleanup_orphan_agents removes IPR entries alongside running agent registry.
+/// Verify: after cleanup, both IPR and registry are clean.
+#[tokio::test]
+async fn test_cleanup_orphan_agents_with_ipr_removes_ipr_entries() {
+    let registry: Arc<dyn RunningAgentRegistry> = Arc::new(MemoryRunningAgentRegistry::new());
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let validator = ResumeValidator::new(Arc::clone(&registry))
+        .with_interactive_process_registry(Arc::clone(&ipr));
+    let task = create_test_task();
+
+    // Register agent in both running registry and IPR
+    let key = RunningAgentKey::new("task_execution", task.id.as_str());
+    registry
+        .register(
+            key.clone(),
+            12345,
+            "conv-123".to_string(),
+            "run-123".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let (stdin, _child) = create_test_stdin().await;
+    let ipr_key = InteractiveProcessKey::new("task_execution", task.id.as_str());
+    ipr.register(ipr_key.clone(), stdin).await;
+    assert!(ipr.has_process(&ipr_key).await, "Precondition: IPR has entry");
+
+    let result = validator.cleanup_orphan_agents(&task).await;
+
+    assert!(result.is_valid);
+    assert_eq!(result.warnings.len(), 1);
+    assert!(result.warnings[0].contains("Stopped 1 orphan agent"));
+
+    // Both must be cleaned up
+    assert!(
+        !registry.is_running(&key).await,
+        "Agent must be unregistered from running registry"
+    );
+    assert!(
+        !ipr.has_process(&ipr_key).await,
+        "IPR entry must be removed"
+    );
+    assert_eq!(ipr.count().await, 0, "IPR must be empty");
+}
+
+/// cleanup_orphan_agents removes IPR entries for ALL context types
+/// (task_execution, review, merge).
+#[tokio::test]
+async fn test_cleanup_orphan_agents_with_ipr_handles_multiple_context_types() {
+    let registry: Arc<dyn RunningAgentRegistry> = Arc::new(MemoryRunningAgentRegistry::new());
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let validator = ResumeValidator::new(Arc::clone(&registry))
+        .with_interactive_process_registry(Arc::clone(&ipr));
+    let task = create_test_task();
+
+    // Register agents in multiple context types
+    let context_types = ["task_execution", "review"];
+    for (idx, context_type) in context_types.iter().enumerate() {
+        let key = RunningAgentKey::new(*context_type, task.id.as_str());
+        registry
+            .register(
+                key,
+                12345 + idx as u32,
+                format!("conv-{}", idx),
+                format!("run-{}", idx),
+                None,
+                None,
+            )
+            .await;
+
+        let (stdin, _child) = create_test_stdin().await;
+        let ipr_key = InteractiveProcessKey::new(*context_type, task.id.as_str());
+        ipr.register(ipr_key, stdin).await;
+    }
+
+    assert_eq!(ipr.count().await, 2, "Precondition: both IPR entries exist");
+
+    let result = validator.cleanup_orphan_agents(&task).await;
+
+    assert!(result.is_valid);
+    assert!(result.warnings[0].contains("Stopped 2 orphan agent"));
+
+    // All IPR entries must be removed
+    assert_eq!(ipr.count().await, 0, "All IPR entries must be removed");
+    for context_type in &context_types {
+        let ipr_key = InteractiveProcessKey::new(*context_type, task.id.as_str());
+        assert!(
+            !ipr.has_process(&ipr_key).await,
+            "IPR entry for {} must be removed",
+            context_type
+        );
+    }
+}
+
+/// Without IPR set on validator, cleanup still works (backward compat).
+#[tokio::test]
+async fn test_cleanup_orphan_agents_without_ipr_still_cleans_registry() {
+    let registry: Arc<dyn RunningAgentRegistry> = Arc::new(MemoryRunningAgentRegistry::new());
+    // No IPR set — validator.interactive_process_registry = None
+    let validator = ResumeValidator::new(Arc::clone(&registry));
+    let task = create_test_task();
+
+    let key = RunningAgentKey::new("task_execution", task.id.as_str());
+    registry
+        .register(
+            key.clone(),
+            12345,
+            "conv-123".to_string(),
+            "run-123".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let result = validator.cleanup_orphan_agents(&task).await;
+
+    assert!(result.is_valid);
+    assert!(result.warnings[0].contains("Stopped 1 orphan agent"));
+    assert!(!registry.is_running(&key).await, "Agent must still be stopped");
+}

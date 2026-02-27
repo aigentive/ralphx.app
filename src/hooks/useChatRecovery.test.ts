@@ -103,6 +103,9 @@ describe("useChatRecovery", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     mockInvalidateQueries.mockClear();
+    // Default: process not running. Effect 2 calls chatApi.isAgentRunning()
+    // which must return a Promise (not undefined) to avoid TypeError on .then().
+    mockIsAgentRunning.mockResolvedValue(false);
   });
 
   afterEach(() => {
@@ -130,9 +133,12 @@ describe("useChatRecovery", () => {
   });
 
   describe("stuck running state cleanup", () => {
-    it("should clear running state when backend says completed", () => {
+    it("should clear running state when backend says completed", async () => {
       const props = makeProps({ agentRunStatus: "completed" });
       renderHook(() => useChatRecovery(props));
+
+      // Flush the microtask from isAgentRunning Promise
+      await act(async () => {});
 
       expect(props.setAgentRunning).toHaveBeenCalledWith("task_execution:task-1", false);
     });
@@ -241,6 +247,66 @@ describe("useChatRecovery", () => {
 
       vi.advanceTimersByTime(3000);
       expect(mockIsAgentRunning).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("IPR process check (double-execution fix)", () => {
+    beforeEach(() => {
+      mockIsAgentRunning.mockClear();
+    });
+
+    it("should NOT clear running state when process is still alive (IPR returns true)", async () => {
+      mockIsAgentRunning.mockResolvedValue(true);
+      const props = makeProps({ agentRunStatus: "completed" });
+      renderHook(() => useChatRecovery(props));
+
+      // Flush the microtask from the isAgentRunning promise
+      await act(async () => {});
+
+      expect(mockIsAgentRunning).toHaveBeenCalledWith("task_execution", "task-1");
+      // Process is alive → must NOT set false
+      const falseCalls = props.setAgentRunning.mock.calls.filter(
+        (call: [string, boolean]) => call[1] === false
+      );
+      expect(falseCalls).toHaveLength(0);
+    });
+
+    it("should clear running state when process is dead (IPR returns false)", async () => {
+      mockIsAgentRunning.mockResolvedValue(false);
+      const props = makeProps({ agentRunStatus: "completed" });
+      renderHook(() => useChatRecovery(props));
+
+      await act(async () => {});
+
+      expect(mockIsAgentRunning).toHaveBeenCalledWith("task_execution", "task-1");
+      expect(props.setAgentRunning).toHaveBeenCalledWith("task_execution:task-1", false);
+    });
+
+    it("should clear running state on IPR check error (fallback to DB truth)", async () => {
+      mockIsAgentRunning.mockRejectedValue(new Error("IPR check failed"));
+      const props = makeProps({ agentRunStatus: "completed" });
+      renderHook(() => useChatRecovery(props));
+
+      await act(async () => {});
+
+      // Error in process check → fall back to DB truth (completed) → clear
+      expect(props.setAgentRunning).toHaveBeenCalledWith("task_execution:task-1", false);
+    });
+
+    it("should use correct context type and id for IPR check", async () => {
+      mockIsAgentRunning.mockResolvedValue(true);
+      const props = makeProps({
+        agentRunStatus: "completed",
+        currentContextType: "merge" as ContextType,
+        currentContextId: "task-merge-42",
+        storeContextKey: "merge:task-merge-42",
+      });
+      renderHook(() => useChatRecovery(props));
+
+      await act(async () => {});
+
+      // Must check with the correct context type and id
+      expect(mockIsAgentRunning).toHaveBeenCalledWith("merge", "task-merge-42");
     });
   });
 
