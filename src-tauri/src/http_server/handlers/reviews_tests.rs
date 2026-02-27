@@ -195,3 +195,110 @@ async fn test_complete_review_guard_does_not_fire_for_reviewing_task() {
     }
     // If Ok — guard correctly didn't fire, handler proceeded.
 }
+
+// ============================================================================
+// IPR (Interactive Process Registry) exit signal tests for complete_review
+// ============================================================================
+
+/// complete_review — no IPR entry is safe: handler succeeds without IPR registered.
+///
+/// When no IPR entry is present (reviewer agent already exited), the IPR removal
+/// is a no-op and must not cause the handler to fail.
+#[tokio::test]
+async fn test_complete_review_no_ipr_entry_is_safe() {
+    let state = setup_review_test_state().await;
+    let task = seed_task_with_status(&state, InternalStatus::Reviewing).await;
+    let task_id = task.id.as_str().to_string();
+
+    // No IPR entry registered — IPR removal is a no-op
+    let req = CompleteReviewRequest {
+        task_id,
+        decision: "approved".to_string(),
+        summary: None,
+        feedback: None,
+        issues: None,
+    };
+    let result = complete_review(State(state.clone()), Json(req)).await;
+
+    // Guard must NOT fire (task is in Reviewing state), so 400 is not acceptable.
+    // Transition may succeed (200) or fail (500) depending on in-memory repo support —
+    // both are acceptable here; we're testing IPR safety, not the transition itself.
+    if let Err((status, msg)) = &result {
+        assert_ne!(
+            *status,
+            StatusCode::BAD_REQUEST,
+            "Absent IPR entry must not trigger the 400 guard. Got 400: {msg}",
+        );
+    }
+}
+
+/// complete_review — IPR entry removed after successful approval.
+///
+/// When the full review flow succeeds (task transitions away from Reviewing),
+/// the IPR entry for the "review" context must be removed so the reviewer agent
+/// receives EOF on stdin and exits gracefully.
+#[tokio::test]
+async fn test_complete_review_ipr_removed_on_success() {
+    let state = setup_review_test_state().await;
+    let task = seed_task_with_status(&state, InternalStatus::Reviewing).await;
+    let task_id = task.id.clone();
+
+    // Register IPR entry for the reviewer agent
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn cat for review IPR test");
+    let stdin = child.stdin.take().expect("cat stdin");
+
+    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
+        "review",
+        task_id.as_str(),
+    );
+    state
+        .app_state
+        .interactive_process_registry
+        .register(key.clone(), stdin)
+        .await;
+
+    assert!(
+        state
+            .app_state
+            .interactive_process_registry
+            .has_process(&key)
+            .await,
+        "IPR must be registered before handler call"
+    );
+
+    let req = CompleteReviewRequest {
+        task_id: task_id.as_str().to_string(),
+        decision: "approved".to_string(),
+        summary: Some("LGTM".to_string()),
+        feedback: None,
+        issues: None,
+    };
+    let result = complete_review(State(state.clone()), Json(req)).await;
+
+    // Only assert IPR removal when the full handler flow succeeded.
+    // If the state transition fails (in-memory repo limitation), the IPR removal
+    // code is never reached, which is a known constraint of handler-level tests.
+    if result.is_ok() {
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "IPR must be removed after complete_review succeeds"
+        );
+    }
+
+    // Clean up regardless of result
+    state
+        .app_state
+        .interactive_process_registry
+        .remove(&key)
+        .await;
+    let _ = child.kill().await;
+}

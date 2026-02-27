@@ -521,6 +521,8 @@ agents:
         mark_issue_in_progress,
         mark_issue_addressed,
         get_project_analysis,
+        # execution completion signal
+        execution_complete,
         # memory read tools
         search_memories,
         get_memory,

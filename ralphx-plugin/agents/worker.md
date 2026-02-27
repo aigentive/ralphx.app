@@ -39,6 +39,7 @@ allowedTools:
   - mcp__ralphx__mark_issue_in_progress
   - mcp__ralphx__mark_issue_addressed
   - mcp__ralphx__get_project_analysis
+  - mcp__ralphx__execution_complete
   - mcp__ralphx__search_memories
   - mcp__ralphx__get_memory
   - mcp__ralphx__get_memories_for_paths
@@ -158,6 +159,8 @@ Quality checks before closing:
 | Committed | Atomic commits with clear messages |
 
 Provide summary: files created/modified, tests added, issues encountered and resolved.
+
+**MANDATORY FINAL STEP**: After completing all work and providing the summary, call `execution_complete` with the `task_id`. This signals that your process can exit cleanly. Do NOT stop responding without calling `execution_complete` first.
 </phase>
 
 </state>

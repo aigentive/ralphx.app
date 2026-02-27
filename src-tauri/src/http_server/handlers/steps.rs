@@ -7,6 +7,7 @@ use tauri::Emitter;
 use tracing::error;
 
 use super::*;
+use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::domain::entities::{
     StepProgressSummary, Task, TaskId, TaskStep, TaskStepId, TaskStepStatus,
 };
@@ -135,6 +136,64 @@ pub async fn complete_step_http(
                 "task_id": &response.task_id
             }),
         );
+    }
+
+    // Fallback: if all steps for this task are now done, close the worker's IPR to signal EOF
+    {
+        let task_id_for_check = TaskId::from_string(response.task_id.clone());
+        match state
+            .app_state
+            .task_step_repo
+            .get_by_task(&task_id_for_check)
+            .await
+        {
+            Ok(all_steps) if !all_steps.is_empty() => {
+                let all_done = all_steps.iter().all(|s| {
+                    matches!(
+                        s.status,
+                        TaskStepStatus::Completed | TaskStepStatus::Skipped
+                    )
+                });
+                if all_done {
+                    tracing::info!(
+                        "All {} steps complete for task {} — triggering execution completion fallback",
+                        all_steps.len(),
+                        response.task_id
+                    );
+                    let key =
+                        InteractiveProcessKey::new("task_execution", &response.task_id);
+                    if state
+                        .app_state
+                        .interactive_process_registry
+                        .remove(&key)
+                        .await
+                        .is_some()
+                    {
+                        tracing::info!(
+                            "IPR removed for worker on task {} (all-steps-done fallback)",
+                            response.task_id
+                        );
+                    }
+                    if let Some(app_handle) = &state.app_state.app_handle {
+                        let _ = app_handle.emit(
+                            "execution:completed",
+                            serde_json::json!({
+                                "task_id": &response.task_id,
+                                "trigger": "all_steps_done_fallback",
+                            }),
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to check step completion for task {}: {}",
+                    response.task_id,
+                    e
+                );
+            }
+            _ => {}
+        }
     }
 
     Ok(Json(response))
@@ -499,6 +558,71 @@ pub async fn get_step_context_http(
     };
 
     Ok(Json(response))
+}
+
+/// Signal that task execution is complete.
+///
+/// Called by the worker agent via MCP `execution_complete` tool after all steps are done.
+/// Closes the agent's stdin via IPR so it receives EOF and exits gracefully.
+/// The `handle_stream_success` callback handles the actual state transition when the process exits.
+pub async fn execution_complete_http(
+    State(state): State<HttpServerState>,
+    Path(task_id_str): Path<String>,
+    Json(req): Json<ExecutionCompleteRequest>,
+) -> Result<Json<ExecutionCompleteResponse>, (StatusCode, String)> {
+    let task_id = TaskId::from_string(task_id_str.clone());
+
+    // Verify task exists
+    state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Task {} not found", task_id_str)))?;
+
+    tracing::info!(
+        "execution_complete received for task {}: summary={:?}",
+        task_id_str,
+        req.summary
+    );
+
+    // Close stdin via IPR — agent gets EOF and exits gracefully.
+    // State transition happens in handle_stream_success when the process exits.
+    let key = InteractiveProcessKey::new("task_execution", task_id_str.as_str());
+    if state
+        .app_state
+        .interactive_process_registry
+        .remove(&key)
+        .await
+        .is_some()
+    {
+        tracing::info!(
+            "IPR entry removed for task {} — agent will receive EOF and exit",
+            task_id_str
+        );
+    } else {
+        tracing::warn!(
+            "No IPR entry found for task {} — agent may have already exited",
+            task_id_str
+        );
+    }
+
+    // Notify frontend
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "execution:completed",
+            serde_json::json!({
+                "task_id": task_id_str,
+                "summary": req.summary,
+            }),
+        );
+    }
+
+    Ok(Json(ExecutionCompleteResponse {
+        success: true,
+        message: format!("Execution complete for task {}", task_id_str),
+    }))
 }
 
 #[cfg(test)]

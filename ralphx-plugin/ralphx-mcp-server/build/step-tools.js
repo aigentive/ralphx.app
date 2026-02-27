@@ -165,5 +165,23 @@ export const STEP_TOOLS = [
             required: ["parent_step_id"],
         },
     },
+    {
+        name: "execution_complete",
+        description: "Signal that task execution is complete. Call this after all steps are finished to allow the agent process to exit gracefully.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                task_id: {
+                    type: "string",
+                    description: "ID of the task that has been completed",
+                },
+                summary: {
+                    type: "string",
+                    description: "Optional summary of work completed",
+                },
+            },
+            required: ["task_id"],
+        },
+    },
 ];
 //# sourceMappingURL=step-tools.js.map
