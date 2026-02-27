@@ -40,7 +40,7 @@ This is a **large codebase** (~100k+ lines across Rust backend + React frontend)
 | **Subagents for search** | Any `Grep`/`Glob` that might need >2 rounds → use `Task(Explore)` agent. It's designed for this. |
 | **Teammates are disposable, context is not** | Spawn cheap subagents liberally. Your context window is expensive — don't fill it with raw code. Have subagents summarize findings. |
 | **Research via agents, not yourself** | Before ANY implementation: spawn a research agent to gather context. Don't read the code yourself — get a summary back. |
-| **Memory files exist — use them** | Check `/Users/lazabogdan/.claude/projects/-Users-lazabogdan-Code-ralphx/memory/MEMORY.md` before exploring. Past findings are already there. |
+| **Memory files exist — use them** | Check your auto-memory `MEMORY.md` (at `~/.claude/projects/<project-slug>/memory/`) before exploring. Past findings are already there. |
 
 ## Team Management
 > Apply whenever TeamCreate is available.
@@ -52,6 +52,9 @@ This is a **large codebase** (~100k+ lines across Rust backend + React frontend)
 | **Always managed teams** | Every task → TeamCreate first. No standalone Task spawns. Even single-agent tasks use a team. |
 | **Parallelization** | Multiple independent streams → separate teammates per stream. ❌ Serialize on one agent. |
 | **Convergent investigation** | Bug investigation → ≥2 parallel agents (logs + code). Compare hypotheses before implementing. |
+| **Incremental reporting (CRITICAL)** | Teammates MUST send progress updates to the lead via `SendMessage` after each significant finding or milestone — ❌ one big report at the end. Context windows expire; if a teammate dies mid-work, the lead loses everything unless incremental updates were sent. Rule of thumb: any finding worth remembering → send it to the lead immediately. |
+| **Teammate reporting cadence** | At minimum: (1) after initial exploration/research, (2) after each root cause or key finding, (3) after implementation, (4) after tests pass. ❌ Silent for 10+ minutes then one final dump. |
+| **Leads must request updates** | If a teammate has been idle or silent for >5 minutes, send a message asking for a progress update. Don't wait for the final report. |
 | **Message timing** | Confirm all messages answered before shutdown. ❌ Send questions + shutdown in quick succession. |
 | **TDD by default** | Tests FIRST. No "done" without pass/fail counts reported. |
 | **Lead reviews coverage** | Review test gaps before approving commits. Every code change = tests. |
