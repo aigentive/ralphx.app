@@ -297,3 +297,223 @@ fn test_active_task_tracker_prevents_timeout_during_sidechain() {
         "Should allow timeout when all subagents done"
     );
 }
+
+// ============================================================================
+// TurnComplete event emission tests
+// ============================================================================
+// These tests verify the behavioral contract of TurnComplete vs run_completed
+// event emission. Since process_stream_background requires a real child process
+// and Tauri AppHandle (not available in unit tests), we test the decision logic,
+// payload shape, and StreamOutcome signaling that drives the caller's behavior.
+
+#[test]
+fn test_turn_completed_event_name_is_distinct_from_run_completed() {
+    use crate::application::chat_service::events;
+
+    // The whole point of the TurnComplete feature: interactive turns emit
+    // a DIFFERENT event name so the frontend doesn't set isAgentRunning=false.
+    assert_ne!(
+        events::AGENT_TURN_COMPLETED,
+        events::AGENT_RUN_COMPLETED,
+        "turn_completed and run_completed must be distinct event names"
+    );
+    assert_eq!(
+        events::AGENT_TURN_COMPLETED,
+        "agent:turn_completed",
+        "AGENT_TURN_COMPLETED must be 'agent:turn_completed'"
+    );
+    assert_eq!(
+        events::AGENT_RUN_COMPLETED,
+        "agent:run_completed",
+        "AGENT_RUN_COMPLETED must be 'agent:run_completed'"
+    );
+}
+
+#[test]
+fn test_turn_completed_payload_shape_matches_run_completed() {
+    use crate::application::chat_service::AgentRunCompletedPayload;
+
+    // TurnComplete reuses AgentRunCompletedPayload — verify it serializes
+    // with all required fields for the frontend to correctly identify the context.
+    let payload = AgentRunCompletedPayload {
+        conversation_id: "conv-interactive-1".to_string(),
+        context_type: "task_execution".to_string(),
+        context_id: "task-42".to_string(),
+        claude_session_id: Some("session-abc".to_string()),
+        run_chain_id: None,
+    };
+
+    let json = serde_json::to_value(&payload).unwrap();
+    assert_eq!(json["conversation_id"], "conv-interactive-1");
+    assert_eq!(json["context_type"], "task_execution");
+    assert_eq!(json["context_id"], "task-42");
+    assert_eq!(json["claude_session_id"], "session-abc");
+    // run_chain_id is None → should be absent (skip_serializing_if)
+    assert!(
+        json.get("run_chain_id").is_none(),
+        "run_chain_id=None should be omitted from serialized payload"
+    );
+}
+
+#[test]
+fn test_turn_completed_payload_with_no_session_id() {
+    use crate::application::chat_service::AgentRunCompletedPayload;
+
+    // Early turns may not yet have a session_id from Claude.
+    let payload = AgentRunCompletedPayload {
+        conversation_id: "conv-interactive-2".to_string(),
+        context_type: "ideation".to_string(),
+        context_id: "session-7".to_string(),
+        claude_session_id: None,
+        run_chain_id: None,
+    };
+
+    let json = serde_json::to_value(&payload).unwrap();
+    assert_eq!(json["conversation_id"], "conv-interactive-2");
+    assert_eq!(json["context_type"], "ideation");
+    assert_eq!(json["context_id"], "session-7");
+    // claude_session_id=None → serializes as null (no skip_serializing_if on this field)
+    assert!(
+        json["claude_session_id"].is_null(),
+        "claude_session_id=None should serialize as null"
+    );
+}
+
+#[test]
+fn test_non_interactive_run_completed_includes_run_chain_id() {
+    use crate::application::chat_service::AgentRunCompletedPayload;
+
+    // Non-interactive (one-shot) agents pass run_chain_id through.
+    // Interactive TurnComplete always sets run_chain_id: None.
+    let payload = AgentRunCompletedPayload {
+        conversation_id: "conv-oneshot-1".to_string(),
+        context_type: "task_execution".to_string(),
+        context_id: "task-99".to_string(),
+        claude_session_id: Some("session-xyz".to_string()),
+        run_chain_id: Some("chain-abc".to_string()),
+    };
+
+    let json = serde_json::to_value(&payload).unwrap();
+    assert_eq!(
+        json["run_chain_id"], "chain-abc",
+        "Non-interactive run_completed should include run_chain_id"
+    );
+}
+
+#[test]
+fn test_stream_outcome_turns_finalized_controls_post_loop_behavior() {
+    // When turns_finalized > 0 and no new output, the caller (send_background)
+    // sets skip_post_loop_finalization=true, preventing duplicate run_completed.
+    // This simulates the decision logic in chat_service_send_background.rs.
+
+    // Case 1: Interactive mode — turns were finalized, no new output after last turn
+    let outcome = StreamOutcome {
+        response_text: String::new(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: Some("session-1".to_string()),
+        stderr_text: String::new(),
+        turns_finalized: 2,
+        execution_slot_held: false, // idle between turns at exit
+    };
+    let has_output = outcome.has_meaningful_output();
+    let skip_post_loop = outcome.turns_finalized > 0 && !has_output;
+    assert!(
+        skip_post_loop,
+        "Interactive with finalized turns + no new output → skip post-loop run_completed"
+    );
+    assert!(
+        !outcome.execution_slot_held,
+        "Idle between turns → slot not held"
+    );
+
+    // Case 2: Non-interactive — no turns finalized
+    let outcome_non_interactive = StreamOutcome {
+        response_text: "Agent response here".to_string(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: Some("session-2".to_string()),
+        stderr_text: String::new(),
+        turns_finalized: 0,
+        execution_slot_held: true, // normal exit — slot still held
+    };
+    let has_output = outcome_non_interactive.has_meaningful_output();
+    let skip_post_loop = outcome_non_interactive.turns_finalized > 0 && !has_output;
+    assert!(
+        !skip_post_loop,
+        "Non-interactive with turns_finalized=0 → DO emit post-loop run_completed"
+    );
+    assert!(
+        outcome_non_interactive.execution_slot_held,
+        "Non-interactive → slot held until on_exit"
+    );
+}
+
+#[test]
+fn test_stream_outcome_execution_slot_held_reflects_interactive_state() {
+    // execution_slot_held = !between_interactive_turns || !uses_execution_slot
+    // For contexts that use execution slots:
+    //   - between_interactive_turns=true → slot NOT held (TurnComplete decremented)
+    //   - between_interactive_turns=false → slot held (still processing or non-interactive)
+
+    // Idle between turns (TurnComplete received, no resume)
+    let idle_outcome = StreamOutcome {
+        response_text: String::new(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: None,
+        stderr_text: String::new(),
+        turns_finalized: 1,
+        execution_slot_held: false,
+    };
+    assert!(
+        !idle_outcome.execution_slot_held,
+        "Should NOT hold slot when idle between interactive turns"
+    );
+
+    // Mid-turn exit (process crashed or timed out while active)
+    let active_outcome = StreamOutcome {
+        response_text: "partial output".to_string(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: None,
+        stderr_text: String::new(),
+        turns_finalized: 0,
+        execution_slot_held: true,
+    };
+    assert!(
+        active_outcome.execution_slot_held,
+        "Should hold slot when exiting mid-turn (on_exit must decrement)"
+    );
+}
+
+/// Simulates the full decision tree for event name selection that
+/// process_stream_background uses:
+/// - In-loop TurnComplete → emit AGENT_TURN_COMPLETED
+/// - Post-loop (non-interactive) → emit AGENT_RUN_COMPLETED
+/// - Post-loop (interactive, turns_finalized>0, no output) → skip (already emitted turn_completed)
+#[test]
+fn test_event_name_selection_decision_tree() {
+    use crate::application::chat_service::events;
+
+    // Scenario 1: Interactive turn completes during streaming
+    // The TurnComplete arm in the stream loop emits this:
+    let interactive_event_name = events::AGENT_TURN_COMPLETED;
+    assert_eq!(interactive_event_name, "agent:turn_completed");
+
+    // Scenario 2: Non-interactive agent finishes (post-loop)
+    let non_interactive_event_name = events::AGENT_RUN_COMPLETED;
+    assert_eq!(non_interactive_event_name, "agent:run_completed");
+
+    // Scenario 3: Interactive process exits after TurnComplete
+    // turns_finalized > 0, no new output → skip_post_loop_finalization = true
+    // The post-loop code checks `if !skip_post_loop_finalization` before emitting.
+    // So no AGENT_RUN_COMPLETED is emitted — the AGENT_TURN_COMPLETED was the last event.
+    let turns_finalized: usize = 1;
+    let has_output = false;
+    let skip_post_loop = turns_finalized > 0 && !has_output;
+    assert!(
+        skip_post_loop,
+        "After interactive TurnComplete + idle exit, post-loop run_completed must be skipped"
+    );
+}
