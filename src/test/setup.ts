@@ -24,8 +24,9 @@ afterEach(() => {
 });
 
 // Mock Tauri's invoke function for testing
+// Default returns Promise.resolve(undefined) to match real invoke's Promise-based API
 vi.mock("@tauri-apps/api/core", () => ({
-  invoke: vi.fn(),
+  invoke: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock Tauri's event module

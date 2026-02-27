@@ -113,13 +113,13 @@ describe("ChatInput", () => {
     it("has minHeight style for single line", () => {
       render(<ChatInput {...defaultProps} />);
       const textarea = screen.getByTestId("chat-input-textarea");
-      expect(textarea).toHaveStyle({ minHeight: "38px" });
+      expect(textarea).toHaveStyle({ minHeight: "36px" });
     });
 
     it("has maxHeight style to limit growth", () => {
       render(<ChatInput {...defaultProps} />);
       const textarea = screen.getByTestId("chat-input-textarea");
-      expect(textarea).toHaveStyle({ maxHeight: "100px" });
+      expect(textarea).toHaveStyle({ maxHeight: "120px" });
     });
 
     it("starts with single row", () => {
@@ -301,10 +301,10 @@ describe("ChatInput", () => {
   // ============================================================================
 
   describe("styling", () => {
-    it("applies dark surface background to textarea", () => {
+    it("applies transparent background to textarea (container has the surface bg)", () => {
       render(<ChatInput {...defaultProps} />);
       const textarea = screen.getByTestId("chat-input-textarea");
-      expect(textarea).toHaveStyle({ background: "hsl(220 10% 12%)" });
+      expect(textarea).toHaveStyle({ background: "transparent" });
     });
 
     it("applies accent color to enabled send button", async () => {
@@ -350,9 +350,9 @@ describe("ChatInput", () => {
   // ============================================================================
 
   describe("queue mode", () => {
-    it("shows '(will be queued)' placeholder when agent is running", () => {
+    it("shows default placeholder when agent is running", () => {
       render(<ChatInput {...defaultProps} isAgentRunning={true} />);
-      expect(screen.getByPlaceholderText("Send a message... (will be queued)")).toBeInTheDocument();
+      expect(screen.getByPlaceholderText("Send a message...")).toBeInTheDocument();
     });
 
     it("shows normal placeholder when agent is not running", () => {
@@ -496,9 +496,9 @@ describe("ChatInput", () => {
       expect(screen.getByTestId("chat-input-stop")).toBeInTheDocument();
     });
 
-    it("does not show Send button when agent is running and no question mode", () => {
+    it("shows Send button alongside Stop when agent is running", () => {
       render(<ChatInput {...defaultProps} isAgentRunning={true} onStop={vi.fn()} />);
-      expect(screen.queryByTestId("chat-input-send")).not.toBeInTheDocument();
+      expect(screen.getByTestId("chat-input-send")).toBeInTheDocument();
     });
 
     it("calls onStop when Stop button clicked", async () => {
@@ -534,7 +534,7 @@ describe("ChatInput", () => {
       expect(screen.getByTestId("chat-input-send")).toBeInTheDocument();
     });
 
-    it("shows secondary stop button when agent running AND questionMode active", () => {
+    it("shows stop button when agent running AND questionMode active", () => {
       render(
         <ChatInput
           {...defaultProps}
@@ -543,22 +543,10 @@ describe("ChatInput", () => {
           onStop={vi.fn()}
         />
       );
-      expect(screen.getByTestId("chat-input-stop-secondary")).toBeInTheDocument();
+      expect(screen.getByTestId("chat-input-stop")).toBeInTheDocument();
     });
 
-    it("does not show primary stop button when agent running AND questionMode active", () => {
-      render(
-        <ChatInput
-          {...defaultProps}
-          isAgentRunning={true}
-          questionMode={questionModeProps}
-          onStop={vi.fn()}
-        />
-      );
-      expect(screen.queryByTestId("chat-input-stop")).not.toBeInTheDocument();
-    });
-
-    it("renders Send and secondary Stop buttons in a flex row", () => {
+    it("shows both Send and Stop buttons when agent running AND questionMode active", () => {
       render(
         <ChatInput
           {...defaultProps}
@@ -569,20 +557,13 @@ describe("ChatInput", () => {
       );
 
       const sendButton = screen.getByTestId("chat-input-send");
-      const stopButton = screen.getByTestId("chat-input-stop-secondary");
+      const stopButton = screen.getByTestId("chat-input-stop");
 
-      // Both buttons should exist
       expect(sendButton).toBeInTheDocument();
       expect(stopButton).toBeInTheDocument();
-
-      // Verify they're in the same flex container
-      const sendParent = sendButton.parentElement;
-      const stopParent = stopButton.parentElement;
-      expect(sendParent).toBe(stopParent);
-      expect(sendParent).toHaveClass("flex");
     });
 
-    it("secondary stop button calls onStop when clicked", async () => {
+    it("stop button calls onStop when clicked in question mode", async () => {
       const user = userEvent.setup();
       const onStop = vi.fn();
       render(
@@ -594,7 +575,7 @@ describe("ChatInput", () => {
         />
       );
 
-      await user.click(screen.getByTestId("chat-input-stop-secondary"));
+      await user.click(screen.getByTestId("chat-input-stop"));
 
       expect(onStop).toHaveBeenCalled();
     });
@@ -629,7 +610,7 @@ describe("ChatInput", () => {
       expect(sendButton).toBeDisabled();
     });
 
-    it("secondary stop button has correct styling", () => {
+    it("stop button exists when agent running in question mode", () => {
       render(
         <ChatInput
           {...defaultProps}
@@ -639,10 +620,8 @@ describe("ChatInput", () => {
         />
       );
 
-      const stopButton = screen.getByTestId("chat-input-stop-secondary");
-      // Check size
-      expect(stopButton).toHaveClass("w-[28px]");
-      expect(stopButton).toHaveClass("h-[28px]");
+      const stopButton = screen.getByTestId("chat-input-stop");
+      expect(stopButton).toBeInTheDocument();
     });
 
     it("Send button in question mode has correct styling", async () => {

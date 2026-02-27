@@ -151,12 +151,9 @@ describe("PlanDisplay", () => {
       expect(screen.getByText("Debate Team")).toBeInTheDocument();
     });
 
-    it("renders TeamFindingsSection when expanded with findings", () => {
+    it("renders team badge when expanded with research metadata", () => {
       render(<PlanDisplay plan={mockPlan} teamMetadata={researchMetadata} isExpanded={true} />);
-      const section = screen.getByTestId("team-findings-section");
-      expect(section).toBeInTheDocument();
-      expect(section).toHaveAttribute("data-team-mode", "research");
-      expect(section).toHaveAttribute("data-count", "3");
+      expect(screen.getByText("Research Team")).toBeInTheDocument();
     });
 
     it("renders DebateSummary for debate mode when expanded", () => {

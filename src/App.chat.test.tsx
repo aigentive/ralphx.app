@@ -38,6 +38,10 @@ vi.mock("@/lib/tauri", () => ({
       listMessages: vi.fn().mockResolvedValue([]),
       sendMessage: vi.fn().mockResolvedValue({ id: "msg-1", content: "response" }),
     },
+    askUserQuestion: {
+      getPendingQuestions: vi.fn().mockResolvedValue([]),
+      resolveQuestion: vi.fn().mockResolvedValue(undefined),
+    },
   },
 }));
 

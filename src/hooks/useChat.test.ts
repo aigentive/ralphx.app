@@ -358,6 +358,7 @@ describe("useChat", () => {
       "ideation",
       "session-1",
       "New message content",
+      undefined,
       undefined
     );
   });
@@ -386,6 +387,7 @@ describe("useChat", () => {
       "task",
       "task-1",
       "Task message",
+      undefined,
       undefined
     );
   });

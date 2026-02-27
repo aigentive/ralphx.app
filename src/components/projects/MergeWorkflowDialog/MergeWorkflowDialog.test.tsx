@@ -81,8 +81,9 @@ describe("MergeWorkflowDialog", () => {
 
     it("should display branch name from completionData", () => {
       render(<MergeWorkflowDialog {...createDefaultProps()} />);
+      // BranchBadge strips "ralphx/" prefix; full name is in title attribute
       expect(screen.getByTestId("branch-name")).toHaveTextContent(
-        "ralphx/feature-auth"
+        "feature-auth"
       );
     });
 
