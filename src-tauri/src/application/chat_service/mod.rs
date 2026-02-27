@@ -1143,10 +1143,34 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         }
                     }
 
-                    // Persist user message for conversation history
-                    let conversation = self
-                        .get_or_create_conversation(context_type, context_id)
-                        .await?;
+                    // Use the EXISTING conversation — not a force-fresh one.
+                    // The interactive process was spawned with a conversation, so
+                    // get_active_for_context should always find it.
+                    let existing_conv = self
+                        .conversation_repo
+                        .get_active_for_context(context_type, context_id)
+                        .await
+                        .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+
+                    let conversation = match existing_conv {
+                        Some(conv) => {
+                            tracing::debug!(
+                                conversation_id = conv.id.as_str(),
+                                "queue_message: reusing existing conversation for interactive process"
+                            );
+                            conv
+                        }
+                        None => {
+                            // Edge case: IPR has process but no conversation found.
+                            // Create one as fallback (shouldn't happen in practice).
+                            tracing::warn!(
+                                %context_type,
+                                context_id,
+                                "queue_message: no existing conversation found despite IPR entry, creating new"
+                            );
+                            self.get_or_create_conversation(context_type, context_id).await?
+                        }
+                    };
                     let user_msg = chat_service_context::create_user_message(
                         context_type,
                         context_id,

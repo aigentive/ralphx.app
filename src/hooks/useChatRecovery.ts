@@ -72,16 +72,30 @@ export function useChatRecovery({
     }
   }, [agentRunStatus, isConversationInCurrentContext, setAgentRunning, storeContextKey]);
 
-  // Recovery fallback: clear stuck "running" state when backend says run finished
+  // Recovery fallback: clear stuck "running" state when backend says run finished.
+  // IMPORTANT: agentRunStatus reflects the DB *turn* status, not the *process*.
+  // Between interactive turns, the DB shows "completed" for the finished turn
+  // even though the process is still alive. Check process-level truth (IPR)
+  // before clearing to avoid a race window where ChatInput takes the SEND path.
   useEffect(() => {
     if (!activeConversationId || !isConversationInCurrentContext) return;
     // Wait for agentRunStatus to resolve before clearing — prevents
     // thrashing during mount when status is still undefined (loading).
     if (agentRunStatus === undefined) return;
     if (agentRunStatus !== "running") {
-      setAgentRunning(storeContextKey, false);
+      chatApi
+        .isAgentRunning(currentContextType, currentContextId)
+        .then((processRunning) => {
+          if (!processRunning) {
+            setAgentRunning(storeContextKey, false);
+          }
+        })
+        .catch(() => {
+          // If process check fails, fall back to DB truth
+          setAgentRunning(storeContextKey, false);
+        });
     }
-  }, [activeConversationId, agentRunStatus, isConversationInCurrentContext, setAgentRunning, storeContextKey]);
+  }, [activeConversationId, agentRunStatus, isConversationInCurrentContext, setAgentRunning, storeContextKey, currentContextType, currentContextId]);
 
   // Recovery fallback: poll conversation while agent is running (backend status)
   useEffect(() => {

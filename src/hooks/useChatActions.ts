@@ -95,6 +95,12 @@ export function useChatActions({
             }
           }
         } else {
+          // Set the CORRECT store context key immediately so ChatInput sees
+          // isAgentRunning=true and switches to queue mode.
+          // useChat.sendMessage also sets its own key ("task:<id>") which is a
+          // harmless orphan — the key that matters is storeContextKey
+          // ("task_execution:<id>", "merge:<id>", etc.) from useChatPanelContext.
+          setAgentRunning(storeContextKey, true);
           const params: { content: string; attachmentIds?: string[]; target?: string } = { content };
           if (attachmentIds !== undefined) {
             params.attachmentIds = attachmentIds;
@@ -112,10 +118,10 @@ export function useChatActions({
           });
         }
       } catch {
-        // Reset agent running state on error for review mode
-        if (contextType === "review") {
-          setAgentRunning(storeContextKey, false);
-        }
+        // Reset agent running state on error for the correct store context key.
+        // Covers review, task_execution, merge, and ideation (idempotent for ideation
+        // where storeContextKey and useChat's contextKey happen to match).
+        setAgentRunning(storeContextKey, false);
       }
     },
     [sendMessage, contextType, selectedTaskId, storeContextKey, setAgentRunning, setActiveConversation, queryClient, ideationSessionId, messageCount]
