@@ -348,6 +348,113 @@ describe("useChatActions", () => {
     });
   });
 
+  // ── storeContextKey consistency (double-execution fix) ─────────
+
+  describe("storeContextKey consistency", () => {
+    it("task_execution context sets isAgentRunning with task_execution key", async () => {
+      const { result } = setup({
+        contextType: "task_execution",
+        contextId: "task-99",
+        storeContextKey: "task_execution:task-99",
+      });
+
+      await act(async () => {
+        await result.current.handleSend("do the work");
+      });
+
+      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("task_execution:task-99", true);
+    });
+
+    it("merge context sets isAgentRunning with merge key", async () => {
+      const { result } = setup({
+        contextType: "merge",
+        contextId: "task-99",
+        storeContextKey: "merge:task-99",
+      });
+
+      await act(async () => {
+        await result.current.handleSend("merge it");
+      });
+
+      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("merge:task-99", true);
+    });
+
+    it("error during task_execution send resets isAgentRunning with correct key", async () => {
+      const { result, mutateAsync } = setup({
+        contextType: "task_execution",
+        contextId: "task-err",
+        storeContextKey: "task_execution:task-err",
+      });
+
+      mutateAsync.mockRejectedValue(new Error("send failed"));
+
+      await act(async () => {
+        await result.current.handleSend("will fail");
+      });
+
+      // Should first set true, then false on error — BOTH on the correct key
+      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("task_execution:task-err", true);
+      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("task_execution:task-err", false);
+    });
+
+    it("error during merge send resets isAgentRunning with merge key", async () => {
+      const { result, mutateAsync } = setup({
+        contextType: "merge",
+        contextId: "task-merge-err",
+        storeContextKey: "merge:task-merge-err",
+      });
+
+      mutateAsync.mockRejectedValue(new Error("merge failed"));
+
+      await act(async () => {
+        await result.current.handleSend("will fail");
+      });
+
+      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("merge:task-merge-err", true);
+      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("merge:task-merge-err", false);
+    });
+  });
+
+  // ── ideation regression ─────────────────────────────────────────
+
+  describe("ideation regression", () => {
+    it("ideation handleSend sets agent running on session key", async () => {
+      const { result, mutateAsync } = setup({
+        contextType: "ideation",
+        contextId: "session-1",
+        storeContextKey: "session:session-1",
+        ideationSessionId: "session-1",
+        messageCount: 5,
+      });
+
+      await act(async () => {
+        await result.current.handleSend("ideation message");
+      });
+
+      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("session:session-1", true);
+      expect(mutateAsync).toHaveBeenCalledWith({ content: "ideation message", attachmentIds: undefined });
+    });
+
+    it("ideation handleQueue uses correct store key", async () => {
+      const { result } = setup({
+        contextType: "ideation",
+        contextId: "session-1",
+        storeContextKey: "session:session-1",
+        ideationSessionId: "session-1",
+      });
+
+      await act(async () => {
+        await result.current.handleQueue("queued ideation msg");
+      });
+
+      expect(mockActions.queueMessage).toHaveBeenCalledWith(
+        "session:session-1",
+        "queued ideation msg",
+        expect.stringMatching(/^queued-\d+-[a-z0-9]+$/)
+      );
+    });
+  });
+
   // ── handleEditLastQueued ────────────────────────────────────────
 
   describe("handleEditLastQueued", () => {
