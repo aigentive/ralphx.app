@@ -154,6 +154,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 conversation_id,
             );
             let user_msg_id = user_msg.id.as_str().to_string();
+            let user_msg_created_at = user_msg.created_at.to_rfc3339();
             let _ = chat_message_repo.create(user_msg).await;
 
             // Link pending attachments to the user message
@@ -193,6 +194,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         context_id: context_id.to_string(),
                         role: "user".to_string(),
                         content: queued_msg.content.clone(),
+                        created_at: Some(user_msg_created_at),
                     },
                 );
             }
@@ -294,6 +296,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                                             context_id: context_id.to_string(),
                                             role: get_assistant_role(&context_type).to_string(),
                                             content: response.clone(),
+                                            created_at: None,
                                         },
                                     );
                                 }

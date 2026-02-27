@@ -133,6 +133,9 @@ pub struct AgentMessageCreatedPayload {
     pub context_id: String,
     pub role: String,
     pub content: String,
+    /// Server-side DB timestamp for the message (RFC3339). Used by frontend to avoid clock skew.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
 }
 
 /// Payload for agent:run_completed event

@@ -659,6 +659,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         conversation.id,
                     );
                     let user_msg_id = user_msg.id.as_str().to_string();
+                    let user_msg_created_at = user_msg.created_at.to_rfc3339();
                     let _ = self.chat_message_repo.create(user_msg).await;
 
                     // Emit message_created event for frontend
@@ -671,6 +672,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             context_id: context_id.to_string(),
                             role: "user".to_string(),
                             content: message.to_string(),
+                            created_at: Some(user_msg_created_at),
                         },
                     );
 
@@ -852,6 +854,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             conversation_id,
         );
         let user_msg_id = user_msg.id.as_str().to_string();
+        let user_msg_created_at = user_msg.created_at.to_rfc3339();
         if let Err(e) = self.chat_message_repo.create(user_msg).await {
             cleanup_and_err!(ChatServiceError::RepositoryError(e.to_string()));
         }
@@ -901,6 +904,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 context_id: context_id.to_string(),
                 role: "user".to_string(),
                 content: message.to_string(),
+                created_at: Some(user_msg_created_at),
             },
         );
 
@@ -1178,6 +1182,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         conversation.id,
                     );
                     let user_msg_id = user_msg.id.as_str().to_string();
+                    let user_msg_created_at = user_msg.created_at.to_rfc3339();
                     let _ = self.chat_message_repo.create(user_msg).await;
 
                     // Emit message_created so frontend shows the user message
@@ -1190,6 +1195,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             context_id: context_id.to_string(),
                             role: "user".to_string(),
                             content: content.to_string(),
+                            created_at: Some(user_msg_created_at),
                         },
                     );
 

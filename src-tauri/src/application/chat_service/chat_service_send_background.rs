@@ -127,6 +127,7 @@ pub(super) async fn finalize_assistant_message<R: Runtime>(
                 context_id: event_ctx.context_id.clone(),
                 role: role.to_string(),
                 content: content.to_string(),
+                created_at: None,
             },
         );
     }

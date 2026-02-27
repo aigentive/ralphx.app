@@ -89,8 +89,9 @@ export function useAgentEvents(activeConversationId: string | null) {
         message_id: string;
         role: string;
         content: string;
+        created_at?: string;
       }>("agent:message_created", (payload) => {
-        const { conversation_id, message_id, role, content } = payload;
+        const { conversation_id, message_id, role, content, created_at } = payload;
 
         // Always invalidate the conversation query for this message's conversation.
         // This handles both lead and teammate conversations — teammate messages
@@ -117,7 +118,7 @@ export function useAgentEvents(activeConversationId: string | null) {
                 content: content || "",
                 metadata: null,
                 parentMessageId: null,
-                createdAt: new Date().toISOString(),
+                createdAt: created_at ?? new Date().toISOString(),
                 toolCalls: null,
                 contentBlocks: null,
                 sender: null,
@@ -125,8 +126,10 @@ export function useAgentEvents(activeConversationId: string | null) {
               return { ...oldData, messages: [...oldData.messages, newMessage] };
             }
           );
-        } else {
-          // For assistant messages or non-active conversations, invalidate to refetch from DB
+        } else if (conversation_id !== activeConversationId) {
+          // Non-active conversation (e.g. teammate messages): invalidate to refetch from DB.
+          // Active-conversation assistant messages are handled exclusively by useChatEvents
+          // to avoid duplicate DB refetches that cause visual artifacts during streaming.
           queryClient.invalidateQueries({
             queryKey: chatKeys.conversation(conversation_id),
           });
