@@ -173,7 +173,7 @@ export function useChat(context: ChatContext) {
 
   // Update agent running state when status changes
   // NOTE: This only sets to true on initial load (when backend shows agent is running).
-  // The false state is handled by the agent:run_completed event to avoid race conditions.
+  // The false state is handled by the agent:run_completed event (or agent:turn_completed in interactive mode) to avoid race conditions.
   // Track previous contextKey to detect session switches and skip stale recovery
   const prevContextKeyRef = useRef(contextKey);
 
@@ -193,7 +193,7 @@ export function useChat(context: ChatContext) {
     }
 
     // Normal recovery: sync UI with backend state (e.g., page refresh with running agent)
-    // Don't set to false here - let the agent:run_completed event handle that
+    // Don't set to false here - let the agent:run_completed event (or agent:turn_completed in interactive mode) handle that
     if (isRunning) {
       setAgentRunning(contextKey, true);
     }

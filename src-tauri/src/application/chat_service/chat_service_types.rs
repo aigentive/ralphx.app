@@ -22,6 +22,8 @@ pub mod events {
     pub const AGENT_RUN_STARTED: &str = "agent:run_started";
     /// Agent run completed event
     pub const AGENT_RUN_COMPLETED: &str = "agent:run_completed";
+    /// Agent turn completed event (interactive mode: turn done but process still alive)
+    pub const AGENT_TURN_COMPLETED: &str = "agent:turn_completed";
     /// Agent message created event
     pub const AGENT_MESSAGE_CREATED: &str = "agent:message_created";
     /// Agent error event

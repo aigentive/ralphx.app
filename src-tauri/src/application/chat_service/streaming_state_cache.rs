@@ -205,7 +205,7 @@ impl StreamingStateCache {
 
     /// Clear all streaming state for a conversation.
     ///
-    /// Called when agent:run_completed or agent:error fires.
+    /// Called when agent:run_completed, agent:turn_completed (interactive), or agent:error fires.
     pub async fn clear(&self, conversation_id: &str) {
         let mut states = self.states.lock().await;
         if states.remove(conversation_id).is_some() {

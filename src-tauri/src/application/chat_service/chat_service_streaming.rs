@@ -126,7 +126,7 @@ pub struct StreamOutcome {
     /// Number of turns fully finalized during interactive streaming
     /// (via `TurnComplete` events). When > 0 and `response_text` is empty,
     /// the post-loop caller should skip re-finalization and duplicate
-    /// `run_completed` emission.
+    /// `run_completed` emission (or `turn_completed` in interactive mode).
     pub turns_finalized: usize,
     /// Whether the execution slot is still held when the stream exits.
     /// False when TurnComplete decremented the slot and no new message arrived
@@ -932,7 +932,7 @@ pub async fn process_stream_background<R: Runtime>(
                         // of queueAgentMessage (which delivers via existing stdin).
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
-                                "agent:turn_completed",
+                                super::chat_service_types::events::AGENT_TURN_COMPLETED,
                                 super::chat_service_types::AgentRunCompletedPayload {
                                     conversation_id: conversation_id_str.clone(),
                                     context_type: context_type_str.clone(),

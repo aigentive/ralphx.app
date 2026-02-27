@@ -156,7 +156,7 @@ pub trait ChatService: Send + Sync {
     /// 3. agent:chunk (streaming text)
     /// 4. agent:tool_call (tool invocations)
     /// 5. agent:message_created (assistant message)
-    /// 6. agent:run_completed or agent:error
+    /// 6. agent:run_completed or agent:turn_completed (interactive) or agent:error
     async fn send_message(
         &self,
         context_type: ChatContextType,
