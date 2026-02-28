@@ -15,7 +15,7 @@ use super::commit_messages::{build_plan_merge_commit_msg, build_squash_commit_ms
 use super::merge_completion::complete_merge_internal;
 use super::merge_helpers::{
     clear_merge_deferred_metadata, compute_merge_worktree_path, has_merge_deferred_metadata,
-    has_prior_validation_failure, parse_metadata, task_targets_branch,
+    has_prior_rebase_conflict, has_prior_validation_failure, parse_metadata, task_targets_branch,
 };
 use super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
 use crate::application::GitService;
@@ -967,17 +967,39 @@ impl<'a> super::TransitionHandler<'a> {
                     (outcome, MergeHandlerOptions::squash())
                 }
                 MergeStrategy::RebaseSquash => {
-                    let outcome = self
-                        .rebase_squash_worktree_strategy(
-                            repo_path,
-                            source_branch,
-                            target_branch,
-                            squash_commit_msg,
-                            project,
-                            task_id_str,
-                        )
-                        .await;
-                    (outcome, MergeHandlerOptions::rebase_squash())
+                    // If a previous attempt hit rebase conflicts and a merger agent was spawned,
+                    // skip the rebase step and use squash-only. The merger resolved conflicts on
+                    // the source branch — rebasing again would replay the original (pre-resolution)
+                    // commits and re-encounter the same conflicts, wasting another merger cycle.
+                    if has_prior_rebase_conflict(task) {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            "Prior rebase conflict detected — using squash-only to avoid re-encountering conflicts"
+                        );
+                        let outcome = self
+                            .squash_worktree_strategy(
+                                repo_path,
+                                source_branch,
+                                target_branch,
+                                squash_commit_msg,
+                                project,
+                                task_id_str,
+                            )
+                            .await;
+                        (outcome, MergeHandlerOptions::squash())
+                    } else {
+                        let outcome = self
+                            .rebase_squash_worktree_strategy(
+                                repo_path,
+                                source_branch,
+                                target_branch,
+                                squash_commit_msg,
+                                project,
+                                task_id_str,
+                            )
+                            .await;
+                        (outcome, MergeHandlerOptions::rebase_squash())
+                    }
                 }
             }
         })

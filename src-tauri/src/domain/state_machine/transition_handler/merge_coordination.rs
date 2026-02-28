@@ -694,6 +694,7 @@ impl<'a> super::TransitionHandler<'a> {
             "pre_merge_cleanup: step 0b starting — stopping any running agents"
         );
         let agent_stop_timeout_secs = git_runtime_config().agent_stop_timeout_secs;
+        let mut any_agent_was_running = false;
         for ctx_type in [
             crate::domain::entities::ChatContextType::Review,
             crate::domain::entities::ChatContextType::Merge,
@@ -709,6 +710,7 @@ impl<'a> super::TransitionHandler<'a> {
             .await;
             match stop_result {
                 Ok(Ok(true)) => {
+                    any_agent_was_running = true;
                     tracing::info!(
                         task_id = task_id_str,
                         context_type = ?ctx_type,
@@ -717,6 +719,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
                 Ok(Ok(false)) => {}
                 Ok(Err(e)) => {
+                    any_agent_was_running = true;
                     tracing::warn!(
                         task_id = task_id_str,
                         context_type = ?ctx_type,
@@ -725,6 +728,7 @@ impl<'a> super::TransitionHandler<'a> {
                     );
                 }
                 Err(_elapsed) => {
+                    any_agent_was_running = true;
                     tracing::warn!(
                         task_id = task_id_str,
                         context_type = ?ctx_type,
@@ -736,45 +740,53 @@ impl<'a> super::TransitionHandler<'a> {
         }
         // Agents have been signalled — now scan for OS-level processes still holding
         // worktree files open (e.g., kill_on_drop:false agents that outlived their handle).
-        emit_merge_progress(
-            app_handle,
-            task_id_str,
-            MergePhase::new(MergePhase::MERGE_CLEANUP),
-            MergePhaseStatus::Started,
-            "Scanning worktree for orphaned processes...".to_string(),
-        );
-        tracing::info!(
-            task_id = task_id_str,
-            "pre_merge_cleanup: agents stopped, scanning worktree for orphaned processes"
-        );
-        if let Some(ref worktree_path) = task.worktree_path {
-            let worktree_path_buf = PathBuf::from(worktree_path);
-            if worktree_path_buf.exists() {
-                let lsof_timeout = git_runtime_config().worktree_lsof_timeout_secs;
-                let step_0b_timeout_secs = git_runtime_config().step_0b_kill_timeout_secs;
-                match tokio::time::timeout(
-                    std::time::Duration::from_secs(step_0b_timeout_secs),
-                    crate::domain::services::kill_worktree_processes_async(
-                        &worktree_path_buf,
-                        lsof_timeout,
-                    ),
-                )
-                .await
-                {
-                    Ok(()) => {
-                        // kill_worktree_processes_async completed within timeout
-                    }
-                    Err(_elapsed) => {
-                        tracing::warn!(
-                            task_id = %task_id_str,
-                            worktree = %worktree_path,
-                            step_0b_timeout_secs,
-                            total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
-                            "pre_merge_cleanup step 0b: kill_worktree_processes_async timed out — proceeding to next step"
-                        );
+        // Skip lsof scan entirely if no agents were registered — nothing to scan for.
+        if any_agent_was_running {
+            emit_merge_progress(
+                app_handle,
+                task_id_str,
+                MergePhase::new(MergePhase::MERGE_CLEANUP),
+                MergePhaseStatus::Started,
+                "Scanning worktree for orphaned processes...".to_string(),
+            );
+            tracing::info!(
+                task_id = task_id_str,
+                "pre_merge_cleanup: agents stopped, scanning worktree for orphaned processes"
+            );
+            if let Some(ref worktree_path) = task.worktree_path {
+                let worktree_path_buf = PathBuf::from(worktree_path);
+                if worktree_path_buf.exists() {
+                    let lsof_timeout = git_runtime_config().worktree_lsof_timeout_secs;
+                    let step_0b_timeout_secs = git_runtime_config().step_0b_kill_timeout_secs;
+                    match super::cleanup_helpers::os_thread_timeout(
+                        std::time::Duration::from_secs(step_0b_timeout_secs),
+                        crate::domain::services::kill_worktree_processes_async(
+                            &worktree_path_buf,
+                            lsof_timeout,
+                        ),
+                    )
+                    .await
+                    {
+                        Ok(()) => {
+                            // kill_worktree_processes_async completed within timeout
+                        }
+                        Err(_os_elapsed) => {
+                            tracing::warn!(
+                                task_id = %task_id_str,
+                                worktree = %worktree_path,
+                                step_0b_timeout_secs,
+                                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+                                "pre_merge_cleanup step 0b: kill_worktree_processes_async timed out (OS-thread timeout) — proceeding to next step"
+                            );
+                        }
                     }
                 }
             }
+        } else {
+            tracing::info!(
+                task_id = task_id_str,
+                "pre_merge_cleanup: no agents were registered — skipping worktree process scan"
+            );
         }
         // Brief settle time for process tree cleanup after SIGTERM
         let agent_kill_settle_secs = git_runtime_config().agent_kill_settle_secs;

@@ -359,6 +359,17 @@ pub(crate) fn has_merge_deferred_metadata(task: &Task) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if a task had a prior rebase conflict (merger was invoked for rebase conflicts).
+///
+/// Returns `true` if metadata contains `conflict_type: "rebase"`, set when a RebaseSquash
+/// or Rebase strategy returned NeedsAgent. Used to skip the rebase step on retry and use
+/// squash-only instead, avoiding re-encountering the same conflicts.
+pub(crate) fn has_prior_rebase_conflict(task: &Task) -> bool {
+    parse_metadata(task)
+        .and_then(|v| v.get("conflict_type")?.as_str().map(|s| s == "rebase"))
+        .unwrap_or(false)
+}
+
 /// Check if a task has the `branch_missing` flag set in its metadata.
 pub(crate) fn has_branch_missing_metadata(task: &Task) -> bool {
     parse_metadata(task)

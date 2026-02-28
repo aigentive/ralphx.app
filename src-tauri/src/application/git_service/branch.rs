@@ -222,7 +222,8 @@ impl GitService {
     }
 
     /// Delete a feature branch after it has been merged.
-    /// Uses safe delete (-d) to prevent deleting unmerged branches.
+    /// Uses force delete (-D) because feature branches may have been squash-merged,
+    /// creating new commits that aren't merge ancestors (so -d would fail).
     ///
     /// # Arguments
     /// * `repo_path` - Path to the git repository
@@ -233,7 +234,7 @@ impl GitService {
             branch_name, repo_path
         );
 
-        let output = git_cmd::run(&["branch", "-d", branch_name], repo_path).await?;
+        let output = git_cmd::run(&["branch", "-D", branch_name], repo_path).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);

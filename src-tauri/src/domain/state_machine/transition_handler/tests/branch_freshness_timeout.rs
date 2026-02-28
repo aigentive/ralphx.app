@@ -46,7 +46,6 @@ validation_failure_circuit_breaker_count: 3
 merge_starvation_guard_secs: 60
 merge_watcher_grace_secs: 30
 merge_watcher_poll_secs: 15
-merge_watcher_clean_threshold: 2
 "#;
     let result: Result<ReconciliationConfig, _> = serde_yaml::from_str(yaml);
     assert!(
@@ -86,7 +85,6 @@ merge_starvation_guard_secs: 60
 branch_freshness_timeout_secs: 90
 merge_watcher_grace_secs: 30
 merge_watcher_poll_secs: 15
-merge_watcher_clean_threshold: 2
 "#;
     let cfg: ReconciliationConfig = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(cfg.branch_freshness_timeout_secs, 90);

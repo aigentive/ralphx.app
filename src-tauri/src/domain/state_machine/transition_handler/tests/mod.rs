@@ -127,3 +127,7 @@ mod rc_pipeline_integration_tests;
 // Merge pipeline round 2 tests: cleanup timeout config, step_0b timeout config,
 // state freshness guard (ghost merge prevention)
 mod merge_pipeline_round2_tests;
+
+// Merge pipeline round 3 tests: os_thread_timeout, lsof +d, spawn_blocking,
+// prior rebase conflict detection, force branch deletion
+mod merge_pipeline_round3_tests;

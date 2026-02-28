@@ -103,9 +103,6 @@ pub struct ReconciliationConfig {
     pub merge_watcher_grace_secs: u64,
     /// Poll interval (seconds) for the merge completion watcher to check git state.
     pub merge_watcher_poll_secs: u64,
-    /// Number of consecutive clean-git-state polls before the watcher closes IPR.
-    /// Prevents premature closure during brief pauses in agent activity.
-    pub merge_watcher_clean_threshold: u64,
 }
 
 impl Default for ReconciliationConfig {
@@ -138,7 +135,6 @@ impl Default for ReconciliationConfig {
             branch_freshness_timeout_secs: 60,
             merge_watcher_grace_secs: 30,
             merge_watcher_poll_secs: 15,
-            merge_watcher_clean_threshold: 2,
         }
     }
 }
@@ -335,7 +331,6 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.branch_freshness_timeout_secs, "RALPHX_RECONCILIATION_BRANCH_FRESHNESS_TIMEOUT_SECS");
     env_u64!(cfg.reconciliation.merge_watcher_grace_secs, "RALPHX_RECONCILIATION_MERGE_WATCHER_GRACE_SECS");
     env_u64!(cfg.reconciliation.merge_watcher_poll_secs, "RALPHX_RECONCILIATION_MERGE_WATCHER_POLL_SECS");
-    env_u64!(cfg.reconciliation.merge_watcher_clean_threshold, "RALPHX_RECONCILIATION_MERGE_WATCHER_CLEAN_THRESHOLD");
 
     // Git
     env_u64!(cfg.git.cmd_timeout_secs, "RALPHX_GIT_CMD_TIMEOUT_SECS");
