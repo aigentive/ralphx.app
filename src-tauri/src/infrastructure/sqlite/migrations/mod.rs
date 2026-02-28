@@ -65,6 +65,7 @@ mod v42_running_agent_heartbeat;
 mod v43_session_title_source;
 mod v44_remove_local_git_mode;
 mod v45_drop_task_blockers;
+mod v46_plan_branch_drop_artifact_unique;
 mod v4_add_blocked_reason;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
@@ -146,9 +147,11 @@ mod v7_session_status_converted_to_accepted_tests;
 mod v8_task_git_fields_tests;
 #[cfg(test)]
 mod v9_project_git_fields_tests;
+#[cfg(test)]
+mod v46_plan_branch_drop_artifact_unique_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 45;
+pub const SCHEMA_VERSION: i32 = 46;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -387,6 +390,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 45,
         name: "drop_task_blockers",
         migrate: v45_drop_task_blockers::migrate,
+    },
+    Migration {
+        version: 46,
+        name: "plan_branch_drop_artifact_unique",
+        migrate: v46_plan_branch_drop_artifact_unique::migrate,
     },
 ];
 

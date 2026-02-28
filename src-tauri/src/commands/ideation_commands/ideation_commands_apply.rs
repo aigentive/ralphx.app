@@ -7,7 +7,8 @@ use tauri::{Manager, State};
 use crate::application::{AppState, TaskSchedulerService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    ArtifactId, IdeationSessionId, IdeationSessionStatus, InternalStatus, PlanBranch, Task,
+    ArtifactId, IdeationSessionId, IdeationSessionStatus, InternalStatus, PlanBranch,
+    PlanBranchId, Task,
     TaskCategory, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::domain::state_machine::services::TaskScheduler;
@@ -70,7 +71,62 @@ pub async fn apply_proposals_to_kanban(
         return Err("Some proposals not found in session".to_string());
     }
 
-    // Create tasks and track dependencies
+    // ========================================================================
+    // PHASE 0: Feature Branch Pre-Check (before task creation for atomicity)
+    // ========================================================================
+    // Moved before task creation so a branch failure doesn't leave orphaned tasks.
+    let plan_artifact_id: Option<ArtifactId> = session.plan_artifact_id.clone();
+
+    let project = state
+        .project_repo
+        .get_by_id(&session.project_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", session.project_id.as_str()))?;
+
+    let use_feature_branch =
+        should_create_feature_branch(input.use_feature_branch, project.use_feature_branches);
+
+    // Create plan branch record if needed (merge task created later, after tasks exist)
+    let mut pending_merge: Option<(PlanBranchId, String)> = None;
+    if use_feature_branch {
+        let existing = state
+            .plan_branch_repo
+            .get_by_session_id(&session_id)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        if existing.is_none() {
+            let effective_plan_id: ArtifactId = plan_artifact_id
+                .clone()
+                .unwrap_or_else(|| ArtifactId::from_string(session_id.as_str().to_string()));
+
+            let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
+
+            let project_slug = slug_from_name(&project.name);
+            let short_id = &effective_plan_id.as_str()[..8.min(effective_plan_id.as_str().len())];
+            let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
+
+            let plan_branch = PlanBranch::new(
+                effective_plan_id,
+                session_id.clone(),
+                session.project_id.clone(),
+                branch_name,
+                base_branch.clone(),
+            );
+            let created_branch = state
+                .plan_branch_repo
+                .create(plan_branch)
+                .await
+                .map_err(|e| format!("Failed to create plan branch record: {}", e))?;
+
+            pending_merge = Some((created_branch.id, base_branch));
+        }
+    }
+
+    // ========================================================================
+    // PHASE 1: Create Tasks
+    // ========================================================================
     let mut created_tasks = Vec::new();
     let mut proposal_to_task: HashMap<TaskProposalId, TaskId> = HashMap::new();
     let mut warnings = Vec::new();
@@ -161,11 +217,8 @@ pub async fn apply_proposals_to_kanban(
     }
 
     // ========================================================================
-    // PHASE 2.5: Feature Branch Setup (if enabled)
+    // PHASE 2: Set plan_artifact_id on tasks + create merge task
     // ========================================================================
-    // Use real plan_artifact_id only — never fake it with session_id (causes FK violation)
-    let plan_artifact_id: Option<ArtifactId> = session.plan_artifact_id.clone();
-
     // Set plan_artifact_id on all created tasks (propagate from proposal or session)
     if let Some(ref artifact_id) = plan_artifact_id {
         for task in &created_tasks {
@@ -191,96 +244,46 @@ pub async fn apply_proposals_to_kanban(
         }
     }
 
-    // Determine if feature branch should be created
-    let project = state
-        .project_repo
-        .get_by_id(&session.project_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Project not found: {}", session.project_id.as_str()))?;
+    // Create merge task if a plan branch was created in Phase 0
+    if let Some((branch_id, base_branch)) = pending_merge {
+        let plan_title = format!("Merge plan into {}", base_branch);
+        let mut merge_task = Task::new_with_category(
+            session.project_id.clone(),
+            plan_title,
+            TaskCategory::PlanMerge,
+        );
+        merge_task.description = Some(format!(
+            "Auto-created merge task: merges feature branch into {}",
+            base_branch
+        ));
+        // Only set plan_artifact_id when real artifact exists (FK safety for tasks table)
+        merge_task.plan_artifact_id = plan_artifact_id.clone();
+        merge_task.ideation_session_id = Some(session_id.clone());
+        merge_task.internal_status = InternalStatus::Blocked;
+        merge_task.blocked_reason = Some("Waiting for all plan tasks to complete".to_string());
 
-    let use_feature_branch =
-        should_create_feature_branch(input.use_feature_branch, project.use_feature_branches);
-
-    if use_feature_branch {
-        // Check if a feature branch already exists for this session
-        let existing = state
-            .plan_branch_repo
-            .get_by_session_id(&session_id)
+        let created_merge_task = state
+            .task_repo
+            .create(merge_task)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| format!("Failed to create merge task: {}", e))?;
 
-        if existing.is_none() {
-            // Compute effective_plan_id for plan_branches.plan_artifact_id only (no FK constraint).
-            // Use real artifact_id when available, fall back to session_id string.
-            let effective_plan_id: ArtifactId = plan_artifact_id
-                .clone()
-                .unwrap_or_else(|| ArtifactId::from_string(session_id.as_str().to_string()));
-
-            let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
-
-            // Generate branch name: ralphx/{project-slug}/plan-{short-id}
-            let project_slug = slug_from_name(&project.name);
-            let short_id = &effective_plan_id.as_str()[..8.min(effective_plan_id.as_str().len())];
-            let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
-
-            // Git branch creation is deferred to first task execution
-            // (see resolve_task_base_branch in side_effects.rs)
-
-            // Insert plan_branches DB record
-            let plan_branch = PlanBranch::new(
-                effective_plan_id,
-                session_id.clone(),
-                session.project_id.clone(),
-                branch_name,
-                base_branch.clone(),
-            );
-            let created_branch = state
-                .plan_branch_repo
-                .create(plan_branch)
-                .await
-                .map_err(|e| format!("Failed to create plan branch record: {}", e))?;
-
-            // Create merge task (status = Blocked, category = "plan_merge")
-            let plan_title = format!("Merge plan into {}", base_branch);
-            let mut merge_task = Task::new_with_category(
-                session.project_id.clone(),
-                plan_title,
-                TaskCategory::PlanMerge,
-            );
-            merge_task.description = Some(format!(
-                "Auto-created merge task: merges feature branch into {}",
-                base_branch
-            ));
-            // Only set plan_artifact_id when real artifact exists (FK safety for tasks table)
-            merge_task.plan_artifact_id = plan_artifact_id.clone();
-            merge_task.ideation_session_id = Some(session_id.clone());
-            merge_task.internal_status = InternalStatus::Blocked;
-            merge_task.blocked_reason = Some("Waiting for all plan tasks to complete".to_string());
-
-            let created_merge_task = state
-                .task_repo
-                .create(merge_task)
-                .await
-                .map_err(|e| format!("Failed to create merge task: {}", e))?;
-
-            // Add blockedBy dependencies: merge task blocked by all created plan tasks
-            for task in &created_tasks {
-                state
-                    .task_dependency_repo
-                    .add_dependency(&created_merge_task.id, &task.id)
-                    .await
-                    .map_err(|e| format!("Failed to add dependency: {}", e))?;
-                dependencies_created += 1;
-            }
-
-            // Set merge_task_id on the plan branch record
+        // Add blockedBy dependencies: merge task blocked by all created plan tasks
+        for task in &created_tasks {
             state
-                .plan_branch_repo
-                .set_merge_task_id(&created_branch.id, &created_merge_task.id)
+                .task_dependency_repo
+                .add_dependency(&created_merge_task.id, &task.id)
                 .await
-                .map_err(|e| format!("Failed to set merge task ID: {}", e))?;
+                .map_err(|e| format!("Failed to add dependency: {}", e))?;
+            dependencies_created += 1;
         }
+
+        // Set merge_task_id on the plan branch record
+        state
+            .plan_branch_repo
+            .set_merge_task_id(&branch_id, &created_merge_task.id)
+            .await
+            .map_err(|e| format!("Failed to set merge task ID: {}", e))?;
     }
 
     // ========================================================================

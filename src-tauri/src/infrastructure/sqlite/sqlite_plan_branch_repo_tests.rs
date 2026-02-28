@@ -235,11 +235,11 @@ async fn test_set_merged_not_found() {
 }
 
 #[tokio::test]
-async fn test_unique_constraint_on_plan_artifact_id() {
+async fn test_multiple_branches_same_plan_artifact_id() {
     let repo = setup_repo().await;
     let branch1 = create_test_branch();
     let branch2 = PlanBranch::new(
-        branch1.plan_artifact_id.clone(), // same artifact id
+        branch1.plan_artifact_id.clone(), // same artifact id — allowed after v46
         IdeationSessionId::from_string("sess-different"),
         ProjectId::from_string("proj-different".to_string()),
         "ralphx/other/plan-xyz".to_string(),
@@ -248,7 +248,7 @@ async fn test_unique_constraint_on_plan_artifact_id() {
 
     repo.create(branch1).await.unwrap();
     let result = repo.create(branch2).await;
-    assert!(result.is_err());
+    assert!(result.is_ok(), "Multiple branches with same plan_artifact_id should be allowed");
 }
 
 #[tokio::test]
