@@ -146,6 +146,7 @@ vi.mock("@/stores/chatStore", () => ({
   }),
   selectQueuedMessages: vi.fn(() => () => []),
   selectIsAgentRunning: vi.fn(() => () => false),
+  selectAgentStatus: vi.fn(() => () => "idle"),
   selectActiveConversationId: vi.fn((state: typeof mockChatStoreState) => state.activeConversationId || null),
   selectIsTeamActive: vi.fn(() => () => false),
 }));
@@ -261,7 +262,7 @@ describe("ChatPanel", () => {
       setAgentRunning: mockSetAgentRunning,
       startEditingQueuedMessage: mockStartEditingQueuedMessage,
       queuedMessages: [],
-      isAgentRunning: false,
+      agentStatus: {},
       activeConversationId: null,
     };
 
@@ -665,7 +666,7 @@ describe("ChatPanel", () => {
     });
 
     it("computes streaming hash for auto-scroll triggers", () => {
-      mockChatStoreState.isAgentRunning = true;
+      mockChatStoreState.agentStatus = { "ideation:project-1": "generating" };
       mockChatStoreState.queuedMessages = [
         {
           id: "queued-1",

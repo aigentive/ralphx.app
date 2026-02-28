@@ -415,18 +415,18 @@ describe("AcceptModal", () => {
 
     it("shows analyzing banner when isAnalyzingDependencies is true", () => {
       render(<AcceptModal {...defaultProps} isAnalyzingDependencies={true} />);
-      expect(screen.getByTestId("analyzing-banner")).toBeInTheDocument();
+      expect(screen.getByTestId("analyzing-info")).toBeInTheDocument();
       expect(screen.getByText(/Dependency analysis in progress/i)).toBeInTheDocument();
     });
 
     it("does not show analyzing banner when isAnalyzingDependencies is false", () => {
       render(<AcceptModal {...defaultProps} isAnalyzingDependencies={false} />);
-      expect(screen.queryByTestId("analyzing-banner")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("analyzing-info")).not.toBeInTheDocument();
     });
 
     it("does not show analyzing banner by default", () => {
       render(<AcceptModal {...defaultProps} />);
-      expect(screen.queryByTestId("analyzing-banner")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("analyzing-info")).not.toBeInTheDocument();
     });
 
     it("does not call onAccept when analyzing even if button clicked via keyboard", async () => {
