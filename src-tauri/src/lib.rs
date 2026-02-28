@@ -43,7 +43,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tauri::Manager;
 use tracing::{info, warn};
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 
 use application::{
     ChatResumptionRunner, ReconciliationRunner, StartupJobRunner, TaskSchedulerService,
@@ -58,13 +58,49 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // Initialize tracing subscriber so tracing macros produce visible output.
+    // Initialize layered tracing subscriber: console + optional per-launch log file.
     // Respects RUST_LOG env var; defaults to ralphx=info plus warn for everything else.
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("ralphx=info,warn")),
-        )
+    // File logging controlled by RALPHX_FILE_LOGGING env / ralphx.yaml `file_logging` (default: true).
+    let env_filter = EnvFilter::try_from_default_env()
+        .unwrap_or_else(|_| EnvFilter::new("ralphx=info,warn"));
+
+    let file_logging_enabled =
+        infrastructure::agents::claude::resolve_file_logging_early();
+
+    let (_log_guard, file_layer) = if file_logging_enabled {
+        // Determine log directory: dev → {repo_root}/logs/, prod → ~/Library/Application Support/com.ralphx.app/logs/
+        let log_dir = if cfg!(debug_assertions) {
+            PathBuf::from("logs")
+        } else {
+            let home = std::env::var("HOME").expect("HOME environment variable not set");
+            PathBuf::from(home).join("Library/Application Support/com.ralphx.app/logs")
+        };
+        std::fs::create_dir_all(&log_dir).expect("Failed to create log directory");
+
+        let timestamp = chrono::Local::now().format("%Y-%m-%d_%H-%M-%S");
+        let log_filename = format!("ralphx_{timestamp}.log");
+        let log_file = std::fs::File::create(log_dir.join(&log_filename))
+            .expect("Failed to create log file");
+
+        let (non_blocking_writer, guard) = tracing_appender::non_blocking(log_file);
+        let layer = fmt::layer()
+            .with_writer(non_blocking_writer)
+            .with_ansi(false);
+
+        // Log path is printed after subscriber init below
+        eprintln!("File logging: {}", log_dir.join(&log_filename).display());
+
+        (Some(guard), Some(layer))
+    } else {
+        (None, None)
+    };
+
+    let console_layer = fmt::layer().with_writer(std::io::stdout);
+
+    Registry::default()
+        .with(env_filter)
+        .with(console_layer)
+        .with(file_layer)
         .init();
 
     // Load local runtime overrides from project-root/.env and src-tauri/.env when present.
