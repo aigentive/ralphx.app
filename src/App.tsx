@@ -564,6 +564,7 @@ function AppContent() {
           duration: 6000,
         });
       }
+      return result;
     } catch (error) {
       toast.error("Failed to apply proposals");
       throw error;

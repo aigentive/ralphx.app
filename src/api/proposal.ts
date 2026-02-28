@@ -70,6 +70,7 @@ const ApplyProposalsResultResponseSchema = z.object({
   dependencies_created: z.number(),
   warnings: z.array(z.string()),
   session_converted: z.boolean(),
+  execution_plan_id: z.string().nullable().optional(),
 });
 
 // ============================================================================
@@ -180,6 +181,7 @@ function transformApplyResult(raw: RawApplyResult): ApplyProposalsResultResponse
     dependenciesCreated: raw.dependencies_created,
     warnings: raw.warnings,
     sessionConverted: raw.session_converted,
+    executionPlanId: raw.execution_plan_id ?? null,
   };
 }
 

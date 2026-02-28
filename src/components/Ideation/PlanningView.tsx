@@ -25,7 +25,7 @@ import type {
   IdeationSession,
   TaskProposal,
 } from "@/types/ideation";
-import type { ApplyProposalsInput } from "@/api/ideation.types";
+import type { ApplyProposalsInput, ApplyProposalsResultResponse } from "@/api/ideation.types";
 import { Button } from "@/components/ui/button";
 import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
 import { PlanDisplay } from "./PlanDisplay";
@@ -75,7 +75,7 @@ interface PlanningViewProps {
   onEditProposal: (proposalId: string) => void;
   onRemoveProposal: (proposalId: string) => void;
   onReorderProposals: (proposalIds: string[]) => void;
-  onApply: (options: ApplyProposalsInput) => void;
+  onApply: (options: ApplyProposalsInput) => Promise<ApplyProposalsResultResponse>;
   /** Footer slot for execution controls — renders below left section */
   footer?: React.ReactNode;
 }
@@ -497,21 +497,18 @@ export function PlanningView({
     // Close modal immediately
     setIsAcceptModalOpen(false);
 
-    // Apply proposals to Kanban
+    // Apply proposals to Kanban and capture executionPlanId from the response
+    let executionPlanId: string | null | undefined;
     try {
-      const applyResult = onApply(options) as unknown;
-
-      // Wait for apply to complete if it returns a promise
-      if (applyResult && typeof applyResult === "object" && "then" in applyResult) {
-        await (applyResult as Promise<unknown>);
-      }
+      const applyResult = await onApply(options);
+      executionPlanId = applyResult?.executionPlanId;
     } catch {
       return; // Apply failed, toast already shown, don't proceed to setActivePlan
     }
 
-    // Set this session as the active plan after proposals are applied
+    // Set this session as the active plan — pass executionPlanId for atomic update
     try {
-      await setActivePlan(projectId, session.id, "ideation");
+      await setActivePlan(projectId, session.id, "ideation", executionPlanId);
     } catch (error) {
       console.error("Failed to set active plan:", error);
       toast.error("Failed to set active plan");

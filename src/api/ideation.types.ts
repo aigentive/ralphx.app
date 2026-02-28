@@ -94,6 +94,7 @@ export interface ApplyProposalsResultResponse {
   dependenciesCreated: number;
   warnings: string[];
   sessionConverted: boolean;
+  executionPlanId: string | null;
 }
 
 // Input types for API calls

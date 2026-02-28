@@ -266,6 +266,7 @@ pub struct ApplyProposalsResultResponse {
     pub dependencies_created: usize,
     pub warnings: Vec<String>,
     pub session_converted: bool,
+    pub execution_plan_id: Option<String>,
 }
 
 // ============================================================================
