@@ -175,6 +175,7 @@ pub trait TaskRepository: Send + Sync {
     /// * `limit` - Maximum number of tasks to return
     /// * `include_archived` - Whether to include archived tasks
     /// * `ideation_session_id` - Optional ideation session ID to filter tasks
+    /// * `execution_plan_id` - Optional execution plan ID to filter tasks (mutually exclusive with ideation_session_id)
     ///
     /// # Returns
     /// * Tasks ordered by created_at DESC (newest first)
@@ -186,6 +187,7 @@ pub trait TaskRepository: Send + Sync {
         limit: u32,
         include_archived: bool,
         ideation_session_id: Option<&str>,
+        execution_plan_id: Option<&str>,
     ) -> AppResult<Vec<Task>>;
 
     /// Count total tasks for a project
@@ -194,6 +196,7 @@ pub trait TaskRepository: Send + Sync {
     /// * `project_id` - The project ID
     /// * `include_archived` - Whether to include archived tasks in the count
     /// * `ideation_session_id` - Optional ideation session ID to filter tasks
+    /// * `execution_plan_id` - Optional execution plan ID to filter tasks (mutually exclusive with ideation_session_id)
     ///
     /// # Returns
     /// * Total count of tasks matching the criteria
@@ -202,6 +205,7 @@ pub trait TaskRepository: Send + Sync {
         project_id: &ProjectId,
         include_archived: bool,
         ideation_session_id: Option<&str>,
+        execution_plan_id: Option<&str>,
     ) -> AppResult<u32>;
 
     // ═══════════════════════════════════════════════════════════════════════

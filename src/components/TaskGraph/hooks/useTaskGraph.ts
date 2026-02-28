@@ -17,8 +17,8 @@ export const taskGraphKeys = {
   all: ["task-graph"] as const,
   /** Prefix for all graph queries for a project (matches all includeArchived variants) */
   graphPrefix: (projectId: string) => [...taskGraphKeys.all, "graph", projectId] as const,
-  graph: (projectId: string, includeArchived?: boolean, sessionId?: string | null) =>
-    [...taskGraphKeys.graphPrefix(projectId), { includeArchived: includeArchived ?? false, sessionId: sessionId ?? null }] as const,
+  graph: (projectId: string, includeArchived?: boolean, executionPlanId?: string | null) =>
+    [...taskGraphKeys.graphPrefix(projectId), { includeArchived: includeArchived ?? false, executionPlanId: executionPlanId ?? null }] as const,
 };
 
 /**
@@ -26,7 +26,7 @@ export const taskGraphKeys = {
  *
  * @param projectId - The project ID to fetch the graph for
  * @param includeArchived - Whether to include archived tasks (default false)
- * @param sessionId - Optional session ID to filter tasks by plan (default null)
+ * @param executionPlanId - Optional execution plan ID to filter tasks by plan (default null)
  * @returns TanStack Query result with graph data
  *
  * @example
@@ -41,7 +41,7 @@ export const taskGraphKeys = {
 export function useTaskGraph(
   projectId: string,
   includeArchived: boolean = false,
-  sessionId: string | null = null
+  executionPlanId: string | null = null
 ) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
@@ -52,16 +52,16 @@ export function useTaskGraph(
 
     const unsubscribe = eventBus.subscribe("task:updated", () => {
       queryClient.invalidateQueries({
-        queryKey: taskGraphKeys.graph(projectId, includeArchived, sessionId),
+        queryKey: taskGraphKeys.graph(projectId, includeArchived, executionPlanId),
       });
     });
 
     return unsubscribe;
-  }, [projectId, includeArchived, sessionId, queryClient, eventBus]);
+  }, [projectId, includeArchived, executionPlanId, queryClient, eventBus]);
 
   return useQuery<TaskDependencyGraphResponse, Error>({
-    queryKey: taskGraphKeys.graph(projectId, includeArchived, sessionId),
-    queryFn: () => taskGraphApi.getDependencyGraph(projectId, includeArchived, sessionId),
+    queryKey: taskGraphKeys.graph(projectId, includeArchived, executionPlanId),
+    queryFn: () => taskGraphApi.getDependencyGraph(projectId, includeArchived, executionPlanId),
     enabled: Boolean(projectId),
     // Refetch less frequently since graph structure doesn't change often
     staleTime: 30_000,

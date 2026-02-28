@@ -38,6 +38,7 @@ export function transformTaskGraphNode(
     tier: raw.tier,
     planArtifactId: raw.plan_artifact_id,
     sourceProposalId: raw.source_proposal_id,
+    executionPlanId: raw.execution_plan_id,
   };
 }
 
@@ -86,6 +87,7 @@ export function transformPlanGroupInfo(
     sessionTitle: raw.session_title,
     taskIds: raw.task_ids,
     statusSummary: transformStatusSummary(raw.status_summary),
+    executionPlanId: raw.execution_plan_id,
   };
 }
 

@@ -8,7 +8,8 @@ use rusqlite::Connection;
 
 use super::DbConnection;
 use crate::domain::entities::{
-    ArtifactId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus, ProjectId, TaskId,
+    ArtifactId, ExecutionPlanId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus,
+    ProjectId, TaskId,
 };
 use crate::domain::repositories::PlanBranchRepository;
 use crate::error::{AppError, AppResult};
@@ -37,8 +38,8 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "INSERT INTO plan_branches (id, plan_artifact_id, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    "INSERT INTO plan_branches (id, plan_artifact_id, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at, execution_plan_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
                     rusqlite::params![
                         branch.id.as_str(),
                         branch.plan_artifact_id.as_str(),
@@ -50,10 +51,36 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
                         branch.merge_task_id.as_ref().map(|t| t.as_str().to_string()),
                         branch.created_at.to_rfc3339(),
                         branch.merged_at.map(|dt| dt.to_rfc3339()),
+                        branch.execution_plan_id.as_ref().map(|id| id.as_str().to_string()),
                     ],
                 )
                 .map_err(|e| AppError::Database(format!("Failed to create plan branch: {}", e)))?;
                 Ok(branch)
+            })
+            .await
+    }
+
+    async fn get_by_execution_plan_id(
+        &self,
+        id: &ExecutionPlanId,
+    ) -> AppResult<Option<PlanBranch>> {
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare("SELECT * FROM plan_branches WHERE execution_plan_id = ?1")
+                    .map_err(|e| AppError::Database(format!("Failed to prepare query: {}", e)))?;
+                let result = stmt.query_row(rusqlite::params![id.as_str()], |row| {
+                    PlanBranch::from_row(row)
+                });
+                match result {
+                    Ok(branch) => Ok(Some(branch)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(AppError::Database(format!(
+                        "Failed to get plan branch by execution plan id: {}",
+                        e
+                    ))),
+                }
             })
             .await
     }

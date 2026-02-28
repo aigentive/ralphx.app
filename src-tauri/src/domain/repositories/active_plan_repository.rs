@@ -1,4 +1,4 @@
-use crate::domain::entities::{IdeationSessionId, ProjectId};
+use crate::domain::entities::{ExecutionPlanId, IdeationSessionId, ProjectId};
 use async_trait::async_trait;
 
 #[async_trait]
@@ -29,5 +29,18 @@ pub trait ActivePlanRepository: Send + Sync {
         project_id: &ProjectId,
         ideation_session_id: &IdeationSessionId,
         source: &str,
+    ) -> Result<(), Box<dyn std::error::Error>>;
+
+    /// Get the execution plan ID associated with the active plan for a project
+    async fn get_execution_plan_id(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<Option<ExecutionPlanId>, Box<dyn std::error::Error>>;
+
+    /// Set the execution plan ID for the active plan of a project
+    async fn set_execution_plan_id(
+        &self,
+        project_id: &ProjectId,
+        execution_plan_id: &ExecutionPlanId,
     ) -> Result<(), Box<dyn std::error::Error>>;
 }

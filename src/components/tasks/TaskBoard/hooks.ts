@@ -40,7 +40,8 @@ export interface UseTaskBoardResult {
 
 export function useTaskBoard(
   projectId: string,
-  ideationSessionId?: string | null
+  ideationSessionId?: string | null,
+  executionPlanId?: string | null
 ): UseTaskBoardResult {
   const queryClient = useQueryClient();
   const showArchived = useUiStore((s) => s.showArchived);
@@ -71,6 +72,7 @@ export function useTaskBoard(
               statuses: getColumnStatuses(col),
               includeArchived: showArchived,
               ideationSessionId,
+              executionPlanId,
             }),
           })
         )
@@ -84,6 +86,7 @@ export function useTaskBoard(
           statuses: getColumnStatuses(col),
           includeArchived: showArchived,
           ideationSessionId,
+          executionPlanId,
         });
         snapshots.set(col.id, queryClient.getQueryData(key));
       });
@@ -98,6 +101,7 @@ export function useTaskBoard(
           statuses: getColumnStatuses(col),
           includeArchived: showArchived,
           ideationSessionId,
+          executionPlanId,
         });
         const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
         if (data?.pages) {
@@ -121,6 +125,7 @@ export function useTaskBoard(
         statuses: getColumnStatuses(fromColumn),
         includeArchived: showArchived,
         ideationSessionId,
+        executionPlanId,
       });
       queryClient.setQueryData<InfiniteData<TaskListResponse>>(
         fromKey,
@@ -144,6 +149,7 @@ export function useTaskBoard(
           statuses: getColumnStatuses(toColumn),
           includeArchived: showArchived,
           ideationSessionId,
+          executionPlanId,
         });
         queryClient.setQueryData<InfiniteData<TaskListResponse>>(
           toKey,
@@ -180,6 +186,8 @@ export function useTaskBoard(
             projectId,
             statuses: getColumnStatuses(col),
             includeArchived: showArchived,
+            ideationSessionId,
+            executionPlanId,
           });
           queryClient.setQueryData(key, snapshot);
         }
@@ -194,6 +202,8 @@ export function useTaskBoard(
             projectId,
             statuses: getColumnStatuses(col),
             includeArchived: showArchived,
+            ideationSessionId,
+            executionPlanId,
           }),
         });
       });
@@ -219,6 +229,7 @@ export function useTaskBoard(
           statuses: getColumnStatuses(col),
           includeArchived: showArchived,
           ideationSessionId,
+          executionPlanId,
         });
         const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
         if (data?.pages) {
@@ -240,7 +251,7 @@ export function useTaskBoard(
         toStatus: targetColumn.mapsTo as InternalStatus,
       });
     },
-    [columns, projectId, showArchived, ideationSessionId, queryClient, moveMutation]
+    [columns, projectId, showArchived, ideationSessionId, executionPlanId, queryClient, moveMutation]
   );
 
   return {

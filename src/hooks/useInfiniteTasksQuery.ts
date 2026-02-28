@@ -22,6 +22,8 @@ export interface InfiniteTasksParams {
   includeArchived?: boolean | undefined;
   /** Optional ideation session ID to filter tasks by plan */
   ideationSessionId?: string | null | undefined;
+  /** Optional execution plan ID to filter tasks (mutually exclusive with ideationSessionId) */
+  executionPlanId?: string | null | undefined;
 }
 
 /**
@@ -36,6 +38,7 @@ export const infiniteTaskKeys = {
       params.statuses,
       params.includeArchived,
       params.ideationSessionId,
+      params.executionPlanId,
     ] as const,
 };
 
@@ -86,9 +89,10 @@ export function useInfiniteTasksQuery({
   statuses,
   includeArchived = false,
   ideationSessionId,
+  executionPlanId,
 }: InfiniteTasksParams) {
   return useInfiniteQuery<TaskListResponse, Error>({
-    queryKey: infiniteTaskKeys.list({ projectId, statuses, includeArchived, ideationSessionId }),
+    queryKey: infiniteTaskKeys.list({ projectId, statuses, includeArchived, ideationSessionId, executionPlanId }),
     queryFn: async ({ pageParam = 0 }) => {
       return api.tasks.list({
         projectId,
@@ -97,6 +101,7 @@ export function useInfiniteTasksQuery({
         limit: 20,
         includeArchived,
         ...(ideationSessionId !== undefined && ideationSessionId !== null && { ideationSessionId }),
+        ...(executionPlanId !== undefined && executionPlanId !== null && { executionPlanId }),
       });
     },
     getNextPageParam: (lastPage) => {

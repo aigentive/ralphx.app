@@ -5,7 +5,7 @@ use async_trait::async_trait;
 use rusqlite::Connection;
 
 use super::DbConnection;
-use crate::domain::entities::{IdeationSessionId, ProjectId};
+use crate::domain::entities::{ExecutionPlanId, IdeationSessionId, ProjectId};
 use crate::domain::repositories::ActivePlanRepository;
 use crate::error::AppError;
 
@@ -144,6 +144,49 @@ impl ActivePlanRepository for SqliteActivePlanRepository {
                          last_selected_at = excluded.last_selected_at,
                          last_selected_source = excluded.last_selected_source",
                     [project_id.as_str(), session_id.as_str(), source.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    }
+    async fn get_execution_plan_id(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<Option<ExecutionPlanId>, Box<dyn std::error::Error>> {
+        let project_id = project_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT execution_plan_id FROM project_active_plan WHERE project_id = ?1",
+                )?;
+                let result = stmt.query_row([project_id.as_str()], |row| {
+                    let ep_id: Option<String> = row.get(0)?;
+                    Ok(ep_id)
+                });
+                match result {
+                    Ok(Some(id)) => Ok(Some(ExecutionPlanId::from_string(id))),
+                    Ok(None) => Ok(None),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(AppError::Database(e.to_string())),
+                }
+            })
+            .await
+            .map_err(|e| Box::new(e) as Box<dyn std::error::Error>)
+    }
+
+    async fn set_execution_plan_id(
+        &self,
+        project_id: &ProjectId,
+        execution_plan_id: &ExecutionPlanId,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let project_id = project_id.as_str().to_string();
+        let ep_id = execution_plan_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE project_active_plan SET execution_plan_id = ?1 WHERE project_id = ?2",
+                    [ep_id.as_str(), project_id.as_str()],
                 )?;
                 Ok(())
             })

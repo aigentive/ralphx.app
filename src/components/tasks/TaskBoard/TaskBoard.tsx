@@ -26,7 +26,7 @@ import { TaskBoardSkeleton } from "./TaskBoardSkeleton";
 import { Column } from "./Column";
 import { TaskCard } from "./TaskCard";
 import { useUiStore } from "@/stores/uiStore";
-import { usePlanStore } from "@/stores/planStore";
+import { usePlanStore, selectActiveExecutionPlanId } from "@/stores/planStore";
 import { Toggle } from "@/components/ui/toggle";
 import { Archive, GitMerge, FileText, Sparkles } from "lucide-react";
 import { api } from "@/lib/tauri";
@@ -74,15 +74,18 @@ export function TaskBoard({
   const activePlanLoaded = usePlanStore(
     (s) => s.activePlanLoadedByProject[projectId] ?? false
   );
-  // Use prop if provided, otherwise fall back to active plan from store
-  const ideationSessionId = ideationSessionIdProp ?? activePlanId;
+  // Get active execution plan ID for filtering (mutually exclusive with ideationSessionId)
+  const activeExecutionPlanId = usePlanStore(selectActiveExecutionPlanId(projectId));
+  // Use prop if provided, otherwise fall back to active plan from store.
+  // When an executionPlanId is active, use null for ideationSessionId (exclusive filters).
+  const ideationSessionId = ideationSessionIdProp ?? (activeExecutionPlanId ? null : activePlanId);
 
   // Load active plan from backend on mount or project change
   useEffect(() => {
     usePlanStore.getState().loadActivePlan(projectId);
   }, [projectId]);
 
-  const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId, ideationSessionId);
+  const { columns, onDragEnd, isLoading, error } = useTaskBoard(projectId, ideationSessionId, activeExecutionPlanId);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
   const [overColumnId, setOverColumnId] = useState<string | null>(null);
   const [movingTaskId, setMovingTaskId] = useState<string | null>(null);
@@ -104,6 +107,7 @@ export function TaskBoard({
     showArchived,
     ideationSessionId,
     showMergeTasks,
+    activeExecutionPlanId,
   );
   const { isCollapsed, toggleCollapse, expandColumn } = useColumnCollapse(
     defaultWorkflow.columns,
@@ -140,6 +144,7 @@ export function TaskBoard({
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
         ideationSessionId,
+        executionPlanId: activeExecutionPlanId,
       });
       const colData = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       if (colData?.pages) {
@@ -149,7 +154,7 @@ export function TaskBoard({
       }
     }
     return count;
-  }, [columns, projectId, showArchived, ideationSessionId, queryClient]);
+  }, [columns, projectId, showArchived, ideationSessionId, activeExecutionPlanId, queryClient]);
 
   const subscribeToQueryCache = useCallback(
     (onStoreChange: () => void) => queryClient.getQueryCache().subscribe(onStoreChange),
@@ -365,6 +370,7 @@ export function TaskBoard({
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
         ideationSessionId,
+        executionPlanId: activeExecutionPlanId,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       if (data?.pages) {
@@ -396,6 +402,7 @@ export function TaskBoard({
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
         ideationSessionId,
+        executionPlanId: activeExecutionPlanId,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       return data?.pages?.some((page) => page.tasks.some((t: Task) => t.id === taskId));
@@ -622,6 +629,7 @@ export function TaskBoard({
                     {...(groups && { groups })}
                     isLast={index === displayColumns.length - 1}
                     ideationSessionId={ideationSessionId}
+                    executionPlanId={activeExecutionPlanId}
                     isCollapsed={columnCollapsed}
                     onToggleCollapse={() => toggleCollapse(column.id)}
                   />

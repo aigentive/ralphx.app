@@ -45,8 +45,8 @@ impl TaskRepository for SqliteTaskRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21)",
+                    "INSERT INTO tasks (id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
                     rusqlite::params![
                         task.id.as_str(),
                         task.project_id.as_str(),
@@ -59,6 +59,7 @@ impl TaskRepository for SqliteTaskRepository {
                         task.source_proposal_id.as_ref().map(|id| id.as_str()),
                         task.plan_artifact_id.as_ref().map(|id| id.as_str()),
                         task.ideation_session_id.as_ref().map(|id| id.as_str()),
+                        task.execution_plan_id.as_ref().map(|id| id.as_str()),
                         task.created_at.to_rfc3339(),
                         task.updated_at.to_rfc3339(),
                         task.started_at.map(|dt| dt.to_rfc3339()),
@@ -121,7 +122,7 @@ impl TaskRepository for SqliteTaskRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, ideation_session_id = ?10, updated_at = ?11, started_at = ?12, completed_at = ?13, archived_at = ?14, blocked_reason = ?15, task_branch = ?16, worktree_path = ?17, merge_commit_sha = ?18, metadata = ?19
+                    "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, ideation_session_id = ?10, execution_plan_id = ?11, updated_at = ?12, started_at = ?13, completed_at = ?14, archived_at = ?15, blocked_reason = ?16, task_branch = ?17, worktree_path = ?18, merge_commit_sha = ?19, metadata = ?20
                      WHERE id = ?1",
                     rusqlite::params![
                         task.id.as_str(),
@@ -134,6 +135,7 @@ impl TaskRepository for SqliteTaskRepository {
                         task.source_proposal_id.as_ref().map(|id| id.as_str()),
                         task.plan_artifact_id.as_ref().map(|id| id.as_str()),
                         task.ideation_session_id.as_ref().map(|id| id.as_str()),
+                        task.execution_plan_id.as_ref().map(|id| id.as_str()),
                         task.updated_at.to_rfc3339(),
                         task.started_at.map(|dt| dt.to_rfc3339()),
                         task.completed_at.map(|dt| dt.to_rfc3339()),
@@ -159,8 +161,8 @@ impl TaskRepository for SqliteTaskRepository {
         self.db
             .run(move |conn| {
                 let rows_affected = conn.execute(
-                    "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, ideation_session_id = ?10, updated_at = ?11, started_at = ?12, completed_at = ?13, archived_at = ?14, blocked_reason = ?15, task_branch = ?16, worktree_path = ?17, merge_commit_sha = ?18, metadata = ?19
-                     WHERE id = ?1 AND internal_status = ?20",
+                    "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, ideation_session_id = ?10, execution_plan_id = ?11, updated_at = ?12, started_at = ?13, completed_at = ?14, archived_at = ?15, blocked_reason = ?16, task_branch = ?17, worktree_path = ?18, merge_commit_sha = ?19, metadata = ?20
+                     WHERE id = ?1 AND internal_status = ?21",
                     rusqlite::params![
                         task.id.as_str(),
                         task.project_id.as_str(),
@@ -172,6 +174,7 @@ impl TaskRepository for SqliteTaskRepository {
                         task.source_proposal_id.as_ref().map(|id| id.as_str()),
                         task.plan_artifact_id.as_ref().map(|id| id.as_str()),
                         task.ideation_session_id.as_ref().map(|id| id.as_str()),
+                        task.execution_plan_id.as_ref().map(|id| id.as_str()),
                         task.updated_at.to_rfc3339(),
                         task.started_at.map(|dt| dt.to_rfc3339()),
                         task.completed_at.map(|dt| dt.to_rfc3339()),
@@ -235,7 +238,7 @@ impl TaskRepository for SqliteTaskRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata
+                    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata
                      FROM tasks WHERE project_id = ?1 AND internal_status = ?2 AND archived_at IS NULL
                      ORDER BY priority DESC, created_at ASC",
                 )?;
@@ -349,7 +352,7 @@ impl TaskRepository for SqliteTaskRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.ideation_session_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at, t.blocked_reason, t.task_branch, t.worktree_path, t.merge_commit_sha, t.metadata
+                    "SELECT t.id, t.project_id, t.category, t.title, t.description, t.priority, t.internal_status, t.needs_review_point, t.source_proposal_id, t.plan_artifact_id, t.ideation_session_id, t.execution_plan_id, t.created_at, t.updated_at, t.started_at, t.completed_at, t.archived_at, t.blocked_reason, t.task_branch, t.worktree_path, t.merge_commit_sha, t.metadata
                      FROM tasks t
                      WHERE t.project_id = ?1
                        AND t.internal_status = 'ready'
@@ -400,7 +403,7 @@ impl TaskRepository for SqliteTaskRepository {
                     ],
                 )?;
                 let task = conn.query_row(
-                    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata
+                    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata
                      FROM tasks WHERE id = ?1",
                     [task_id.as_str()],
                     |row| Task::from_row(row),
@@ -420,7 +423,7 @@ impl TaskRepository for SqliteTaskRepository {
                     rusqlite::params![task_id.as_str(), now.to_rfc3339()],
                 )?;
                 let task = conn.query_row(
-                    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata
+                    "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata
                      FROM tasks WHERE id = ?1",
                     [task_id.as_str()],
                     |row| Task::from_row(row),
@@ -468,17 +471,21 @@ impl TaskRepository for SqliteTaskRepository {
         limit: u32,
         include_archived: bool,
         ideation_session_id: Option<&str>,
+        execution_plan_id: Option<&str>,
     ) -> AppResult<Vec<Task>> {
         let project_id = project_id.as_str().to_string();
         let ideation_session_id = ideation_session_id.map(|s| s.to_string());
+        let execution_plan_id = execution_plan_id.map(|s| s.to_string());
         let status_count = statuses.as_ref().map_or(0, |s| s.len());
         let has_session_filter = ideation_session_id.is_some();
+        let has_execution_plan_filter = execution_plan_id.is_some();
         self.db
             .run(move |conn| {
                 let query = query_builder::build_paginated_query(
                     status_count,
                     include_archived,
                     has_session_filter,
+                    has_execution_plan_filter,
                 );
                 let mut stmt = conn.prepare(&query)?;
 
@@ -493,6 +500,10 @@ impl TaskRepository for SqliteTaskRepository {
 
                 if let Some(ref sid) = ideation_session_id {
                     params.push(Box::new(sid.clone()));
+                }
+
+                if let Some(ref epid) = execution_plan_id {
+                    params.push(Box::new(epid.clone()));
                 }
 
                 params.push(Box::new(limit as i64));
@@ -513,30 +524,37 @@ impl TaskRepository for SqliteTaskRepository {
         project_id: &ProjectId,
         include_archived: bool,
         ideation_session_id: Option<&str>,
+        execution_plan_id: Option<&str>,
     ) -> AppResult<u32> {
         let project_id = project_id.as_str().to_string();
         let ideation_session_id = ideation_session_id.map(|s| s.to_string());
+        let execution_plan_id = execution_plan_id.map(|s| s.to_string());
         self.db
             .run(move |conn| {
-                let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) =
-                    match (include_archived, ideation_session_id.as_deref()) {
-                        (true, Some(sid)) => (
-                            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND ideation_session_id = ?2".to_string(),
-                            vec![Box::new(project_id.clone()), Box::new(sid.to_string())],
-                        ),
-                        (true, None) => (
-                            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1".to_string(),
-                            vec![Box::new(project_id.clone())],
-                        ),
-                        (false, Some(sid)) => (
-                            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NULL AND ideation_session_id = ?2".to_string(),
-                            vec![Box::new(project_id.clone()), Box::new(sid.to_string())],
-                        ),
-                        (false, None) => (
-                            "SELECT COUNT(*) FROM tasks WHERE project_id = ?1 AND archived_at IS NULL".to_string(),
-                            vec![Box::new(project_id.clone())],
-                        ),
-                    };
+                let mut conditions = vec!["project_id = ?1".to_string()];
+                let mut params: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(project_id.clone())];
+                let mut param_idx = 2;
+
+                if !include_archived {
+                    conditions.push("archived_at IS NULL".to_string());
+                }
+
+                if let Some(ref sid) = ideation_session_id {
+                    conditions.push(format!("ideation_session_id = ?{}", param_idx));
+                    params.push(Box::new(sid.clone()));
+                    param_idx += 1;
+                }
+
+                if let Some(ref epid) = execution_plan_id {
+                    conditions.push(format!("execution_plan_id = ?{}", param_idx));
+                    params.push(Box::new(epid.clone()));
+                    let _ = param_idx; // suppress unused warning
+                }
+
+                let query = format!(
+                    "SELECT COUNT(*) FROM tasks WHERE {}",
+                    conditions.join(" AND ")
+                );
                 let params_ref: Vec<&dyn rusqlite::ToSql> =
                     params.iter().map(|p| p.as_ref()).collect();
                 let count: i64 =

@@ -7,9 +7,8 @@ use tauri::{Manager, State};
 use crate::application::{AppState, TaskSchedulerService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    ArtifactId, IdeationSessionId, IdeationSessionStatus, InternalStatus, PlanBranch,
-    PlanBranchId, Task,
-    TaskCategory, TaskId, TaskProposal, TaskProposalId,
+    ArtifactId, ExecutionPlan, IdeationSessionId, IdeationSessionStatus, InternalStatus,
+    PlanBranch, PlanBranchId, Task, TaskCategory, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::domain::state_machine::services::TaskScheduler;
 
@@ -71,6 +70,16 @@ pub async fn apply_proposals_to_kanban(
         return Err("Some proposals not found in session".to_string());
     }
 
+    // Create ExecutionPlan for this apply attempt
+    // Each re-accept creates a fresh ExecutionPlan with a unique ID, enabling unique branch naming
+    let execution_plan = ExecutionPlan::new(session_id.clone());
+    let execution_plan = state
+        .execution_plan_repo
+        .create(execution_plan)
+        .await
+        .map_err(|e| format!("Failed to create execution plan: {}", e))?;
+    let execution_plan_id = execution_plan.id.clone();
+
     // ========================================================================
     // PHASE 0: Feature Branch Pre-Check (before task creation for atomicity)
     // ========================================================================
@@ -90,30 +99,38 @@ pub async fn apply_proposals_to_kanban(
     // Create plan branch record if needed (merge task created later, after tasks exist)
     let mut pending_merge: Option<(PlanBranchId, String)> = None;
     if use_feature_branch {
+        // Check if a feature branch already exists for this execution plan
+        // Each re-accept creates a new ExecutionPlan, so this will always be None on first apply
         let existing = state
             .plan_branch_repo
-            .get_by_session_id(&session_id)
+            .get_by_execution_plan_id(&execution_plan_id)
             .await
             .map_err(|e| e.to_string())?;
 
         if existing.is_none() {
+            // Compute effective_plan_id for plan_branches.plan_artifact_id only (no FK constraint).
+            // Use real artifact_id when available, fall back to session_id string.
             let effective_plan_id: ArtifactId = plan_artifact_id
                 .clone()
                 .unwrap_or_else(|| ArtifactId::from_string(session_id.as_str().to_string()));
 
             let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
 
+            // Generate branch name: ralphx/{project-slug}/plan-{short-id}
+            // Use execution_plan_id (not plan_artifact_id) so each re-accept gets a unique branch
             let project_slug = slug_from_name(&project.name);
-            let short_id = &effective_plan_id.as_str()[..8.min(effective_plan_id.as_str().len())];
+            let exec_plan_str = execution_plan_id.as_str();
+            let short_id = &exec_plan_str[..8.min(exec_plan_str.len())];
             let branch_name = format!("ralphx/{}/plan-{}", project_slug, short_id);
 
-            let plan_branch = PlanBranch::new(
+            let mut plan_branch = PlanBranch::new(
                 effective_plan_id,
                 session_id.clone(),
                 session.project_id.clone(),
                 branch_name,
                 base_branch.clone(),
             );
+            plan_branch.execution_plan_id = Some(execution_plan_id.clone());
             let created_branch = state
                 .plan_branch_repo
                 .create(plan_branch)
@@ -140,6 +157,7 @@ pub async fn apply_proposals_to_kanban(
         // Initial status - will be updated after dependencies are created
         task.internal_status = InternalStatus::Backlog;
         task.ideation_session_id = Some(session_id.clone());
+        task.execution_plan_id = Some(execution_plan_id.clone());
 
         // Set priority based on user override or suggested (use priority score as i32)
         if proposal.user_priority.is_some() {
@@ -259,6 +277,7 @@ pub async fn apply_proposals_to_kanban(
         // Only set plan_artifact_id when real artifact exists (FK safety for tasks table)
         merge_task.plan_artifact_id = plan_artifact_id.clone();
         merge_task.ideation_session_id = Some(session_id.clone());
+        merge_task.execution_plan_id = Some(execution_plan_id.clone());
         merge_task.internal_status = InternalStatus::Blocked;
         merge_task.blocked_reason = Some("Waiting for all plan tasks to complete".to_string());
 

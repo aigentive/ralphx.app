@@ -58,7 +58,7 @@ import { GraphSplitLayout } from "@/components/layout/GraphSplitLayout";
 import type { TaskGraphNode, TaskGraphEdge, PlanGroupInfo } from "@/api/task-graph.types";
 import type { InternalStatus } from "@/types/status";
 import { useUiStore } from "@/stores/uiStore";
-import { usePlanStore, selectActivePlanId } from "@/stores/planStore";
+import { usePlanStore, selectActivePlanId, selectActiveExecutionPlanId } from "@/stores/planStore";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
 import { useDeleteIdeationSession } from "@/hooks/useIdeation";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -281,15 +281,17 @@ function TaskGraphViewInner({
   // GraphControls state (declared early so showArchived is available for useTaskGraph)
   const [filters, setFilters] = useState<GraphFilters>(DEFAULT_GRAPH_FILTERS);
 
-  // Get active plan ID from plan store
+  // Get active plan ID from plan store (used for empty state check and plan selector)
   const activePlanId = usePlanStore(selectActivePlanId(projectId));
+  // Get active execution plan ID for graph filtering
+  const activeExecutionPlanId = usePlanStore(selectActiveExecutionPlanId(projectId));
 
   // Load active plan from backend on mount or project change
   useEffect(() => {
     usePlanStore.getState().loadActivePlan(projectId);
   }, [projectId]);
 
-  const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived, activePlanId);
+  const { data: graphData, isLoading, error } = useTaskGraph(projectId, filters.showArchived, activeExecutionPlanId);
   const {
     fitNodeInView,
     fitNode,

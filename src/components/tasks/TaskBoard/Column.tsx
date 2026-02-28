@@ -58,6 +58,8 @@ interface ColumnProps {
   isLast?: boolean;
   /** Optional ideation session ID to filter tasks by plan */
   ideationSessionId?: string | null | undefined;
+  /** Optional execution plan ID to filter tasks (mutually exclusive with ideationSessionId) */
+  executionPlanId?: string | null | undefined;
   /** Whether this column is collapsed */
   isCollapsed?: boolean;
   /** Callback to toggle collapse state */
@@ -102,7 +104,7 @@ function isCompletedDoneGroup(group: StateGroup): boolean {
   );
 }
 
-export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false, ideationSessionId, isCollapsed = false, onToggleCollapse }: ColumnProps) {
+export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false, ideationSessionId, executionPlanId, isCollapsed = false, onToggleCollapse }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const { active } = useDndContext();
@@ -157,6 +159,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     statuses: columnStatuses,
     includeArchived: showArchived,
     ideationSessionId,
+    executionPlanId,
   });
 
   // Use search tasks if provided (search mode), otherwise use fetched tasks

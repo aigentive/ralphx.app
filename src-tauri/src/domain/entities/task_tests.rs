@@ -444,6 +444,7 @@ fn setup_test_db() -> Connection {
             source_proposal_id TEXT,
             plan_artifact_id TEXT,
             ideation_session_id TEXT,
+            execution_plan_id TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             started_at TEXT,

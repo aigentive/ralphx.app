@@ -1189,7 +1189,7 @@ async fn test_list_paginated_respects_limit() {
     }
 
     let tasks = repo
-        .list_paginated(&project_id, None, 0, 3, false, None)
+        .list_paginated(&project_id, None, 0, 3, false, None, None)
         .await
         .unwrap();
     assert_eq!(tasks.len(), 3);
@@ -1208,11 +1208,11 @@ async fn test_list_paginated_offset_skips_tasks() {
     }
 
     let page1 = repo
-        .list_paginated(&project_id, None, 0, 2, false, None)
+        .list_paginated(&project_id, None, 0, 2, false, None, None)
         .await
         .unwrap();
     let page2 = repo
-        .list_paginated(&project_id, None, 2, 2, false, None)
+        .list_paginated(&project_id, None, 2, 2, false, None, None)
         .await
         .unwrap();
 
@@ -1242,6 +1242,7 @@ async fn test_list_paginated_filters_by_status() {
             10,
             false,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1263,13 +1264,13 @@ async fn test_list_paginated_include_archived_flag() {
     repo.archive(&to_archive.id).await.unwrap();
 
     let active_only = repo
-        .list_paginated(&project_id, None, 0, 10, false, None)
+        .list_paginated(&project_id, None, 0, 10, false, None, None)
         .await
         .unwrap();
     assert_eq!(active_only.len(), 1);
 
     let with_archived = repo
-        .list_paginated(&project_id, None, 0, 10, true, None)
+        .list_paginated(&project_id, None, 0, 10, true, None, None)
         .await
         .unwrap();
     assert_eq!(with_archived.len(), 2);
@@ -1458,7 +1459,7 @@ async fn test_count_tasks_returns_correct_count() {
     repo.create(create_test_task("T2")).await.unwrap();
     repo.create(create_test_task("T3")).await.unwrap();
 
-    let count = repo.count_tasks(&project_id, false, None).await.unwrap();
+    let count = repo.count_tasks(&project_id, false, None, None).await.unwrap();
     assert_eq!(count, 3);
 }
 
@@ -1474,10 +1475,10 @@ async fn test_count_tasks_excludes_archived_by_default() {
     repo.create(to_archive.clone()).await.unwrap();
     repo.archive(&to_archive.id).await.unwrap();
 
-    let active_count = repo.count_tasks(&project_id, false, None).await.unwrap();
+    let active_count = repo.count_tasks(&project_id, false, None, None).await.unwrap();
     assert_eq!(active_count, 1);
 
-    let all_count = repo.count_tasks(&project_id, true, None).await.unwrap();
+    let all_count = repo.count_tasks(&project_id, true, None, None).await.unwrap();
     assert_eq!(all_count, 2);
 }
 
@@ -1487,7 +1488,7 @@ async fn test_count_tasks_returns_zero_for_empty_project() {
     let repo = SqliteTaskRepository::new(conn);
     let project_id = ProjectId::from_string("test-project".to_string());
 
-    let count = repo.count_tasks(&project_id, false, None).await.unwrap();
+    let count = repo.count_tasks(&project_id, false, None, None).await.unwrap();
     assert_eq!(count, 0);
 }
 
@@ -1504,11 +1505,11 @@ async fn test_count_tasks_filters_by_ideation_session() {
     repo.create(create_test_task("Other Task")).await.unwrap();
 
     let session_count = repo
-        .count_tasks(&project_id, false, Some("my-session"))
+        .count_tasks(&project_id, false, Some("my-session"), None)
         .await
         .unwrap();
     assert_eq!(session_count, 1);
 
-    let total_count = repo.count_tasks(&project_id, false, None).await.unwrap();
+    let total_count = repo.count_tasks(&project_id, false, None, None).await.unwrap();
     assert_eq!(total_count, 2);
 }

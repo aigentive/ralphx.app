@@ -119,6 +119,7 @@ function buildGraphResponse(projectId: string, ideationSessionId?: string | null
       session_title: group.sessionTitle ?? formatPlanTitle(planArtifactId, index),
       task_ids: group.taskIds,
       status_summary: group.statusSummary,
+      execution_plan_id: null,
     })
   );
 
@@ -135,6 +136,7 @@ function buildGraphResponse(projectId: string, ideationSessionId?: string | null
       tier: 0,
       plan_artifact_id: task.planArtifactId ?? null,
       source_proposal_id: task.sourceProposalId ?? null,
+      execution_plan_id: null,
     })),
     edges: [],
     plan_groups: planGroups,

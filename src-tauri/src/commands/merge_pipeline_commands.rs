@@ -300,6 +300,7 @@ mod tests {
             branch_name: branch_name.to_string(),
             source_branch: "main".to_string(),
             status,
+            execution_plan_id: None,
             merge_task_id: None,
             created_at: Utc::now(),
             merged_at: None,

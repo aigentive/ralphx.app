@@ -99,10 +99,11 @@ impl TaskRepository for MockTaskRepoForSpawner {
         _: u32,
         _: bool,
         _: Option<&str>,
+        _: Option<&str>,
     ) -> AppResult<Vec<Task>> {
         Ok(vec![])
     }
-    async fn count_tasks(&self, _: &ProjectId, _: bool, _: Option<&str>) -> AppResult<u32> {
+    async fn count_tasks(&self, _: &ProjectId, _: bool, _: Option<&str>, _: Option<&str>) -> AppResult<u32> {
         Ok(0)
     }
     async fn search(&self, _: &ProjectId, _: &str, _: bool) -> AppResult<Vec<Task>> {

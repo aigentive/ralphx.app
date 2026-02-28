@@ -214,6 +214,8 @@ pub struct TaskGraphNode {
     pub plan_artifact_id: Option<String>,
     /// Source proposal ID if task came from ideation
     pub source_proposal_id: Option<String>,
+    /// Execution plan ID if task is linked to an execution plan
+    pub execution_plan_id: Option<String>,
 }
 
 /// Edge in the task dependency graph
@@ -255,6 +257,8 @@ pub struct PlanGroupInfo {
     pub task_ids: Vec<String>,
     /// Status counts for tasks in this plan
     pub status_summary: StatusSummary,
+    /// Execution plan ID for this plan group (if any task has one)
+    pub execution_plan_id: Option<String>,
 }
 
 /// Response for the task dependency graph

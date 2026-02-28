@@ -15,6 +15,7 @@ export interface TaskGraphNode {
   tier: number;
   planArtifactId: string | null;
   sourceProposalId: string | null;
+  executionPlanId: string | null;
 }
 
 /**
@@ -50,6 +51,7 @@ export interface PlanGroupInfo {
   sessionTitle: string | null;
   taskIds: string[];
   statusSummary: StatusSummary;
+  executionPlanId: string | null;
 }
 
 /**

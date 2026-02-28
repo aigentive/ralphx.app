@@ -84,6 +84,7 @@ vi.mock("@/stores/planStore", () => ({
     const state = {
       activePlanByProject: { p1: "session-1" },
       activePlanLoadedByProject: { p1: true },
+      activeExecutionPlanIdByProject: {},
       planCandidates: [],
       isLoading: false,
       error: null,
@@ -99,6 +100,10 @@ vi.mock("@/stores/planStore", () => ({
       state;
     return usePlanStore;
   })(),
+  selectActiveExecutionPlanId:
+    (projectId: string) =>
+    (state: { activeExecutionPlanIdByProject: Record<string, string | null> }): string | null =>
+      state.activeExecutionPlanIdByProject[projectId] ?? null,
 }));
 
 import { useInfiniteTasksQuery } from "@/hooks/useInfiniteTasksQuery";
