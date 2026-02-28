@@ -6,7 +6,8 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use crate::domain::entities::{
-    ArtifactId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus, ProjectId, TaskId,
+    ArtifactId, ExecutionPlanId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus,
+    ProjectId, TaskId,
 };
 use crate::domain::repositories::PlanBranchRepository;
 use crate::error::AppResult;
@@ -35,6 +36,17 @@ impl PlanBranchRepository for MemoryPlanBranchRepository {
         let mut branches = self.branches.write().await;
         branches.insert(branch.id.as_str().to_string(), branch.clone());
         Ok(branch)
+    }
+
+    async fn get_by_execution_plan_id(
+        &self,
+        id: &ExecutionPlanId,
+    ) -> AppResult<Option<PlanBranch>> {
+        let branches = self.branches.read().await;
+        Ok(branches
+            .values()
+            .find(|b| b.execution_plan_id.as_ref() == Some(id))
+            .cloned())
     }
 
     async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Vec<PlanBranch>> {

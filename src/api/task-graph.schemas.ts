@@ -17,6 +17,7 @@ export const TaskGraphNodeSchema = z.object({
   tier: z.number().int().nonnegative(),
   plan_artifact_id: z.string().nullable(),
   source_proposal_id: z.string().nullable(),
+  execution_plan_id: z.string().nullable(),
 });
 
 /**
@@ -52,6 +53,7 @@ export const PlanGroupInfoSchema = z.object({
   session_title: z.string().nullable(),
   task_ids: z.array(z.string()),
   status_summary: StatusSummarySchema,
+  execution_plan_id: z.string().nullable(),
 });
 
 /**

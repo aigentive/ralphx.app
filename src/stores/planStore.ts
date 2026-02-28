@@ -13,6 +13,7 @@ import {
   type PlanCandidateResponse,
   type SelectionSource,
 } from "@/api/plan";
+import { executionPlanApi } from "@/api/executionPlan";
 
 // ============================================================================
 // State Interface
@@ -21,6 +22,8 @@ import {
 interface PlanState {
   /** Active plan session ID by project ID (projectId → sessionId | null) */
   activePlanByProject: Record<string, string | null>;
+  /** Active execution plan ID by project ID (projectId → executionPlanId | null) */
+  activeExecutionPlanIdByProject: Record<string, string | null>;
   /** Tracks whether active plan has been loaded at least once for a project */
   activePlanLoadedByProject: Record<string, boolean>;
   /** Cached plan candidates (from last loadCandidates call) */
@@ -83,6 +86,7 @@ export const usePlanStore = create<PlanState & PlanActions>()(
   immer((set) => ({
     // Initial state
     activePlanByProject: {},
+    activeExecutionPlanIdByProject: {},
     activePlanLoadedByProject: {},
     planCandidates: [],
     isLoading: false,
@@ -92,9 +96,13 @@ export const usePlanStore = create<PlanState & PlanActions>()(
     loadActivePlan: async (projectId) => {
       try {
         set({ isLoading: true, error: null });
-        const sessionId = await planApi.getActivePlan(projectId);
+        const [sessionId, executionPlanId] = await Promise.all([
+          planApi.getActivePlan(projectId),
+          executionPlanApi.getActiveExecutionPlan(projectId),
+        ]);
         set((state) => {
           state.activePlanByProject[projectId] = sessionId;
+          state.activeExecutionPlanIdByProject[projectId] = executionPlanId;
           state.activePlanLoadedByProject[projectId] = true;
           state.isLoading = false;
         });
@@ -119,7 +127,12 @@ export const usePlanStore = create<PlanState & PlanActions>()(
           state.activePlanLoadedByProject[projectId] = true;
         });
         await planApi.setActivePlan(projectId, sessionId, source);
-        set({ isLoading: false });
+        // Refresh execution plan ID after plan is set
+        const executionPlanId = await executionPlanApi.getActiveExecutionPlan(projectId);
+        set((state) => {
+          state.activeExecutionPlanIdByProject[projectId] = executionPlanId;
+          state.isLoading = false;
+        });
       } catch (error) {
         set((state) => {
           state.error = error instanceof Error ? error.message : "Failed to set active plan";
@@ -137,6 +150,7 @@ export const usePlanStore = create<PlanState & PlanActions>()(
         await planApi.clearActivePlan(projectId);
         set((state) => {
           state.activePlanByProject[projectId] = null;
+          state.activeExecutionPlanIdByProject[projectId] = null;
           state.activePlanLoadedByProject[projectId] = true;
           state.isLoading = false;
         });
@@ -180,6 +194,16 @@ export const selectActivePlanId =
   (projectId: string) =>
   (state: PlanState): string | null =>
     state.activePlanByProject[projectId] ?? null;
+
+/**
+ * Select the active execution plan ID for a specific project
+ * @param projectId - The project ID to look up
+ * @returns Selector function returning the execution plan ID or null
+ */
+export const selectActiveExecutionPlanId =
+  (projectId: string) =>
+  (state: PlanState): string | null =>
+    state.activeExecutionPlanIdByProject[projectId] ?? null;
 
 /**
  * Select the active plan for the current active project

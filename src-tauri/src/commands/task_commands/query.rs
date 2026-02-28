@@ -19,6 +19,7 @@ use tauri::State;
 /// * `limit` - Page size (default 20)
 /// * `include_archived` - Whether to include archived tasks (default false)
 /// * `ideation_session_id` - Optional ideation session ID to filter tasks
+/// * `execution_plan_id` - Optional execution plan ID to filter tasks (mutually exclusive with ideation_session_id)
 ///
 /// # Returns
 /// * `TaskListResponse` - Contains tasks, total count, has_more flag, and offset
@@ -30,6 +31,7 @@ pub async fn list_tasks(
     limit: Option<u32>,
     include_archived: Option<bool>,
     ideation_session_id: Option<String>,
+    execution_plan_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TaskListResponse, String> {
     let project_id = ProjectId::from_string(project_id);
@@ -55,7 +57,7 @@ pub async fn list_tasks(
         None
     };
 
-    // Get paginated tasks with session filter passed to repository
+    // Get paginated tasks with session/plan filter passed to repository
     let tasks = state
         .task_repo
         .list_paginated(
@@ -65,17 +67,19 @@ pub async fn list_tasks(
             limit,
             include_archived,
             ideation_session_id.as_deref(),
+            execution_plan_id.as_deref(),
         )
         .await
         .map_err(|e| e.to_string())?;
 
-    // Get total count with session filter passed to repository
+    // Get total count with session/plan filter passed to repository
     let total = state
         .task_repo
         .count_tasks(
             &project_id,
             include_archived,
             ideation_session_id.as_deref(),
+            execution_plan_id.as_deref(),
         )
         .await
         .map_err(|e| e.to_string())?;
@@ -331,7 +335,7 @@ pub async fn get_tasks_awaiting_review(
     // Use a high limit to get all tasks (no pagination needed for this view)
     let tasks = state
         .task_repo
-        .list_paginated(&project_id, Some(review_statuses), 0, 1000, false, None)
+        .list_paginated(&project_id, Some(review_statuses), 0, 1000, false, None, None)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -613,12 +617,21 @@ pub async fn get_task_dependency_graph(
             }
         }
 
+        // Find execution_plan_id from any task in this group
+        let group_execution_plan_id = task_ids_in_plan.iter().find_map(|tid| {
+            task_map
+                .get(tid)
+                .and_then(|t| t.execution_plan_id.as_ref())
+                .map(|id| id.as_str().to_string())
+        });
+
         plan_groups.push(PlanGroupInfo {
             plan_artifact_id,
             session_id: session_id_str,
             session_title,
             task_ids: task_ids_in_plan,
             status_summary: summary,
+            execution_plan_id: group_execution_plan_id,
         });
     }
 
@@ -711,6 +724,10 @@ pub async fn get_task_dependency_graph(
                     .map(|id| id.as_str().to_string()),
                 source_proposal_id: task
                     .source_proposal_id
+                    .as_ref()
+                    .map(|id| id.as_str().to_string()),
+                execution_plan_id: task
+                    .execution_plan_id
                     .as_ref()
                     .map(|id| id.as_str().to_string()),
             }

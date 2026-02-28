@@ -9,7 +9,7 @@ use rusqlite::Row;
 use serde::{Deserialize, Serialize};
 
 use super::artifact::ArtifactId;
-use super::types::{IdeationSessionId, ProjectId, TaskId};
+use super::types::{ExecutionPlanId, IdeationSessionId, ProjectId, TaskId};
 
 /// A unique identifier for a PlanBranch
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -100,6 +100,10 @@ pub struct PlanBranch {
     pub merge_task_id: Option<TaskId>,
     pub created_at: DateTime<Utc>,
     pub merged_at: Option<DateTime<Utc>>,
+    /// Execution plan this branch belongs to (set at proposal-apply time)
+    /// Used to look up the branch for a specific execution attempt
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_plan_id: Option<ExecutionPlanId>,
 }
 
 impl PlanBranch {
@@ -121,6 +125,7 @@ impl PlanBranch {
             merge_task_id: None,
             created_at: Utc::now(),
             merged_at: None,
+            execution_plan_id: None,
         }
     }
 
@@ -148,6 +153,9 @@ impl PlanBranch {
                 .map(TaskId::from_string),
             created_at: Self::parse_datetime(row.get::<_, String>("created_at")?),
             merged_at,
+            execution_plan_id: row
+                .get::<_, Option<String>>("execution_plan_id")?
+                .map(ExecutionPlanId::from_string),
         })
     }
 

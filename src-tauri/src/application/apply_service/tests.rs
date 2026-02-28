@@ -682,6 +682,7 @@ impl TaskRepository for MockTaskRepository {
         _limit: u32,
         _include_archived: bool,
         _ideation_session_id: Option<&str>,
+        _execution_plan_id: Option<&str>,
     ) -> AppResult<Vec<Task>> {
         // Simple mock implementation
         Ok(self
@@ -699,6 +700,7 @@ impl TaskRepository for MockTaskRepository {
         project_id: &ProjectId,
         _include_archived: bool,
         _ideation_session_id: Option<&str>,
+        _execution_plan_id: Option<&str>,
     ) -> AppResult<u32> {
         Ok(self
             .tasks

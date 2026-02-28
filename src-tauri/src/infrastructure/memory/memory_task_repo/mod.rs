@@ -305,6 +305,7 @@ impl TaskRepository for MemoryTaskRepository {
         limit: u32,
         include_archived: bool,
         ideation_session_id: Option<&str>,
+        execution_plan_id: Option<&str>,
     ) -> AppResult<Vec<Task>> {
         let tasks = self.tasks.read().await;
 
@@ -339,6 +340,16 @@ impl TaskRepository for MemoryTaskRepository {
                     }
                 }
 
+                // Match execution_plan_id if provided
+                if let Some(epid) = execution_plan_id {
+                    if t.execution_plan_id
+                        .as_ref()
+                        .is_none_or(|id| id.as_str() != epid)
+                    {
+                        return false;
+                    }
+                }
+
                 true
             })
             .cloned()
@@ -363,6 +374,7 @@ impl TaskRepository for MemoryTaskRepository {
         project_id: &ProjectId,
         include_archived: bool,
         ideation_session_id: Option<&str>,
+        execution_plan_id: Option<&str>,
     ) -> AppResult<u32> {
         let tasks = self.tasks.read().await;
         let count = tasks
@@ -374,6 +386,10 @@ impl TaskRepository for MemoryTaskRepository {
                         || t.ideation_session_id
                             .as_ref()
                             .is_some_and(|id| id.as_str() == ideation_session_id.unwrap()))
+                    && (execution_plan_id.is_none()
+                        || t.execution_plan_id
+                            .as_ref()
+                            .is_some_and(|id| id.as_str() == execution_plan_id.unwrap()))
             })
             .count();
         Ok(count as u32)

@@ -117,6 +117,7 @@ export const tasksApi = {
    * @param params.limit Optional pagination limit (default 20)
    * @param params.includeArchived Optional flag to include archived tasks (default false)
    * @param params.ideationSessionId Optional ideation session ID to filter tasks by plan
+   * @param params.executionPlanId Optional execution plan ID to filter tasks (mutually exclusive with ideationSessionId)
    * @returns Paginated task list response
    */
   list: (params: {
@@ -126,6 +127,7 @@ export const tasksApi = {
     limit?: number;
     includeArchived?: boolean;
     ideationSessionId?: string;
+    executionPlanId?: string;
   }): Promise<TaskListResponse> =>
     typedInvokeWithTransform("list_tasks", params, TaskListResponseSchema, transformTaskListResponse),
 

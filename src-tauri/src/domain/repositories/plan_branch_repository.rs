@@ -6,7 +6,8 @@
 use async_trait::async_trait;
 
 use crate::domain::entities::{
-    ArtifactId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus, ProjectId, TaskId,
+    ArtifactId, ExecutionPlanId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus,
+    ProjectId, TaskId,
 };
 use crate::error::AppResult;
 
@@ -18,6 +19,12 @@ pub trait PlanBranchRepository: Send + Sync {
 
     /// Get plan branches by plan artifact ID (multiple sessions can share the same artifact)
     async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Vec<PlanBranch>>;
+
+    /// Get plan branch by execution plan ID (unique constraint)
+    async fn get_by_execution_plan_id(
+        &self,
+        id: &ExecutionPlanId,
+    ) -> AppResult<Option<PlanBranch>>;
 
     /// Get plan branch by session ID (unique constraint, primary lookup)
     async fn get_by_session_id(

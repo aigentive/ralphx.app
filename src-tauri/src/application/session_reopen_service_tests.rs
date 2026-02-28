@@ -18,6 +18,7 @@ fn build_service(state: &AppState) -> SessionReopenService {
         Arc::clone(&state.ideation_session_repo),
         Arc::clone(&state.plan_branch_repo),
         Arc::clone(&state.project_repo),
+        Arc::clone(&state.execution_plan_repo),
         cleanup,
     )
 }
@@ -161,7 +162,7 @@ async fn test_reopen_with_no_tasks() {
 }
 
 #[tokio::test]
-async fn test_reopen_deletes_plan_branch_record() {
+async fn test_reopen_keeps_plan_branch_record_for_history() {
     use crate::domain::entities::{ArtifactId, PlanBranch};
 
     let state = AppState::new_test();
@@ -202,18 +203,18 @@ async fn test_reopen_deletes_plan_branch_record() {
     let service = build_service(&state);
     service.reopen(&created.id).await.unwrap();
 
-    // Verify plan branch record is deleted (None)
+    // Plan branch DB record is preserved for history — only the git branch is deleted.
     let after_reopen = state
         .plan_branch_repo
         .get_by_session_id(&created.id)
         .await
         .unwrap();
-    assert!(after_reopen.is_none());
+    assert!(after_reopen.is_some(), "plan branch record must be kept for history");
 }
 
 #[tokio::test]
-async fn test_reopen_session_with_merged_plan_branch_deletes_db_record() {
-    use crate::domain::entities::{ArtifactId, PlanBranch};
+async fn test_reopen_marks_execution_plan_superseded() {
+    use crate::domain::entities::{ExecutionPlan, ExecutionPlanStatus};
 
     let state = AppState::new_test();
     let project_id = ProjectId::new();
@@ -227,50 +228,58 @@ async fn test_reopen_session_with_merged_plan_branch_deletes_db_record() {
         .await
         .unwrap();
 
-    // Create plan branch and set it to Merged (simulates completed first accept)
-    let plan_branch = PlanBranch::new(
-        ArtifactId::new(),
-        created.id.clone(),
-        project_id,
-        "ralphx/test-project/plan-merged".to_string(),
-        "main".to_string(),
-    );
-    let created_branch = state
-        .plan_branch_repo
-        .create(plan_branch)
-        .await
-        .unwrap();
-    state
-        .plan_branch_repo
-        .set_merged(&created_branch.id)
-        .await
-        .unwrap();
+    // Create an active ExecutionPlan for this session
+    let plan = ExecutionPlan::new(created.id.clone());
+    let created_plan = state.execution_plan_repo.create(plan).await.unwrap();
 
-    // Verify plan branch is Merged
-    let found = state
-        .plan_branch_repo
-        .get_by_session_id(&created.id)
+    // Verify plan is active
+    let active = state
+        .execution_plan_repo
+        .get_active_for_session(&created.id)
         .await
-        .unwrap()
         .unwrap();
-    assert_eq!(found.status, PlanBranchStatus::Merged);
+    assert!(active.is_some());
+    assert_eq!(active.unwrap().status, ExecutionPlanStatus::Active);
 
     // Reopen session
     let service = build_service(&state);
     service.reopen(&created.id).await.unwrap();
 
-    // Verify plan branch DB record is deleted even though it was Merged
-    let after_reopen = state
-        .plan_branch_repo
-        .get_by_session_id(&created.id)
+    // Verify execution plan is now superseded
+    let plan_after = state
+        .execution_plan_repo
+        .get_by_id(&created_plan.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(plan_after.status, ExecutionPlanStatus::Superseded);
+
+    // Verify no active plan remains
+    let active_after = state
+        .execution_plan_repo
+        .get_active_for_session(&created.id)
         .await
         .unwrap();
-    assert!(
-        after_reopen.is_none(),
-        "Merged plan branch should be deleted on reopen so re-accept creates fresh merge task"
-    );
+    assert!(active_after.is_none());
+}
 
-    // Verify session is back to Active
+#[tokio::test]
+async fn test_reopen_without_execution_plan_succeeds() {
+    // Reopen should succeed even if no ExecutionPlan exists for the session
+    let state = AppState::new_test();
+    let project_id = ProjectId::new();
+
+    let session = IdeationSession::new(project_id);
+    let created = state.ideation_session_repo.create(session).await.unwrap();
+    state
+        .ideation_session_repo
+        .update_status(&created.id, IdeationSessionStatus::Accepted)
+        .await
+        .unwrap();
+
+    let service = build_service(&state);
+    service.reopen(&created.id).await.unwrap();
+
     let reopened = state
         .ideation_session_repo
         .get_by_id(&created.id)

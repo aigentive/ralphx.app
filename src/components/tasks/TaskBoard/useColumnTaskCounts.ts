@@ -50,6 +50,7 @@ function mapsEqual(a: Map<string, number>, b: Map<string, number>): boolean {
  * @param showArchived - Whether archived tasks are included
  * @param ideationSessionId - Optional plan filter
  * @param showMergeTasks - Whether merge tasks are included in counts
+ * @param executionPlanId - Optional execution plan filter (mutually exclusive with ideationSessionId)
  * @returns Map from column ID to task count
  */
 export function useColumnTaskCounts(
@@ -58,6 +59,7 @@ export function useColumnTaskCounts(
   showArchived: boolean,
   ideationSessionId?: string | null,
   showMergeTasks: boolean = true,
+  executionPlanId?: string | null,
 ): Map<string, number> {
   const queryClient = useQueryClient();
   const prevRef = useRef<Map<string, number>>(new Map());
@@ -71,6 +73,7 @@ export function useColumnTaskCounts(
         statuses: getColumnStatuses(col),
         includeArchived: showArchived,
         ideationSessionId,
+        executionPlanId,
       });
       const data = queryClient.getQueryData<InfiniteData<TaskListResponse>>(key);
       let count = 0;
@@ -92,7 +95,7 @@ export function useColumnTaskCounts(
     }
     prevRef.current = next;
     return next;
-  }, [columns, projectId, showArchived, ideationSessionId, showMergeTasks, queryClient]);
+  }, [columns, projectId, showArchived, ideationSessionId, showMergeTasks, executionPlanId, queryClient]);
 
   const subscribe = useCallback(
     (onStoreChange: () => void) => queryClient.getQueryCache().subscribe(onStoreChange),

@@ -72,6 +72,18 @@ pub async fn set_active_plan(
         .await
         .map_err(|e| e.to_string())?;
 
+    // Auto-derive and store execution_plan_id from the active session
+    if let Ok(Some(ep)) = state
+        .execution_plan_repo
+        .get_active_for_session(&ideation_session_id)
+        .await
+    {
+        let _ = state
+            .active_plan_repo
+            .set_execution_plan_id(&project_id, &ep.id)
+            .await;
+    }
+
     // Record selection in plan_selection_stats
     state
         .active_plan_repo
@@ -80,6 +92,21 @@ pub async fn set_active_plan(
         .map_err(|e| e.to_string())?;
 
     Ok(())
+}
+
+/// Get the active execution plan ID for a project
+#[tauri::command]
+pub async fn get_active_execution_plan(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let project_id = ProjectId::from_string(project_id);
+    state
+        .active_plan_repo
+        .get_execution_plan_id(&project_id)
+        .await
+        .map(|opt| opt.map(|id| id.as_str().to_string()))
+        .map_err(|e| e.to_string())
 }
 
 /// Clear the active plan for a project

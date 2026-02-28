@@ -8,14 +8,17 @@ use super::queries::TASK_COLUMNS;
 /// * `status_count` - Number of statuses to filter by (0 = no filter)
 /// * `include_archived` - Whether to include archived tasks
 /// * `has_session_filter` - Whether to filter by ideation_session_id
+/// * `has_execution_plan_filter` - Whether to filter by execution_plan_id
 ///
 /// When status_count > 0, generates `internal_status IN (?2, ?3, ...)` clause.
 /// When has_session_filter = true, adds ideation_session_id = ? filter.
+/// When has_execution_plan_filter = true, adds execution_plan_id = ? filter.
 /// Parameter indices depend on filters used (see implementation)
 pub(super) fn build_paginated_query(
     status_count: usize,
     include_archived: bool,
     has_session_filter: bool,
+    has_execution_plan_filter: bool,
 ) -> String {
     let mut conditions = vec!["project_id = ?1".to_string()];
     let mut param_idx = 2;
@@ -38,6 +41,12 @@ pub(super) fn build_paginated_query(
     // Add session filter
     if has_session_filter {
         conditions.push(format!("ideation_session_id = ?{}", param_idx));
+        param_idx += 1;
+    }
+
+    // Add execution plan filter (mutually exclusive with session filter in practice)
+    if has_execution_plan_filter {
+        conditions.push(format!("execution_plan_id = ?{}", param_idx));
         param_idx += 1;
     }
 

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
-use crate::domain::entities::{IdeationSessionId, ProjectId};
+use crate::domain::entities::{ExecutionPlanId, IdeationSessionId, ProjectId};
 use crate::domain::repositories::ActivePlanRepository;
 
 #[derive(Debug, Clone)]
@@ -20,6 +20,7 @@ struct SelectionStats {
 pub struct MemoryActivePlanRepository {
     active_plans: Arc<RwLock<HashMap<String, String>>>, // project_id -> session_id
     selection_stats: Arc<RwLock<HashMap<(String, String), SelectionStats>>>, // (project_id, session_id) -> stats
+    execution_plans: Arc<RwLock<HashMap<String, String>>>, // project_id -> execution_plan_id
 }
 
 impl Default for MemoryActivePlanRepository {
@@ -34,6 +35,7 @@ impl MemoryActivePlanRepository {
         Self {
             active_plans: Arc::new(RwLock::new(HashMap::new())),
             selection_stats: Arc::new(RwLock::new(HashMap::new())),
+            execution_plans: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -66,6 +68,8 @@ impl ActivePlanRepository for MemoryActivePlanRepository {
     async fn clear(&self, project_id: &ProjectId) -> Result<(), Box<dyn std::error::Error>> {
         let mut plans = self.active_plans.write().await;
         plans.remove(project_id.as_str());
+        let mut ep = self.execution_plans.write().await;
+        ep.remove(project_id.as_str());
         Ok(())
     }
 
@@ -103,6 +107,28 @@ impl ActivePlanRepository for MemoryActivePlanRepository {
                 last_selected_source: source.to_string(),
             });
 
+        Ok(())
+    }
+    async fn get_execution_plan_id(
+        &self,
+        project_id: &ProjectId,
+    ) -> Result<Option<ExecutionPlanId>, Box<dyn std::error::Error>> {
+        let ep = self.execution_plans.read().await;
+        Ok(ep
+            .get(project_id.as_str())
+            .map(|s| ExecutionPlanId::from_string(s.clone())))
+    }
+
+    async fn set_execution_plan_id(
+        &self,
+        project_id: &ProjectId,
+        execution_plan_id: &ExecutionPlanId,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mut ep = self.execution_plans.write().await;
+        ep.insert(
+            project_id.as_str().to_string(),
+            execution_plan_id.as_str().to_string(),
+        );
         Ok(())
     }
 }

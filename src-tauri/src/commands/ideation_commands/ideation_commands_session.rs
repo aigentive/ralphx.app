@@ -295,6 +295,7 @@ pub async fn reopen_ideation_session(
         Arc::clone(&state.ideation_session_repo),
         Arc::clone(&state.plan_branch_repo),
         Arc::clone(&state.project_repo),
+        Arc::clone(&state.execution_plan_repo),
         task_cleanup,
     );
 

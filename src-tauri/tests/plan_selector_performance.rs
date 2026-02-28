@@ -94,6 +94,7 @@ async fn create_test_task(
         worktree_path: None,
         merge_commit_sha: None,
         metadata: None,
+        execution_plan_id: None,
     };
 
     state

@@ -154,6 +154,7 @@ impl TaskRepository for MockTaskRepository {
         _limit: u32,
         _include_archived: bool,
         _ideation_session_id: Option<&str>,
+        _execution_plan_id: Option<&str>,
     ) -> AppResult<Vec<Task>> {
         if let Some(task) = &self.task {
             Ok(vec![task.clone()])
@@ -167,6 +168,7 @@ impl TaskRepository for MockTaskRepository {
         _project_id: &ProjectId,
         _include_archived: bool,
         _ideation_session_id: Option<&str>,
+        _execution_plan_id: Option<&str>,
     ) -> AppResult<u32> {
         Ok(if self.task.is_some() { 1 } else { 0 })
     }

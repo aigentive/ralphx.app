@@ -1529,3 +1529,191 @@ async fn test_delete_session_only_deletes_own_tasks() {
     // Session B's task still retrievable by ID
     assert!(state.task_repo.get_by_id(&tb1.id).await.unwrap().is_some());
 }
+
+// ========================================================================
+// ExecutionPlan Integration Tests (Phase 46-48)
+// ========================================================================
+
+#[tokio::test]
+async fn test_execution_plan_created_and_stored() {
+    use crate::domain::entities::{ExecutionPlan, ExecutionPlanStatus, IdeationSession};
+
+    let state = setup_test_state();
+    let project_id = ProjectId::new();
+
+    // ExecutionPlan has FK on session_id — create session first
+    let session = IdeationSession::new(project_id.clone());
+    let created_session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    let plan = ExecutionPlan::new(created_session.id.clone());
+    let plan_id = plan.id.clone();
+
+    let created = state
+        .execution_plan_repo
+        .create(plan)
+        .await
+        .expect("Failed to create execution plan");
+
+    assert_eq!(created.id, plan_id);
+    assert_eq!(created.session_id, created_session.id);
+    assert_eq!(created.status, ExecutionPlanStatus::Active);
+}
+
+#[tokio::test]
+async fn test_task_execution_plan_id_persists() {
+    use crate::domain::entities::{ExecutionPlan, ExecutionPlanId, IdeationSession};
+
+    let state = setup_test_state();
+    let project_id = ProjectId::new();
+
+    // ExecutionPlan has FK on session_id — create session first
+    let session = IdeationSession::new(project_id.clone());
+    let created_session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+    let session_id = created_session.id.clone();
+
+    // Create an ExecutionPlan
+    let plan = ExecutionPlan::new(session_id.clone());
+    let exec_plan_id: ExecutionPlanId = plan.id.clone();
+    state
+        .execution_plan_repo
+        .create(plan)
+        .await
+        .expect("Failed to create execution plan");
+
+    // Create a task with execution_plan_id set
+    let mut task = crate::domain::entities::Task::new(project_id.clone(), "EP Task".to_string());
+    task.ideation_session_id = Some(session_id.clone());
+    task.execution_plan_id = Some(exec_plan_id.clone());
+
+    let created = state
+        .task_repo
+        .create(task.clone())
+        .await
+        .expect("Failed to create task");
+
+    assert_eq!(created.execution_plan_id, Some(exec_plan_id.clone()));
+
+    // Retrieve and verify field persists
+    let fetched = state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .expect("get_by_id failed")
+        .expect("task not found");
+
+    assert_eq!(fetched.execution_plan_id, Some(exec_plan_id));
+}
+
+#[tokio::test]
+async fn test_plan_branch_execution_plan_id_persists() {
+    use crate::domain::entities::{ArtifactId, ExecutionPlan, ExecutionPlanId, IdeationSession, PlanBranch};
+
+    let state = setup_test_state();
+    let project_id = ProjectId::new();
+
+    // ExecutionPlan has FK on session_id — create session first
+    let session = IdeationSession::new(project_id.clone());
+    let created_session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+    let session_id = created_session.id.clone();
+
+    // Create an ExecutionPlan
+    let plan = ExecutionPlan::new(session_id.clone());
+    let exec_plan_id: ExecutionPlanId = plan.id.clone();
+    state
+        .execution_plan_repo
+        .create(plan)
+        .await
+        .expect("Failed to create execution plan");
+
+    // Create plan branch with execution_plan_id set
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("art-123"),
+        session_id.clone(),
+        project_id.clone(),
+        format!("ralphx/test/plan-{}", &exec_plan_id.as_str()[..8]),
+        "main".to_string(),
+    );
+    branch.execution_plan_id = Some(exec_plan_id.clone());
+
+    state
+        .plan_branch_repo
+        .create(branch)
+        .await
+        .expect("Failed to create plan branch");
+
+    // Lookup by execution_plan_id
+    let found = state
+        .plan_branch_repo
+        .get_by_execution_plan_id(&exec_plan_id)
+        .await
+        .expect("get_by_execution_plan_id failed");
+
+    assert!(found.is_some(), "Branch not found by execution_plan_id");
+    let branch = found.unwrap();
+    assert_eq!(branch.execution_plan_id, Some(exec_plan_id));
+    assert_eq!(branch.session_id, session_id);
+}
+
+#[tokio::test]
+async fn test_two_execution_plans_same_session_have_unique_ids() {
+    use crate::domain::entities::{ExecutionPlan, IdeationSession};
+
+    let state = setup_test_state();
+    let project_id = ProjectId::new();
+
+    // ExecutionPlan has FK on session_id — create session first
+    let session = IdeationSession::new(project_id.clone());
+    let created_session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+    let session_id = created_session.id.clone();
+
+    let plan1 = ExecutionPlan::new(session_id.clone());
+    let plan2 = ExecutionPlan::new(session_id.clone());
+
+    let id1 = plan1.id.clone();
+    let id2 = plan2.id.clone();
+
+    state
+        .execution_plan_repo
+        .create(plan1)
+        .await
+        .expect("Failed to create plan1");
+    state
+        .execution_plan_repo
+        .create(plan2)
+        .await
+        .expect("Failed to create plan2");
+
+    assert_ne!(id1, id2, "Each re-accept must produce a unique ExecutionPlan ID");
+}
+
+#[tokio::test]
+async fn test_get_by_execution_plan_id_returns_none_when_absent() {
+    use crate::domain::entities::ExecutionPlanId;
+
+    let state = setup_test_state();
+    let nonexistent_id = ExecutionPlanId::new();
+
+    let result = state
+        .plan_branch_repo
+        .get_by_execution_plan_id(&nonexistent_id)
+        .await
+        .expect("get_by_execution_plan_id should not error");
+
+    assert!(result.is_none());
+}
