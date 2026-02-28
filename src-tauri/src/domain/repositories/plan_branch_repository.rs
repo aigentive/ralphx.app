@@ -16,8 +16,8 @@ pub trait PlanBranchRepository: Send + Sync {
     /// Create a new plan branch record
     async fn create(&self, branch: PlanBranch) -> AppResult<PlanBranch>;
 
-    /// Get plan branch by plan artifact ID (unique constraint)
-    async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Option<PlanBranch>>;
+    /// Get plan branches by plan artifact ID (multiple sessions can share the same artifact)
+    async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Vec<PlanBranch>>;
 
     /// Get plan branch by session ID (unique constraint, primary lookup)
     async fn get_by_session_id(

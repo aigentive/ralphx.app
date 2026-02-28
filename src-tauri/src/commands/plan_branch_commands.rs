@@ -77,13 +77,20 @@ pub async fn get_plan_branch(
     }
 
     // Fallback: try as plan_artifact_id (backward compat)
+    // Returns Vec since multiple sessions can share the same artifact — pick first match
     let artifact_id = ArtifactId::from_string(plan_artifact_id);
-    state
+    let branches = state
         .plan_branch_repo
         .get_by_plan_artifact_id(&artifact_id)
         .await
-        .map(|opt| opt.map(PlanBranchResponse::from))
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+    if branches.len() > 1 {
+        tracing::warn!(
+            "Multiple plan branches found for artifact_id={}, returning first",
+            artifact_id.as_str()
+        );
+    }
+    Ok(branches.into_iter().next().map(PlanBranchResponse::from))
 }
 
 /// Get all plan branches for a project
@@ -289,12 +296,23 @@ pub async fn disable_feature_branch(
     let plan_branch = if let Some(branch) = by_session {
         branch
     } else {
+        // Fallback: try as plan_artifact_id (backward compat)
+        // Returns Vec since multiple sessions can share the same artifact — pick first match
         let artifact_id = ArtifactId::from_string(plan_artifact_id);
-        state
+        let branches = state
             .plan_branch_repo
             .get_by_plan_artifact_id(&artifact_id)
             .await
-            .map_err(|e| e.to_string())?
+            .map_err(|e| e.to_string())?;
+        if branches.len() > 1 {
+            tracing::warn!(
+                "Multiple plan branches found for artifact_id={}, returning first for disable",
+                artifact_id.as_str()
+            );
+        }
+        branches
+            .into_iter()
+            .next()
             .ok_or_else(|| "No feature branch found for this plan".to_string())?
     };
 

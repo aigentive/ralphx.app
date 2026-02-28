@@ -58,24 +58,31 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
             .await
     }
 
-    async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Option<PlanBranch>> {
+    async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Vec<PlanBranch>> {
         let id = id.as_str().to_string();
         self.db
             .run(move |conn| {
                 let mut stmt = conn
                     .prepare("SELECT * FROM plan_branches WHERE plan_artifact_id = ?1")
                     .map_err(|e| AppError::Database(format!("Failed to prepare query: {}", e)))?;
-                let result = stmt.query_row(rusqlite::params![id.as_str()], |row| {
-                    PlanBranch::from_row(row)
-                });
-                match result {
-                    Ok(branch) => Ok(Some(branch)),
-                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-                    Err(e) => Err(AppError::Database(format!(
-                        "Failed to get plan branch by artifact id: {}",
-                        e
-                    ))),
-                }
+                let branches = stmt
+                    .query_map(rusqlite::params![id.as_str()], |row| {
+                        PlanBranch::from_row(row)
+                    })
+                    .map_err(|e| {
+                        AppError::Database(format!(
+                            "Failed to query plan branches by artifact id: {}",
+                            e
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| {
+                        AppError::Database(format!(
+                            "Failed to collect plan branches by artifact id: {}",
+                            e
+                        ))
+                    })?;
+                Ok(branches)
             })
             .await
     }

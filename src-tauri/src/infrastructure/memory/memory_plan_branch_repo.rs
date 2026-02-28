@@ -37,12 +37,13 @@ impl PlanBranchRepository for MemoryPlanBranchRepository {
         Ok(branch)
     }
 
-    async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Option<PlanBranch>> {
+    async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Vec<PlanBranch>> {
         let branches = self.branches.read().await;
         Ok(branches
             .values()
-            .find(|b| b.plan_artifact_id == *id)
-            .cloned())
+            .filter(|b| b.plan_artifact_id == *id)
+            .cloned()
+            .collect())
     }
 
     async fn get_by_session_id(
