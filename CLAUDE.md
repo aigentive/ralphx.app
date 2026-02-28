@@ -120,6 +120,7 @@ Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool
 | 13 | Parallel commits → acquire `.commit-lock` before, release after. Stale = same content >30s → `.claude/rules/commit-lock.md` |
 | 14 | Tauri invoke: camelCase fields. ✅ `contextId` ❌ `context_id` |
 | 15 | New `.claude/rules/*.md` \| `**/CLAUDE.md` → include this maintainer note at top |
+| 16 | **DbConnection (NON-NEGOTIABLE):** All SQLite repo methods MUST use `db.run(\|conn\| { ... })` via `DbConnection` for non-blocking access. ❌ Direct `conn.lock().await` / `conn.query_row()` in async methods. See `db_connection.rs`. |
 
 ## Design System
 `specs/DESIGN.md` | Accent: `#ff6b35` (warm orange) ❌ purple/blue | Font: SF Pro ❌ Inter | **INVOKE `/tailwind-v4-shadcn` before UI work**

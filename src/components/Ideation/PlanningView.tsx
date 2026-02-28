@@ -498,11 +498,15 @@ export function PlanningView({
     setIsAcceptModalOpen(false);
 
     // Apply proposals to Kanban
-    const applyResult = onApply(options) as unknown;
+    try {
+      const applyResult = onApply(options) as unknown;
 
-    // Wait for apply to complete if it returns a promise
-    if (applyResult && typeof applyResult === "object" && "then" in applyResult) {
-      await (applyResult as Promise<unknown>);
+      // Wait for apply to complete if it returns a promise
+      if (applyResult && typeof applyResult === "object" && "then" in applyResult) {
+        await (applyResult as Promise<unknown>);
+      }
+    } catch {
+      return; // Apply failed, toast already shown, don't proceed to setActivePlan
     }
 
     // Set this session as the active plan after proposals are applied

@@ -21,6 +21,9 @@ mod sqlite_chat_conversation_repo_tests;
 pub mod sqlite_chat_message_repo;
 #[cfg(test)]
 mod sqlite_chat_message_repo_tests;
+pub mod sqlite_execution_plan_repo;
+#[cfg(test)]
+mod sqlite_execution_plan_repo_tests;
 pub mod sqlite_execution_settings_repo;
 pub mod sqlite_ideation_session_repo;
 pub mod sqlite_ideation_settings_repo;
@@ -76,6 +79,7 @@ pub use sqlite_artifact_repo::SqliteArtifactRepository;
 pub use sqlite_chat_attachment_repo::SqliteChatAttachmentRepository;
 pub use sqlite_chat_conversation_repo::SqliteChatConversationRepository;
 pub use sqlite_chat_message_repo::SqliteChatMessageRepository;
+pub use sqlite_execution_plan_repo::SqliteExecutionPlanRepository;
 pub use sqlite_execution_settings_repo::{
     SqliteExecutionSettingsRepository, SqliteGlobalExecutionSettingsRepository,
 };

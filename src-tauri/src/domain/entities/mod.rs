@@ -8,6 +8,7 @@ pub mod artifact;
 pub mod artifact_flow;
 pub mod chat_attachment;
 pub mod chat_conversation;
+pub mod execution_plan;
 pub mod ideation;
 pub mod memory_archive;
 pub mod memory_archive_job;
@@ -51,6 +52,9 @@ pub use artifact_flow::{
 };
 pub use chat_attachment::{ChatAttachment, ChatAttachmentId};
 pub use chat_conversation::{ChatContextType, ChatConversation, ChatConversationId};
+pub use execution_plan::{
+    ExecutionPlan, ExecutionPlanStatus, ParseExecutionPlanStatusError,
+};
 pub use ideation::{
     BusinessValueFactor, ChatMessage, Complexity, ComplexityFactor, CriticalPathFactor,
     DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSession,
@@ -102,8 +106,8 @@ pub use task_qa::TaskQA;
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};
 pub use team::{TeamMessageId, TeamMessageRecord, TeamSession, TeamSessionId, TeammateSnapshot};
 pub use types::{
-    ChatMessageId, IdeationSessionId, ProjectId, ReviewIssueId, SessionLinkId, TaskId,
-    TaskProposalId, TaskQAId, TaskStepId,
+    ChatMessageId, ExecutionPlanId, IdeationSessionId, ProjectId, ReviewIssueId, SessionLinkId,
+    TaskId, TaskProposalId, TaskQAId, TaskStepId,
 };
 pub use workflow::{
     ColumnBehavior, ConflictResolution, ExternalStatusMapping, ExternalSyncConfig,
