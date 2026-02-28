@@ -206,10 +206,11 @@ export function isDiffToolCall(name: string): boolean {
 }
 
 /**
- * Check if a tool name is a Task subagent tool call
+ * Check if a tool name is a Task or Agent subagent tool call
  */
 export function isTaskToolCall(name: string): boolean {
-  return name.toLowerCase() === "task";
+  const lower = name.toLowerCase();
+  return lower === "task" || lower === "agent";
 }
 
 /**

@@ -31,6 +31,8 @@ export type StreamingContentBlock =
 export interface StreamingTask {
   /** The Task tool_use.id — links child tool calls via parentToolUseId */
   toolUseId: string;
+  /** Tool name that triggered this: "Task" or "Agent" */
+  toolName: string;
   /** From Task input.description */
   description: string;
   /** Subagent type: "Explore", "Plan", "Bash", etc. */

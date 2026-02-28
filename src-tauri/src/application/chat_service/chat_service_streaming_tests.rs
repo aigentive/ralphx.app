@@ -116,6 +116,7 @@ fn test_payloads_serialize_with_seq() {
     // Verify AgentTaskStartedPayload includes seq field
     let task_started = AgentTaskStartedPayload {
         tool_use_id: "tool-1".to_string(),
+        tool_name: "Task".to_string(),
         description: Some("test".to_string()),
         subagent_type: Some("bash".to_string()),
         model: Some("sonnet".to_string()),

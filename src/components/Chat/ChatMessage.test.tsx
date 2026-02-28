@@ -466,4 +466,147 @@ describe("ChatMessage", () => {
       ).not.toBeInTheDocument();
     });
   });
+
+  describe("Agent tool call rendering via ToolCallIndicator (ideation panel path)", () => {
+    it("renders Agent tool call as TaskToolCallCard via contentBlocks", () => {
+      // The ideation panel ChatMessage parses contentBlocks JSON and passes each
+      // tool_use block to ToolCallIndicator, which routes Agent → TaskToolCallCard.
+      const messageWithAgentCall: ChatMessageType = {
+        ...orchestratorMessage,
+        id: "msg-agent-contentblocks",
+        content: "",
+        toolCalls: null,
+        contentBlocks: JSON.stringify([
+          {
+            type: "tool_use",
+            id: "agent-call-ideation",
+            name: "Agent",
+            arguments: {
+              description: "Explore the codebase",
+              subagent_type: "Explore",
+              model: "sonnet",
+              prompt: "Find all TypeScript files",
+            },
+          },
+        ]),
+      };
+
+      const { container } = render(<ChatMessage message={messageWithAgentCall} />);
+
+      // Should render as TaskToolCallCard (not generic ToolCallIndicator)
+      expect(container.querySelector('[data-testid="task-tool-call-card"]')).toBeInTheDocument();
+    });
+
+    it("renders Task tool call as TaskToolCallCard via contentBlocks", () => {
+      const messageWithTaskCall: ChatMessageType = {
+        ...orchestratorMessage,
+        id: "msg-task-contentblocks",
+        content: "",
+        toolCalls: null,
+        contentBlocks: JSON.stringify([
+          {
+            type: "tool_use",
+            id: "task-call-ideation",
+            name: "Task",
+            arguments: {
+              description: "Run tests",
+              subagent_type: "general-purpose",
+              model: "opus",
+              prompt: "Execute the test suite",
+            },
+          },
+        ]),
+      };
+
+      const { container } = render(<ChatMessage message={messageWithTaskCall} />);
+
+      expect(container.querySelector('[data-testid="task-tool-call-card"]')).toBeInTheDocument();
+    });
+
+    it("renders Agent tool call description and subagent type in ideation panel", () => {
+      const messageWithAgentCall: ChatMessageType = {
+        ...orchestratorMessage,
+        id: "msg-agent-badges",
+        content: "",
+        toolCalls: null,
+        contentBlocks: JSON.stringify([
+          {
+            type: "tool_use",
+            id: "agent-badges-call",
+            name: "Agent",
+            arguments: {
+              description: "Plan the implementation",
+              subagent_type: "Plan",
+              model: "opus",
+              prompt: "Create a detailed implementation plan",
+            },
+          },
+        ]),
+      };
+
+      render(<ChatMessage message={messageWithAgentCall} />);
+
+      // Verify description and subagent type badge render
+      expect(screen.getByText("Plan the implementation")).toBeInTheDocument();
+      expect(screen.getByText("Plan")).toBeInTheDocument();
+      expect(screen.getByText("opus")).toBeInTheDocument();
+    });
+
+    it("renders interleaved text and Agent calls via contentBlocks", () => {
+      const messageWithInterleaved: ChatMessageType = {
+        ...orchestratorMessage,
+        id: "msg-interleaved-agent",
+        content: "",
+        toolCalls: null,
+        contentBlocks: JSON.stringify([
+          { type: "text", text: "Spawning a research agent:" },
+          {
+            type: "tool_use",
+            id: "agent-research-call",
+            name: "Agent",
+            arguments: {
+              description: "Research the codebase",
+              subagent_type: "general-purpose",
+              model: "sonnet",
+              prompt: "Find all authentication patterns",
+            },
+          },
+          { type: "text", text: "Agent completed." },
+        ]),
+      };
+
+      const { container } = render(<ChatMessage message={messageWithInterleaved} />);
+
+      // Both text blocks render
+      expect(screen.getByText("Spawning a research agent:")).toBeInTheDocument();
+      expect(screen.getByText("Agent completed.")).toBeInTheDocument();
+
+      // Agent card renders
+      expect(container.querySelector('[data-testid="task-tool-call-card"]')).toBeInTheDocument();
+    });
+
+    it("falls back to generic ToolCallIndicator for non-subagent tool calls in ideation panel", () => {
+      const messageWithGenericTool: ChatMessageType = {
+        ...orchestratorMessage,
+        id: "msg-generic-tool",
+        content: "",
+        toolCalls: null,
+        contentBlocks: JSON.stringify([
+          {
+            type: "tool_use",
+            id: "generic-tool-call",
+            name: "update_task",
+            arguments: { task_id: "task-123", status: "completed" },
+            result: { ok: true },
+          },
+        ]),
+      };
+
+      const { container } = render(<ChatMessage message={messageWithGenericTool} />);
+
+      // Should use generic ToolCallIndicator, not TaskToolCallCard
+      expect(container.querySelector('[data-testid="tool-call-indicator"]')).toBeInTheDocument();
+      expect(container.querySelector('[data-testid="task-tool-call-card"]')).not.toBeInTheDocument();
+    });
+  });
 });

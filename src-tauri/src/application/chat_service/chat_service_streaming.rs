@@ -982,6 +982,7 @@ pub async fn process_stream_background<R: Runtime>(
                     }
                     StreamEvent::TaskStarted {
                         tool_use_id,
+                        tool_name,
                         description,
                         subagent_type,
                         model,
@@ -1034,6 +1035,7 @@ pub async fn process_stream_background<R: Runtime>(
                                 events::AGENT_TASK_STARTED,
                                 AgentTaskStartedPayload {
                                     tool_use_id,
+                                    tool_name,
                                     description,
                                     subagent_type,
                                     model,

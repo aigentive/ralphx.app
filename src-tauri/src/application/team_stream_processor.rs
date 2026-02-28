@@ -524,6 +524,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                 }
                                 StreamEvent::TaskStarted {
                                     tool_use_id,
+                                    tool_name,
                                     description,
                                     subagent_type,
                                     model,
@@ -535,6 +536,7 @@ pub fn start_teammate_stream<R: Runtime>(
                                         serde_json::json!({
                                             "teammate_name": teammate_name,
                                             "tool_use_id": tool_use_id,
+                                            "tool_name": tool_name,
                                             "description": description,
                                             "subagent_type": subagent_type,
                                             "model": model,
