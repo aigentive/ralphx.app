@@ -8,9 +8,10 @@ use async_trait::async_trait;
 use chrono::{DateTime, NaiveDateTime, TimeZone, Utc};
 use rusqlite::Connection;
 
+use super::DbConnection;
 use crate::domain::entities::team::{TeamMessageId, TeamMessageRecord, TeamSessionId};
 use crate::domain::repositories::TeamMessageRepository;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 
 fn parse_datetime(s: &str) -> DateTime<Utc> {
     if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
@@ -36,62 +37,63 @@ fn row_to_message(row: &rusqlite::Row<'_>) -> rusqlite::Result<TeamMessageRecord
 }
 
 pub struct SqliteTeamMessageRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteTeamMessageRepository {
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 }
 
 #[async_trait]
 impl TeamMessageRepository for SqliteTeamMessageRepository {
     async fn create(&self, message: TeamMessageRecord) -> AppResult<TeamMessageRecord> {
-        let conn = self.conn.lock().await;
-        conn.execute(
-            "INSERT INTO team_messages (id, team_session_id, sender, recipient, content, message_type, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-            rusqlite::params![
-                message.id.as_str(),
-                message.team_session_id.as_str(),
-                message.sender,
-                message.recipient,
-                message.content,
-                message.message_type,
-                message.created_at.to_rfc3339(),
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(message)
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO team_messages (id, team_session_id, sender, recipient, content, message_type, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    rusqlite::params![
+                        message.id.as_str(),
+                        message.team_session_id.as_str(),
+                        message.sender,
+                        message.recipient,
+                        message.content,
+                        message.message_type,
+                        message.created_at.to_rfc3339(),
+                    ],
+                )?;
+                Ok(message)
+            })
+            .await
     }
 
     async fn get_by_session(
         &self,
         session_id: &TeamSessionId,
     ) -> AppResult<Vec<TeamMessageRecord>> {
-        let conn = self.conn.lock().await;
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, team_session_id, sender, recipient, content, message_type, created_at
-                 FROM team_messages WHERE team_session_id = ?1 ORDER BY created_at ASC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let messages = stmt
-            .query_map([session_id.as_str()], row_to_message)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(messages)
+        let session_id = session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, team_session_id, sender, recipient, content, message_type, created_at
+                     FROM team_messages WHERE team_session_id = ?1 ORDER BY created_at ASC",
+                )?;
+                let messages = stmt
+                    .query_map([session_id.as_str()], row_to_message)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(messages)
+            })
+            .await
     }
 
     async fn get_recent_by_session(
@@ -99,53 +101,56 @@ impl TeamMessageRepository for SqliteTeamMessageRepository {
         session_id: &TeamSessionId,
         limit: u32,
     ) -> AppResult<Vec<TeamMessageRecord>> {
-        let conn = self.conn.lock().await;
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, team_session_id, sender, recipient, content, message_type, created_at
-                 FROM team_messages WHERE team_session_id = ?1 ORDER BY created_at DESC LIMIT ?2",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let mut messages: Vec<TeamMessageRecord> = stmt
-            .query_map(
-                rusqlite::params![session_id.as_str(), limit],
-                row_to_message,
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        messages.reverse();
-        Ok(messages)
+        let session_id = session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, team_session_id, sender, recipient, content, message_type, created_at
+                     FROM team_messages WHERE team_session_id = ?1 ORDER BY created_at DESC LIMIT ?2",
+                )?;
+                let mut messages: Vec<TeamMessageRecord> = stmt
+                    .query_map(rusqlite::params![session_id.as_str(), limit], row_to_message)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                messages.reverse();
+                Ok(messages)
+            })
+            .await
     }
 
     async fn count_by_session(&self, session_id: &TeamSessionId) -> AppResult<u32> {
-        let conn = self.conn.lock().await;
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM team_messages WHERE team_session_id = ?1",
-                [session_id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(count as u32)
+        let session_id = session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM team_messages WHERE team_session_id = ?1",
+                    [session_id.as_str()],
+                    |row| row.get(0),
+                )?;
+                Ok(count as u32)
+            })
+            .await
     }
 
     async fn delete_by_session(&self, session_id: &TeamSessionId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-        conn.execute(
-            "DELETE FROM team_messages WHERE team_session_id = ?1",
-            [session_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(())
+        let session_id = session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM team_messages WHERE team_session_id = ?1",
+                    [session_id.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn delete(&self, id: &TeamMessageId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-        conn.execute("DELETE FROM team_messages WHERE id = ?1", [id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-        Ok(())
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute("DELETE FROM team_messages WHERE id = ?1", [id.as_str()])?;
+                Ok(())
+            })
+            .await
     }
 }

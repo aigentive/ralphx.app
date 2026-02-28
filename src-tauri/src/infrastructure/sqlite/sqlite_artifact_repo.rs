@@ -15,25 +15,28 @@ use crate::domain::entities::{
     ProcessId, TaskId,
 };
 use crate::domain::repositories::ArtifactRepository;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
+use crate::infrastructure::sqlite::DbConnection;
 
 /// SQLite implementation of ArtifactRepository for production use
 /// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteArtifactRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteArtifactRepository {
     /// Create a new SQLite artifact repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 
     /// Parse an Artifact from a database row
@@ -126,62 +129,59 @@ impl SqliteArtifactRepository {
 #[async_trait]
 impl ArtifactRepository for SqliteArtifactRepository {
     async fn create(&self, artifact: Artifact) -> AppResult<Artifact> {
-        let conn = self.conn.lock().await;
+        self.db
+            .run(move |conn| {
+                let (content_type, content_text, content_path) = match &artifact.content {
+                    ArtifactContent::Inline { text } => ("inline", Some(text.clone()), None),
+                    ArtifactContent::File { path } => ("file", None, Some(path.clone())),
+                };
 
-        let (content_type, content_text, content_path) = match &artifact.content {
-            ArtifactContent::Inline { text } => ("inline", Some(text.clone()), None),
-            ArtifactContent::File { path } => ("file", None, Some(path.clone())),
-        };
+                let created_at = artifact.metadata.created_at.to_rfc3339();
+                let metadata_json = artifact
+                    .metadata
+                    .team_metadata
+                    .as_ref()
+                    .and_then(|tm| serde_json::to_string(tm).ok());
 
-        let created_at = artifact.metadata.created_at.to_rfc3339();
-        let metadata_json = artifact
-            .metadata
-            .team_metadata
-            .as_ref()
-            .and_then(|tm| serde_json::to_string(tm).ok());
-
-        conn.execute(
-            "INSERT INTO artifacts (id, type, name, content_type, content_text, content_path,
-             bucket_id, task_id, process_id, created_by, version, created_at, metadata_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            rusqlite::params![
-                artifact.id.as_str(),
-                artifact.artifact_type.as_str(),
-                artifact.name,
-                content_type,
-                content_text,
-                content_path,
-                artifact.bucket_id.as_ref().map(|b| b.as_str()),
-                artifact.metadata.task_id.as_ref().map(|t| t.as_str()),
-                artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
-                artifact.metadata.created_by,
-                artifact.metadata.version as i32,
-                created_at,
-                metadata_json,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(artifact)
+                conn.execute(
+                    "INSERT INTO artifacts (id, type, name, content_type, content_text, content_path,
+                     bucket_id, task_id, process_id, created_by, version, created_at, metadata_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                    rusqlite::params![
+                        artifact.id.as_str(),
+                        artifact.artifact_type.as_str(),
+                        artifact.name,
+                        content_type,
+                        content_text,
+                        content_path,
+                        artifact.bucket_id.as_ref().map(|b| b.as_str()),
+                        artifact.metadata.task_id.as_ref().map(|t| t.as_str()),
+                        artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
+                        artifact.metadata.created_by,
+                        artifact.metadata.version as i32,
+                        created_at,
+                        metadata_json,
+                    ],
+                )?;
+                Ok(artifact)
+            })
+            .await
     }
 
     async fn get_by_id(&self, id: &ArtifactId) -> AppResult<Option<Artifact>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, type, name, content_type, content_text, content_path,
-                    bucket_id, task_id, process_id, created_by, version,
-                    previous_version_id, created_at, metadata_json
-             FROM artifacts WHERE id = ?1",
-            [id.as_str()],
-            Self::artifact_from_row,
-        );
-
-        match result {
-            Ok(artifact) => Ok(Some(artifact)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        let id = id.as_str().to_string();
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, type, name, content_type, content_text, content_path,
+                            bucket_id, task_id, process_id, created_by, version,
+                            previous_version_id, created_at, metadata_json
+                     FROM artifacts WHERE id = ?1",
+                    [id.as_str()],
+                    Self::artifact_from_row,
+                )
+            })
+            .await
     }
 
     async fn get_by_id_at_version(
@@ -189,276 +189,249 @@ impl ArtifactRepository for SqliteArtifactRepository {
         id: &ArtifactId,
         target_version: u32,
     ) -> AppResult<Option<Artifact>> {
-        let conn = self.conn.lock().await;
-
-        // Start with the current artifact
         let mut current_id = id.clone();
+        self.db
+            .run(move |conn| {
+                loop {
+                    let result = conn.query_row(
+                        "SELECT id, type, name, content_type, content_text, content_path,
+                                bucket_id, task_id, process_id, created_by, version,
+                                previous_version_id, created_at, metadata_json
+                         FROM artifacts WHERE id = ?1",
+                        [current_id.as_str()],
+                        |row| {
+                            let version: u32 = row.get(10)?;
+                            let previous_version_id: Option<String> = row.get(11)?;
+                            Ok((version, previous_version_id, Self::artifact_from_row(row)?))
+                        },
+                    );
 
-        loop {
-            let result = conn.query_row(
-                "SELECT id, type, name, content_type, content_text, content_path,
-                        bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at, metadata_json
-                 FROM artifacts WHERE id = ?1",
-                [current_id.as_str()],
-                |row| {
-                    let version: u32 = row.get(10)?;
-                    let previous_version_id: Option<String> = row.get(11)?;
-                    Ok((version, previous_version_id, Self::artifact_from_row(row)?))
-                },
-            );
-
-            match result {
-                Ok((version, previous_version_id, artifact)) => {
-                    // If this is the version we're looking for, return it
-                    if version == target_version {
-                        return Ok(Some(artifact));
-                    }
-
-                    // If we've gone too far back (version < target), the version doesn't exist
-                    if version < target_version {
-                        return Ok(None);
-                    }
-
-                    // Otherwise, follow the previous_version_id chain
-                    if let Some(prev_id) = previous_version_id {
-                        current_id = ArtifactId::from_string(prev_id);
-                    } else {
-                        // No more previous versions, and we haven't found it
-                        return Ok(None);
+                    match result {
+                        Ok((version, previous_version_id, artifact)) => {
+                            if version == target_version {
+                                return Ok(Some(artifact));
+                            }
+                            if version < target_version {
+                                return Ok(None);
+                            }
+                            if let Some(prev_id) = previous_version_id {
+                                current_id = ArtifactId::from_string(prev_id);
+                            } else {
+                                return Ok(None);
+                            }
+                        }
+                        Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
+                        Err(e) => return Err(e.into()),
                     }
                 }
-                Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(None),
-                Err(e) => return Err(AppError::Database(e.to_string())),
-            }
-        }
+            })
+            .await
     }
 
     async fn get_by_bucket(&self, bucket_id: &ArtifactBucketId) -> AppResult<Vec<Artifact>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, name, content_type, content_text, content_path,
-                        bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at, metadata_json
-                 FROM artifacts WHERE bucket_id = ?1
-                 ORDER BY created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let artifacts = stmt
-            .query_map([bucket_id.as_str()], Self::artifact_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(artifacts)
+        let bucket_id = bucket_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, type, name, content_type, content_text, content_path,
+                            bucket_id, task_id, process_id, created_by, version,
+                            previous_version_id, created_at, metadata_json
+                     FROM artifacts WHERE bucket_id = ?1
+                     ORDER BY created_at DESC",
+                )?;
+                let artifacts = stmt
+                    .query_map([bucket_id.as_str()], Self::artifact_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(artifacts)
+            })
+            .await
     }
 
     async fn get_by_type(&self, artifact_type: ArtifactType) -> AppResult<Vec<Artifact>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, name, content_type, content_text, content_path,
-                        bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at, metadata_json
-                 FROM artifacts WHERE type = ?1
-                 ORDER BY created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let artifacts = stmt
-            .query_map([artifact_type.as_str()], Self::artifact_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(artifacts)
+        let type_str = artifact_type.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, type, name, content_type, content_text, content_path,
+                            bucket_id, task_id, process_id, created_by, version,
+                            previous_version_id, created_at, metadata_json
+                     FROM artifacts WHERE type = ?1
+                     ORDER BY created_at DESC",
+                )?;
+                let artifacts = stmt
+                    .query_map([type_str.as_str()], Self::artifact_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(artifacts)
+            })
+            .await
     }
 
     async fn get_by_task(&self, task_id: &TaskId) -> AppResult<Vec<Artifact>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, name, content_type, content_text, content_path,
-                        bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at, metadata_json
-                 FROM artifacts WHERE task_id = ?1
-                 ORDER BY created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let artifacts = stmt
-            .query_map([task_id.as_str()], Self::artifact_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(artifacts)
+        let task_id = task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, type, name, content_type, content_text, content_path,
+                            bucket_id, task_id, process_id, created_by, version,
+                            previous_version_id, created_at, metadata_json
+                     FROM artifacts WHERE task_id = ?1
+                     ORDER BY created_at DESC",
+                )?;
+                let artifacts = stmt
+                    .query_map([task_id.as_str()], Self::artifact_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(artifacts)
+            })
+            .await
     }
 
     async fn get_by_process(&self, process_id: &ProcessId) -> AppResult<Vec<Artifact>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, name, content_type, content_text, content_path,
-                        bucket_id, task_id, process_id, created_by, version,
-                        previous_version_id, created_at, metadata_json
-                 FROM artifacts WHERE process_id = ?1
-                 ORDER BY created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let artifacts = stmt
-            .query_map([process_id.as_str()], Self::artifact_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(artifacts)
+        let process_id = process_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, type, name, content_type, content_text, content_path,
+                            bucket_id, task_id, process_id, created_by, version,
+                            previous_version_id, created_at, metadata_json
+                     FROM artifacts WHERE process_id = ?1
+                     ORDER BY created_at DESC",
+                )?;
+                let artifacts = stmt
+                    .query_map([process_id.as_str()], Self::artifact_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(artifacts)
+            })
+            .await
     }
 
     async fn update(&self, artifact: &Artifact) -> AppResult<()> {
-        let conn = self.conn.lock().await;
+        let artifact = artifact.clone();
+        self.db
+            .run(move |conn| {
+                let (content_type, content_text, content_path) = match &artifact.content {
+                    ArtifactContent::Inline { text } => ("inline", Some(text.clone()), None),
+                    ArtifactContent::File { path } => ("file", None, Some(path.clone())),
+                };
 
-        let (content_type, content_text, content_path) = match &artifact.content {
-            ArtifactContent::Inline { text } => ("inline", Some(text.clone()), None),
-            ArtifactContent::File { path } => ("file", None, Some(path.clone())),
-        };
+                let metadata_json = artifact
+                    .metadata
+                    .team_metadata
+                    .as_ref()
+                    .and_then(|tm| serde_json::to_string(tm).ok());
 
-        let metadata_json = artifact
-            .metadata
-            .team_metadata
-            .as_ref()
-            .and_then(|tm| serde_json::to_string(tm).ok());
-
-        conn.execute(
-            "UPDATE artifacts SET type = ?2, name = ?3, content_type = ?4,
-             content_text = ?5, content_path = ?6, bucket_id = ?7, task_id = ?8,
-             process_id = ?9, created_by = ?10, version = ?11, metadata_json = ?12
-             WHERE id = ?1",
-            rusqlite::params![
-                artifact.id.as_str(),
-                artifact.artifact_type.as_str(),
-                artifact.name,
-                content_type,
-                content_text,
-                content_path,
-                artifact.bucket_id.as_ref().map(|b| b.as_str()),
-                artifact.metadata.task_id.as_ref().map(|t| t.as_str()),
-                artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
-                artifact.metadata.created_by,
-                artifact.metadata.version as i32,
-                metadata_json,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+                conn.execute(
+                    "UPDATE artifacts SET type = ?2, name = ?3, content_type = ?4,
+                     content_text = ?5, content_path = ?6, bucket_id = ?7, task_id = ?8,
+                     process_id = ?9, created_by = ?10, version = ?11, metadata_json = ?12
+                     WHERE id = ?1",
+                    rusqlite::params![
+                        artifact.id.as_str(),
+                        artifact.artifact_type.as_str(),
+                        artifact.name,
+                        content_type,
+                        content_text,
+                        content_path,
+                        artifact.bucket_id.as_ref().map(|b| b.as_str()),
+                        artifact.metadata.task_id.as_ref().map(|t| t.as_str()),
+                        artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
+                        artifact.metadata.created_by,
+                        artifact.metadata.version as i32,
+                        metadata_json,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn delete(&self, id: &ArtifactId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute("DELETE FROM artifacts WHERE id = ?1", [id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute("DELETE FROM artifacts WHERE id = ?1", [id.as_str()])?;
+                Ok(())
+            })
+            .await
     }
 
     async fn get_derived_from(&self, artifact_id: &ArtifactId) -> AppResult<Vec<Artifact>> {
-        let conn = self.conn.lock().await;
-
-        // Get artifacts that this artifact was derived from (to_artifact_id in relations)
-        let mut stmt = conn
-            .prepare(
-                "SELECT a.id, a.type, a.name, a.content_type, a.content_text, a.content_path,
-                        a.bucket_id, a.task_id, a.process_id, a.created_by, a.version,
-                        a.previous_version_id, a.created_at, a.metadata_json
-                 FROM artifacts a
-                 INNER JOIN artifact_relations r ON a.id = r.to_artifact_id
-                 WHERE r.from_artifact_id = ?1 AND r.relation_type = 'derived_from'
-                 ORDER BY a.created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let artifacts = stmt
-            .query_map([artifact_id.as_str()], Self::artifact_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(artifacts)
+        let artifact_id = artifact_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT a.id, a.type, a.name, a.content_type, a.content_text, a.content_path,
+                            a.bucket_id, a.task_id, a.process_id, a.created_by, a.version,
+                            a.previous_version_id, a.created_at, a.metadata_json
+                     FROM artifacts a
+                     INNER JOIN artifact_relations r ON a.id = r.to_artifact_id
+                     WHERE r.from_artifact_id = ?1 AND r.relation_type = 'derived_from'
+                     ORDER BY a.created_at DESC",
+                )?;
+                let artifacts = stmt
+                    .query_map([artifact_id.as_str()], Self::artifact_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(artifacts)
+            })
+            .await
     }
 
     async fn get_related(&self, artifact_id: &ArtifactId) -> AppResult<Vec<Artifact>> {
-        let conn = self.conn.lock().await;
-
-        // Get all related artifacts (both directions for related_to type)
-        let mut stmt = conn
-            .prepare(
-                "SELECT DISTINCT a.id, a.type, a.name, a.content_type, a.content_text,
-                        a.content_path, a.bucket_id, a.task_id, a.process_id, a.created_by,
-                        a.version, a.previous_version_id, a.created_at, a.metadata_json
-                 FROM artifacts a
-                 INNER JOIN artifact_relations r ON
-                    (a.id = r.to_artifact_id AND r.from_artifact_id = ?1) OR
-                    (a.id = r.from_artifact_id AND r.to_artifact_id = ?1)
-                 WHERE r.relation_type = 'related_to' AND a.id != ?1
-                 ORDER BY a.created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let artifacts = stmt
-            .query_map([artifact_id.as_str()], Self::artifact_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(artifacts)
+        let artifact_id = artifact_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT DISTINCT a.id, a.type, a.name, a.content_type, a.content_text,
+                            a.content_path, a.bucket_id, a.task_id, a.process_id, a.created_by,
+                            a.version, a.previous_version_id, a.created_at, a.metadata_json
+                     FROM artifacts a
+                     INNER JOIN artifact_relations r ON
+                        (a.id = r.to_artifact_id AND r.from_artifact_id = ?1) OR
+                        (a.id = r.from_artifact_id AND r.to_artifact_id = ?1)
+                     WHERE r.relation_type = 'related_to' AND a.id != ?1
+                     ORDER BY a.created_at DESC",
+                )?;
+                let artifacts = stmt
+                    .query_map([artifact_id.as_str()], Self::artifact_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(artifacts)
+            })
+            .await
     }
 
     async fn add_relation(&self, relation: ArtifactRelation) -> AppResult<ArtifactRelation> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "INSERT INTO artifact_relations (id, from_artifact_id, to_artifact_id, relation_type)
-             VALUES (?1, ?2, ?3, ?4)",
-            rusqlite::params![
-                relation.id.as_str(),
-                relation.from_artifact_id.as_str(),
-                relation.to_artifact_id.as_str(),
-                relation.relation_type.as_str(),
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(relation)
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO artifact_relations (id, from_artifact_id, to_artifact_id, relation_type)
+                     VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![
+                        relation.id.as_str(),
+                        relation.from_artifact_id.as_str(),
+                        relation.to_artifact_id.as_str(),
+                        relation.relation_type.as_str(),
+                    ],
+                )?;
+                Ok(relation)
+            })
+            .await
     }
 
     async fn get_relations(&self, artifact_id: &ArtifactId) -> AppResult<Vec<ArtifactRelation>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, from_artifact_id, to_artifact_id, relation_type
-                 FROM artifact_relations
-                 WHERE from_artifact_id = ?1 OR to_artifact_id = ?1
-                 ORDER BY created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let relations = stmt
-            .query_map([artifact_id.as_str()], Self::relation_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(relations)
+        let artifact_id = artifact_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, from_artifact_id, to_artifact_id, relation_type
+                     FROM artifact_relations
+                     WHERE from_artifact_id = ?1 OR to_artifact_id = ?1
+                     ORDER BY created_at DESC",
+                )?;
+                let relations = stmt
+                    .query_map([artifact_id.as_str()], Self::relation_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(relations)
+            })
+            .await
     }
 
     async fn get_relations_by_type(
@@ -466,41 +439,41 @@ impl ArtifactRepository for SqliteArtifactRepository {
         artifact_id: &ArtifactId,
         relation_type: ArtifactRelationType,
     ) -> AppResult<Vec<ArtifactRelation>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, from_artifact_id, to_artifact_id, relation_type
-                 FROM artifact_relations
-                 WHERE (from_artifact_id = ?1 OR to_artifact_id = ?1)
-                   AND relation_type = ?2
-                 ORDER BY created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let relations = stmt
-            .query_map(
-                rusqlite::params![artifact_id.as_str(), relation_type.as_str()],
-                Self::relation_from_row,
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(relations)
+        let artifact_id = artifact_id.as_str().to_string();
+        let rel_type_str = relation_type.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, from_artifact_id, to_artifact_id, relation_type
+                     FROM artifact_relations
+                     WHERE (from_artifact_id = ?1 OR to_artifact_id = ?1)
+                       AND relation_type = ?2
+                     ORDER BY created_at DESC",
+                )?;
+                let relations = stmt
+                    .query_map(
+                        rusqlite::params![artifact_id.as_str(), rel_type_str.as_str()],
+                        Self::relation_from_row,
+                    )?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(relations)
+            })
+            .await
     }
 
     async fn delete_relation(&self, from_id: &ArtifactId, to_id: &ArtifactId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "DELETE FROM artifact_relations
-             WHERE from_artifact_id = ?1 AND to_artifact_id = ?2",
-            rusqlite::params![from_id.as_str(), to_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let from_id = from_id.as_str().to_string();
+        let to_id = to_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM artifact_relations
+                     WHERE from_artifact_id = ?1 AND to_artifact_id = ?2",
+                    rusqlite::params![from_id.as_str(), to_id.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn create_with_previous_version(
@@ -508,124 +481,126 @@ impl ArtifactRepository for SqliteArtifactRepository {
         artifact: Artifact,
         previous_version_id: ArtifactId,
     ) -> AppResult<Artifact> {
-        let conn = self.conn.lock().await;
+        self.db
+            .run(move |conn| {
+                let (content_type, content_text, content_path) = match &artifact.content {
+                    ArtifactContent::Inline { text } => ("inline", Some(text.clone()), None),
+                    ArtifactContent::File { path } => ("file", None, Some(path.clone())),
+                };
 
-        let (content_type, content_text, content_path) = match &artifact.content {
-            ArtifactContent::Inline { text } => ("inline", Some(text.clone()), None),
-            ArtifactContent::File { path } => ("file", None, Some(path.clone())),
-        };
+                let created_at = artifact.metadata.created_at.to_rfc3339();
+                let metadata_json = artifact
+                    .metadata
+                    .team_metadata
+                    .as_ref()
+                    .and_then(|tm| serde_json::to_string(tm).ok());
 
-        let created_at = artifact.metadata.created_at.to_rfc3339();
-        let metadata_json = artifact
-            .metadata
-            .team_metadata
-            .as_ref()
-            .and_then(|tm| serde_json::to_string(tm).ok());
-
-        conn.execute(
-            "INSERT INTO artifacts (id, type, name, content_type, content_text, content_path,
-             bucket_id, task_id, process_id, created_by, version, previous_version_id, created_at, metadata_json)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-            rusqlite::params![
-                artifact.id.as_str(),
-                artifact.artifact_type.as_str(),
-                artifact.name,
-                content_type,
-                content_text,
-                content_path,
-                artifact.bucket_id.as_ref().map(|b| b.as_str()),
-                artifact.metadata.task_id.as_ref().map(|t| t.as_str()),
-                artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
-                artifact.metadata.created_by,
-                artifact.metadata.version as i32,
-                previous_version_id.as_str(),
-                created_at,
-                metadata_json,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(artifact)
+                conn.execute(
+                    "INSERT INTO artifacts (id, type, name, content_type, content_text, content_path,
+                     bucket_id, task_id, process_id, created_by, version, previous_version_id, created_at, metadata_json)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    rusqlite::params![
+                        artifact.id.as_str(),
+                        artifact.artifact_type.as_str(),
+                        artifact.name,
+                        content_type,
+                        content_text,
+                        content_path,
+                        artifact.bucket_id.as_ref().map(|b| b.as_str()),
+                        artifact.metadata.task_id.as_ref().map(|t| t.as_str()),
+                        artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
+                        artifact.metadata.created_by,
+                        artifact.metadata.version as i32,
+                        previous_version_id.as_str(),
+                        created_at,
+                        metadata_json,
+                    ],
+                )?;
+                Ok(artifact)
+            })
+            .await
     }
 
     async fn get_version_history(
         &self,
         id: &ArtifactId,
     ) -> AppResult<Vec<crate::domain::repositories::ArtifactVersionSummary>> {
-        let conn = self.conn.lock().await;
-        let mut history = Vec::new();
         let mut current_id = id.clone();
+        self.db
+            .run(move |conn| {
+                let mut history = Vec::new();
+                loop {
+                    let result = conn.query_row(
+                        "SELECT id, version, name, previous_version_id, created_at
+                         FROM artifacts WHERE id = ?1",
+                        [current_id.as_str()],
+                        |row| {
+                            let id_str: String = row.get(0)?;
+                            let version: i32 = row.get(1)?;
+                            let name: String = row.get(2)?;
+                            let previous_version_id: Option<String> = row.get(3)?;
+                            let created_at_str: String = row.get(4)?;
 
-        loop {
-            let result = conn.query_row(
-                "SELECT id, version, name, previous_version_id, created_at
-                 FROM artifacts WHERE id = ?1",
-                [current_id.as_str()],
-                |row| {
-                    let id_str: String = row.get(0)?;
-                    let version: i32 = row.get(1)?;
-                    let name: String = row.get(2)?;
-                    let previous_version_id: Option<String> = row.get(3)?;
-                    let created_at_str: String = row.get(4)?;
+                            let created_at = DateTime::parse_from_rfc3339(&created_at_str)
+                                .map(|dt| dt.with_timezone(&Utc))
+                                .unwrap_or_else(|_| Utc::now());
 
-                    let created_at = DateTime::parse_from_rfc3339(&created_at_str)
-                        .map(|dt| dt.with_timezone(&Utc))
-                        .unwrap_or_else(|_| Utc::now());
-
-                    Ok((
-                        crate::domain::repositories::ArtifactVersionSummary {
-                            id: ArtifactId::from_string(id_str),
-                            version: version as u32,
-                            name,
-                            created_at,
+                            Ok((
+                                crate::domain::repositories::ArtifactVersionSummary {
+                                    id: ArtifactId::from_string(id_str),
+                                    version: version as u32,
+                                    name,
+                                    created_at,
+                                },
+                                previous_version_id,
+                            ))
                         },
-                        previous_version_id,
-                    ))
-                },
-            );
+                    );
 
-            match result {
-                Ok((summary, previous_version_id)) => {
-                    history.push(summary);
-
-                    if let Some(prev_id) = previous_version_id {
-                        current_id = ArtifactId::from_string(prev_id);
-                    } else {
-                        break;
+                    match result {
+                        Ok((summary, previous_version_id)) => {
+                            history.push(summary);
+                            if let Some(prev_id) = previous_version_id {
+                                current_id = ArtifactId::from_string(prev_id);
+                            } else {
+                                break;
+                            }
+                        }
+                        Err(rusqlite::Error::QueryReturnedNoRows) => break,
+                        Err(e) => return Err(e.into()),
                     }
                 }
-                Err(rusqlite::Error::QueryReturnedNoRows) => break,
-                Err(e) => return Err(AppError::Database(e.to_string())),
-            }
-        }
-
-        Ok(history)
+                Ok(history)
+            })
+            .await
     }
 
     async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId> {
-        let conn = self.conn.lock().await;
         let mut current_id = id.clone();
+        self.db
+            .run(move |conn| {
+                loop {
+                    let result = conn.query_row(
+                        "SELECT id FROM artifacts WHERE previous_version_id = ?1",
+                        [current_id.as_str()],
+                        |row| {
+                            let next_id: String = row.get(0)?;
+                            Ok(next_id)
+                        },
+                    );
 
-        loop {
-            let result = conn.query_row(
-                "SELECT id FROM artifacts WHERE previous_version_id = ?1",
-                [current_id.as_str()],
-                |row| {
-                    let next_id: String = row.get(0)?;
-                    Ok(next_id)
-                },
-            );
-
-            match result {
-                Ok(next_id) => {
-                    current_id = ArtifactId::from_string(next_id);
+                    match result {
+                        Ok(next_id) => {
+                            current_id = ArtifactId::from_string(next_id);
+                        }
+                        Err(rusqlite::Error::QueryReturnedNoRows) => {
+                            return Ok(current_id);
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
                 }
-                Err(rusqlite::Error::QueryReturnedNoRows) => {
-                    return Ok(current_id);
-                }
-                Err(e) => return Err(AppError::Database(e.to_string())),
-            }
-        }
+            })
+            .await
     }
 }
 

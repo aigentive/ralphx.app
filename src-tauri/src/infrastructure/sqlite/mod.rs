@@ -1,6 +1,7 @@
 // SQLite infrastructure layer
 // Database connection management, migrations, and repository implementations
 
+pub mod db_connection;
 pub mod connection;
 pub mod migrations;
 pub mod sqlite_active_plan_repo;
@@ -52,6 +53,7 @@ pub mod state_machine_repository;
 pub use connection::{
     get_app_data_db_path, get_default_db_path, open_connection, open_memory_connection,
 };
+pub use db_connection::DbConnection;
 pub use migrations::{run_migrations, SCHEMA_VERSION};
 pub use sqlite_active_plan_repo::SqliteActivePlanRepository;
 pub use sqlite_activity_event_repo::SqliteActivityEventRepository;

@@ -9,6 +9,7 @@ use tokio::sync::Mutex;
 use async_trait::async_trait;
 use rusqlite::Connection;
 
+use super::DbConnection;
 use crate::domain::entities::{ActivityEvent, ActivityEventId, IdeationSessionId, TaskId};
 use crate::domain::repositories::{
     ActivityEventFilter, ActivityEventPage, ActivityEventRepository,
@@ -21,20 +22,22 @@ const MAX_LIMIT: u32 = 100;
 /// SQLite implementation of ActivityEventRepository for production use
 /// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteActivityEventRepository {
-    pub(crate) conn: Arc<Mutex<Connection>>,
+    pub(crate) db: DbConnection,
 }
 
 impl SqliteActivityEventRepository {
     /// Create a new SQLite activity event repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 
     /// Parse a cursor string into (timestamp, id) tuple
@@ -43,11 +46,6 @@ impl SqliteActivityEventRepository {
         cursor
             .split_once('|')
             .map(|(ts, id)| (ts.to_string(), id.to_string()))
-    }
-
-    /// Format a cursor from an event
-    fn format_cursor(event: &ActivityEvent) -> String {
-        format!("{}|{}", event.created_at.to_rfc3339(), event.id)
     }
 
     /// Build filter clause with positional placeholders starting at the given index
@@ -114,8 +112,12 @@ impl SqliteActivityEventRepository {
         (where_clause, params)
     }
 
+    /// Format a cursor from an event
+    pub(crate) fn format_cursor(event: &ActivityEvent) -> String {
+        format!("{}|{}", event.created_at.to_rfc3339(), event.id)
+    }
+
     /// Build filter clause for list_all that includes task_id/session_id filtering
-    /// Returns (conditions: Vec<String>, params: Vec<String>) instead of a WHERE clause
     fn build_list_all_filter_clause(
         filter: Option<&ActivityEventFilter>,
         start_param_idx: usize,
@@ -125,21 +127,18 @@ impl SqliteActivityEventRepository {
         let mut idx = start_param_idx;
 
         if let Some(f) = filter {
-            // Task ID filter
             if let Some(task_id) = &f.task_id {
                 conditions.push(format!("task_id = ?{}", idx));
                 params.push(task_id.as_str().to_string());
                 idx += 1;
             }
 
-            // Session ID filter
             if let Some(session_id) = &f.session_id {
                 conditions.push(format!("ideation_session_id = ?{}", idx));
                 params.push(session_id.as_str().to_string());
                 idx += 1;
             }
 
-            // Event types filter
             if let Some(event_types) = &f.event_types {
                 if !event_types.is_empty() {
                     let placeholders: Vec<String> = event_types
@@ -155,7 +154,6 @@ impl SqliteActivityEventRepository {
                 }
             }
 
-            // Roles filter
             if let Some(roles) = &f.roles {
                 if !roles.is_empty() {
                     let placeholders: Vec<String> = roles
@@ -171,7 +169,6 @@ impl SqliteActivityEventRepository {
                 }
             }
 
-            // Statuses filter
             if let Some(statuses) = &f.statuses {
                 if !statuses.is_empty() {
                     let placeholders: Vec<String> = statuses
@@ -195,43 +192,45 @@ impl SqliteActivityEventRepository {
 #[async_trait]
 impl ActivityEventRepository for SqliteActivityEventRepository {
     async fn save(&self, event: ActivityEvent) -> AppResult<ActivityEvent> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "INSERT INTO activity_events (id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            rusqlite::params![
-                event.id.as_str(),
-                event.task_id.as_ref().map(|id| id.as_str()),
-                event.ideation_session_id.as_ref().map(|id| id.as_str()),
-                event.internal_status.as_ref().map(|s| s.to_string()),
-                event.event_type.to_string(),
-                event.role.to_string(),
-                event.content,
-                event.metadata,
-                event.created_at.to_rfc3339(),
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(event)
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO activity_events (id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    rusqlite::params![
+                        event.id.as_str(),
+                        event.task_id.as_ref().map(|id| id.as_str()),
+                        event.ideation_session_id.as_ref().map(|id| id.as_str()),
+                        event.internal_status.as_ref().map(|s| s.to_string()),
+                        event.event_type.to_string(),
+                        event.role.to_string(),
+                        event.content,
+                        event.metadata,
+                        event.created_at.to_rfc3339(),
+                    ],
+                )?;
+                Ok(event)
+            })
+            .await
     }
 
     async fn get_by_id(&self, id: &ActivityEventId) -> AppResult<Option<ActivityEvent>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
-             FROM activity_events WHERE id = ?1",
-            [id.as_str()],
-            ActivityEvent::from_row,
-        );
-
-        match result {
-            Ok(event) => Ok(Some(event)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let result = conn.query_row(
+                    "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
+                     FROM activity_events WHERE id = ?1",
+                    [id.as_str()],
+                    ActivityEvent::from_row,
+                );
+                match result {
+                    Ok(event) => Ok(Some(event)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(AppError::Database(e.to_string())),
+                }
+            })
+            .await
     }
 
     async fn list_by_task_id(
@@ -241,17 +240,13 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
         limit: u32,
         filter: Option<&ActivityEventFilter>,
     ) -> AppResult<ActivityEventPage> {
-        let conn = self.conn.lock().await;
-
-        // Cap limit at MAX_LIMIT
         let limit = limit.min(MAX_LIMIT);
-        // Request one extra to detect has_more
         let fetch_limit = limit + 1;
+        let task_id_str = task_id.as_str().to_string();
+        let cursor_owned = cursor.map(|s| s.to_string());
 
-        let (sql, params): (String, Vec<String>) = if let Some(cursor_str) = cursor {
+        let (sql, params): (String, Vec<String>) = if let Some(ref cursor_str) = cursor_owned {
             if let Some((cursor_ts, cursor_id)) = Self::parse_cursor(cursor_str) {
-                // Cursor pagination: get events older than cursor
-                // Params: ?1=task_id, ?2=cursor_ts, ?3=cursor_id, ?4=limit, ?5+=filter params
                 let (filter_clause, filter_params) = Self::build_filter_clause(filter, 5);
                 let sql = format!(
                     "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
@@ -261,8 +256,8 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                      LIMIT ?4",
                     filter_clause
                 );
-                let mut params: Vec<String> = vec![
-                    task_id.as_str().to_string(),
+                let mut params = vec![
+                    task_id_str,
                     cursor_ts,
                     cursor_id,
                     fetch_limit.to_string(),
@@ -270,8 +265,6 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                 params.extend(filter_params);
                 (sql, params)
             } else {
-                // Invalid cursor, treat as first page
-                // Params: ?1=task_id, ?2=limit, ?3+=filter params
                 let (filter_clause, filter_params) = Self::build_filter_clause(filter, 3);
                 let sql = format!(
                     "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
@@ -281,14 +274,11 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                      LIMIT ?2",
                     filter_clause
                 );
-                let mut params: Vec<String> =
-                    vec![task_id.as_str().to_string(), fetch_limit.to_string()];
+                let mut params = vec![task_id_str, fetch_limit.to_string()];
                 params.extend(filter_params);
                 (sql, params)
             }
         } else {
-            // First page (no cursor)
-            // Params: ?1=task_id, ?2=limit, ?3+=filter params
             let (filter_clause, filter_params) = Self::build_filter_clause(filter, 3);
             let sql = format!(
                 "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
@@ -298,41 +288,42 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                  LIMIT ?2",
                 filter_clause
             );
-            let mut params: Vec<String> =
-                vec![task_id.as_str().to_string(), fetch_limit.to_string()];
+            let mut params = vec![task_id_str, fetch_limit.to_string()];
             params.extend(filter_params);
             (sql, params)
         };
 
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                let params_refs: Vec<&dyn rusqlite::ToSql> =
+                    params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+                let mut events: Vec<ActivityEvent> = stmt
+                    .query_map(params_refs.as_slice(), ActivityEvent::from_row)
+                    .map_err(|e| AppError::Database(e.to_string()))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-
-        let mut events: Vec<ActivityEvent> = stmt
-            .query_map(params_refs.as_slice(), ActivityEvent::from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let has_more = events.len() > limit as usize;
-        if has_more {
-            events.truncate(limit as usize);
-        }
-
-        let next_cursor = if has_more {
-            events.last().map(Self::format_cursor)
-        } else {
-            None
-        };
-
-        Ok(ActivityEventPage {
-            events,
-            cursor: next_cursor,
-            has_more,
-        })
+                let has_more = events.len() > limit as usize;
+                if has_more {
+                    events.truncate(limit as usize);
+                }
+                let next_cursor = if has_more {
+                    events
+                        .last()
+                        .map(SqliteActivityEventRepository::format_cursor)
+                } else {
+                    None
+                };
+                Ok(ActivityEventPage {
+                    events,
+                    cursor: next_cursor,
+                    has_more,
+                })
+            })
+            .await
     }
 
     async fn list_by_session_id(
@@ -342,16 +333,13 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
         limit: u32,
         filter: Option<&ActivityEventFilter>,
     ) -> AppResult<ActivityEventPage> {
-        let conn = self.conn.lock().await;
-
-        // Cap limit at MAX_LIMIT
         let limit = limit.min(MAX_LIMIT);
-        // Request one extra to detect has_more
         let fetch_limit = limit + 1;
+        let session_id_str = session_id.as_str().to_string();
+        let cursor_owned = cursor.map(|s| s.to_string());
 
-        let (sql, params): (String, Vec<String>) = if let Some(cursor_str) = cursor {
+        let (sql, params): (String, Vec<String>) = if let Some(ref cursor_str) = cursor_owned {
             if let Some((cursor_ts, cursor_id)) = Self::parse_cursor(cursor_str) {
-                // Cursor pagination: get events older than cursor
                 let (filter_clause, filter_params) = Self::build_filter_clause(filter, 5);
                 let sql = format!(
                     "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
@@ -361,8 +349,8 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                      LIMIT ?4",
                     filter_clause
                 );
-                let mut params: Vec<String> = vec![
-                    session_id.as_str().to_string(),
+                let mut params = vec![
+                    session_id_str,
                     cursor_ts,
                     cursor_id,
                     fetch_limit.to_string(),
@@ -370,7 +358,6 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                 params.extend(filter_params);
                 (sql, params)
             } else {
-                // Invalid cursor, treat as first page
                 let (filter_clause, filter_params) = Self::build_filter_clause(filter, 3);
                 let sql = format!(
                     "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
@@ -380,13 +367,11 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                      LIMIT ?2",
                     filter_clause
                 );
-                let mut params: Vec<String> =
-                    vec![session_id.as_str().to_string(), fetch_limit.to_string()];
+                let mut params = vec![session_id_str, fetch_limit.to_string()];
                 params.extend(filter_params);
                 (sql, params)
             }
         } else {
-            // First page (no cursor)
             let (filter_clause, filter_params) = Self::build_filter_clause(filter, 3);
             let sql = format!(
                 "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
@@ -396,65 +381,68 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                  LIMIT ?2",
                 filter_clause
             );
-            let mut params: Vec<String> =
-                vec![session_id.as_str().to_string(), fetch_limit.to_string()];
+            let mut params = vec![session_id_str, fetch_limit.to_string()];
             params.extend(filter_params);
             (sql, params)
         };
 
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                let params_refs: Vec<&dyn rusqlite::ToSql> =
+                    params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+                let mut events: Vec<ActivityEvent> = stmt
+                    .query_map(params_refs.as_slice(), ActivityEvent::from_row)
+                    .map_err(|e| AppError::Database(e.to_string()))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-
-        let mut events: Vec<ActivityEvent> = stmt
-            .query_map(params_refs.as_slice(), ActivityEvent::from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let has_more = events.len() > limit as usize;
-        if has_more {
-            events.truncate(limit as usize);
-        }
-
-        let next_cursor = if has_more {
-            events.last().map(Self::format_cursor)
-        } else {
-            None
-        };
-
-        Ok(ActivityEventPage {
-            events,
-            cursor: next_cursor,
-            has_more,
-        })
+                let has_more = events.len() > limit as usize;
+                if has_more {
+                    events.truncate(limit as usize);
+                }
+                let next_cursor = if has_more {
+                    events
+                        .last()
+                        .map(SqliteActivityEventRepository::format_cursor)
+                } else {
+                    None
+                };
+                Ok(ActivityEventPage {
+                    events,
+                    cursor: next_cursor,
+                    has_more,
+                })
+            })
+            .await
     }
 
     async fn delete_by_task_id(&self, task_id: &TaskId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "DELETE FROM activity_events WHERE task_id = ?1",
-            [task_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let task_id = task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM activity_events WHERE task_id = ?1",
+                    [task_id.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn delete_by_session_id(&self, session_id: &IdeationSessionId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "DELETE FROM activity_events WHERE ideation_session_id = ?1",
-            [session_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let session_id = session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM activity_events WHERE ideation_session_id = ?1",
+                    [session_id.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn count_by_task_id(
@@ -462,29 +450,28 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
         task_id: &TaskId,
         filter: Option<&ActivityEventFilter>,
     ) -> AppResult<u64> {
-        let conn = self.conn.lock().await;
-
         let (filter_clause, filter_params) = Self::build_filter_clause(filter, 2);
+        let task_id_str = task_id.as_str().to_string();
         let sql = format!(
             "SELECT COUNT(*) FROM activity_events WHERE task_id = ?1{}",
             filter_clause
         );
-
-        let mut params: Vec<String> = vec![task_id.as_str().to_string()];
+        let mut params = vec![task_id_str];
         params.extend(filter_params);
 
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-
-        let count: i64 = stmt
-            .query_row(params_refs.as_slice(), |row| row.get(0))
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count as u64)
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                let params_refs: Vec<&dyn rusqlite::ToSql> =
+                    params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+                let count: i64 = stmt
+                    .query_row(params_refs.as_slice(), |row| row.get(0))
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                Ok(count as u64)
+            })
+            .await
     }
 
     async fn count_by_session_id(
@@ -492,29 +479,28 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
         session_id: &IdeationSessionId,
         filter: Option<&ActivityEventFilter>,
     ) -> AppResult<u64> {
-        let conn = self.conn.lock().await;
-
         let (filter_clause, filter_params) = Self::build_filter_clause(filter, 2);
+        let session_id_str = session_id.as_str().to_string();
         let sql = format!(
             "SELECT COUNT(*) FROM activity_events WHERE ideation_session_id = ?1{}",
             filter_clause
         );
-
-        let mut params: Vec<String> = vec![session_id.as_str().to_string()];
+        let mut params = vec![session_id_str];
         params.extend(filter_params);
 
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-
-        let count: i64 = stmt
-            .query_row(params_refs.as_slice(), |row| row.get(0))
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count as u64)
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                let params_refs: Vec<&dyn rusqlite::ToSql> =
+                    params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+                let count: i64 = stmt
+                    .query_row(params_refs.as_slice(), |row| row.get(0))
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                Ok(count as u64)
+            })
+            .await
     }
 
     async fn list_all(
@@ -523,20 +509,14 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
         limit: u32,
         filter: Option<&ActivityEventFilter>,
     ) -> AppResult<ActivityEventPage> {
-        let conn = self.conn.lock().await;
-
-        // Cap limit at MAX_LIMIT
         let limit = limit.min(MAX_LIMIT);
-        // Request one extra to detect has_more
         let fetch_limit = limit + 1;
+        let cursor_owned = cursor.map(|s| s.to_string());
 
-        let (sql, params): (String, Vec<String>) = if let Some(cursor_str) = cursor {
+        let (sql, params): (String, Vec<String>) = if let Some(ref cursor_str) = cursor_owned {
             if let Some((cursor_ts, cursor_id)) = Self::parse_cursor(cursor_str) {
-                // Cursor pagination: get events older than cursor
-                // Build filter conditions starting at param index 4 (after cursor_ts, cursor_id, limit)
                 let (filter_conditions, filter_params) =
                     Self::build_list_all_filter_clause(filter, 4);
-
                 let where_clause = if filter_conditions.is_empty() {
                     "(created_at < ?1 OR (created_at = ?1 AND id < ?2))".to_string()
                 } else {
@@ -545,7 +525,6 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                         filter_conditions.join(" AND ")
                     )
                 };
-
                 let sql = format!(
                     "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
                      FROM activity_events
@@ -554,20 +533,17 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                      LIMIT ?3",
                     where_clause
                 );
-                let mut params: Vec<String> = vec![cursor_ts, cursor_id, fetch_limit.to_string()];
+                let mut params = vec![cursor_ts, cursor_id, fetch_limit.to_string()];
                 params.extend(filter_params);
                 (sql, params)
             } else {
-                // Invalid cursor, treat as first page
                 let (filter_conditions, filter_params) =
                     Self::build_list_all_filter_clause(filter, 2);
-
                 let where_clause = if filter_conditions.is_empty() {
                     "1=1".to_string()
                 } else {
                     filter_conditions.join(" AND ")
                 };
-
                 let sql = format!(
                     "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
                      FROM activity_events
@@ -576,20 +552,17 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                      LIMIT ?1",
                     where_clause
                 );
-                let mut params: Vec<String> = vec![fetch_limit.to_string()];
+                let mut params = vec![fetch_limit.to_string()];
                 params.extend(filter_params);
                 (sql, params)
             }
         } else {
-            // First page (no cursor)
             let (filter_conditions, filter_params) = Self::build_list_all_filter_clause(filter, 2);
-
             let where_clause = if filter_conditions.is_empty() {
                 "1=1".to_string()
             } else {
                 filter_conditions.join(" AND ")
             };
-
             let sql = format!(
                 "SELECT id, task_id, ideation_session_id, internal_status, event_type, role, content, metadata, created_at
                  FROM activity_events
@@ -598,40 +571,42 @@ impl ActivityEventRepository for SqliteActivityEventRepository {
                  LIMIT ?1",
                 where_clause
             );
-            let mut params: Vec<String> = vec![fetch_limit.to_string()];
+            let mut params = vec![fetch_limit.to_string()];
             params.extend(filter_params);
             (sql, params)
         };
 
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare(&sql)
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                let params_refs: Vec<&dyn rusqlite::ToSql> =
+                    params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
+                let mut events: Vec<ActivityEvent> = stmt
+                    .query_map(params_refs.as_slice(), ActivityEvent::from_row)
+                    .map_err(|e| AppError::Database(e.to_string()))?
+                    .collect::<Result<Vec<_>, _>>()
+                    .map_err(|e| AppError::Database(e.to_string()))?;
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            params.iter().map(|s| s as &dyn rusqlite::ToSql).collect();
-
-        let mut events: Vec<ActivityEvent> = stmt
-            .query_map(params_refs.as_slice(), ActivityEvent::from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let has_more = events.len() > limit as usize;
-        if has_more {
-            events.truncate(limit as usize);
-        }
-
-        let next_cursor = if has_more {
-            events.last().map(Self::format_cursor)
-        } else {
-            None
-        };
-
-        Ok(ActivityEventPage {
-            events,
-            cursor: next_cursor,
-            has_more,
-        })
+                let has_more = events.len() > limit as usize;
+                if has_more {
+                    events.truncate(limit as usize);
+                }
+                let next_cursor = if has_more {
+                    events
+                        .last()
+                        .map(SqliteActivityEventRepository::format_cursor)
+                } else {
+                    None
+                };
+                Ok(ActivityEventPage {
+                    events,
+                    cursor: next_cursor,
+                    has_more,
+                })
+            })
+            .await
     }
 }
 

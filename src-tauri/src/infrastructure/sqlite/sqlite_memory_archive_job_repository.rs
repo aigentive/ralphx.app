@@ -1,13 +1,13 @@
 // SQLite implementation of MemoryArchiveJobRepository (legacy)
 // New code should use SqliteMemoryArchiveRepository
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use rusqlite::Connection;
+use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use super::DbConnection;
 use crate::domain::entities::types::ProjectId;
 use crate::domain::entities::{
     ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, MemoryArchiveJob, MemoryArchiveJobId,
@@ -17,20 +17,22 @@ use crate::error::{AppError, AppResult};
 
 /// SQLite-backed memory archive job repository (legacy)
 pub struct SqliteMemoryArchiveJobRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteMemoryArchiveJobRepository {
     /// Create a new repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 
     /// Helper to parse a row into a MemoryArchiveJob
@@ -107,74 +109,72 @@ impl SqliteMemoryArchiveJobRepository {
 #[async_trait]
 impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
     async fn create(&self, job: MemoryArchiveJob) -> AppResult<MemoryArchiveJob> {
-        let conn = self.conn.lock().await;
-
         let payload_json = job.payload.to_json()?;
 
-        conn.execute(
-            "INSERT INTO memory_archive_jobs (
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO memory_archive_jobs (
                 id, project_id, job_type, payload_json, status, error_message,
                 created_at, updated_at, started_at, completed_at
             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            rusqlite::params![
-                job.id.0.as_str(),
-                job.project_id.as_str(),
-                job.job_type.to_string(),
-                payload_json,
-                job.status.to_string(),
-                job.error_message,
-                job.created_at.to_rfc3339(),
-                job.updated_at.to_rfc3339(),
-                job.started_at.as_ref().map(|dt| dt.to_rfc3339()),
-                job.completed_at.as_ref().map(|dt| dt.to_rfc3339()),
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(job)
+                    rusqlite::params![
+                        job.id.0.as_str(),
+                        job.project_id.as_str(),
+                        job.job_type.to_string(),
+                        payload_json,
+                        job.status.to_string(),
+                        job.error_message,
+                        job.created_at.to_rfc3339(),
+                        job.updated_at.to_rfc3339(),
+                        job.started_at.as_ref().map(|dt| dt.to_rfc3339()),
+                        job.completed_at.as_ref().map(|dt| dt.to_rfc3339()),
+                    ],
+                )?;
+                Ok(job)
+            })
+            .await
     }
 
     async fn get_by_id(&self, id: &MemoryArchiveJobId) -> AppResult<Option<MemoryArchiveJob>> {
-        let conn = self.conn.lock().await;
+        let id_str = id.0.clone();
 
-        let result = conn.query_row(
-            "SELECT id, project_id, job_type, payload_json, status, error_message,
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, project_id, job_type, payload_json, status, error_message,
                     created_at, updated_at, started_at, completed_at
              FROM memory_archive_jobs WHERE id = ?1",
-            [id.0.as_str()],
-            Self::row_to_memory_archive_job,
-        );
-
-        match result {
-            Ok(job) => Ok(Some(job)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+                    [id_str.as_str()],
+                    Self::row_to_memory_archive_job,
+                )
+            })
+            .await
     }
 
     async fn get_pending_by_project(
         &self,
         project_id: &ProjectId,
     ) -> AppResult<Vec<MemoryArchiveJob>> {
-        let conn = self.conn.lock().await;
+        let project_id_str = project_id.as_str().to_string();
 
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, project_id, job_type, payload_json, status, error_message,
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, project_id, job_type, payload_json, status, error_message,
                     created_at, updated_at, started_at, completed_at
              FROM memory_archive_jobs
              WHERE project_id = ?1 AND status = 'pending'
              ORDER BY created_at ASC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
+                )?;
 
-        let jobs = stmt
-            .query_map([project_id.as_str()], Self::row_to_memory_archive_job)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
+                let jobs = stmt
+                    .query_map([project_id_str.as_str()], Self::row_to_memory_archive_job)?
+                    .collect::<Result<Vec<_>, _>>()?;
 
-        Ok(jobs)
+                Ok(jobs)
+            })
+            .await
     }
 
     async fn update_status(
@@ -183,41 +183,47 @@ impl MemoryArchiveJobRepository for SqliteMemoryArchiveJobRepository {
         status: ArchiveJobStatus,
         error_message: Option<String>,
     ) -> AppResult<()> {
-        let conn = self.conn.lock().await;
+        let id_str = id.0.clone();
 
-        let now = Utc::now().to_rfc3339();
+        self.db
+            .run(move |conn| {
+                let now = Utc::now().to_rfc3339();
 
-        // Build the update query based on status
-        let (started_at, completed_at) = match status {
-            ArchiveJobStatus::Running => (Some(now.clone()), None),
-            ArchiveJobStatus::Done | ArchiveJobStatus::Failed => (None, Some(now.clone())),
-            ArchiveJobStatus::Pending => (None, None),
-        };
+                let (started_at, completed_at) = match status {
+                    ArchiveJobStatus::Running => (Some(now.clone()), None),
+                    ArchiveJobStatus::Done | ArchiveJobStatus::Failed => {
+                        (None, Some(now.clone()))
+                    }
+                    ArchiveJobStatus::Pending => (None, None),
+                };
 
-        let affected = conn
-            .execute(
-                "UPDATE memory_archive_jobs
+                let affected = conn.execute(
+                    "UPDATE memory_archive_jobs
              SET status = ?1,
                  error_message = ?2,
                  updated_at = ?3,
                  started_at = COALESCE(?4, started_at),
                  completed_at = COALESCE(?5, completed_at)
              WHERE id = ?6",
-                rusqlite::params![
-                    status.to_string(),
-                    error_message,
-                    now,
-                    started_at,
-                    completed_at,
-                    id.0.as_str(),
-                ],
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
+                    rusqlite::params![
+                        status.to_string(),
+                        error_message,
+                        now,
+                        started_at,
+                        completed_at,
+                        id_str.as_str(),
+                    ],
+                )?;
 
-        if affected == 0 {
-            return Err(AppError::NotFound(format!("Archive job not found: {}", id)));
-        }
+                if affected == 0 {
+                    return Err(AppError::NotFound(format!(
+                        "Archive job not found: {}",
+                        id_str
+                    )));
+                }
 
-        Ok(())
+                Ok(())
+            })
+            .await
     }
 }

@@ -144,7 +144,7 @@ async fn test_get_pending_prep() {
 
     // Add another task
     {
-        let conn = repo.conn.lock().await;
+        let conn = repo.db.inner().lock().await;
         conn.execute(
             "INSERT INTO tasks (id, project_id, category, title) VALUES ('task-2', 'proj-1', 'feature', 'Task 2')",
             [],

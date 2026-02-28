@@ -1,5 +1,5 @@
 // SQLite-based AgentRunRepository implementation
-// Uses rusqlite with connection pooling for thread-safe access
+// Uses DbConnection (spawn_blocking) for non-blocking rusqlite access
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -48,197 +48,197 @@ fn row_to_agent_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<AgentRun> {
     })
 }
 use crate::domain::repositories::AgentRunRepository;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
+
+use super::DbConnection;
 
 /// SQLite implementation of AgentRunRepository
 pub struct SqliteAgentRunRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteAgentRunRepository {
     /// Create a new SQLite agent run repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 }
 
 #[async_trait]
 impl AgentRunRepository for SqliteAgentRunRepository {
     async fn create(&self, run: AgentRun) -> AppResult<AgentRun> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "INSERT INTO agent_runs (id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            rusqlite::params![
-                run.id.as_str(),
-                run.conversation_id.as_str(),
-                run.status.to_string(),
-                run.started_at.to_rfc3339(),
-                run.completed_at.map(|dt| dt.to_rfc3339()),
-                run.error_message,
-                run.run_chain_id,
-                run.parent_run_id,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(run)
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO agent_runs (id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                    rusqlite::params![
+                        run.id.as_str(),
+                        run.conversation_id.as_str(),
+                        run.status.to_string(),
+                        run.started_at.to_rfc3339(),
+                        run.completed_at.map(|dt| dt.to_rfc3339()),
+                        run.error_message,
+                        run.run_chain_id,
+                        run.parent_run_id,
+                    ],
+                )?;
+                Ok(run)
+            })
+            .await
     }
 
     async fn get_by_id(&self, id: &AgentRunId) -> AppResult<Option<AgentRun>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
-             FROM agent_runs WHERE id = ?1",
-            [id.as_str()],
-            |row| row_to_agent_run(row),
-        );
-
-        match result {
-            Ok(run) => Ok(Some(run)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        let id = id.as_str().to_string();
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
+                     FROM agent_runs WHERE id = ?1",
+                    [&id],
+                    |row| row_to_agent_run(row),
+                )
+            })
+            .await
     }
 
     async fn get_latest_for_conversation(
         &self,
         conversation_id: &ChatConversationId,
     ) -> AppResult<Option<AgentRun>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
-             FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC LIMIT 1",
-            [conversation_id.as_str()],
-            |row| row_to_agent_run(row),
-        );
-
-        match result {
-            Ok(run) => Ok(Some(run)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        let conversation_id = conversation_id.as_str().to_string();
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
+                     FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC LIMIT 1",
+                    [&conversation_id],
+                    |row| row_to_agent_run(row),
+                )
+            })
+            .await
     }
 
     async fn get_active_for_conversation(
         &self,
         conversation_id: &ChatConversationId,
     ) -> AppResult<Option<AgentRun>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
-             FROM agent_runs WHERE conversation_id = ?1 AND status = 'running' ORDER BY started_at DESC LIMIT 1",
-            [conversation_id.as_str()],
-            |row| row_to_agent_run(row),
-        );
-
-        match result {
-            Ok(run) => Ok(Some(run)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        let conversation_id = conversation_id.as_str().to_string();
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
+                     FROM agent_runs WHERE conversation_id = ?1 AND status = 'running' ORDER BY started_at DESC LIMIT 1",
+                    [&conversation_id],
+                    |row| row_to_agent_run(row),
+                )
+            })
+            .await
     }
 
     async fn get_by_conversation(
         &self,
         conversation_id: &ChatConversationId,
     ) -> AppResult<Vec<AgentRun>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
-                 FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let runs = stmt
-            .query_map([conversation_id.as_str()], |row| row_to_agent_run(row))
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(runs)
+        let conversation_id = conversation_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, conversation_id, status, started_at, completed_at, error_message, run_chain_id, parent_run_id
+                     FROM agent_runs WHERE conversation_id = ?1 ORDER BY started_at DESC",
+                )?;
+                let runs = stmt
+                    .query_map([&conversation_id], |row| row_to_agent_run(row))?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(runs)
+            })
+            .await
     }
 
     async fn update_status(&self, id: &AgentRunId, status: AgentRunStatus) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "UPDATE agent_runs SET status = ?1 WHERE id = ?2",
-            rusqlite::params![status.to_string(), id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id = id.as_str().to_string();
+        let status_str = status.to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE agent_runs SET status = ?1 WHERE id = ?2",
+                    rusqlite::params![status_str, id],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn complete(&self, id: &AgentRunId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "UPDATE agent_runs SET status = 'completed', completed_at = ?1, error_message = NULL WHERE id = ?2",
-            rusqlite::params![Utc::now().to_rfc3339(), id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE agent_runs SET status = 'completed', completed_at = ?1, error_message = NULL WHERE id = ?2",
+                    rusqlite::params![Utc::now().to_rfc3339(), id],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn fail(&self, id: &AgentRunId, error_message: &str) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "UPDATE agent_runs SET status = 'failed', completed_at = ?1, error_message = ?2 WHERE id = ?3",
-            rusqlite::params![Utc::now().to_rfc3339(), error_message, id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id = id.as_str().to_string();
+        let error_message = error_message.to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE agent_runs SET status = 'failed', completed_at = ?1, error_message = ?2 WHERE id = ?3",
+                    rusqlite::params![Utc::now().to_rfc3339(), error_message, id],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn cancel(&self, id: &AgentRunId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "UPDATE agent_runs SET status = 'cancelled', completed_at = ?1, error_message = NULL WHERE id = ?2",
-            rusqlite::params![Utc::now().to_rfc3339(), id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE agent_runs SET status = 'cancelled', completed_at = ?1, error_message = NULL WHERE id = ?2",
+                    rusqlite::params![Utc::now().to_rfc3339(), id],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn delete(&self, id: &AgentRunId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute("DELETE FROM agent_runs WHERE id = ?1", [id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute("DELETE FROM agent_runs WHERE id = ?1", [id])?;
+                Ok(())
+            })
+            .await
     }
 
     async fn delete_by_conversation(&self, conversation_id: &ChatConversationId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "DELETE FROM agent_runs WHERE conversation_id = ?1",
-            [conversation_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let conversation_id = conversation_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM agent_runs WHERE conversation_id = ?1",
+                    [conversation_id],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn count_by_status(
@@ -246,121 +246,114 @@ impl AgentRunRepository for SqliteAgentRunRepository {
         conversation_id: &ChatConversationId,
         status: AgentRunStatus,
     ) -> AppResult<u32> {
-        let conn = self.conn.lock().await;
-
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM agent_runs WHERE conversation_id = ?1 AND status = ?2",
-                [conversation_id.as_str(), status.to_string()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count as u32)
+        let conversation_id = conversation_id.as_str().to_string();
+        let status_str = status.to_string();
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM agent_runs WHERE conversation_id = ?1 AND status = ?2",
+                    [conversation_id.as_str(), status_str.as_str()],
+                    |row| row.get(0),
+                )?;
+                Ok(count as u32)
+            })
+            .await
     }
 
     async fn cancel_all_running(&self) -> AppResult<u32> {
-        let conn = self.conn.lock().await;
-
-        let changes = conn
-            .execute(
-                "UPDATE agent_runs SET status = 'cancelled', completed_at = ?1, error_message = 'Orphaned on app restart' WHERE status = 'running'",
-                rusqlite::params![Utc::now().to_rfc3339()],
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(changes as u32)
+        self.db
+            .run(move |conn| {
+                let changes = conn.execute(
+                    "UPDATE agent_runs SET status = 'cancelled', completed_at = ?1, error_message = 'Orphaned on app restart' WHERE status = 'running'",
+                    rusqlite::params![Utc::now().to_rfc3339()],
+                )?;
+                Ok(changes as u32)
+            })
+            .await
     }
 
     async fn get_interrupted_conversations(&self) -> AppResult<Vec<InterruptedConversation>> {
-        let conn = self.conn.lock().await;
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT
+                        c.id as conv_id,
+                        c.context_type,
+                        c.context_id,
+                        c.claude_session_id,
+                        c.title,
+                        c.message_count,
+                        c.last_message_at,
+                        c.created_at as conv_created_at,
+                        c.updated_at as conv_updated_at,
+                        ar.id as run_id,
+                        ar.conversation_id,
+                        ar.status,
+                        ar.started_at,
+                        ar.completed_at,
+                        ar.error_message,
+                        ar.run_chain_id,
+                        ar.parent_run_id
+                    FROM chat_conversations c
+                    INNER JOIN agent_runs ar ON c.id = ar.conversation_id
+                    WHERE c.claude_session_id IS NOT NULL
+                      AND ar.status = 'cancelled'
+                      AND ar.error_message = 'Orphaned on app restart'
+                      AND ar.id = (
+                        SELECT ar2.id FROM agent_runs ar2
+                        WHERE ar2.conversation_id = c.id
+                        ORDER BY ar2.started_at DESC LIMIT 1
+                      )
+                    ORDER BY ar.started_at DESC",
+                )?;
 
-        // Query joins chat_conversations with agent_runs to find:
-        // - Conversations with a claude_session_id (can use --resume)
-        // - Latest agent run is cancelled with "Orphaned on app restart" error
-        let mut stmt = conn
-            .prepare(
-                "SELECT
-                    c.id as conv_id,
-                    c.context_type,
-                    c.context_id,
-                    c.claude_session_id,
-                    c.title,
-                    c.message_count,
-                    c.last_message_at,
-                    c.created_at as conv_created_at,
-                    c.updated_at as conv_updated_at,
-                    ar.id as run_id,
-                    ar.conversation_id,
-                    ar.status,
-                    ar.started_at,
-                    ar.completed_at,
-                    ar.error_message,
-                    ar.run_chain_id,
-                    ar.parent_run_id
-                FROM chat_conversations c
-                INNER JOIN agent_runs ar ON c.id = ar.conversation_id
-                WHERE c.claude_session_id IS NOT NULL
-                  AND ar.status = 'cancelled'
-                  AND ar.error_message = 'Orphaned on app restart'
-                  AND ar.id = (
-                    SELECT ar2.id FROM agent_runs ar2
-                    WHERE ar2.conversation_id = c.id
-                    ORDER BY ar2.started_at DESC LIMIT 1
-                  )
-                ORDER BY ar.started_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
+                let results = stmt
+                    .query_map([], |row| {
+                        let context_type_str: String = row.get("context_type")?;
+                        let conv_created_at_str: String = row.get("conv_created_at")?;
+                        let conv_updated_at_str: String = row.get("conv_updated_at")?;
+                        let last_message_at_str: Option<String> = row.get("last_message_at")?;
 
-        let results = stmt
-            .query_map([], |row| {
-                // Parse conversation fields
-                let context_type_str: String = row.get("context_type")?;
-                let conv_created_at_str: String = row.get("conv_created_at")?;
-                let conv_updated_at_str: String = row.get("conv_updated_at")?;
-                let last_message_at_str: Option<String> = row.get("last_message_at")?;
+                        let conversation = ChatConversation {
+                            id: ChatConversationId::from_string(row.get::<_, String>("conv_id")?),
+                            context_type: context_type_str.parse().unwrap_or(ChatContextType::Project),
+                            context_id: row.get("context_id")?,
+                            claude_session_id: row.get("claude_session_id")?,
+                            title: row.get("title")?,
+                            message_count: row.get("message_count")?,
+                            last_message_at: last_message_at_str.map(|s| parse_datetime(&s)),
+                            created_at: parse_datetime(&conv_created_at_str),
+                            updated_at: parse_datetime(&conv_updated_at_str),
+                            parent_conversation_id: None,
+                        };
 
-                let conversation = ChatConversation {
-                    id: ChatConversationId::from_string(row.get::<_, String>("conv_id")?),
-                    context_type: context_type_str.parse().unwrap_or(ChatContextType::Project),
-                    context_id: row.get("context_id")?,
-                    claude_session_id: row.get("claude_session_id")?,
-                    title: row.get("title")?,
-                    message_count: row.get("message_count")?,
-                    last_message_at: last_message_at_str.map(|s| parse_datetime(&s)),
-                    created_at: parse_datetime(&conv_created_at_str),
-                    updated_at: parse_datetime(&conv_updated_at_str),
-                    parent_conversation_id: None,
-                };
+                        let status_str: String = row.get("status")?;
+                        let started_at_str: String = row.get("started_at")?;
+                        let completed_at_str: Option<String> = row.get("completed_at")?;
 
-                // Parse agent run fields
-                let status_str: String = row.get("status")?;
-                let started_at_str: String = row.get("started_at")?;
-                let completed_at_str: Option<String> = row.get("completed_at")?;
+                        let last_run = AgentRun {
+                            id: AgentRunId::from_string(row.get::<_, String>("run_id")?),
+                            conversation_id: ChatConversationId::from_string(
+                                row.get::<_, String>("conversation_id")?,
+                            ),
+                            status: status_str.parse().unwrap_or(AgentRunStatus::Cancelled),
+                            started_at: parse_datetime(&started_at_str),
+                            completed_at: completed_at_str.map(|s| parse_datetime(&s)),
+                            error_message: row.get("error_message")?,
+                            run_chain_id: row.get("run_chain_id")?,
+                            parent_run_id: row.get("parent_run_id")?,
+                        };
 
-                let last_run = AgentRun {
-                    id: AgentRunId::from_string(row.get::<_, String>("run_id")?),
-                    conversation_id: ChatConversationId::from_string(
-                        row.get::<_, String>("conversation_id")?,
-                    ),
-                    status: status_str.parse().unwrap_or(AgentRunStatus::Cancelled),
-                    started_at: parse_datetime(&started_at_str),
-                    completed_at: completed_at_str.map(|s| parse_datetime(&s)),
-                    error_message: row.get("error_message")?,
-                    run_chain_id: row.get("run_chain_id")?,
-                    parent_run_id: row.get("parent_run_id")?,
-                };
+                        Ok(InterruptedConversation {
+                            conversation,
+                            last_run,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
 
-                Ok(InterruptedConversation {
-                    conversation,
-                    last_run,
-                })
+                Ok(results)
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(results)
+            .await
     }
 }
 

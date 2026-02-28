@@ -70,7 +70,7 @@ async fn test_create_artifact_with_task() {
 
     // Create a task first to satisfy foreign key constraint
     {
-        let c = repo.conn.lock().await;
+        let c = repo.db.inner().lock().await;
         c.execute(
             "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
              VALUES ('proj-1', 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
@@ -248,7 +248,7 @@ async fn test_get_by_task_returns_matching() {
 
     // Create a task first to satisfy foreign key constraint
     {
-        let c = repo.conn.lock().await;
+        let c = repo.db.inner().lock().await;
         c.execute(
             "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
              VALUES ('proj-1', 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",

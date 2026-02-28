@@ -1,5 +1,6 @@
 // SQLite-based AgentProfileRepository implementation for production use
-// Uses rusqlite with connection pooling for thread-safe access
+// All rusqlite calls go through DbConnection::run() (spawn_blocking + blocking_lock)
+// to prevent blocking the tokio async runtime / timer driver.
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -10,24 +11,26 @@ use rusqlite::Connection;
 use crate::domain::agents::{AgentProfile, ProfileRole};
 use crate::domain::repositories::{AgentProfileId, AgentProfileRepository};
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::sqlite::DbConnection;
 
 /// SQLite implementation of AgentProfileRepository for production use
-/// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteAgentProfileRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteAgentProfileRepository {
     /// Create a new SQLite agent profile repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 }
 
@@ -39,231 +42,220 @@ impl AgentProfileRepository for SqliteAgentProfileRepository {
         profile: &AgentProfile,
         is_builtin: bool,
     ) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
+        let id_str = id.as_str().to_string();
+        let name = profile.name.clone();
+        let role = profile.role.to_string();
         let profile_json = serde_json::to_string(profile)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
+        let is_builtin_int = if is_builtin { 1i32 } else { 0 };
 
-        conn.execute(
-            "INSERT INTO agent_profiles (id, name, role, profile_json, is_builtin)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![
-                id.as_str(),
-                profile.name,
-                profile.role.to_string(),
-                profile_json,
-                if is_builtin { 1 } else { 0 },
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO agent_profiles (id, name, role, profile_json, is_builtin)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![id_str, name, role, profile_json, is_builtin_int],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn get_by_id(&self, id: &AgentProfileId) -> AppResult<Option<AgentProfile>> {
-        let conn = self.conn.lock().await;
+        let id_str = id.as_str().to_string();
+        let maybe_json = self
+            .db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT profile_json FROM agent_profiles WHERE id = ?1",
+                    rusqlite::params![id_str],
+                    |row| row.get::<_, String>(0),
+                )
+            })
+            .await?;
 
-        let result = conn.query_row(
-            "SELECT profile_json FROM agent_profiles WHERE id = ?1",
-            [id.as_str()],
-            |row| {
-                let json: String = row.get(0)?;
-                Ok(json)
-            },
-        );
-
-        match result {
-            Ok(json) => {
-                let profile: AgentProfile = serde_json::from_str(&json).map_err(|e| {
-                    AppError::Database(format!("JSON deserialization error: {}", e))
-                })?;
-                Ok(Some(profile))
-            }
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        maybe_json
+            .map(|json| {
+                serde_json::from_str(&json)
+                    .map_err(|e| AppError::Database(format!("JSON deserialization error: {}", e)))
+            })
+            .transpose()
     }
 
     async fn get_by_name(&self, name: &str) -> AppResult<Option<AgentProfile>> {
-        let conn = self.conn.lock().await;
+        let name_str = name.to_string();
+        let maybe_json = self
+            .db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT profile_json FROM agent_profiles WHERE name = ?1",
+                    rusqlite::params![name_str],
+                    |row| row.get::<_, String>(0),
+                )
+            })
+            .await?;
 
-        let result = conn.query_row(
-            "SELECT profile_json FROM agent_profiles WHERE name = ?1",
-            [name],
-            |row| {
-                let json: String = row.get(0)?;
-                Ok(json)
-            },
-        );
-
-        match result {
-            Ok(json) => {
-                let profile: AgentProfile = serde_json::from_str(&json).map_err(|e| {
-                    AppError::Database(format!("JSON deserialization error: {}", e))
-                })?;
-                Ok(Some(profile))
-            }
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        maybe_json
+            .map(|json| {
+                serde_json::from_str(&json)
+                    .map_err(|e| AppError::Database(format!("JSON deserialization error: {}", e)))
+            })
+            .transpose()
     }
 
     async fn get_all(&self) -> AppResult<Vec<AgentProfile>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare("SELECT profile_json FROM agent_profiles ORDER BY name ASC")
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let profiles = stmt
-            .query_map([], |row| {
-                let json: String = row.get(0)?;
-                Ok(json)
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare("SELECT profile_json FROM agent_profiles ORDER BY name ASC")?;
+                let jsons = stmt
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<String>, _>>()?;
+                jsons
+                    .into_iter()
+                    .map(|json| {
+                        serde_json::from_str(&json).map_err(|e| {
+                            AppError::Database(format!("JSON deserialization error: {}", e))
+                        })
+                    })
+                    .collect()
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<String>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        profiles
-            .into_iter()
-            .map(|json| {
-                serde_json::from_str(&json)
-                    .map_err(|e| AppError::Database(format!("JSON deserialization error: {}", e)))
-            })
-            .collect()
+            .await
     }
 
     async fn get_by_role(&self, role: ProfileRole) -> AppResult<Vec<AgentProfile>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare("SELECT profile_json FROM agent_profiles WHERE role = ?1 ORDER BY name ASC")
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let profiles = stmt
-            .query_map([role.to_string()], |row| {
-                let json: String = row.get(0)?;
-                Ok(json)
+        let role_str = role.to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT profile_json FROM agent_profiles WHERE role = ?1 ORDER BY name ASC",
+                )?;
+                let jsons = stmt
+                    .query_map(rusqlite::params![role_str], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<String>, _>>()?;
+                jsons
+                    .into_iter()
+                    .map(|json| {
+                        serde_json::from_str(&json).map_err(|e| {
+                            AppError::Database(format!("JSON deserialization error: {}", e))
+                        })
+                    })
+                    .collect()
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<String>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        profiles
-            .into_iter()
-            .map(|json| {
-                serde_json::from_str(&json)
-                    .map_err(|e| AppError::Database(format!("JSON deserialization error: {}", e)))
-            })
-            .collect()
+            .await
     }
 
     async fn get_builtin(&self) -> AppResult<Vec<AgentProfile>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT profile_json FROM agent_profiles WHERE is_builtin = 1 ORDER BY name ASC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let profiles = stmt
-            .query_map([], |row| {
-                let json: String = row.get(0)?;
-                Ok(json)
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT profile_json FROM agent_profiles WHERE is_builtin = 1 ORDER BY name ASC",
+                )?;
+                let jsons = stmt
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<String>, _>>()?;
+                jsons
+                    .into_iter()
+                    .map(|json| {
+                        serde_json::from_str(&json).map_err(|e| {
+                            AppError::Database(format!("JSON deserialization error: {}", e))
+                        })
+                    })
+                    .collect()
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<String>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        profiles
-            .into_iter()
-            .map(|json| {
-                serde_json::from_str(&json)
-                    .map_err(|e| AppError::Database(format!("JSON deserialization error: {}", e)))
-            })
-            .collect()
+            .await
     }
 
     async fn get_custom(&self) -> AppResult<Vec<AgentProfile>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT profile_json FROM agent_profiles WHERE is_builtin = 0 ORDER BY name ASC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let profiles = stmt
-            .query_map([], |row| {
-                let json: String = row.get(0)?;
-                Ok(json)
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT profile_json FROM agent_profiles WHERE is_builtin = 0 ORDER BY name ASC",
+                )?;
+                let jsons = stmt
+                    .query_map([], |row| row.get::<_, String>(0))?
+                    .collect::<Result<Vec<String>, _>>()?;
+                jsons
+                    .into_iter()
+                    .map(|json| {
+                        serde_json::from_str(&json).map_err(|e| {
+                            AppError::Database(format!("JSON deserialization error: {}", e))
+                        })
+                    })
+                    .collect()
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<String>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        profiles
-            .into_iter()
-            .map(|json| {
-                serde_json::from_str(&json)
-                    .map_err(|e| AppError::Database(format!("JSON deserialization error: {}", e)))
-            })
-            .collect()
+            .await
     }
 
     async fn update(&self, id: &AgentProfileId, profile: &AgentProfile) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
+        let id_str = id.as_str().to_string();
+        let name = profile.name.clone();
+        let role = profile.role.to_string();
         let profile_json = serde_json::to_string(profile)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
-        conn.execute(
-            "UPDATE agent_profiles SET name = ?2, role = ?3, profile_json = ?4, updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
-             WHERE id = ?1",
-            rusqlite::params![
-                id.as_str(),
-                profile.name,
-                profile.role.to_string(),
-                profile_json,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE agent_profiles SET name = ?2, role = ?3, profile_json = ?4, updated_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
+                     WHERE id = ?1",
+                    rusqlite::params![id_str, name, role, profile_json],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn delete(&self, id: &AgentProfileId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute("DELETE FROM agent_profiles WHERE id = ?1", [id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id_str = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM agent_profiles WHERE id = ?1",
+                    rusqlite::params![id_str],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn exists_by_name(&self, name: &str) -> AppResult<bool> {
-        let conn = self.conn.lock().await;
-
-        let count: i32 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM agent_profiles WHERE name = ?1",
-                [name],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count > 0)
+        let name_str = name.to_string();
+        self.db
+            .run(move |conn| {
+                let count: i32 = conn.query_row(
+                    "SELECT COUNT(*) FROM agent_profiles WHERE name = ?1",
+                    rusqlite::params![name_str],
+                    |row| row.get(0),
+                )?;
+                Ok(count > 0)
+            })
+            .await
     }
 
     async fn seed_builtin_profiles(&self) -> AppResult<()> {
-        for profile in AgentProfile::builtin_profiles() {
-            if !self.exists_by_name(&profile.name).await? {
-                let id = AgentProfileId::from_string(&profile.id);
-                self.create(&id, &profile, true).await?;
-            }
-        }
-        Ok(())
+        let profiles = AgentProfile::builtin_profiles();
+        self.db
+            .run(move |conn| {
+                for profile in profiles {
+                    let profile_json = serde_json::to_string(&profile).map_err(|e| {
+                        AppError::Database(format!("JSON serialization error: {}", e))
+                    })?;
+                    conn.execute(
+                        "INSERT OR IGNORE INTO agent_profiles (id, name, role, profile_json, is_builtin)
+                         VALUES (?1, ?2, ?3, ?4, ?5)",
+                        rusqlite::params![
+                            profile.id,
+                            profile.name,
+                            profile.role.to_string(),
+                            profile_json,
+                            1i32,
+                        ],
+                    )?;
+                }
+                Ok(())
+            })
+            .await
     }
 }
 

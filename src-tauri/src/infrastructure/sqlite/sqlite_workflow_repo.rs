@@ -1,5 +1,6 @@
 // SQLite-based WorkflowRepository implementation for production use
-// Uses rusqlite with connection pooling for thread-safe access
+// All rusqlite calls go through DbConnection::run() (spawn_blocking + blocking_lock)
+// to prevent blocking the tokio async runtime / timer driver.
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -10,24 +11,26 @@ use rusqlite::Connection;
 use crate::domain::entities::{WorkflowId, WorkflowSchema};
 use crate::domain::repositories::WorkflowRepository;
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::sqlite::DbConnection;
 
 /// SQLite implementation of WorkflowRepository for production use
-/// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteWorkflowRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteWorkflowRepository {
     /// Create a new SQLite workflow repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 
     /// Parse a WorkflowSchema from a database row
@@ -51,129 +54,116 @@ impl SqliteWorkflowRepository {
 #[async_trait]
 impl WorkflowRepository for SqliteWorkflowRepository {
     async fn create(&self, workflow: WorkflowSchema) -> AppResult<WorkflowSchema> {
-        let conn = self.conn.lock().await;
-
         let schema_json = serde_json::to_string(&workflow)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
+        let id_str = workflow.id.as_str().to_string();
+        let name = workflow.name.clone();
+        let description = workflow.description.clone();
+        let is_default = if workflow.is_default { 1i32 } else { 0 };
 
-        conn.execute(
-            "INSERT INTO workflows (id, name, description, schema_json, is_default)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![
-                workflow.id.as_str(),
-                workflow.name,
-                workflow.description,
-                schema_json,
-                if workflow.is_default { 1 } else { 0 },
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO workflows (id, name, description, schema_json, is_default)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![id_str, name, description, schema_json, is_default],
+                )?;
+                Ok(())
+            })
+            .await?;
         Ok(workflow)
     }
 
     async fn get_by_id(&self, id: &WorkflowId) -> AppResult<Option<WorkflowSchema>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, name, description, schema_json, is_default
-             FROM workflows WHERE id = ?1",
-            [id.as_str()],
-            |row| Self::workflow_from_row(row),
-        );
-
-        match result {
-            Ok(workflow) => Ok(Some(workflow)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        let id_str = id.as_str().to_string();
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, name, description, schema_json, is_default
+                     FROM workflows WHERE id = ?1",
+                    rusqlite::params![id_str],
+                    SqliteWorkflowRepository::workflow_from_row,
+                )
+            })
+            .await
     }
 
     async fn get_all(&self) -> AppResult<Vec<WorkflowSchema>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, name, description, schema_json, is_default
-                 FROM workflows ORDER BY name ASC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let workflows = stmt
-            .query_map([], Self::workflow_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(workflows)
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, name, description, schema_json, is_default
+                     FROM workflows ORDER BY name ASC",
+                )?;
+                let workflows = stmt
+                    .query_map([], SqliteWorkflowRepository::workflow_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(workflows)
+            })
+            .await
     }
 
     async fn get_default(&self) -> AppResult<Option<WorkflowSchema>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, name, description, schema_json, is_default
-             FROM workflows WHERE is_default = 1",
-            [],
-            |row| Self::workflow_from_row(row),
-        );
-
-        match result {
-            Ok(workflow) => Ok(Some(workflow)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, name, description, schema_json, is_default
+                     FROM workflows WHERE is_default = 1",
+                    [],
+                    SqliteWorkflowRepository::workflow_from_row,
+                )
+            })
+            .await
     }
 
     async fn update(&self, workflow: &WorkflowSchema) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let schema_json = serde_json::to_string(workflow)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
+        let id_str = workflow.id.as_str().to_string();
+        let name = workflow.name.clone();
+        let description = workflow.description.clone();
+        let is_default = if workflow.is_default { 1i32 } else { 0 };
 
-        conn.execute(
-            "UPDATE workflows SET name = ?2, description = ?3, schema_json = ?4, is_default = ?5
-             WHERE id = ?1",
-            rusqlite::params![
-                workflow.id.as_str(),
-                workflow.name,
-                workflow.description,
-                schema_json,
-                if workflow.is_default { 1 } else { 0 },
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE workflows SET name = ?2, description = ?3, schema_json = ?4, is_default = ?5
+                     WHERE id = ?1",
+                    rusqlite::params![id_str, name, description, schema_json, is_default],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn delete(&self, id: &WorkflowId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute("DELETE FROM workflows WHERE id = ?1", [id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id_str = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM workflows WHERE id = ?1",
+                    rusqlite::params![id_str],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn set_default(&self, id: &WorkflowId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        // First, unset any existing default
-        conn.execute(
-            "UPDATE workflows SET is_default = 0 WHERE is_default = 1",
-            [],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        // Then set the new default
-        conn.execute(
-            "UPDATE workflows SET is_default = 1 WHERE id = ?1",
-            [id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id_str = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE workflows SET is_default = 0 WHERE is_default = 1",
+                    [],
+                )?;
+                conn.execute(
+                    "UPDATE workflows SET is_default = 1 WHERE id = ?1",
+                    rusqlite::params![id_str],
+                )?;
+                Ok(())
+            })
+            .await
     }
 }
 
@@ -185,18 +175,31 @@ impl SqliteWorkflowRepository {
             WorkflowSchema::default_ralphx(),
             WorkflowSchema::jira_compatible(),
         ];
-
-        let mut seeded_count = 0;
-
-        for workflow in builtin_workflows {
-            // Check if workflow already exists
-            if self.get_by_id(&workflow.id).await?.is_none() {
-                self.create(workflow).await?;
-                seeded_count += 1;
-            }
-        }
-
-        Ok(seeded_count)
+        self.db
+            .run(move |conn| {
+                let mut seeded_count = 0;
+                for workflow in builtin_workflows {
+                    let schema_json = serde_json::to_string(&workflow).map_err(|e| {
+                        AppError::Database(format!("JSON serialization error: {}", e))
+                    })?;
+                    let rows = conn.execute(
+                        "INSERT OR IGNORE INTO workflows (id, name, description, schema_json, is_default)
+                         VALUES (?1, ?2, ?3, ?4, ?5)",
+                        rusqlite::params![
+                            workflow.id.as_str(),
+                            workflow.name,
+                            workflow.description,
+                            schema_json,
+                            if workflow.is_default { 1i32 } else { 0 },
+                        ],
+                    )?;
+                    if rows > 0 {
+                        seeded_count += 1;
+                    }
+                }
+                Ok(seeded_count)
+            })
+            .await
     }
 }
 
