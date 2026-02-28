@@ -57,10 +57,8 @@ export function useTaskEvents() {
       queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
       // Invalidate state transitions so StateTimelineNav updates
       queryClient.invalidateQueries({ queryKey: stateTransitionKeys.task(taskId) });
-      // Refetch full task data when entering merged state to get merge_commit_sha
-      if (to === "merged") {
-        queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
-      }
+      // Refetch full task data on every status change so detail view updates in real-time
+      queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
       // Bridge to graph hooks that listen for task:updated
       bus.emit("task:updated", { taskId });
     };

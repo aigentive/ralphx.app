@@ -191,7 +191,8 @@ export function useChatRecovery({
   // Merge watchdog: keep polling task status while in merge flow
   useEffect(() => {
     if (ideationSessionId || !selectedTaskId) return undefined;
-    if (!effectiveStatus || !(MERGE_STATUSES as readonly string[]).includes(effectiveStatus)) return undefined;
+    // Poll during approved status too — bridges the gap before pending_merge
+    if (!effectiveStatus || (effectiveStatus !== "approved" && !(MERGE_STATUSES as readonly string[]).includes(effectiveStatus))) return undefined;
 
     const intervalId = setInterval(() => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
