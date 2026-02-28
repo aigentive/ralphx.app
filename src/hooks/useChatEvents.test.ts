@@ -286,6 +286,7 @@ describe("useChatEvents", () => {
       const parentId = "toolu_parent";
       const parentTask: StreamingTask = {
         toolUseId: parentId,
+        toolName: "Task",
         description: "Test task",
         subagentType: "Bash",
         model: "sonnet",
@@ -350,7 +351,7 @@ describe("useChatEvents", () => {
       expect((blocksResult[0] as { type: "tool_use"; toolCall: ToolCall }).toolCall.result).toBeUndefined();
 
       // streamingTasks returns same reference when no child matches
-      const existingTasks = new Map([["t1", { toolUseId: "t1", description: "", subagentType: "", model: "", status: "running" as const, startedAt: 0, childToolCalls: [] }]]);
+      const existingTasks = new Map([["t1", { toolUseId: "t1", toolName: "Task", description: "", subagentType: "", model: "", status: "running" as const, startedAt: 0, childToolCalls: [] }]]);
       const tasksResult = executeUpdater<Map<string, StreamingTask>>(props.setStreamingTasks, existingTasks);
       expect(tasksResult).toBe(existingTasks); // Same reference since no child matched
     });
@@ -384,6 +385,7 @@ describe("useChatEvents", () => {
       // Execute the updater with a parent task already in the map
       const parentTask: StreamingTask = {
         toolUseId: parentId,
+        toolName: "Task",
         description: "Test task",
         subagentType: "Bash",
         model: "sonnet",
@@ -492,7 +494,7 @@ describe("useChatEvents", () => {
 
       const taskResult = executeUpdater<Map<string, StreamingTask>>(
         props.setStreamingTasks,
-        new Map([["t1", { toolUseId: "t1", description: "", subagentType: "", model: "", status: "running" as const, startedAt: 0, childToolCalls: [] }]]),
+        new Map([["t1", { toolUseId: "t1", toolName: "Task", description: "", subagentType: "", model: "", status: "running" as const, startedAt: 0, childToolCalls: [] }]]),
       );
       expect(taskResult.size).toBe(0);
     });
@@ -949,6 +951,7 @@ describe("useChatEvents", () => {
       // Run updater with existing running task
       const existingTask: StreamingTask = {
         toolUseId: "toolu_task_002",
+        toolName: "Task",
         description: "Some task",
         subagentType: "Plan",
         model: "opus",
@@ -1182,7 +1185,220 @@ describe("useChatEvents", () => {
   });
 
   // --------------------------------------------------------------------------
-  // 11. Cleanup on unmount
+  // 11. Agent tool call streaming (Agent == Task for rendering purposes)
+  // --------------------------------------------------------------------------
+  describe("Agent tool call streaming", () => {
+    it("should create a task position marker when tool_name is 'Agent' (capitalized)", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Agent",
+          tool_id: "toolu_agent_001",
+          arguments: {
+            description: "Explore the codebase",
+            subagent_type: "Explore",
+            model: "sonnet",
+          },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // Agent tool call should create a task position marker in streamingContentBlocks
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
+
+      let blocks: StreamingContentBlock[] = [];
+      for (const call of props.setStreamingContentBlocks.mock.calls) {
+        const updater = call[0];
+        blocks = typeof updater === "function" ? updater(blocks) : updater;
+      }
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toEqual({ type: "task", toolUseId: "toolu_agent_001" });
+    });
+
+    it("should create a task position marker when tool_name is 'agent' (lowercase)", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "agent",
+          tool_id: "toolu_agent_002",
+          arguments: { description: "Run tests", subagent_type: "general-purpose" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      let blocks: StreamingContentBlock[] = [];
+      for (const call of props.setStreamingContentBlocks.mock.calls) {
+        const updater = call[0];
+        blocks = typeof updater === "function" ? updater(blocks) : updater;
+      }
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toEqual({ type: "task", toolUseId: "toolu_agent_002" });
+    });
+
+    it("should create a task position marker when tool_name is 'AGENT' (uppercase)", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "AGENT",
+          tool_id: "toolu_agent_003",
+          arguments: { description: "Plan implementation", subagent_type: "Plan" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      let blocks: StreamingContentBlock[] = [];
+      for (const call of props.setStreamingContentBlocks.mock.calls) {
+        const updater = call[0];
+        blocks = typeof updater === "function" ? updater(blocks) : updater;
+      }
+      expect(blocks).toHaveLength(1);
+      expect(blocks[0]).toEqual({ type: "task", toolUseId: "toolu_agent_003" });
+    });
+
+    it("should deduplicate Agent position markers when same tool_id fires twice", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // First event: Agent tool call started
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Agent",
+          tool_id: "toolu_agent_dup",
+          arguments: { description: "Dup agent", subagent_type: "Explore" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+      // Second event: same tool_id with result (shouldn't add duplicate marker)
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Agent",
+          tool_id: "toolu_agent_dup",
+          arguments: { description: "Dup agent", subagent_type: "Explore" },
+          result: "done",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      let blocks: StreamingContentBlock[] = [];
+      for (const call of props.setStreamingContentBlocks.mock.calls) {
+        const updater = call[0];
+        blocks = typeof updater === "function" ? updater(blocks) : updater;
+      }
+
+      // Only one task marker
+      const taskMarkers = blocks.filter((b) => b.type === "task");
+      expect(taskMarkers).toHaveLength(1);
+      expect(taskMarkers[0]).toEqual({ type: "task", toolUseId: "toolu_agent_dup" });
+    });
+
+    it("should create a StreamingTask on agent:task_started for an Agent tool_use_id", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // Agent tool call fires first (creates position marker)
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Agent",
+          tool_id: "toolu_agent_stream_1",
+          arguments: {
+            description: "Explore codebase",
+            subagent_type: "Explore",
+            model: "sonnet",
+          },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // task_started fires (creates StreamingTask for the Agent tool use)
+      act(() => {
+        fireEvent("agent:task_started", {
+          tool_use_id: "toolu_agent_stream_1",
+          description: "Explore codebase",
+          subagent_type: "Explore",
+          model: "sonnet",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
+
+      let tasksMap = new Map<string, StreamingTask>();
+      for (const call of props.setStreamingTasks.mock.calls) {
+        const updater = call[0];
+        tasksMap = typeof updater === "function" ? updater(tasksMap) : updater;
+      }
+
+      const task = tasksMap.get("toolu_agent_stream_1");
+      expect(task).toBeDefined();
+      expect(task!.toolUseId).toBe("toolu_agent_stream_1");
+      expect(task!.description).toBe("Explore codebase");
+      expect(task!.subagentType).toBe("Explore");
+      expect(task!.model).toBe("sonnet");
+      expect(task!.status).toBe("running");
+    });
+
+    it("should interleave Agent position marker between text blocks (text → agent → text)", () => {
+      const props = makeProps();
+      renderAndClear(props);
+
+      // 1. Text arrives first
+      act(() => {
+        fireEvent("agent:chunk", {
+          text: "Spawning an agent: ",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // 2. Agent tool call arrives — should insert a position marker
+      act(() => {
+        fireEvent("agent:tool_call", {
+          tool_name: "Agent",
+          tool_id: "toolu_agent_interleave",
+          arguments: { description: "Do research", subagent_type: "general-purpose" },
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      // 3. More text arrives after the agent
+      act(() => {
+        fireEvent("agent:chunk", {
+          text: "Agent spawned.",
+          conversation_id: CONV_ID,
+          context_id: CTX_ID,
+        });
+      });
+
+      let blocks: StreamingContentBlock[] = [];
+      for (const call of props.setStreamingContentBlocks.mock.calls) {
+        const updater = call[0];
+        blocks = typeof updater === "function" ? updater(blocks) : updater;
+      }
+
+      // Expect: [text, task-marker, text] in chronological order
+      expect(blocks).toHaveLength(3);
+      expect(blocks[0]).toEqual({ type: "text", text: "Spawning an agent: " });
+      expect(blocks[1]).toEqual({ type: "task", toolUseId: "toolu_agent_interleave" });
+      expect(blocks[2]).toEqual({ type: "text", text: "Agent spawned." });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // 12. Cleanup on unmount
   // --------------------------------------------------------------------------
   describe("cleanup", () => {
     it("should clear streaming state and unsubscribe on unmount", () => {

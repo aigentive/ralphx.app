@@ -26,6 +26,12 @@ interface TaskArgs {
   subagent_type: string | undefined;
   model: string | undefined;
   prompt: string | undefined;
+  /** Agent-specific: named agent */
+  name: string | undefined;
+  /** Agent-specific: isolation mode (e.g. "worktree") */
+  isolation: string | undefined;
+  /** Agent-specific: whether to run in background */
+  run_in_background: boolean | undefined;
 }
 
 interface TaskStats {
@@ -81,9 +87,12 @@ const EMPTY_ARGS: TaskArgs = {
   subagent_type: undefined,
   model: undefined,
   prompt: undefined,
+  name: undefined,
+  isolation: undefined,
+  run_in_background: undefined,
 };
 
-/** Extract Task arguments (description, subagent_type, model) */
+/** Extract Task/Agent arguments (description, subagent_type, model, and Agent-specific fields) */
 function extractTaskArgs(args: unknown): TaskArgs {
   if (!args || typeof args !== "object") return EMPTY_ARGS;
   const a = args as Record<string, unknown>;
@@ -92,6 +101,9 @@ function extractTaskArgs(args: unknown): TaskArgs {
     subagent_type: typeof a.subagent_type === "string" ? a.subagent_type : undefined,
     model: typeof a.model === "string" ? a.model : undefined,
     prompt: typeof a.prompt === "string" ? a.prompt : undefined,
+    name: typeof a.name === "string" ? a.name : undefined,
+    isolation: typeof a.isolation === "string" ? a.isolation : undefined,
+    run_in_background: typeof a.run_in_background === "boolean" ? a.run_in_background : undefined,
   };
 }
 
@@ -223,6 +235,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
   const description = taskArgs.description || "Subagent task";
   const subagentType = taskArgs.subagent_type || "agent";
   const model = taskArgs.model || "";
+  const isAgentCall = toolCall.name.toLowerCase() === "agent";
 
   const subagentColor = getSubagentTypeColor(subagentType);
   const modelColor = model ? getModelColor(model) : null;
@@ -273,6 +286,17 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           <Bot size={14} className="flex-shrink-0" style={{ color: "var(--text-muted, hsl(220 10% 45%))" }} />
         )}
 
+        {/* Agent vs Task label */}
+        <span
+          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
+          style={{
+            backgroundColor: isAgentCall ? "hsla(14, 100%, 60%, 0.12)" : "hsla(220, 10%, 50%, 0.12)",
+            color: isAgentCall ? "hsl(14, 100%, 65%)" : "hsl(220, 10%, 60%)",
+          }}
+        >
+          {isAgentCall ? "Agent" : "Task"}
+        </span>
+
         {/* Subagent type badge */}
         <span
           className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
@@ -302,6 +326,32 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
             }}
           >
             {model}
+          </span>
+        )}
+
+        {/* Agent-specific: isolation badge */}
+        {isAgentCall && taskArgs.isolation && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+            style={{
+              backgroundColor: "hsla(200, 70%, 50%, 0.12)",
+              color: "hsl(200, 70%, 65%)",
+            }}
+          >
+            {taskArgs.isolation}
+          </span>
+        )}
+
+        {/* Agent-specific: background indicator */}
+        {isAgentCall && taskArgs.run_in_background && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0"
+            style={{
+              backgroundColor: "hsla(280, 50%, 50%, 0.12)",
+              color: "hsl(280, 50%, 70%)",
+            }}
+          >
+            bg
           </span>
         )}
 

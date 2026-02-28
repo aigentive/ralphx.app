@@ -159,6 +159,182 @@ describe("MessageItem - Attachment Integration", () => {
   });
 });
 
+describe("MessageItem - Child tool call suppression for Task/Agent spawns", () => {
+  const createdAt = new Date().toISOString();
+
+  it("suppresses child tool_use blocks that belong to a Task result", () => {
+    // A message with a Task tool call that has child tool calls in its result
+    const childToolUseId = "child-toolu-001";
+    const contentBlocks = [
+      {
+        type: "tool_use" as const,
+        id: "task-toolu-001",
+        name: "Task",
+        arguments: { description: "Explore files", subagent_type: "Explore" },
+        result: [
+          { type: "tool_use", id: childToolUseId, name: "Glob", input: { pattern: "**/*.ts" } },
+          { type: "tool_result", tool_use_id: childToolUseId, content: ["file1.ts"] },
+        ],
+      },
+      {
+        type: "tool_use" as const,
+        id: childToolUseId,
+        name: "Glob",
+        arguments: { pattern: "**/*.ts" },
+        result: ["file1.ts"],
+      },
+    ];
+
+    const { container } = render(
+      <MessageItem role="assistant" content="" createdAt={createdAt} contentBlocks={contentBlocks} />
+    );
+
+    // The Task card renders (TaskToolCallCard)
+    expect(container.querySelector('[data-testid="task-tool-call-card"]')).toBeInTheDocument();
+
+    // The child Glob tool call should NOT render as a top-level card
+    // Only one tool-call-indicator wrapper should exist (the Task one delegated to TaskToolCallCard)
+    const allToolIndicators = container.querySelectorAll('[data-testid="tool-call-indicator"]');
+    expect(allToolIndicators).toHaveLength(0); // Task goes to TaskToolCallCard, not generic indicator
+
+    // The Glob card should NOT appear at top level (it's nested inside the Task result)
+    const taskCards = container.querySelectorAll('[data-testid="task-tool-call-card"]');
+    expect(taskCards).toHaveLength(1); // Only the Task card at top level
+  });
+
+  it("suppresses child tool_use blocks that belong to an Agent result", () => {
+    const childToolUseId = "child-toolu-agent-001";
+    const contentBlocks = [
+      {
+        type: "tool_use" as const,
+        id: "agent-toolu-001",
+        name: "Agent",
+        arguments: { description: "Research code", subagent_type: "general-purpose" },
+        result: [
+          { type: "tool_use", id: childToolUseId, name: "Grep", input: { pattern: "useState" } },
+          { type: "tool_result", tool_use_id: childToolUseId, content: "found 5 matches" },
+        ],
+      },
+      {
+        type: "tool_use" as const,
+        id: childToolUseId,
+        name: "Grep",
+        arguments: { pattern: "useState" },
+        result: "found 5 matches",
+      },
+    ];
+
+    const { container } = render(
+      <MessageItem role="assistant" content="" createdAt={createdAt} contentBlocks={contentBlocks} />
+    );
+
+    // Agent card renders as TaskToolCallCard
+    expect(container.querySelector('[data-testid="task-tool-call-card"]')).toBeInTheDocument();
+
+    // Grep child tool call should NOT appear at top level
+    const taskCards = container.querySelectorAll('[data-testid="task-tool-call-card"]');
+    expect(taskCards).toHaveLength(1); // Only the Agent card at top level
+  });
+
+  it("does NOT suppress tool_use blocks that are not nested in Task/Agent results", () => {
+    // Two independent tool calls: one Read, one Bash — neither is a Task/Agent spawn
+    const contentBlocks = [
+      {
+        type: "tool_use" as const,
+        id: "read-001",
+        name: "read",
+        arguments: { file_path: "/src/main.ts" },
+        result: "file content",
+      },
+      {
+        type: "tool_use" as const,
+        id: "bash-001",
+        name: "custom_tool",
+        arguments: { command: "ls" },
+        result: "file1\nfile2",
+      },
+    ];
+
+    const { container } = render(
+      <MessageItem role="assistant" content="" createdAt={createdAt} contentBlocks={contentBlocks} />
+    );
+
+    // Both tool calls should render at top level (they are not children of any Task/Agent)
+    const indicators = container.querySelectorAll('[data-testid="tool-call-indicator"]');
+    expect(indicators.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("collects both tool_use and tool_result IDs from Agent result for suppression", () => {
+    // Verify that both the tool_use ID and tool_result's tool_use_id are suppressed
+    const childId = "child-abc";
+    const contentBlocks = [
+      {
+        type: "tool_use" as const,
+        id: "agent-toolu-002",
+        name: "Agent",
+        arguments: { description: "Plan work", subagent_type: "Plan" },
+        result: [
+          { type: "tool_use", id: childId, name: "Read", input: { file_path: "/foo.ts" } },
+          { type: "tool_result", tool_use_id: childId, content: "file content" },
+        ],
+      },
+      // The child tool_use appears again at top level (as emitted by stream)
+      {
+        type: "tool_use" as const,
+        id: childId,
+        name: "Read",
+        arguments: { file_path: "/foo.ts" },
+        result: "file content",
+      },
+    ];
+
+    const { container } = render(
+      <MessageItem role="assistant" content="" createdAt={createdAt} contentBlocks={contentBlocks} />
+    );
+
+    // Only the Agent (Task) card should render — child Read is suppressed
+    expect(container.querySelector('[data-testid="task-tool-call-card"]')).toBeInTheDocument();
+
+    // No top-level generic indicators (the suppressed child would have been one)
+    // Task card = 1, child tool = 0 at top level
+    const taskCards = container.querySelectorAll('[data-testid="task-tool-call-card"]');
+    expect(taskCards).toHaveLength(1);
+  });
+
+  it("renders non-suppressed tool calls alongside Agent card", () => {
+    // A message with an Agent call AND an independent (non-child) tool call
+    const contentBlocks = [
+      {
+        type: "tool_use" as const,
+        id: "agent-toolu-003",
+        name: "Agent",
+        arguments: { description: "Explore code", subagent_type: "Explore" },
+        result: [
+          { type: "tool_use", id: "child-nested", name: "Glob", input: { pattern: "**/*.ts" } },
+          { type: "tool_result", tool_use_id: "child-nested", content: [] },
+        ],
+      },
+      // Independent tool call (NOT a child of the Agent result)
+      {
+        type: "tool_use" as const,
+        id: "independent-001",
+        name: "custom_standalone_tool",
+        arguments: { key: "value" },
+        result: "ok",
+      },
+    ];
+
+    const { container } = render(
+      <MessageItem role="assistant" content="" createdAt={createdAt} contentBlocks={contentBlocks} />
+    );
+
+    // Agent card renders
+    expect(container.querySelector('[data-testid="task-tool-call-card"]')).toBeInTheDocument();
+    // Independent tool renders as generic indicator
+    expect(container.querySelector('[data-testid="tool-call-indicator"]')).toBeInTheDocument();
+  });
+});
+
 describe("MessageItem - Empty content guard (legacy rendering path)", () => {
   const createdAt = new Date().toISOString();
 

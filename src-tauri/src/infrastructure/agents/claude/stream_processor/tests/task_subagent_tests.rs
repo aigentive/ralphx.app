@@ -28,6 +28,7 @@ fn test_task_started_emitted_verbose_mode() {
     match &events[0] {
         StreamEvent::TaskStarted {
             tool_use_id,
+            tool_name,
             description,
             subagent_type,
             model,
@@ -35,6 +36,7 @@ fn test_task_started_emitted_verbose_mode() {
             team_name,
         } => {
             assert_eq!(tool_use_id, "toolu_task1");
+            assert_eq!(tool_name, "Task");
             assert_eq!(description, &Some("Search codebase".to_string()));
             assert_eq!(subagent_type, &Some("Explore".to_string()));
             assert_eq!(model, &Some("sonnet".to_string()));
@@ -82,6 +84,7 @@ fn test_task_started_emitted_streaming_mode() {
     match &events[0] {
         StreamEvent::TaskStarted {
             tool_use_id,
+            tool_name,
             description,
             subagent_type,
             model,
@@ -89,6 +92,7 @@ fn test_task_started_emitted_streaming_mode() {
             team_name,
         } => {
             assert_eq!(tool_use_id, "toolu_task2");
+            assert_eq!(tool_name, "Task");
             assert_eq!(description, &Some("Run tests".to_string()));
             assert_eq!(subagent_type, &Some("Bash".to_string()));
             assert_eq!(model, &Some("haiku".to_string()));
@@ -136,6 +140,7 @@ fn test_task_started_with_team_args_streaming_mode() {
     match &events[0] {
         StreamEvent::TaskStarted {
             tool_use_id,
+            tool_name,
             description: _,
             subagent_type,
             model,
@@ -143,6 +148,7 @@ fn test_task_started_with_team_args_streaming_mode() {
             team_name,
         } => {
             assert_eq!(tool_use_id, "toolu_team1");
+            assert_eq!(tool_name, "Task");
             assert_eq!(subagent_type, &Some("general-purpose".to_string()));
             assert_eq!(model, &Some("sonnet".to_string()));
             assert_eq!(teammate_name, &Some("researcher".to_string()));

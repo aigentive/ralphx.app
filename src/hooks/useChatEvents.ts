@@ -229,10 +229,11 @@ export function useChatEvents({
           });
 
           // Push to streamingContentBlocks to preserve chronological position.
-          // Task tool calls get a position-marker block { type: "task", toolUseId }
+          // Task/Agent tool calls get a position-marker block { type: "task", toolUseId }
           // so they render inline at the correct position (not grouped after all text).
           // Actual task metadata is read from streamingTasks Map via toolUseId lookup.
-          if (tool_name.toLowerCase() === "task") {
+          const lowerToolName = tool_name.toLowerCase();
+          if (lowerToolName === "task" || lowerToolName === "agent") {
             setStreamingContentBlocks((prev) => {
               // Only add the marker once — deduplicate by toolUseId
               const alreadyHasMarker = prev.some((block) => block.type === "task" && block.toolUseId === id);
@@ -276,6 +277,7 @@ export function useChatEvents({
       unsubscribes.push(
         bus.subscribe<{
           tool_use_id: string;
+          tool_name?: string;
           description?: string;
           subagent_type?: string;
           model?: string;
@@ -289,6 +291,7 @@ export function useChatEvents({
             const next = new Map(prev);
             const newTask: StreamingTask = {
               toolUseId: payload.tool_use_id,
+              toolName: payload.tool_name ?? "Task",
               description: payload.description ?? "",
               subagentType: payload.subagent_type ?? "unknown",
               model: payload.model ?? "unknown",

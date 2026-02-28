@@ -160,6 +160,7 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
     }
   }, [task.childToolCalls.length, isRunning]);
 
+  const isAgentCall = task.toolName.toLowerCase() === "agent";
   const subagentColor = getSubagentTypeColor(task.subagentType);
   const modelColor = getModelColor(task.model);
 
@@ -201,6 +202,17 @@ export const TaskSubagentCard = React.memo(function TaskSubagentCard({
             style={{ color: "var(--text-muted)" }}
           />
         )}
+
+        {/* Agent vs Task label */}
+        <span
+          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
+          style={{
+            backgroundColor: isAgentCall ? "hsla(14, 100%, 60%, 0.12)" : "hsla(220, 10%, 50%, 0.12)",
+            color: isAgentCall ? "hsl(14, 100%, 65%)" : "hsl(220, 10%, 60%)",
+          }}
+        >
+          {isAgentCall ? "Agent" : "Task"}
+        </span>
 
         {/* Subagent type badge */}
         <span

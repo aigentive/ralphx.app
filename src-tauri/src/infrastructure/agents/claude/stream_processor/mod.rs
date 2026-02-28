@@ -143,11 +143,12 @@ impl StreamProcessor {
                     let args: serde_json::Value =
                         serde_json::from_str(&self.current_tool_input).unwrap_or_default();
 
-                    // Detect Task tool_use and emit TaskStarted (streaming mode)
-                    if self.current_tool_name == "Task" {
+                    // Detect Task/Agent tool_use and emit TaskStarted (streaming mode)
+                    if self.current_tool_name == "Task" || self.current_tool_name == "Agent" {
                         if let Some(ref tool_id) = self.current_tool_id {
                             events.push(StreamEvent::TaskStarted {
                                 tool_use_id: tool_id.clone(),
+                                tool_name: self.current_tool_name.clone(),
                                 description: args
                                     .get("description")
                                     .and_then(|v| v.as_str())
@@ -264,10 +265,11 @@ impl StreamProcessor {
                             // Skip re-emission to prevent duplicate text and double TextChunk events.
                         }
                         AssistantContent::ToolUse { id, name, input } => {
-                            // Detect Task tool_use and emit TaskStarted
-                            if name == "Task" {
+                            // Detect Task/Agent tool_use and emit TaskStarted
+                            if name == "Task" || name == "Agent" {
                                 events.push(StreamEvent::TaskStarted {
                                     tool_use_id: id.clone(),
+                                    tool_name: name.clone(),
                                     description: input
                                         .get("description")
                                         .and_then(|v| v.as_str())
@@ -399,7 +401,7 @@ impl StreamProcessor {
                         let is_task_result = self
                             .tool_calls
                             .iter()
-                            .any(|tc| tc.id.as_ref() == Some(&tool_use_id) && tc.name == "Task");
+                            .any(|tc| tc.id.as_ref() == Some(&tool_use_id) && (tc.name == "Task" || tc.name == "Agent"));
 
                         // Find the tool call by ID and update its result
                         if let Some(tool_call) = self

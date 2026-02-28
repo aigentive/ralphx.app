@@ -163,6 +163,8 @@ pub struct AgentErrorPayload {
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentTaskStartedPayload {
     pub tool_use_id: String,
+    /// Tool name that triggered this: "Task" or "Agent"
+    pub tool_name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

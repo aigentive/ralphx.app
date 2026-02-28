@@ -218,9 +218,11 @@ pub enum StreamEvent {
     },
     /// Session ID received (from Result or Assistant message)
     SessionId(String),
-    /// Task subagent started (detected from Task tool_use)
+    /// Task subagent started (detected from Task/Agent tool_use)
     TaskStarted {
         tool_use_id: String,
+        /// Tool name that triggered this: "Task" or "Agent"
+        tool_name: String,
         description: Option<String>,
         subagent_type: Option<String>,
         model: Option<String>,
