@@ -181,5 +181,6 @@ Provide summary: files created/modified, tests added, issues encountered and res
 | `add_step` | Add step during execution |
 | `get_step_progress` / `get_step_context` / `get_sub_steps` | Step inspection |
 | `get_project_analysis` | Validation + setup commands |
+| `execution_complete` | Signal task execution is complete — triggers clean process exit |
 
 </appendix>

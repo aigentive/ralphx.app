@@ -34,6 +34,8 @@ pub struct CompleteMergeRequest {
 pub struct ReportConflictRequest {
     /// List of files with unresolved conflicts
     pub conflict_files: Vec<String>,
+    /// Explanation of why conflicts could not be resolved
+    pub reason: String,
 }
 
 /// Request to report a non-conflict merge failure
@@ -449,6 +451,10 @@ pub async fn report_conflict(
                 serde_json::to_value(MergeFailureSource::AgentReported)
                     .unwrap_or(serde_json::json!("agent_reported")),
             );
+            obj.insert(
+                "conflict_reason".to_string(),
+                serde_json::Value::String(req.reason.clone()),
+            );
         }
         task.metadata = Some(json.to_string());
     }
@@ -503,6 +509,7 @@ pub async fn report_conflict(
             serde_json::json!({
                 "task_id": task_id.as_str(),
                 "conflict_files": req.conflict_files,
+                "reason": req.reason,
             }),
         );
         let _ = app_handle.emit(

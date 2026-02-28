@@ -252,6 +252,64 @@ pub async fn skip_step_http(
         );
     }
 
+    // Fallback: if all steps for this task are now done, close the worker's IPR to signal EOF
+    {
+        let task_id_for_check = TaskId::from_string(response.task_id.clone());
+        match state
+            .app_state
+            .task_step_repo
+            .get_by_task(&task_id_for_check)
+            .await
+        {
+            Ok(all_steps) if !all_steps.is_empty() => {
+                let all_done = all_steps.iter().all(|s| {
+                    matches!(
+                        s.status,
+                        TaskStepStatus::Completed | TaskStepStatus::Skipped
+                    )
+                });
+                if all_done {
+                    tracing::info!(
+                        "All {} steps complete for task {} — triggering execution completion fallback",
+                        all_steps.len(),
+                        response.task_id
+                    );
+                    let key =
+                        InteractiveProcessKey::new("task_execution", &response.task_id);
+                    if state
+                        .app_state
+                        .interactive_process_registry
+                        .remove(&key)
+                        .await
+                        .is_some()
+                    {
+                        tracing::info!(
+                            "IPR removed for worker on task {} (all-steps-done fallback)",
+                            response.task_id
+                        );
+                    }
+                    if let Some(app_handle) = &state.app_state.app_handle {
+                        let _ = app_handle.emit(
+                            "execution:completed",
+                            serde_json::json!({
+                                "task_id": &response.task_id,
+                                "trigger": "all_steps_done_fallback",
+                            }),
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                tracing::warn!(
+                    "Failed to check step completion for task {}: {}",
+                    response.task_id,
+                    e
+                );
+            }
+            _ => {}
+        }
+    }
+
     Ok(Json(response))
 }
 
@@ -569,7 +627,7 @@ pub async fn execution_complete_http(
     State(state): State<HttpServerState>,
     Path(task_id_str): Path<String>,
     Json(req): Json<ExecutionCompleteRequest>,
-) -> Result<Json<ExecutionCompleteResponse>, (StatusCode, String)> {
+) -> Result<Json<ExecutionCompleteResponse>, StatusCode> {
     let task_id = TaskId::from_string(task_id_str.clone());
 
     // Verify task exists
@@ -578,8 +636,11 @@ pub async fn execution_complete_http(
         .task_repo
         .get_by_id(&task_id)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
-        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("Task {} not found", task_id_str)))?;
+        .map_err(|e| {
+            error!("Failed to get task {}: {}", task_id_str, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
 
     tracing::info!(
         "execution_complete received for task {}: summary={:?}",
