@@ -95,6 +95,14 @@ pub struct ReconciliationConfig {
     /// Maximum seconds for branch freshness updates (update_plan_from_main, update_source_from_target).
     /// If exceeded, the merge aborts to MergeIncomplete instead of hanging indefinitely.
     pub branch_freshness_timeout_secs: u64,
+    /// Initial grace period (seconds) before the merge completion watcher starts polling.
+    /// Gives the merger agent time to begin work before checking git state.
+    pub merge_watcher_grace_secs: u64,
+    /// Poll interval (seconds) for the merge completion watcher to check git state.
+    pub merge_watcher_poll_secs: u64,
+    /// Number of consecutive clean-git-state polls before the watcher closes IPR.
+    /// Prevents premature closure during brief pauses in agent activity.
+    pub merge_watcher_clean_threshold: u64,
 }
 
 impl Default for ReconciliationConfig {
@@ -124,6 +132,9 @@ impl Default for ReconciliationConfig {
             validation_failure_circuit_breaker_count: 3,
             merge_starvation_guard_secs: 60,
             branch_freshness_timeout_secs: 60,
+            merge_watcher_grace_secs: 30,
+            merge_watcher_poll_secs: 15,
+            merge_watcher_clean_threshold: 2,
         }
     }
 }
@@ -312,6 +323,9 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.validation_failure_circuit_breaker_count, "RALPHX_RECONCILIATION_VALIDATION_FAILURE_CIRCUIT_BREAKER_COUNT");
     env_u64!(cfg.reconciliation.merge_starvation_guard_secs, "RALPHX_RECONCILIATION_MERGE_STARVATION_GUARD_SECS");
     env_u64!(cfg.reconciliation.branch_freshness_timeout_secs, "RALPHX_RECONCILIATION_BRANCH_FRESHNESS_TIMEOUT_SECS");
+    env_u64!(cfg.reconciliation.merge_watcher_grace_secs, "RALPHX_RECONCILIATION_MERGE_WATCHER_GRACE_SECS");
+    env_u64!(cfg.reconciliation.merge_watcher_poll_secs, "RALPHX_RECONCILIATION_MERGE_WATCHER_POLL_SECS");
+    env_u64!(cfg.reconciliation.merge_watcher_clean_threshold, "RALPHX_RECONCILIATION_MERGE_WATCHER_CLEAN_THRESHOLD");
 
     // Git
     env_u64!(cfg.git.cmd_timeout_secs, "RALPHX_GIT_CMD_TIMEOUT_SECS");

@@ -617,6 +617,559 @@ async fn test_merge_resolve_branch_fast_forwards_target_before_verification() {
         .output();
 }
 
+// ============================================================================
+// Merge Completion Watcher Tests
+// ============================================================================
+//
+// Tests for `resolve_watcher_context` (private helper) and
+// `merge_completion_watcher_loop` (private background task).
+// Both are accessible via `super::` because this file is a child module of
+// `chat_service_merge`.
+
+use crate::application::interactive_process_registry::InteractiveProcessKey;
+use crate::application::InteractiveProcessRegistry;
+use crate::domain::entities::{Project, ProjectId, TaskId};
+use crate::domain::repositories::{ProjectRepository, TaskRepository};
+use crate::infrastructure::memory::{MemoryProjectRepository, MemoryTaskRepository};
+
+// ---- Shared watcher test helpers ------------------------------------------
+
+fn make_test_repos() -> (Arc<MemoryTaskRepository>, Arc<MemoryProjectRepository>) {
+    (
+        Arc::new(MemoryTaskRepository::new()),
+        Arc::new(MemoryProjectRepository::new()),
+    )
+}
+
+async fn seed_project_and_merging_task(
+    task_repo: &Arc<MemoryTaskRepository>,
+    project_repo: &Arc<MemoryProjectRepository>,
+    repo_path: &Path,
+    source_branch: &str,
+) -> String {
+    let project_id = ProjectId::new();
+    let mut project = Project::new(
+        "test-project".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
+    project.id = project_id.clone();
+    project.base_branch = Some("main".to_string());
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, "Watcher test".to_string());
+    task.internal_status = InternalStatus::Merging;
+    task.task_branch = Some(source_branch.to_string());
+    let task_id = task.id.as_str().to_string();
+    task_repo.create(task).await.unwrap();
+    task_id
+}
+
+async fn register_ipr_cat(
+    ipr: &Arc<InteractiveProcessRegistry>,
+    key: &InteractiveProcessKey,
+) -> tokio::process::Child {
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn cat for watcher IPR test");
+    let stdin = child.stdin.take().expect("cat stdin");
+    ipr.register(key.clone(), stdin).await;
+    child
+}
+
+/// Advance mock time `secs` seconds one-second at a time, yielding after each step.
+/// Yields before starting so the watcher can register its first sleep at current mock time.
+async fn advance_secs(secs: u64) {
+    // Let the watcher start and register its sleep at current mock time before advancing.
+    for _ in 0..10 {
+        tokio::task::yield_now().await;
+    }
+    for _ in 0..secs {
+        tokio::time::advance(tokio::time::Duration::from_secs(1)).await;
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
+    }
+}
+
+/// Advance mock time one second at a time until `watcher` finishes or `max_secs` elapses.
+/// Yields before starting to let the watcher register its initial grace sleep at t≈0.
+/// Returns `true` if the watcher finished within `max_secs`.
+async fn advance_until_done(watcher: &tokio::task::JoinHandle<()>, max_secs: u64) -> bool {
+    // Let the watcher start and register its first sleep at current mock time
+    for _ in 0..10 {
+        tokio::task::yield_now().await;
+    }
+    for _ in 0..max_secs {
+        if watcher.is_finished() {
+            return true;
+        }
+        tokio::time::advance(tokio::time::Duration::from_secs(1)).await;
+        for _ in 0..5 {
+            tokio::task::yield_now().await;
+        }
+    }
+    watcher.is_finished()
+}
+
+/// Poll in real time until `watcher` finishes or `timeout_secs` real seconds elapse.
+/// Use this (without `tokio::time::pause()`) for tests that invoke real git subprocess calls,
+/// since `tokio::time::timeout` inside `git_cmd::run()` uses mock time and fires too early.
+async fn wait_until_done(watcher: &tokio::task::JoinHandle<()>, timeout_secs: u64) -> bool {
+    let result = tokio::time::timeout(
+        std::time::Duration::from_secs(timeout_secs),
+        async {
+            loop {
+                if watcher.is_finished() {
+                    return;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+        },
+    )
+    .await;
+    result.is_ok()
+}
+
+// ---- resolve_watcher_context -----------------------------------------------
+
+/// Returns None when the task does not exist.
+#[tokio::test]
+async fn watcher_context_returns_none_for_missing_task() {
+    let (task_repo, project_repo) = make_test_repos();
+
+    let result = super::resolve_watcher_context(
+        "does-not-exist",
+        &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
+        &(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>),
+        &None,
+    )
+    .await;
+
+    assert!(result.is_none(), "Should return None when task is missing");
+}
+
+/// Returns None when the project referenced by the task does not exist.
+#[tokio::test]
+async fn watcher_context_returns_none_for_missing_project() {
+    let (task_repo, project_repo) = make_test_repos();
+
+    // Task references a project_id that has no project in the repo
+    let project_id = ProjectId::from_string("ghost-project-abc".to_string());
+    let mut task = Task::new(project_id, "Ghost task".to_string());
+    task.internal_status = InternalStatus::Merging;
+    task.task_branch = Some("some-branch".to_string());
+    let task_id = task.id.as_str().to_string();
+    task_repo.create(task).await.unwrap();
+
+    let result = super::resolve_watcher_context(
+        &task_id,
+        &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
+        &(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>),
+        &None,
+    )
+    .await;
+
+    assert!(result.is_none(), "Should return None when project is missing");
+}
+
+/// Returns (source_branch, target_branch, repo_path) for a valid task+project.
+#[tokio::test]
+async fn watcher_context_returns_source_target_and_repo_path() {
+    let dir = setup_test_repo();
+    let (task_repo, project_repo) = make_test_repos();
+
+    let task_id = seed_project_and_merging_task(
+        &task_repo,
+        &project_repo,
+        dir.path(),
+        "task/feature-x",
+    )
+    .await;
+
+    let result = super::resolve_watcher_context(
+        &task_id,
+        &(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
+        &(Arc::clone(&project_repo) as Arc<dyn ProjectRepository>),
+        &None,
+    )
+    .await;
+
+    assert!(result.is_some(), "Should resolve context for valid task+project");
+    let (source, target, path) = result.unwrap();
+    assert_eq!(source, "task/feature-x", "Source branch from task.task_branch");
+    assert_eq!(target, "main", "Target branch from project.base_branch");
+    assert_eq!(
+        path,
+        dir.path().to_path_buf(),
+        "Repo path from project.working_directory"
+    );
+}
+
+// ---- Watcher loop: exit when no IPR entry ----------------------------------
+
+/// After the grace period, if no IPR entry is registered, the watcher exits.
+#[tokio::test]
+async fn watcher_exits_when_no_ipr_entry() {
+    tokio::time::pause();
+
+    let dir = setup_test_repo();
+    create_branch_with_change(dir.path(), "task-branch", "x.txt", "x\n");
+
+    let (task_repo, project_repo) = make_test_repos();
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+
+    let task_id = seed_project_and_merging_task(
+        &task_repo,
+        &project_repo,
+        dir.path(),
+        "task-branch",
+    )
+    .await;
+
+    // No IPR entry registered — watcher should exit at first poll because has_process=false.
+    // Use 1ms grace/poll so only a few mock-seconds of advancement are needed.
+    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+        task_id,
+        dir.path().to_path_buf(),
+        Arc::clone(&ipr),
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        None,
+        std::time::Duration::from_millis(1), // grace: 1ms
+        std::time::Duration::from_millis(1), // poll: 1ms
+        2,                                   // clean_threshold
+    ));
+
+    // Advance a few mock-seconds — watcher exits immediately after first poll (no IPR).
+    let finished = advance_until_done(&watcher, 10).await;
+    assert!(finished, "Watcher should exit when no IPR entry is registered");
+}
+
+// ---- Watcher loop: exit when task leaves Merging ---------------------------
+
+/// Watcher exits without closing IPR when task status changes away from Merging.
+#[tokio::test]
+async fn watcher_exits_without_closing_ipr_when_task_leaves_merging() {
+    tokio::time::pause();
+
+    let dir = setup_test_repo();
+    create_branch_with_change(dir.path(), "task-branch", "y.txt", "y\n");
+
+    let (task_repo, project_repo) = make_test_repos();
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+
+    let task_id = seed_project_and_merging_task(
+        &task_repo,
+        &project_repo,
+        dir.path(),
+        "task-branch",
+    )
+    .await;
+
+    let key = InteractiveProcessKey::new("merge", &task_id);
+    let mut child = register_ipr_cat(&ipr, &key).await;
+
+    // Use 1ms grace/poll — only needs a few mock-seconds total.
+    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+        task_id.clone(),
+        dir.path().to_path_buf(),
+        Arc::clone(&ipr),
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        None,
+        std::time::Duration::from_millis(1), // grace: 1ms
+        std::time::Duration::from_millis(1), // poll: 1ms
+        2,                                   // clean_threshold
+    ));
+
+    // Advance 1 mock-second: fires grace (1ms) so watcher enters the loop and
+    // registers the poll sleep — but does NOT fire the poll yet.
+    // We must change task status BEFORE the first poll fires so the watcher sees
+    // MergeConflict and exits WITHOUT making any git subprocess calls.
+    advance_secs(1).await;
+
+    // Transition task away from Merging before watcher closes IPR.
+    let mut task = task_repo
+        .get_by_id(&TaskId::from_string(task_id.clone()))
+        .await
+        .unwrap()
+        .unwrap();
+    task.internal_status = InternalStatus::MergeConflict;
+    task_repo.update(&task).await.unwrap();
+
+    // Advance 2 more mock-seconds to fire the next poll — watcher detects non-Merging.
+    let finished = advance_until_done(&watcher, 5).await;
+
+    assert!(finished, "Watcher should exit when task leaves Merging state");
+    assert!(
+        ipr.has_process(&key).await,
+        "Watcher must NOT close IPR when task leaves Merging (state change, not success)"
+    );
+
+    ipr.remove(&key).await;
+    let _ = child.kill().await;
+}
+
+// ---- Watcher loop: close IPR when merge verified ---------------------------
+
+/// Watcher closes IPR when source branch is detected as merged into target.
+///
+/// This test uses REAL time (no `tokio::time::pause`) because `git_cmd::run()` wraps
+/// `spawn_blocking` in `tokio::time::timeout`, which uses mock time when paused and
+/// fires before the git subprocess completes when mock time is advanced rapidly.
+#[tokio::test]
+async fn watcher_closes_ipr_when_merge_verified_on_target() {
+    let dir = setup_test_repo();
+    let repo = dir.path();
+
+    // Source branch merged into main → verify_merge_on_target returns Merged
+    create_branch_with_change(repo, "task-branch", "merged.txt", "done\n");
+    merge_branch(repo, "task-branch");
+
+    let (task_repo, project_repo) = make_test_repos();
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+
+    let task_id = seed_project_and_merging_task(
+        &task_repo,
+        &project_repo,
+        repo,
+        "task-branch",
+    )
+    .await;
+
+    let key = InteractiveProcessKey::new("merge", &task_id);
+    let mut child = register_ipr_cat(&ipr, &key).await;
+
+    // 0ms grace (enter loop immediately), 50ms poll — watcher completes after ~1 poll.
+    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+        task_id.clone(),
+        repo.to_path_buf(),
+        Arc::clone(&ipr),
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        None,
+        std::time::Duration::ZERO,            // grace: none
+        std::time::Duration::from_millis(50), // poll: 50ms
+        2,                                    // clean_threshold
+    ));
+
+    // Wait up to 10s in real time — verify_merge returns Merged → IPR removed.
+    let finished = wait_until_done(&watcher, 10).await;
+
+    assert!(
+        finished,
+        "Watcher should exit after merge verified on target branch"
+    );
+    assert!(
+        !ipr.has_process(&key).await,
+        "IPR should be removed after merge detected on target"
+    );
+
+    let _ = child.kill().await;
+}
+
+// ---- Watcher loop: validation_recovery skips merge check -------------------
+
+/// In validation_recovery mode, watcher skips verify_merge_on_target and instead
+/// waits for consecutive clean git state before closing IPR.
+///
+/// Uses real time — see `watcher_closes_ipr_when_merge_verified_on_target` for why.
+#[tokio::test]
+async fn watcher_skips_merge_check_in_validation_recovery_mode() {
+    let dir = setup_test_repo();
+    let repo = dir.path();
+
+    // Merge is done (verify_merge_on_target would return Merged), but
+    // validation_recovery=true means the watcher skips that check
+    create_branch_with_change(repo, "task-branch", "val.txt", "v\n");
+    merge_branch(repo, "task-branch");
+
+    let (task_repo, project_repo) = make_test_repos();
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+
+    let project_id = ProjectId::new();
+    let mut project = Project::new("p".to_string(), repo.to_string_lossy().to_string());
+    project.id = project_id.clone();
+    project.base_branch = Some("main".to_string());
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, "Validation recovery".to_string());
+    task.internal_status = InternalStatus::Merging;
+    task.task_branch = Some("task-branch".to_string());
+    task.metadata = Some(
+        serde_json::json!({
+            "validation_recovery": true,
+            "target_branch": "main"
+        })
+        .to_string(),
+    );
+    let task_id = task.id.as_str().to_string();
+    task_repo.create(task).await.unwrap();
+
+    let key = InteractiveProcessKey::new("merge", &task_id);
+    let mut child = register_ipr_cat(&ipr, &key).await;
+
+    // 0ms grace, 50ms poll, threshold=2 → exits after 2 consecutive clean polls (~100ms).
+    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+        task_id.clone(),
+        repo.to_path_buf(),
+        Arc::clone(&ipr),
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        None,
+        std::time::Duration::ZERO,            // grace: none
+        std::time::Duration::from_millis(50), // poll: 50ms
+        2,                                    // clean_threshold
+    ));
+
+    let finished = wait_until_done(&watcher, 10).await;
+
+    assert!(
+        finished,
+        "Watcher in validation_recovery mode should exit via clean state threshold"
+    );
+
+    let _ = child.kill().await;
+}
+
+// ---- Watcher loop: waits while rebase in progress -------------------------
+
+/// While .git/rebase-merge exists in the worktree, consecutive_clean is reset
+/// and IPR is not closed. After rebase completes, clean polls trigger closure.
+///
+/// Uses real time — see `watcher_closes_ipr_when_merge_verified_on_target` for why.
+#[tokio::test]
+async fn watcher_waits_while_rebase_in_progress_then_closes_ipr() {
+    let dir = setup_test_repo();
+    let repo = dir.path();
+    create_branch_with_change(repo, "task-branch", "r.txt", "r\n");
+
+    let (task_repo, project_repo) = make_test_repos();
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+
+    let task_id = seed_project_and_merging_task(
+        &task_repo,
+        &project_repo,
+        repo,
+        "task-branch",
+    )
+    .await;
+
+    // Use a real git repo for the worktree so `git diff` (called by has_conflict_markers)
+    // succeeds once the rebase dir is removed. A plain tempdir (non-repo) causes git to
+    // fail, which unwrap_or(true) treats as "conflicts present" → consecutive_clean
+    // never reaches threshold.
+    let worktree_dir = setup_test_repo();
+    // Simulate rebase in progress by creating .git/rebase-merge inside the real repo.
+    fs::create_dir_all(worktree_dir.path().join(".git").join("rebase-merge")).unwrap();
+
+    let key = InteractiveProcessKey::new("merge", &task_id);
+    let mut child = register_ipr_cat(&ipr, &key).await;
+
+    // 0ms grace, 50ms poll, threshold=2
+    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+        task_id.clone(),
+        worktree_dir.path().to_path_buf(), // worktree with rebase in progress
+        Arc::clone(&ipr),
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        None,
+        std::time::Duration::ZERO,            // grace: none
+        std::time::Duration::from_millis(50), // poll: 50ms
+        2,                                    // clean_threshold
+    ));
+
+    // Wait for ≥2 poll cycles with rebase present (~300ms generous buffer).
+    // The watcher CANNOT close IPR while rebase dir exists — this assertion is safe
+    // at any point as long as the rebase dir still exists.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    assert!(
+        ipr.has_process(&key).await,
+        "IPR must not be closed while .git/rebase-merge is present"
+    );
+    assert!(
+        !watcher.is_finished(),
+        "Watcher should still be running while rebase is in progress"
+    );
+
+    // Simulate rebase completion — next clean polls will increment consecutive_clean
+    fs::remove_dir_all(worktree_dir.path().join(".git").join("rebase-merge")).unwrap();
+
+    // Wait for 2 consecutive clean polls → threshold reached → IPR removed
+    let finished = wait_until_done(&watcher, 10).await;
+
+    assert!(
+        finished,
+        "Watcher should exit after rebase completes and clean threshold is reached"
+    );
+    assert!(
+        !ipr.has_process(&key).await,
+        "IPR should be removed after rebase completes"
+    );
+
+    let _ = child.kill().await;
+}
+
+// ---- Watcher loop: consecutive clean git state closes IPR -----------------
+
+/// When source is NOT merged into target but git state is clean for
+/// `clean_threshold` consecutive polls, the watcher closes IPR.
+///
+/// Uses real time — see `watcher_closes_ipr_when_merge_verified_on_target` for why.
+#[tokio::test]
+async fn watcher_closes_ipr_on_consecutive_clean_git_state() {
+    let dir = setup_test_repo();
+    let repo = dir.path();
+
+    // Branch exists but NOT merged → verify_merge_on_target returns NotMerged
+    create_branch_with_change(repo, "task-branch", "z.txt", "z\n");
+
+    let (task_repo, project_repo) = make_test_repos();
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+
+    let task_id = seed_project_and_merging_task(
+        &task_repo,
+        &project_repo,
+        repo,
+        "task-branch",
+    )
+    .await;
+
+    let key = InteractiveProcessKey::new("merge", &task_id);
+    let mut child = register_ipr_cat(&ipr, &key).await;
+
+    // 0ms grace, 50ms poll, threshold=2 → exits after 2 consecutive clean polls (~100ms).
+    // Source not merged → NotMerged. Clean git state → consecutive_clean reaches 2.
+    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
+        task_id.clone(),
+        repo.to_path_buf(),
+        Arc::clone(&ipr),
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        None,
+        std::time::Duration::ZERO,            // grace: none
+        std::time::Duration::from_millis(50), // poll: 50ms
+        2,                                    // clean_threshold
+    ));
+
+    let finished = wait_until_done(&watcher, 10).await;
+
+    assert!(
+        finished,
+        "Watcher should exit after consecutive clean git state reaches threshold"
+    );
+    assert!(
+        !ipr.has_process(&key).await,
+        "IPR should be removed after consecutive clean git state"
+    );
+
+    let _ = child.kill().await;
+}
+
 /// RC#7 negative: When no merge-resolve branch exists, verify_merge_on_target
 /// should still work normally (the fast-forward path is skipped).
 #[tokio::test]

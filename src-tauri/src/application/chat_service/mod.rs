@@ -1014,6 +1014,18 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             .register(interactive_key_for_register, child_stdin)
             .await;
 
+        // Spawn merge completion watcher for Merge context
+        if context_type == ChatContextType::Merge {
+            chat_service_merge::spawn_merge_completion_watcher(
+                context_id.to_string(),
+                working_directory.clone(),
+                self.ipr(),
+                Arc::clone(&self.task_repo),
+                Arc::clone(&self.project_repo),
+                self.plan_branch_repo.lock().unwrap().clone(),
+            );
+        }
+
         let registry_worktree = working_directory.to_string_lossy().to_string();
 
         // 7b. Update process details in registry now that spawn succeeded

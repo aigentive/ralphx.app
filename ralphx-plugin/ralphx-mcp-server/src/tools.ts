@@ -1598,6 +1598,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_step_progress",
     "get_step_context",
     "get_sub_steps",
+    // Execution completion signal
+    "execution_complete",
     // Issue tools (re-execution workflow)
     "get_task_issues",
     "mark_issue_in_progress",
