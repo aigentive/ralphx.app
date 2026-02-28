@@ -16,6 +16,9 @@ use crate::error::{AppError, AppResult};
 
 use super::DbConnection;
 
+#[cfg(test)]
+mod tests;
+
 /// SQLite implementation of TaskProposalRepository for production use
 pub struct SqliteTaskProposalRepository {
     db: DbConnection,

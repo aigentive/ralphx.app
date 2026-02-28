@@ -340,3 +340,25 @@ async fn test_delete_by_conversation_id_removes_all_attachments() {
 
 // Note: Cascade delete on conversation deletion is tested in migration tests
 // See v34_chat_attachments_tests::test_v34_foreign_key_cascade_delete
+
+// ==================== UPDATE_MESSAGE_IDS EDGE CASE TESTS ====================
+
+#[tokio::test]
+async fn test_update_message_ids_with_empty_slice_is_noop() {
+    let conn = setup_test_db();
+    let conversation_id = create_test_conversation(&conn);
+
+    let repo = SqliteChatAttachmentRepository::new(conn);
+    let attachment =
+        ChatAttachment::new(conversation_id, "file.txt", "/path/to/file.txt", 1024, None);
+    repo.create(attachment.clone()).await.unwrap();
+
+    let message_id = ChatMessageId::new();
+    // Calling with empty slice should not error and should not update anything
+    let result = repo.update_message_ids(&[], &message_id).await;
+    assert!(result.is_ok());
+
+    // The attachment should remain unchanged (message_id still None)
+    let found = repo.get_by_id(&attachment.id).await.unwrap().unwrap();
+    assert!(found.message_id.is_none());
+}
