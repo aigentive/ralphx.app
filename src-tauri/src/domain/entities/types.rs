@@ -48,6 +48,11 @@ pub struct ReviewIssueId(pub String);
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SessionLinkId(pub String);
 
+/// A unique identifier for an ExecutionPlan
+/// Uses newtype pattern to prevent accidentally using other IDs where ExecutionPlanId is expected
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ExecutionPlanId(pub String);
+
 impl TaskId {
     /// Creates a new TaskId with a random UUID v4
     pub fn new() -> Self {
@@ -313,6 +318,36 @@ impl Default for SessionLinkId {
 }
 
 impl std::fmt::Display for SessionLinkId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
+impl ExecutionPlanId {
+    /// Creates a new ExecutionPlanId with a random UUID v4
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    /// Creates an ExecutionPlanId from an existing string
+    /// Useful for database deserialization
+    pub fn from_string(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for ExecutionPlanId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for ExecutionPlanId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.0)
     }

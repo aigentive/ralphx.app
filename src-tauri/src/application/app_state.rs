@@ -17,9 +17,9 @@ use crate::domain::repositories::{
     ActivePlanRepository, ActivityEventRepository, AgentProfileRepository, AgentRunRepository,
     AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
-    ExecutionSettingsRepository, GlobalExecutionSettingsRepository, IdeationSessionRepository,
-    IdeationSettingsRepository, MemoryArchiveRepository, MemoryEntryRepository,
-    MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
+    ExecutionPlanRepository, ExecutionSettingsRepository, GlobalExecutionSettingsRepository,
+    IdeationSessionRepository, IdeationSettingsRepository, MemoryArchiveRepository,
+    MemoryEntryRepository, MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
     PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
     SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
@@ -33,7 +33,7 @@ use crate::infrastructure::memory::{
     MemoryActivityEventRepository, MemoryAgentProfileRepository, MemoryAgentRunRepository,
     MemoryAppStateRepository, MemoryArtifactBucketRepository, MemoryArtifactFlowRepository,
     MemoryArtifactRepository, MemoryChatAttachmentRepository, MemoryChatConversationRepository,
-    MemoryChatMessageRepository, MemoryExecutionSettingsRepository,
+    MemoryChatMessageRepository, MemoryExecutionPlanRepository, MemoryExecutionSettingsRepository,
     MemoryGlobalExecutionSettingsRepository, MemoryIdeationSessionRepository,
     MemoryIdeationSettingsRepository, MemoryMethodologyRepository, MemoryPermissionRepository,
     MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository, MemoryProcessRepository,
@@ -50,16 +50,17 @@ use crate::infrastructure::sqlite::{
     SqliteAgentRunRepository, SqliteAppStateRepository, SqliteArtifactBucketRepository,
     SqliteArtifactFlowRepository, SqliteArtifactRepository, SqliteChatAttachmentRepository,
     SqliteChatConversationRepository, SqliteChatMessageRepository,
-    SqliteExecutionSettingsRepository, SqliteGlobalExecutionSettingsRepository,
-    SqliteIdeationSessionRepository, SqliteIdeationSettingsRepository,
-    SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository, SqliteMemoryEventRepository,
-    SqliteMethodologyRepository, SqlitePermissionRepository, SqlitePlanBranchRepository,
-    SqlitePlanSelectionStatsRepository, SqliteProcessRepository, SqliteProjectRepository,
-    SqliteProposalDependencyRepository, SqliteQuestionRepository, SqliteReviewIssueRepository,
-    SqliteReviewRepository, SqliteReviewSettingsRepository, SqliteRunningAgentRegistry,
-    SqliteSessionLinkRepository, SqliteTaskDependencyRepository, SqliteTaskProposalRepository,
-    SqliteTaskQARepository, SqliteTaskRepository, SqliteTaskStepRepository,
-    SqliteTeamMessageRepository, SqliteTeamSessionRepository, SqliteWorkflowRepository,
+    SqliteExecutionPlanRepository, SqliteExecutionSettingsRepository,
+    SqliteGlobalExecutionSettingsRepository, SqliteIdeationSessionRepository,
+    SqliteIdeationSettingsRepository, SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository,
+    SqliteMemoryEventRepository, SqliteMethodologyRepository, SqlitePermissionRepository,
+    SqlitePlanBranchRepository, SqlitePlanSelectionStatsRepository, SqliteProcessRepository,
+    SqliteProjectRepository, SqliteProposalDependencyRepository, SqliteQuestionRepository,
+    SqliteReviewIssueRepository, SqliteReviewRepository, SqliteReviewSettingsRepository,
+    SqliteRunningAgentRegistry, SqliteSessionLinkRepository, SqliteTaskDependencyRepository,
+    SqliteTaskProposalRepository, SqliteTaskQARepository, SqliteTaskRepository,
+    SqliteTaskStepRepository, SqliteTeamMessageRepository, SqliteTeamSessionRepository,
+    SqliteWorkflowRepository,
 };
 use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
 
@@ -162,6 +163,8 @@ pub struct AppState {
     pub team_session_repo: Arc<dyn TeamSessionRepository>,
     /// Team message repository for agent team messages
     pub team_message_repo: Arc<dyn TeamMessageRepository>,
+    /// Execution plan repository for tracking plan implementation attempts
+    pub execution_plan_repo: Arc<dyn ExecutionPlanRepository>,
     /// Chat attachment repository for file uploads in chat
     pub chat_attachment_repo: Arc<dyn ChatAttachmentRepository>,
     /// Storage path for chat attachments
@@ -315,6 +318,9 @@ impl AppState {
             team_message_repo: Arc::new(SqliteTeamMessageRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            execution_plan_repo: Arc::new(SqliteExecutionPlanRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
@@ -462,6 +468,9 @@ impl AppState {
             team_message_repo: Arc::new(SqliteTeamMessageRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            execution_plan_repo: Arc::new(SqliteExecutionPlanRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
@@ -534,6 +543,7 @@ impl AppState {
             )),
             team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
             team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
+            execution_plan_repo: Arc::new(MemoryExecutionPlanRepository::new()),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(
@@ -608,6 +618,7 @@ impl AppState {
             )),
             team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
             team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
+            execution_plan_repo: Arc::new(MemoryExecutionPlanRepository::new()),
             chat_attachment_repo,
             attachment_storage_path,
             permission_state: Arc::new(PermissionState::with_repo(Arc::new(

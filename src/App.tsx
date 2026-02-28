@@ -564,8 +564,9 @@ function AppContent() {
           duration: 6000,
         });
       }
-    } catch {
+    } catch (error) {
       toast.error("Failed to apply proposals");
+      throw error;
     }
   }, [applyProposalsMutation, setCurrentView]);
 
