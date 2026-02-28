@@ -148,6 +148,13 @@ pub async fn archive_ideation_session(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let session_id = IdeationSessionId::from_string(id);
+
+    // Remove from analyzing_dependencies if analysis was in progress when session is archived
+    {
+        let mut analyzing = state.analyzing_dependencies.write().await;
+        analyzing.remove(&session_id);
+    }
+
     state
         .ideation_session_repo
         .update_status(&session_id, IdeationSessionStatus::Archived)
@@ -235,7 +242,13 @@ pub async fn delete_ideation_session(
         }
     }
 
-    // 4. Delete the session (existing CASCADE handles proposals/messages)
+    // 4. Remove from analyzing_dependencies if analysis was in progress when session is deleted
+    {
+        let mut analyzing = state.analyzing_dependencies.write().await;
+        analyzing.remove(&session_id);
+    }
+
+    // 5. Delete the session (existing CASCADE handles proposals/messages)
     state
         .ideation_session_repo
         .delete(&session_id)
@@ -503,6 +516,12 @@ pub async fn spawn_dependency_suggester(
         session_id, proposal_summaries, existing_deps_summary
     );
 
+    // Mark session as analyzing before emitting started event
+    {
+        let mut analyzing = state.analyzing_dependencies.write().await;
+        analyzing.insert(session_id_typed.clone());
+    }
+
     // Emit analysis started event
     let _ = app.emit(
         "dependencies:analysis_started",
@@ -539,8 +558,32 @@ pub async fn spawn_dependency_suggester(
         env,
     };
 
-    // Clone the agent client for the background task
+    // Clone what we need for the background task
     let agent_client = Arc::clone(&state.agent_client);
+    let analyzing_dependencies = Arc::clone(&state.analyzing_dependencies);
+    let app_handle = app.clone();
+    let session_id_for_bg = session_id.clone();
+
+    // Spawn safety timeout: auto-clear stale entry after 60 seconds
+    let timeout_analyzing = Arc::clone(&analyzing_dependencies);
+    let timeout_session_id = session_id.clone();
+    let timeout_app_handle = app.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        let removed = {
+            let mut analyzing = timeout_analyzing.write().await;
+            analyzing.remove(&IdeationSessionId::from_string(timeout_session_id.clone()))
+        };
+        if removed {
+            let _ = timeout_app_handle.emit(
+                "dependencies:analysis_failed",
+                serde_json::json!({
+                    "sessionId": timeout_session_id,
+                    "error": "Dependency analysis timed out after 60 seconds",
+                }),
+            );
+        }
+    });
 
     // Spawn in background (fire-and-forget)
     tokio::spawn(async move {
@@ -549,10 +592,41 @@ pub async fn spawn_dependency_suggester(
                 // Wait for completion in the background
                 if let Err(e) = agent_client.wait_for_completion(&handle).await {
                     tracing::warn!("Dependency suggester agent failed: {}", e);
+                    let removed = {
+                        let mut analyzing = analyzing_dependencies.write().await;
+                        analyzing.remove(&IdeationSessionId::from_string(
+                            session_id_for_bg.clone(),
+                        ))
+                    };
+                    if removed {
+                        let _ = app_handle.emit(
+                            "dependencies:analysis_failed",
+                            serde_json::json!({
+                                "sessionId": session_id_for_bg,
+                                "error": format!("Agent failed: {}", e),
+                            }),
+                        );
+                    }
                 }
+                // Success path: apply_proposal_dependencies handler removes from set
             }
             Err(e) => {
                 tracing::warn!("Failed to spawn dependency suggester agent: {}", e);
+                let removed = {
+                    let mut analyzing = analyzing_dependencies.write().await;
+                    analyzing.remove(&IdeationSessionId::from_string(
+                        session_id_for_bg.clone(),
+                    ))
+                };
+                if removed {
+                    let _ = app_handle.emit(
+                        "dependencies:analysis_failed",
+                        serde_json::json!({
+                            "sessionId": session_id_for_bg,
+                            "error": format!("Failed to spawn agent: {}", e),
+                        }),
+                    );
+                }
             }
         }
     });

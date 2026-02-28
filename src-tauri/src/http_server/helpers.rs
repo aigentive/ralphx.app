@@ -554,6 +554,7 @@ pub async fn maybe_trigger_dependency_analysis(
     let proposal_dependency_repo = Arc::clone(&app_state.proposal_dependency_repo);
     let ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
     let artifact_repo = Arc::clone(&app_state.artifact_repo);
+    let analyzing_dependencies = Arc::clone(&app_state.analyzing_dependencies);
 
     // Spawn with debounce delay
     tokio::spawn(async move {
@@ -576,6 +577,33 @@ pub async fn maybe_trigger_dependency_analysis(
         if proposals.len() < 2 {
             return;
         }
+
+        // Mark session as analyzing before emitting the started event
+        {
+            let mut analyzing = analyzing_dependencies.write().await;
+            analyzing.insert(IdeationSessionId::from_string(session_id_str.clone()));
+        }
+
+        // Spawn safety timeout: auto-clear stale entry after 60 seconds
+        let timeout_analyzing = Arc::clone(&analyzing_dependencies);
+        let timeout_session_id = session_id_str.clone();
+        let timeout_app_handle = app_handle.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            let removed = {
+                let mut analyzing = timeout_analyzing.write().await;
+                analyzing.remove(&IdeationSessionId::from_string(timeout_session_id.clone()))
+            };
+            if removed {
+                let _ = timeout_app_handle.emit(
+                    "dependencies:analysis_failed",
+                    serde_json::json!({
+                        "sessionId": timeout_session_id,
+                        "error": "Dependency analysis timed out after 60 seconds",
+                    }),
+                );
+            }
+        });
 
         // Fetch plan artifact summary for the session
         let plan_summary =
@@ -650,6 +678,19 @@ Analyze these proposals and identify logical dependencies based on their content
             Some(path) => path,
             None => {
                 tracing::warn!("Failed to spawn dependency suggester: Claude CLI not found");
+                let removed = {
+                    let mut analyzing = analyzing_dependencies.write().await;
+                    analyzing.remove(&IdeationSessionId::from_string(session_id_str.clone()))
+                };
+                if removed {
+                    let _ = app_handle.emit(
+                        "dependencies:analysis_failed",
+                        serde_json::json!({
+                            "sessionId": session_id_str,
+                            "error": "Claude CLI not found",
+                        }),
+                    );
+                }
                 return;
             }
         };
@@ -668,6 +709,19 @@ Analyze these proposals and identify logical dependencies based on their content
             Ok(cmd) => cmd,
             Err(err) => {
                 tracing::warn!("Dependency suggester spawn blocked: {}", err);
+                let removed = {
+                    let mut analyzing = analyzing_dependencies.write().await;
+                    analyzing.remove(&IdeationSessionId::from_string(session_id_str.clone()))
+                };
+                if removed {
+                    let _ = app_handle.emit(
+                        "dependencies:analysis_failed",
+                        serde_json::json!({
+                            "sessionId": session_id_str,
+                            "error": format!("Spawn blocked: {}", err),
+                        }),
+                    );
+                }
                 return;
             }
         };
@@ -676,6 +730,9 @@ Analyze these proposals and identify logical dependencies based on their content
         match spawnable.spawn().await {
             Ok(mut child) => {
                 // Wait for completion (fire-and-forget style, but log errors)
+                let inner_analyzing = Arc::clone(&analyzing_dependencies);
+                let inner_session_id = session_id_str.clone();
+                let inner_app_handle = app_handle.clone();
                 tokio::spawn(async move {
                     match child.wait().await {
                         Ok(status) => {
@@ -684,16 +741,60 @@ Analyze these proposals and identify logical dependencies based on their content
                                     "Dependency suggester agent exited with status: {}",
                                     status
                                 );
+                                let removed = {
+                                    let mut analyzing = inner_analyzing.write().await;
+                                    analyzing.remove(&IdeationSessionId::from_string(
+                                        inner_session_id.clone(),
+                                    ))
+                                };
+                                if removed {
+                                    let _ = inner_app_handle.emit(
+                                        "dependencies:analysis_failed",
+                                        serde_json::json!({
+                                            "sessionId": inner_session_id,
+                                            "error": format!("Agent exited with status: {}", status),
+                                        }),
+                                    );
+                                }
                             }
+                            // Success path: apply_proposal_dependencies handler removes from set
                         }
                         Err(e) => {
                             tracing::warn!("Failed to wait for dependency suggester agent: {}", e);
+                            let removed = {
+                                let mut analyzing = inner_analyzing.write().await;
+                                analyzing.remove(&IdeationSessionId::from_string(
+                                    inner_session_id.clone(),
+                                ))
+                            };
+                            if removed {
+                                let _ = inner_app_handle.emit(
+                                    "dependencies:analysis_failed",
+                                    serde_json::json!({
+                                        "sessionId": inner_session_id,
+                                        "error": format!("Failed to wait for agent: {}", e),
+                                    }),
+                                );
+                            }
                         }
                     }
                 });
             }
             Err(e) => {
                 tracing::warn!("Failed to spawn dependency suggester agent: {}", e);
+                let removed = {
+                    let mut analyzing = analyzing_dependencies.write().await;
+                    analyzing.remove(&IdeationSessionId::from_string(session_id_str.clone()))
+                };
+                if removed {
+                    let _ = app_handle.emit(
+                        "dependencies:analysis_failed",
+                        serde_json::json!({
+                            "sessionId": session_id_str,
+                            "error": format!("Failed to spawn agent: {}", e),
+                        }),
+                    );
+                }
             }
         }
     });

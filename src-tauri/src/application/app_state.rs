@@ -132,7 +132,16 @@ pub struct AppState {
     pub message_queue: Arc<MessageQueue>,
     /// Registry for tracking running agent processes
     pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
-    /// Sessions currently undergoing dependency analysis (for status reporting in MCP tools)
+    /// Sessions currently undergoing dependency analysis (for status reporting in MCP tools).
+    ///
+    /// **Volatility note:** This is a pure in-memory set — it is NOT persisted to SQLite.
+    /// On app restart, this set starts empty. Any session whose analysis was in progress at
+    /// the time of the crash/restart will NOT appear here. This is correct behaviour:
+    /// - The backend auto-clears any stuck entries with a 60-second safety timeout.
+    /// - The frontend `isAnalyzingDependencies` state resets to `false` on component mount
+    ///   (React `useState` default), so there is no stuck loading UI after a restart.
+    /// - If the user restarts mid-analysis, they can manually trigger re-analysis from the
+    ///   UI. No manual cleanup is needed.
     pub analyzing_dependencies: Arc<tokio::sync::RwLock<HashSet<IdeationSessionId>>>,
     /// Plan branch repository for feature branch tracking
     pub plan_branch_repo: Arc<dyn PlanBranchRepository>,

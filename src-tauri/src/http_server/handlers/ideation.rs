@@ -545,6 +545,12 @@ pub async fn apply_proposal_dependencies(
         }
     }
 
+    // Clear analyzing state: this is the success completion path for the dependency-suggester agent
+    {
+        let mut analyzing = state.app_state.analyzing_dependencies.write().await;
+        analyzing.remove(&session_id);
+    }
+
     // Emit event for real-time UI update
     if let Some(app_handle) = &state.app_state.app_handle {
         let _ = app_handle.emit(

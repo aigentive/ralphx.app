@@ -35,6 +35,10 @@ interface ProposalsToolbarProps {
   onAcceptPlan: () => void;
   onAnalyzeDependencies?: () => void;
   isAnalyzingDependencies?: boolean;
+  /** True after the 90s frontend safety timeout or after an analysis_failed event.
+   *  When true, the accept button label changes to "Accept without dependencies" to
+   *  signal that the plan can be accepted despite incomplete dependency analysis. */
+  analysisTimedOut?: boolean;
 }
 
 // ============================================================================
@@ -49,11 +53,13 @@ export function ProposalsToolbar({
   onAcceptPlan,
   onAnalyzeDependencies,
   isAnalyzingDependencies = false,
+  analysisTimedOut = false,
 }: ProposalsToolbarProps) {
   const totalCount = proposals.length;
   const validation = useDependencyGraphValidation(proposals, graph);
-  const canAccept = totalCount > 0 && !isReadOnly && validation.isComplete;
+  const canAccept = totalCount > 0 && !isReadOnly && validation.isComplete && !isAnalyzingDependencies;
   const showAnalyzeButton = totalCount >= 2 && onAnalyzeDependencies && !isReadOnly;
+  const acceptLabel = analysisTimedOut ? "Accept without dependencies" : `Accept Plan (${totalCount})`;
 
   return (
     <div
@@ -196,7 +202,7 @@ export function ProposalsToolbar({
             }}
           >
             <Check className="w-3 h-3" />
-            Accept Plan ({totalCount})
+            {acceptLabel}
           </Button>
         )}
       </div>
