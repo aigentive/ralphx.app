@@ -7,6 +7,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
+import { Loader2 } from "lucide-react";
 import type { TaskProposal } from "@/types/ideation";
 import type { ApplyProposalsInput, DependencyGraphResponse } from "@/api/ideation.types";
 
@@ -21,6 +22,8 @@ interface AcceptModalProps {
   warnings?: string[];
   /** Default value for feature branch checkbox, sourced from project settings */
   defaultUseFeatureBranch?: boolean;
+  /** True while dependency analysis agent is running — shows info banner and disables accept */
+  isAnalyzingDependencies?: boolean;
 }
 
 export function AcceptModal({
@@ -33,6 +36,7 @@ export function AcceptModal({
   isAccepting = false,
   warnings = [],
   defaultUseFeatureBranch = false,
+  isAnalyzingDependencies = false,
 }: AcceptModalProps) {
   const [preserveDependencies, setPreserveDependencies] = useState(true);
   const [useFeatureBranch, setUseFeatureBranch] = useState(defaultUseFeatureBranch);
@@ -81,7 +85,7 @@ export function AcceptModal({
   const dependencyCount = dependencyGraph.edges.length;
   const hasCycles = dependencyGraph.hasCycles;
   const hasCriticalPath = dependencyGraph.criticalPath.length > 0;
-  const canAccept = proposalCount > 0 && !isAccepting;
+  const canAccept = proposalCount > 0 && !isAccepting && !isAnalyzingDependencies;
 
   return (
     <div
@@ -309,6 +313,22 @@ export function AcceptModal({
             </div>
           </label>
         </div>
+
+        {/* Analysis in progress info */}
+        {isAnalyzingDependencies && (
+          <div
+            data-testid="analyzing-info"
+            className="mb-4 flex items-center gap-2 p-3 rounded text-sm"
+            style={{
+              backgroundColor: "hsla(14 100% 60% / 0.06)",
+              border: "1px solid hsla(14 100% 60% / 0.2)",
+              color: "hsl(14 100% 65%)",
+            }}
+          >
+            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+            <span>Dependency analysis in progress — accept will be available when complete</span>
+          </div>
+        )}
 
         {/* Footer with buttons */}
         <div className="flex justify-end gap-3">

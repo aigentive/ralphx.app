@@ -93,6 +93,32 @@ interface PlanningViewProps {
 // Proposals Toolbar extracted to ProposalsToolbar.tsx
 
 // ============================================================================
+// Analysis Banner
+// ============================================================================
+
+/** Prominent banner shown below ProposalsToolbar while dependency analysis runs. */
+export function AnalysisBanner() {
+  return (
+    <div
+      data-testid="analysis-banner"
+      className="flex items-center gap-2 px-4 py-2 shrink-0"
+      style={{
+        background: "hsla(14 100% 60% / 0.06)",
+        borderBottom: "1px solid hsla(14 100% 60% / 0.15)",
+      }}
+    >
+      <Loader2
+        className="w-3.5 h-3.5 animate-spin shrink-0"
+        style={{ color: "hsl(14 100% 60%)" }}
+      />
+      <span className="text-[12px]" style={{ color: "hsl(14 100% 65%)" }}>
+        Analyzing dependencies — accept will be available when complete
+      </span>
+    </div>
+  );
+}
+
+// ============================================================================
 // Main Component
 // ============================================================================
 
@@ -137,6 +163,10 @@ export function PlanningView({
 
   // Dependency analysis loading state
   const [isAnalyzingDependencies, setIsAnalyzingDependencies] = useState(false);
+  // Set to true after 90s frontend timeout fires or after an analysis_failed event.
+  // Signals to the UI that the accept button should show "Accept without dependencies".
+  const [analysisTimedOut, setAnalysisTimedOut] = useState(false);
+  const analysisTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastDependencyFetchRef = useRef<boolean>(false);
   const lastDependencyToastAtRef = useRef<number | null>(null);
   const lastDependencyRefreshRequestedAt = useProposalStore((state) => state.lastDependencyRefreshRequestedAt);
@@ -219,22 +249,39 @@ export function PlanningView({
     const sessionId = session?.id;
     if (!sessionId) return;
 
-    // Listen for analysis started
+    // Listen for analysis started — start 90s safety timeout
     const unsubAnalysisStarted = eventBus.subscribe<{ session_id: string }>(
       "dependencies:analysis_started",
       (payload) => {
         if (payload.session_id === sessionId) {
           setIsAnalyzingDependencies(true);
+          setAnalysisTimedOut(false);
+
+          // 90-second frontend safety timeout: if no completion or failure event arrives,
+          // reset the analyzing state so the UI doesn't stay stuck. The accept button will
+          // show "Accept without dependencies" after this fires (escape hatch).
+          if (analysisTimeoutRef.current) clearTimeout(analysisTimeoutRef.current);
+          analysisTimeoutRef.current = setTimeout(() => {
+            setIsAnalyzingDependencies(false);
+            setAnalysisTimedOut(true);
+            toast.warning("Dependency analysis is taking longer than expected. You can accept without dependencies.");
+            analysisTimeoutRef.current = null;
+          }, 90_000);
         }
       }
     );
 
-    // Listen for suggestions applied
+    // Listen for suggestions applied — analysis succeeded
     const unsubSuggestionsApplied = eventBus.subscribe<{ session_id: string; applied_count: number }>(
       "dependencies:suggestions_applied",
       (payload) => {
         if (payload.session_id === sessionId) {
+          if (analysisTimeoutRef.current) {
+            clearTimeout(analysisTimeoutRef.current);
+            analysisTimeoutRef.current = null;
+          }
           setIsAnalyzingDependencies(false);
+          setAnalysisTimedOut(false);
           const count = payload.applied_count;
           if (count > 0) {
             toast.success(`${count} ${count === 1 ? "dependency" : "dependencies"} added`);
@@ -245,9 +292,35 @@ export function PlanningView({
       }
     );
 
+    // Listen for analysis failed — backend timeout fired or agent crashed
+    const unsubAnalysisFailed = eventBus.subscribe<{ session_id: string; error: string }>(
+      "dependencies:analysis_failed",
+      (payload) => {
+        if (payload.session_id === sessionId) {
+          if (analysisTimeoutRef.current) {
+            clearTimeout(analysisTimeoutRef.current);
+            analysisTimeoutRef.current = null;
+          }
+          setIsAnalyzingDependencies(false);
+          setAnalysisTimedOut(true);
+          toast.error("Dependency analysis failed", {
+            action: {
+              label: "Re-analyze",
+              onClick: () => handleReanalyzeDependenciesRef.current?.(),
+            },
+          });
+        }
+      }
+    );
+
     return () => {
       unsubAnalysisStarted();
       unsubSuggestionsApplied();
+      unsubAnalysisFailed();
+      if (analysisTimeoutRef.current) {
+        clearTimeout(analysisTimeoutRef.current);
+        analysisTimeoutRef.current = null;
+      }
     };
   }, [eventBus, session?.id]);
 
@@ -281,6 +354,7 @@ export function PlanningView({
   // Manual re-trigger dependency analysis
   const handleReanalyzeDependencies = useCallback(async () => {
     if (!session || isAnalyzingDependencies || proposals.length < 2) return;
+    setAnalysisTimedOut(false);
     try {
       await ideationApi.sessions.spawnDependencySuggester(session.id);
     } catch (err) {
@@ -288,6 +362,10 @@ export function PlanningView({
       toast.error("Failed to analyze dependencies");
     }
   }, [session, isAnalyzingDependencies, proposals.length]);
+
+  // Stable ref so event subscription closure always calls latest handleReanalyzeDependencies
+  const handleReanalyzeDependenciesRef = useRef(handleReanalyzeDependencies);
+  useEffect(() => { handleReanalyzeDependenciesRef.current = handleReanalyzeDependencies; }, [handleReanalyzeDependencies]);
 
   // Stable ref for fetchPlanArtifact to avoid re-triggering the effect
   // when the Zustand action reference changes.
@@ -830,7 +908,13 @@ export function PlanningView({
                         onAcceptPlan={handleAcceptPlan}
                         onAnalyzeDependencies={handleReanalyzeDependencies}
                         isAnalyzingDependencies={isAnalyzingDependencies}
+                        analysisTimedOut={analysisTimedOut}
                       />
+                    )}
+
+                    {/* Analysis Banner — shown below toolbar while dependency analysis runs */}
+                    {proposals.length > 0 && isAnalyzingDependencies && (
+                      <AnalysisBanner />
                     )}
 
                     {/* Tab bar — only when team artifacts exist */}
@@ -1099,6 +1183,7 @@ export function PlanningView({
           sessionId={session.id}
           onAccept={handleAcceptConfirm}
           onCancel={handleAcceptCancel}
+          isAnalyzingDependencies={isAnalyzingDependencies}
           defaultUseFeatureBranch={activeProject?.useFeatureBranches ?? false}
         />
       )}
