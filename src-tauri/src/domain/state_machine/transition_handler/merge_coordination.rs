@@ -751,11 +751,29 @@ impl<'a> super::TransitionHandler<'a> {
             let worktree_path_buf = PathBuf::from(worktree_path);
             if worktree_path_buf.exists() {
                 let lsof_timeout = git_runtime_config().worktree_lsof_timeout_secs;
-                crate::domain::services::kill_worktree_processes_async(
-                    &worktree_path_buf,
-                    lsof_timeout,
+                let step_0b_timeout_secs = git_runtime_config().step_0b_kill_timeout_secs;
+                match tokio::time::timeout(
+                    std::time::Duration::from_secs(step_0b_timeout_secs),
+                    crate::domain::services::kill_worktree_processes_async(
+                        &worktree_path_buf,
+                        lsof_timeout,
+                    ),
                 )
-                .await;
+                .await
+                {
+                    Ok(()) => {
+                        // kill_worktree_processes_async completed within timeout
+                    }
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            task_id = %task_id_str,
+                            worktree = %worktree_path,
+                            step_0b_timeout_secs,
+                            total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+                            "pre_merge_cleanup step 0b: kill_worktree_processes_async timed out — proceeding to next step"
+                        );
+                    }
+                }
             }
         }
         // Brief settle time for process tree cleanup after SIGTERM

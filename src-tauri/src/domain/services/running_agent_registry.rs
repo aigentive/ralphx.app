@@ -363,7 +363,7 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
         }
         Ok(Err(err)) => {
             let elapsed_ms = start.elapsed().as_millis();
-            tracing::debug!(
+            tracing::warn!(
                 worktree = %display_path,
                 elapsed_ms,
                 error = %err,
@@ -380,6 +380,12 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
             );
         }
     }
+
+    tracing::info!(
+        worktree = %display_path,
+        total_elapsed_ms = start.elapsed().as_millis() as u64,
+        "kill_worktree_processes_async: completed"
+    );
 }
 
 /// Waits for processes to die after SIGTERM, escalating to SIGKILL if they linger.

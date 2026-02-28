@@ -64,7 +64,8 @@ async fn test_branch_discovery_integrates_with_pending_merge() {
         "test-project".to_string(),
         repo_path.to_string_lossy().to_string(),
     );
-    let task = Task::new(project.id.clone(), "Test task".to_string());
+    let mut task = Task::new(project.id.clone(), "Test task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
 
     let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());
     Command::new("git")
@@ -128,7 +129,7 @@ async fn test_merge_retry_recovery_discovers_branch_and_merges() {
         repo_path.to_string_lossy().to_string(),
     );
     let mut task = Task::new(project.id.clone(), "Test recovery task".to_string());
-    task.internal_status = InternalStatus::MergeIncomplete;
+    task.internal_status = InternalStatus::PendingMerge;
     task.task_branch = None;
 
     let expected_branch = format!("ralphx/test-project/task-{}", task.id.as_str());

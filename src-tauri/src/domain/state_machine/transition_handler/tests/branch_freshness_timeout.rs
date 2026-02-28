@@ -76,6 +76,7 @@ qa_max_retries: 3
 executing_max_wall_clock_minutes: 60
 reviewing_max_wall_clock_minutes: 30
 qa_max_wall_clock_minutes: 15
+pre_merge_cleanup_timeout_secs: 60
 attempt_merge_deadline_secs: 120
 validation_deadline_secs: 1200
 merge_registry_grace_period_secs: 60

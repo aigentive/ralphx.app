@@ -236,22 +236,49 @@ impl<'a> super::TransitionHandler<'a> {
             MergePhaseStatus::Started,
             "Cleaning up previous merge artifacts...".to_string(),
         );
-        self.pre_merge_cleanup(
-            task_id_str, &task, &project, repo_path, &target_branch, task_repo,
-        ).await;
-        emit_merge_progress(
-            app_handle,
-            task_id_str,
-            MergePhase::new(MergePhase::MERGE_CLEANUP),
-            MergePhaseStatus::Passed,
-            "Cleanup complete".to_string(),
-        );
-        self.emit_merge_activity_event(
-            task_id_str,
-            "Merge pipeline: cleanup complete",
-            MergePhase::MERGE_CLEANUP,
-            "passed",
-        ).await;
+        let cleanup_timeout_secs = reconciliation_config().pre_merge_cleanup_timeout_secs;
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(cleanup_timeout_secs),
+            self.pre_merge_cleanup(
+                task_id_str, &task, &project, repo_path, &target_branch, task_repo,
+            ),
+        ).await {
+            Ok(()) => {
+                emit_merge_progress(
+                    app_handle,
+                    task_id_str,
+                    MergePhase::new(MergePhase::MERGE_CLEANUP),
+                    MergePhaseStatus::Passed,
+                    "Cleanup complete".to_string(),
+                );
+                self.emit_merge_activity_event(
+                    task_id_str,
+                    "Merge pipeline: cleanup complete",
+                    MergePhase::MERGE_CLEANUP,
+                    "passed",
+                ).await;
+            }
+            Err(_elapsed) => {
+                tracing::warn!(
+                    task_id = %task_id_str,
+                    cleanup_timeout_secs,
+                    "pre_merge_cleanup timed out — proceeding to merge anyway (cleanup is best-effort)"
+                );
+                emit_merge_progress(
+                    app_handle,
+                    task_id_str,
+                    MergePhase::new(MergePhase::MERGE_CLEANUP),
+                    MergePhaseStatus::Passed,
+                    format!("Cleanup timed out after {cleanup_timeout_secs}s — proceeding"),
+                );
+                self.emit_merge_activity_event(
+                    task_id_str,
+                    "Merge pipeline: cleanup timed out (best-effort, proceeding)",
+                    MergePhase::MERGE_CLEANUP,
+                    "warning",
+                ).await;
+            }
+        }
 
         // Branch freshness: ensure plan branch, update from main, update source from target
         emit_merge_progress(
