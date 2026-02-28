@@ -652,6 +652,11 @@ impl<'a> super::TransitionHandler<'a> {
         // If a previous merge attempt's validation is still running, cancel it now.
         // The CancellationToken triggers process kill via spawn_cancellable_command.
         let step_start = std::time::Instant::now();
+        tracing::info!(
+            task_id = task_id_str,
+            total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+            "pre_merge_cleanup: step 0a starting (cancel validation)"
+        );
         if let Some((_, token)) = self
             .machine
             .context
@@ -685,7 +690,8 @@ impl<'a> super::TransitionHandler<'a> {
         );
         tracing::info!(
             task_id = task_id_str,
-            "pre_merge_cleanup: step 0b — stopping any running agents"
+            total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+            "pre_merge_cleanup: step 0b starting — stopping any running agents"
         );
         let agent_stop_timeout_secs = git_runtime_config().agent_stop_timeout_secs;
         for ctx_type in [
@@ -765,7 +771,8 @@ impl<'a> super::TransitionHandler<'a> {
         let step_start = std::time::Instant::now();
         tracing::info!(
             task_id = task_id_str,
-            "pre_merge_cleanup: step 1 — removing stale index.lock"
+            total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+            "pre_merge_cleanup: step 1 starting — removing stale index.lock"
         );
         let index_lock_stale_secs = git_runtime_config().index_lock_stale_secs;
         match GitService::remove_stale_index_lock(repo_path, index_lock_stale_secs) {
@@ -802,7 +809,8 @@ impl<'a> super::TransitionHandler<'a> {
             );
             tracing::info!(
                 task_id = task_id_str,
-                "pre_merge_cleanup: step 2 — deleting task worktree"
+                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+                "pre_merge_cleanup: step 2 starting — deleting task worktree"
             );
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
@@ -858,7 +866,8 @@ impl<'a> super::TransitionHandler<'a> {
             let step_start = std::time::Instant::now();
             tracing::info!(
                 task_id = task_id_str,
-                "pre_merge_cleanup: step 3 — pruning stale worktree refs"
+                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+                "pre_merge_cleanup: step 3 starting — pruning stale worktree refs"
             );
             if let Err(e) = GitService::prune_worktrees(repo_path).await {
                 tracing::warn!(
@@ -877,7 +886,8 @@ impl<'a> super::TransitionHandler<'a> {
             let step_start = std::time::Instant::now();
             tracing::info!(
                 task_id = task_id_str,
-                "pre_merge_cleanup: step 4 — deleting own stale merge/rebase worktrees"
+                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+                "pre_merge_cleanup: step 4 starting — deleting own stale merge/rebase worktrees"
             );
             for (wt_label, own_wt) in [
                 ("task", compute_task_worktree_path(project, task_id_str)),
@@ -949,7 +959,8 @@ impl<'a> super::TransitionHandler<'a> {
             );
             tracing::info!(
                 task_id = task_id_str,
-                "pre_merge_cleanup: step 5 — scanning for orphaned merge worktrees"
+                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+                "pre_merge_cleanup: step 5 starting — scanning for orphaned merge worktrees"
             );
             let worktrees_result = tokio::time::timeout(
                 std::time::Duration::from_secs(git_runtime_config().cleanup_git_op_timeout_secs),

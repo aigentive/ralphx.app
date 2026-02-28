@@ -333,7 +333,7 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
 
     match result {
         Ok(Ok(pids)) => {
-            let unique_pids: HashSet<u32> = pids.into_iter().collect();
+            let unique_pids: Vec<u32> = pids.into_iter().collect::<HashSet<u32>>().into_iter().collect();
             let elapsed_ms = start.elapsed().as_millis();
             tracing::info!(
                 worktree = %display_path,
@@ -341,13 +341,24 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
                 pid_count = unique_pids.len(),
                 "kill_worktree_processes_async: lsof scan complete"
             );
-            for pid in unique_pids {
+            for &pid in &unique_pids {
                 tracing::info!(
                     pid,
                     worktree = %display_path,
                     "Killing lingering process from worktree (async)"
                 );
                 kill_process(pid);
+            }
+            // Wait for processes to die after SIGTERM; escalate to SIGKILL if needed.
+            let survivors =
+                await_process_death(&unique_pids, std::time::Duration::from_secs(5)).await;
+            if !survivors.is_empty() {
+                tracing::warn!(
+                    survivor_pids = ?survivors,
+                    worktree = %display_path,
+                    survivor_count = survivors.len(),
+                    "kill_worktree_processes_async: process(es) survived SIGKILL"
+                );
             }
         }
         Ok(Err(err)) => {
@@ -368,6 +379,65 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
                 "kill_worktree_processes_async: lsof scan timed out — lsof process killed (non-fatal)"
             );
         }
+    }
+}
+
+/// Waits for processes to die after SIGTERM, escalating to SIGKILL if they linger.
+///
+/// Polls every 300ms checking `is_process_alive()` for each PID. If any processes
+/// remain alive after `timeout`, sends SIGKILL to survivors and does a final check.
+/// Returns any PIDs still alive after all attempts (unkillable processes).
+async fn await_process_death(pids: &[u32], timeout: std::time::Duration) -> Vec<u32> {
+    if pids.is_empty() {
+        return Vec::new();
+    }
+
+    tracing::info!(
+        pid_count = pids.len(),
+        timeout_ms = timeout.as_millis(),
+        "await_process_death: waiting for processes to exit after SIGTERM"
+    );
+
+    let start = std::time::Instant::now();
+    let poll_interval = std::time::Duration::from_millis(300);
+
+    loop {
+        let survivors: Vec<u32> = pids.iter().copied().filter(|&p| is_process_alive(p)).collect();
+
+        if survivors.is_empty() {
+            tracing::info!("await_process_death: all processes exited cleanly");
+            return Vec::new();
+        }
+
+        if start.elapsed() >= timeout {
+            tracing::warn!(
+                survivor_pids = ?survivors,
+                elapsed_ms = start.elapsed().as_millis(),
+                "await_process_death: processes did not exit after SIGTERM — escalating to SIGKILL"
+            );
+
+            #[cfg(unix)]
+            for &pid in &survivors {
+                let _ = std::process::Command::new("kill")
+                    .args(["-KILL", &pid.to_string()])
+                    .output();
+            }
+
+            // Brief wait for SIGKILL to take effect before final check.
+            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+            let still_alive: Vec<u32> =
+                survivors.iter().copied().filter(|&p| is_process_alive(p)).collect();
+            if !still_alive.is_empty() {
+                tracing::error!(
+                    unkillable_pids = ?still_alive,
+                    "await_process_death: processes survived SIGKILL — unkillable"
+                );
+            }
+            return still_alive;
+        }
+
+        tokio::time::sleep(poll_interval).await;
     }
 }
 

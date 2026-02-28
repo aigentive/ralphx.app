@@ -404,3 +404,83 @@ async fn test_kill_worktree_processes_async_timeout_returns_quickly() {
 
     let _ = std::fs::remove_dir_all(&tmp);
 }
+
+/// Verify that kill_worktree_processes_async WAITS for processes to die
+/// (via await_process_death) instead of fire-and-forget SIGTERM.
+#[tokio::test]
+async fn test_kill_worktree_processes_async_waits_for_process_exit() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let dir_path = dir.path().to_path_buf();
+
+    // Spawn a long-running process with cwd = dir so lsof can discover it
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .current_dir(&dir_path)
+        .spawn()
+        .unwrap();
+    let pid = child.id();
+
+    // Give lsof time to see the process
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert!(is_process_alive(pid));
+
+    kill_worktree_processes_async(&dir_path, 10).await;
+
+    // Reap the zombie so is_process_alive correctly reports dead
+    let _ = child.wait();
+    assert!(
+        !is_process_alive(pid),
+        "Process {} should be dead after kill_worktree_processes_async returns",
+        pid
+    );
+}
+
+/// Verify SIGKILL escalation for processes that ignore SIGTERM.
+/// This test takes ~5-6s due to the SIGTERM wait window.
+#[tokio::test]
+async fn test_kill_worktree_processes_async_escalates_to_sigkill() {
+    let dir = tempfile::TempDir::new().unwrap();
+    let dir_path = dir.path().to_path_buf();
+
+    // Spawn a bash process that IGNORES SIGTERM and keeps cwd = dir.
+    // The while loop restarts sleep after pkill kills its child, keeping bash alive.
+    let mut child = std::process::Command::new("bash")
+        .args([
+            "-c",
+            &format!(
+                "trap '' TERM; cd '{}'; while true; do sleep 60 2>/dev/null; done",
+                dir_path.display()
+            ),
+        ])
+        .spawn()
+        .unwrap();
+    let pid = child.id();
+
+    // Give bash time to set up the trap and cd
+    tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+    assert!(is_process_alive(pid));
+
+    let start = std::time::Instant::now();
+    kill_worktree_processes_async(&dir_path, 15).await;
+    let elapsed = start.elapsed();
+
+    // Should take ≥4s (SIGTERM wait window) but <15s (outer lsof timeout)
+    assert!(
+        elapsed.as_secs() >= 4,
+        "Should wait for SIGTERM window before escalating to SIGKILL, took {:?}",
+        elapsed
+    );
+    assert!(
+        elapsed.as_secs() < 15,
+        "Should not hit outer timeout, took {:?}",
+        elapsed
+    );
+
+    // Reap the zombie
+    let _ = child.wait();
+    assert!(
+        !is_process_alive(pid),
+        "SIGTERM-resistant process {} should be dead after SIGKILL escalation",
+        pid
+    );
+}

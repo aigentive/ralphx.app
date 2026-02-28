@@ -55,6 +55,7 @@ impl<'a> super::TransitionHandler<'a> {
     pub(super) async fn attempt_programmatic_merge(&self) {
         let task_id_str = &self.machine.context.task_id;
         let project_id_str = &self.machine.context.project_id;
+        let attempt_start = std::time::Instant::now();
 
         // --- Self-dedup guard ---
         if !self.try_acquire_in_flight_guard(task_id_str) {
@@ -603,6 +604,7 @@ impl<'a> super::TransitionHandler<'a> {
             tracing::error!(
                 task_id = task_id_str,
                 deadline_secs = deadline_secs,
+                elapsed_ms = attempt_start.elapsed().as_millis() as u64,
                 "Programmatic merge exceeded deadline during cleanup — transitioning to MergeIncomplete"
             );
             let metadata = serde_json::json!({
@@ -623,6 +625,13 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Dispatch merge strategy with timeout
         let remaining = merge_deadline.saturating_duration_since(tokio::time::Instant::now());
+        tracing::info!(
+            task_id = task_id_str,
+            elapsed_ms = attempt_start.elapsed().as_millis() as u64,
+            remaining_ms = remaining.as_millis() as u64,
+            deadline_secs = deadline_secs,
+            "Merge pipeline: cleanup + freshness complete, dispatching strategy"
+        );
         self.emit_merge_activity_event(
             task_id_str,
             format!("Merge pipeline: merging {} into {}", source_branch, target_branch),
