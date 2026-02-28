@@ -239,7 +239,7 @@ async fn test_execution_complete_task_not_found_returns_404() {
     .await;
 
     match result {
-        Err((status, _)) => assert_eq!(
+        Err(status) => assert_eq!(
             status,
             axum::http::StatusCode::NOT_FOUND,
             "expected 404 for non-existent task"
@@ -427,6 +427,116 @@ async fn test_complete_step_all_done_removes_ipr() {
             .has_process(&key)
             .await,
         "IPR must be removed after all steps are completed (all-steps-done fallback)"
+    );
+
+    let _ = child.kill().await;
+}
+
+/// skip_step with all steps done triggers the all-steps-done IPR close fallback.
+///
+/// Scenario: Worker skips the final step → handler detects all steps are Completed/Skipped
+/// → removes IPR entry so the agent receives EOF and exits gracefully.
+#[tokio::test]
+async fn test_skip_step_all_done_removes_ipr() {
+    let state = setup_test_state().await;
+
+    let project_id = ProjectId::new();
+    let task = Task::new(project_id, "Skip all steps done test".to_string());
+    let task_id = task.id.clone();
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    // Create 2 steps (Pending by default)
+    let step1_resp = add_step_http(
+        State(state.clone()),
+        Json(AddStepRequest {
+            task_id: task_id.as_str().to_string(),
+            title: "Step 1".to_string(),
+            description: None,
+            after_step_id: None,
+            parent_step_id: None,
+            scope_context: None,
+        }),
+    )
+    .await
+    .unwrap();
+    let step1_id = step1_resp.0.id.clone();
+
+    let step2_resp = add_step_http(
+        State(state.clone()),
+        Json(AddStepRequest {
+            task_id: task_id.as_str().to_string(),
+            title: "Step 2".to_string(),
+            description: None,
+            after_step_id: None,
+            parent_step_id: None,
+            scope_context: None,
+        }),
+    )
+    .await
+    .unwrap();
+    let step2_id = step2_resp.0.id.clone();
+
+    // Transition step 1 Pending → InProgress so it can be completed
+    let _ = start_step_http(
+        State(state.clone()),
+        Json(StartStepRequest {
+            step_id: step1_id.clone(),
+        }),
+    )
+    .await
+    .unwrap();
+
+    // Register IPR entry for the worker
+    let (mut child, stdin) = spawn_test_stdin().await;
+    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
+        "task_execution",
+        task_id.as_str(),
+    );
+    state
+        .app_state
+        .interactive_process_registry
+        .register(key.clone(), stdin)
+        .await;
+
+    // Complete step 1 — step 2 still Pending → IPR must remain
+    let _ = complete_step_http(
+        State(state.clone()),
+        Json(CompleteStepRequest {
+            step_id: step1_id,
+            note: None,
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        state
+            .app_state
+            .interactive_process_registry
+            .has_process(&key)
+            .await,
+        "IPR must remain after completing only 1 of 2 steps"
+    );
+
+    // Skip step 2 (still Pending — skip is valid from Pending state)
+    // → all steps now Completed/Skipped → fallback removes IPR
+    let _ = skip_step_http(
+        State(state.clone()),
+        Json(SkipStepRequest {
+            step_id: step2_id,
+            reason: "Not needed for this implementation".to_string(),
+        }),
+    )
+    .await
+    .unwrap();
+
+    assert!(
+        !state
+            .app_state
+            .interactive_process_registry
+            .has_process(&key)
+            .await,
+        "IPR must be removed after all steps done via skip (all-steps-done fallback)"
     );
 
     let _ = child.kill().await;

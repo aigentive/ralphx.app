@@ -88,13 +88,14 @@ RalphX agent teams use a **dual-spawn model**. Both components are required:
 Claude Agent → MCP Protocol → ralphx-mcp-server (TS) → HTTP :3847 → Tauri Backend
 ```
 Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md` (three-layer allowlist)
+**MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `ralphx-plugin/ralphx-mcp-server/src/`, run `cd ralphx-plugin/ralphx-mcp-server && npm run build` to rebuild assets. ❌ Committing without rebuilding.
 
 | Agent | MCP Tools |
 |-------|-----------|
 | orchestrator-ideation | *_task_proposal, *_plan_artifact |
 | chat-task | update_task, add_task_note, get_task_details |
 | chat-project | suggest_task, list_tasks |
-| worker / coder | get_task_context, get_artifact*, *_step |
+| worker / coder | get_task_context, get_artifact*, *_step, execution_complete |
 | reviewer | complete_review |
 | merger | report_conflict, report_incomplete, get_merge_target, get_task_context |
 

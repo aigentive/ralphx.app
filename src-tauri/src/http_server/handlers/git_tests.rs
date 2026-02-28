@@ -178,22 +178,20 @@ mod ipr_removal {
             Path(task_id.as_str().to_string()),
             Json(ReportConflictRequest {
                 conflict_files: vec!["src/main.rs".to_string()],
+                reason: "Cannot automatically resolve conflict in src/main.rs".to_string(),
             }),
         )
         .await;
 
-        // IPR removal only happens after successful state transition.
-        // If transition fails (in-memory repo limitation), document the constraint.
-        if result.is_ok() {
-            assert!(
-                !state
-                    .app_state
-                    .interactive_process_registry
-                    .has_process(&key)
-                    .await,
-                "IPR must be removed after report_conflict succeeds"
-            );
-        }
+        assert!(result.is_ok(), "report_conflict handler should succeed: {:?}", result);
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "IPR must be removed after report_conflict succeeds"
+        );
 
         // Clean up regardless of result
         state
@@ -408,17 +406,15 @@ mod ipr_removal {
         )
         .await;
 
-        // IPR removal happens after successful state transition
-        if result.is_ok() {
-            assert!(
-                !state
-                    .app_state
-                    .interactive_process_registry
-                    .has_process(&key)
-                    .await,
-                "IPR should be removed after complete_merge success"
-            );
-        }
+        assert!(result.is_ok(), "complete_merge handler should succeed: {:?}", result);
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "IPR should be removed after complete_merge success"
+        );
 
         state
             .app_state
@@ -474,17 +470,15 @@ mod ipr_removal {
         )
         .await;
 
-        // IPR removal happens after successful PendingMerge transition
-        if result.is_ok() {
-            assert!(
-                !state
-                    .app_state
-                    .interactive_process_registry
-                    .has_process(&key)
-                    .await,
-                "IPR should be removed after complete_merge rebase retry path"
-            );
-        }
+        assert!(result.is_ok(), "complete_merge rebase retry handler should succeed: {:?}", result);
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "IPR should be removed after complete_merge rebase retry path"
+        );
 
         state
             .app_state
@@ -541,6 +535,102 @@ mod ipr_removal {
         // The key invariant is: no panic when IPR entry is absent.
     }
 
+    /// report_conflict — no IPR entry is safe: handler succeeds without IPR registered.
+    ///
+    /// When no IPR entry is present (merger agent already exited), the IPR removal
+    /// is a no-op and must not cause the handler to fail or panic.
+    #[tokio::test]
+    async fn test_report_conflict_no_ipr_entry_is_safe() {
+        let state = setup_git_test_state().await;
+        let task = seed_merging_task(&state).await;
+        let task_id = task.id.clone();
+
+        // No IPR entry registered — removal must be a no-op
+        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
+            "merge",
+            task_id.as_str(),
+        );
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "No IPR should be registered at start of test"
+        );
+
+        let result = report_conflict(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(ReportConflictRequest {
+                conflict_files: vec!["src/lib.rs".to_string()],
+                reason: "Conflicting changes in function signatures".to_string(),
+            }),
+        )
+        .await;
+
+        // Handler must not panic or error solely due to missing IPR entry.
+        // If transition fails (in-memory limitation), that is acceptable;
+        // the key invariant is no panic and no phantom IPR left behind.
+        if result.is_ok() {
+            assert!(
+                !state
+                    .app_state
+                    .interactive_process_registry
+                    .has_process(&key)
+                    .await,
+                "No phantom IPR should exist after handler call"
+            );
+        }
+    }
+
+    /// report_incomplete — no IPR entry is safe: handler succeeds without IPR registered.
+    ///
+    /// When no IPR entry is present (merger agent already exited), the IPR removal
+    /// is a no-op and must not cause the handler to fail or panic.
+    #[tokio::test]
+    async fn test_report_incomplete_no_ipr_entry_is_safe() {
+        let state = setup_git_test_state().await;
+        let task = seed_merging_task(&state).await;
+        let task_id = task.id.clone();
+
+        // No IPR entry registered — removal must be a no-op
+        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
+            "merge",
+            task_id.as_str(),
+        );
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "No IPR should be registered at start of test"
+        );
+
+        let result = report_incomplete(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(ReportIncompleteRequest {
+                reason: "Git operation failed: missing remote configuration".to_string(),
+                diagnostic_info: Some("git remote: error".to_string()),
+            }),
+        )
+        .await;
+
+        // Handler must not panic or error solely due to missing IPR entry.
+        if result.is_ok() {
+            assert!(
+                !state
+                    .app_state
+                    .interactive_process_registry
+                    .has_process(&key)
+                    .await,
+                "No phantom IPR should exist after handler call"
+            );
+        }
+    }
+
     /// report_incomplete — IPR entry removed after transition to MergeIncomplete.
     ///
     /// When the merger agent calls report_incomplete, the handler transitions the task
@@ -589,17 +679,15 @@ mod ipr_removal {
         )
         .await;
 
-        // IPR removal only happens after successful state transition.
-        if result.is_ok() {
-            assert!(
-                !state
-                    .app_state
-                    .interactive_process_registry
-                    .has_process(&key)
-                    .await,
-                "IPR must be removed after report_incomplete succeeds"
-            );
-        }
+        assert!(result.is_ok(), "report_incomplete handler should succeed: {:?}", result);
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "IPR must be removed after report_incomplete succeeds"
+        );
 
         // Clean up regardless of result
         state

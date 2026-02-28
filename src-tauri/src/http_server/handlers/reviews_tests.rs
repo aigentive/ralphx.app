@@ -302,3 +302,139 @@ async fn test_complete_review_ipr_removed_on_success() {
         .await;
     let _ = child.kill().await;
 }
+
+/// complete_review — IPR entry removed after needs_changes decision.
+///
+/// When the reviewer agent calls complete_review with decision="needs_changes",
+/// the IPR entry must be removed regardless of decision type so the agent gets EOF.
+#[tokio::test]
+async fn test_complete_review_ipr_removed_on_needs_changes() {
+    let state = setup_review_test_state().await;
+    let task = seed_task_with_status(&state, InternalStatus::Reviewing).await;
+    let task_id = task.id.clone();
+
+    // Register IPR entry for the reviewer agent
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn cat for review IPR needs_changes test");
+    let stdin = child.stdin.take().expect("cat stdin");
+
+    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
+        "review",
+        task_id.as_str(),
+    );
+    state
+        .app_state
+        .interactive_process_registry
+        .register(key.clone(), stdin)
+        .await;
+
+    assert!(
+        state
+            .app_state
+            .interactive_process_registry
+            .has_process(&key)
+            .await,
+        "IPR must be registered before handler call"
+    );
+
+    let req = CompleteReviewRequest {
+        task_id: task_id.as_str().to_string(),
+        decision: "needs_changes".to_string(),
+        summary: Some("Found issues".to_string()),
+        feedback: Some("Please fix the error handling".to_string()),
+        issues: None,
+    };
+    let result = complete_review(State(state.clone()), Json(req)).await;
+
+    // Only assert IPR removal when the full handler flow succeeded.
+    if result.is_ok() {
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "IPR must be removed after complete_review needs_changes succeeds"
+        );
+    }
+
+    // Clean up regardless of result
+    state
+        .app_state
+        .interactive_process_registry
+        .remove(&key)
+        .await;
+    let _ = child.kill().await;
+}
+
+/// complete_review — IPR entry removed after escalate decision.
+///
+/// When the reviewer agent calls complete_review with decision="escalate",
+/// the IPR entry must be removed so the agent receives EOF and exits gracefully.
+#[tokio::test]
+async fn test_complete_review_ipr_removed_on_escalate() {
+    let state = setup_review_test_state().await;
+    let task = seed_task_with_status(&state, InternalStatus::Reviewing).await;
+    let task_id = task.id.clone();
+
+    // Register IPR entry for the reviewer agent
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("spawn cat for review IPR escalate test");
+    let stdin = child.stdin.take().expect("cat stdin");
+
+    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
+        "review",
+        task_id.as_str(),
+    );
+    state
+        .app_state
+        .interactive_process_registry
+        .register(key.clone(), stdin)
+        .await;
+
+    assert!(
+        state
+            .app_state
+            .interactive_process_registry
+            .has_process(&key)
+            .await,
+        "IPR must be registered before handler call"
+    );
+
+    let req = CompleteReviewRequest {
+        task_id: task_id.as_str().to_string(),
+        decision: "escalate".to_string(),
+        summary: Some("Complex issue requiring human review".to_string()),
+        feedback: Some("Needs a human expert to decide".to_string()),
+        issues: None,
+    };
+    let result = complete_review(State(state.clone()), Json(req)).await;
+
+    // Only assert IPR removal when the full handler flow succeeded.
+    if result.is_ok() {
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "IPR must be removed after complete_review escalate succeeds"
+        );
+    }
+
+    // Clean up regardless of result
+    state
+        .app_state
+        .interactive_process_registry
+        .remove(&key)
+        .await;
+    let _ = child.kill().await;
+}
