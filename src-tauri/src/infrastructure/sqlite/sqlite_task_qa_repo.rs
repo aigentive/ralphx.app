@@ -1,5 +1,5 @@
 // SQLite-based TaskQARepository implementation for production use
-// Uses rusqlite with connection pooling for thread-safe access
+// Uses DbConnection for non-blocking SQLite access via spawn_blocking
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -12,24 +12,26 @@ use crate::domain::entities::{TaskId, TaskQA, TaskQAId};
 use crate::domain::qa::{AcceptanceCriteria, QAResults, QATestSteps};
 use crate::domain::repositories::TaskQARepository;
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::sqlite::DbConnection;
 
 /// SQLite implementation of TaskQARepository for production use
-/// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteTaskQARepository {
-    conn: Arc<Mutex<Connection>>,
+    pub(crate) db: DbConnection,
 }
 
 impl SqliteTaskQARepository {
     /// Create a new SQLite TaskQA repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 
     /// Helper to parse datetime from SQLite
@@ -122,11 +124,57 @@ impl SqliteTaskQARepository {
     }
 }
 
+const SELECT_TASK_QA: &str = "SELECT
+    id, task_id,
+    acceptance_criteria, qa_test_steps, prep_agent_id, prep_started_at, prep_completed_at,
+    actual_implementation, refined_test_steps, refinement_agent_id, refinement_completed_at,
+    test_results, screenshots, test_agent_id, test_completed_at,
+    created_at
+FROM task_qa";
+
+fn extract_row(
+    row: &rusqlite::Row,
+) -> rusqlite::Result<(
+    String,
+    String,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    String,
+)> {
+    Ok((
+        row.get::<_, String>(0)?,
+        row.get::<_, String>(1)?,
+        row.get::<_, Option<String>>(2)?,
+        row.get::<_, Option<String>>(3)?,
+        row.get::<_, Option<String>>(4)?,
+        row.get::<_, Option<String>>(5)?,
+        row.get::<_, Option<String>>(6)?,
+        row.get::<_, Option<String>>(7)?,
+        row.get::<_, Option<String>>(8)?,
+        row.get::<_, Option<String>>(9)?,
+        row.get::<_, Option<String>>(10)?,
+        row.get::<_, Option<String>>(11)?,
+        row.get::<_, Option<String>>(12)?,
+        row.get::<_, Option<String>>(13)?,
+        row.get::<_, Option<String>>(14)?,
+        row.get::<_, String>(15)?,
+    ))
+}
+
 #[async_trait]
 impl TaskQARepository for SqliteTaskQARepository {
     async fn create(&self, task_qa: &TaskQA) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let acceptance_criteria_json = task_qa
             .acceptance_criteria
             .as_ref()
@@ -164,133 +212,80 @@ impl TaskQARepository for SqliteTaskQARepository {
             )
         };
 
-        conn.execute(
-            "INSERT INTO task_qa (
-                id, task_id,
-                acceptance_criteria, qa_test_steps, prep_agent_id, prep_started_at, prep_completed_at,
-                actual_implementation, refined_test_steps, refinement_agent_id, refinement_completed_at,
-                test_results, screenshots, test_agent_id, test_completed_at,
-                created_at
-            ) VALUES (
-                ?1, ?2,
-                ?3, ?4, ?5, ?6, ?7,
-                ?8, ?9, ?10, ?11,
-                ?12, ?13, ?14, ?15,
-                ?16
-            )",
-            rusqlite::params![
-                task_qa.id.as_str(),
-                task_qa.task_id.as_str(),
-                acceptance_criteria_json,
-                qa_test_steps_json,
-                task_qa.prep_agent_id,
-                task_qa.prep_started_at.map(|dt| Self::format_datetime(&dt)),
-                task_qa.prep_completed_at.map(|dt| Self::format_datetime(&dt)),
-                task_qa.actual_implementation,
-                refined_test_steps_json,
-                task_qa.refinement_agent_id,
-                task_qa.refinement_completed_at.map(|dt| Self::format_datetime(&dt)),
-                test_results_json,
-                screenshots_json,
-                task_qa.test_agent_id,
-                task_qa.test_completed_at.map(|dt| Self::format_datetime(&dt)),
-                Self::format_datetime(&task_qa.created_at),
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
+        let id = task_qa.id.as_str().to_string();
+        let task_id = task_qa.task_id.as_str().to_string();
+        let prep_agent_id = task_qa.prep_agent_id.clone();
+        let prep_started_at = task_qa.prep_started_at.map(|dt| Self::format_datetime(&dt));
+        let prep_completed_at = task_qa.prep_completed_at.map(|dt| Self::format_datetime(&dt));
+        let actual_implementation = task_qa.actual_implementation.clone();
+        let refinement_agent_id = task_qa.refinement_agent_id.clone();
+        let refinement_completed_at = task_qa.refinement_completed_at.map(|dt| Self::format_datetime(&dt));
+        let test_agent_id = task_qa.test_agent_id.clone();
+        let test_completed_at = task_qa.test_completed_at.map(|dt| Self::format_datetime(&dt));
+        let created_at = Self::format_datetime(&task_qa.created_at);
 
-        Ok(())
+        self.db.run(move |conn| {
+            conn.execute(
+                "INSERT INTO task_qa (
+                    id, task_id,
+                    acceptance_criteria, qa_test_steps, prep_agent_id, prep_started_at, prep_completed_at,
+                    actual_implementation, refined_test_steps, refinement_agent_id, refinement_completed_at,
+                    test_results, screenshots, test_agent_id, test_completed_at,
+                    created_at
+                ) VALUES (
+                    ?1, ?2,
+                    ?3, ?4, ?5, ?6, ?7,
+                    ?8, ?9, ?10, ?11,
+                    ?12, ?13, ?14, ?15,
+                    ?16
+                )",
+                rusqlite::params![
+                    id, task_id,
+                    acceptance_criteria_json, qa_test_steps_json, prep_agent_id,
+                    prep_started_at, prep_completed_at,
+                    actual_implementation, refined_test_steps_json, refinement_agent_id,
+                    refinement_completed_at,
+                    test_results_json, screenshots_json, test_agent_id, test_completed_at,
+                    created_at,
+                ],
+            )?;
+            Ok(())
+        }).await
     }
 
     async fn get_by_id(&self, id: &TaskQAId) -> AppResult<Option<TaskQA>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT
-                id, task_id,
-                acceptance_criteria, qa_test_steps, prep_agent_id, prep_started_at, prep_completed_at,
-                actual_implementation, refined_test_steps, refinement_agent_id, refinement_completed_at,
-                test_results, screenshots, test_agent_id, test_completed_at,
-                created_at
-            FROM task_qa WHERE id = ?1",
-            [id.as_str()],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                    row.get::<_, Option<String>>(6)?,
-                    row.get::<_, Option<String>>(7)?,
-                    row.get::<_, Option<String>>(8)?,
-                    row.get::<_, Option<String>>(9)?,
-                    row.get::<_, Option<String>>(10)?,
-                    row.get::<_, Option<String>>(11)?,
-                    row.get::<_, Option<String>>(12)?,
-                    row.get::<_, Option<String>>(13)?,
-                    row.get::<_, Option<String>>(14)?,
-                    row.get::<_, String>(15)?,
-                ))
-            },
-        );
+        let id_str = id.as_str().to_string();
+        let result = self.db.query_optional(move |conn| {
+            conn.query_row(
+                &format!("{} WHERE id = ?1", SELECT_TASK_QA),
+                [&id_str],
+                extract_row,
+            )
+        }).await?;
 
         match result {
-            Ok((id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca)) => {
-                let task_qa = Self::row_to_task_qa(
-                    id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca,
-                )?;
-                Ok(Some(task_qa))
+            Some((id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca)) => {
+                Ok(Some(Self::row_to_task_qa(id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca)?))
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
+            None => Ok(None),
         }
     }
 
     async fn get_by_task_id(&self, task_id: &TaskId) -> AppResult<Option<TaskQA>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT
-                id, task_id,
-                acceptance_criteria, qa_test_steps, prep_agent_id, prep_started_at, prep_completed_at,
-                actual_implementation, refined_test_steps, refinement_agent_id, refinement_completed_at,
-                test_results, screenshots, test_agent_id, test_completed_at,
-                created_at
-            FROM task_qa WHERE task_id = ?1",
-            [task_id.as_str()],
-            |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                    row.get::<_, Option<String>>(6)?,
-                    row.get::<_, Option<String>>(7)?,
-                    row.get::<_, Option<String>>(8)?,
-                    row.get::<_, Option<String>>(9)?,
-                    row.get::<_, Option<String>>(10)?,
-                    row.get::<_, Option<String>>(11)?,
-                    row.get::<_, Option<String>>(12)?,
-                    row.get::<_, Option<String>>(13)?,
-                    row.get::<_, Option<String>>(14)?,
-                    row.get::<_, String>(15)?,
-                ))
-            },
-        );
+        let task_id_str = task_id.as_str().to_string();
+        let result = self.db.query_optional(move |conn| {
+            conn.query_row(
+                &format!("{} WHERE task_id = ?1", SELECT_TASK_QA),
+                [&task_id_str],
+                extract_row,
+            )
+        }).await?;
 
         match result {
-            Ok((id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca)) => {
-                let task_qa = Self::row_to_task_qa(
-                    id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca,
-                )?;
-                Ok(Some(task_qa))
+            Some((id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca)) => {
+                Ok(Some(Self::row_to_task_qa(id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca)?))
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
+            None => Ok(None),
         }
     }
 
@@ -301,8 +296,6 @@ impl TaskQARepository for SqliteTaskQARepository {
         criteria: &AcceptanceCriteria,
         steps: &QATestSteps,
     ) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let criteria_json = serde_json::to_string(criteria)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
@@ -310,19 +303,21 @@ impl TaskQARepository for SqliteTaskQARepository {
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
         let now = Self::format_datetime(&Utc::now());
+        let id_str = id.as_str().to_string();
+        let agent_id = agent_id.to_string();
 
-        conn.execute(
-            "UPDATE task_qa SET
-                prep_agent_id = ?1,
-                acceptance_criteria = ?2,
-                qa_test_steps = ?3,
-                prep_completed_at = ?4
-            WHERE id = ?5",
-            rusqlite::params![agent_id, criteria_json, steps_json, now, id.as_str(),],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db.run(move |conn| {
+            conn.execute(
+                "UPDATE task_qa SET
+                    prep_agent_id = ?1,
+                    acceptance_criteria = ?2,
+                    qa_test_steps = ?3,
+                    prep_completed_at = ?4
+                WHERE id = ?5",
+                rusqlite::params![agent_id, criteria_json, steps_json, now, id_str],
+            )?;
+            Ok(())
+        }).await
     }
 
     async fn update_refinement(
@@ -332,31 +327,26 @@ impl TaskQARepository for SqliteTaskQARepository {
         actual_implementation: &str,
         refined_steps: &QATestSteps,
     ) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let steps_json = serde_json::to_string(refined_steps)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
         let now = Self::format_datetime(&Utc::now());
+        let id_str = id.as_str().to_string();
+        let agent_id = agent_id.to_string();
+        let actual_implementation = actual_implementation.to_string();
 
-        conn.execute(
-            "UPDATE task_qa SET
-                refinement_agent_id = ?1,
-                actual_implementation = ?2,
-                refined_test_steps = ?3,
-                refinement_completed_at = ?4
-            WHERE id = ?5",
-            rusqlite::params![
-                agent_id,
-                actual_implementation,
-                steps_json,
-                now,
-                id.as_str(),
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db.run(move |conn| {
+            conn.execute(
+                "UPDATE task_qa SET
+                    refinement_agent_id = ?1,
+                    actual_implementation = ?2,
+                    refined_test_steps = ?3,
+                    refinement_completed_at = ?4
+                WHERE id = ?5",
+                rusqlite::params![agent_id, actual_implementation, steps_json, now, id_str],
+            )?;
+            Ok(())
+        }).await
     }
 
     async fn update_results(
@@ -366,8 +356,6 @@ impl TaskQARepository for SqliteTaskQARepository {
         results: &QAResults,
         screenshots: &[String],
     ) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let results_json = serde_json::to_string(results)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
@@ -381,61 +369,36 @@ impl TaskQARepository for SqliteTaskQARepository {
         };
 
         let now = Self::format_datetime(&Utc::now());
+        let id_str = id.as_str().to_string();
+        let agent_id = agent_id.to_string();
 
-        conn.execute(
-            "UPDATE task_qa SET
-                test_agent_id = ?1,
-                test_results = ?2,
-                screenshots = ?3,
-                test_completed_at = ?4
-            WHERE id = ?5",
-            rusqlite::params![agent_id, results_json, screenshots_json, now, id.as_str(),],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db.run(move |conn| {
+            conn.execute(
+                "UPDATE task_qa SET
+                    test_agent_id = ?1,
+                    test_results = ?2,
+                    screenshots = ?3,
+                    test_completed_at = ?4
+                WHERE id = ?5",
+                rusqlite::params![agent_id, results_json, screenshots_json, now, id_str],
+            )?;
+            Ok(())
+        }).await
     }
 
     async fn get_pending_prep(&self) -> AppResult<Vec<TaskQA>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn.prepare(
-            "SELECT
-                id, task_id,
-                acceptance_criteria, qa_test_steps, prep_agent_id, prep_started_at, prep_completed_at,
-                actual_implementation, refined_test_steps, refinement_agent_id, refinement_completed_at,
-                test_results, screenshots, test_agent_id, test_completed_at,
-                created_at
-            FROM task_qa WHERE acceptance_criteria IS NULL"
-        ).map_err(|e| AppError::Database(e.to_string()))?;
-
-        let rows = stmt
-            .query_map([], |row| {
-                Ok((
-                    row.get::<_, String>(0)?,
-                    row.get::<_, String>(1)?,
-                    row.get::<_, Option<String>>(2)?,
-                    row.get::<_, Option<String>>(3)?,
-                    row.get::<_, Option<String>>(4)?,
-                    row.get::<_, Option<String>>(5)?,
-                    row.get::<_, Option<String>>(6)?,
-                    row.get::<_, Option<String>>(7)?,
-                    row.get::<_, Option<String>>(8)?,
-                    row.get::<_, Option<String>>(9)?,
-                    row.get::<_, Option<String>>(10)?,
-                    row.get::<_, Option<String>>(11)?,
-                    row.get::<_, Option<String>>(12)?,
-                    row.get::<_, Option<String>>(13)?,
-                    row.get::<_, Option<String>>(14)?,
-                    row.get::<_, String>(15)?,
-                ))
-            })
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        let rows: Vec<_> = self.db.run(move |conn| {
+            let mut stmt = conn.prepare(
+                &format!("{} WHERE acceptance_criteria IS NULL", SELECT_TASK_QA),
+            )?;
+            let rows = stmt
+                .query_map([], extract_row)?
+                .collect::<Result<Vec<_>, _>>()?;
+            Ok(rows)
+        }).await?;
 
         let mut results = Vec::new();
-        for row in rows {
-            let (id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca) =
-                row.map_err(|e| AppError::Database(e.to_string()))?;
+        for (id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca) in rows {
             let task_qa = Self::row_to_task_qa(
                 id, task_id, ac, qs, pa, ps, pc, ai, rs, ra, rc, tr, ss, ta, tc, ca,
             )?;
@@ -446,35 +409,31 @@ impl TaskQARepository for SqliteTaskQARepository {
     }
 
     async fn delete(&self, id: &TaskQAId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute("DELETE FROM task_qa WHERE id = ?1", [id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id_str = id.as_str().to_string();
+        self.db.run(move |conn| {
+            conn.execute("DELETE FROM task_qa WHERE id = ?1", [id_str])?;
+            Ok(())
+        }).await
     }
 
     async fn delete_by_task_id(&self, task_id: &TaskId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute("DELETE FROM task_qa WHERE task_id = ?1", [task_id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let task_id_str = task_id.as_str().to_string();
+        self.db.run(move |conn| {
+            conn.execute("DELETE FROM task_qa WHERE task_id = ?1", [task_id_str])?;
+            Ok(())
+        }).await
     }
 
     async fn exists_for_task(&self, task_id: &TaskId) -> AppResult<bool> {
-        let conn = self.conn.lock().await;
-
-        let count: i32 = conn
-            .query_row(
+        let task_id_str = task_id.as_str().to_string();
+        self.db.run(move |conn| {
+            let count: i32 = conn.query_row(
                 "SELECT COUNT(*) FROM task_qa WHERE task_id = ?1",
-                [task_id.as_str()],
+                [task_id_str],
                 |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count > 0)
+            )?;
+            Ok(count > 0)
+        }).await
     }
 }
 

@@ -1,5 +1,6 @@
 // SQLite-based MethodologyRepository implementation for production use
-// Uses rusqlite with connection pooling for thread-safe access
+// All rusqlite calls go through DbConnection::run() (spawn_blocking + blocking_lock)
+// to prevent blocking the tokio async runtime / timer driver.
 
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -10,24 +11,26 @@ use rusqlite::Connection;
 use crate::domain::entities::methodology::{MethodologyExtension, MethodologyId};
 use crate::domain::repositories::MethodologyRepository;
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::sqlite::DbConnection;
 
 /// SQLite implementation of MethodologyRepository for production use
-/// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteMethodologyRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteMethodologyRepository {
     /// Create a new SQLite methodology repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 
     /// Parse a MethodologyExtension from a database row
@@ -107,184 +110,162 @@ impl From<&MethodologyExtension> for MethodologyConfig {
 #[async_trait]
 impl MethodologyRepository for SqliteMethodologyRepository {
     async fn create(&self, methodology: MethodologyExtension) -> AppResult<MethodologyExtension> {
-        let conn = self.conn.lock().await;
-
         let config = MethodologyConfig::from(&methodology);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
+        let id_str = methodology.id.as_str().to_string();
+        let name = methodology.name.clone();
+        let description = methodology.description.clone();
+        let is_active = methodology.is_active as i32;
         let created_at_str = methodology.created_at.to_rfc3339();
 
-        conn.execute(
-            "INSERT INTO methodology_extensions (id, name, description, config_json, is_active, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                methodology.id.as_str(),
-                methodology.name,
-                methodology.description,
-                config_json,
-                methodology.is_active as i32,
-                created_at_str,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO methodology_extensions (id, name, description, config_json, is_active, created_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    rusqlite::params![id_str, name, description, config_json, is_active, created_at_str],
+                )?;
+                Ok(())
+            })
+            .await?;
         Ok(methodology)
     }
 
     async fn get_by_id(&self, id: &MethodologyId) -> AppResult<Option<MethodologyExtension>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, name, description, config_json, is_active, created_at
-             FROM methodology_extensions WHERE id = ?1",
-            [id.as_str()],
-            |row| Self::methodology_from_row(row),
-        );
-
-        match result {
-            Ok(methodology) => Ok(Some(methodology)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        let id_str = id.as_str().to_string();
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, name, description, config_json, is_active, created_at
+                     FROM methodology_extensions WHERE id = ?1",
+                    rusqlite::params![id_str],
+                    SqliteMethodologyRepository::methodology_from_row,
+                )
+            })
+            .await
     }
 
     async fn get_all(&self) -> AppResult<Vec<MethodologyExtension>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, name, description, config_json, is_active, created_at
-                 FROM methodology_extensions ORDER BY name ASC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let methodologies = stmt
-            .query_map([], Self::methodology_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(methodologies)
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, name, description, config_json, is_active, created_at
+                     FROM methodology_extensions ORDER BY name ASC",
+                )?;
+                let methodologies = stmt
+                    .query_map([], SqliteMethodologyRepository::methodology_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(methodologies)
+            })
+            .await
     }
 
     async fn get_active(&self) -> AppResult<Option<MethodologyExtension>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, name, description, config_json, is_active, created_at
-             FROM methodology_extensions WHERE is_active = 1",
-            [],
-            |row| Self::methodology_from_row(row),
-        );
-
-        match result {
-            Ok(methodology) => Ok(Some(methodology)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, name, description, config_json, is_active, created_at
+                     FROM methodology_extensions WHERE is_active = 1",
+                    [],
+                    SqliteMethodologyRepository::methodology_from_row,
+                )
+            })
+            .await
     }
 
     async fn activate(&self, id: &MethodologyId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        // First, deactivate all methodologies
-        conn.execute("UPDATE methodology_extensions SET is_active = 0", [])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        // Then, activate the specified one
-        let updated = conn
-            .execute(
-                "UPDATE methodology_extensions SET is_active = 1 WHERE id = ?1",
-                [id.as_str()],
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        if updated == 0 {
-            return Err(AppError::NotFound(format!(
-                "Methodology not found: {}",
-                id.as_str()
-            )));
-        }
-
-        Ok(())
+        let id_str = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute("UPDATE methodology_extensions SET is_active = 0", [])?;
+                let updated = conn.execute(
+                    "UPDATE methodology_extensions SET is_active = 1 WHERE id = ?1",
+                    rusqlite::params![id_str],
+                )?;
+                if updated == 0 {
+                    return Err(AppError::NotFound(format!(
+                        "Methodology not found: {}",
+                        id_str
+                    )));
+                }
+                Ok(())
+            })
+            .await
     }
 
     async fn deactivate(&self, id: &MethodologyId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        let updated = conn
-            .execute(
-                "UPDATE methodology_extensions SET is_active = 0 WHERE id = ?1",
-                [id.as_str()],
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        if updated == 0 {
-            return Err(AppError::NotFound(format!(
-                "Methodology not found: {}",
-                id.as_str()
-            )));
-        }
-
-        Ok(())
+        let id_str = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let updated = conn.execute(
+                    "UPDATE methodology_extensions SET is_active = 0 WHERE id = ?1",
+                    rusqlite::params![id_str],
+                )?;
+                if updated == 0 {
+                    return Err(AppError::NotFound(format!(
+                        "Methodology not found: {}",
+                        id_str
+                    )));
+                }
+                Ok(())
+            })
+            .await
     }
 
     async fn update(&self, methodology: &MethodologyExtension) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let config = MethodologyConfig::from(methodology);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
+        let id_str = methodology.id.as_str().to_string();
+        let name = methodology.name.clone();
+        let description = methodology.description.clone();
+        let is_active = methodology.is_active as i32;
 
-        let updated = conn
-            .execute(
-                "UPDATE methodology_extensions
-                 SET name = ?2, description = ?3, config_json = ?4, is_active = ?5
-                 WHERE id = ?1",
-                rusqlite::params![
-                    methodology.id.as_str(),
-                    methodology.name,
-                    methodology.description,
-                    config_json,
-                    methodology.is_active as i32,
-                ],
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        if updated == 0 {
-            return Err(AppError::NotFound(format!(
-                "Methodology not found: {}",
-                methodology.id.as_str()
-            )));
-        }
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                let updated = conn.execute(
+                    "UPDATE methodology_extensions
+                     SET name = ?2, description = ?3, config_json = ?4, is_active = ?5
+                     WHERE id = ?1",
+                    rusqlite::params![id_str, name, description, config_json, is_active],
+                )?;
+                if updated == 0 {
+                    return Err(AppError::NotFound(format!(
+                        "Methodology not found: {}",
+                        id_str
+                    )));
+                }
+                Ok(())
+            })
+            .await
     }
 
     async fn delete(&self, id: &MethodologyId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "DELETE FROM methodology_extensions WHERE id = ?1",
-            [id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let id_str = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM methodology_extensions WHERE id = ?1",
+                    rusqlite::params![id_str],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn exists(&self, id: &MethodologyId) -> AppResult<bool> {
-        let conn = self.conn.lock().await;
-
-        let count: i32 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM methodology_extensions WHERE id = ?1",
-                [id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count > 0)
+        let id_str = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let count: i32 = conn.query_row(
+                    "SELECT COUNT(*) FROM methodology_extensions WHERE id = ?1",
+                    rusqlite::params![id_str],
+                    |row| row.get(0),
+                )?;
+                Ok(count > 0)
+            })
+            .await
     }
 }
 
@@ -293,17 +274,34 @@ impl SqliteMethodologyRepository {
     /// Returns the number of methodologies seeded.
     pub async fn seed_builtin_methodologies(&self) -> AppResult<usize> {
         let builtin_methodologies = MethodologyExtension::builtin_methodologies();
-        let mut seeded_count = 0;
-
-        for methodology in builtin_methodologies {
-            // Check if methodology already exists
-            if !self.exists(&methodology.id).await? {
-                self.create(methodology).await?;
-                seeded_count += 1;
-            }
-        }
-
-        Ok(seeded_count)
+        self.db
+            .run(move |conn| {
+                let mut seeded_count = 0;
+                for methodology in builtin_methodologies {
+                    let config = MethodologyConfig::from(&methodology);
+                    let config_json = serde_json::to_string(&config).map_err(|e| {
+                        AppError::Database(format!("JSON serialization error: {}", e))
+                    })?;
+                    let created_at_str = methodology.created_at.to_rfc3339();
+                    let rows = conn.execute(
+                        "INSERT OR IGNORE INTO methodology_extensions (id, name, description, config_json, is_active, created_at)
+                         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                        rusqlite::params![
+                            methodology.id.as_str(),
+                            methodology.name,
+                            methodology.description,
+                            config_json,
+                            methodology.is_active as i32,
+                            created_at_str,
+                        ],
+                    )?;
+                    if rows > 0 {
+                        seeded_count += 1;
+                    }
+                }
+                Ok(seeded_count)
+            })
+            .await
     }
 }
 

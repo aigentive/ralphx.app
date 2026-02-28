@@ -118,7 +118,7 @@ async fn test_get_stats_batch() {
 
     // Create second session
     let session2 = IdeationSessionId::new();
-    repo.conn
+    repo.db.inner()
         .lock()
         .await
         .execute(

@@ -9,51 +9,49 @@ use async_trait::async_trait;
 use rusqlite::Connection;
 use uuid::Uuid;
 
+use super::DbConnection;
 use crate::domain::entities::TaskId;
 use crate::domain::repositories::TaskDependencyRepository;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
 
 /// SQLite implementation of TaskDependencyRepository for production use
 /// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteTaskDependencyRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteTaskDependencyRepository {
     /// Create a new SQLite task dependency repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
-    }
-
-    /// Helper to convert String to TaskId
-    fn string_to_task_id(s: String) -> TaskId {
-        TaskId(s)
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 }
 
 #[async_trait]
 impl TaskDependencyRepository for SqliteTaskDependencyRepository {
     async fn add_dependency(&self, task_id: &TaskId, depends_on_task_id: &TaskId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let id = Uuid::new_v4().to_string();
-
-        // INSERT OR IGNORE to handle UNIQUE constraint gracefully
-        conn.execute(
-            "INSERT OR IGNORE INTO task_dependencies (id, task_id, depends_on_task_id)
-             VALUES (?1, ?2, ?3)",
-            rusqlite::params![id, task_id.as_str(), depends_on_task_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let task_id = task_id.as_str().to_string();
+        let depends_on = depends_on_task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT OR IGNORE INTO task_dependencies (id, task_id, depends_on_task_id)
+                     VALUES (?1, ?2, ?3)",
+                    rusqlite::params![id, task_id.as_str(), depends_on.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn remove_dependency(
@@ -61,60 +59,56 @@ impl TaskDependencyRepository for SqliteTaskDependencyRepository {
         task_id: &TaskId,
         depends_on_task_id: &TaskId,
     ) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        conn.execute(
-            "DELETE FROM task_dependencies
-             WHERE task_id = ?1 AND depends_on_task_id = ?2",
-            rusqlite::params![task_id.as_str(), depends_on_task_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let task_id = task_id.as_str().to_string();
+        let depends_on = depends_on_task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM task_dependencies
+                     WHERE task_id = ?1 AND depends_on_task_id = ?2",
+                    rusqlite::params![task_id.as_str(), depends_on.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn get_blockers(&self, task_id: &TaskId) -> AppResult<Vec<TaskId>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT depends_on_task_id FROM task_dependencies
-                 WHERE task_id = ?1",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let blockers = stmt
-            .query_map([task_id.as_str()], |row| {
-                let id: String = row.get(0)?;
-                Ok(Self::string_to_task_id(id))
+        let task_id = task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT depends_on_task_id FROM task_dependencies
+                     WHERE task_id = ?1",
+                )?;
+                let blockers = stmt
+                    .query_map([task_id.as_str()], |row| {
+                        let id: String = row.get(0)?;
+                        Ok(TaskId(id))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(blockers)
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(blockers)
+            .await
     }
 
     async fn get_blocked_by(&self, task_id: &TaskId) -> AppResult<Vec<TaskId>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT task_id FROM task_dependencies
-                 WHERE depends_on_task_id = ?1",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let blocked_by = stmt
-            .query_map([task_id.as_str()], |row| {
-                let id: String = row.get(0)?;
-                Ok(Self::string_to_task_id(id))
+        let task_id = task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT task_id FROM task_dependencies
+                     WHERE depends_on_task_id = ?1",
+                )?;
+                let blocked_by = stmt
+                    .query_map([task_id.as_str()], |row| {
+                        let id: String = row.get(0)?;
+                        Ok(TaskId(id))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(blocked_by)
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(blocked_by)
+            .await
     }
 
     async fn has_circular_dependency(
@@ -122,98 +116,92 @@ impl TaskDependencyRepository for SqliteTaskDependencyRepository {
         task_id: &TaskId,
         potential_dep: &TaskId,
     ) -> AppResult<bool> {
-        // Self-dependency is always a cycle
         if task_id == potential_dep {
             return Ok(true);
         }
 
-        let conn = self.conn.lock().await;
+        let task_id = task_id.clone();
+        let potential_dep = potential_dep.clone();
 
-        // Use DFS to detect if potential_dep can reach task_id
-        // If so, adding task_id -> potential_dep would create a cycle
-        let mut visited = HashSet::new();
-        let mut stack = vec![potential_dep.clone()];
+        self.db
+            .run(move |conn| {
+                let mut visited = HashSet::new();
+                let mut stack = vec![potential_dep.clone()];
 
-        while let Some(current) = stack.pop() {
-            if current == *task_id {
-                // We found a path from potential_dep to task_id
-                // Adding task_id -> potential_dep would create a cycle
-                return Ok(true);
-            }
+                while let Some(current) = stack.pop() {
+                    if current == task_id {
+                        return Ok(true);
+                    }
 
-            if visited.contains(&current) {
-                continue;
-            }
-            visited.insert(current.clone());
+                    if visited.contains(&current) {
+                        continue;
+                    }
+                    visited.insert(current.clone());
 
-            // Get all tasks that current depends on (blockers of current)
-            let mut stmt = conn
-                .prepare(
-                    "SELECT depends_on_task_id FROM task_dependencies
-                     WHERE task_id = ?1",
-                )
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                    let mut stmt = conn.prepare(
+                        "SELECT depends_on_task_id FROM task_dependencies
+                         WHERE task_id = ?1",
+                    )?;
 
-            let deps: Vec<TaskId> = stmt
-                .query_map([current.as_str()], |row| {
-                    let id: String = row.get(0)?;
-                    Ok(Self::string_to_task_id(id))
-                })
-                .map_err(|e| AppError::Database(e.to_string()))?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                    let deps: Vec<TaskId> = stmt
+                        .query_map([current.as_str()], |row| {
+                            let id: String = row.get(0)?;
+                            Ok(TaskId(id))
+                        })?
+                        .collect::<Result<Vec<_>, _>>()?;
 
-            for dep in deps {
-                if !visited.contains(&dep) {
-                    stack.push(dep);
+                    for dep in deps {
+                        if !visited.contains(&dep) {
+                            stack.push(dep);
+                        }
+                    }
                 }
-            }
-        }
 
-        Ok(false)
+                Ok(false)
+            })
+            .await
     }
 
     async fn clear_dependencies(&self, task_id: &TaskId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
-        // Clear both directions: where this task depends on others,
-        // and where others depend on this task
-        conn.execute(
-            "DELETE FROM task_dependencies
-             WHERE task_id = ?1 OR depends_on_task_id = ?1",
-            [task_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        let task_id = task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM task_dependencies
+                     WHERE task_id = ?1 OR depends_on_task_id = ?1",
+                    [task_id.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn count_blockers(&self, task_id: &TaskId) -> AppResult<u32> {
-        let conn = self.conn.lock().await;
-
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM task_dependencies WHERE task_id = ?1",
-                [task_id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count as u32)
+        let task_id = task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM task_dependencies WHERE task_id = ?1",
+                    [task_id.as_str()],
+                    |row| row.get(0),
+                )?;
+                Ok(count as u32)
+            })
+            .await
     }
 
     async fn count_blocked_by(&self, task_id: &TaskId) -> AppResult<u32> {
-        let conn = self.conn.lock().await;
-
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM task_dependencies WHERE depends_on_task_id = ?1",
-                [task_id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count as u32)
+        let task_id = task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM task_dependencies WHERE depends_on_task_id = ?1",
+                    [task_id.as_str()],
+                    |row| row.get(0),
+                )?;
+                Ok(count as u32)
+            })
+            .await
     }
 
     async fn has_dependency(
@@ -221,18 +209,19 @@ impl TaskDependencyRepository for SqliteTaskDependencyRepository {
         task_id: &TaskId,
         depends_on_task_id: &TaskId,
     ) -> AppResult<bool> {
-        let conn = self.conn.lock().await;
-
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM task_dependencies
-                 WHERE task_id = ?1 AND depends_on_task_id = ?2",
-                rusqlite::params![task_id.as_str(), depends_on_task_id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count > 0)
+        let task_id = task_id.as_str().to_string();
+        let depends_on = depends_on_task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM task_dependencies
+                     WHERE task_id = ?1 AND depends_on_task_id = ?2",
+                    rusqlite::params![task_id.as_str(), depends_on.as_str()],
+                    |row| row.get(0),
+                )?;
+                Ok(count > 0)
+            })
+            .await
     }
 }
 

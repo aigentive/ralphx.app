@@ -15,23 +15,27 @@ use crate::domain::entities::research::{
 use crate::domain::repositories::ProcessRepository;
 use crate::error::{AppError, AppResult};
 
+use super::DbConnection;
+
 /// SQLite implementation of ProcessRepository for production use
 /// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteProcessRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteProcessRepository {
     /// Create a new SQLite process repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 
     /// Parse a ResearchProcess from a database row
@@ -125,228 +129,231 @@ impl From<&ResearchProcess> for ProcessConfig {
 #[async_trait]
 impl ProcessRepository for SqliteProcessRepository {
     async fn create(&self, process: ResearchProcess) -> AppResult<ResearchProcess> {
-        let conn = self.conn.lock().await;
-
         let config = ProcessConfig::from(&process);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
+        let id = process.id.as_str().to_string();
+        let name = process.name.clone();
+        let status_str = process.status().as_str().to_string();
+        let current_iteration = process.progress.current_iteration as i32;
         let created_at_str = process.created_at.to_rfc3339();
         let started_at_str = process.started_at.map(|dt| dt.to_rfc3339());
         let completed_at_str = process.completed_at.map(|dt| dt.to_rfc3339());
 
-        conn.execute(
-            "INSERT INTO processes (id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            rusqlite::params![
-                process.id.as_str(),
-                "research",
-                process.name,
-                config_json,
-                process.status().as_str(),
-                process.progress.current_iteration as i32,
-                created_at_str,
-                started_at_str,
-                completed_at_str,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(process)
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO processes (id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    rusqlite::params![
+                        id,
+                        "research",
+                        name,
+                        config_json,
+                        status_str,
+                        current_iteration,
+                        created_at_str,
+                        started_at_str,
+                        completed_at_str,
+                    ],
+                )?;
+                Ok(process)
+            })
+            .await
     }
 
     async fn get_by_id(&self, id: &ResearchProcessId) -> AppResult<Option<ResearchProcess>> {
-        let conn = self.conn.lock().await;
-
-        let result = conn.query_row(
-            "SELECT id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at
-             FROM processes WHERE id = ?1",
-            [id.as_str()],
-            |row| Self::process_from_row(row),
-        );
-
-        match result {
-            Ok(process) => Ok(Some(process)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::Database(e.to_string())),
-        }
+        let id = id.as_str().to_string();
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at
+                     FROM processes WHERE id = ?1",
+                    [id.as_str()],
+                    SqliteProcessRepository::process_from_row,
+                )
+            })
+            .await
     }
 
     async fn get_all(&self) -> AppResult<Vec<ResearchProcess>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at
-                 FROM processes WHERE type = 'research' ORDER BY created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let processes = stmt
-            .query_map([], Self::process_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(processes)
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at
+                     FROM processes WHERE type = 'research' ORDER BY created_at DESC",
+                )?;
+                let processes = stmt
+                    .query_map([], SqliteProcessRepository::process_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(processes)
+            })
+            .await
     }
 
     async fn get_by_status(
         &self,
         status: ResearchProcessStatus,
     ) -> AppResult<Vec<ResearchProcess>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at
-                 FROM processes WHERE type = 'research' AND status = ?1 ORDER BY created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let processes = stmt
-            .query_map([status.as_str()], Self::process_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(processes)
+        let status_str = status.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at
+                     FROM processes WHERE type = 'research' AND status = ?1 ORDER BY created_at DESC",
+                )?;
+                let processes = stmt
+                    .query_map([status_str.as_str()], SqliteProcessRepository::process_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(processes)
+            })
+            .await
     }
 
     async fn get_active(&self) -> AppResult<Vec<ResearchProcess>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at
-                 FROM processes WHERE type = 'research' AND status IN ('pending', 'running') ORDER BY created_at DESC",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let processes = stmt
-            .query_map([], Self::process_from_row)
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(processes)
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, type, name, config_json, status, current_iteration, created_at, started_at, completed_at
+                     FROM processes WHERE type = 'research' AND status IN ('pending', 'running') ORDER BY created_at DESC",
+                )?;
+                let processes = stmt
+                    .query_map([], SqliteProcessRepository::process_from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(processes)
+            })
+            .await
     }
 
     async fn update_progress(&self, process: &ResearchProcess) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let config = ProcessConfig::from(process);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
+        let id = process.id.as_str().to_string();
+        let status_str = process.status().as_str().to_string();
+        let current_iteration = process.progress.current_iteration as i32;
         let started_at_str = process.started_at.map(|dt| dt.to_rfc3339());
         let completed_at_str = process.completed_at.map(|dt| dt.to_rfc3339());
 
-        conn.execute(
-            "UPDATE processes SET config_json = ?2, status = ?3, current_iteration = ?4, started_at = ?5, completed_at = ?6
-             WHERE id = ?1",
-            rusqlite::params![
-                process.id.as_str(),
-                config_json,
-                process.status().as_str(),
-                process.progress.current_iteration as i32,
-                started_at_str,
-                completed_at_str,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE processes SET config_json = ?2, status = ?3, current_iteration = ?4, started_at = ?5, completed_at = ?6
+                     WHERE id = ?1",
+                    rusqlite::params![
+                        id,
+                        config_json,
+                        status_str,
+                        current_iteration,
+                        started_at_str,
+                        completed_at_str,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn update(&self, process: &ResearchProcess) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let config = ProcessConfig::from(process);
         let config_json = serde_json::to_string(&config)
             .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
+        let id = process.id.as_str().to_string();
+        let name = process.name.clone();
+        let status_str = process.status().as_str().to_string();
+        let current_iteration = process.progress.current_iteration as i32;
         let started_at_str = process.started_at.map(|dt| dt.to_rfc3339());
         let completed_at_str = process.completed_at.map(|dt| dt.to_rfc3339());
 
-        conn.execute(
-            "UPDATE processes SET name = ?2, config_json = ?3, status = ?4, current_iteration = ?5, started_at = ?6, completed_at = ?7
-             WHERE id = ?1",
-            rusqlite::params![
-                process.id.as_str(),
-                process.name,
-                config_json,
-                process.status().as_str(),
-                process.progress.current_iteration as i32,
-                started_at_str,
-                completed_at_str,
-            ],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE processes SET name = ?2, config_json = ?3, status = ?4, current_iteration = ?5, started_at = ?6, completed_at = ?7
+                     WHERE id = ?1",
+                    rusqlite::params![
+                        id,
+                        name,
+                        config_json,
+                        status_str,
+                        current_iteration,
+                        started_at_str,
+                        completed_at_str,
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn complete(&self, id: &ResearchProcessId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
+        let id = id.as_str().to_string();
         let completed_at = Utc::now().to_rfc3339();
 
-        conn.execute(
-            "UPDATE processes SET status = 'completed', completed_at = ?2 WHERE id = ?1",
-            rusqlite::params![id.as_str(), completed_at],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE processes SET status = 'completed', completed_at = ?2 WHERE id = ?1",
+                    rusqlite::params![id, completed_at],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn fail(&self, id: &ResearchProcessId, error: &str) -> AppResult<()> {
-        let conn = self.conn.lock().await;
+        let id = id.as_str().to_string();
+        let error = error.to_string();
         let completed_at = Utc::now().to_rfc3339();
 
-        // First get the current config to update the error message
-        let current_config: String = conn
-            .query_row(
-                "SELECT config_json FROM processes WHERE id = ?1",
-                [id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
+        self.db
+            .run(move |conn| {
+                // First get the current config to update the error message
+                let current_config: String = conn.query_row(
+                    "SELECT config_json FROM processes WHERE id = ?1",
+                    [id.as_str()],
+                    |row| row.get(0),
+                )?;
 
-        let mut config: ProcessConfig = serde_json::from_str(&current_config)
-            .map_err(|e| AppError::Database(format!("JSON parse error: {}", e)))?;
-        config.error_message = Some(error.to_string());
+                let mut config: ProcessConfig = serde_json::from_str(&current_config)
+                    .map_err(|e| AppError::Database(format!("JSON parse error: {}", e)))?;
+                config.error_message = Some(error);
 
-        let updated_config = serde_json::to_string(&config)
-            .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
+                let updated_config = serde_json::to_string(&config)
+                    .map_err(|e| AppError::Database(format!("JSON serialization error: {}", e)))?;
 
-        conn.execute(
-            "UPDATE processes SET status = 'failed', config_json = ?2, completed_at = ?3 WHERE id = ?1",
-            rusqlite::params![id.as_str(), updated_config, completed_at],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+                conn.execute(
+                    "UPDATE processes SET status = 'failed', config_json = ?2, completed_at = ?3 WHERE id = ?1",
+                    rusqlite::params![id, updated_config, completed_at],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn delete(&self, id: &ResearchProcessId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
+        let id = id.as_str().to_string();
 
-        conn.execute("DELETE FROM processes WHERE id = ?1", [id.as_str()])
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                conn.execute("DELETE FROM processes WHERE id = ?1", [id.as_str()])?;
+                Ok(())
+            })
+            .await
     }
 
     async fn exists(&self, id: &ResearchProcessId) -> AppResult<bool> {
-        let conn = self.conn.lock().await;
+        let id = id.as_str().to_string();
 
-        let count: i32 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM processes WHERE id = ?1",
-                [id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count > 0)
+        self.db
+            .run(move |conn| {
+                let count: i32 = conn.query_row(
+                    "SELECT COUNT(*) FROM processes WHERE id = ?1",
+                    [id.as_str()],
+                    |row| row.get(0),
+                )?;
+                Ok(count > 0)
+            })
+            .await
     }
 }
 

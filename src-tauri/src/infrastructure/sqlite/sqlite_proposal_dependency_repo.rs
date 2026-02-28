@@ -11,30 +11,29 @@ use uuid::Uuid;
 
 use crate::domain::entities::{IdeationSessionId, TaskProposalId};
 use crate::domain::repositories::ProposalDependencyRepository;
-use crate::error::{AppError, AppResult};
+use crate::error::AppResult;
+
+use super::DbConnection;
 
 /// SQLite implementation of ProposalDependencyRepository for production use
 /// Uses a mutex-protected connection for thread-safe access
 pub struct SqliteProposalDependencyRepository {
-    conn: Arc<Mutex<Connection>>,
+    db: DbConnection,
 }
 
 impl SqliteProposalDependencyRepository {
     /// Create a new SQLite proposal dependency repository with the given connection
     pub fn new(conn: Connection) -> Self {
         Self {
-            conn: Arc::new(Mutex::new(conn)),
+            db: DbConnection::new(conn),
         }
     }
 
     /// Create from an Arc-wrapped mutex connection (for sharing)
     pub fn from_shared(conn: Arc<Mutex<Connection>>) -> Self {
-        Self { conn }
-    }
-
-    /// Helper to convert String to TaskProposalId
-    fn string_to_proposal_id(s: String) -> TaskProposalId {
-        TaskProposalId(s)
+        Self {
+            db: DbConnection::from_shared(conn),
+        }
     }
 }
 
@@ -47,20 +46,23 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         reason: Option<&str>,
         source: Option<&str>,
     ) -> AppResult<()> {
-        let conn = self.conn.lock().await;
-
         let id = Uuid::new_v4().to_string();
-        let source = source.unwrap_or("auto");
+        let proposal_id = proposal_id.as_str().to_string();
+        let depends_on_id = depends_on_id.as_str().to_string();
+        let reason = reason.map(|s| s.to_string());
+        let source = source.unwrap_or("auto").to_string();
 
-        // INSERT OR IGNORE to handle UNIQUE constraint gracefully
-        conn.execute(
-            "INSERT OR IGNORE INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id, reason, source)
-             VALUES (?1, ?2, ?3, ?4, ?5)",
-            rusqlite::params![id, proposal_id.as_str(), depends_on_id.as_str(), reason, source],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                // INSERT OR IGNORE to handle UNIQUE constraint gracefully
+                conn.execute(
+                    "INSERT OR IGNORE INTO proposal_dependencies (id, proposal_id, depends_on_proposal_id, reason, source)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    rusqlite::params![id, proposal_id, depends_on_id, reason, source],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn remove_dependency(
@@ -68,133 +70,120 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         proposal_id: &TaskProposalId,
         depends_on_id: &TaskProposalId,
     ) -> AppResult<()> {
-        let conn = self.conn.lock().await;
+        let proposal_id = proposal_id.as_str().to_string();
+        let depends_on_id = depends_on_id.as_str().to_string();
 
-        conn.execute(
-            "DELETE FROM proposal_dependencies
-             WHERE proposal_id = ?1 AND depends_on_proposal_id = ?2",
-            rusqlite::params![proposal_id.as_str(), depends_on_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "DELETE FROM proposal_dependencies
+                     WHERE proposal_id = ?1 AND depends_on_proposal_id = ?2",
+                    rusqlite::params![proposal_id, depends_on_id],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn get_dependencies(
         &self,
         proposal_id: &TaskProposalId,
     ) -> AppResult<Vec<TaskProposalId>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT depends_on_proposal_id FROM proposal_dependencies
-                 WHERE proposal_id = ?1",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let deps = stmt
-            .query_map([proposal_id.as_str()], |row| {
-                let id: String = row.get(0)?;
-                Ok(Self::string_to_proposal_id(id))
+        let proposal_id = proposal_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT depends_on_proposal_id FROM proposal_dependencies
+                     WHERE proposal_id = ?1",
+                )?;
+                let deps = stmt
+                    .query_map([proposal_id.as_str()], |row| {
+                        let id: String = row.get(0)?;
+                        Ok(TaskProposalId(id))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(deps)
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(deps)
+            .await
     }
 
     async fn get_dependents(&self, proposal_id: &TaskProposalId) -> AppResult<Vec<TaskProposalId>> {
-        let conn = self.conn.lock().await;
-
-        let mut stmt = conn
-            .prepare(
-                "SELECT proposal_id FROM proposal_dependencies
-                 WHERE depends_on_proposal_id = ?1",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let dependents = stmt
-            .query_map([proposal_id.as_str()], |row| {
-                let id: String = row.get(0)?;
-                Ok(Self::string_to_proposal_id(id))
+        let proposal_id = proposal_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT proposal_id FROM proposal_dependencies
+                     WHERE depends_on_proposal_id = ?1",
+                )?;
+                let dependents = stmt
+                    .query_map([proposal_id.as_str()], |row| {
+                        let id: String = row.get(0)?;
+                        Ok(TaskProposalId(id))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(dependents)
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(dependents)
+            .await
     }
 
     async fn get_all_for_session(
         &self,
         session_id: &IdeationSessionId,
     ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>)>> {
-        let conn = self.conn.lock().await;
-
-        // Join with task_proposals to filter by session
-        let mut stmt = conn
-            .prepare(
-                "SELECT pd.proposal_id, pd.depends_on_proposal_id, pd.reason
-                 FROM proposal_dependencies pd
-                 INNER JOIN task_proposals tp ON pd.proposal_id = tp.id
-                 WHERE tp.session_id = ?1",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let deps = stmt
-            .query_map([session_id.as_str()], |row| {
-                let from_id: String = row.get(0)?;
-                let to_id: String = row.get(1)?;
-                let reason: Option<String> = row.get(2)?;
-                Ok((
-                    Self::string_to_proposal_id(from_id),
-                    Self::string_to_proposal_id(to_id),
-                    reason,
-                ))
+        let session_id = session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                // Join with task_proposals to filter by session
+                let mut stmt = conn.prepare(
+                    "SELECT pd.proposal_id, pd.depends_on_proposal_id, pd.reason
+                     FROM proposal_dependencies pd
+                     INNER JOIN task_proposals tp ON pd.proposal_id = tp.id
+                     WHERE tp.session_id = ?1",
+                )?;
+                let deps = stmt
+                    .query_map([session_id.as_str()], |row| {
+                        let from_id: String = row.get(0)?;
+                        let to_id: String = row.get(1)?;
+                        let reason: Option<String> = row.get(2)?;
+                        Ok((TaskProposalId(from_id), TaskProposalId(to_id), reason))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(deps)
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(deps)
+            .await
     }
 
     async fn get_all_for_session_with_source(
         &self,
         session_id: &IdeationSessionId,
     ) -> AppResult<Vec<(TaskProposalId, TaskProposalId, Option<String>, String)>> {
-        let conn = self.conn.lock().await;
-
-        // Join with task_proposals to filter by session
-        let mut stmt = conn
-            .prepare(
-                "SELECT pd.proposal_id, pd.depends_on_proposal_id, pd.reason, pd.source
-                 FROM proposal_dependencies pd
-                 INNER JOIN task_proposals tp ON pd.proposal_id = tp.id
-                 WHERE tp.session_id = ?1",
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        let deps = stmt
-            .query_map([session_id.as_str()], |row| {
-                let from_id: String = row.get(0)?;
-                let to_id: String = row.get(1)?;
-                let reason: Option<String> = row.get(2)?;
-                let source: String = row.get(3)?;
-                Ok((
-                    Self::string_to_proposal_id(from_id),
-                    Self::string_to_proposal_id(to_id),
-                    reason,
-                    source,
-                ))
+        let session_id = session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                // Join with task_proposals to filter by session
+                let mut stmt = conn.prepare(
+                    "SELECT pd.proposal_id, pd.depends_on_proposal_id, pd.reason, pd.source
+                     FROM proposal_dependencies pd
+                     INNER JOIN task_proposals tp ON pd.proposal_id = tp.id
+                     WHERE tp.session_id = ?1",
+                )?;
+                let deps = stmt
+                    .query_map([session_id.as_str()], |row| {
+                        let from_id: String = row.get(0)?;
+                        let to_id: String = row.get(1)?;
+                        let reason: Option<String> = row.get(2)?;
+                        let source: String = row.get(3)?;
+                        Ok((
+                            TaskProposalId(from_id),
+                            TaskProposalId(to_id),
+                            reason,
+                            source,
+                        ))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(deps)
             })
-            .map_err(|e| AppError::Database(e.to_string()))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(deps)
+            .await
     }
 
     async fn would_create_cycle(
@@ -207,125 +196,132 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
             return Ok(true);
         }
 
-        let conn = self.conn.lock().await;
+        let proposal_id = proposal_id.clone();
+        let depends_on_id = depends_on_id.clone();
 
-        // Use DFS to detect if depends_on_id can reach proposal_id
-        // If so, adding proposal_id -> depends_on_id would create a cycle
-        let mut visited = HashSet::new();
-        let mut stack = vec![depends_on_id.clone()];
+        self.db
+            .run(move |conn| {
+                // Use DFS to detect if depends_on_id can reach proposal_id
+                // If so, adding proposal_id -> depends_on_id would create a cycle
+                let mut visited = HashSet::new();
+                let mut stack = vec![depends_on_id];
 
-        while let Some(current) = stack.pop() {
-            if current == *proposal_id {
-                // We found a path from depends_on_id to proposal_id
-                // Adding proposal_id -> depends_on_id would create a cycle
-                return Ok(true);
-            }
+                while let Some(current) = stack.pop() {
+                    if current == proposal_id {
+                        // We found a path from depends_on_id to proposal_id
+                        // Adding proposal_id -> depends_on_id would create a cycle
+                        return Ok(true);
+                    }
 
-            if visited.contains(&current) {
-                continue;
-            }
-            visited.insert(current.clone());
+                    if visited.contains(&current) {
+                        continue;
+                    }
+                    visited.insert(current.clone());
 
-            // Get all dependencies of current (what current depends on)
-            let mut stmt = conn
-                .prepare(
-                    "SELECT depends_on_proposal_id FROM proposal_dependencies
-                     WHERE proposal_id = ?1",
-                )
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                    // Get all dependencies of current (what current depends on)
+                    let mut stmt = conn.prepare(
+                        "SELECT depends_on_proposal_id FROM proposal_dependencies
+                         WHERE proposal_id = ?1",
+                    )?;
 
-            let deps: Vec<TaskProposalId> = stmt
-                .query_map([current.as_str()], |row| {
-                    let id: String = row.get(0)?;
-                    Ok(Self::string_to_proposal_id(id))
-                })
-                .map_err(|e| AppError::Database(e.to_string()))?
-                .collect::<Result<Vec<_>, _>>()
-                .map_err(|e| AppError::Database(e.to_string()))?;
+                    let deps: Vec<TaskProposalId> = stmt
+                        .query_map([current.as_str()], |row| {
+                            let id: String = row.get(0)?;
+                            Ok(TaskProposalId(id))
+                        })?
+                        .collect::<Result<Vec<_>, _>>()?;
 
-            for dep in deps {
-                if !visited.contains(&dep) {
-                    stack.push(dep);
+                    for dep in deps {
+                        if !visited.contains(&dep) {
+                            stack.push(dep);
+                        }
+                    }
                 }
-            }
-        }
 
-        Ok(false)
+                Ok(false)
+            })
+            .await
     }
 
     async fn clear_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
+        let proposal_id = proposal_id.as_str().to_string();
 
-        // Clear both directions: where this proposal depends on others,
-        // and where others depend on this proposal
-        conn.execute(
-            "DELETE FROM proposal_dependencies
-             WHERE proposal_id = ?1 OR depends_on_proposal_id = ?1",
-            [proposal_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                // Clear both directions: where this proposal depends on others,
+                // and where others depend on this proposal
+                conn.execute(
+                    "DELETE FROM proposal_dependencies
+                     WHERE proposal_id = ?1 OR depends_on_proposal_id = ?1",
+                    [proposal_id.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn clear_session_dependencies(&self, session_id: &IdeationSessionId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
+        let session_id = session_id.as_str().to_string();
 
-        // Delete all dependencies for proposals in this session
-        conn.execute(
-            "DELETE FROM proposal_dependencies
-             WHERE proposal_id IN (
-                 SELECT id FROM task_proposals WHERE session_id = ?1
-             )",
-            [session_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                // Delete all dependencies for proposals in this session
+                conn.execute(
+                    "DELETE FROM proposal_dependencies
+                     WHERE proposal_id IN (
+                         SELECT id FROM task_proposals WHERE session_id = ?1
+                     )",
+                    [session_id.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn clear_auto_dependencies(&self, session_id: &IdeationSessionId) -> AppResult<()> {
-        let conn = self.conn.lock().await;
+        let session_id = session_id.as_str().to_string();
 
-        // Delete only auto-suggested dependencies for proposals in this session
-        conn.execute(
-            "DELETE FROM proposal_dependencies
-             WHERE source = 'auto' AND proposal_id IN (
-                 SELECT id FROM task_proposals WHERE session_id = ?1
-             )",
-            [session_id.as_str()],
-        )
-        .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(())
+        self.db
+            .run(move |conn| {
+                // Delete only auto-suggested dependencies for proposals in this session
+                conn.execute(
+                    "DELETE FROM proposal_dependencies
+                     WHERE source = 'auto' AND proposal_id IN (
+                         SELECT id FROM task_proposals WHERE session_id = ?1
+                     )",
+                    [session_id.as_str()],
+                )?;
+                Ok(())
+            })
+            .await
     }
 
     async fn count_dependencies(&self, proposal_id: &TaskProposalId) -> AppResult<u32> {
-        let conn = self.conn.lock().await;
-
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM proposal_dependencies WHERE proposal_id = ?1",
-                [proposal_id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count as u32)
+        let proposal_id = proposal_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM proposal_dependencies WHERE proposal_id = ?1",
+                    [proposal_id.as_str()],
+                    |row| row.get(0),
+                )?;
+                Ok(count as u32)
+            })
+            .await
     }
 
     async fn count_dependents(&self, proposal_id: &TaskProposalId) -> AppResult<u32> {
-        let conn = self.conn.lock().await;
-
-        let count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM proposal_dependencies WHERE depends_on_proposal_id = ?1",
-                [proposal_id.as_str()],
-                |row| row.get(0),
-            )
-            .map_err(|e| AppError::Database(e.to_string()))?;
-
-        Ok(count as u32)
+        let proposal_id = proposal_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let count: i64 = conn.query_row(
+                    "SELECT COUNT(*) FROM proposal_dependencies WHERE depends_on_proposal_id = ?1",
+                    [proposal_id.as_str()],
+                    |row| row.get(0),
+                )?;
+                Ok(count as u32)
+            })
+            .await
     }
 }
 

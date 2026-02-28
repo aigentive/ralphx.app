@@ -912,7 +912,7 @@ async fn test_clear_task_references_nullifies_fk_columns() {
     let artifact_id = "artifact-1";
     let session_id = "test-session-clear-refs";
     {
-        let conn = repo.conn.lock().await;
+        let conn = repo.db.inner().lock().await;
 
         // Create the ideation session first (required by FK)
         conn.execute(
@@ -960,7 +960,7 @@ async fn test_clear_task_references_nullifies_fk_columns() {
 
     // Verify references are NULL after clear
     {
-        let conn = repo.conn.lock().await;
+        let conn = repo.db.inner().lock().await;
         let mut stmt = conn
             .prepare("SELECT created_task_id FROM task_proposals WHERE id = ?1")
             .unwrap();

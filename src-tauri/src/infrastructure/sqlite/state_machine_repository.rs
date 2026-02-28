@@ -1,5 +1,15 @@
 // TaskStateMachineRepository - SQLite-backed state machine integration
 // Provides load/persist operations for task state machine
+//
+// NOTE: This file is intentionally exempt from the DbConnection (spawn_blocking) migration.
+// Reasons:
+// 1. All public methods are SYNCHRONOUS (not async) — DbConnection::run() is async-only.
+// 2. Methods use SQLite transactions (unchecked_transaction) that span multiple operations;
+//    these cannot be split across separate spawn_blocking calls.
+// 3. Tests directly access `repo.conn.lock().unwrap()` to set up state, which requires
+//    std::sync::Mutex semantics (not tokio::sync::Mutex used by DbConnection).
+// 4. This repository is only used in tests (not called from any production async context),
+//    so there is no risk of blocking the tokio timer driver.
 
 use crate::domain::entities::TaskId;
 use crate::domain::state_machine::{
