@@ -73,6 +73,9 @@ pub struct ReconciliationConfig {
     pub executing_max_wall_clock_minutes: u64,
     pub reviewing_max_wall_clock_minutes: u64,
     pub qa_max_wall_clock_minutes: u64,
+    /// Maximum wall-clock seconds for `pre_merge_cleanup` before the merge proceeds anyway.
+    /// Cleanup is best-effort; if it hangs (e.g. lsof on large target/), we skip it.
+    pub pre_merge_cleanup_timeout_secs: u64,
     /// Maximum wall-clock seconds for the entire programmatic merge attempt
     /// (cleanup + strategy dispatch). If exceeded, task transitions to MergeIncomplete.
     pub attempt_merge_deadline_secs: u64,
@@ -125,6 +128,7 @@ impl Default for ReconciliationConfig {
             executing_max_wall_clock_minutes: 60,
             reviewing_max_wall_clock_minutes: 30,
             qa_max_wall_clock_minutes: 15,
+            pre_merge_cleanup_timeout_secs: 60,
             attempt_merge_deadline_secs: 120,
             validation_deadline_secs: 1200,
             merge_registry_grace_period_secs: 60,
@@ -158,6 +162,10 @@ pub struct GitRuntimeConfig {
     /// Timeout in seconds for the `lsof +D` scan in `kill_worktree_processes_async`.
     /// On large worktrees (with `target/` dirs), lsof can block for minutes.
     pub worktree_lsof_timeout_secs: u64,
+    /// Outer timeout in seconds for the entire step 0b kill phase
+    /// (`kill_worktree_processes_async`). Defense in depth — bounds the step even if
+    /// the inner lsof timeout fails due to tokio timer driver starvation.
+    pub step_0b_kill_timeout_secs: u64,
 }
 
 impl Default for GitRuntimeConfig {
@@ -172,6 +180,7 @@ impl Default for GitRuntimeConfig {
             cleanup_worktree_timeout_secs: 10,
             cleanup_git_op_timeout_secs: 30,
             worktree_lsof_timeout_secs: 10,
+            step_0b_kill_timeout_secs: 20,
         }
     }
 }
@@ -316,6 +325,7 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.executing_max_wall_clock_minutes, "RALPHX_RECONCILIATION_EXECUTING_MAX_WALL_CLOCK_MINUTES");
     env_u64!(cfg.reconciliation.reviewing_max_wall_clock_minutes, "RALPHX_RECONCILIATION_REVIEWING_MAX_WALL_CLOCK_MINUTES");
     env_u64!(cfg.reconciliation.qa_max_wall_clock_minutes, "RALPHX_RECONCILIATION_QA_MAX_WALL_CLOCK_MINUTES");
+    env_u64!(cfg.reconciliation.pre_merge_cleanup_timeout_secs, "RALPHX_RECONCILIATION_PRE_MERGE_CLEANUP_TIMEOUT_SECS");
     env_u64!(cfg.reconciliation.attempt_merge_deadline_secs, "RALPHX_RECONCILIATION_ATTEMPT_MERGE_DEADLINE_SECS");
     env_u64!(cfg.reconciliation.validation_deadline_secs, "RALPHX_RECONCILIATION_VALIDATION_DEADLINE_SECS");
     env_u64!(cfg.reconciliation.merge_registry_grace_period_secs, "RALPHX_RECONCILIATION_MERGE_REGISTRY_GRACE_PERIOD_SECS");
@@ -353,6 +363,10 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(
         cfg.git.worktree_lsof_timeout_secs,
         "RALPHX_GIT_WORKTREE_LSOF_TIMEOUT_SECS"
+    );
+    env_u64!(
+        cfg.git.step_0b_kill_timeout_secs,
+        "RALPHX_GIT_STEP_0B_KILL_TIMEOUT_SECS"
     );
     // retry_backoff_secs: comma-separated list
     if let Some(v) = lookup("RALPHX_GIT_RETRY_BACKOFF_SECS") {

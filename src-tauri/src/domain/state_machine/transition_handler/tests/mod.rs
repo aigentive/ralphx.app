@@ -123,3 +123,7 @@ mod merge_pipeline_failure_scenarios;
 // Scenario 1 (RC1): cleanup timeout doesn't kill merge attempt; kill_on_drop terminates lsof
 // Scenario 2 (RC2): try_retry_main_merges always fires regardless of running_count
 mod rc_pipeline_integration_tests;
+
+// Merge pipeline round 2 tests: cleanup timeout config, step_0b timeout config,
+// state freshness guard (ghost merge prevention)
+mod merge_pipeline_round2_tests;

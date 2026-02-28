@@ -153,6 +153,24 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
         );
     }
 
+    // STATE FRESHNESS CHECK: Re-fetch task from DB to detect concurrent transitions
+    // (e.g., reconciler may have moved task to MergeIncomplete while we were running).
+    // This guards against "ghost merges" — writing Merged over a reconciler transition.
+    if let Ok(Some(current_task)) = task_repo.get_by_id(&task_id).await {
+        if !matches!(
+            current_task.internal_status,
+            InternalStatus::PendingMerge | InternalStatus::Merging
+        ) {
+            tracing::warn!(
+                task_id = task_id_str,
+                expected = "PendingMerge|Merging",
+                actual = ?current_task.internal_status,
+                "merge completion aborted — task was concurrently transitioned (likely by reconciler)"
+            );
+            return Ok(());
+        }
+    }
+
     // 2. Update task with merge commit SHA and status
     task.merge_commit_sha = Some(commit_sha.to_string());
     task.internal_status = InternalStatus::Merged;

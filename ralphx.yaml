@@ -158,6 +158,8 @@ reconciliation:
   validation_failure_circuit_breaker_count: 3 # Env: RALPHX_RECONCILIATION_VALIDATION_FAILURE_CIRCUIT_BREAKER_COUNT
   # handlers/merge.rs — skip MergeIncomplete retry if task was retried within this many seconds (starvation guard)
   merge_starvation_guard_secs: 60 # Env: RALPHX_RECONCILIATION_MERGE_STARVATION_GUARD_SECS
+  # side_effects.rs — max seconds for pre_merge_cleanup before proceeding to merge (cleanup is best-effort)
+  pre_merge_cleanup_timeout_secs: 60 # Env: RALPHX_RECONCILIATION_PRE_MERGE_CLEANUP_TIMEOUT_SECS
   # side_effects.rs — max seconds for branch freshness updates (update_plan_from_main, update_source_from_target)
   branch_freshness_timeout_secs: 60 # Env: RALPHX_RECONCILIATION_BRANCH_FRESHNESS_TIMEOUT_SECS
   # chat_service_merge.rs — grace period before merge watcher starts polling git state
@@ -186,6 +188,8 @@ git:
   cleanup_git_op_timeout_secs: 30 # Env: RALPHX_GIT_CLEANUP_GIT_OP_TIMEOUT_SECS
   # running_agent_registry.rs — timeout for lsof +D scan in kill_worktree_processes_async
   worktree_lsof_timeout_secs: 10 # Env: RALPHX_GIT_WORKTREE_LSOF_TIMEOUT_SECS
+  # merge_coordination.rs — outer timeout for entire step 0b kill phase (defense in depth)
+  step_0b_kill_timeout_secs: 20 # Env: RALPHX_GIT_STEP_0B_KILL_TIMEOUT_SECS
 
 scheduler:
   # task_scheduler_service.rs — how often the watchdog scans for stuck/stale tasks
