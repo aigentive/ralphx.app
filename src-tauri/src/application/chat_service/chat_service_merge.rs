@@ -7,9 +7,11 @@ use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime};
+use tokio::time::Duration;
 
 use crate::application::git_service::{GitService, StaleRebaseResult};
 use crate::application::git_service::checkout_free::update_branch_ref;
+use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::application::task_scheduler_service::TaskSchedulerService;
 use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
@@ -26,6 +28,7 @@ use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
 use crate::infrastructure::agents::claude::scheduler_config;
+use crate::infrastructure::agents::claude::reconciliation_config;
 use crate::domain::state_machine::transition_handler::{
     format_validation_error_metadata, merge_metadata_into, parse_metadata,
     run_validation_commands,
@@ -1123,6 +1126,182 @@ pub(crate) async fn verify_merge_on_target(
         Ok(false) => MergeVerification::NotMerged,
         Err(_) => MergeVerification::TargetBranchMissing,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Merge Completion Watcher
+// ---------------------------------------------------------------------------
+//
+// Background tokio task that polls git state to detect when a merger agent has
+// finished its work, then closes the agent's stdin via IPR so it exits
+// gracefully. After exit, the existing `attempt_merge_auto_complete` pipeline
+// handles verification and state transitions.
+
+/// Spawn a background task that watches for merge completion and closes IPR
+/// when the merger agent appears done.
+///
+/// The watcher resolves branches internally — callers only need to provide
+/// repo handles and the worktree path.
+pub(crate) fn spawn_merge_completion_watcher(
+    task_id: String,
+    worktree_path: PathBuf,
+    ipr: Arc<InteractiveProcessRegistry>,
+    task_repo: Arc<dyn TaskRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+) {
+    let cfg = reconciliation_config();
+    let initial_grace = Duration::from_secs(cfg.merge_watcher_grace_secs);
+    let poll_interval = Duration::from_secs(cfg.merge_watcher_poll_secs);
+    let clean_threshold = cfg.merge_watcher_clean_threshold.min(u32::MAX as u64) as u32;
+    tokio::spawn(async move {
+        merge_completion_watcher_loop(
+            task_id,
+            worktree_path,
+            ipr,
+            task_repo,
+            project_repo,
+            plan_branch_repo,
+            initial_grace,
+            poll_interval,
+            clean_threshold,
+        )
+        .await;
+    });
+}
+
+async fn merge_completion_watcher_loop(
+    task_id: String,
+    worktree_path: PathBuf,
+    ipr: Arc<InteractiveProcessRegistry>,
+    task_repo: Arc<dyn TaskRepository>,
+    project_repo: Arc<dyn ProjectRepository>,
+    plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
+    initial_grace: Duration,
+    poll_interval: Duration,
+    clean_threshold: u32,
+) {
+    let key = InteractiveProcessKey::new("merge", &task_id);
+
+    // Grace period — let agent start working
+    tokio::time::sleep(initial_grace).await;
+
+    // Resolve branches once (they don't change during the merge)
+    let (source_branch, target_branch, main_repo_path) = match resolve_watcher_context(
+        &task_id,
+        &task_repo,
+        &project_repo,
+        &plan_branch_repo,
+    )
+    .await
+    {
+        Some(ctx) => ctx,
+        None => {
+            tracing::warn!(task_id = %task_id, "Merge watcher: could not resolve branches, stopping");
+            return;
+        }
+    };
+
+    let mut consecutive_clean = 0u32;
+
+    loop {
+        tokio::time::sleep(poll_interval).await;
+
+        // Check if IPR entry still exists (agent might have already exited)
+        if !ipr.has_process(&key).await {
+            tracing::debug!(task_id = %task_id, "Merge watcher: IPR entry gone, stopping");
+            return;
+        }
+
+        // Check if task is still in Merging state
+        let task = match task_repo.get_by_id(&TaskId::from_string(task_id.clone())).await {
+            Ok(Some(t)) => t,
+            _ => {
+                tracing::warn!(task_id = %task_id, "Merge watcher: task not found, stopping");
+                return;
+            }
+        };
+
+        if task.internal_status != InternalStatus::Merging {
+            tracing::debug!(
+                task_id = %task_id,
+                status = ?task.internal_status,
+                "Merge watcher: task no longer Merging, stopping"
+            );
+            return;
+        }
+
+        // Check for validation_recovery mode — different detection logic
+        let meta: Option<serde_json::Value> = task
+            .metadata
+            .as_ref()
+            .and_then(|m| serde_json::from_str(m).ok());
+        let is_validation_recovery = meta
+            .as_ref()
+            .and_then(|m| m.get("validation_recovery"))
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+
+        if !is_validation_recovery {
+            // NORMAL MERGE: Check if source is merged into target
+            if let MergeVerification::Merged(_sha) =
+                verify_merge_on_target(&main_repo_path, &source_branch, &target_branch).await
+            {
+                tracing::info!(
+                    task_id = %task_id,
+                    "Merge watcher: merge verified on target branch, closing IPR"
+                );
+                let _ = ipr.remove(&key).await;
+                return;
+            }
+        }
+
+        // Check git working state
+        let rebase = GitService::is_rebase_in_progress(&worktree_path);
+        let merge = GitService::is_merge_in_progress(&worktree_path);
+        let conflicts = GitService::has_conflict_markers(&worktree_path)
+            .await
+            .unwrap_or(true);
+
+        if rebase || merge || conflicts {
+            // Agent actively working
+            consecutive_clean = 0;
+            continue;
+        }
+
+        // Git state is clean but merge not verified on target — agent may be idle
+        consecutive_clean += 1;
+        if consecutive_clean >= clean_threshold {
+            tracing::info!(
+                task_id = %task_id,
+                consecutive_clean,
+                "Merge watcher: clean git state persisted, closing IPR for auto-complete assessment"
+            );
+            let _ = ipr.remove(&key).await;
+            return;
+        }
+    }
+}
+
+/// Resolve branches and main repo path for the watcher.
+/// Returns None if task/project can't be found or branches can't be resolved.
+async fn resolve_watcher_context(
+    task_id: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+    project_repo: &Arc<dyn ProjectRepository>,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+) -> Option<(String, String, PathBuf)> {
+    let task = task_repo
+        .get_by_id(&TaskId::from_string(task_id.to_string()))
+        .await
+        .ok()??;
+
+    let project = project_repo.get_by_id(&task.project_id).await.ok()??;
+
+    let (source, target) =
+        resolve_merge_branches(&task, &project, plan_branch_repo).await;
+
+    Some((source, target, PathBuf::from(&project.working_directory)))
 }
 
 #[cfg(test)]

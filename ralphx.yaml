@@ -160,6 +160,12 @@ reconciliation:
   merge_starvation_guard_secs: 60 # Env: RALPHX_RECONCILIATION_MERGE_STARVATION_GUARD_SECS
   # side_effects.rs — max seconds for branch freshness updates (update_plan_from_main, update_source_from_target)
   branch_freshness_timeout_secs: 60 # Env: RALPHX_RECONCILIATION_BRANCH_FRESHNESS_TIMEOUT_SECS
+  # chat_service_merge.rs — grace period before merge watcher starts polling git state
+  merge_watcher_grace_secs: 30 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_GRACE_SECS
+  # chat_service_merge.rs — poll interval for merge watcher git state checks
+  merge_watcher_poll_secs: 15 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_POLL_SECS
+  # chat_service_merge.rs — consecutive clean polls before watcher closes IPR
+  merge_watcher_clean_threshold: 2 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_CLEAN_THRESHOLD
 
 git:
   # git_service/git_cmd.rs — per-command timeout to prevent hung git processes

@@ -240,6 +240,15 @@ pub async fn complete_merge(
             .await
             .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
 
+        // Close stdin via IPR to signal EOF to the merger agent (rebase retry path)
+        {
+            use crate::application::interactive_process_registry::InteractiveProcessKey;
+            let key = InteractiveProcessKey::new("merge", task_id.as_str());
+            if state.app_state.interactive_process_registry.remove(&key).await.is_some() {
+                tracing::info!("IPR removed for merger on task {} (complete_merge rebase retry)", task_id.as_str());
+            }
+        }
+
         return Ok(Json(MergeOperationResponse {
             success: true,
             message: "Rebase conflicts resolved, retrying merge".to_string(),
@@ -339,6 +348,15 @@ pub async fn complete_merge(
         .transition_task(&task_id, InternalStatus::Merged)
         .await
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
+
+    // Close stdin via IPR to signal EOF to the merger agent (success path)
+    {
+        use crate::application::interactive_process_registry::InteractiveProcessKey;
+        let key = InteractiveProcessKey::new("merge", task_id.as_str());
+        if state.app_state.interactive_process_registry.remove(&key).await.is_some() {
+            tracing::info!("IPR removed for merger on task {} (complete_merge)", task_id.as_str());
+        }
+    }
 
     // 10. Cleanup branch/worktree
     if let Some(task_branch) = &task.task_branch {
