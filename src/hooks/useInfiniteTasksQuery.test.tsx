@@ -2,12 +2,13 @@
  * Tests for useInfiniteTasksQuery hook
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { renderHook, waitFor } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactNode } from "react";
 import { useInfiniteTasksQuery, flattenPages } from "./useInfiniteTasksQuery";
 import { api } from "@/lib/tauri";
+import { usePlanStore } from "@/stores/planStore";
 import type { TaskListResponse } from "@/types/task";
 
 // Mock the tauri API
@@ -212,6 +213,141 @@ describe("useInfiniteTasksQuery", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
 
     expect(result.current.error?.message).toBe("API Error");
+  });
+});
+
+describe("useInfiniteTasksQuery plan guard", () => {
+  let queryClient: QueryClient;
+
+  beforeEach(() => {
+    queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    vi.clearAllMocks();
+    // Reset plan store to pristine state before each test
+    usePlanStore.setState({
+      activePlanByProject: {},
+      activeExecutionPlanIdByProject: {},
+      activePlanLoadedByProject: {},
+      planCandidates: [],
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  afterEach(() => {
+    // Clean up store after each test to avoid polluting other suites
+    usePlanStore.setState({
+      activePlanByProject: {},
+      activeExecutionPlanIdByProject: {},
+      activePlanLoadedByProject: {},
+      planCandidates: [],
+      isLoading: false,
+      error: null,
+    });
+  });
+
+  const wrapper = ({ children }: { children: ReactNode }) => (
+    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+  );
+
+  const emptyResponse: TaskListResponse = {
+    tasks: [],
+    total: 0,
+    hasMore: false,
+    offset: 0,
+  };
+
+  it("should be disabled when activePlanId is set but executionPlanId is null (loading gap)", async () => {
+    usePlanStore.setState({
+      activePlanByProject: { "project-123": "session-abc" },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useInfiniteTasksQuery({
+          projectId: "project-123",
+          executionPlanId: null,
+        }),
+      { wrapper }
+    );
+
+    // Allow time for any pending queries to fire
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(api.tasks.list).not.toHaveBeenCalled();
+    expect(result.current.fetchStatus).toBe("idle");
+  });
+
+  it("should be enabled when activePlanId and executionPlanId are both set", async () => {
+    vi.mocked(api.tasks.list).mockResolvedValue(emptyResponse);
+
+    usePlanStore.setState({
+      activePlanByProject: { "project-123": "session-abc" },
+    });
+
+    const { result } = renderHook(
+      () =>
+        useInfiniteTasksQuery({
+          projectId: "project-123",
+          executionPlanId: "exec-plan-xyz",
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+
+    expect(api.tasks.list).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectId: "project-123",
+        executionPlanId: "exec-plan-xyz",
+      })
+    );
+  });
+
+  it("should be enabled when no active plan exists (activePlanId is null)", async () => {
+    vi.mocked(api.tasks.list).mockResolvedValue(emptyResponse);
+    // No active plan set in store
+
+    const { result } = renderHook(
+      () =>
+        useInfiniteTasksQuery({
+          projectId: "project-123",
+        }),
+      { wrapper }
+    );
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.tasks.list).toHaveBeenCalled();
+  });
+
+  it("should enable query after executionPlanId resolves from null", async () => {
+    vi.mocked(api.tasks.list).mockResolvedValue(emptyResponse);
+
+    usePlanStore.setState({
+      activePlanByProject: { "project-123": "session-abc" },
+    });
+
+    const { result, rerender } = renderHook(
+      ({ execId }: { execId: string | null }) =>
+        useInfiniteTasksQuery({
+          projectId: "project-123",
+          executionPlanId: execId,
+        }),
+      { wrapper, initialProps: { execId: null } }
+    );
+
+    // Initially disabled (gap state)
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(api.tasks.list).not.toHaveBeenCalled();
+
+    // executionPlanId resolves
+    rerender({ execId: "exec-plan-xyz" });
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(api.tasks.list).toHaveBeenCalledWith(
+      expect.objectContaining({ executionPlanId: "exec-plan-xyz" })
+    );
   });
 });
 

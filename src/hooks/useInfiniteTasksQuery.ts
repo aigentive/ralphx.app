@@ -7,6 +7,7 @@
 
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { api } from "@/lib/tauri";
+import { usePlanStore, selectActivePlanId } from "@/stores/planStore";
 import type { Task, TaskListResponse } from "@/types/task";
 import type { InternalStatus } from "@/types/status";
 
@@ -91,6 +92,10 @@ export function useInfiniteTasksQuery({
   ideationSessionId,
   executionPlanId,
 }: InfiniteTasksParams) {
+  // Guard: if there's an active plan but executionPlanId hasn't resolved yet (loading gap),
+  // disable the query to prevent fetching all tasks without a plan filter.
+  const activePlanId = usePlanStore(selectActivePlanId(projectId));
+
   return useInfiniteQuery<TaskListResponse, Error>({
     queryKey: infiniteTaskKeys.list({ projectId, statuses, includeArchived, ideationSessionId, executionPlanId }),
     queryFn: async ({ pageParam = 0 }) => {
@@ -110,6 +115,9 @@ export function useInfiniteTasksQuery({
       return lastPage.hasMore ? lastPage.offset + 20 : undefined;
     },
     initialPageParam: 0,
+    // Disable query during the plan loading gap: activePlanId is set (optimistic) but
+    // executionPlanId hasn't been fetched yet → would fetch all tasks without a plan filter.
+    enabled: Boolean(projectId) && !(activePlanId && !executionPlanId),
     // Local-first app with event-driven updates: longer cache is safe and performant
     staleTime: 10 * 60 * 1000, // 10 minutes
     gcTime: 30 * 60 * 1000, // 30 minutes cache retention

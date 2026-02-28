@@ -1,3 +1,6 @@
+# DB backups
+backups/
+
 # Logs (keep activity.md and code-quality files)
 logs/*
 !logs/activity.md
