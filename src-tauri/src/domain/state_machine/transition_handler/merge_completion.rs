@@ -283,21 +283,29 @@ pub(super) async fn cleanup_branch_and_worktree_internal(
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
         }
 
-        match GitService::delete_worktree(repo_path, &worktree_path_buf).await {
-            Ok(_) => {
-                tracing::info!(
-                    task_id = task_id_str,
-                    worktree = %worktree_path,
-                    "Deleted worktree after merge"
-                );
-            }
-            Err(e) => {
-                tracing::warn!(
-                    error = %e,
-                    task_id = task_id_str,
-                    worktree = %worktree_path,
-                    "Failed to delete worktree (non-fatal)"
-                );
+        if !worktree_path_buf.exists() {
+            tracing::info!(
+                task_id = task_id_str,
+                worktree = %worktree_path,
+                "worktree already removed, skipping deletion"
+            );
+        } else {
+            match GitService::delete_worktree(repo_path, &worktree_path_buf).await {
+                Ok(_) => {
+                    tracing::info!(
+                        task_id = task_id_str,
+                        worktree = %worktree_path,
+                        "Deleted worktree after merge"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        task_id = task_id_str,
+                        worktree = %worktree_path,
+                        "Failed to delete worktree (non-fatal)"
+                    );
+                }
             }
         }
     }
@@ -429,6 +437,74 @@ mod tests {
             "Task internal_status must NOT be Merged when git verification fails. \
              Got {:?}",
             task.internal_status,
+        );
+    }
+
+    /// Fix #3: When pre_merge_cleanup already deleted the worktree,
+    /// cleanup_branch_and_worktree_internal should skip worktree deletion
+    /// but still delete the branch and clear task fields.
+    #[tokio::test]
+    async fn test_cleanup_branch_and_worktree_skips_already_deleted_worktree() {
+        let (_dir, repo_path_str) = make_test_repo();
+        let repo_path = Path::new(&repo_path_str);
+
+        // Create a task branch, then return to main so force-delete works
+        let branch_name = "task/fix3-test";
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "-b", branch_name])
+            .current_dir(repo_path)
+            .output();
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo_path)
+            .output();
+
+        // Verify branch exists before cleanup
+        let branch_check = std::process::Command::new("git")
+            .args(["branch", "--list", branch_name])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&branch_check.stdout).contains(branch_name),
+            "Branch should exist before cleanup"
+        );
+
+        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+        let project_id = ProjectId::from_string("proj-fix3".to_string());
+
+        let mut task = Task::new(project_id.clone(), "Fix3 test".to_string());
+        task.internal_status = InternalStatus::Merged;
+        task.task_branch = Some(branch_name.to_string());
+        // Non-existent worktree path — simulates pre_merge_cleanup already deleted it
+        task.worktree_path = Some("/tmp/nonexistent-worktree-fix3-test".to_string());
+        task_repo.create(task.clone()).await.unwrap();
+
+        let mut project = Project::new("fix3-project".to_string(), repo_path_str.clone());
+        project.id = project_id;
+        project.base_branch = Some("main".to_string());
+
+        cleanup_branch_and_worktree_internal(&mut task, &project, &task_repo).await;
+
+        // Both fields must be cleared after cleanup
+        assert!(
+            task.worktree_path.is_none(),
+            "worktree_path should be None after cleanup (was already deleted)"
+        );
+        assert!(
+            task.task_branch.is_none(),
+            "task_branch should be None after cleanup"
+        );
+
+        // Branch must be deleted from the real git repo
+        let branch_check_after = std::process::Command::new("git")
+            .args(["branch", "--list", branch_name])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&branch_check_after.stdout).contains(branch_name),
+            "Branch should be deleted from git after cleanup"
         );
     }
 }
