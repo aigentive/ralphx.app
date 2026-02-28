@@ -27,11 +27,12 @@ async fn test_create_and_get_by_plan_artifact_id() {
     let created = repo.create(branch).await.unwrap();
     assert_eq!(created.plan_artifact_id, artifact_id);
 
-    let retrieved = repo
+    let results = repo
         .get_by_plan_artifact_id(&artifact_id)
         .await
-        .unwrap()
         .unwrap();
+    assert_eq!(results.len(), 1);
+    let retrieved = &results[0];
     assert_eq!(retrieved.plan_artifact_id, artifact_id);
     assert_eq!(retrieved.branch_name, "ralphx/test-project/plan-abc123");
     assert_eq!(retrieved.source_branch, "main");
@@ -43,11 +44,11 @@ async fn test_create_and_get_by_plan_artifact_id() {
 #[tokio::test]
 async fn test_get_by_plan_artifact_id_not_found() {
     let repo = setup_repo().await;
-    let result = repo
+    let results = repo
         .get_by_plan_artifact_id(&ArtifactId::from_string("nonexistent"))
         .await
         .unwrap();
-    assert!(result.is_none());
+    assert!(results.is_empty());
 }
 
 #[tokio::test]
@@ -153,12 +154,12 @@ async fn test_update_status() {
         .await
         .unwrap();
 
-    let retrieved = repo
+    let results = repo
         .get_by_plan_artifact_id(&artifact_id)
         .await
-        .unwrap()
         .unwrap();
-    assert_eq!(retrieved.status, PlanBranchStatus::Abandoned);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, PlanBranchStatus::Abandoned);
 }
 
 #[tokio::test]
@@ -186,12 +187,12 @@ async fn test_set_merge_task_id() {
         .await
         .unwrap();
 
-    let retrieved = repo
+    let results = repo
         .get_by_plan_artifact_id(&artifact_id)
         .await
-        .unwrap()
         .unwrap();
-    assert_eq!(retrieved.merge_task_id.unwrap().as_str(), "mt-1");
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].merge_task_id.as_ref().unwrap().as_str(), "mt-1");
 }
 
 #[tokio::test]
@@ -216,13 +217,13 @@ async fn test_set_merged() {
     repo.create(branch).await.unwrap();
     repo.set_merged(&branch_id).await.unwrap();
 
-    let retrieved = repo
+    let results = repo
         .get_by_plan_artifact_id(&artifact_id)
         .await
-        .unwrap()
         .unwrap();
-    assert_eq!(retrieved.status, PlanBranchStatus::Merged);
-    assert!(retrieved.merged_at.is_some());
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].status, PlanBranchStatus::Merged);
+    assert!(results[0].merged_at.is_some());
 }
 
 #[tokio::test]
@@ -238,8 +239,9 @@ async fn test_set_merged_not_found() {
 async fn test_multiple_branches_same_plan_artifact_id() {
     let repo = setup_repo().await;
     let branch1 = create_test_branch();
+    let artifact_id = branch1.plan_artifact_id.clone();
     let branch2 = PlanBranch::new(
-        branch1.plan_artifact_id.clone(), // same artifact id — allowed after v46
+        artifact_id.clone(), // same artifact id — allowed after v46
         IdeationSessionId::from_string("sess-different"),
         ProjectId::from_string("proj-different".to_string()),
         "ralphx/other/plan-xyz".to_string(),
@@ -249,6 +251,10 @@ async fn test_multiple_branches_same_plan_artifact_id() {
     repo.create(branch1).await.unwrap();
     let result = repo.create(branch2).await;
     assert!(result.is_ok(), "Multiple branches with same plan_artifact_id should be allowed");
+
+    // Verify get_by_plan_artifact_id returns both branches
+    let branches = repo.get_by_plan_artifact_id(&artifact_id).await.unwrap();
+    assert_eq!(branches.len(), 2);
 }
 
 #[tokio::test]
@@ -296,21 +302,21 @@ async fn test_clear_merge_task_id_removes_task_link() {
         .unwrap();
 
     // Verify it's set
-    let with_task = repo.get_by_plan_artifact_id(&ArtifactId::from_string("art-test-1"))
+    let results = repo.get_by_plan_artifact_id(&ArtifactId::from_string("art-test-1"))
         .await
-        .unwrap()
         .unwrap();
-    assert!(with_task.merge_task_id.is_some());
+    assert_eq!(results.len(), 1);
+    assert!(results[0].merge_task_id.is_some());
 
     // Clear it
     repo.clear_merge_task_id(&branch_id).await.unwrap();
 
-    let cleared = repo
+    let results = repo
         .get_by_plan_artifact_id(&ArtifactId::from_string("art-test-1"))
         .await
-        .unwrap()
         .unwrap();
-    assert!(cleared.merge_task_id.is_none());
+    assert_eq!(results.len(), 1);
+    assert!(results[0].merge_task_id.is_none());
 }
 
 #[tokio::test]
@@ -350,12 +356,12 @@ async fn test_delete_removes_branch() {
     repo.create(branch).await.unwrap();
 
     // Verify it exists
-    assert!(repo.get_by_plan_artifact_id(&artifact_id).await.unwrap().is_some());
+    assert_eq!(repo.get_by_plan_artifact_id(&artifact_id).await.unwrap().len(), 1);
 
     repo.delete(&branch_id).await.unwrap();
 
     // Should be gone
-    assert!(repo.get_by_plan_artifact_id(&artifact_id).await.unwrap().is_none());
+    assert!(repo.get_by_plan_artifact_id(&artifact_id).await.unwrap().is_empty());
 }
 
 #[tokio::test]
