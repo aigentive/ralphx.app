@@ -70,7 +70,7 @@ pub fn run() {
     let (_log_guard, file_layer) = if file_logging_enabled {
         // Determine log directory: dev → {repo_root}/logs/, prod → ~/Library/Application Support/com.ralphx.app/logs/
         let log_dir = if cfg!(debug_assertions) {
-            PathBuf::from("logs")
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../logs")
         } else {
             let home = std::env::var("HOME").expect("HOME environment variable not set");
             PathBuf::from(home).join("Library/Application Support/com.ralphx.app/logs")
