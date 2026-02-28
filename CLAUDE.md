@@ -46,6 +46,7 @@ This is a **large codebase** (~100k+ lines across Rust backend + React frontend)
 > Apply whenever TeamCreate is available.
 
 **Model selection:** Default → `sonnet`. Escalate to `opus` ONLY for: deep multi-file investigation, complex architecture across modules, subtle race conditions, or when Sonnet produced insufficient results.
+**Verification rule:** When lower-tier models (Sonnet/Haiku) implement, verify with max-tier (Opus) before committing. ❌ Committing Sonnet work without Opus review.
 
 | Rule | Detail |
 |------|--------|
