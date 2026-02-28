@@ -138,6 +138,9 @@ struct RalphxConfig {
     /// If false, all merges proceed immediately without deferral.
     #[serde(default = "default_defer_merge_enabled")]
     defer_merge_enabled: bool,
+    /// Write tracing output to a per-launch log file in addition to console.
+    #[serde(default = "default_file_logging")]
+    file_logging: bool,
     // ── Runtime config sections ──────────────────────────────────────
     #[serde(default)]
     timeouts: runtime_config::TimeoutsWrapper,
@@ -159,12 +162,17 @@ fn default_defer_merge_enabled() -> bool {
     true
 }
 
+fn default_file_logging() -> bool {
+    true
+}
+
 struct LoadedConfig {
     agents: Vec<AgentConfig>,
     claude: ClaudeRuntimeConfig,
     process_mapping: ProcessMapping,
     team_constraints: TeamConstraintsConfig,
     defer_merge_enabled: bool,
+    file_logging: bool,
     runtime: AllRuntimeConfig,
 }
 
@@ -187,6 +195,34 @@ fn config_path() -> PathBuf {
 
     let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..");
     root.join("ralphx.yaml")
+}
+
+/// Resolve file_logging setting for early use (before tracing subscriber init).
+/// Priority: RALPHX_FILE_LOGGING env > ralphx.yaml `file_logging` field > default (true).
+///
+/// This does a lightweight YAML parse — the full config is loaded lazily later.
+pub fn resolve_file_logging_early() -> bool {
+    if let Ok(val) = std::env::var("RALPHX_FILE_LOGGING") {
+        return matches!(val.to_lowercase().as_str(), "true" | "1" | "yes");
+    }
+
+    #[derive(Deserialize)]
+    struct MinimalConfig {
+        #[serde(default = "default_file_logging_true")]
+        file_logging: bool,
+    }
+    fn default_file_logging_true() -> bool {
+        true
+    }
+
+    let path = config_path();
+    if let Ok(contents) = std::fs::read_to_string(path) {
+        if let Ok(cfg) = serde_yaml::from_str::<MinimalConfig>(&contents) {
+            return cfg.file_logging;
+        }
+    }
+
+    true
 }
 
 fn resolve_tools(raw: &AgentConfigRaw, tool_sets: &HashMap<String, Vec<String>>) -> Vec<String> {
@@ -402,6 +438,7 @@ fn parse_config_with_lookup(
         process_mapping: parsed.process_mapping,
         team_constraints: parsed.team_constraints,
         defer_merge_enabled: parsed.defer_merge_enabled,
+        file_logging: parsed.file_logging,
         runtime,
     })
 }
@@ -651,6 +688,7 @@ fn load_config() -> LoadedConfig {
             process_mapping: ProcessMapping::default(),
             team_constraints: TeamConstraintsConfig::default(),
             defer_merge_enabled: true,
+            file_logging: true,
             runtime,
         }
     })
@@ -705,6 +743,12 @@ pub fn defer_merge_enabled() -> bool {
     LOADED_CONFIG_CELL
         .get_or_init(load_config)
         .defer_merge_enabled
+}
+
+pub fn file_logging_enabled() -> bool {
+    LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .file_logging
 }
 
 pub fn stream_timeouts() -> &'static StreamTimeoutsConfig {

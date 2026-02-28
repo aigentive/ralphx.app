@@ -88,6 +88,11 @@
 # Env override: RALPHX_DEFER_MERGE_ENABLED=true|false
 defer_merge_enabled: false
 
+# Write tracing output to a per-launch log file in addition to console.
+# Dev: logs/ralphx_YYYY-MM-DD_HH-MM-SS.log | Prod: ~/Library/Application Support/com.ralphx.app/logs/
+# Env override: RALPHX_FILE_LOGGING=true|false
+file_logging: true
+
 # ── Runtime timeouts & limits ──────────────────────────────────────────────
 # All fields required — no Rust serde defaults. Missing keys cause a deserialization error.
 # All values can be overridden by env: RALPHX_<SECTION>_<FIELD> (e.g. RALPHX_STREAM_MERGE_LINE_READ_SECS)

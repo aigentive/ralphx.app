@@ -13,12 +13,12 @@ pub use agent_config::team_config::{
     TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
 };
 pub use agent_config::{
-    agent_configs, claude_runtime_config, defer_merge_enabled, get_agent_config, get_allowed_tools,
-    get_effective_settings, get_preapproved_tools, git_runtime_config, limits_config,
-    process_mapping, reconciliation_config, scheduler_config, stream_timeouts,
-    supervisor_runtime_config, team_constraints_config, AgentConfig, AllRuntimeConfig,
-    GitRuntimeConfig, LimitsConfig, ReconciliationConfig, SchedulerConfig, StreamTimeoutsConfig,
-    SupervisorRuntimeConfig,
+    agent_configs, claude_runtime_config, defer_merge_enabled, file_logging_enabled,
+    get_agent_config, get_allowed_tools, get_effective_settings, get_preapproved_tools,
+    git_runtime_config, limits_config, process_mapping, reconciliation_config,
+    resolve_file_logging_early, scheduler_config, stream_timeouts, supervisor_runtime_config,
+    team_constraints_config, AgentConfig, AllRuntimeConfig, GitRuntimeConfig, LimitsConfig,
+    ReconciliationConfig, SchedulerConfig, StreamTimeoutsConfig, SupervisorRuntimeConfig,
 };
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{
