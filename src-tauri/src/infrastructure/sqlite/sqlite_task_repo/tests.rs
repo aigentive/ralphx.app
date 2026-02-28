@@ -1132,3 +1132,383 @@ async fn test_update_metadata_returns_ok_for_nonexistent_task() {
     // Should succeed (UPDATE affects 0 rows but doesn't error)
     assert!(result.is_ok());
 }
+
+// ==================== UPDATE_WITH_EXPECTED_STATUS TESTS ====================
+
+#[tokio::test]
+async fn test_update_with_expected_status_succeeds_when_status_matches() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let mut task = create_test_task("CAS Task");
+    task.internal_status = InternalStatus::Ready;
+    repo.create(task.clone()).await.unwrap();
+
+    task.title = "Updated Title".to_string();
+    let result = repo
+        .update_with_expected_status(&task, InternalStatus::Ready)
+        .await;
+
+    assert!(result.is_ok());
+    assert!(result.unwrap()); // returns true when update succeeds
+    let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(found.title, "Updated Title");
+}
+
+#[tokio::test]
+async fn test_update_with_expected_status_returns_false_on_status_mismatch() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let mut task = create_test_task("CAS Task");
+    task.internal_status = InternalStatus::Ready;
+    repo.create(task.clone()).await.unwrap();
+
+    task.title = "Should Not Update".to_string();
+    // Expect Executing but actual status is Ready — CAS fails
+    let result = repo
+        .update_with_expected_status(&task, InternalStatus::Executing)
+        .await;
+
+    assert!(result.is_ok());
+    assert!(!result.unwrap()); // returns false when status mismatch
+    let found = repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(found.title, "CAS Task"); // unchanged
+}
+
+// ==================== LIST_PAGINATED TESTS ====================
+
+#[tokio::test]
+async fn test_list_paginated_respects_limit() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    for i in 0..5 {
+        repo.create(create_test_task(&format!("Task {}", i)))
+            .await
+            .unwrap();
+    }
+
+    let tasks = repo
+        .list_paginated(&project_id, None, 0, 3, false, None)
+        .await
+        .unwrap();
+    assert_eq!(tasks.len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_paginated_offset_skips_tasks() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    for i in 0..4 {
+        repo.create(create_test_task(&format!("Task {}", i)))
+            .await
+            .unwrap();
+    }
+
+    let page1 = repo
+        .list_paginated(&project_id, None, 0, 2, false, None)
+        .await
+        .unwrap();
+    let page2 = repo
+        .list_paginated(&project_id, None, 2, 2, false, None)
+        .await
+        .unwrap();
+
+    assert_eq!(page1.len(), 2);
+    assert_eq!(page2.len(), 2);
+    assert_ne!(page1[0].id, page2[0].id);
+}
+
+#[tokio::test]
+async fn test_list_paginated_filters_by_status() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    let mut backlog = create_test_task("Backlog Task");
+    backlog.internal_status = InternalStatus::Backlog;
+    let mut ready = create_test_task("Ready Task");
+    ready.internal_status = InternalStatus::Ready;
+    repo.create(backlog).await.unwrap();
+    repo.create(ready).await.unwrap();
+
+    let tasks = repo
+        .list_paginated(
+            &project_id,
+            Some(vec![InternalStatus::Ready]),
+            0,
+            10,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].internal_status, InternalStatus::Ready);
+}
+
+#[tokio::test]
+async fn test_list_paginated_include_archived_flag() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    let active = create_test_task("Active");
+    let to_archive = create_test_task("Archived");
+    repo.create(active.clone()).await.unwrap();
+    repo.create(to_archive.clone()).await.unwrap();
+    repo.archive(&to_archive.id).await.unwrap();
+
+    let active_only = repo
+        .list_paginated(&project_id, None, 0, 10, false, None)
+        .await
+        .unwrap();
+    assert_eq!(active_only.len(), 1);
+
+    let with_archived = repo
+        .list_paginated(&project_id, None, 0, 10, true, None)
+        .await
+        .unwrap();
+    assert_eq!(with_archived.len(), 2);
+}
+
+// ==================== GET_OLDEST_READY_TASK(S) TESTS ====================
+
+#[tokio::test]
+async fn test_get_oldest_ready_task_returns_oldest() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    let mut task1 = create_test_task("Older Ready");
+    task1.internal_status = InternalStatus::Ready;
+    let mut task2 = create_test_task("Newer Ready");
+    task2.internal_status = InternalStatus::Ready;
+
+    repo.create(task1.clone()).await.unwrap();
+    repo.create(task2.clone()).await.unwrap();
+
+    let result = repo.get_oldest_ready_task().await.unwrap();
+    assert!(result.is_some());
+    assert_eq!(result.unwrap().id, task1.id);
+}
+
+#[tokio::test]
+async fn test_get_oldest_ready_task_returns_none_when_no_ready_tasks() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    let task = create_test_task("Backlog Task");
+    repo.create(task).await.unwrap();
+
+    let result = repo.get_oldest_ready_task().await.unwrap();
+    assert!(result.is_none());
+}
+
+#[tokio::test]
+async fn test_get_oldest_ready_tasks_respects_limit() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    for i in 0..5 {
+        let mut task = create_test_task(&format!("Ready {}", i));
+        task.internal_status = InternalStatus::Ready;
+        repo.create(task).await.unwrap();
+    }
+
+    let tasks = repo.get_oldest_ready_tasks(3).await.unwrap();
+    assert_eq!(tasks.len(), 3);
+}
+
+#[tokio::test]
+async fn test_get_oldest_ready_tasks_returns_empty_when_no_ready_tasks() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    let tasks = repo.get_oldest_ready_tasks(10).await.unwrap();
+    assert!(tasks.is_empty());
+}
+
+// ==================== GET_STALE_READY_TASKS TESTS ====================
+
+#[tokio::test]
+async fn test_get_stale_ready_tasks_includes_tasks_at_zero_threshold() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    let mut task = create_test_task("Ready Task");
+    task.internal_status = InternalStatus::Ready;
+    repo.create(task.clone()).await.unwrap();
+
+    // threshold_secs = 0: cutoff is now, so existing task created just before qualifies
+    let stale = repo.get_stale_ready_tasks(0).await.unwrap();
+    assert!(stale.iter().any(|t| t.id == task.id));
+}
+
+#[tokio::test]
+async fn test_get_stale_ready_tasks_excludes_recent_tasks() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+
+    let mut task = create_test_task("Recent Ready Task");
+    task.internal_status = InternalStatus::Ready;
+    repo.create(task.clone()).await.unwrap();
+
+    // threshold = 24h: a just-created task should not be considered stale
+    let stale = repo.get_stale_ready_tasks(86400).await.unwrap();
+    assert!(!stale.iter().any(|t| t.id == task.id));
+}
+
+// ==================== HAS_TASK_IN_STATES TESTS ====================
+
+#[tokio::test]
+async fn test_has_task_in_states_returns_true_when_match_exists() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    let mut task = create_test_task("Executing Task");
+    task.internal_status = InternalStatus::Executing;
+    repo.create(task).await.unwrap();
+
+    let result = repo
+        .has_task_in_states(&project_id, &[InternalStatus::Executing])
+        .await
+        .unwrap();
+    assert!(result);
+}
+
+#[tokio::test]
+async fn test_has_task_in_states_returns_false_when_no_match() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    let task = create_test_task("Backlog Task");
+    repo.create(task).await.unwrap();
+
+    let result = repo
+        .has_task_in_states(&project_id, &[InternalStatus::Executing])
+        .await
+        .unwrap();
+    assert!(!result);
+}
+
+#[tokio::test]
+async fn test_has_task_in_states_returns_false_for_empty_statuses() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    repo.create(create_test_task("Any Task")).await.unwrap();
+
+    let result = repo.has_task_in_states(&project_id, &[]).await.unwrap();
+    assert!(!result);
+}
+
+#[tokio::test]
+async fn test_has_task_in_states_excludes_archived_tasks() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    let mut task = create_test_task("Archived Ready");
+    task.internal_status = InternalStatus::Ready;
+    repo.create(task.clone()).await.unwrap();
+    repo.archive(&task.id).await.unwrap();
+
+    let result = repo
+        .has_task_in_states(&project_id, &[InternalStatus::Ready])
+        .await
+        .unwrap();
+    assert!(!result);
+}
+
+#[tokio::test]
+async fn test_has_task_in_states_checks_multiple_statuses() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    let mut task = create_test_task("QA Task");
+    task.internal_status = InternalStatus::QaRefining;
+    repo.create(task).await.unwrap();
+
+    let result = repo
+        .has_task_in_states(
+            &project_id,
+            &[InternalStatus::Executing, InternalStatus::QaRefining],
+        )
+        .await
+        .unwrap();
+    assert!(result);
+}
+
+// ==================== COUNT_TASKS TESTS ====================
+
+#[tokio::test]
+async fn test_count_tasks_returns_correct_count() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    repo.create(create_test_task("T1")).await.unwrap();
+    repo.create(create_test_task("T2")).await.unwrap();
+    repo.create(create_test_task("T3")).await.unwrap();
+
+    let count = repo.count_tasks(&project_id, false, None).await.unwrap();
+    assert_eq!(count, 3);
+}
+
+#[tokio::test]
+async fn test_count_tasks_excludes_archived_by_default() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    let active = create_test_task("Active");
+    let to_archive = create_test_task("Archived");
+    repo.create(active).await.unwrap();
+    repo.create(to_archive.clone()).await.unwrap();
+    repo.archive(&to_archive.id).await.unwrap();
+
+    let active_count = repo.count_tasks(&project_id, false, None).await.unwrap();
+    assert_eq!(active_count, 1);
+
+    let all_count = repo.count_tasks(&project_id, true, None).await.unwrap();
+    assert_eq!(all_count, 2);
+}
+
+#[tokio::test]
+async fn test_count_tasks_returns_zero_for_empty_project() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    let count = repo.count_tasks(&project_id, false, None).await.unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn test_count_tasks_filters_by_ideation_session() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+    let session_id = IdeationSessionId::from_string("my-session");
+
+    let mut session_task = create_test_task("Session Task");
+    session_task.ideation_session_id = Some(session_id.clone());
+    repo.create(session_task).await.unwrap();
+    repo.create(create_test_task("Other Task")).await.unwrap();
+
+    let session_count = repo
+        .count_tasks(&project_id, false, Some("my-session"))
+        .await
+        .unwrap();
+    assert_eq!(session_count, 1);
+
+    let total_count = repo.count_tasks(&project_id, false, None).await.unwrap();
+    assert_eq!(total_count, 2);
+}

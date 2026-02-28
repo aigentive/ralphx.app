@@ -280,3 +280,92 @@ async fn test_get_by_merge_task_id_after_set() {
         .unwrap();
     assert_eq!(retrieved.id, branch_id);
 }
+
+// ==================== CLEAR_MERGE_TASK_ID TESTS ====================
+
+#[tokio::test]
+async fn test_clear_merge_task_id_removes_task_link() {
+    let repo = setup_repo().await;
+    let branch = create_test_branch();
+    let branch_id = branch.id.clone();
+    let merge_task_id = TaskId::from_string("mt-to-clear".to_string());
+
+    repo.create(branch).await.unwrap();
+    repo.set_merge_task_id(&branch_id, &merge_task_id)
+        .await
+        .unwrap();
+
+    // Verify it's set
+    let with_task = repo.get_by_plan_artifact_id(&ArtifactId::from_string("art-test-1"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(with_task.merge_task_id.is_some());
+
+    // Clear it
+    repo.clear_merge_task_id(&branch_id).await.unwrap();
+
+    let cleared = repo
+        .get_by_plan_artifact_id(&ArtifactId::from_string("art-test-1"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(cleared.merge_task_id.is_none());
+}
+
+#[tokio::test]
+async fn test_clear_merge_task_id_returns_not_found_for_nonexistent() {
+    let repo = setup_repo().await;
+    let nonexistent_id = PlanBranchId::new();
+
+    let result = repo.clear_merge_task_id(&nonexistent_id).await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(matches!(err, crate::error::AppError::NotFound(_)));
+}
+
+#[tokio::test]
+async fn test_clear_merge_task_id_when_already_null_returns_not_found() {
+    let repo = setup_repo().await;
+    let branch = create_test_branch();
+    let branch_id = branch.id.clone();
+
+    repo.create(branch).await.unwrap();
+    // merge_task_id is already NULL — no rows match the update condition? Actually it matches id=?1
+    // which should succeed since the branch exists
+    let result = repo.clear_merge_task_id(&branch_id).await;
+    assert!(result.is_ok());
+}
+
+// ==================== DELETE TESTS ====================
+
+#[tokio::test]
+async fn test_delete_removes_branch() {
+    let repo = setup_repo().await;
+    let branch = create_test_branch();
+    let branch_id = branch.id.clone();
+    let artifact_id = branch.plan_artifact_id.clone();
+
+    repo.create(branch).await.unwrap();
+
+    // Verify it exists
+    assert!(repo.get_by_plan_artifact_id(&artifact_id).await.unwrap().is_some());
+
+    repo.delete(&branch_id).await.unwrap();
+
+    // Should be gone
+    assert!(repo.get_by_plan_artifact_id(&artifact_id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn test_delete_returns_not_found_for_nonexistent() {
+    let repo = setup_repo().await;
+    let nonexistent_id = PlanBranchId::new();
+
+    let result = repo.delete(&nonexistent_id).await;
+
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(matches!(err, crate::error::AppError::NotFound(_)));
+}

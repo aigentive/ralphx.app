@@ -836,3 +836,135 @@ async fn test_cascade_delete_when_session_deleted() {
     let found = repo.get_by_id(&msg.id).await.unwrap();
     assert!(found.is_none());
 }
+
+// ==================== GET_BY_CONVERSATION TESTS ====================
+
+use crate::domain::entities::ChatConversationId;
+
+fn create_test_conversation(conn: &Connection) -> ChatConversationId {
+    let id = ChatConversationId::new();
+    conn.execute(
+        "INSERT INTO chat_conversations (id, context_type, context_id, created_at, updated_at)
+         VALUES (?1, 'project', 'test-context', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+        [id.as_str()],
+    )
+    .unwrap();
+    id
+}
+
+#[tokio::test]
+async fn test_get_by_conversation_returns_messages_in_order() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let conv_id = create_test_conversation(&conn);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let mut msg1 = ChatMessage::user_in_project(project_id.clone(), "First message");
+    msg1.conversation_id = Some(conv_id.clone());
+
+    let mut msg2 = ChatMessage::user_in_project(project_id.clone(), "Second message");
+    msg2.conversation_id = Some(conv_id.clone());
+
+    repo.create(msg1.clone()).await.unwrap();
+    repo.create(msg2.clone()).await.unwrap();
+
+    let messages = repo.get_by_conversation(&conv_id).await.unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].content, "First message");
+    assert_eq!(messages[1].content, "Second message");
+    assert_eq!(messages[0].conversation_id, Some(conv_id.clone()));
+}
+
+#[tokio::test]
+async fn test_get_by_conversation_returns_empty_for_no_messages() {
+    let conn = setup_test_db();
+    let conv_id = create_test_conversation(&conn);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let messages = repo.get_by_conversation(&conv_id).await.unwrap();
+    assert!(messages.is_empty());
+}
+
+#[tokio::test]
+async fn test_get_by_conversation_excludes_other_conversations() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let conv_a = create_test_conversation(&conn);
+    let conv_b = create_test_conversation(&conn);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let mut msg_a = ChatMessage::user_in_project(project_id.clone(), "For A");
+    msg_a.conversation_id = Some(conv_a.clone());
+    let mut msg_b = ChatMessage::user_in_project(project_id.clone(), "For B");
+    msg_b.conversation_id = Some(conv_b.clone());
+
+    repo.create(msg_a).await.unwrap();
+    repo.create(msg_b).await.unwrap();
+
+    let messages_a = repo.get_by_conversation(&conv_a).await.unwrap();
+    assert_eq!(messages_a.len(), 1);
+    assert_eq!(messages_a[0].content, "For A");
+}
+
+// ==================== UPDATE_CONTENT TESTS ====================
+
+#[tokio::test]
+async fn test_update_content_changes_content_and_roundtrips() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let session_id = create_test_session(&conn, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+    let msg = ChatMessage::user_in_session(session_id.clone(), "Original content");
+    repo.create(msg.clone()).await.unwrap();
+
+    let tool_calls = r#"[{"name":"read_file","input":{"path":"/test"}}]"#;
+    let content_blocks = r#"[{"type":"text","text":"Updated"}]"#;
+
+    repo.update_content(
+        &msg.id,
+        "Updated content",
+        Some(tool_calls),
+        Some(content_blocks),
+    )
+    .await
+    .unwrap();
+
+    let found = repo.get_by_id(&msg.id).await.unwrap().unwrap();
+    assert_eq!(found.content, "Updated content");
+    assert_eq!(found.tool_calls, Some(tool_calls.to_string()));
+    assert_eq!(found.content_blocks, Some(content_blocks.to_string()));
+}
+
+#[tokio::test]
+async fn test_update_content_clears_tool_calls_and_content_blocks_when_none() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let session_id = create_test_session(&conn, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+    let msg = ChatMessage::user_in_session(session_id.clone(), "Original");
+    repo.create(msg.clone()).await.unwrap();
+
+    // First set tool_calls + content_blocks
+    repo.update_content(&msg.id, "With tools", Some("[]"), Some("[]"))
+        .await
+        .unwrap();
+
+    // Then clear them
+    repo.update_content(&msg.id, "No tools", None, None)
+        .await
+        .unwrap();
+
+    let found = repo.get_by_id(&msg.id).await.unwrap().unwrap();
+    assert_eq!(found.content, "No tools");
+    assert!(found.tool_calls.is_none());
+    assert!(found.content_blocks.is_none());
+}

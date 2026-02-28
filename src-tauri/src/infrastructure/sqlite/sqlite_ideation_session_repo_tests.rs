@@ -790,3 +790,98 @@ async fn test_set_parent_updates_updated_at() {
     let updated_child = repo.get_by_id(&child.id).await.unwrap().unwrap();
     assert!(updated_child.updated_at >= original_updated_at);
 }
+
+// ==================== UPDATE_PLAN_ARTIFACT_ID TESTS ====================
+
+use crate::domain::entities::ArtifactId;
+
+#[tokio::test]
+async fn test_update_plan_artifact_id_sets_value() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let session = create_test_session(&project_id, Some("Plan Session"));
+    repo.create(session.clone()).await.unwrap();
+
+    repo.update_plan_artifact_id(&session.id, Some("artifact-abc".to_string()))
+        .await
+        .unwrap();
+
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(
+        found.plan_artifact_id,
+        Some(ArtifactId::from_string("artifact-abc"))
+    );
+}
+
+#[tokio::test]
+async fn test_update_plan_artifact_id_clears_value() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let session = create_test_session(&project_id, Some("Plan Session"));
+    repo.create(session.clone()).await.unwrap();
+
+    // Set then clear
+    repo.update_plan_artifact_id(&session.id, Some("artifact-abc".to_string()))
+        .await
+        .unwrap();
+    repo.update_plan_artifact_id(&session.id, None)
+        .await
+        .unwrap();
+
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert!(found.plan_artifact_id.is_none());
+}
+
+// ==================== GET_BY_PLAN_ARTIFACT_ID TESTS ====================
+
+#[tokio::test]
+async fn test_get_by_plan_artifact_id_returns_matching_sessions() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let session1 = create_test_session(&project_id, Some("Session 1"));
+    let session2 = create_test_session(&project_id, Some("Session 2"));
+    let session3 = create_test_session(&project_id, Some("Session 3 Different Artifact"));
+    repo.create(session1.clone()).await.unwrap();
+    repo.create(session2.clone()).await.unwrap();
+    repo.create(session3.clone()).await.unwrap();
+
+    repo.update_plan_artifact_id(&session1.id, Some("plan-artifact-xyz".to_string()))
+        .await
+        .unwrap();
+    repo.update_plan_artifact_id(&session3.id, Some("plan-artifact-other".to_string()))
+        .await
+        .unwrap();
+
+    let results = repo
+        .get_by_plan_artifact_id("plan-artifact-xyz")
+        .await
+        .unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].id, session1.id);
+}
+
+#[tokio::test]
+async fn test_get_by_plan_artifact_id_returns_empty_when_no_match() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let session = create_test_session(&project_id, Some("Session"));
+    repo.create(session).await.unwrap();
+
+    let results = repo
+        .get_by_plan_artifact_id("nonexistent-artifact")
+        .await
+        .unwrap();
+    assert!(results.is_empty());
+}

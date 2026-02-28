@@ -16,6 +16,8 @@ pub mod sqlite_chat_attachment_repo;
 #[cfg(test)]
 mod sqlite_chat_attachment_repo_tests;
 pub mod sqlite_chat_conversation_repo;
+#[cfg(test)]
+mod sqlite_chat_conversation_repo_tests;
 pub mod sqlite_chat_message_repo;
 #[cfg(test)]
 mod sqlite_chat_message_repo_tests;
@@ -23,9 +25,13 @@ pub mod sqlite_execution_settings_repo;
 pub mod sqlite_ideation_session_repo;
 pub mod sqlite_ideation_settings_repo;
 pub mod sqlite_memory_archive_job_repository;
+#[cfg(test)]
+mod sqlite_memory_archive_job_repository_tests;
 pub mod sqlite_memory_archive_repo;
 pub mod sqlite_memory_entry_repo;
 pub mod sqlite_memory_event_repository;
+#[cfg(test)]
+mod sqlite_memory_event_repository_tests;
 pub mod sqlite_methodology_repo;
 pub mod sqlite_permission_repo;
 pub mod sqlite_plan_branch_repo;
@@ -45,7 +51,11 @@ pub mod sqlite_task_qa_repo;
 pub mod sqlite_task_repo;
 pub mod sqlite_task_step_repo;
 pub mod sqlite_team_message_repo;
+#[cfg(test)]
+mod sqlite_team_message_repo_tests;
 pub mod sqlite_team_session_repo;
+#[cfg(test)]
+mod sqlite_team_session_repo_tests;
 pub mod sqlite_workflow_repo;
 pub mod state_machine_repository;
 

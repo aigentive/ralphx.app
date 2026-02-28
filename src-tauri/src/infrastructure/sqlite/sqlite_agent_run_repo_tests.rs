@@ -189,3 +189,321 @@ async fn test_get_interrupted_conversations_only_latest_run() {
         .unwrap();
     assert!(result.is_empty());
 }
+
+// ─── CRUD helpers ────────────────────────────────────────────────────────────
+
+fn make_shared_repos(
+    conn: rusqlite::Connection,
+) -> (SqliteAgentRunRepository, SqliteChatConversationRepository) {
+    let shared = Arc::new(Mutex::new(conn));
+    (
+        SqliteAgentRunRepository::from_shared(Arc::clone(&shared)),
+        SqliteChatConversationRepository::from_shared(Arc::clone(&shared)),
+    )
+}
+
+async fn create_test_conv(
+    repo: &SqliteChatConversationRepository,
+) -> ChatConversation {
+    let conv = ChatConversation::new_ideation(IdeationSessionId::new());
+    repo.create(conv.clone()).await.unwrap();
+    conv
+}
+
+// ─── create / get_by_id ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_create_and_get_by_id() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    let retrieved = repo.get_by_id(&run_id).await.unwrap();
+    assert!(retrieved.is_some());
+    let r = retrieved.unwrap();
+    assert_eq!(r.id, run_id);
+    assert_eq!(r.conversation_id, conv.id);
+    assert_eq!(r.status, AgentRunStatus::Running);
+}
+
+#[tokio::test]
+async fn test_get_by_id_not_found() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let repo = SqliteAgentRunRepository::new(conn);
+
+    let fake_id = AgentRunId::from_string("nonexistent-id".to_string());
+    assert!(repo.get_by_id(&fake_id).await.unwrap().is_none());
+}
+
+// ─── get_latest / get_active ─────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_get_latest_for_conversation() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let mut old_run = AgentRun::new(conv.id);
+    old_run.started_at = Utc::now() - chrono::Duration::hours(1);
+    repo.create(old_run).await.unwrap();
+
+    let new_run = AgentRun::new(conv.id);
+    let new_run_id = new_run.id;
+    repo.create(new_run).await.unwrap();
+
+    let latest = repo.get_latest_for_conversation(&conv.id).await.unwrap();
+    assert!(latest.is_some());
+    assert_eq!(latest.unwrap().id, new_run_id);
+}
+
+#[tokio::test]
+async fn test_get_latest_for_conversation_empty() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let repo = SqliteAgentRunRepository::new(conn);
+
+    let fake_id = ChatConversationId::from_string("no-such-conv".to_string());
+    assert!(repo.get_latest_for_conversation(&fake_id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn test_get_active_for_conversation() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    // No active run yet
+    assert!(repo.get_active_for_conversation(&conv.id).await.unwrap().is_none());
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    let active = repo.get_active_for_conversation(&conv.id).await.unwrap();
+    assert!(active.is_some());
+    assert_eq!(active.unwrap().id, run_id);
+}
+
+#[tokio::test]
+async fn test_get_active_for_conversation_excludes_terminal_runs() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let mut run = AgentRun::new(conv.id);
+    run.status = AgentRunStatus::Completed;
+    run.completed_at = Some(Utc::now());
+    repo.create(run).await.unwrap();
+
+    assert!(repo.get_active_for_conversation(&conv.id).await.unwrap().is_none());
+}
+
+// ─── get_by_conversation ─────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_get_by_conversation() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv1 = create_test_conv(&conv_repo).await;
+    let conv2 = create_test_conv(&conv_repo).await;
+
+    let mut r1 = AgentRun::new(conv1.id);
+    r1.started_at = Utc::now() - chrono::Duration::hours(2);
+    let mut r2 = AgentRun::new(conv1.id);
+    r2.started_at = Utc::now() - chrono::Duration::hours(1);
+    let r3 = AgentRun::new(conv2.id);
+
+    repo.create(r1).await.unwrap();
+    repo.create(r2).await.unwrap();
+    repo.create(r3).await.unwrap();
+
+    assert_eq!(repo.get_by_conversation(&conv1.id).await.unwrap().len(), 2);
+    assert_eq!(repo.get_by_conversation(&conv2.id).await.unwrap().len(), 1);
+}
+
+// ─── update_status / complete / fail / cancel ────────────────────────────────
+
+#[tokio::test]
+async fn test_update_status() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    repo.update_status(&run_id, AgentRunStatus::Cancelled).await.unwrap();
+
+    let updated = repo.get_by_id(&run_id).await.unwrap().unwrap();
+    assert_eq!(updated.status, AgentRunStatus::Cancelled);
+}
+
+#[tokio::test]
+async fn test_complete() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    repo.complete(&run_id).await.unwrap();
+
+    let updated = repo.get_by_id(&run_id).await.unwrap().unwrap();
+    assert_eq!(updated.status, AgentRunStatus::Completed);
+    assert!(updated.completed_at.is_some());
+    assert!(updated.error_message.is_none());
+}
+
+#[tokio::test]
+async fn test_fail() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    repo.fail(&run_id, "Something went wrong").await.unwrap();
+
+    let updated = repo.get_by_id(&run_id).await.unwrap().unwrap();
+    assert_eq!(updated.status, AgentRunStatus::Failed);
+    assert!(updated.completed_at.is_some());
+    assert_eq!(updated.error_message, Some("Something went wrong".to_string()));
+}
+
+#[tokio::test]
+async fn test_cancel() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    repo.cancel(&run_id).await.unwrap();
+
+    let updated = repo.get_by_id(&run_id).await.unwrap().unwrap();
+    assert_eq!(updated.status, AgentRunStatus::Cancelled);
+    assert!(updated.completed_at.is_some());
+    assert!(updated.error_message.is_none());
+}
+
+// ─── delete ──────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_delete() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let run = AgentRun::new(conv.id);
+    let run_id = run.id;
+    repo.create(run).await.unwrap();
+
+    assert!(repo.get_by_id(&run_id).await.unwrap().is_some());
+
+    repo.delete(&run_id).await.unwrap();
+
+    assert!(repo.get_by_id(&run_id).await.unwrap().is_none());
+}
+
+#[tokio::test]
+async fn test_delete_by_conversation() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv1 = create_test_conv(&conv_repo).await;
+    let conv2 = create_test_conv(&conv_repo).await;
+
+    repo.create(AgentRun::new(conv1.id)).await.unwrap();
+    repo.create(AgentRun::new(conv1.id)).await.unwrap();
+    let run2 = AgentRun::new(conv2.id);
+    let run2_id = run2.id;
+    repo.create(run2).await.unwrap();
+
+    repo.delete_by_conversation(&conv1.id).await.unwrap();
+
+    assert!(repo.get_by_conversation(&conv1.id).await.unwrap().is_empty());
+    assert!(repo.get_by_id(&run2_id).await.unwrap().is_some());
+}
+
+// ─── count_by_status ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_count_by_status() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let r1 = AgentRun::new(conv.id);
+    let r2 = AgentRun::new(conv.id);
+    let r3 = AgentRun::new(conv.id);
+    let r3_id = r3.id;
+    repo.create(r1).await.unwrap();
+    repo.create(r2).await.unwrap();
+    repo.create(r3).await.unwrap();
+
+    repo.cancel(&r3_id).await.unwrap();
+
+    assert_eq!(repo.count_by_status(&conv.id, AgentRunStatus::Running).await.unwrap(), 2);
+    assert_eq!(repo.count_by_status(&conv.id, AgentRunStatus::Cancelled).await.unwrap(), 1);
+    assert_eq!(repo.count_by_status(&conv.id, AgentRunStatus::Completed).await.unwrap(), 0);
+}
+
+// ─── cancel_all_running ──────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_cancel_all_running() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let (repo, conv_repo) = make_shared_repos(conn);
+    let conv = create_test_conv(&conv_repo).await;
+
+    let r1 = AgentRun::new(conv.id);
+    let r2 = AgentRun::new(conv.id);
+    let r3 = AgentRun::new(conv.id);
+    let r1_id = r1.id;
+    let r2_id = r2.id;
+    let r3_id = r3.id;
+    repo.create(r1).await.unwrap();
+    repo.create(r2).await.unwrap();
+    repo.create(r3).await.unwrap();
+
+    // Complete r3 before cancel_all_running
+    repo.complete(&r3_id).await.unwrap();
+
+    let cancelled_count = repo.cancel_all_running().await.unwrap();
+    assert_eq!(cancelled_count, 2);
+
+    let r1u = repo.get_by_id(&r1_id).await.unwrap().unwrap();
+    assert_eq!(r1u.status, AgentRunStatus::Cancelled);
+    assert_eq!(r1u.error_message, Some("Orphaned on app restart".to_string()));
+
+    let r2u = repo.get_by_id(&r2_id).await.unwrap().unwrap();
+    assert_eq!(r2u.status, AgentRunStatus::Cancelled);
+
+    // Completed run must not be affected
+    let r3u = repo.get_by_id(&r3_id).await.unwrap().unwrap();
+    assert_eq!(r3u.status, AgentRunStatus::Completed);
+}
