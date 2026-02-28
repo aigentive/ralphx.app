@@ -354,6 +354,7 @@ pub async fn get_tasks_awaiting_review(
 /// * `project_id` - The project ID
 /// * `include_archived` - Whether to include archived tasks (default: false)
 /// * `session_id` - Optional ideation session ID to filter tasks
+/// * `execution_plan_id` - Optional execution plan ID to filter tasks (mutually exclusive with session_id)
 ///
 /// # Returns
 /// * `TaskDependencyGraphResponse` - Contains nodes, edges, plan groups, critical path, and cycle info
@@ -368,6 +369,7 @@ pub async fn get_task_dependency_graph(
     project_id: String,
     include_archived: Option<bool>,
     session_id: Option<String>,
+    execution_plan_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TaskDependencyGraphResponse, String> {
     use std::collections::{HashMap, HashSet, VecDeque};
@@ -398,6 +400,15 @@ pub async fn get_task_dependency_graph(
             t.ideation_session_id
                 .as_ref()
                 .is_some_and(|id| id.as_str() == sid)
+        });
+    }
+
+    // Filter by execution_plan_id if provided
+    if let Some(ref ep_id) = execution_plan_id {
+        tasks.retain(|t| {
+            t.execution_plan_id
+                .as_ref()
+                .is_some_and(|id| id.as_str() == ep_id)
         });
     }
 
