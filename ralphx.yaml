@@ -166,8 +166,6 @@ reconciliation:
   merge_watcher_grace_secs: 30 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_GRACE_SECS
   # chat_service_merge.rs — poll interval for merge watcher git state checks
   merge_watcher_poll_secs: 15 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_POLL_SECS
-  # chat_service_merge.rs — consecutive clean polls before watcher closes IPR
-  merge_watcher_clean_threshold: 2 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_CLEAN_THRESHOLD
 
 git:
   # git_service/git_cmd.rs — per-command timeout to prevent hung git processes

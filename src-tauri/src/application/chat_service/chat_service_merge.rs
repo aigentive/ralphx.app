@@ -1153,7 +1153,6 @@ pub(crate) fn spawn_merge_completion_watcher(
     let cfg = reconciliation_config();
     let initial_grace = Duration::from_secs(cfg.merge_watcher_grace_secs);
     let poll_interval = Duration::from_secs(cfg.merge_watcher_poll_secs);
-    let clean_threshold = cfg.merge_watcher_clean_threshold.min(u32::MAX as u64) as u32;
     tokio::spawn(async move {
         merge_completion_watcher_loop(
             task_id,
@@ -1164,7 +1163,6 @@ pub(crate) fn spawn_merge_completion_watcher(
             plan_branch_repo,
             initial_grace,
             poll_interval,
-            clean_threshold,
         )
         .await;
     });
@@ -1172,14 +1170,13 @@ pub(crate) fn spawn_merge_completion_watcher(
 
 async fn merge_completion_watcher_loop(
     task_id: String,
-    worktree_path: PathBuf,
+    _worktree_path: PathBuf,
     ipr: Arc<InteractiveProcessRegistry>,
     task_repo: Arc<dyn TaskRepository>,
     project_repo: Arc<dyn ProjectRepository>,
     plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     initial_grace: Duration,
     poll_interval: Duration,
-    clean_threshold: u32,
 ) {
     let key = InteractiveProcessKey::new("merge", &task_id);
 
@@ -1201,8 +1198,6 @@ async fn merge_completion_watcher_loop(
             return;
         }
     };
-
-    let mut consecutive_clean = 0u32;
 
     loop {
         tokio::time::sleep(poll_interval).await;
@@ -1256,30 +1251,10 @@ async fn merge_completion_watcher_loop(
             }
         }
 
-        // Check git working state
-        let rebase = GitService::is_rebase_in_progress(&worktree_path);
-        let merge = GitService::is_merge_in_progress(&worktree_path);
-        let conflicts = GitService::has_conflict_markers(&worktree_path)
-            .await
-            .unwrap_or(true);
-
-        if rebase || merge || conflicts {
-            // Agent actively working
-            consecutive_clean = 0;
-            continue;
-        }
-
-        // Git state is clean but merge not verified on target — agent may be idle
-        consecutive_clean += 1;
-        if consecutive_clean >= clean_threshold {
-            tracing::info!(
-                task_id = %task_id,
-                consecutive_clean,
-                "Merge watcher: clean git state persisted, closing IPR for auto-complete assessment"
-            );
-            let _ = ipr.remove(&key).await;
-            return;
-        }
+        // No consecutive_clean auto-close — agent exits via:
+        // 1. Terminal MCP tool call → HTTP handler closes IPR (primary path)
+        // 2. verify_merge_on_target above (safety net)
+        // 3. Max agent timeout kills process (last resort)
     }
 }
 

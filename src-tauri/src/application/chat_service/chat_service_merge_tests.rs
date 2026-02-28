@@ -840,7 +840,6 @@ async fn watcher_exits_when_no_ipr_entry() {
         None,
         std::time::Duration::from_millis(1), // grace: 1ms
         std::time::Duration::from_millis(1), // poll: 1ms
-        2,                                   // clean_threshold
     ));
 
     // Advance a few mock-seconds — watcher exits immediately after first poll (no IPR).
@@ -882,7 +881,6 @@ async fn watcher_exits_without_closing_ipr_when_task_leaves_merging() {
         None,
         std::time::Duration::from_millis(1), // grace: 1ms
         std::time::Duration::from_millis(1), // poll: 1ms
-        2,                                   // clean_threshold
     ));
 
     // Advance 1 mock-second: fires grace (1ms) so watcher enters the loop and
@@ -953,7 +951,6 @@ async fn watcher_closes_ipr_when_merge_verified_on_target() {
         None,
         std::time::Duration::ZERO,            // grace: none
         std::time::Duration::from_millis(50), // poll: 50ms
-        2,                                    // clean_threshold
     ));
 
     // Wait up to 10s in real time — verify_merge returns Merged → IPR removed.
@@ -973,8 +970,9 @@ async fn watcher_closes_ipr_when_merge_verified_on_target() {
 
 // ---- Watcher loop: validation_recovery skips merge check -------------------
 
-/// In validation_recovery mode, watcher skips verify_merge_on_target and instead
-/// waits for consecutive clean git state before closing IPR.
+/// In validation_recovery mode, watcher skips verify_merge_on_target.
+/// Without consecutive_clean, the watcher keeps running (agent exits via MCP tool or timeout).
+/// This test verifies the watcher does NOT prematurely close IPR even though the merge is done.
 ///
 /// Uses real time — see `watcher_closes_ipr_when_merge_verified_on_target` for why.
 #[tokio::test]
@@ -1012,7 +1010,7 @@ async fn watcher_skips_merge_check_in_validation_recovery_mode() {
     let key = InteractiveProcessKey::new("merge", &task_id);
     let mut child = register_ipr_cat(&ipr, &key).await;
 
-    // 0ms grace, 50ms poll, threshold=2 → exits after 2 consecutive clean polls (~100ms).
+    // 0ms grace, 50ms poll — watcher should NOT close IPR (no merge check, no consecutive_clean)
     let watcher = tokio::spawn(super::merge_completion_watcher_loop(
         task_id.clone(),
         repo.to_path_buf(),
@@ -1022,106 +1020,36 @@ async fn watcher_skips_merge_check_in_validation_recovery_mode() {
         None,
         std::time::Duration::ZERO,            // grace: none
         std::time::Duration::from_millis(50), // poll: 50ms
-        2,                                    // clean_threshold
     ));
 
-    let finished = wait_until_done(&watcher, 10).await;
-
-    assert!(
-        finished,
-        "Watcher in validation_recovery mode should exit via clean state threshold"
-    );
-
-    let _ = child.kill().await;
-}
-
-// ---- Watcher loop: waits while rebase in progress -------------------------
-
-/// While .git/rebase-merge exists in the worktree, consecutive_clean is reset
-/// and IPR is not closed. After rebase completes, clean polls trigger closure.
-///
-/// Uses real time — see `watcher_closes_ipr_when_merge_verified_on_target` for why.
-#[tokio::test]
-async fn watcher_waits_while_rebase_in_progress_then_closes_ipr() {
-    let dir = setup_test_repo();
-    let repo = dir.path();
-    create_branch_with_change(repo, "task-branch", "r.txt", "r\n");
-
-    let (task_repo, project_repo) = make_test_repos();
-    let ipr = Arc::new(InteractiveProcessRegistry::new());
-
-    let task_id = seed_project_and_merging_task(
-        &task_repo,
-        &project_repo,
-        repo,
-        "task-branch",
-    )
-    .await;
-
-    // Use a real git repo for the worktree so `git diff` (called by has_conflict_markers)
-    // succeeds once the rebase dir is removed. A plain tempdir (non-repo) causes git to
-    // fail, which unwrap_or(true) treats as "conflicts present" → consecutive_clean
-    // never reaches threshold.
-    let worktree_dir = setup_test_repo();
-    // Simulate rebase in progress by creating .git/rebase-merge inside the real repo.
-    fs::create_dir_all(worktree_dir.path().join(".git").join("rebase-merge")).unwrap();
-
-    let key = InteractiveProcessKey::new("merge", &task_id);
-    let mut child = register_ipr_cat(&ipr, &key).await;
-
-    // 0ms grace, 50ms poll, threshold=2
-    let watcher = tokio::spawn(super::merge_completion_watcher_loop(
-        task_id.clone(),
-        worktree_dir.path().to_path_buf(), // worktree with rebase in progress
-        Arc::clone(&ipr),
-        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
-        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
-        None,
-        std::time::Duration::ZERO,            // grace: none
-        std::time::Duration::from_millis(50), // poll: 50ms
-        2,                                    // clean_threshold
-    ));
-
-    // Wait for ≥2 poll cycles with rebase present (~300ms generous buffer).
-    // The watcher CANNOT close IPR while rebase dir exists — this assertion is safe
-    // at any point as long as the rebase dir still exists.
+    // Wait several poll cycles — watcher should still be running (not closing IPR)
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
     assert!(
-        ipr.has_process(&key).await,
-        "IPR must not be closed while .git/rebase-merge is present"
-    );
-    assert!(
         !watcher.is_finished(),
-        "Watcher should still be running while rebase is in progress"
-    );
-
-    // Simulate rebase completion — next clean polls will increment consecutive_clean
-    fs::remove_dir_all(worktree_dir.path().join(".git").join("rebase-merge")).unwrap();
-
-    // Wait for 2 consecutive clean polls → threshold reached → IPR removed
-    let finished = wait_until_done(&watcher, 10).await;
-
-    assert!(
-        finished,
-        "Watcher should exit after rebase completes and clean threshold is reached"
+        "Watcher in validation_recovery should keep running (agent exits via MCP or timeout)"
     );
     assert!(
-        !ipr.has_process(&key).await,
-        "IPR should be removed after rebase completes"
+        ipr.has_process(&key).await,
+        "IPR should NOT be closed in validation_recovery mode — agent exits via MCP tool"
     );
+
+    // Clean up: remove IPR entry so watcher exits
+    ipr.remove(&key).await;
+    let finished = wait_until_done(&watcher, 5).await;
+    assert!(finished, "Watcher should exit after IPR is removed externally");
 
     let _ = child.kill().await;
 }
 
-// ---- Watcher loop: consecutive clean git state closes IPR -----------------
+// ---- Watcher loop: keeps running when merge not verified -------------------
 
-/// When source is NOT merged into target but git state is clean for
-/// `clean_threshold` consecutive polls, the watcher closes IPR.
+/// When source is NOT merged into target, watcher keeps running indefinitely
+/// (agent must exit via MCP tool call or timeout — no consecutive_clean auto-close).
 ///
 /// Uses real time — see `watcher_closes_ipr_when_merge_verified_on_target` for why.
 #[tokio::test]
-async fn watcher_closes_ipr_on_consecutive_clean_git_state() {
+async fn watcher_keeps_running_when_merge_not_verified() {
     let dir = setup_test_repo();
     let repo = dir.path();
 
@@ -1142,8 +1070,7 @@ async fn watcher_closes_ipr_on_consecutive_clean_git_state() {
     let key = InteractiveProcessKey::new("merge", &task_id);
     let mut child = register_ipr_cat(&ipr, &key).await;
 
-    // 0ms grace, 50ms poll, threshold=2 → exits after 2 consecutive clean polls (~100ms).
-    // Source not merged → NotMerged. Clean git state → consecutive_clean reaches 2.
+    // 0ms grace, 50ms poll — watcher should keep running (merge not verified)
     let watcher = tokio::spawn(super::merge_completion_watcher_loop(
         task_id.clone(),
         repo.to_path_buf(),
@@ -1153,19 +1080,24 @@ async fn watcher_closes_ipr_on_consecutive_clean_git_state() {
         None,
         std::time::Duration::ZERO,            // grace: none
         std::time::Duration::from_millis(50), // poll: 50ms
-        2,                                    // clean_threshold
     ));
 
-    let finished = wait_until_done(&watcher, 10).await;
+    // Wait several poll cycles — watcher should still be running
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
     assert!(
-        finished,
-        "Watcher should exit after consecutive clean git state reaches threshold"
+        !watcher.is_finished(),
+        "Watcher should keep running when merge is not verified on target"
     );
     assert!(
-        !ipr.has_process(&key).await,
-        "IPR should be removed after consecutive clean git state"
+        ipr.has_process(&key).await,
+        "IPR should NOT be closed — agent exits via MCP tool or timeout"
     );
+
+    // Clean up: remove IPR entry so watcher exits
+    ipr.remove(&key).await;
+    let finished = wait_until_done(&watcher, 5).await;
+    assert!(finished, "Watcher should exit after IPR is removed externally");
 
     let _ = child.kill().await;
 }

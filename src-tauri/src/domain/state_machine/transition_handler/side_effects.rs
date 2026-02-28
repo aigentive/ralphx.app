@@ -237,7 +237,7 @@ impl<'a> super::TransitionHandler<'a> {
             "Cleaning up previous merge artifacts...".to_string(),
         );
         let cleanup_timeout_secs = reconciliation_config().pre_merge_cleanup_timeout_secs;
-        match tokio::time::timeout(
+        match super::cleanup_helpers::os_thread_timeout(
             std::time::Duration::from_secs(cleanup_timeout_secs),
             self.pre_merge_cleanup(
                 task_id_str, &task, &project, repo_path, &target_branch, task_repo,
@@ -258,11 +258,11 @@ impl<'a> super::TransitionHandler<'a> {
                     "passed",
                 ).await;
             }
-            Err(_elapsed) => {
+            Err(_os_elapsed) => {
                 tracing::warn!(
                     task_id = %task_id_str,
                     cleanup_timeout_secs,
-                    "pre_merge_cleanup timed out — proceeding to merge anyway (cleanup is best-effort)"
+                    "pre_merge_cleanup timed out (OS-thread timeout) — proceeding to merge anyway (cleanup is best-effort)"
                 );
                 emit_merge_progress(
                     app_handle,
