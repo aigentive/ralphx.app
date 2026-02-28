@@ -506,6 +506,7 @@ pub async fn apply_proposals_to_kanban(
         dependencies_created,
         warnings,
         session_converted,
+        execution_plan_id: Some(execution_plan_id.as_str().to_string()),
     })
 }
 

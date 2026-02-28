@@ -41,11 +41,13 @@ interface PlanState {
 interface PlanActions {
   /** Load active plan for a project from backend */
   loadActivePlan: (projectId: string) => Promise<void>;
-  /** Set active plan for a project (with source tracking) */
+  /** Set active plan for a project (with source tracking).
+   *  Pass executionPlanId to set both atomically and skip the async fetch. */
   setActivePlan: (
     projectId: string,
     sessionId: string,
-    source: SelectionSource
+    source: SelectionSource,
+    executionPlanId?: string | null
   ) => Promise<void>;
   /** Clear active plan for a project */
   clearActivePlan: (projectId: string) => Promise<void>;
@@ -96,13 +98,18 @@ export const usePlanStore = create<PlanState & PlanActions>()(
     loadActivePlan: async (projectId) => {
       try {
         set({ isLoading: true, error: null });
-        const [sessionId, executionPlanId] = await Promise.all([
+        // Use allSettled so a failed executionPlan fetch doesn't block the activePlan fetch.
+        const [planResult, execPlanResult] = await Promise.allSettled([
           planApi.getActivePlan(projectId),
           executionPlanApi.getActiveExecutionPlan(projectId),
         ]);
+        if (planResult.status === "rejected") {
+          throw planResult.reason;
+        }
         set((state) => {
-          state.activePlanByProject[projectId] = sessionId;
-          state.activeExecutionPlanIdByProject[projectId] = executionPlanId;
+          state.activePlanByProject[projectId] = planResult.value;
+          state.activeExecutionPlanIdByProject[projectId] =
+            execPlanResult.status === "fulfilled" ? execPlanResult.value : null;
           state.activePlanLoadedByProject[projectId] = true;
           state.isLoading = false;
         });
@@ -116,29 +123,42 @@ export const usePlanStore = create<PlanState & PlanActions>()(
       }
     },
 
-    setActivePlan: async (projectId, sessionId, source) => {
+    setActivePlan: async (projectId, sessionId, source, executionPlanId?) => {
       const previousSessionId = usePlanStore.getState().activePlanByProject[projectId] ?? null;
+      const previousExecutionPlanId =
+        usePlanStore.getState().activeExecutionPlanIdByProject[projectId] ?? null;
       try {
-        // Optimistic UI update so selectors reflect the new active plan immediately.
+        // Optimistic UI update — set both plan and executionPlanId atomically when provided.
+        // This eliminates the gap where activePlanByProject is set but activeExecutionPlanIdByProject is null.
         set((state) => {
           state.isLoading = true;
           state.error = null;
           state.activePlanByProject[projectId] = sessionId;
           state.activePlanLoadedByProject[projectId] = true;
+          if (executionPlanId !== undefined) {
+            state.activeExecutionPlanIdByProject[projectId] = executionPlanId;
+          }
         });
         await planApi.setActivePlan(projectId, sessionId, source);
-        // Refresh execution plan ID after plan is set
-        const executionPlanId = await executionPlanApi.getActiveExecutionPlan(projectId);
-        set((state) => {
-          state.activeExecutionPlanIdByProject[projectId] = executionPlanId;
-          state.isLoading = false;
-        });
+        if (executionPlanId === undefined) {
+          // executionPlanId not provided upfront — fetch async (e.g. "View Work" on accepted session)
+          const fetchedId = await executionPlanApi.getActiveExecutionPlan(projectId);
+          set((state) => {
+            state.activeExecutionPlanIdByProject[projectId] = fetchedId;
+            state.isLoading = false;
+          });
+        } else {
+          set({ isLoading: false });
+        }
       } catch (error) {
         set((state) => {
           state.error = error instanceof Error ? error.message : "Failed to set active plan";
           state.isLoading = false;
-          // Roll back optimistic update on failure.
+          // Roll back optimistic updates on failure.
           state.activePlanByProject[projectId] = previousSessionId;
+          if (executionPlanId !== undefined) {
+            state.activeExecutionPlanIdByProject[projectId] = previousExecutionPlanId;
+          }
         });
         throw error; // Re-throw so callers can handle
       }

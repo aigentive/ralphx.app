@@ -172,6 +172,7 @@ export function transformApplyResult(raw: z.infer<typeof ApplyProposalsResultRes
     dependenciesCreated: raw.dependencies_created,
     warnings: raw.warnings,
     sessionConverted: raw.session_converted,
+    executionPlanId: raw.execution_plan_id ?? null,
   };
 }
 

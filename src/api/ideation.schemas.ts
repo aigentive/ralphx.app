@@ -126,6 +126,7 @@ export const ApplyProposalsResultResponseSchema = z.object({
   dependencies_created: z.number(),
   warnings: z.array(z.string()),
   session_converted: z.boolean(),
+  execution_plan_id: z.string().nullable().optional(),
 });
 
 /**

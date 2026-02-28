@@ -213,6 +213,39 @@ describe("planStore", () => {
       expect(state.isLoading).toBe(false);
     });
 
+    it("sets executionPlanId atomically when provided (no async fetch)", async () => {
+      mockPlanApi.setActivePlan.mockResolvedValue(undefined);
+
+      await usePlanStore
+        .getState()
+        .setActivePlan("project-1", "session-123", "ideation", "exec-plan-abc");
+
+      const state = usePlanStore.getState();
+      expect(state.activePlanByProject["project-1"]).toBe("session-123");
+      expect(state.activeExecutionPlanIdByProject["project-1"]).toBe("exec-plan-abc");
+      expect(state.isLoading).toBe(false);
+      expect(state.error).toBeNull();
+    });
+
+    it("rolls back executionPlanId on error when provided", async () => {
+      // Set initial state
+      usePlanStore.setState({
+        activePlanByProject: { "project-1": "session-old" },
+        activeExecutionPlanIdByProject: { "project-1": "exec-old" },
+      });
+      mockPlanApi.setActivePlan.mockRejectedValue(new Error("Set failed"));
+
+      await expect(
+        usePlanStore
+          .getState()
+          .setActivePlan("project-1", "session-new", "ideation", "exec-new")
+      ).rejects.toThrow("Set failed");
+
+      const state = usePlanStore.getState();
+      expect(state.activePlanByProject["project-1"]).toBe("session-old");
+      expect(state.activeExecutionPlanIdByProject["project-1"]).toBe("exec-old");
+    });
+
     it("clears previous errors on successful set", async () => {
       mockPlanApi.setActivePlan
         .mockRejectedValueOnce(new Error("First error"))

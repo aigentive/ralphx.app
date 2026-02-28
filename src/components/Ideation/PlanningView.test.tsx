@@ -266,7 +266,13 @@ describe("PlanningView", () => {
     onEditProposal: vi.fn(),
     onRemoveProposal: vi.fn(),
     onReorderProposals: vi.fn(),
-    onApply: vi.fn(),
+    onApply: vi.fn().mockResolvedValue({
+      createdTaskIds: [],
+      dependenciesCreated: 0,
+      warnings: [],
+      sessionConverted: false,
+      executionPlanId: null,
+    }),
   };
 
   beforeEach(() => {
@@ -298,7 +304,13 @@ describe("PlanningView", () => {
   });
 
   it("calls onApply with all proposal IDs when accepting plan", async () => {
-    const onApply = vi.fn();
+    const onApply = vi.fn().mockResolvedValue({
+      createdTaskIds: ["task-1", "task-2"],
+      dependenciesCreated: 1,
+      warnings: [],
+      sessionConverted: true,
+      executionPlanId: "exec-plan-1",
+    });
     const user = userEvent.setup();
     render(<PlanningView {...defaultProps} onApply={onApply} />);
 
@@ -350,7 +362,13 @@ describe("PlanningView", () => {
   });
 
   it("sets active plan after accepting proposals", async () => {
-    const onApply = vi.fn().mockResolvedValue(undefined);
+    const onApply = vi.fn().mockResolvedValue({
+      createdTaskIds: ["task-1"],
+      dependenciesCreated: 0,
+      warnings: [],
+      sessionConverted: true,
+      executionPlanId: "exec-plan-abc",
+    });
     const user = userEvent.setup();
     render(<PlanningView {...defaultProps} onApply={onApply} />);
 
@@ -368,9 +386,14 @@ describe("PlanningView", () => {
       });
     });
 
-    // Verify setActivePlan was called after onApply
+    // Verify setActivePlan was called with executionPlanId for atomic update
     await vi.waitFor(() => {
-      expect(mockSetActivePlan).toHaveBeenCalledWith("project-1", "session-1", "ideation");
+      expect(mockSetActivePlan).toHaveBeenCalledWith(
+        "project-1",
+        "session-1",
+        "ideation",
+        "exec-plan-abc"
+      );
     });
   });
 
