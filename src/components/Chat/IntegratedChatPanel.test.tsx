@@ -207,7 +207,7 @@ describe("IntegratedChatPanel", () => {
         isLoading: false,
         activeConversationId: null,
         queuedMessages: {},
-        isAgentRunning: {},
+        agentStatus: {},
         isSending: {},
       });
     });

@@ -11,12 +11,13 @@
  * - Agent active: Badge with status + spinner + Activity icon
  */
 
-import { Activity, Loader2 } from "lucide-react";
+import { Activity, Loader2, CirclePause } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useUiStore } from "@/stores/uiStore";
 import { AGENT_WORKER, AGENT_REVIEWER } from "@/constants/agents";
 import type { ViewType } from "@/types/chat";
+import type { AgentStatus } from "@/stores/chatStore";
 
 // ============================================================================
 // Types
@@ -35,6 +36,8 @@ export interface StatusActivityBadgeProps {
   contextId: string | null;
   /** Whether there is historical activity available for this context */
   hasActivity?: boolean;
+  /** Tri-state agent status for nuanced display */
+  agentStatus?: AgentStatus;
 }
 
 // ============================================================================
@@ -64,6 +67,7 @@ export function StatusActivityBadge({
   contextType,
   contextId,
   hasActivity = false,
+  agentStatus = "idle",
 }: StatusActivityBadgeProps) {
   const setActivityFilter = useUiStore((s) => s.setActivityFilter);
   const setCurrentView = useUiStore((s) => s.setCurrentView);
@@ -80,13 +84,15 @@ export function StatusActivityBadge({
     setCurrentView("activity");
   };
 
+  const isWaiting = agentStatus === "waiting_for_input";
+
   // Hidden state: idle with no activity
-  if (!isAgentActive && !hasActivity) {
+  if (!isAgentActive && !isWaiting && !hasActivity) {
     return null;
   }
 
   // Idle but has activity: show muted activity icon
-  if (!isAgentActive && hasActivity) {
+  if (!isAgentActive && !isWaiting && hasActivity) {
     return (
       <Button
         variant="ghost"
@@ -100,7 +106,28 @@ export function StatusActivityBadge({
     );
   }
 
-  // Active state: badge with status text, spinner, and activity button
+  // Waiting for input: show subtle badge without spinner
+  if (isWaiting) {
+    return (
+      <div className="flex items-center gap-1.5 shrink-0">
+        <Badge variant="secondary" className="shrink-0">
+          <CirclePause className="w-3 h-3 mr-1.5 text-white/50" />
+          Awaiting input
+        </Badge>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={handleActivityClick}
+          className="shrink-0 h-7 px-2 text-[#ff6b35] hover:text-[#ff6b35]/80"
+          aria-label="View activity"
+        >
+          <Activity className="w-3.5 h-3.5" />
+        </Button>
+      </div>
+    );
+  }
+
+  // Active/generating state: badge with status text, spinner, and activity button
   return (
     <div className="flex items-center gap-1.5 shrink-0">
       <Badge variant="secondary" className="shrink-0">

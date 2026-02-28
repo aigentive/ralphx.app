@@ -42,7 +42,7 @@ describe("chatStore", () => {
       isLoading: false,
       activeConversationId: null,
       queuedMessages: {},
-      isAgentRunning: {},
+      agentStatus: {},
       isSending: {},
     });
   });
@@ -78,9 +78,9 @@ describe("chatStore", () => {
       expect(Object.keys(state.queuedMessages)).toHaveLength(0);
     });
 
-    it("has empty isAgentRunning", () => {
+    it("has empty agentStatus", () => {
       const state = useChatStore.getState();
-      expect(Object.keys(state.isAgentRunning)).toHaveLength(0);
+      expect(Object.keys(state.agentStatus)).toHaveLength(0);
     });
   });
 
@@ -350,11 +350,11 @@ describe("chatStore", () => {
   describe("setAgentRunning", () => {
     const contextKey = "task:test-task";
 
-    it("sets isAgentRunning to true for context", () => {
+    it("sets agentStatus to 'generating' for context", () => {
       useChatStore.getState().setAgentRunning(contextKey, true);
 
       const state = useChatStore.getState();
-      expect(state.isAgentRunning[contextKey]).toBe(true);
+      expect(state.agentStatus[contextKey]).toBe("generating");
     });
 
     it("removes context when set to false", () => {
@@ -362,7 +362,7 @@ describe("chatStore", () => {
       useChatStore.getState().setAgentRunning(contextKey, false);
 
       const state = useChatStore.getState();
-      expect(state.isAgentRunning[contextKey]).toBeUndefined();
+      expect(state.agentStatus[contextKey]).toBeUndefined();
     });
 
     it("keeps separate states by context key", () => {
@@ -374,36 +374,36 @@ describe("chatStore", () => {
       useChatStore.getState().setAgentRunning(taskKey, false);
 
       const state = useChatStore.getState();
-      expect(state.isAgentRunning[taskKey]).toBeUndefined();
-      expect(state.isAgentRunning[execKey]).toBe(true);
+      expect(state.agentStatus[taskKey]).toBeUndefined();
+      expect(state.agentStatus[execKey]).toBe("generating");
     });
 
     it("is no-op when setting false and key is already absent", () => {
       // Get state reference before the call
       const stateBefore = useChatStore.getState();
-      const isAgentRunningBefore = stateBefore.isAgentRunning;
+      const agentStatusBefore = stateBefore.agentStatus;
 
       // Call setAgentRunning(false) when key doesn't exist — should be a no-op
       useChatStore.getState().setAgentRunning("nonexistent:key", false);
 
       const stateAfter = useChatStore.getState();
       // State object reference should be unchanged (no new immer draft)
-      expect(stateAfter.isAgentRunning).toBe(isAgentRunningBefore);
+      expect(stateAfter.agentStatus).toBe(agentStatusBefore);
     });
 
-    it("is no-op when setting true and key is already true", () => {
+    it("is no-op when setting true and key is already generating", () => {
       useChatStore.getState().setAgentRunning(contextKey, true);
 
       // Get state reference after first set
       const stateBefore = useChatStore.getState();
-      const isAgentRunningBefore = stateBefore.isAgentRunning;
+      const agentStatusBefore = stateBefore.agentStatus;
 
       // Call setAgentRunning(true) again — should be a no-op
       useChatStore.getState().setAgentRunning(contextKey, true);
 
       const stateAfter = useChatStore.getState();
       // State object reference should be unchanged (no new immer draft)
-      expect(stateAfter.isAgentRunning).toBe(isAgentRunningBefore);
+      expect(stateAfter.agentStatus).toBe(agentStatusBefore);
     });
   });
 
@@ -762,7 +762,7 @@ describe("selectors", () => {
       isLoading: false,
       activeConversationId: null,
       queuedMessages: {},
-      isAgentRunning: {},
+      agentStatus: {},
       isSending: {},
     });
   });

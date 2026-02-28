@@ -13,7 +13,7 @@ import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, useConversation, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectIsSending } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectAgentStatus, selectIsSending } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
 import { useTasks, taskKeys } from "@/hooks/useTasks";
@@ -314,8 +314,9 @@ export function IntegratedChatPanel({
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
   const queuedMessages = useChatStore(queuedMessagesSelector);
-  const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(storeContextKey), [storeContextKey]);
-  const isAgentRunning = useChatStore(isAgentRunningSelector);
+  const agentStatusSelector = useMemo(() => selectAgentStatus(storeContextKey), [storeContextKey]);
+  const agentStatus = useChatStore(agentStatusSelector);
+  const isAgentRunning = agentStatus !== "idle"; // backward-compat boolean (agent process alive)
   const isSendingSelector = useMemo(() => selectIsSending(storeContextKey), [storeContextKey]);
   const isSending = useChatStore(isSendingSelector);
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
@@ -589,15 +590,15 @@ export function IntegratedChatPanel({
   const isLoading = isConversationsLoading || isActiveConversationLoading;
 
   // Status badge helpers - disabled in history mode (no live agent)
-  // Only show active state when an agent run is actually happening (not based on workflow status)
-  const isAgentActive = !isHistoryMode && (isSending || isAgentRunning);
+  // isAgentActive: only true when actively generating (not waiting_for_input)
+  const isAgentActive = !isHistoryMode && (isSending || agentStatus === "generating");
   const agentType: AgentType = isHistoryMode
     ? "idle"
     : isExecutionMode
       ? AGENT_WORKER
       : isReviewMode
         ? AGENT_REVIEWER
-        : (isSending || isAgentRunning)
+        : (isSending || agentStatus === "generating")
           ? "agent"
           : "idle";
 
@@ -654,6 +655,7 @@ export function IntegratedChatPanel({
               agentType={agentType}
               contextType={chatContext.view}
               contextId={ideationSessionId || selectedTaskId || null}
+              agentStatus={isHistoryMode ? "idle" : agentStatus}
             />
 
             {/* Conversation Selector */}
@@ -714,7 +716,7 @@ export function IntegratedChatPanel({
               failedRun={failedRunProp}
               onDismissFailedRun={setDismissedErrorId}
               isSending={isSending}
-              isAgentRunning={isAgentRunning}
+              isAgentRunning={agentStatus === "generating"}
               streamingToolCalls={streamingToolCalls}
               streamingTasks={streamingTasks}
               streamingContentBlocks={streamingContentBlocks}
@@ -728,7 +730,7 @@ export function IntegratedChatPanel({
           {/* StreamingToolIndicator — outside scroll container so it's always visible.
               Filters out Task calls (shown as TaskSubagentCard), diff calls (shown inline),
               and any tool calls already rendered inline via streamingContentBlocks to avoid duplication. */}
-          {(isSending || isAgentRunning) && (() => {
+          {(isSending || agentStatus === "generating") && (() => {
             // IDs of tool calls already rendered inline from streamingContentBlocks
             const inlineToolIds = new Set(
               streamingContentBlocks
@@ -764,7 +766,7 @@ export function IntegratedChatPanel({
           )}
 
           {/* Previous Run Banner - shown when viewing stale agent conversation */}
-          {isAgentContext && !isHistoryMode && !isAgentRunning && !isSending && sortedMessages.length > 0 && (
+          {isAgentContext && !isHistoryMode && agentStatus === "idle" && !isSending && sortedMessages.length > 0 && (
             <PreviousRunBanner
               agentRunStatus={agentRunQuery.data?.status ?? null}
               contextType={isMergeMode ? "merge" : isReviewMode ? "review" : "execution"}
@@ -818,7 +820,7 @@ export function IntegratedChatPanel({
                 onSend={activeQuestion ? handleQuestionSend : handleSend}
                 onQueue={isTeamActive ? (content) => handleQueue(content, sendTarget) : handleQueue}
                 onStop={handleStopAgentWrapper}
-                isAgentRunning={isAgentRunning}
+                agentStatus={agentStatus}
                 isSending={isSending || isSubmittingAnswer}
                 hasQueuedMessages={queuedMessages.length > 0}
                 onEditLastQueued={handleEditLastQueuedWrapper}

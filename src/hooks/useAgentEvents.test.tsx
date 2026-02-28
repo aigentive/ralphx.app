@@ -96,7 +96,7 @@ describe("useAgentEvents", () => {
       isLoading: false,
       activeConversationId: null,
       queuedMessages: {},
-      isAgentRunning: {},
+      agentStatus: {},
       isSending: {},
     });
   });
@@ -116,7 +116,7 @@ describe("useAgentEvents", () => {
       });
 
       const state = useChatStore.getState();
-      expect(state.isAgentRunning["task:task-123"]).toBe(true);
+      expect(state.agentStatus["task:task-123"]).toBe("generating");
     });
 
     it("sets running state for task_execution context", () => {
@@ -133,7 +133,7 @@ describe("useAgentEvents", () => {
       });
 
       const state = useChatStore.getState();
-      expect(state.isAgentRunning["task_execution:task-123"]).toBe(true);
+      expect(state.agentStatus["task_execution:task-123"]).toBe("generating");
     });
 
     it("sets running state for review context", () => {
@@ -150,7 +150,7 @@ describe("useAgentEvents", () => {
       });
 
       const state = useChatStore.getState();
-      expect(state.isAgentRunning["review:task-123"]).toBe(true);
+      expect(state.agentStatus["review:task-123"]).toBe("generating");
     });
 
     it("sets running state for merge context", () => {
@@ -167,7 +167,7 @@ describe("useAgentEvents", () => {
       });
 
       const state = useChatStore.getState();
-      expect(state.isAgentRunning["merge:task-123"]).toBe(true);
+      expect(state.agentStatus["merge:task-123"]).toBe("generating");
     });
 
     it("sets running state for ideation context", () => {
@@ -184,7 +184,7 @@ describe("useAgentEvents", () => {
       });
 
       const state = useChatStore.getState();
-      expect(state.isAgentRunning["session:session-789"]).toBe(true);
+      expect(state.agentStatus["session:session-789"]).toBe("generating");
     });
   });
 
@@ -196,7 +196,7 @@ describe("useAgentEvents", () => {
       act(() => {
         useChatStore.getState().setAgentRunning("task:task-123", true);
       });
-      expect(useChatStore.getState().isAgentRunning["task:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["task:task-123"]).toBe("generating");
 
       renderHook(() => useAgentEvents("conv-1"), { wrapper });
 
@@ -211,7 +211,7 @@ describe("useAgentEvents", () => {
 
       const state = useChatStore.getState();
       // After run_completed, the running state should be cleared
-      expect(state.isAgentRunning["task:task-123"]).toBeUndefined();
+      expect(state.agentStatus["task:task-123"]).toBeUndefined();
     });
 
     it("clears running state for task_execution on stop/completion", () => {
@@ -232,7 +232,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBeUndefined();
     });
 
     it("clears running state for review on stop/completion", () => {
@@ -253,7 +253,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["review:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["review:task-123"]).toBeUndefined();
     });
 
     it("clears running state for ideation on stop/completion", () => {
@@ -274,7 +274,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["session:session-789"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["session:session-789"]).toBeUndefined();
     });
 
     it("clears running state for merge on stop/completion", () => {
@@ -295,7 +295,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["merge:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["merge:task-123"]).toBeUndefined();
     });
   });
 
@@ -306,7 +306,7 @@ describe("useAgentEvents", () => {
       act(() => {
         useChatStore.getState().setAgentRunning("task:task-123", true);
       });
-      expect(useChatStore.getState().isAgentRunning["task:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["task:task-123"]).toBe("generating");
 
       renderHook(() => useAgentEvents("conv-1"), { wrapper });
 
@@ -319,7 +319,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["task:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["task:task-123"]).toBeUndefined();
     });
 
     it("clears running state for task_execution on stop", () => {
@@ -340,7 +340,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBeUndefined();
     });
 
     it("clears running state for review on stop", () => {
@@ -361,7 +361,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["review:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["review:task-123"]).toBeUndefined();
     });
   });
 
@@ -384,7 +384,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["task:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["task:task-123"]).toBeUndefined();
     });
 
     it("clears running state for task_execution on error", () => {
@@ -405,7 +405,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBeUndefined();
     });
 
     it("clears running state for ideation on error", () => {
@@ -426,7 +426,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["session:session-789"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["session:session-789"]).toBeUndefined();
     });
 
     it("clears running state for review on error", () => {
@@ -447,7 +447,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["review:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["review:task-123"]).toBeUndefined();
     });
 
     it("clears running state for merge on error", () => {
@@ -468,12 +468,12 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["merge:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["merge:task-123"]).toBeUndefined();
     });
   });
 
   describe("agent:turn_completed", () => {
-    it("does NOT clear isAgentRunning for task_execution — agent stays alive between turns", () => {
+    it("sets waiting_for_input for task_execution — agent stays alive between turns", () => {
       const wrapper = createWrapper();
       renderHook(() => useAgentEvents("conv-1"), { wrapper });
 
@@ -486,7 +486,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBe("generating");
 
       act(() => {
         emitEvent("agent:turn_completed", {
@@ -497,11 +497,11 @@ describe("useAgentEvents", () => {
         });
       });
 
-      // Still true — agent is still alive between turns
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+      // Transitions to waiting_for_input — agent alive, not generating
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBe("waiting_for_input");
     });
 
-    it("does NOT clear isAgentRunning for ideation — agent stays alive between turns", () => {
+    it("sets waiting_for_input for ideation — agent stays alive between turns", () => {
       const wrapper = createWrapper();
       renderHook(() => useAgentEvents("conv-1"), { wrapper });
 
@@ -514,7 +514,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["session:session-789"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["session:session-789"]).toBe("generating");
 
       act(() => {
         emitEvent("agent:turn_completed", {
@@ -525,10 +525,10 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["session:session-789"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["session:session-789"]).toBe("waiting_for_input");
     });
 
-    it("does NOT clear isAgentRunning for review — agent stays alive between turns", () => {
+    it("sets waiting_for_input for review — agent stays alive between turns", () => {
       const wrapper = createWrapper();
       renderHook(() => useAgentEvents("conv-1"), { wrapper });
 
@@ -541,7 +541,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["review:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["review:task-123"]).toBe("generating");
 
       act(() => {
         emitEvent("agent:turn_completed", {
@@ -552,10 +552,10 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["review:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["review:task-123"]).toBe("waiting_for_input");
     });
 
-    it("does NOT clear isAgentRunning for merge — agent stays alive between turns", () => {
+    it("sets waiting_for_input for merge — agent stays alive between turns", () => {
       const wrapper = createWrapper();
       renderHook(() => useAgentEvents("conv-1"), { wrapper });
 
@@ -568,7 +568,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["merge:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["merge:task-123"]).toBe("generating");
 
       act(() => {
         emitEvent("agent:turn_completed", {
@@ -579,7 +579,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["merge:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["merge:task-123"]).toBe("waiting_for_input");
     });
 
     it("invalidates agentRun and conversation queries when conversation_id matches active", () => {
@@ -658,7 +658,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBe("generating");
 
       act(() => {
         emitEvent("agent:turn_completed", {
@@ -669,8 +669,8 @@ describe("useAgentEvents", () => {
         });
       });
 
-      // Still running — process is alive between turns
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+      // Turn completed — waiting for user input
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBe("waiting_for_input");
 
       act(() => {
         emitEvent("agent:run_completed", {
@@ -682,10 +682,10 @@ describe("useAgentEvents", () => {
       });
 
       // Process died — should be cleared
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBeUndefined();
     });
 
-    it("rapid burst: turn_completed ×3 keeps isAgentRunning=true throughout", () => {
+    it("rapid burst: turn_completed ×3 keeps agent alive throughout", () => {
       const wrapper = createWrapper();
       renderHook(() => useAgentEvents("conv-1"), { wrapper });
 
@@ -698,7 +698,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBe("generating");
 
       act(() => {
         emitEvent("agent:turn_completed", {
@@ -721,8 +721,8 @@ describe("useAgentEvents", () => {
         });
       });
 
-      // Still running after burst — agent stays alive between turns
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+      // Still alive after burst — waiting for user input (last turn_completed wins)
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBe("waiting_for_input");
     });
 
     it("turn_completed followed by agent:error clears isAgentRunning", () => {
@@ -738,7 +738,7 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBe("generating");
 
       act(() => {
         emitEvent("agent:turn_completed", {
@@ -749,8 +749,8 @@ describe("useAgentEvents", () => {
         });
       });
 
-      // Still alive between turns
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBe(true);
+      // Turn completed — waiting for user input
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBe("waiting_for_input");
 
       act(() => {
         emitEvent("agent:error", {
@@ -762,7 +762,7 @@ describe("useAgentEvents", () => {
       });
 
       // Error clears the running state
-      expect(useChatStore.getState().isAgentRunning["task_execution:task-123"]).toBeUndefined();
+      expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBeUndefined();
     });
   });
 

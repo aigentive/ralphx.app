@@ -13,6 +13,18 @@ import type { ChatContext } from "@/types/chat";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 
 // ============================================================================
+// Agent Status Type
+// ============================================================================
+
+/**
+ * Tri-state agent status for interactive sessions.
+ * - "idle" — no agent running (default, not stored in record)
+ * - "generating" — agent is actively producing output
+ * - "waiting_for_input" — agent finished a turn, waiting for user input
+ */
+export type AgentStatus = "idle" | "generating" | "waiting_for_input";
+
+// ============================================================================
 // Constants
 // ============================================================================
 
@@ -59,8 +71,8 @@ interface ChatState {
   activeConversationId: string | null;
   /** Messages queued to send when agent finishes, keyed by context key (e.g., "task:id", "task_execution:id", "review:id") */
   queuedMessages: Record<string, QueuedMessage[]>;
-  /** Whether an agent is currently running, keyed by context key */
-  isAgentRunning: Record<string, boolean>;
+  /** Agent status keyed by context key. Absent = "idle". Values: "generating" | "waiting_for_input" */
+  agentStatus: Record<string, AgentStatus>;
   /** Whether a message is currently being sent, keyed by context key */
   isSending: Record<string, boolean>;
   /** Whether a team is active for a context key (enables team UI) */
@@ -86,7 +98,9 @@ interface ChatActions {
   setLoading: (isLoading: boolean) => void;
   /** Set the active conversation ID */
   setActiveConversation: (conversationId: string | null) => void;
-  /** Set whether an agent is currently running for a context */
+  /** Set agent status for a context (tri-state: "idle" | "generating" | "waiting_for_input") */
+  setAgentStatus: (contextKey: string, status: AgentStatus) => void;
+  /** Backward-compat wrapper: true → "generating", false → "idle" */
   setAgentRunning: (contextKey: string, isRunning: boolean) => void;
   /** Set whether a message is currently being sent for a context */
   setSending: (contextKey: string, isSending: boolean) => void;
@@ -121,7 +135,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
     isLoading: false,
     activeConversationId: null,
     queuedMessages: {},
-    isAgentRunning: {},
+    agentStatus: {},
     isSending: {},
     isTeamActive: {},
 
@@ -165,14 +179,25 @@ export const useChatStore = create<ChatState & ChatActions>()(
         state.activeConversationId = conversationId;
       }),
 
+    setAgentStatus: (contextKey, status) =>
+      set((state) => {
+        if (status === "idle") {
+          if (!(contextKey in state.agentStatus)) return; // already absent — no-op
+          delete state.agentStatus[contextKey];
+        } else {
+          if (state.agentStatus[contextKey] === status) return; // already set — no-op
+          state.agentStatus[contextKey] = status;
+        }
+      }),
+
     setAgentRunning: (contextKey, isRunning) =>
       set((state) => {
         if (isRunning) {
-          if (state.isAgentRunning[contextKey]) return; // already true — no-op
-          state.isAgentRunning[contextKey] = true;
+          if (state.agentStatus[contextKey] === "generating") return; // already generating — no-op
+          state.agentStatus[contextKey] = "generating";
         } else {
-          if (!(contextKey in state.isAgentRunning)) return; // already absent — no-op
-          delete state.isAgentRunning[contextKey];
+          if (!(contextKey in state.agentStatus)) return; // already absent — no-op
+          delete state.agentStatus[contextKey];
         }
       }),
 
@@ -190,9 +215,9 @@ export const useChatStore = create<ChatState & ChatActions>()(
     clearAgentRunningForTask: (taskId) =>
       set((state) => {
         // Clear all context keys ending with :taskId (task:id, task_execution:id, review:id)
-        Object.keys(state.isAgentRunning).forEach((key) => {
+        Object.keys(state.agentStatus).forEach((key) => {
           if (key.endsWith(`:${taskId}`)) {
-            delete state.isAgentRunning[key];
+            delete state.agentStatus[key];
           }
         });
       }),
@@ -345,14 +370,25 @@ export const selectQueuedMessages =
     state.queuedMessages[contextKey] ?? EMPTY_QUEUED_MESSAGES;
 
 /**
- * Select whether an agent is currently running for a context
+ * Select agent status for a context (tri-state)
+ * @param contextKey - The context key to check
+ * @returns Selector function returning AgentStatus ("idle" | "generating" | "waiting_for_input")
+ */
+export const selectAgentStatus =
+  (contextKey: string) =>
+  (state: ChatState): AgentStatus =>
+    state.agentStatus[contextKey] ?? "idle";
+
+/**
+ * Select whether an agent is currently running for a context (backward-compat boolean).
+ * Returns true for both "generating" and "waiting_for_input" (agent process alive).
  * @param contextKey - The context key to check
  * @returns Selector function returning agent running state
  */
 export const selectIsAgentRunning =
   (contextKey: string) =>
   (state: ChatState): boolean =>
-    state.isAgentRunning[contextKey] ?? false;
+    contextKey in state.agentStatus;
 
 /**
  * Select whether a message is currently being sent for a context

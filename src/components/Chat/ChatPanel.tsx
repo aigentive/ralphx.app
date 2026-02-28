@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectIsAgentRunning, selectActiveConversationId, selectIsTeamActive } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectAgentStatus, selectActiveConversationId, selectIsTeamActive } from "@/stores/chatStore";
 import { useTeamStore, selectTeammates, selectActiveTeam } from "@/stores/teamStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
@@ -242,8 +242,8 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(contextKey), [contextKey]);
   const queuedMessages = useChatStore(queuedMessagesSelector);
-  const isAgentRunningSelector = useMemo(() => selectIsAgentRunning(contextKey), [contextKey]);
-  const isAgentRunning = useChatStore(isAgentRunningSelector);
+  const agentStatusSelector = useMemo(() => selectAgentStatus(contextKey), [contextKey]);
+  const agentStatus = useChatStore(agentStatusSelector);
 
   // For execution mode, fetch execution conversations directly using task_execution context
   // For regular chat, use the standard useChat hook
@@ -477,11 +477,11 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
           {/* Unified status + activity badge */}
           <StatusActivityBadge
-            isAgentActive={isSending || isAgentRunning}
+            isAgentActive={isSending || agentStatus === "generating"}
             agentType={
               isExecutionMode
                 ? AGENT_WORKER
-                : (isSending || isAgentRunning)
+                : (isSending || agentStatus === "generating")
                   ? "agent"
                   : "idle" as AgentType
             }
@@ -491,6 +491,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
                 ? context.ideationSessionId
                 : context.selectedTaskId || null
             }
+            agentStatus={agentStatus}
           />
 
           <div className="flex items-center gap-1 shrink-0">
@@ -558,7 +559,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               failedRun={showFailedBanner && failedRun ? { id: failedRun.id, errorMessage: failedRun.errorMessage! } : null}
               onDismissFailedRun={setDismissedErrorId}
               isSending={isSending}
-              isAgentRunning={isAgentRunning}
+              isAgentRunning={agentStatus === "generating"}
               streamingToolCalls={streamingToolCalls}
               streamingTasks={streamingTasks}
               streamingContentBlocks={streamingContentBlocks}
@@ -573,7 +574,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
         {/* StreamingToolIndicator — outside scroll container so it's always visible.
             Filters out Task calls (shown as TaskSubagentCard) and diff calls (shown inline). */}
-        {(isSending || isAgentRunning) && (() => {
+        {(isSending || agentStatus === "generating") && (() => {
           const otherToolCalls = streamingToolCalls.filter(
             (tc) => tc.name.toLowerCase() !== "task" &&
                     (!isDiffToolCall(tc.name) || tc.arguments == null)
@@ -634,7 +635,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
               onSend={activeQuestion ? handleQuestionSend : handleSendWithAttachments}
               onQueue={isTeamActive ? (content) => handleQueue(content, sendTarget) : handleQueue}
               onStop={handleStopAgentWrapper}
-              isAgentRunning={isAgentRunning}
+              agentStatus={agentStatus}
               isSending={isSending || isSubmittingAnswer}
               hasQueuedMessages={queuedMessages.length > 0}
               onEditLastQueued={handleEditLastQueuedWrapper}

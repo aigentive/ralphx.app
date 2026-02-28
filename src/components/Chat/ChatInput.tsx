@@ -11,6 +11,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { ChatAttachmentPicker } from "./ChatAttachmentPicker";
 import { ChatAttachmentGallery, type ChatAttachment } from "./ChatAttachmentGallery";
+import type { AgentStatus } from "@/stores/chatStore";
 
 // ============================================================================
 // Types
@@ -40,8 +41,10 @@ export interface ChatInputProps {
   showHelperText?: boolean;
   /** Auto-focus the textarea on mount */
   autoFocus?: boolean;
-  /** Whether an agent is currently running (enables queue mode) */
+  /** Whether an agent is currently running (enables queue mode). Deprecated: prefer agentStatus. */
   isAgentRunning?: boolean;
+  /** Tri-state agent status — overrides isAgentRunning when provided */
+  agentStatus?: AgentStatus;
   /** Callback when message is queued (while agent running) */
   onQueue?: (message: string) => void;
   /** Whether there are queued messages */
@@ -122,6 +125,7 @@ export function ChatInput({
   showHelperText = true,
   autoFocus = false,
   isAgentRunning = false,
+  agentStatus: agentStatusProp,
   onQueue,
   hasQueuedMessages = false,
   onEditLastQueued,
@@ -133,6 +137,10 @@ export function ChatInput({
   onFilesSelected,
   onRemoveAttachment,
 }: ChatInputProps) {
+  // Derive agent state from tri-state when available, fall back to boolean
+  const effectiveStatus: AgentStatus = agentStatusProp ?? (isAgentRunning ? "generating" : "idle");
+  const isAgentAlive = effectiveStatus !== "idle";
+  const isAgentGenerating = effectiveStatus === "generating";
   // Support both controlled and uncontrolled modes
   const [internalValue, setInternalValue] = useState("");
   const isControlled = controlledValue !== undefined;
@@ -223,8 +231,8 @@ export function ChatInput({
   // Handle sending or queueing message
   const handleSend = useCallback(async () => {
     const trimmedValue = value.trim();
-    // Block if no content, or if sending and agent not running (can't queue)
-    if (!trimmedValue || (isSending && !isAgentRunning)) return;
+    // Block if no content, or if sending and agent not alive (can't queue or interact)
+    if (!trimmedValue || (isSending && !isAgentAlive)) return;
 
     // Clear input immediately (optimistic UI)
     const clearInput = () => {
@@ -241,14 +249,14 @@ export function ChatInput({
       // Question answers must be delivered immediately — never queue
       clearInput();
       await onSend(trimmedValue);
-    } else if (isAgentRunning && onQueue) {
-      // Agent running, no question — queue the message
-      console.info("[ChatInput] QUEUE path: isAgentRunning=true, routing to onQueue");
+    } else if (isAgentGenerating && onQueue) {
+      // Agent actively generating — queue the message (will be sent when turn completes)
+      console.info("[ChatInput] QUEUE path: agentStatus=generating, routing to onQueue");
       onQueue(trimmedValue);
       clearInput();
     } else {
-      // Normal send flow - clear immediately, don't wait for response
-      console.info("[ChatInput] SEND path: isAgentRunning=%s, hasOnQueue=%s", isAgentRunning, !!onQueue);
+      // Normal send flow (idle or waiting_for_input) — send directly
+      console.info("[ChatInput] SEND path: agentStatus=%s, hasOnQueue=%s", effectiveStatus, !!onQueue);
       clearInput();
       try {
         await onSend(trimmedValue);
@@ -259,7 +267,9 @@ export function ChatInput({
   }, [
     value,
     isSending,
-    isAgentRunning,
+    isAgentAlive,
+    isAgentGenerating,
+    effectiveStatus,
     onQueue,
     onSend,
     isControlled,
@@ -288,9 +298,9 @@ export function ChatInput({
   // Track focus state for unified container border highlight
   const [isFocused, setIsFocused] = useState(false);
 
-  // Allow typing and queueing when agent is running, but not in read-only mode
-  const isDisabled = isReadOnly || (isSending && !isAgentRunning);
-  const canSend = value.trim().length > 0 && !isReadOnly && (!isSending || isAgentRunning);
+  // Allow typing and queueing/sending when agent is alive (generating or waiting), but not in read-only mode
+  const isDisabled = isReadOnly || (isSending && !isAgentAlive);
+  const canSend = value.trim().length > 0 && !isReadOnly && (!isSending || isAgentAlive);
 
   return (
     <div data-testid="chat-input" className="flex flex-col">
@@ -343,7 +353,7 @@ export function ChatInput({
           />
 
           {/* Stop icon — inside container, right side, subtle icon only */}
-          {isAgentRunning && onStop && !isReadOnly && (
+          {isAgentAlive && onStop && !isReadOnly && (
             <div className="pr-1 pb-1 flex-shrink-0">
               <button
                 data-testid="chat-input-stop"

@@ -29,7 +29,7 @@ import type { Unsubscribe } from "@/lib/event-bus";
 export function useAgentEvents(activeConversationId: string | null) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
-  const setAgentRunning = useChatStore((s) => s.setAgentRunning);
+  const setAgentStatus = useChatStore((s) => s.setAgentStatus);
   const deleteQueuedMessage = useChatStore((s) => s.deleteQueuedMessage);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
 
@@ -61,8 +61,8 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Build context key from the event payload
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
-        // Set agent as running for this context
-        setAgentRunning(eventContextKey, true);
+        // Set agent as generating for this context
+        setAgentStatus(eventContextKey, "generating");
 
         // Invalidate conversations list to pick up newly created conversation
         // This fixes the race condition where the list query runs before the backend
@@ -154,8 +154,8 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Build context key from the event payload
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
-        // Update agent running state for the specific context
-        setAgentRunning(eventContextKey, false);
+        // Clear agent status for the specific context (run is done)
+        setAgentStatus(eventContextKey, "idle");
 
         // Invalidate agent run status
         if (conversation_id === activeConversationId) {
@@ -175,7 +175,8 @@ export function useAgentEvents(activeConversationId: string | null) {
     );
 
     // Listen for turn completion (interactive mode - agent still alive)
-    // Similar to run_completed but does NOT clear isAgentRunning — the process is still running
+    // Sets status to "waiting_for_input" so the UI shows the agent is idle between turns
+    // (not "generating"), while the process remains alive.
     // Skip teammate events — useTeamEvents handles those independently
     unsubscribes.push(
       bus.subscribe<{
@@ -186,10 +187,13 @@ export function useAgentEvents(activeConversationId: string | null) {
         teammate_name?: string | null;
       }>("agent:turn_completed", (payload) => {
         if (payload.teammate_name) return;
-        const { conversation_id } = payload;
+        const { conversation_id, context_type, context_id: eventContextId } = payload;
 
-        // Do NOT set isAgentRunning = false — the agent is still alive between turns
-        // Just invalidate queries to pick up messages flushed after the completed turn
+        // Agent is still alive but waiting for user input — transition from "generating" to "waiting_for_input"
+        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        setAgentStatus(eventContextKey, "waiting_for_input");
+
+        // Invalidate queries to pick up messages flushed after the completed turn
         if (conversation_id === activeConversationId) {
           queryClient.invalidateQueries({
             queryKey: chatKeys.agentRun(activeConversationId),
@@ -238,7 +242,7 @@ export function useAgentEvents(activeConversationId: string | null) {
 
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
-        setAgentRunning(eventContextKey, false);
+        setAgentStatus(eventContextKey, "idle");
 
         if (conversation_id === activeConversationId) {
           queryClient.invalidateQueries({
@@ -268,8 +272,8 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Build context key from the event payload
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
-        // Update agent running state on error for the specific context
-        setAgentRunning(eventContextKey, false);
+        // Clear agent status on error for the specific context
+        setAgentStatus(eventContextKey, "idle");
 
         // Invalidate queries to refresh state
         if (conversation_id === activeConversationId) {
@@ -308,5 +312,5 @@ export function useAgentEvents(activeConversationId: string | null) {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, activeConversationId, queryClient, setAgentRunning, deleteQueuedMessage, setActiveConversation]);
+  }, [bus, activeConversationId, queryClient, setAgentStatus, deleteQueuedMessage, setActiveConversation]);
 }
