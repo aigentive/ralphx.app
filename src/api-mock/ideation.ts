@@ -398,6 +398,7 @@ export const mockIdeationApi = {
         dependenciesCreated: 0,
         warnings: ["Mock mode: proposals not actually applied"],
         sessionConverted: false,
+        executionPlanId: null,
       };
     },
   },
