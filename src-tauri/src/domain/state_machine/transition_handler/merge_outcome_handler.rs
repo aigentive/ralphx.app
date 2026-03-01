@@ -154,14 +154,9 @@ impl<'a> super::TransitionHandler<'a> {
                 merge_path,
             } => {
                 self.handle_outcome_success(
-                    ctx.task,
-                    ctx.task_id,
-                    ctx.task_id_str,
-                    ctx.project,
-                    ctx.repo_path,
-                    ctx.source_branch,
-                    ctx.target_branch,
-                    ctx.task_repo,
+                    super::TaskCore { task: &mut *ctx.task, task_id: ctx.task_id, task_id_str: ctx.task_id_str, task_repo: ctx.task_repo },
+                    super::BranchPair { source_branch: ctx.source_branch, target_branch: ctx.target_branch },
+                    super::ProjectCtx { project: ctx.project, repo_path: ctx.repo_path },
                     ctx.plan_branch_repo,
                     &commit_sha,
                     &merge_path,
@@ -174,14 +169,9 @@ impl<'a> super::TransitionHandler<'a> {
                 merge_worktree,
             } => {
                 self.handle_outcome_needs_agent(
-                    ctx.task,
-                    ctx.task_id,
-                    ctx.task_id_str,
-                    ctx.project,
-                    ctx.repo_path,
-                    ctx.source_branch,
-                    ctx.target_branch,
-                    ctx.task_repo,
+                    super::TaskCore { task: &mut *ctx.task, task_id: ctx.task_id, task_id_str: ctx.task_id_str, task_repo: ctx.task_repo },
+                    super::BranchPair { source_branch: ctx.source_branch, target_branch: ctx.target_branch },
+                    super::ProjectCtx { project: ctx.project, repo_path: ctx.repo_path },
                     &conflict_files,
                     merge_worktree.as_deref(),
                     ctx.opts,
@@ -190,35 +180,24 @@ impl<'a> super::TransitionHandler<'a> {
             }
             MergeOutcome::BranchNotFound { branch } => {
                 self.handle_outcome_branch_not_found(
-                    ctx.task,
-                    ctx.task_id,
-                    ctx.task_id_str,
-                    ctx.source_branch,
-                    ctx.target_branch,
-                    ctx.task_repo,
+                    super::TaskCore { task: &mut *ctx.task, task_id: ctx.task_id, task_id_str: ctx.task_id_str, task_repo: ctx.task_repo },
+                    super::BranchPair { source_branch: ctx.source_branch, target_branch: ctx.target_branch },
                     &branch,
                 )
                 .await;
             }
             MergeOutcome::Deferred { reason } => {
                 self.handle_outcome_deferred(
-                    ctx.task,
-                    ctx.task_id_str,
-                    ctx.source_branch,
-                    ctx.target_branch,
-                    ctx.task_repo,
+                    super::TaskCore { task: &mut *ctx.task, task_id: ctx.task_id, task_id_str: ctx.task_id_str, task_repo: ctx.task_repo },
+                    super::BranchPair { source_branch: ctx.source_branch, target_branch: ctx.target_branch },
                     &reason,
                 )
                 .await;
             }
             MergeOutcome::GitError(e) => {
                 self.handle_outcome_git_error(
-                    ctx.task,
-                    ctx.task_id,
-                    ctx.task_id_str,
-                    ctx.source_branch,
-                    ctx.target_branch,
-                    ctx.task_repo,
+                    super::TaskCore { task: &mut *ctx.task, task_id: ctx.task_id, task_id_str: ctx.task_id_str, task_repo: ctx.task_repo },
+                    super::BranchPair { source_branch: ctx.source_branch, target_branch: ctx.target_branch },
                     e,
                     ctx.opts,
                 )
@@ -228,22 +207,19 @@ impl<'a> super::TransitionHandler<'a> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn handle_outcome_success(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
-        project: &Project,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
-        task_repo: &Arc<dyn TaskRepository>,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
+        pc: super::ProjectCtx<'_>,
         plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
         commit_sha: &str,
         merge_path: &Path,
         opts: &MergeHandlerOptions,
     ) {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
+        let (project, repo_path) = (pc.project, pc.repo_path);
         tracing::info!(task_id = task_id_str, commit_sha = %commit_sha, strategy = opts.strategy_label, "Merge succeeded");
 
         emit_merge_progress(
@@ -444,21 +420,18 @@ impl<'a> super::TransitionHandler<'a> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn handle_outcome_needs_agent(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
-        project: &Project,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
-        task_repo: &Arc<dyn TaskRepository>,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
+        pc: super::ProjectCtx<'_>,
         conflict_files: &[PathBuf],
         merge_worktree: Option<&Path>,
         opts: &MergeHandlerOptions,
     ) {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
+        let (project, repo_path) = (pc.project, pc.repo_path);
         tracing::info!(
             task_id = task_id_str,
             conflict_count = conflict_files.len(),
@@ -581,14 +554,12 @@ impl<'a> super::TransitionHandler<'a> {
 
     async fn handle_outcome_branch_not_found(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
-        source_branch: &str,
-        target_branch: &str,
-        task_repo: &Arc<dyn TaskRepository>,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
         missing_branch: &str,
     ) {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         tracing::error!(task_id = task_id_str, missing_branch = %missing_branch, "Branch does not exist");
 
         let mut recovery = get_or_create_recovery(task);
@@ -640,13 +611,14 @@ impl<'a> super::TransitionHandler<'a> {
 
     async fn handle_outcome_deferred(
         &self,
-        task: &mut Task,
-        task_id_str: &str,
-        source_branch: &str,
-        target_branch: &str,
-        task_repo: &Arc<dyn TaskRepository>,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
         reason: &str,
     ) {
+        let task = tc.task;
+        let task_id_str = tc.task_id_str;
+        let task_repo = tc.task_repo;
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         tracing::warn!(task_id = task_id_str, reason = %reason, "Merge deferred, staying in PendingMerge");
 
         let mut recovery = get_or_create_recovery(task);
@@ -682,26 +654,20 @@ impl<'a> super::TransitionHandler<'a> {
         }
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn handle_outcome_git_error(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
-        source_branch: &str,
-        target_branch: &str,
-        task_repo: &Arc<dyn TaskRepository>,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
         error: crate::error::AppError,
         opts: &MergeHandlerOptions,
     ) {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         if GitService::is_branch_lock_error(&error) {
             tracing::warn!(task_id = task_id_str, error = %error, strategy = opts.strategy_label, "Branch lock, deferring");
             self.handle_outcome_deferred(
-                task,
-                task_id_str,
-                source_branch,
-                target_branch,
-                task_repo,
+                super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
+                super::BranchPair { source_branch, target_branch },
                 &format!("branch lock: {}", error),
             )
             .await;
