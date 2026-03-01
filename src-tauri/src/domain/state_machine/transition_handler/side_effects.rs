@@ -26,7 +26,7 @@ use crate::infrastructure::agents::claude::{reconciliation_config, scheduler_con
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::MergeFailureSource,
-    InternalStatus, MergeValidationMode, Project,
+    InternalStatus, MergeValidationMode, PlanBranch, Project,
     Task, TaskId,
 };
 use crate::domain::repositories::{
@@ -856,6 +856,10 @@ impl<'a> super::TransitionHandler<'a> {
                         }),
                     );
                 }
+
+                // Cascade stop: cancel/stop sibling tasks in the same plan
+                self.cascade_stop_sibling_tasks(task_id, task_id_str, &pb)
+                    .await;
             }
         }
 
@@ -873,6 +877,144 @@ impl<'a> super::TransitionHandler<'a> {
                 tokio::time::sleep(tokio::time::Duration::from_millis(merge_settle_ms)).await;
                 scheduler.try_schedule_ready_tasks().await;
             });
+        }
+    }
+
+    /// Cascade stop sibling tasks after a plan merge completes.
+    ///
+    /// Uses `execution_plan_id` from the PlanBranch to find siblings (precise).
+    /// Falls back to `ideation_session_id` if `execution_plan_id` is not set.
+    /// Transitions non-terminal siblings to Stopped or Cancelled.
+    /// The merge task itself is excluded from cascade.
+    ///
+    /// For states that don't have a valid transition to Stopped or Cancelled
+    /// (e.g., QaPassed, PendingReview, ReviewPassed, Escalated, Approved),
+    /// we force the transition via `persist_status_change` — this is an
+    /// emergency cascade, not normal state machine flow.
+    pub(super) async fn cascade_stop_sibling_tasks(
+        &self,
+        merge_task_id: &TaskId,
+        merge_task_id_str: &str,
+        plan_branch: &PlanBranch,
+    ) {
+        let Some(ref task_repo) = self.machine.context.services.task_repo else {
+            return;
+        };
+
+        // Query siblings by execution_plan_id (precise) or fall back to session_id
+        let siblings = if let Some(ref ep_id) = plan_branch.execution_plan_id {
+            match task_repo
+                .list_paginated(
+                    &plan_branch.project_id,
+                    None,  // all statuses
+                    0,
+                    10_000, // large limit to get all
+                    false,  // exclude archived
+                    None,   // no session filter
+                    Some(ep_id.as_str()),
+                )
+                .await
+            {
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        merge_task_id = merge_task_id_str,
+                        execution_plan_id = ep_id.as_str(),
+                        "Failed to query sibling tasks by execution_plan_id for cascade stop"
+                    );
+                    return;
+                }
+            }
+        } else {
+            match task_repo
+                .get_by_ideation_session(&plan_branch.session_id)
+                .await
+            {
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        merge_task_id = merge_task_id_str,
+                        session_id = plan_branch.session_id.as_str(),
+                        "Failed to query sibling tasks by session_id for cascade stop"
+                    );
+                    return;
+                }
+            }
+        };
+
+        let mut stopped_count = 0u32;
+        for sibling in &siblings {
+            // Skip the merge task itself
+            if sibling.id == *merge_task_id {
+                continue;
+            }
+
+            // Skip already-terminal tasks
+            if sibling.internal_status.is_terminal() {
+                continue;
+            }
+
+            let from = sibling.internal_status;
+
+            // Choose target state:
+            // - States with valid → Stopped: use Stopped
+            // - States with valid → Cancelled but not Stopped: use Cancelled
+            // - States with neither (QaPassed, PendingReview, ReviewPassed, etc.):
+            //   force Stopped via persist_status_change (emergency cascade)
+            let to = if from.can_transition_to(InternalStatus::Stopped) {
+                InternalStatus::Stopped
+            } else if from.can_transition_to(InternalStatus::Cancelled) {
+                InternalStatus::Cancelled
+            } else {
+                // Force stop — these states (QaPassed, PendingReview, ReviewPassed,
+                // Escalated, Approved, QaFailed) don't have valid exit transitions
+                // to Stopped/Cancelled, but we must stop them to prevent execution
+                // on a merged branch.
+                tracing::warn!(
+                    task_id = sibling.id.as_str(),
+                    from = %from,
+                    merge_task_id = merge_task_id_str,
+                    "Force-stopping sibling in state with no valid Stopped/Cancelled transition"
+                );
+                InternalStatus::Stopped
+            };
+
+            if let Err(e) = task_repo
+                .persist_status_change(
+                    &sibling.id,
+                    from,
+                    to,
+                    "post_merge_cascade_stop",
+                )
+                .await
+            {
+                tracing::warn!(
+                    error = %e,
+                    task_id = sibling.id.as_str(),
+                    from = %from,
+                    to = %to,
+                    "Failed to cascade-stop sibling task"
+                );
+            } else {
+                stopped_count += 1;
+                tracing::info!(
+                    task_id = sibling.id.as_str(),
+                    from = %from,
+                    to = %to,
+                    merge_task_id = merge_task_id_str,
+                    "Cascade-stopped sibling task after plan merge"
+                );
+            }
+        }
+
+        if stopped_count > 0 {
+            tracing::info!(
+                merge_task_id = merge_task_id_str,
+                stopped_count,
+                "Post-merge cascade stop complete — agents may still be running for stopped tasks"
+            );
         }
     }
 

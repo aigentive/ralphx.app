@@ -225,11 +225,44 @@ impl<R: Runtime> TaskSchedulerService<R> {
                 continue;
             }
 
+            // Plan branch guard: skip tasks whose plan branch is no longer Active.
+            // Tasks on Merged or Abandoned branches should not be scheduled.
+            if self.is_plan_branch_inactive(&task).await {
+                tracing::info!(
+                    task_id = task.id.as_str(),
+                    "Skipping task: plan branch is no longer active (merged or abandoned)"
+                );
+                continue;
+            }
+
             // This task is schedulable
             return Some(task);
         }
 
         None
+    }
+
+    /// Check if a task's plan branch is no longer Active (Merged or Abandoned).
+    /// Returns true if the task should NOT be scheduled. Fail-open on errors.
+    /// Uses `execution_plan_id` (not `session_id`) to handle re-accept flows where
+    /// multiple PlanBranch records exist for the same session.
+    async fn is_plan_branch_inactive(&self, task: &Task) -> bool {
+        let exec_plan_id = match &task.execution_plan_id {
+            Some(id) => id,
+            None => return false, // Non-plan tasks are always schedulable
+        };
+        let plan_branch_repo = match &self.plan_branch_repo {
+            Some(repo) => repo,
+            None => return false, // No repo available, fail-open
+        };
+        match plan_branch_repo.get_by_execution_plan_id(exec_plan_id).await {
+            Ok(Some(branch)) => {
+                use crate::domain::entities::PlanBranchStatus;
+                !matches!(branch.status, PlanBranchStatus::Active)
+            }
+            Ok(None) => false, // No branch found, fail-open
+            Err(_) => false,   // Error, fail-open
+        }
     }
 
     /// Check if a task has any blocker whose status is not dependency-satisfied.

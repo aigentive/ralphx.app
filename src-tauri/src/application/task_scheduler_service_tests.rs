@@ -1,6 +1,9 @@
 use super::*;
 use crate::application::AppState;
 use crate::domain::entities::{Project, Task};
+use crate::domain::entities::{
+    ArtifactId, ExecutionPlanId, IdeationSessionId, PlanBranch, PlanBranchStatus,
+};
 
 /// Helper to create test state
 async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
@@ -1874,5 +1877,163 @@ async fn test_scheduler_schedules_ready_task_with_cancelled_blocker() {
         updated.internal_status,
         InternalStatus::Blocked,
         "Ready task with Cancelled blocker should NOT be re-blocked"
+    );
+}
+
+// ============================================================================
+// Plan branch guard tests
+// ============================================================================
+
+/// Helper to create a plan branch linked to an execution plan
+fn create_plan_branch_for_exec_plan(
+    project_id: &crate::domain::entities::ProjectId,
+    session_id: &IdeationSessionId,
+    exec_plan_id: &ExecutionPlanId,
+    status: PlanBranchStatus,
+) -> PlanBranch {
+    let mut branch = PlanBranch::new(
+        ArtifactId::from_string("art-test"),
+        session_id.clone(),
+        project_id.clone(),
+        format!("ralphx/test/plan-{}", exec_plan_id.as_str()),
+        "main".to_string(),
+    );
+    branch.status = status;
+    branch.execution_plan_id = Some(exec_plan_id.clone());
+    branch
+}
+
+#[tokio::test]
+async fn test_scheduler_skips_task_with_merged_plan_branch() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let session_id = IdeationSessionId::from_string("session-merged");
+    let exec_plan_id = ExecutionPlanId::from_string("ep-merged");
+    let mut task = Task::new(project.id.clone(), "Plan Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    task.ideation_session_id = Some(session_id.clone());
+    task.execution_plan_id = Some(exec_plan_id.clone());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Create a Merged plan branch linked by execution_plan_id
+    let branch = create_plan_branch_for_exec_plan(
+        &project.id, &session_id, &exec_plan_id, PlanBranchStatus::Merged,
+    );
+    app_state.plan_branch_repo.create(branch).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state)
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+
+    // find_oldest_schedulable_task is private, so test via try_schedule_ready_tasks
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Task should still be Ready (skipped due to merged branch)
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Task on merged branch should not be scheduled"
+    );
+}
+
+#[tokio::test]
+async fn test_scheduler_skips_task_with_abandoned_plan_branch() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let session_id = IdeationSessionId::from_string("session-abandoned");
+    let exec_plan_id = ExecutionPlanId::from_string("ep-abandoned");
+    let mut task = Task::new(project.id.clone(), "Plan Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    task.ideation_session_id = Some(session_id.clone());
+    task.execution_plan_id = Some(exec_plan_id.clone());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Create an Abandoned plan branch linked by execution_plan_id
+    let branch = create_plan_branch_for_exec_plan(
+        &project.id, &session_id, &exec_plan_id, PlanBranchStatus::Abandoned,
+    );
+    app_state.plan_branch_repo.create(branch).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state)
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+
+    scheduler.try_schedule_ready_tasks().await;
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Task on abandoned branch should not be scheduled"
+    );
+}
+
+#[tokio::test]
+async fn test_scheduler_allows_task_with_active_plan_branch() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let session_id = IdeationSessionId::from_string("session-active");
+    let exec_plan_id = ExecutionPlanId::from_string("ep-active");
+    let mut task = Task::new(project.id.clone(), "Plan Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    task.ideation_session_id = Some(session_id.clone());
+    task.execution_plan_id = Some(exec_plan_id.clone());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Create an Active plan branch linked by execution_plan_id
+    let branch = create_plan_branch_for_exec_plan(
+        &project.id, &session_id, &exec_plan_id, PlanBranchStatus::Active,
+    );
+    app_state.plan_branch_repo.create(branch).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state)
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Task should have been scheduled (moved from Ready)
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Task on active branch should be scheduled"
+    );
+}
+
+#[tokio::test]
+async fn test_scheduler_allows_task_without_execution_plan() {
+    let (execution_state, app_state) = setup_test_state().await;
+    execution_state.set_max_concurrent(10);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task with no execution_plan_id (non-plan task)
+    let mut task = Task::new(project.id.clone(), "Standalone Task".to_string());
+    task.internal_status = InternalStatus::Ready;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let scheduler = build_scheduler(&app_state, &execution_state)
+        .with_plan_branch_repo(Arc::clone(&app_state.plan_branch_repo));
+
+    scheduler.try_schedule_ready_tasks().await;
+
+    // Task should have been scheduled (non-plan tasks bypass the guard)
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_ne!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Non-plan task should be scheduled regardless of plan branches"
     );
 }

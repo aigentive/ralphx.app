@@ -4,7 +4,6 @@
 //         pre-merge validation, deferred merge timeout
 
 use super::super::merge_helpers::*;
-use crate::application::GitService;
 use crate::domain::entities::{
     ArtifactId, IdeationSessionId, PlanBranch, PlanBranchStatus, Project, ProjectId, Task,
     TaskCategory, TaskId,
@@ -12,7 +11,7 @@ use crate::domain::entities::{
 use crate::domain::repositories::PlanBranchRepository;
 use crate::infrastructure::memory::MemoryPlanBranchRepository;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::Arc;
 use tempfile::TempDir;
@@ -88,7 +87,7 @@ fn make_plan_branch_for_resolve(
 }
 
 #[tokio::test]
-async fn test_resolve_task_base_branch_merged_branch_missing_recreates_it() {
+async fn test_resolve_task_base_branch_merged_branch_returns_fallback() {
     let (_temp_dir, repo_path) = create_temp_git_repo();
     let project = create_test_project("test-plan-branch", repo_path.to_string_lossy().to_string());
 
@@ -111,11 +110,13 @@ async fn test_resolve_task_base_branch_merged_branch_missing_recreates_it() {
 
     let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt, &None).await;
 
+    // Fix D: merged branches now fall back to project base (no resurrection)
     assert_eq!(
-        result, "ralphx/test-plan-branch/plan-session-merged-test",
-        "Should return plan branch name when Merged branch is recreated"
+        result, "main",
+        "Should fall back to project base when plan branch is Merged"
     );
 
+    // Verify branch status is NOT changed (no resurrection)
     let updated = plan_branch_repo
         .get_by_session_id(&session_id)
         .await
@@ -123,22 +124,13 @@ async fn test_resolve_task_base_branch_merged_branch_missing_recreates_it() {
         .unwrap();
     assert_eq!(
         updated.status,
-        PlanBranchStatus::Active,
-        "DB status should be reset to Active after recreation"
-    );
-
-    assert!(
-        GitService::branch_exists(
-            Path::new(&project.working_directory),
-            "ralphx/test-plan-branch/plan-session-merged-test"
-        )
-        .await,
-        "Git branch should exist after recreation"
+        PlanBranchStatus::Merged,
+        "DB status should remain Merged (no resurrection)"
     );
 }
 
 #[tokio::test]
-async fn test_resolve_task_base_branch_merged_branch_exists_in_git_resets_db_status() {
+async fn test_resolve_task_base_branch_merged_branch_exists_in_git_returns_fallback() {
     let (_temp_dir, repo_path) = create_temp_git_repo();
     let project = create_test_project("test-plan-branch", repo_path.to_string_lossy().to_string());
 
@@ -169,11 +161,13 @@ async fn test_resolve_task_base_branch_merged_branch_exists_in_git_resets_db_sta
 
     let result = resolve_task_base_branch(&task, &project, &plan_branch_repo_opt, &None).await;
 
+    // Fix D: merged branches now fall back to project base (no resurrection)
     assert_eq!(
-        result, plan_branch_name,
-        "Should return plan branch name when git branch exists but DB says Merged"
+        result, "main",
+        "Should fall back to project base when plan branch is Merged"
     );
 
+    // Verify branch status is NOT changed (no resurrection)
     let updated = plan_branch_repo
         .get_by_session_id(&session_id)
         .await
@@ -181,8 +175,8 @@ async fn test_resolve_task_base_branch_merged_branch_exists_in_git_resets_db_sta
         .unwrap();
     assert_eq!(
         updated.status,
-        PlanBranchStatus::Active,
-        "DB status should be reset to Active"
+        PlanBranchStatus::Merged,
+        "DB status should remain Merged (no resurrection)"
     );
 }
 

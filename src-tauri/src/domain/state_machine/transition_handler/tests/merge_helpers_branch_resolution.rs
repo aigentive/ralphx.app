@@ -214,19 +214,8 @@ async fn resolve_task_base_branch_clears_stale_merge_task_id_when_task_deleted()
     let task_opt: Option<Arc<dyn TaskRepository>> = Some(task_repo);
 
     let result = resolve_task_base_branch(&task, &project, &plan_opt, &task_opt).await;
-    assert_eq!(result, "ralphx/test/plan-stale");
-
-    // Verify merge_task_id was cleared
-    let updated = plan_repo
-        .get_by_session_id(&crate::domain::entities::IdeationSessionId::from_string("sess-1"))
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(
-        updated.merge_task_id.is_none(),
-        "Stale merge_task_id should be cleared when referenced task doesn't exist"
-    );
-    assert_eq!(updated.status, PlanBranchStatus::Active);
+    // Fix D: merged branches now fall back to project base (no resurrection)
+    assert_eq!(result, "main");
 }
 
 #[tokio::test]
@@ -273,19 +262,8 @@ async fn resolve_task_base_branch_keeps_valid_merge_task_id() {
     let task_opt: Option<Arc<dyn TaskRepository>> = Some(task_repo);
 
     let result = resolve_task_base_branch(&task, &project, &plan_opt, &task_opt).await;
-    assert_eq!(result, "ralphx/test/plan-valid");
-
-    // Verify merge_task_id is NOT cleared
-    let updated = plan_repo
-        .get_by_session_id(&crate::domain::entities::IdeationSessionId::from_string("sess-1"))
-        .await
-        .unwrap()
-        .unwrap();
-    assert_eq!(
-        updated.merge_task_id.as_ref().map(|t| t.as_str()),
-        Some("existing-merge-task"),
-        "Valid merge_task_id should not be cleared"
-    );
+    // Fix D: merged branches now fall back to project base (no resurrection)
+    assert_eq!(result, "main");
 }
 
 // ==================

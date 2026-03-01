@@ -23,6 +23,46 @@ use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::{reconciliation_config, scheduler_config};
 
 impl<'a> super::TransitionHandler<'a> {
+    /// Check that the task's plan branch is still Active.
+    /// Returns Err(ExecutionBlocked) if the branch is Merged or Abandoned.
+    /// No-op for non-plan tasks or when repos are unavailable.
+    /// Uses `execution_plan_id` (not `session_id`) to handle re-accept flows where
+    /// multiple PlanBranch records exist for the same session.
+    async fn check_plan_branch_active(&self, task_id_str: &str) -> Result<(), AppError> {
+        use crate::domain::entities::PlanBranchStatus;
+
+        let task_repo = match &self.machine.context.services.task_repo {
+            Some(repo) => repo,
+            None => return Ok(()),
+        };
+        let plan_branch_repo = match &self.machine.context.services.plan_branch_repo {
+            Some(repo) => repo,
+            None => return Ok(()),
+        };
+
+        let task_id = TaskId::from_string(task_id_str.to_string());
+        let task = match task_repo.get_by_id(&task_id).await {
+            Ok(Some(t)) => t,
+            _ => return Ok(()), // Can't find task, don't block
+        };
+
+        let exec_plan_id = match &task.execution_plan_id {
+            Some(id) => id,
+            None => return Ok(()), // Non-plan task, no guard needed
+        };
+
+        if let Ok(Some(branch)) = plan_branch_repo.get_by_execution_plan_id(exec_plan_id).await {
+            if !matches!(branch.status, PlanBranchStatus::Active) {
+                return Err(AppError::ExecutionBlocked(format!(
+                    "Plan branch '{}' is {} — cannot execute task on inactive branch",
+                    branch.branch_name, branch.status
+                )));
+            }
+        }
+
+        Ok(())
+    }
+
     /// Run pre-execution setup (worktree_setup + install), store log in metadata.
     /// Returns Err if setup fails in Block/AutoFix mode.
     async fn run_and_store_pre_execution_setup(
@@ -199,6 +239,9 @@ impl<'a> super::TransitionHandler<'a> {
             State::Executing => {
                 let task_id_str = &self.machine.context.task_id;
                 let project_id_str = &self.machine.context.project_id;
+
+                // Plan branch guard: block execution on merged/abandoned branches
+                self.check_plan_branch_active(task_id_str).await?;
 
                 // Setup branch/worktree for task isolation (Phase 66)
                 // Only setup if task_repo and project_repo are available
@@ -653,8 +696,11 @@ impl<'a> super::TransitionHandler<'a> {
                     .await;
             }
             State::ReExecuting => {
-                // Run pre-execution setup before re-executing
+                // Plan branch guard: block re-execution on merged/abandoned branches
                 let task_id_str = &self.machine.context.task_id;
+                self.check_plan_branch_active(task_id_str).await?;
+
+                // Run pre-execution setup before re-executing
                 let project_id_str = &self.machine.context.project_id;
                 self.run_and_store_pre_execution_setup(
                     task_id_str,
