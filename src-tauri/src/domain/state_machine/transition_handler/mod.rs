@@ -2,8 +2,34 @@
 // This module wraps the state machine and handles entry/exit actions,
 // especially for QA-related transitions.
 
+use std::path::Path;
+use std::sync::Arc;
+
+use crate::domain::entities::{Project, Task, TaskId};
+use crate::domain::repositories::TaskRepository;
+
 use super::events::TaskEvent;
 use super::machine::{Response, State, TaskStateMachine};
+
+/// Bundles task identity and repository access for merge pipeline functions.
+pub(super) struct TaskCore<'a> {
+    pub task: &'a mut Task,
+    pub task_id: &'a TaskId,
+    pub task_id_str: &'a str,
+    pub task_repo: &'a Arc<dyn TaskRepository>,
+}
+
+/// Bundles source and target branch names for merge pipeline functions.
+pub(super) struct BranchPair<'a> {
+    pub source_branch: &'a str,
+    pub target_branch: &'a str,
+}
+
+/// Bundles project and repo path for merge pipeline functions.
+pub(super) struct ProjectCtx<'a> {
+    pub project: &'a Project,
+    pub repo_path: &'a Path,
+}
 
 mod checkout_free_strategy;
 pub(crate) mod cleanup_helpers;
