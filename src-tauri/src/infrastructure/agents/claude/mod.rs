@@ -20,6 +20,7 @@ pub use agent_config::{
     team_constraints_config, AgentConfig, AllRuntimeConfig, GitRuntimeConfig, LimitsConfig,
     ReconciliationConfig, SchedulerConfig, StreamTimeoutsConfig, SupervisorRuntimeConfig,
 };
+pub use claude_code_client::kill_all_tracked_processes;
 pub use claude_code_client::ClaudeCodeClient;
 pub use claude_code_client::{
     StreamEvent as ClientStreamEvent, StreamingSpawnResult, TeammateContext, TeammateSpawnConfig,
@@ -521,6 +522,7 @@ impl SpawnableCommand {
     pub async fn spawn_interactive(
         mut self,
     ) -> std::io::Result<(tokio::process::Child, tokio::process::ChildStdin)> {
+        self.cmd.kill_on_drop(true);
         let mut child = self.cmd.spawn()?;
 
         let mut stdin = child.stdin.take().ok_or_else(|| {
@@ -551,6 +553,7 @@ impl SpawnableCommand {
     /// block here waiting for stdin write_all to complete, neither side
     /// makes progress once the pipe buffers fill up.
     pub async fn spawn(mut self) -> std::io::Result<tokio::process::Child> {
+        self.cmd.kill_on_drop(true);
         let mut child = self.cmd.spawn()?;
 
         // Write prompt to stdin in background (avoids deadlock with stdout pipe)
