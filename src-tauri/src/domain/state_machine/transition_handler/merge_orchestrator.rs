@@ -1035,11 +1035,8 @@ impl<'a> super::TransitionHandler<'a> {
                     "strategy": format!("{:?}", project.merge_strategy),
                 });
                 self.transition_to_merge_incomplete(
-                    task,
-                    task_id,
-                    task_id_str,
+                    super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
                     metadata,
-                    task_repo,
                     true,
                 )
                 .await;
