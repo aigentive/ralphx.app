@@ -5,6 +5,7 @@ mod helpers;
 mod queries;
 mod query_builder;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -319,6 +320,73 @@ impl TaskRepository for SqliteTaskRepository {
                     })?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(transitions)
+            })
+            .await
+    }
+
+    async fn get_status_history_batch(
+        &self,
+        task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<StatusTransition>>> {
+        if task_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let ids_str: Vec<String> = task_ids.iter().map(|id| id.as_str().to_string()).collect();
+        self.db
+            .run(move |conn| {
+                let placeholders = ids_str.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let sql = format!(
+                    "SELECT task_id, from_status, to_status, changed_by, created_at, metadata \
+                     FROM task_state_history WHERE task_id IN ({}) ORDER BY created_at ASC",
+                    placeholders
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let mut result: HashMap<TaskId, Vec<StatusTransition>> = HashMap::new();
+                let rows = stmt.query_map(
+                    rusqlite::params_from_iter(ids_str.iter().map(|s| s.as_str())),
+                    |row| {
+                        let task_id_str: String = row.get(0)?;
+                        let from_str: String = row.get(1)?;
+                        let to_str: String = row.get(2)?;
+                        let trigger: String = row.get(3)?;
+                        let created_at_str: String = row.get(4)?;
+                        let metadata_json: Option<String> = row.get(5)?;
+                        Ok((task_id_str, from_str, to_str, trigger, created_at_str, metadata_json))
+                    },
+                )?;
+                for row in rows {
+                    let (task_id_str, from_str, to_str, trigger, created_at_str, metadata_json) =
+                        row?;
+                    let from = from_str.parse().unwrap_or(InternalStatus::Backlog);
+                    let to = to_str.parse().unwrap_or(InternalStatus::Backlog);
+                    let timestamp = Task::parse_datetime(created_at_str);
+                    let (conversation_id, agent_run_id) = metadata_json
+                        .and_then(|json| {
+                            serde_json::from_str::<serde_json::Value>(&json).ok()
+                        })
+                        .map(|v| {
+                            let conv_id = v
+                                .get("conversation_id")
+                                .and_then(|v| v.as_str())
+                                .map(String::from);
+                            let run_id = v
+                                .get("agent_run_id")
+                                .and_then(|v| v.as_str())
+                                .map(String::from);
+                            (conv_id, run_id)
+                        })
+                        .unwrap_or((None, None));
+                    let transition = StatusTransition::with_metadata(
+                        from,
+                        to,
+                        trigger,
+                        timestamp,
+                        conversation_id,
+                        agent_run_id,
+                    );
+                    result.entry(TaskId(task_id_str)).or_default().push(transition);
+                }
+                Ok(result)
             })
             .await
     }

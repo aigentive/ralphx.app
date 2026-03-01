@@ -419,7 +419,15 @@ pub async fn get_task_dependency_graph(
         .collect();
     let task_ids: HashSet<String> = task_map.keys().cloned().collect();
 
-    // 2. Build edges by getting blockers for each task
+    // 2. Build edges — fetch all blockers in a single batch query
+    let task_id_list: Vec<crate::domain::entities::TaskId> =
+        tasks.iter().map(|t| t.id.clone()).collect();
+    let all_blockers = state
+        .task_dependency_repo
+        .get_blockers_batch(&task_id_list)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let mut edges: Vec<TaskGraphEdge> = Vec::new();
     let mut in_degree: HashMap<String, u32> = HashMap::new();
     let mut out_degree: HashMap<String, u32> = HashMap::new();
@@ -433,12 +441,11 @@ pub async fn get_task_dependency_graph(
         adjacency.entry(task_id_str.clone()).or_default();
         reverse_adjacency.entry(task_id_str.clone()).or_default();
 
-        // Get tasks this task depends on (blockers)
-        let blockers = state
-            .task_dependency_repo
-            .get_blockers(&task.id)
-            .await
-            .map_err(|e| e.to_string())?;
+        // Get tasks this task depends on (blockers) from the pre-fetched batch
+        let blockers = all_blockers
+            .get(&task.id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
 
         for blocker_id in blockers {
             let blocker_str = blocker_id.as_str().to_string();
@@ -807,6 +814,7 @@ pub async fn get_task_timeline_events(
     offset: Option<u32>,
     limit: Option<u32>,
     session_id: Option<String>,
+    execution_plan_id: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<TimelineEventsResponse, String> {
     let project_id_obj = ProjectId::from_string(project_id.clone());
@@ -829,15 +837,31 @@ pub async fn get_task_timeline_events(
         });
     }
 
-    // 2. Collect status change events from all tasks
+    // Filter by execution_plan_id if provided
+    if let Some(ref ep_id) = execution_plan_id {
+        tasks.retain(|t| {
+            t.execution_plan_id
+                .as_ref()
+                .is_some_and(|id| id.as_str() == ep_id)
+        });
+    }
+
+    // 2. Collect status change events — fetch all histories in a single batch query
+    let task_id_list: Vec<crate::domain::entities::TaskId> =
+        tasks.iter().map(|t| t.id.clone()).collect();
+    let all_history = state
+        .task_repo
+        .get_status_history_batch(&task_id_list)
+        .await
+        .map_err(|e| e.to_string())?;
+
     let mut all_events: Vec<TimelineEvent> = Vec::new();
 
     for task in &tasks {
-        let transitions = state
-            .task_repo
-            .get_status_history(&task.id)
-            .await
-            .map_err(|e| e.to_string())?;
+        let transitions = all_history
+            .get(&task.id)
+            .map(|v| v.as_slice())
+            .unwrap_or(&[]);
 
         for (idx, transition) in transitions.iter().enumerate() {
             let description = format_status_change_description(&task.title, transition.to.as_str());

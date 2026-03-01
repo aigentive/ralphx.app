@@ -763,6 +763,13 @@ impl TaskRepository for MockTaskRepository {
     ) -> AppResult<bool> {
         Ok(false)
     }
+
+    async fn get_status_history_batch(
+        &self,
+        _task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<crate::domain::repositories::StatusTransition>>> {
+        Ok(HashMap::new())
+    }
 }
 
 struct MockTaskDependencyRepository {
@@ -988,6 +995,13 @@ impl TaskDependencyRepository for MockTaskDependencyRepository {
             .unwrap()
             .iter()
             .any(|(t, d)| t == &task_id.to_string() && d == &depends_on_task_id.to_string()))
+    }
+
+    async fn get_blockers_batch(
+        &self,
+        _task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<TaskId>>> {
+        Ok(HashMap::new())
     }
 }
 

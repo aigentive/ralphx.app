@@ -3,6 +3,8 @@
 // This trait defines the contract for task persistence.
 // Implementations can use SQLite, PostgreSQL, in-memory, etc.
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
@@ -97,6 +99,14 @@ pub trait TaskRepository: Send + Sync {
 
     /// Get status history for audit
     async fn get_status_history(&self, id: &TaskId) -> AppResult<Vec<StatusTransition>>;
+
+    /// Get status history for multiple tasks in a single query (batch version).
+    /// Returns a map from task_id to its status transitions ordered by created_at ASC.
+    /// Tasks with no history will not have an entry in the returned map.
+    async fn get_status_history_batch(
+        &self,
+        task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<StatusTransition>>>;
 
     /// Get the timestamp when a task first entered a specific status
     ///

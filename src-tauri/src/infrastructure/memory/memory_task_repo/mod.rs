@@ -1,7 +1,7 @@
 // Memory-based TaskRepository implementation for testing
 // Uses RwLock<HashMap> for thread-safe storage without a real database
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::RwLock;
 
@@ -188,6 +188,24 @@ impl TaskRepository for MemoryTaskRepository {
             .map(|(_, transition)| transition.clone())
             .collect();
         Ok(transitions)
+    }
+
+    async fn get_status_history_batch(
+        &self,
+        task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<StatusTransition>>> {
+        let history = self.history.read().await;
+        let id_set: HashSet<&TaskId> = task_ids.iter().collect();
+        let mut result: HashMap<TaskId, Vec<StatusTransition>> = HashMap::new();
+        for (task_id, transition) in history.iter() {
+            if id_set.contains(task_id) {
+                result
+                    .entry(task_id.clone())
+                    .or_default()
+                    .push(transition.clone());
+            }
+        }
+        Ok(result)
     }
 
     async fn get_status_entered_at(

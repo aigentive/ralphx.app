@@ -464,6 +464,18 @@ impl TaskRepository for MockTaskRepo {
     ) -> AppResult<bool> {
         Ok(false)
     }
+
+    async fn get_status_history_batch(
+        &self,
+        _task_ids: &[crate::domain::entities::TaskId],
+    ) -> AppResult<
+        std::collections::HashMap<
+            crate::domain::entities::TaskId,
+            Vec<crate::domain::repositories::StatusTransition>,
+        >,
+    > {
+        Ok(std::collections::HashMap::new())
+    }
 }
 
 #[tokio::test]

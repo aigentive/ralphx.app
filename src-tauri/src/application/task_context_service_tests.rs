@@ -209,6 +209,13 @@ impl TaskRepository for MockTaskRepository {
     ) -> AppResult<bool> {
         Ok(false)
     }
+
+    async fn get_status_history_batch(
+        &self,
+        _task_ids: &[crate::domain::entities::TaskId],
+    ) -> AppResult<HashMap<crate::domain::entities::TaskId, Vec<crate::domain::repositories::StatusTransition>>> {
+        Ok(HashMap::new())
+    }
 }
 
 struct MockTaskDependencyRepository;
@@ -251,6 +258,13 @@ impl TaskDependencyRepository for MockTaskDependencyRepository {
     }
     async fn has_dependency(&self, _task_id: &TaskId, _depends_on: &TaskId) -> AppResult<bool> {
         Ok(false)
+    }
+
+    async fn get_blockers_batch(
+        &self,
+        _task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<TaskId>>> {
+        Ok(HashMap::new())
     }
 }
 

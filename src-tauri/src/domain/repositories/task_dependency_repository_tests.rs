@@ -122,6 +122,23 @@ impl TaskDependencyRepository for MockTaskDependencyRepository {
             .map(|set| set.contains(depends_on_task_id))
             .unwrap_or(false))
     }
+
+    async fn get_blockers_batch(
+        &self,
+        task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<TaskId>>> {
+        let id_set: HashSet<&TaskId> = task_ids.iter().collect();
+        let mut result = HashMap::new();
+        for (task_id, deps) in &self.dependencies {
+            if id_set.contains(task_id) {
+                let blockers: Vec<TaskId> = deps.iter().cloned().collect();
+                if !blockers.is_empty() {
+                    result.insert(task_id.clone(), blockers);
+                }
+            }
+        }
+        Ok(result)
+    }
 }
 
 #[test]
