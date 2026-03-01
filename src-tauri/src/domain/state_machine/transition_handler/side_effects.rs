@@ -230,8 +230,9 @@ impl<'a> super::TransitionHandler<'a> {
             .as_ref()
             .map(|s| s.running_count());
         if super::merge_coordination::check_main_merge_deferral(
-            task, task_id_str, &source_branch, &target_branch, base_branch,
-            task_repo, running_count,
+            super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+            super::BranchPair { source_branch: &source_branch, target_branch: &target_branch },
+            base_branch, running_count,
             self.machine.context.services.app_handle.as_ref(),
         ).await {
             return;

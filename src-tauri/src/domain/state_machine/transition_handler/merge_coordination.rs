@@ -532,15 +532,16 @@ pub(super) async fn update_source_from_target(
 /// 1. Sibling plan tasks are not all terminal
 /// 2. Agents are still running (running_agent_count > 0)
 pub(super) async fn check_main_merge_deferral(
-    task: &mut Task,
-    task_id_str: &str,
-    source_branch: &str,
-    target_branch: &str,
+    tc: super::TaskCore<'_>,
+    bp: super::BranchPair<'_>,
     base_branch: &str,
-    task_repo: &Arc<dyn TaskRepository>,
     running_agent_count: Option<u32>,
     app_handle: Option<&tauri::AppHandle>,
 ) -> bool {
+    let task = tc.task;
+    let task_id_str = tc.task_id_str;
+    let task_repo = tc.task_repo;
+    let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
     if target_branch != base_branch || !defer_merge_enabled() {
         return false;
     }
