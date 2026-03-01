@@ -70,6 +70,32 @@ pub async fn apply_proposals_to_kanban(
         return Err("Some proposals not found in session".to_string());
     }
 
+    // Idempotency guard: if an active ExecutionPlan already exists for this session,
+    // return early instead of creating duplicates. This handles rapid double-clicks
+    // on "Accept Plan" before the first apply completes and updates session status.
+    if let Some(existing_plan) = state
+        .execution_plan_repo
+        .get_active_for_session(&session_id)
+        .await
+        .map_err(|e| format!("Failed to check existing execution plan: {}", e))?
+    {
+        tracing::warn!(
+            "apply_proposals_to_kanban: active ExecutionPlan {} already exists for session {} — skipping duplicate",
+            existing_plan.id,
+            session_id
+        );
+        return Ok(ApplyProposalsResultResponse {
+            created_task_ids: vec![],
+            dependencies_created: 0,
+            warnings: vec![format!(
+                "Execution plan {} already active for this session — skipped to prevent duplicates",
+                existing_plan.id
+            )],
+            session_converted: false,
+            execution_plan_id: Some(existing_plan.id.as_str().to_string()),
+        });
+    }
+
     // Create ExecutionPlan for this apply attempt
     // Each re-accept creates a fresh ExecutionPlan with a unique ID, enabling unique branch naming
     let execution_plan = ExecutionPlan::new(session_id.clone());
