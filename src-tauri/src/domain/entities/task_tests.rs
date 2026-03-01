@@ -454,7 +454,8 @@ fn setup_test_db() -> Connection {
             task_branch TEXT,
             worktree_path TEXT,
             merge_commit_sha TEXT,
-            metadata TEXT
+            metadata TEXT,
+            merge_pipeline_active TEXT
         )"#,
         [],
     )

@@ -73,6 +73,7 @@ mod v4_add_blocked_reason;
 mod v50_active_plan_execution_plan_id;
 mod v51_repair_plan_branches;
 mod v52_cleanup_stale_execution_plans;
+mod v53_merge_pipeline_active_column;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
@@ -159,7 +160,7 @@ mod v49_backfill_execution_plans_tests;
 mod v51_repair_plan_branches_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 52;
+pub const SCHEMA_VERSION: i32 = 53;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -433,6 +434,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 52,
         name: "cleanup_stale_execution_plans",
         migrate: v52_cleanup_stale_execution_plans::migrate,
+    },
+    Migration {
+        version: 53,
+        name: "merge_pipeline_active_column",
+        migrate: v53_merge_pipeline_active_column::migrate,
     },
 ];
 

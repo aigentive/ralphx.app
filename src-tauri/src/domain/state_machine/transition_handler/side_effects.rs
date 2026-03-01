@@ -1290,60 +1290,43 @@ impl Drop for InFlightGuard {
     }
 }
 
-/// Clear `merge_pipeline_active` flag from task metadata.
-/// Reloads from DB to avoid clobbering concurrent metadata changes.
+/// Clear `merge_pipeline_active` dedicated column.
+/// Reloads from DB to avoid clobbering concurrent changes to other fields.
 async fn clear_merge_pipeline_active_from_db(
     task_id_str: &str,
     task_repo: &Arc<dyn TaskRepository>,
 ) {
     let task_id = TaskId(task_id_str.to_string());
-    let task = match task_repo.get_by_id(&task_id).await {
+    let mut task = match task_repo.get_by_id(&task_id).await {
         Ok(Some(t)) => t,
         _ => return,
     };
-    let mut meta = task
-        .metadata
-        .as_deref()
-        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    if let Some(obj) = meta.as_object_mut() {
-        if obj.remove("merge_pipeline_active").is_none() {
-            return; // Already cleared — skip redundant update
-        }
+    if task.merge_pipeline_active.is_none() {
+        return; // Already cleared — skip redundant update
     }
-    let mut updated = task;
-    updated.metadata = Some(meta.to_string());
-    updated.touch();
-    if let Err(e) = task_repo.update(&updated).await {
+    task.merge_pipeline_active = None;
+    task.touch();
+    if let Err(e) = task_repo.update(&task).await {
         tracing::warn!(
             task_id = task_id_str,
             error = %e,
             "Failed to clear merge_pipeline_active flag (non-fatal, auto-expires)"
         );
+    } else {
+        tracing::info!(task_id = task_id_str, "merge_pipeline_active flag cleared");
     }
 }
 
-/// Set `merge_pipeline_active` timestamp in task metadata so the reconciler
-/// skips the task while the merge pipeline is running. Auto-expires after
-/// `attempt_merge_deadline_secs` as a crash safety net.
+/// Set `merge_pipeline_active` dedicated column so the reconciler skips the task
+/// while the merge pipeline is running. Auto-expires after `attempt_merge_deadline_secs`
+/// as a crash safety net. Uses a dedicated column (not JSON metadata) to prevent
+/// race-condition clobbers by concurrent metadata writers.
 async fn set_merge_pipeline_active(
     task: &mut Task,
     task_id_str: &str,
     task_repo: &Arc<dyn TaskRepository>,
 ) {
-    let now = chrono::Utc::now().to_rfc3339();
-    let mut meta = task
-        .metadata
-        .as_deref()
-        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    if let Some(obj) = meta.as_object_mut() {
-        obj.insert(
-            "merge_pipeline_active".to_string(),
-            serde_json::json!(now),
-        );
-    }
-    task.metadata = Some(meta.to_string());
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
     task.touch();
     if let Err(e) = task_repo.update(task).await {
         tracing::warn!(
@@ -1351,6 +1334,8 @@ async fn set_merge_pipeline_active(
             error = %e,
             "Failed to persist merge_pipeline_active flag (non-fatal)"
         );
+    } else {
+        tracing::info!(task_id = task_id_str, "merge_pipeline_active flag set");
     }
 }
 

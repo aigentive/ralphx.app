@@ -169,14 +169,12 @@ impl<R: Runtime> ReconciliationRunner<R> {
     }
 
     /// Returns true if the merge pipeline (attempt_programmatic_merge) is actively running.
-    /// The flag is an RFC3339 timestamp; it auto-expires after attempt_merge_deadline_secs
-    /// to prevent stuck state if the merge pipeline crashes without clearing the flag.
+    /// Reads from the dedicated `merge_pipeline_active` column (RFC3339 timestamp).
+    /// Auto-expires after attempt_merge_deadline_secs as a crash safety net.
     pub(crate) fn has_merge_pipeline_active(task: &Task) -> bool {
-        task.metadata
+        task.merge_pipeline_active
             .as_deref()
-            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-            .and_then(|v| {
-                let ts = v.get("merge_pipeline_active")?.as_str()?;
+            .and_then(|ts| {
                 let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
                 let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);
                 let deadline_secs = reconciliation_config().attempt_merge_deadline_secs;
