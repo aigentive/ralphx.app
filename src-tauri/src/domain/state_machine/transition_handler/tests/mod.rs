@@ -139,3 +139,7 @@ mod post_merge_cascade_tests;
 
 // Plan branch status guard tests: on_enter(Executing/ReExecuting) blocks Merged/Abandoned branches
 mod plan_branch_guard_tests;
+
+// Integration tests: merged-branch guards working together (cascade + on_enter + base branch)
+// Tests Guards B/C/D/E cooperating across multi-task plan scenarios
+mod merged_branch_guard_integration;
