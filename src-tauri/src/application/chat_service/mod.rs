@@ -773,7 +773,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         }
 
         // From here on, we hold the agent slot. Any early return must unregister.
-        tracing::warn!(
+        tracing::info!(
             %context_type,
             context_id,
             gate = "GATE_3_SPAWN",
