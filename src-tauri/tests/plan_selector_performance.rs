@@ -95,6 +95,7 @@ async fn create_test_task(
         merge_commit_sha: None,
         metadata: None,
         execution_plan_id: None,
+        merge_pipeline_active: None,
     };
 
     state

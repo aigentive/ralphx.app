@@ -267,6 +267,21 @@ lazy_static! {
     static ref PROCESSES: Mutex<HashMap<String, (Child, Instant)>> = Mutex::new(HashMap::new());
 }
 
+/// Kill all processes tracked in the global PROCESSES map.
+///
+/// Called during app exit to ensure no orphaned non-streaming agent processes remain.
+/// The lazy_static is not dropped on exit, so explicit cleanup is required.
+pub async fn kill_all_tracked_processes() {
+    let mut processes = PROCESSES.lock().await;
+    let count = processes.len();
+    if count > 0 {
+        tracing::info!(count, "Killing tracked non-streaming agent processes on exit");
+        for (_id, (mut child, _start_time)) in processes.drain() {
+            let _ = child.kill().await;
+        }
+    }
+}
+
 /// Client for Claude Code CLI
 ///
 /// Uses the `claude` CLI tool to spawn and communicate with Claude agents.
@@ -432,6 +447,7 @@ impl AgenticClient for ClaudeCodeClient {
         tracing::info!(cmd = ?cmd, "Spawning CLI agent (agentic)");
         let start_time = Instant::now();
         let child = cmd
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
 
@@ -712,6 +728,7 @@ impl ClaudeCodeClient {
         // Spawn the process
         tracing::info!(cmd = ?cmd, "Spawning CLI agent (streaming)");
         let mut child = cmd
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
 
@@ -782,6 +799,7 @@ impl ClaudeCodeClient {
 
         tracing::info!(cmd = ?cmd, "Spawning CLI agent (interactive, no -p)");
         let mut child = cmd
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
 
@@ -1033,6 +1051,7 @@ impl ClaudeCodeClient {
         );
 
         let mut child = cmd
+            .kill_on_drop(true)
             .spawn()
             .map_err(|e| AgentError::SpawnFailed(e.to_string()))?;
 

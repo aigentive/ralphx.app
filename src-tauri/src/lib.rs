@@ -875,6 +875,24 @@ pub fn run() {
             commands::team_commands::get_teammate_cost,
             commands::team_commands::get_team_history,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|app_handle, event| {
+            if matches!(event, tauri::RunEvent::Exit) {
+                let app_state = app_handle.state::<AppState>();
+                let registry = Arc::clone(&app_state.running_agent_registry);
+                let interactive = Arc::clone(&app_state.interactive_process_registry);
+                tauri::async_runtime::block_on(async move {
+                    interactive.clear().await;
+                    let stopped = registry.stop_all().await;
+                    crate::infrastructure::agents::claude::kill_all_tracked_processes().await;
+                    if !stopped.is_empty() {
+                        tracing::info!(
+                            count = stopped.len(),
+                            "Killed running agents on app exit"
+                        );
+                    }
+                });
+            }
+        });
 }
