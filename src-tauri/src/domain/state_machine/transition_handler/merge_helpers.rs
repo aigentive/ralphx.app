@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use crate::application::GitService;
 use crate::domain::entities::InternalStatus;
-use crate::domain::entities::{PlanBranch, PlanBranchStatus, Project, Task, TaskCategory, TaskId};
+use crate::domain::entities::{PlanBranchStatus, Project, Task, TaskCategory, TaskId};
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::error::AppResult;
 use crate::infrastructure::agents::claude::git_runtime_config;
@@ -621,15 +621,13 @@ pub(crate) fn increment_revision_count(task: &mut Task) -> u32 {
 /// branch name so the task branch is created from it. Otherwise falls back to the
 /// project's base branch.
 ///
-/// When resetting a Merged plan branch back to Active, also validates that
-/// `merge_task_id` still references an existing task. Clears stale references
-/// left behind by session reopens that deleted the merge task without updating
-/// the plan branch record.
+/// When the plan branch is Merged, returns the project base branch (defense-in-depth).
+/// This prevents resurrecting completed plans by recreating deleted branches.
 pub(super) async fn resolve_task_base_branch(
     task: &Task,
     project: &Project,
     plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
-    task_repo: &Option<Arc<dyn TaskRepository>>,
+    _task_repo: &Option<Arc<dyn TaskRepository>>,
 ) -> String {
     let default = project.base_branch.as_deref().unwrap_or("main").to_string();
 
@@ -685,127 +683,18 @@ pub(super) async fn resolve_task_base_branch(
             pb.branch_name
         }
         Ok(Some(pb)) if pb.status == PlanBranchStatus::Merged => {
-            // Task is being re-executed after the plan was merged and its branch deleted.
-            // Recreate the plan branch from source_branch if missing, then reset DB status
-            // back to Active so subsequent tasks use this branch.
-            let repo_path = Path::new(&project.working_directory);
-            if !GitService::branch_exists(repo_path, &pb.branch_name).await {
-                match GitService::create_feature_branch(
-                    repo_path,
-                    &pb.branch_name,
-                    &pb.source_branch,
-                )
-                .await
-                {
-                    Ok(_) => {
-                        tracing::info!(
-                            branch = %pb.branch_name,
-                            source = %pb.source_branch,
-                            "Recreated merged plan branch for re-executed task"
-                        );
-                        // Reset DB status to Active so subsequent tasks use this branch
-                        if let Err(e) = plan_branch_repo
-                            .update_status(&pb.id, PlanBranchStatus::Active)
-                            .await
-                        {
-                            tracing::warn!(error = %e, branch = %pb.branch_name, "Failed to reset plan branch status to Active");
-                        }
-                    }
-                    Err(e) => {
-                        // Race condition: another task may have created it concurrently
-                        if GitService::branch_exists(repo_path, &pb.branch_name).await {
-                            tracing::info!(
-                                branch = %pb.branch_name,
-                                "Merged plan branch recreated by concurrent task"
-                            );
-                            if let Err(e) = plan_branch_repo
-                                .update_status(&pb.id, PlanBranchStatus::Active)
-                                .await
-                            {
-                                tracing::warn!(error = %e, branch = %pb.branch_name, "Failed to reset plan branch status to Active (concurrent)");
-                            }
-                        } else {
-                            tracing::warn!(
-                                error = %e,
-                                branch = %pb.branch_name,
-                                "Failed to recreate merged plan branch, falling back to project base"
-                            );
-                            return default;
-                        }
-                    }
-                }
-            } else {
-                // Branch exists in git but DB still says Merged — reset status only
-                tracing::info!(
-                    branch = %pb.branch_name,
-                    "Plan branch exists in git but DB status is Merged — resetting to Active"
-                );
-                if let Err(e) = plan_branch_repo
-                    .update_status(&pb.id, PlanBranchStatus::Active)
-                    .await
-                {
-                    tracing::warn!(error = %e, branch = %pb.branch_name, "Failed to reset plan branch status to Active");
-                }
-            }
-            // Safety net: clear stale merge_task_id if the referenced task no longer exists
-            clear_stale_merge_task_id(&pb, plan_branch_repo, task_repo).await;
-
-            tracing::info!(
+            // Plan branch is already merged — do NOT resurrect it.
+            // Recreating a merged branch would undo the completed plan merge,
+            // allowing tasks to execute against a stale branch.
+            tracing::warn!(
                 task_id = task.id.as_str(),
-                feature_branch = %pb.branch_name,
-                "Resolved task base branch to recreated plan feature branch"
+                branch = %pb.branch_name,
+                plan_branch_id = pb.id.as_str(),
+                "Plan branch is merged — refusing to resurrect, falling back to project base"
             );
-            pb.branch_name
+            default
         }
         _ => default,
-    }
-}
-
-/// Clear a plan branch's `merge_task_id` if it references a task that no longer
-/// exists or is in a terminal state (Merged). This is a safety net for stale
-/// references left behind when a session is reopened and the merge task is
-/// deleted without updating the plan branch record.
-async fn clear_stale_merge_task_id(
-    pb: &PlanBranch,
-    plan_branch_repo: &Arc<dyn PlanBranchRepository>,
-    task_repo: &Option<Arc<dyn TaskRepository>>,
-) {
-    let Some(ref merge_task_id) = pb.merge_task_id else {
-        return;
-    };
-    let Some(ref task_repo) = task_repo else {
-        return;
-    };
-
-    let should_clear = match task_repo.get_by_id(merge_task_id).await {
-        Ok(None) => {
-            tracing::warn!(
-                plan_branch_id = pb.id.as_str(),
-                merge_task_id = merge_task_id.as_str(),
-                "Plan branch merge_task_id references deleted task — clearing"
-            );
-            true
-        }
-        Ok(Some(task)) if matches!(task.internal_status, InternalStatus::Merged) => {
-            tracing::warn!(
-                plan_branch_id = pb.id.as_str(),
-                merge_task_id = merge_task_id.as_str(),
-                status = %task.internal_status,
-                "Plan branch merge_task_id references terminal task — clearing"
-            );
-            true
-        }
-        _ => false,
-    };
-
-    if should_clear {
-        if let Err(e) = plan_branch_repo.clear_merge_task_id(&pb.id).await {
-            tracing::warn!(
-                error = %e,
-                plan_branch_id = pb.id.as_str(),
-                "Failed to clear stale merge_task_id"
-            );
-        }
     }
 }
 

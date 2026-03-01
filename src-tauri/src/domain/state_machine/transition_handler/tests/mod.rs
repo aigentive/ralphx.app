@@ -131,3 +131,11 @@ mod merge_pipeline_round2_tests;
 // Merge pipeline round 3 tests: os_thread_timeout, lsof +d, spawn_blocking,
 // prior rebase conflict detection, force branch deletion
 mod merge_pipeline_round3_tests;
+
+// Post-merge cascade stop + resolve_task_base_branch merged branch guard
+// Fix C: cascade stop sibling tasks after plan merge
+// Fix D: refuse to resurrect merged plan branches
+mod post_merge_cascade_tests;
+
+// Plan branch status guard tests: on_enter(Executing/ReExecuting) blocks Merged/Abandoned branches
+mod plan_branch_guard_tests;
