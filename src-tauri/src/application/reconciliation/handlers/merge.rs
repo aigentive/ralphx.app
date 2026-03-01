@@ -237,6 +237,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // Merge-pipeline-active guard: if attempt_programmatic_merge is actively running
+        // (set at start, cleared at end), skip reconciliation to prevent the reconciler
+        // from killing the merge mid-pipeline (cleanup 60s + freshness 60s > stale 2min).
+        if Self::has_merge_pipeline_active(task) {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping PendingMerge reconciliation — merge pipeline active"
+            );
+            return true;
+        }
+
         // Validation-in-progress guard: if validation commands are actively running
         // (set before run_validation_commands, cleared after), skip reconciliation to
         // prevent the reconciler from re-triggering merge while cargo test etc. runs.

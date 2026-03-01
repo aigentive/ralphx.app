@@ -76,6 +76,31 @@ impl<'a> super::TransitionHandler<'a> {
         // Only proceed if task_repo is available (guaranteed by fetch_merge_context)
         let task_repo = self.machine.context.services.task_repo.as_ref().unwrap();
 
+        // Set merge_pipeline_active flag so the reconciler skips this task
+        // while the pipeline is running (cleanup+freshness can exceed stale threshold).
+        // Auto-expires after attempt_merge_deadline_secs as crash safety net.
+        set_merge_pipeline_active(&mut task, task_id_str, task_repo).await;
+
+        // Run the full pipeline body — ALL early returns stay inside the body,
+        // so the clear below always executes.
+        self.run_merge_pipeline_body(
+            &mut task, &project, task_id_str, task_repo, attempt_start,
+        ).await;
+
+        // Always clear the flag — reloads from DB to avoid clobbering concurrent changes.
+        clear_merge_pipeline_active_from_db(task_id_str, task_repo).await;
+    }
+
+    /// Inner body of `attempt_programmatic_merge`. Extracted so the outer wrapper
+    /// can guarantee the `merge_pipeline_active` flag is always cleared on exit.
+    async fn run_merge_pipeline_body(
+        &self,
+        task: &mut Task,
+        project: &Project,
+        task_id_str: &str,
+        task_repo: &Arc<dyn TaskRepository>,
+        attempt_start: std::time::Instant,
+    ) {
         let app_handle = self.machine.context.services.app_handle.as_ref();
 
         // Emit early phase list so the frontend can show pre-merge phases immediately
@@ -108,7 +133,7 @@ impl<'a> super::TransitionHandler<'a> {
         );
 
         // Attempt to discover and re-attach orphaned task branch
-        self.log_branch_discovery(&mut task, &project, task_repo, task_id_str)
+        self.log_branch_discovery(task, project, task_repo, task_id_str)
             .await;
 
         // Preparation complete (branch discovery + context loaded)
@@ -129,9 +154,9 @@ impl<'a> super::TransitionHandler<'a> {
             "Validating merge preconditions...".to_string(),
         );
         let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
-        let task_id = TaskId::from_string(task_id_str.clone());
+        let task_id = TaskId::from_string(task_id_str.to_string());
         if let Err(validation_err) =
-            validate_plan_merge_preconditions(&task, &project, plan_branch_repo).await
+            validate_plan_merge_preconditions(task, project, plan_branch_repo).await
         {
             let error_msg = validation_err.message();
             let error_code = validation_err.error_code();
@@ -147,14 +172,14 @@ impl<'a> super::TransitionHandler<'a> {
                 "category": task.category,
             });
             self.transition_to_merge_incomplete(
-                &mut task, &task_id, task_id_str, metadata, task_repo, false,
+                task, &task_id, task_id_str, metadata, task_repo, false,
             ).await;
             return;
         }
 
         // Resolve source and target branches
         let (source_branch, target_branch) =
-            resolve_merge_branches(&task, &project, plan_branch_repo).await;
+            resolve_merge_branches(task, project, plan_branch_repo).await;
 
         // Ensure we have a source branch to merge
         if source_branch.is_empty() {
@@ -173,7 +198,7 @@ impl<'a> super::TransitionHandler<'a> {
                 "category": task.category,
             });
             self.transition_to_merge_incomplete(
-                &mut task, &task_id, task_id_str, metadata, task_repo, true,
+                task, &task_id, task_id_str, metadata, task_repo, true,
             ).await;
             return;
         }
@@ -188,7 +213,7 @@ impl<'a> super::TransitionHandler<'a> {
             meta["merge_source_branch"] = serde_json::json!(source_branch);
             meta["merge_target_branch"] = serde_json::json!(target_branch);
             task.metadata = Some(meta.to_string());
-            if let Err(e) = task_repo.update(&task).await {
+            if let Err(e) = task_repo.update(task).await {
                 tracing::warn!(
                     task_id = task_id_str,
                     error = %e,
@@ -203,7 +228,7 @@ impl<'a> super::TransitionHandler<'a> {
             .as_ref()
             .map(|s| s.running_count());
         if super::merge_coordination::check_main_merge_deferral(
-            &mut task, task_id_str, &source_branch, &target_branch, base_branch,
+            task, task_id_str, &source_branch, &target_branch, base_branch,
             task_repo, running_count,
             self.machine.context.services.app_handle.as_ref(),
         ).await {
@@ -240,7 +265,7 @@ impl<'a> super::TransitionHandler<'a> {
         match super::cleanup_helpers::os_thread_timeout(
             std::time::Duration::from_secs(cleanup_timeout_secs),
             self.pre_merge_cleanup(
-                task_id_str, &task, &project, repo_path, &target_branch, task_repo,
+                task_id_str, task, project, repo_path, &target_branch, task_repo,
             ),
         ).await {
             Ok(()) => {
@@ -291,7 +316,7 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Ensure plan branch exists as git ref (lazy creation for merge target)
         super::merge_coordination::ensure_plan_branch_exists(
-            &task, repo_path, &target_branch, plan_branch_repo,
+            task, repo_path, &target_branch, plan_branch_repo,
         ).await;
 
         // Update plan branch from main if behind (prevents false validation failures)
@@ -312,7 +337,7 @@ impl<'a> super::TransitionHandler<'a> {
                 repo_path,
                 &target_branch,
                 base_branch,
-                &project,
+                project,
                 task_id_str,
                 self.machine.context.services.app_handle.as_ref(),
             ),
@@ -338,7 +363,7 @@ impl<'a> super::TransitionHandler<'a> {
                     "merge_failure_source": "BranchFreshnessTimeout",
                 });
                 self.transition_to_merge_incomplete(
-                    &mut task, &task_id, task_id_str, metadata, task_repo, true,
+                    task, &task_id, task_id_str, metadata, task_repo, true,
                 ).await;
                 return;
             }
@@ -366,16 +391,16 @@ impl<'a> super::TransitionHandler<'a> {
                     "base_branch": base_branch,
                     "plan_update_conflict": true,
                 });
-                super::merge_helpers::merge_metadata_into(&mut task, &metadata);
+                super::merge_helpers::merge_metadata_into(task, &metadata);
                 task.internal_status = InternalStatus::Merging;
                 // Create a merge worktree with the plan branch (target) checked out.
                 // The merger agent will run `git merge main` to reproduce and resolve conflicts.
                 // First, clean up any stale plan-update worktree that holds the plan branch —
                 // git won't allow the same branch in two worktrees simultaneously.
-                let plan_update_wt = super::merge_helpers::compute_plan_update_worktree_path(&project, task_id_str);
+                let plan_update_wt = super::merge_helpers::compute_plan_update_worktree_path(project, task_id_str);
                 let plan_update_wt_path = std::path::PathBuf::from(&plan_update_wt);
                 super::merge_helpers::pre_delete_worktree(repo_path, &plan_update_wt_path, task_id_str).await;
-                let merge_wt = super::merge_helpers::compute_merge_worktree_path(&project, task_id_str);
+                let merge_wt = super::merge_helpers::compute_merge_worktree_path(project, task_id_str);
                 let merge_wt_path = std::path::PathBuf::from(&merge_wt);
                 if let Err(e) = GitService::checkout_existing_branch_worktree(
                     repo_path, &merge_wt_path, &target_branch,
@@ -387,7 +412,7 @@ impl<'a> super::TransitionHandler<'a> {
                         "Failed to create merge worktree for plan_update_conflict — falling back to MergeIncomplete"
                     );
                     self.transition_to_merge_incomplete(
-                        &mut task, &task_id, task_id_str,
+                        task, &task_id, task_id_str,
                         serde_json::json!({
                             "error": format!("Failed to create merge worktree for plan update conflict: {}", e),
                             "source_branch": source_branch,
@@ -399,7 +424,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
                 task.worktree_path = Some(merge_wt);
                 self.persist_merge_transition(
-                    &mut task, &task_id, task_id_str,
+                    task, &task_id, task_id_str,
                     InternalStatus::PendingMerge, InternalStatus::Merging,
                     "plan_update_conflict", task_repo,
                 ).await;
@@ -431,7 +456,7 @@ impl<'a> super::TransitionHandler<'a> {
                     "merge_failure_source": "PlanUpdateFailed",
                 });
                 self.transition_to_merge_incomplete(
-                    &mut task, &task_id, task_id_str, metadata, task_repo, true,
+                    task, &task_id, task_id_str, metadata, task_repo, true,
                 ).await;
                 return;
             }
@@ -452,7 +477,7 @@ impl<'a> super::TransitionHandler<'a> {
                 repo_path,
                 &source_branch,
                 &target_branch,
-                &project,
+                project,
                 task_id_str,
                 self.machine.context.services.app_handle.as_ref(),
             ),
@@ -478,7 +503,7 @@ impl<'a> super::TransitionHandler<'a> {
                     "merge_failure_source": "BranchFreshnessTimeout",
                 });
                 self.transition_to_merge_incomplete(
-                    &mut task, &task_id, task_id_str, metadata, task_repo, true,
+                    task, &task_id, task_id_str, metadata, task_repo, true,
                 ).await;
                 return;
             }
@@ -504,12 +529,12 @@ impl<'a> super::TransitionHandler<'a> {
                     "target_branch": target_branch,
                     "source_update_conflict": true,
                 });
-                super::merge_helpers::merge_metadata_into(&mut task, &metadata);
+                super::merge_helpers::merge_metadata_into(task, &metadata);
                 task.internal_status = InternalStatus::Merging;
                 // Create a merge worktree with source branch checked out so the merger
                 // agent can resolve the conflict in an isolated directory. Mirrors the
                 // plan_update_conflict path which sets worktree_path before persist.
-                let merge_wt = super::merge_helpers::compute_merge_worktree_path(&project, task_id_str);
+                let merge_wt = super::merge_helpers::compute_merge_worktree_path(project, task_id_str);
                 let merge_wt_path = std::path::PathBuf::from(&merge_wt);
                 // RC#13: Clean up any stale merge worktree from a prior phase before
                 // creating a fresh one. Without this, checkout_existing_branch_worktree
@@ -525,7 +550,7 @@ impl<'a> super::TransitionHandler<'a> {
                         "Failed to create merge worktree for source_update_conflict — falling back to MergeIncomplete"
                     );
                     self.transition_to_merge_incomplete(
-                        &mut task, &task_id, task_id_str,
+                        task, &task_id, task_id_str,
                         serde_json::json!({
                             "error": format!("Failed to create merge worktree for source update conflict: {}", e),
                             "source_branch": source_branch,
@@ -537,7 +562,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
                 task.worktree_path = Some(merge_wt);
                 self.persist_merge_transition(
-                    &mut task, &task_id, task_id_str,
+                    task, &task_id, task_id_str,
                     InternalStatus::PendingMerge, InternalStatus::Merging,
                     "source_update_conflict", task_repo,
                 ).await;
@@ -581,7 +606,7 @@ impl<'a> super::TransitionHandler<'a> {
 
         // "Already merged" early exit
         if self.check_already_merged(
-            &mut task, &task_id, task_id_str, &project, repo_path,
+            task, &task_id, task_id_str, project, repo_path,
             &source_branch, &target_branch, task_repo, plan_branch_repo,
         ).await {
             return;
@@ -589,7 +614,7 @@ impl<'a> super::TransitionHandler<'a> {
 
         // "Deleted source branch" recovery
         if self.recover_deleted_source_branch(
-            &mut task, &task_id, task_id_str, &project, repo_path,
+            task, &task_id, task_id_str, project, repo_path,
             &source_branch, &target_branch, task_repo, plan_branch_repo,
         ).await {
             return;
@@ -614,44 +639,46 @@ impl<'a> super::TransitionHandler<'a> {
         // Concurrent merge guard (TOCTOU-safe deferral under merge_lock)
         if matches!(
             self.run_concurrent_merge_guard(
-                &mut task, task_id_str, &target_branch, &project, task_repo, plan_branch_repo,
+                task, task_id_str, &target_branch, project, task_repo, plan_branch_repo,
             ).await,
             ConcurrentGuardResult::Deferred
         ) {
             return;
         }
 
-        // Overall merge deadline
+        // Overall merge deadline — computed from function start to bound the full pipeline
+        // (cleanup + freshness + dispatch). Previously this was a NOP because the deadline
+        // was created and checked at the same instant (always passed).
         let deadline_secs = reconciliation_config().attempt_merge_deadline_secs;
-        let merge_deadline = tokio::time::Instant::now()
-            + std::time::Duration::from_secs(deadline_secs);
+        let deadline_duration = std::time::Duration::from_secs(deadline_secs);
 
-        // Check deadline after cleanup (pre_merge_cleanup was already run above)
-        if tokio::time::Instant::now() >= merge_deadline {
+        // Check deadline after cleanup+freshness (using attempt_start from function top)
+        if attempt_start.elapsed() >= deadline_duration {
             tracing::error!(
                 task_id = task_id_str,
                 deadline_secs = deadline_secs,
                 elapsed_ms = attempt_start.elapsed().as_millis() as u64,
                 "Programmatic merge exceeded deadline during cleanup — transitioning to MergeIncomplete"
             );
+            // Guard will clear merge_pipeline_active flag on return
             let metadata = serde_json::json!({
                 "error": format!("Merge attempt timed out after {}s (cleanup phase exceeded deadline)", deadline_secs),
                 "source_branch": source_branch,
                 "target_branch": target_branch,
             });
             self.transition_to_merge_incomplete(
-                &mut task, &task_id, task_id_str, metadata, task_repo, true,
+                task, &task_id, task_id_str, metadata, task_repo, true,
             ).await;
             return;
         }
 
         // Build squash commit message
         let squash_commit_msg = self
-            .build_squash_commit_message(&task, task_id_str, &source_branch)
+            .build_squash_commit_message(task, task_id_str, &source_branch)
             .await;
 
-        // Dispatch merge strategy with timeout
-        let remaining = merge_deadline.saturating_duration_since(tokio::time::Instant::now());
+        // Dispatch merge strategy with timeout — remaining time computed from function start
+        let remaining = deadline_duration.saturating_sub(attempt_start.elapsed());
         tracing::info!(
             task_id = task_id_str,
             elapsed_ms = attempt_start.elapsed().as_millis() as u64,
@@ -666,7 +693,7 @@ impl<'a> super::TransitionHandler<'a> {
             "started",
         ).await;
         self.dispatch_merge_strategy(
-            &mut task, &task_id, task_id_str, &project, repo_path,
+            task, &task_id, task_id_str, project, repo_path,
             &source_branch, &target_branch, &squash_commit_msg,
             task_repo, plan_branch_repo, remaining, deadline_secs,
         ).await;
@@ -1255,3 +1282,68 @@ impl Drop for InFlightGuard {
         }
     }
 }
+
+/// Clear `merge_pipeline_active` flag from task metadata.
+/// Reloads from DB to avoid clobbering concurrent metadata changes.
+async fn clear_merge_pipeline_active_from_db(
+    task_id_str: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+) {
+    let task_id = TaskId(task_id_str.to_string());
+    let task = match task_repo.get_by_id(&task_id).await {
+        Ok(Some(t)) => t,
+        _ => return,
+    };
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        if obj.remove("merge_pipeline_active").is_none() {
+            return; // Already cleared — skip redundant update
+        }
+    }
+    let mut updated = task;
+    updated.metadata = Some(meta.to_string());
+    updated.touch();
+    if let Err(e) = task_repo.update(&updated).await {
+        tracing::warn!(
+            task_id = task_id_str,
+            error = %e,
+            "Failed to clear merge_pipeline_active flag (non-fatal, auto-expires)"
+        );
+    }
+}
+
+/// Set `merge_pipeline_active` timestamp in task metadata so the reconciler
+/// skips the task while the merge pipeline is running. Auto-expires after
+/// `attempt_merge_deadline_secs` as a crash safety net.
+async fn set_merge_pipeline_active(
+    task: &mut Task,
+    task_id_str: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+) {
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert(
+            "merge_pipeline_active".to_string(),
+            serde_json::json!(now),
+        );
+    }
+    task.metadata = Some(meta.to_string());
+    task.touch();
+    if let Err(e) = task_repo.update(task).await {
+        tracing::warn!(
+            task_id = task_id_str,
+            error = %e,
+            "Failed to persist merge_pipeline_active flag (non-fatal)"
+        );
+    }
+}
+

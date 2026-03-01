@@ -77,7 +77,9 @@ pub struct ReconciliationConfig {
     /// Cleanup is best-effort; if it hangs (e.g. lsof on large target/), we skip it.
     pub pre_merge_cleanup_timeout_secs: u64,
     /// Maximum wall-clock seconds for the entire programmatic merge attempt
-    /// (cleanup + strategy dispatch). If exceeded, task transitions to MergeIncomplete.
+    /// (cleanup + freshness + strategy dispatch), measured from function entry.
+    /// If exceeded, task transitions to MergeIncomplete. Also used as auto-expiry
+    /// for the `merge_pipeline_active` metadata flag.
     pub attempt_merge_deadline_secs: u64,
     /// Maximum wall-clock seconds for post-merge validation commands.
     /// Separate from `attempt_merge_deadline_secs` so git operations stay bounded
@@ -126,7 +128,7 @@ impl Default for ReconciliationConfig {
             reviewing_max_wall_clock_minutes: 30,
             qa_max_wall_clock_minutes: 15,
             pre_merge_cleanup_timeout_secs: 60,
-            attempt_merge_deadline_secs: 120,
+            attempt_merge_deadline_secs: 600,
             validation_deadline_secs: 1200,
             merge_registry_grace_period_secs: 60,
             validation_retry_min_cooldown_secs: 120,
