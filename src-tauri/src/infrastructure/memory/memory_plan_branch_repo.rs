@@ -119,6 +119,20 @@ impl PlanBranchRepository for MemoryPlanBranchRepository {
         Ok(())
     }
 
+    async fn abandon_active_for_artifact(&self, artifact_id: &ArtifactId) -> AppResult<u32> {
+        let mut branches = self.branches.write().await;
+        let mut count = 0u32;
+        for branch in branches.values_mut() {
+            if branch.plan_artifact_id == *artifact_id
+                && branch.status == PlanBranchStatus::Active
+            {
+                branch.status = PlanBranchStatus::Abandoned;
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
+
     async fn delete(&self, id: &PlanBranchId) -> AppResult<()> {
         let mut branches = self.branches.write().await;
         branches.remove(id.as_str());

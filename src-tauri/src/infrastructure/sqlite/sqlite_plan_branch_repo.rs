@@ -285,6 +285,23 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
             .await
     }
 
+    async fn abandon_active_for_artifact(&self, artifact_id: &ArtifactId) -> AppResult<u32> {
+        let artifact_id = artifact_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let rows = conn
+                    .execute(
+                        "UPDATE plan_branches SET status = 'abandoned' WHERE plan_artifact_id = ?1 AND status = 'active'",
+                        rusqlite::params![artifact_id.as_str()],
+                    )
+                    .map_err(|e| {
+                        AppError::Database(format!("Failed to abandon active plan branches: {}", e))
+                    })?;
+                Ok(rows as u32)
+            })
+            .await
+    }
+
     async fn delete(&self, id: &PlanBranchId) -> AppResult<()> {
         let id = id.as_str().to_string();
         let id_display = id.clone();

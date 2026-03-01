@@ -50,6 +50,11 @@ pub trait PlanBranchRepository: Send + Sync {
     /// Mark a plan branch as merged (sets status to Merged and merged_at timestamp)
     async fn set_merged(&self, id: &PlanBranchId) -> AppResult<()>;
 
+    /// Abandon all active plan branches for a given plan artifact ID.
+    /// Used during re-accept to mark old branches as abandoned before creating new ones.
+    /// Returns the number of branches abandoned.
+    async fn abandon_active_for_artifact(&self, artifact_id: &ArtifactId) -> AppResult<u32>;
+
     /// Delete a plan branch record
     async fn delete(&self, id: &PlanBranchId) -> AppResult<()>;
 }

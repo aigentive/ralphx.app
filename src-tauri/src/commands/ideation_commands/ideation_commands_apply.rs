@@ -140,6 +140,21 @@ pub async fn apply_proposals_to_kanban(
                 .clone()
                 .unwrap_or_else(|| ArtifactId::from_string(session_id.as_str().to_string()));
 
+            // Abandon any existing active plan branches for this artifact (re-accept flow).
+            // Each re-accept creates a fresh PlanBranch; old ones must be marked abandoned.
+            let abandoned = state
+                .plan_branch_repo
+                .abandon_active_for_artifact(&effective_plan_id)
+                .await
+                .map_err(|e| format!("Failed to abandon old plan branches: {}", e))?;
+            if abandoned > 0 {
+                tracing::info!(
+                    "Re-accept: abandoned {} stale active plan branch(es) for artifact={}",
+                    abandoned,
+                    effective_plan_id.as_str()
+                );
+            }
+
             let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
 
             // Generate branch name: ralphx/{project-slug}/plan-{short-id}
