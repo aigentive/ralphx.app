@@ -241,7 +241,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // (set at start, cleared at end), skip reconciliation to prevent the reconciler
         // from killing the merge mid-pipeline (cleanup 60s + freshness 60s > stale 2min).
         if Self::has_merge_pipeline_active(task) {
-            tracing::debug!(
+            tracing::info!(
                 task_id = task.id.as_str(),
                 "Skipping PendingMerge reconciliation — merge pipeline active"
             );

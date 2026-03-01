@@ -127,6 +127,11 @@ pub struct Task {
     /// Used for merge error context (error message, branch names) and future structured data
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub metadata: Option<String>,
+    /// RFC3339 timestamp set when merge pipeline is actively running (Phase 53 migration)
+    /// Replaces the JSON metadata key to prevent race-condition clobbers by concurrent writers.
+    /// NULL = not active. Non-null = pipeline running (auto-expires after attempt_merge_deadline_secs).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub merge_pipeline_active: Option<String>,
 }
 
 impl Task {
@@ -162,6 +167,7 @@ impl Task {
             worktree_path: None,
             merge_commit_sha: None,
             metadata: None,
+            merge_pipeline_active: None,
         }
     }
 
@@ -264,6 +270,7 @@ impl Task {
             worktree_path: row.get("worktree_path")?,
             merge_commit_sha: row.get("merge_commit_sha")?,
             metadata: row.get("metadata")?,
+            merge_pipeline_active: row.get("merge_pipeline_active")?,
         })
     }
 

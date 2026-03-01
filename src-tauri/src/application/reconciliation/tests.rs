@@ -3731,6 +3731,7 @@ fn has_merge_pipeline_active_returns_false_when_no_metadata() {
         crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "No Metadata Task".to_string(),
     );
+    // merge_pipeline_active column is None by default
     assert!(!ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
 }
 
@@ -3740,7 +3741,8 @@ fn has_merge_pipeline_active_returns_false_when_flag_not_present() {
         crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Empty Metadata Task".to_string(),
     );
-    task.metadata = Some(serde_json::json!({}).to_string());
+    // metadata may contain other keys, but merge_pipeline_active column is None
+    task.metadata = Some(serde_json::json!({"some_other_key": "value"}).to_string());
     assert!(!ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
 }
 
@@ -3750,8 +3752,7 @@ fn has_merge_pipeline_active_returns_true_for_fresh_timestamp() {
         crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Fresh Pipeline Task".to_string(),
     );
-    let now = chrono::Utc::now().to_rfc3339();
-    task.metadata = Some(serde_json::json!({"merge_pipeline_active": now}).to_string());
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
     assert!(ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
 }
 
@@ -3763,7 +3764,7 @@ fn has_merge_pipeline_active_returns_false_for_expired_timestamp() {
     );
     // Set timestamp far in the past (beyond any reasonable deadline)
     let old = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
-    task.metadata = Some(serde_json::json!({"merge_pipeline_active": old}).to_string());
+    task.merge_pipeline_active = Some(old);
     assert!(!ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
 }
 
@@ -3782,8 +3783,7 @@ async fn reconcile_pending_merge_skips_when_merge_pipeline_active() {
 
     let mut task = Task::new(project.id.clone(), "Active Pipeline Task".to_string());
     task.internal_status = InternalStatus::PendingMerge;
-    let now = chrono::Utc::now().to_rfc3339();
-    task.metadata = Some(serde_json::json!({"merge_pipeline_active": now}).to_string());
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     // Record status history so reconciler can calculate age
@@ -3839,7 +3839,7 @@ async fn reconcile_pending_merge_proceeds_when_pipeline_flag_expired() {
     task.internal_status = InternalStatus::PendingMerge;
     // Set an expired pipeline flag (1 hour ago)
     let old = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
-    task.metadata = Some(serde_json::json!({"merge_pipeline_active": old}).to_string());
+    task.merge_pipeline_active = Some(old);
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     // Record stale status history (old timestamp to trigger stale detection)
@@ -3871,7 +3871,7 @@ async fn reconcile_pending_merge_proceeds_when_pipeline_flag_expired() {
 // ── set/clear merge_pipeline_active persistence tests ──
 
 #[tokio::test]
-async fn set_merge_pipeline_active_persists_to_task_metadata() {
+async fn set_merge_pipeline_active_persists_to_task_column() {
     let app_state = AppState::new_test();
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
@@ -3881,17 +3881,8 @@ async fn set_merge_pipeline_active_persists_to_task_metadata() {
     task.internal_status = InternalStatus::PendingMerge;
     app_state.task_repo.create(task.clone()).await.unwrap();
 
-    // Simulate what set_merge_pipeline_active does
-    let now = chrono::Utc::now().to_rfc3339();
-    let mut meta = task
-        .metadata
-        .as_deref()
-        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    if let Some(obj) = meta.as_object_mut() {
-        obj.insert("merge_pipeline_active".to_string(), serde_json::json!(now));
-    }
-    task.metadata = Some(meta.to_string());
+    // Simulate what set_merge_pipeline_active does: set dedicated column
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
     task.touch();
     app_state.task_repo.update(&task).await.unwrap();
 
@@ -3901,22 +3892,14 @@ async fn set_merge_pipeline_active_persists_to_task_metadata() {
         ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&reloaded),
         "Flag should survive persist + reload"
     );
-
-    // Verify the raw JSON contains the key
-    let json: serde_json::Value =
-        serde_json::from_str(reloaded.metadata.as_deref().unwrap()).unwrap();
     assert!(
-        json.get("merge_pipeline_active").is_some(),
-        "merge_pipeline_active key should exist in metadata JSON"
-    );
-    assert!(
-        json["merge_pipeline_active"].is_string(),
-        "merge_pipeline_active should be an RFC3339 string"
+        reloaded.merge_pipeline_active.is_some(),
+        "merge_pipeline_active column should be set"
     );
 }
 
 #[tokio::test]
-async fn clear_merge_pipeline_active_removes_key_cleanly() {
+async fn clear_merge_pipeline_active_removes_column_value() {
     let app_state = AppState::new_test();
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
@@ -3924,23 +3907,14 @@ async fn clear_merge_pipeline_active_removes_key_cleanly() {
 
     let mut task = Task::new(project.id.clone(), "Clear Flag Task".to_string());
     task.internal_status = InternalStatus::PendingMerge;
-    let now = chrono::Utc::now().to_rfc3339();
-    task.metadata = Some(serde_json::json!({"merge_pipeline_active": now}).to_string());
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     // Verify flag is set
     assert!(ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
 
-    // Simulate what clear_merge_pipeline_active does
-    let mut meta = task
-        .metadata
-        .as_deref()
-        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    if let Some(obj) = meta.as_object_mut() {
-        obj.remove("merge_pipeline_active");
-    }
-    task.metadata = Some(meta.to_string());
+    // Simulate what clear_merge_pipeline_active does: set column to None
+    task.merge_pipeline_active = None;
     task.touch();
     app_state.task_repo.update(&task).await.unwrap();
 
@@ -3950,14 +3924,57 @@ async fn clear_merge_pipeline_active_removes_key_cleanly() {
         !ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&reloaded),
         "Flag should be cleared after removal"
     );
+    assert!(
+        reloaded.merge_pipeline_active.is_none(),
+        "merge_pipeline_active column should be NULL after clear"
+    );
+}
 
-    // Verify the raw JSON no longer contains the key
+#[tokio::test]
+async fn set_merge_pipeline_active_does_not_clobber_metadata() {
+    // Regression test for the race condition: concurrent metadata writers
+    // used to clobber the flag because it was stored in the same JSON blob.
+    // With a dedicated column, metadata updates are independent.
+    let app_state = AppState::new_test();
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Race Condition Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_source_branch": "feature/test",
+            "merge_target_branch": "main"
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Step 1: Set merge_pipeline_active column
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
+    task.touch();
+    app_state.task_repo.update(&task).await.unwrap();
+
+    // Step 2: Concurrent writer modifies metadata (simulates chat_service_merge.rs)
+    let mut concurrent_task = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let mut meta: serde_json::Value =
+        serde_json::from_str(concurrent_task.metadata.as_deref().unwrap_or("{}")).unwrap();
+    meta.as_object_mut().unwrap().insert("merge_error".to_string(), serde_json::json!("some error"));
+    concurrent_task.metadata = Some(meta.to_string());
+    concurrent_task.touch();
+    app_state.task_repo.update(&concurrent_task).await.unwrap();
+
+    // Step 3: Reload and verify the pipeline flag survived the concurrent metadata write
+    let reloaded = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&reloaded),
+        "merge_pipeline_active column must survive concurrent metadata writes"
+    );
+    // Metadata was written by concurrent writer
     let json: serde_json::Value =
         serde_json::from_str(reloaded.metadata.as_deref().unwrap()).unwrap();
-    assert!(
-        json.get("merge_pipeline_active").is_none(),
-        "merge_pipeline_active key should not exist after clear"
-    );
+    assert_eq!(json["merge_error"], "some error");
 }
 
 #[test]
@@ -3976,24 +3993,19 @@ fn set_merge_pipeline_active_preserves_other_metadata_keys() {
         .to_string(),
     );
 
-    // Simulate set_merge_pipeline_active
-    let now = chrono::Utc::now().to_rfc3339();
-    let mut meta: serde_json::Value =
-        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
-    if let Some(obj) = meta.as_object_mut() {
-        obj.insert("merge_pipeline_active".to_string(), serde_json::json!(now));
-    }
-    task.metadata = Some(meta.to_string());
+    // set_merge_pipeline_active uses dedicated column — does NOT touch metadata
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
 
     // Verify pipeline flag is set
     assert!(ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
 
-    // Verify other keys are preserved
+    // Verify metadata is untouched
     let json: serde_json::Value =
         serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
     assert_eq!(json["merge_source_branch"], "feature/test");
     assert_eq!(json["merge_target_branch"], "main");
     assert_eq!(json["some_counter"], 42);
+    assert!(json.get("merge_pipeline_active").is_none(), "flag must not be in metadata JSON");
 }
 
 #[test]
@@ -4002,28 +4014,22 @@ fn clear_merge_pipeline_active_preserves_other_metadata_keys() {
         crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Preserve Keys Task".to_string(),
     );
-    let now = chrono::Utc::now().to_rfc3339();
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
     task.metadata = Some(
         serde_json::json!({
-            "merge_pipeline_active": now,
             "merge_source_branch": "feature/test",
             "some_counter": 42
         })
         .to_string(),
     );
 
-    // Simulate clear_merge_pipeline_active
-    let mut meta: serde_json::Value =
-        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
-    if let Some(obj) = meta.as_object_mut() {
-        obj.remove("merge_pipeline_active");
-    }
-    task.metadata = Some(meta.to_string());
+    // clear_merge_pipeline_active uses dedicated column — does NOT touch metadata
+    task.merge_pipeline_active = None;
 
     // Verify pipeline flag is cleared
     assert!(!ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
 
-    // Verify other keys are preserved
+    // Verify metadata is untouched
     let json: serde_json::Value =
         serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
     assert_eq!(json["merge_source_branch"], "feature/test");
@@ -4038,21 +4044,12 @@ fn set_merge_pipeline_active_handles_none_metadata() {
     );
     assert!(task.metadata.is_none());
 
-    // Simulate set on task with no metadata (exactly what set_merge_pipeline_active does)
-    let now = chrono::Utc::now().to_rfc3339();
-    let mut meta = task
-        .metadata
-        .as_deref()
-        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-        .unwrap_or_else(|| serde_json::json!({}));
-    if let Some(obj) = meta.as_object_mut() {
-        obj.insert("merge_pipeline_active".to_string(), serde_json::json!(now));
-    }
-    task.metadata = Some(meta.to_string());
+    // set_merge_pipeline_active uses dedicated column — works even with no metadata
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
 
     assert!(
         ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task),
-        "Flag should work even when metadata was initially None"
+        "Flag should work even when metadata is None"
     );
 }
 
@@ -4083,8 +4080,7 @@ async fn reconcile_pending_merge_full_flow_set_skip_clear_act() {
         .unwrap();
 
     // Phase 1: Set flag — reconciler should skip
-    let now = chrono::Utc::now().to_rfc3339();
-    task.metadata = Some(serde_json::json!({"merge_pipeline_active": now}).to_string());
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
     task.touch();
     app_state.task_repo.update(&task).await.unwrap();
 
@@ -4094,10 +4090,7 @@ async fn reconcile_pending_merge_full_flow_set_skip_clear_act() {
     assert!(reconciled, "Phase 1: Should skip when flag is active");
 
     // Phase 2: Clear flag — reconciler should proceed (not stale yet, so returns false/noop)
-    let mut meta: serde_json::Value =
-        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
-    meta.as_object_mut().unwrap().remove("merge_pipeline_active");
-    task.metadata = Some(meta.to_string());
+    task.merge_pipeline_active = None;
     task.touch();
     app_state.task_repo.update(&task).await.unwrap();
 
@@ -4147,13 +4140,9 @@ async fn reconcile_pending_merge_skips_when_both_flags_set() {
     let mut task = Task::new(project.id.clone(), "Both Flags Task".to_string());
     task.internal_status = InternalStatus::PendingMerge;
     let now = chrono::Utc::now().to_rfc3339();
-    task.metadata = Some(
-        serde_json::json!({
-            "merge_pipeline_active": now,
-            "validation_in_progress": now,
-        })
-        .to_string(),
-    );
+    // merge_pipeline_active: dedicated column; validation_in_progress: JSON metadata
+    task.merge_pipeline_active = Some(now.clone());
+    task.metadata = Some(serde_json::json!({"validation_in_progress": now}).to_string());
     app_state.task_repo.create(task.clone()).await.unwrap();
 
     app_state
@@ -4293,16 +4282,15 @@ fn deadline_check_uses_attempt_start_not_instant_now() {
 }
 
 #[test]
-fn has_merge_pipeline_active_returns_false_for_non_string_value() {
-    let mut task = Task::new(
+fn has_merge_pipeline_active_returns_false_when_column_is_none() {
+    // With dedicated column, None = not active (replaces the old "non-string value" test)
+    let task = Task::new(
         crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
-        "Bad Value Task".to_string(),
+        "None Column Task".to_string(),
     );
-    // Legacy boolean value (non-string) should be treated as inactive
-    task.metadata = Some(serde_json::json!({"merge_pipeline_active": true}).to_string());
     assert!(
         !ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task),
-        "Non-string value should not be treated as active"
+        "None column value should not be treated as active"
     );
 }
 
@@ -4312,8 +4300,7 @@ fn has_merge_pipeline_active_returns_false_for_malformed_timestamp() {
         crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
         "Malformed Timestamp Task".to_string(),
     );
-    task.metadata =
-        Some(serde_json::json!({"merge_pipeline_active": "not-a-timestamp"}).to_string());
+    task.merge_pipeline_active = Some("not-a-timestamp".to_string());
     assert!(
         !ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task),
         "Malformed timestamp should not be treated as active"
