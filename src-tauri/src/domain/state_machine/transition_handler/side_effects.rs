@@ -172,7 +172,8 @@ impl<'a> super::TransitionHandler<'a> {
                 "category": task.category,
             });
             self.transition_to_merge_incomplete(
-                task, &task_id, task_id_str, metadata, task_repo, false,
+                super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                metadata, false,
             ).await;
             return;
         }
@@ -198,7 +199,8 @@ impl<'a> super::TransitionHandler<'a> {
                 "category": task.category,
             });
             self.transition_to_merge_incomplete(
-                task, &task_id, task_id_str, metadata, task_repo, true,
+                super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                metadata, true,
             ).await;
             return;
         }
@@ -363,7 +365,8 @@ impl<'a> super::TransitionHandler<'a> {
                     "merge_failure_source": "BranchFreshnessTimeout",
                 });
                 self.transition_to_merge_incomplete(
-                    task, &task_id, task_id_str, metadata, task_repo, true,
+                    super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                    metadata, true,
                 ).await;
                 return;
             }
@@ -412,21 +415,21 @@ impl<'a> super::TransitionHandler<'a> {
                         "Failed to create merge worktree for plan_update_conflict — falling back to MergeIncomplete"
                     );
                     self.transition_to_merge_incomplete(
-                        task, &task_id, task_id_str,
+                        super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
                         serde_json::json!({
                             "error": format!("Failed to create merge worktree for plan update conflict: {}", e),
                             "source_branch": source_branch,
                             "target_branch": target_branch,
                         }),
-                        task_repo, true,
+                        true,
                     ).await;
                     return;
                 }
                 task.worktree_path = Some(merge_wt);
                 self.persist_merge_transition(
-                    task, &task_id, task_id_str,
+                    super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
                     InternalStatus::PendingMerge, InternalStatus::Merging,
-                    "plan_update_conflict", task_repo,
+                    "plan_update_conflict",
                 ).await;
                 // Spawn the merger agent — mirrors handle_validation_failure's AutoFix path.
                 // Without this call, the task sits in Merging with no agent and
@@ -456,7 +459,8 @@ impl<'a> super::TransitionHandler<'a> {
                     "merge_failure_source": "PlanUpdateFailed",
                 });
                 self.transition_to_merge_incomplete(
-                    task, &task_id, task_id_str, metadata, task_repo, true,
+                    super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                    metadata, true,
                 ).await;
                 return;
             }
@@ -503,7 +507,8 @@ impl<'a> super::TransitionHandler<'a> {
                     "merge_failure_source": "BranchFreshnessTimeout",
                 });
                 self.transition_to_merge_incomplete(
-                    task, &task_id, task_id_str, metadata, task_repo, true,
+                    super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                    metadata, true,
                 ).await;
                 return;
             }
@@ -550,21 +555,21 @@ impl<'a> super::TransitionHandler<'a> {
                         "Failed to create merge worktree for source_update_conflict — falling back to MergeIncomplete"
                     );
                     self.transition_to_merge_incomplete(
-                        task, &task_id, task_id_str,
+                        super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
                         serde_json::json!({
                             "error": format!("Failed to create merge worktree for source update conflict: {}", e),
                             "source_branch": source_branch,
                             "target_branch": target_branch,
                         }),
-                        task_repo, true,
+                        true,
                     ).await;
                     return;
                 }
                 task.worktree_path = Some(merge_wt);
                 self.persist_merge_transition(
-                    task, &task_id, task_id_str,
+                    super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
                     InternalStatus::PendingMerge, InternalStatus::Merging,
-                    "source_update_conflict", task_repo,
+                    "source_update_conflict",
                 ).await;
                 // Spawn the merger agent — mirrors handle_validation_failure's AutoFix path.
                 // Without this call, the task sits in Merging with no agent and
@@ -667,7 +672,8 @@ impl<'a> super::TransitionHandler<'a> {
                 "target_branch": target_branch,
             });
             self.transition_to_merge_incomplete(
-                task, &task_id, task_id_str, metadata, task_repo, true,
+                super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+                metadata, true,
             ).await;
             return;
         }
@@ -758,14 +764,12 @@ impl<'a> super::TransitionHandler<'a> {
     /// Returns `false` if the update failed (caller should return early).
     pub(super) async fn persist_merge_transition(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
+        tc: super::TaskCore<'_>,
         from_status: InternalStatus,
         to_status: InternalStatus,
         persist_label: &str,
-        task_repo: &Arc<dyn TaskRepository>,
     ) -> bool {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         task.touch();
 
         if let Err(e) = task_repo.update(task).await {
@@ -809,21 +813,19 @@ impl<'a> super::TransitionHandler<'a> {
     /// Optionally triggers on_exit (needed when the caller wants deferred-merge retry).
     pub(super) async fn transition_to_merge_incomplete(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
+        tc: super::TaskCore<'_>,
         metadata: serde_json::Value,
-        task_repo: &Arc<dyn TaskRepository>,
         trigger_on_exit: bool,
     ) {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         // Merge new metadata INTO existing metadata to preserve recovery history
         super::merge_helpers::merge_metadata_into(task, &metadata);
         task.internal_status = InternalStatus::MergeIncomplete;
 
         if !self.persist_merge_transition(
-            task, task_id, task_id_str,
+            super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
             InternalStatus::PendingMerge, InternalStatus::MergeIncomplete,
-            "merge_incomplete", task_repo,
+            "merge_incomplete",
         ).await {
             return;
         }
@@ -1053,20 +1055,18 @@ impl<'a> super::TransitionHandler<'a> {
     #[allow(clippy::too_many_arguments)]
     pub(super) async fn handle_validation_failure(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
-        task_repo: &Arc<dyn TaskRepository>,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
+        pc: super::ProjectCtx<'_>,
         failures: &[ValidationFailure],
         log: &[ValidationLogEntry],
-        source_branch: &str,
-        target_branch: &str,
         merge_path: &Path,
         mode_label: &str,
         validation_mode: &MergeValidationMode,
-        repo_path: &Path,
-        project: &Project,
     ) {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
+        let (project, repo_path) = (pc.project, pc.repo_path);
         if *validation_mode == MergeValidationMode::AutoFix {
             // AutoFix: DON'T revert — keep the merged (failing) code for the agent to fix
             tracing::info!(
@@ -1128,7 +1128,8 @@ impl<'a> super::TransitionHandler<'a> {
                             "target_branch": target_branch,
                         });
                         self.transition_to_merge_incomplete(
-                            task, task_id, task_id_str, metadata, task_repo, true,
+                            super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
+                            metadata, true,
                         ).await;
                         return;
                     }
@@ -1151,9 +1152,9 @@ impl<'a> super::TransitionHandler<'a> {
             task.internal_status = InternalStatus::Merging;
 
             self.persist_merge_transition(
-                task, task_id, task_id_str,
+                super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
                 InternalStatus::PendingMerge, InternalStatus::Merging,
-                "validation_auto_fix", task_repo,
+                "validation_auto_fix",
             ).await;
 
             // Delegate to on_enter(Merging) which handles symlink cleanup, stale
@@ -1233,9 +1234,9 @@ impl<'a> super::TransitionHandler<'a> {
             task.internal_status = InternalStatus::MergeIncomplete;
 
             self.persist_merge_transition(
-                task, task_id, task_id_str,
+                super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
                 InternalStatus::PendingMerge, InternalStatus::MergeIncomplete,
-                "validation_failed", task_repo,
+                "validation_failed",
             ).await;
         }
     }
