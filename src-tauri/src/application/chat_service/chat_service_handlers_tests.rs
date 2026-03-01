@@ -121,6 +121,17 @@ impl TaskRepository for StubTaskRepo {
     async fn get_stale_ready_tasks(&self, _threshold_secs: u64) -> AppResult<Vec<Task>> {
         Ok(vec![])
     }
+    async fn get_status_history_batch(
+        &self,
+        _task_ids: &[crate::domain::entities::TaskId],
+    ) -> AppResult<
+        std::collections::HashMap<
+            crate::domain::entities::TaskId,
+            Vec<StatusTransition>,
+        >,
+    > {
+        Ok(std::collections::HashMap::new())
+    }
 }
 
 fn make_task(status: InternalStatus) -> Task {

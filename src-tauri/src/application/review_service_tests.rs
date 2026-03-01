@@ -349,6 +349,13 @@ impl TaskRepository for MockTaskRepo {
     ) -> AppResult<bool> {
         Ok(false)
     }
+
+    async fn get_status_history_batch(
+        &self,
+        _task_ids: &[crate::domain::entities::TaskId],
+    ) -> AppResult<HashMap<crate::domain::entities::TaskId, Vec<crate::domain::repositories::StatusTransition>>> {
+        Ok(HashMap::new())
+    }
 }
 
 fn setup() -> (Arc<MockReviewRepo>, Arc<MockTaskRepo>, ProjectId, TaskId) {

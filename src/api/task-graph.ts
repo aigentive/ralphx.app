@@ -97,16 +97,18 @@ export const taskGraphApi = {
    * @param projectId - The project ID to get events for
    * @param limit - Maximum number of events to return (default: 50)
    * @param offset - Number of events to skip for pagination (default: 0)
+   * @param executionPlanId - Optional execution plan ID to filter events by plan (default null)
    * @returns Timeline events response with events, total count, and pagination info
    */
   getTimelineEvents: (
     projectId: string,
     limit: number = 50,
-    offset: number = 0
+    offset: number = 0,
+    executionPlanId: string | null = null
   ): Promise<TimelineEventsResponse> =>
     typedInvokeWithTransform(
       "get_task_timeline_events",
-      { projectId, limit, offset },
+      { projectId, limit, offset, executionPlanId },
       TimelineEventsResponseSchema,
       transformTimelineEventsResponse
     ),

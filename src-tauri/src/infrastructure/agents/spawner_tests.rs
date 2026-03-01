@@ -132,6 +132,14 @@ impl TaskRepository for MockTaskRepoForSpawner {
     ) -> AppResult<bool> {
         Ok(false)
     }
+    async fn get_status_history_batch(
+        &self,
+        _task_ids: &[TaskId],
+    ) -> AppResult<
+        std::collections::HashMap<TaskId, Vec<StatusTransition>>,
+    > {
+        Ok(std::collections::HashMap::new())
+    }
 }
 
 /// Minimal mock ProjectRepository that returns a configurable project

@@ -3,6 +3,8 @@
 // This trait defines the contract for task dependency persistence.
 // Used for tasks that have been applied from proposals to track blockers.
 
+use std::collections::HashMap;
+
 use async_trait::async_trait;
 
 use crate::domain::entities::TaskId;
@@ -50,6 +52,14 @@ pub trait TaskDependencyRepository: Send + Sync {
         task_id: &TaskId,
         depends_on_task_id: &TaskId,
     ) -> AppResult<bool>;
+
+    /// Get all blockers for multiple tasks in a single query (batch version of get_blockers).
+    /// Returns a map from task_id to the list of task IDs it depends on.
+    /// Tasks with no dependencies will not have an entry in the returned map.
+    async fn get_blockers_batch(
+        &self,
+        task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<TaskId>>>;
 }
 
 #[cfg(test)]

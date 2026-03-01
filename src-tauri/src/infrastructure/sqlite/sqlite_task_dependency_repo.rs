@@ -1,7 +1,7 @@
 // SQLite-based TaskDependencyRepository implementation for production use
 // Uses rusqlite with connection pooling for thread-safe access
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -220,6 +220,40 @@ impl TaskDependencyRepository for SqliteTaskDependencyRepository {
                     |row| row.get(0),
                 )?;
                 Ok(count > 0)
+            })
+            .await
+    }
+
+    async fn get_blockers_batch(
+        &self,
+        task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<TaskId>>> {
+        if task_ids.is_empty() {
+            return Ok(HashMap::new());
+        }
+        let ids_str: Vec<String> = task_ids.iter().map(|id| id.as_str().to_string()).collect();
+        self.db
+            .run(move |conn| {
+                let placeholders = ids_str.iter().map(|_| "?").collect::<Vec<_>>().join(", ");
+                let sql = format!(
+                    "SELECT task_id, depends_on_task_id FROM task_dependencies WHERE task_id IN ({})",
+                    placeholders
+                );
+                let mut stmt = conn.prepare(&sql)?;
+                let mut result: HashMap<TaskId, Vec<TaskId>> = HashMap::new();
+                let rows = stmt.query_map(
+                    rusqlite::params_from_iter(ids_str.iter().map(|s| s.as_str())),
+                    |row| {
+                        let task_id: String = row.get(0)?;
+                        let dep_id: String = row.get(1)?;
+                        Ok((TaskId(task_id), TaskId(dep_id)))
+                    },
+                )?;
+                for row in rows {
+                    let (task_id, dep_id) = row?;
+                    result.entry(task_id).or_default().push(dep_id);
+                }
+                Ok(result)
             })
             .await
     }

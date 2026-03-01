@@ -172,6 +172,13 @@ impl TaskRepository for MockTaskRepository {
     ) -> AppResult<bool> {
         Ok(false)
     }
+
+    async fn get_status_history_batch(
+        &self,
+        _task_ids: &[TaskId],
+    ) -> AppResult<HashMap<TaskId, Vec<StatusTransition>>> {
+        Ok(HashMap::new())
+    }
 }
 
 #[test]
