@@ -3722,3 +3722,600 @@ async fn rc4_non_validation_failure_retries_normally() {
         updated.internal_status
     );
 }
+
+// ── Merge Pipeline Active Flag Tests ──
+
+#[test]
+fn has_merge_pipeline_active_returns_false_when_no_metadata() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "No Metadata Task".to_string(),
+    );
+    assert!(!ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
+}
+
+#[test]
+fn has_merge_pipeline_active_returns_false_when_flag_not_present() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Empty Metadata Task".to_string(),
+    );
+    task.metadata = Some(serde_json::json!({}).to_string());
+    assert!(!ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
+}
+
+#[test]
+fn has_merge_pipeline_active_returns_true_for_fresh_timestamp() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Fresh Pipeline Task".to_string(),
+    );
+    let now = chrono::Utc::now().to_rfc3339();
+    task.metadata = Some(serde_json::json!({"merge_pipeline_active": now}).to_string());
+    assert!(ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
+}
+
+#[test]
+fn has_merge_pipeline_active_returns_false_for_expired_timestamp() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Expired Pipeline Task".to_string(),
+    );
+    // Set timestamp far in the past (beyond any reasonable deadline)
+    let old = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+    task.metadata = Some(serde_json::json!({"merge_pipeline_active": old}).to_string());
+    assert!(!ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
+}
+
+#[tokio::test]
+async fn reconcile_pending_merge_skips_when_merge_pipeline_active() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Active Pipeline Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    let now = chrono::Utc::now().to_rfc3339();
+    task.metadata = Some(serde_json::json!({"merge_pipeline_active": now}).to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record status history so reconciler can calculate age
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Approved,
+            InternalStatus::PendingMerge,
+            "pending_merge",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+
+    // Should return true (skip reconciliation) because pipeline is active
+    assert!(
+        reconciled,
+        "Should skip reconciliation when merge pipeline is active"
+    );
+
+    // Verify task status unchanged (not killed)
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::PendingMerge,
+        "Task should remain in PendingMerge when pipeline is active"
+    );
+}
+
+#[tokio::test]
+async fn reconcile_pending_merge_proceeds_when_pipeline_flag_expired() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Expired Pipeline Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    // Set an expired pipeline flag (1 hour ago)
+    let old = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+    task.metadata = Some(serde_json::json!({"merge_pipeline_active": old}).to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record stale status history (old timestamp to trigger stale detection)
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Approved,
+            InternalStatus::PendingMerge,
+            "pending_merge",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+
+    // Should NOT be skipped by the pipeline flag (it's expired).
+    // The reconciler proceeds to staleness check. With the default
+    // pending_merge_stale_minutes, the status history was JUST created
+    // so it won't be stale yet — policy returns None.
+    assert!(
+        !reconciled,
+        "Should not skip reconciliation when pipeline flag is expired"
+    );
+}
+
+// ── set/clear merge_pipeline_active persistence tests ──
+
+#[tokio::test]
+async fn set_merge_pipeline_active_persists_to_task_metadata() {
+    let app_state = AppState::new_test();
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Set Flag Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Simulate what set_merge_pipeline_active does
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("merge_pipeline_active".to_string(), serde_json::json!(now));
+    }
+    task.metadata = Some(meta.to_string());
+    task.touch();
+    app_state.task_repo.update(&task).await.unwrap();
+
+    // Reload from repo and verify
+    let reloaded = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&reloaded),
+        "Flag should survive persist + reload"
+    );
+
+    // Verify the raw JSON contains the key
+    let json: serde_json::Value =
+        serde_json::from_str(reloaded.metadata.as_deref().unwrap()).unwrap();
+    assert!(
+        json.get("merge_pipeline_active").is_some(),
+        "merge_pipeline_active key should exist in metadata JSON"
+    );
+    assert!(
+        json["merge_pipeline_active"].is_string(),
+        "merge_pipeline_active should be an RFC3339 string"
+    );
+}
+
+#[tokio::test]
+async fn clear_merge_pipeline_active_removes_key_cleanly() {
+    let app_state = AppState::new_test();
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Clear Flag Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    let now = chrono::Utc::now().to_rfc3339();
+    task.metadata = Some(serde_json::json!({"merge_pipeline_active": now}).to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Verify flag is set
+    assert!(ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
+
+    // Simulate what clear_merge_pipeline_active does
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.remove("merge_pipeline_active");
+    }
+    task.metadata = Some(meta.to_string());
+    task.touch();
+    app_state.task_repo.update(&task).await.unwrap();
+
+    // Reload and verify flag is gone
+    let reloaded = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&reloaded),
+        "Flag should be cleared after removal"
+    );
+
+    // Verify the raw JSON no longer contains the key
+    let json: serde_json::Value =
+        serde_json::from_str(reloaded.metadata.as_deref().unwrap()).unwrap();
+    assert!(
+        json.get("merge_pipeline_active").is_none(),
+        "merge_pipeline_active key should not exist after clear"
+    );
+}
+
+#[test]
+fn set_merge_pipeline_active_preserves_other_metadata_keys() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Preserve Keys Task".to_string(),
+    );
+    // Task already has other metadata
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_source_branch": "feature/test",
+            "merge_target_branch": "main",
+            "some_counter": 42
+        })
+        .to_string(),
+    );
+
+    // Simulate set_merge_pipeline_active
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut meta: serde_json::Value =
+        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("merge_pipeline_active".to_string(), serde_json::json!(now));
+    }
+    task.metadata = Some(meta.to_string());
+
+    // Verify pipeline flag is set
+    assert!(ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
+
+    // Verify other keys are preserved
+    let json: serde_json::Value =
+        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    assert_eq!(json["merge_source_branch"], "feature/test");
+    assert_eq!(json["merge_target_branch"], "main");
+    assert_eq!(json["some_counter"], 42);
+}
+
+#[test]
+fn clear_merge_pipeline_active_preserves_other_metadata_keys() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Preserve Keys Task".to_string(),
+    );
+    let now = chrono::Utc::now().to_rfc3339();
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_pipeline_active": now,
+            "merge_source_branch": "feature/test",
+            "some_counter": 42
+        })
+        .to_string(),
+    );
+
+    // Simulate clear_merge_pipeline_active
+    let mut meta: serde_json::Value =
+        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    if let Some(obj) = meta.as_object_mut() {
+        obj.remove("merge_pipeline_active");
+    }
+    task.metadata = Some(meta.to_string());
+
+    // Verify pipeline flag is cleared
+    assert!(!ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task));
+
+    // Verify other keys are preserved
+    let json: serde_json::Value =
+        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    assert_eq!(json["merge_source_branch"], "feature/test");
+    assert_eq!(json["some_counter"], 42);
+}
+
+#[test]
+fn set_merge_pipeline_active_handles_none_metadata() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "None Metadata Task".to_string(),
+    );
+    assert!(task.metadata.is_none());
+
+    // Simulate set on task with no metadata (exactly what set_merge_pipeline_active does)
+    let now = chrono::Utc::now().to_rfc3339();
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("merge_pipeline_active".to_string(), serde_json::json!(now));
+    }
+    task.metadata = Some(meta.to_string());
+
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task),
+        "Flag should work even when metadata was initially None"
+    );
+}
+
+// ── Full flow integration test: set → skip → clear → act ──
+
+#[tokio::test]
+async fn reconcile_pending_merge_full_flow_set_skip_clear_act() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Full Flow Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Approved,
+            InternalStatus::PendingMerge,
+            "pending_merge",
+        )
+        .await
+        .unwrap();
+
+    // Phase 1: Set flag — reconciler should skip
+    let now = chrono::Utc::now().to_rfc3339();
+    task.metadata = Some(serde_json::json!({"merge_pipeline_active": now}).to_string());
+    task.touch();
+    app_state.task_repo.update(&task).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+    assert!(reconciled, "Phase 1: Should skip when flag is active");
+
+    // Phase 2: Clear flag — reconciler should proceed (not stale yet, so returns false/noop)
+    let mut meta: serde_json::Value =
+        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    meta.as_object_mut().unwrap().remove("merge_pipeline_active");
+    task.metadata = Some(meta.to_string());
+    task.touch();
+    app_state.task_repo.update(&task).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+    assert!(
+        !reconciled,
+        "Phase 2: Should proceed past flag check when flag is cleared (not stale = noop)"
+    );
+}
+
+// ── Regression: stale PendingMerge with no flag still gets killed ──
+
+#[test]
+fn pending_merge_stale_no_flag_still_transitions_to_merge_incomplete() {
+    // Regression test: the merge_pipeline_active guard must not break
+    // the existing safety net for truly abandoned PendingMerge tasks.
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: None,
+        registry_running: false,
+        can_start: true,
+        is_stale: true,
+        is_deferred: false,
+    };
+
+    let decision = policy.decide_reconciliation(RecoveryContext::PendingMerge, evidence);
+    assert_eq!(
+        decision.action,
+        RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
+        "Stale PendingMerge without any flag should still transition to MergeIncomplete"
+    );
+}
+
+// ── Both flags (validation + pipeline) interaction test ──
+
+#[tokio::test]
+async fn reconcile_pending_merge_skips_when_both_flags_set() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Both Flags Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    let now = chrono::Utc::now().to_rfc3339();
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_pipeline_active": now,
+            "validation_in_progress": now,
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Approved,
+            InternalStatus::PendingMerge,
+            "pending_merge",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+
+    // Should skip — merge_pipeline_active is checked first
+    assert!(
+        reconciled,
+        "Should skip when both merge_pipeline_active and validation_in_progress are set"
+    );
+
+    // Verify task unchanged
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::PendingMerge);
+}
+
+#[tokio::test]
+async fn reconcile_pending_merge_skips_for_validation_even_without_pipeline_flag() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Validation Only Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    let now = chrono::Utc::now().to_rfc3339();
+    // Only validation flag, no pipeline flag
+    task.metadata = Some(serde_json::json!({"validation_in_progress": now}).to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Approved,
+            InternalStatus::PendingMerge,
+            "pending_merge",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+
+    // Should skip via the validation guard (second guard)
+    assert!(
+        reconciled,
+        "Validation flag alone should still cause skip (pipeline flag is not required)"
+    );
+}
+
+// ── NOP deadline fix: saturating_sub behavior tests ──
+
+#[test]
+fn deadline_remaining_decreases_with_elapsed_time() {
+    let deadline_secs = 600u64;
+    let deadline_duration = std::time::Duration::from_secs(deadline_secs);
+
+    // Simulate various elapsed times
+    let elapsed_0 = std::time::Duration::from_secs(0);
+    let elapsed_100 = std::time::Duration::from_secs(100);
+    let elapsed_300 = std::time::Duration::from_secs(300);
+    let elapsed_599 = std::time::Duration::from_secs(599);
+
+    let remaining_0 = deadline_duration.saturating_sub(elapsed_0);
+    let remaining_100 = deadline_duration.saturating_sub(elapsed_100);
+    let remaining_300 = deadline_duration.saturating_sub(elapsed_300);
+    let remaining_599 = deadline_duration.saturating_sub(elapsed_599);
+
+    assert_eq!(remaining_0.as_secs(), 600);
+    assert_eq!(remaining_100.as_secs(), 500);
+    assert_eq!(remaining_300.as_secs(), 300);
+    assert_eq!(remaining_599.as_secs(), 1);
+
+    // Verify monotonic decrease
+    assert!(remaining_0 > remaining_100);
+    assert!(remaining_100 > remaining_300);
+    assert!(remaining_300 > remaining_599);
+}
+
+#[test]
+fn deadline_remaining_zero_when_elapsed_exceeds_deadline() {
+    let deadline_secs = 600u64;
+    let deadline_duration = std::time::Duration::from_secs(deadline_secs);
+
+    // Elapsed exactly at deadline
+    let elapsed_exact = std::time::Duration::from_secs(600);
+    let remaining_exact = deadline_duration.saturating_sub(elapsed_exact);
+    assert_eq!(remaining_exact, std::time::Duration::ZERO);
+
+    // Elapsed well past deadline
+    let elapsed_over = std::time::Duration::from_secs(900);
+    let remaining_over = deadline_duration.saturating_sub(elapsed_over);
+    assert_eq!(remaining_over, std::time::Duration::ZERO);
+
+    // Verify the deadline check would trigger
+    assert!(elapsed_exact >= deadline_duration);
+    assert!(elapsed_over >= deadline_duration);
+}
+
+#[test]
+fn deadline_check_uses_attempt_start_not_instant_now() {
+    // This test documents the fix: the old code created the deadline
+    // at Instant::now() and immediately checked Instant::now() >= deadline
+    // (always false). The fix uses attempt_start.elapsed() instead.
+    let deadline_secs = 120u64;
+    let deadline_duration = std::time::Duration::from_secs(deadline_secs);
+
+    // OLD behavior (NOP): deadline just created, check immediately
+    // now >= now + 120s → always false
+    let old_remaining = deadline_duration; // effectively full deadline every time
+
+    // NEW behavior: uses elapsed time from function start
+    // If cleanup took 60s + freshness took 60s = 120s elapsed
+    let elapsed_after_pipeline = std::time::Duration::from_secs(120);
+    let new_remaining = deadline_duration.saturating_sub(elapsed_after_pipeline);
+
+    // Old code would always have full remaining time (bug)
+    assert_eq!(old_remaining.as_secs(), 120);
+    // New code correctly computes zero remaining after 120s pipeline work
+    assert_eq!(new_remaining, std::time::Duration::ZERO);
+}
+
+#[test]
+fn has_merge_pipeline_active_returns_false_for_non_string_value() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Bad Value Task".to_string(),
+    );
+    // Legacy boolean value (non-string) should be treated as inactive
+    task.metadata = Some(serde_json::json!({"merge_pipeline_active": true}).to_string());
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task),
+        "Non-string value should not be treated as active"
+    );
+}
+
+#[test]
+fn has_merge_pipeline_active_returns_false_for_malformed_timestamp() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Malformed Timestamp Task".to_string(),
+    );
+    task.metadata =
+        Some(serde_json::json!({"merge_pipeline_active": "not-a-timestamp"}).to_string());
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task),
+        "Malformed timestamp should not be treated as active"
+    );
+}

@@ -133,7 +133,7 @@ fn test_validation_deadline_env_override() {
 
     assert_eq!(cfg.reconciliation.validation_deadline_secs, 900);
     // merge deadline should remain unchanged
-    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 120);
+    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 600);
 }
 
 #[test]
@@ -182,5 +182,5 @@ fn test_branch_freshness_timeout_env_override() {
 
     assert_eq!(cfg.reconciliation.branch_freshness_timeout_secs, 120);
     // Other reconciliation fields should remain unchanged
-    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 120);
+    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 600);
 }

@@ -168,6 +168,23 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .unwrap_or(false)
     }
 
+    /// Returns true if the merge pipeline (attempt_programmatic_merge) is actively running.
+    /// The flag is an RFC3339 timestamp; it auto-expires after attempt_merge_deadline_secs
+    /// to prevent stuck state if the merge pipeline crashes without clearing the flag.
+    pub(crate) fn has_merge_pipeline_active(task: &Task) -> bool {
+        task.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| {
+                let ts = v.get("merge_pipeline_active")?.as_str()?;
+                let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
+                let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);
+                let deadline_secs = reconciliation_config().attempt_merge_deadline_secs;
+                Some(age < chrono::Duration::seconds(deadline_secs as i64))
+            })
+            .unwrap_or(false)
+    }
+
     /// Returns the number of times post-merge validation has reverted the merge commit.
     /// Used to break validation→revert→retry loops.
     pub(crate) fn validation_revert_count(task: &Task) -> u32 {
