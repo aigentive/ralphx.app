@@ -611,16 +611,20 @@ impl<'a> super::TransitionHandler<'a> {
 
         // "Already merged" early exit
         if self.check_already_merged(
-            task, &task_id, task_id_str, project, repo_path,
-            &source_branch, &target_branch, task_repo, plan_branch_repo,
+            super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+            super::BranchPair { source_branch: &source_branch, target_branch: &target_branch },
+            super::ProjectCtx { project, repo_path },
+            plan_branch_repo,
         ).await {
             return;
         }
 
         // "Deleted source branch" recovery
         if self.recover_deleted_source_branch(
-            task, &task_id, task_id_str, project, repo_path,
-            &source_branch, &target_branch, task_repo, plan_branch_repo,
+            super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+            super::BranchPair { source_branch: &source_branch, target_branch: &target_branch },
+            super::ProjectCtx { project, repo_path },
+            plan_branch_repo,
         ).await {
             return;
         }
@@ -699,9 +703,10 @@ impl<'a> super::TransitionHandler<'a> {
             "started",
         ).await;
         self.dispatch_merge_strategy(
-            task, &task_id, task_id_str, project, repo_path,
-            &source_branch, &target_branch, &squash_commit_msg,
-            task_repo, plan_branch_repo, remaining, deadline_secs,
+            super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
+            super::BranchPair { source_branch: &source_branch, target_branch: &target_branch },
+            super::ProjectCtx { project, repo_path },
+            &squash_commit_msg, plan_branch_repo, remaining, deadline_secs,
         ).await;
     }
 

@@ -99,16 +99,14 @@ impl<'a> super::TransitionHandler<'a> {
     /// Returns `true` if the merge was already done (caller should return early).
     pub(super) async fn check_already_merged(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
-        project: &Project,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
-        task_repo: &Arc<dyn TaskRepository>,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
+        pc: super::ProjectCtx<'_>,
         plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     ) -> bool {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
+        let (project, repo_path) = (pc.project, pc.repo_path);
         // Defense-in-depth: If task belongs to a plan, check the plan branch independently.
         // This catches cases where target_branch was incorrectly resolved but the merge
         // already landed on the plan branch from a prior cycle.
@@ -326,16 +324,14 @@ impl<'a> super::TransitionHandler<'a> {
     /// `false` if no recovery was possible (caller should continue).
     pub(super) async fn recover_deleted_source_branch(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
-        project: &Project,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
-        task_repo: &Arc<dyn TaskRepository>,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
+        pc: super::ProjectCtx<'_>,
         plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
     ) -> bool {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
+        let (project, repo_path) = (pc.project, pc.repo_path);
         if GitService::branch_exists(repo_path, source_branch).await {
             return false;
         }
@@ -903,19 +899,17 @@ impl<'a> super::TransitionHandler<'a> {
     /// the git operation deadline.
     pub(super) async fn dispatch_merge_strategy(
         &self,
-        task: &mut Task,
-        task_id: &TaskId,
-        task_id_str: &str,
-        project: &Project,
-        repo_path: &Path,
-        source_branch: &str,
-        target_branch: &str,
+        tc: super::TaskCore<'_>,
+        bp: super::BranchPair<'_>,
+        pc: super::ProjectCtx<'_>,
         squash_commit_msg: &str,
-        task_repo: &Arc<dyn TaskRepository>,
         plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
         remaining: std::time::Duration,
         deadline_secs: u64,
     ) {
+        let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
+        let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
+        let (project, repo_path) = (pc.project, pc.repo_path);
         tracing::info!(
             task_id = task_id_str,
             strategy = ?project.merge_strategy,
