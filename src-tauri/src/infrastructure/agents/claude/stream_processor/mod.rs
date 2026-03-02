@@ -47,6 +47,8 @@ pub struct StreamProcessor {
     in_thinking_block: bool,
     // Accumulated thinking text during streaming
     current_thinking_block: String,
+    // Track if any ContentBlockDelta text events were received (for dedup guard)
+    had_streaming_text_deltas: bool,
 }
 
 impl StreamProcessor {
@@ -121,6 +123,7 @@ impl StreamProcessor {
             StreamMessage::ContentBlockDelta { delta, .. } => {
                 if delta.delta_type == "text_delta" {
                     if let Some(text) = delta.text {
+                        self.had_streaming_text_deltas = true;
                         self.response_text.push_str(&text);
                         self.current_text_block.push_str(&text);
                         events.push(StreamEvent::TextChunk(text));
@@ -252,9 +255,10 @@ impl StreamProcessor {
                 for content in message.content {
                     match content {
                         AssistantContent::Text { text } => {
-                            if self.response_text.is_empty() {
-                                // Verbose-only path: no deltas were streamed before this message.
-                                // Emit TextChunk and populate response_text from this content.
+                            if self.response_text.is_empty() || !self.had_streaming_text_deltas {
+                                // Either first message OR a new API call in stream-json mode (no deltas).
+                                // In stream-json mode, multi-API-call turns produce multiple Assistant
+                                // messages. Without deltas, the dedup guard must allow all of them.
                                 self.response_text.push_str(&text);
                                 self.content_blocks
                                     .push(ContentBlockItem::Text { text: text.clone() });
@@ -506,6 +510,7 @@ impl StreamProcessor {
         self.current_tool_input.clear();
         self.in_thinking_block = false;
         self.current_thinking_block.clear();
+        self.had_streaming_text_deltas = false;
         self.result_is_error = false;
         self.result_errors.clear();
         self.result_subtype = None;

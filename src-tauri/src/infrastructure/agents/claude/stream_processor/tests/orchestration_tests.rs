@@ -278,6 +278,112 @@ fn test_verbose_only_text_emission() {
     assert_eq!(result.response_text, "Verbose response");
 }
 
+/// In stream-json mode, two API calls in one turn produce two sequential Assistant messages
+/// with no ContentBlockDelta events. The second (synthesis) text must NOT be dropped.
+#[test]
+fn test_task_continuation_synthesis_text_not_dropped() {
+    let mut processor = StreamProcessor::new();
+
+    // API Call 1: subagent spawns, agent produces first text
+    let msg1 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Good call, spawning subagent...".to_string(),
+            }],
+            stop_reason: Some("tool_use".to_string()),
+        },
+        session_id: None,
+    };
+
+    // API Call 2: after subagent completes, agent synthesizes result
+    let msg2 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Confirmed: dead code removed successfully.".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+
+    processor.process_message(msg1);
+    processor.process_message(msg2);
+
+    let result = processor.finish();
+
+    assert_eq!(
+        result.response_text,
+        "Good call, spawning subagent...Confirmed: dead code removed successfully.",
+        "Synthesis text from second API call must not be dropped"
+    );
+
+    let text_blocks: Vec<_> = result
+        .content_blocks
+        .iter()
+        .filter_map(|b| {
+            if let ContentBlockItem::Text { text } = b {
+                Some(text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        text_blocks.len(),
+        2,
+        "Both text blocks must appear in content_blocks"
+    );
+    assert_eq!(text_blocks[0], "Good call, spawning subagent...");
+    assert_eq!(text_blocks[1], "Confirmed: dead code removed successfully.");
+}
+
+/// When streaming deltas ARE received, the dedup guard must still prevent double-emission
+/// when the verbose Assistant summary arrives for the same API call.
+#[test]
+fn test_streaming_deltas_dedup_still_works() {
+    let mut processor = StreamProcessor::new();
+
+    // Streaming deltas arrive first
+    let delta = StreamMessage::ContentBlockDelta {
+        index: Some(0),
+        delta: ContentDelta {
+            delta_type: "text_delta".to_string(),
+            text: Some("Hello world".to_string()),
+            partial_json: None,
+        },
+    };
+    processor.process_message(delta);
+
+    // Verbose Assistant summary with identical text arrives after
+    let verbose_msg = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Hello world".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+    let verbose_events = processor.process_message(verbose_msg);
+
+    // No TextChunk must be emitted by the verbose message
+    let text_chunk_count = verbose_events
+        .iter()
+        .filter(|e| matches!(e, StreamEvent::TextChunk(_)))
+        .count();
+    assert_eq!(
+        text_chunk_count, 0,
+        "Dedup guard must suppress TextChunk when streaming deltas already emitted it"
+    );
+
+    // response_text must contain the text exactly once
+    let result = processor.finish();
+    assert_eq!(
+        result.response_text, "Hello world",
+        "response_text must not be duplicated"
+    );
+}
+
 #[test]
 fn test_system_without_subtype_still_works() {
     let mut processor = StreamProcessor::new();
