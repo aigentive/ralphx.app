@@ -186,6 +186,7 @@ pub trait TaskRepository: Send + Sync {
     /// * `include_archived` - Whether to include archived tasks
     /// * `ideation_session_id` - Optional ideation session ID to filter tasks
     /// * `execution_plan_id` - Optional execution plan ID to filter tasks (mutually exclusive with ideation_session_id)
+    /// * `categories` - Optional list of category strings to filter by (OR logic - matches any)
     ///
     /// # Returns
     /// * Tasks ordered by created_at DESC (newest first)
@@ -198,6 +199,7 @@ pub trait TaskRepository: Send + Sync {
         include_archived: bool,
         ideation_session_id: Option<&str>,
         execution_plan_id: Option<&str>,
+        categories: Option<&[String]>,
     ) -> AppResult<Vec<Task>>;
 
     /// Count total tasks for a project

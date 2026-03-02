@@ -19,6 +19,8 @@ export interface InfiniteTasksParams {
   projectId: string;
   /** Optional status filter (single status or array of statuses) */
   statuses?: InternalStatus[] | undefined;
+  /** Optional category filter — only return tasks matching these categories */
+  categories?: string[] | undefined;
   /** Whether to include archived tasks (default false) */
   includeArchived?: boolean | undefined;
   /** Optional ideation session ID to filter tasks by plan */
@@ -37,6 +39,7 @@ export const infiniteTaskKeys = {
       ...infiniteTaskKeys.all,
       params.projectId,
       params.statuses,
+      params.categories,
       params.includeArchived,
       params.ideationSessionId,
       params.executionPlanId,
@@ -88,6 +91,7 @@ export const infiniteTaskKeys = {
 export function useInfiniteTasksQuery({
   projectId,
   statuses,
+  categories,
   includeArchived = false,
   ideationSessionId,
   executionPlanId,
@@ -97,11 +101,12 @@ export function useInfiniteTasksQuery({
   const activePlanId = usePlanStore(selectActivePlanId(projectId));
 
   return useInfiniteQuery<TaskListResponse, Error>({
-    queryKey: infiniteTaskKeys.list({ projectId, statuses, includeArchived, ideationSessionId, executionPlanId }),
+    queryKey: infiniteTaskKeys.list({ projectId, statuses, categories, includeArchived, ideationSessionId, executionPlanId }),
     queryFn: async ({ pageParam = 0 }) => {
       return api.tasks.list({
         projectId,
         ...(statuses !== undefined && statuses.length > 0 && { statuses }),
+        ...(categories !== undefined && categories.length > 0 && { categories }),
         offset: pageParam as number,
         limit: 20,
         includeArchived,

@@ -9,16 +9,19 @@ use super::queries::TASK_COLUMNS;
 /// * `include_archived` - Whether to include archived tasks
 /// * `has_session_filter` - Whether to filter by ideation_session_id
 /// * `has_execution_plan_filter` - Whether to filter by execution_plan_id
+/// * `category_count` - Number of categories to filter by (0 = no filter)
 ///
 /// When status_count > 0, generates `internal_status IN (?2, ?3, ...)` clause.
 /// When has_session_filter = true, adds ideation_session_id = ? filter.
 /// When has_execution_plan_filter = true, adds execution_plan_id = ? filter.
+/// When category_count > 0, generates `category IN (...)` clause.
 /// Parameter indices depend on filters used (see implementation)
 pub(super) fn build_paginated_query(
     status_count: usize,
     include_archived: bool,
     has_session_filter: bool,
     has_execution_plan_filter: bool,
+    category_count: usize,
 ) -> String {
     let mut conditions = vec!["project_id = ?1".to_string()];
     let mut param_idx = 2;
@@ -48,6 +51,16 @@ pub(super) fn build_paginated_query(
     if has_execution_plan_filter {
         conditions.push(format!("execution_plan_id = ?{}", param_idx));
         param_idx += 1;
+    }
+
+    // Add category IN clause if needed
+    if category_count > 0 {
+        let placeholders: Vec<String> = (param_idx..param_idx + category_count)
+            .map(|i| format!("?{}", i))
+            .collect();
+        let in_clause = placeholders.join(", ");
+        conditions.push(format!("category IN ({})", in_clause));
+        param_idx += category_count;
     }
 
     let where_clause = conditions.join(" AND ");
