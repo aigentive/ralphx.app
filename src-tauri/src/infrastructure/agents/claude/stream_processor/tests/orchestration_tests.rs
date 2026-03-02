@@ -384,6 +384,360 @@ fn test_streaming_deltas_dedup_still_works() {
     );
 }
 
+/// 3 sequential API calls in one stream-json turn (each as an Assistant message with no
+/// ContentBlockDelta events) must all accumulate into `response_text` and `content_blocks`.
+#[test]
+fn test_three_api_calls_all_text_accumulated() {
+    let mut processor = StreamProcessor::new();
+
+    // API Call 1: stop_reason tool_use → more calls follow
+    let msg1 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Step one: planning.".to_string(),
+            }],
+            stop_reason: Some("tool_use".to_string()),
+        },
+        session_id: None,
+    };
+
+    // API Call 2: another tool_use
+    let msg2 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Step two: executing.".to_string(),
+            }],
+            stop_reason: Some("tool_use".to_string()),
+        },
+        session_id: None,
+    };
+
+    // API Call 3: final end_turn
+    let msg3 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Step three: done.".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+
+    processor.process_message(msg1);
+    processor.process_message(msg2);
+    processor.process_message(msg3);
+
+    let result = processor.finish();
+
+    assert_eq!(
+        result.response_text,
+        "Step one: planning.Step two: executing.Step three: done.",
+        "All 3 API call texts must appear in response_text"
+    );
+
+    let text_blocks: Vec<_> = result
+        .content_blocks
+        .iter()
+        .filter_map(|b| {
+            if let ContentBlockItem::Text { text } = b {
+                Some(text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        text_blocks.len(),
+        3,
+        "All 3 text blocks must appear in content_blocks"
+    );
+    assert_eq!(text_blocks[0], "Step one: planning.");
+    assert_eq!(text_blocks[1], "Step two: executing.");
+    assert_eq!(text_blocks[2], "Step three: done.");
+}
+
+/// Exact ideation-agent scenario that triggered the original bug:
+/// API Call 1 has BOTH a Text block AND a ToolUse block (stop_reason: tool_use).
+/// API Call 2 is the synthesis text only (stop_reason: end_turn).
+/// Both texts must appear in `response_text` and `content_blocks`.
+#[test]
+fn test_text_plus_tool_use_then_synthesis_text_not_dropped() {
+    let mut processor = StreamProcessor::new();
+
+    // API Call 1: text + tool_use (no ContentBlockDelta events — stream-json mode)
+    let msg1 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![
+                AssistantContent::Text {
+                    text: "I'll search for that.".to_string(),
+                },
+                AssistantContent::ToolUse {
+                    id: "toolu_search1".to_string(),
+                    name: "Task".to_string(),
+                    input: serde_json::json!({
+                        "description": "Find unused functions",
+                        "subagent_type": "Explore"
+                    }),
+                },
+            ],
+            stop_reason: Some("tool_use".to_string()),
+        },
+        session_id: None,
+    };
+
+    // API Call 2: synthesis text after subagent completed
+    let msg2 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Found 3 unused functions.".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+
+    processor.process_message(msg1);
+    processor.process_message(msg2);
+
+    let result = processor.finish();
+
+    assert_eq!(
+        result.response_text,
+        "I'll search for that.Found 3 unused functions.",
+        "Both texts must appear in response_text; synthesis must not be dropped"
+    );
+
+    let text_blocks: Vec<_> = result
+        .content_blocks
+        .iter()
+        .filter_map(|b| {
+            if let ContentBlockItem::Text { text } = b {
+                Some(text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        text_blocks.len(),
+        2,
+        "Both text content blocks must be present"
+    );
+    assert_eq!(text_blocks[0], "I'll search for that.");
+    assert_eq!(text_blocks[1], "Found 3 unused functions.");
+}
+
+/// `reset_for_next_turn` must clear `had_streaming_text_deltas` so that verbose-only
+/// Assistant messages in the NEXT turn are allowed through the dedup guard.
+#[test]
+fn test_had_streaming_text_deltas_resets_across_turns() {
+    let mut processor = StreamProcessor::new();
+
+    // Turn 1: streaming delta (sets had_streaming_text_deltas = true)
+    let delta = StreamMessage::ContentBlockDelta {
+        index: Some(0),
+        delta: ContentDelta {
+            delta_type: "text_delta".to_string(),
+            text: Some("streamed text".to_string()),
+            partial_json: None,
+        },
+    };
+    processor.process_message(delta);
+
+    // Turn 1: verbose Assistant summary — must be suppressed
+    let verbose_turn1 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "streamed text".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+    let turn1_events = processor.process_message(verbose_turn1);
+    let turn1_text_chunks = turn1_events
+        .iter()
+        .filter(|e| matches!(e, StreamEvent::TextChunk(_)))
+        .count();
+    assert_eq!(
+        turn1_text_chunks, 0,
+        "Turn 1 verbose summary must be suppressed by dedup guard"
+    );
+
+    // Reset for next turn — clears had_streaming_text_deltas
+    processor.reset_for_next_turn();
+
+    // Turn 2: verbose-only Assistant message (no deltas) — must emit TextChunk and accumulate
+    let verbose_turn2 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "Turn two result.".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+    let turn2_events = processor.process_message(verbose_turn2);
+
+    let turn2_text_chunks: Vec<_> = turn2_events
+        .iter()
+        .filter_map(|e| {
+            if let StreamEvent::TextChunk(t) = e {
+                Some(t.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        turn2_text_chunks,
+        vec!["Turn two result."],
+        "Turn 2 verbose text must emit TextChunk after flag was reset"
+    );
+
+    // response_text must contain turn 2 text
+    let result = processor.finish();
+    assert_eq!(
+        result.response_text, "Turn two result.",
+        "Turn 2 response_text must be populated after reset"
+    );
+}
+
+/// An empty string in a subsequent API call must not corrupt `response_text`
+/// and must not panic.
+#[test]
+fn test_empty_text_in_second_api_call_handled_gracefully() {
+    let mut processor = StreamProcessor::new();
+
+    // API Call 1: normal text
+    let msg1 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "First call.".to_string(),
+            }],
+            stop_reason: Some("tool_use".to_string()),
+        },
+        session_id: None,
+    };
+
+    // API Call 2: empty text (degenerate synthesis)
+    let msg2 = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: String::new(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+
+    processor.process_message(msg1);
+    processor.process_message(msg2); // must not panic
+
+    let result = processor.finish();
+
+    assert_eq!(
+        result.response_text, "First call.",
+        "Empty second-call text must not corrupt response_text"
+    );
+}
+
+/// Multi-API-call stream-json turn fed via `parse_line` + `process_parsed_line`
+/// (the production path) must accumulate all text correctly.
+#[test]
+fn test_multi_api_call_via_parse_line_accumulates_text() {
+    let mut processor = StreamProcessor::new();
+
+    // In stream-json mode the CLI emits full assistant JSON objects as lines.
+    // Feed two sequential assistant lines (no ContentBlockDelta events).
+    let line1 = r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Preparing analysis."}],"stop_reason":"tool_use","model":"claude-opus-4-5"},"session_id":null}"#;
+    let line2 = r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Analysis complete."}],"stop_reason":"end_turn","model":"claude-opus-4-5"},"session_id":null}"#;
+
+    if let Some(parsed) = StreamProcessor::parse_line(line1) {
+        processor.process_parsed_line(parsed);
+    }
+    if let Some(parsed) = StreamProcessor::parse_line(line2) {
+        processor.process_parsed_line(parsed);
+    }
+
+    let result = processor.finish();
+
+    assert_eq!(
+        result.response_text,
+        "Preparing analysis.Analysis complete.",
+        "Both assistant lines must be accumulated via parse_line + process_parsed_line"
+    );
+
+    let text_blocks: Vec<_> = result
+        .content_blocks
+        .iter()
+        .filter_map(|b| {
+            if let ContentBlockItem::Text { text } = b {
+                Some(text.as_str())
+            } else {
+                None
+            }
+        })
+        .collect();
+    assert_eq!(
+        text_blocks.len(),
+        2,
+        "Both text content blocks must be present after parse_line path"
+    );
+}
+
+/// Once streaming mode is active in a turn (ContentBlockDelta text events received),
+/// ALL subsequent verbose Assistant text in that same turn is suppressed.
+/// This documents the invariant explicitly.
+///
+/// Invariant: Once `had_streaming_text_deltas = true`, verbose text in the SAME turn
+/// is always suppressed — regardless of content.
+#[test]
+fn test_streaming_mode_assumption_documented() {
+    let mut processor = StreamProcessor::new();
+
+    // Streaming delta arrives — activates streaming mode for this turn
+    let delta = StreamMessage::ContentBlockDelta {
+        index: Some(0),
+        delta: ContentDelta {
+            delta_type: "text_delta".to_string(),
+            text: Some("streamed".to_string()),
+            partial_json: None,
+        },
+    };
+    processor.process_message(delta);
+
+    // Verbose Assistant summary with identical content arrives (Claude CLI always sends this)
+    let verbose_msg = StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::Text {
+                text: "streamed".to_string(),
+            }],
+            stop_reason: Some("end_turn".to_string()),
+        },
+        session_id: None,
+    };
+    let verbose_events = processor.process_message(verbose_msg);
+
+    // Once streaming mode is active in a turn, ALL verbose text is suppressed.
+    // This prevents the duplicate-text bug where the same content would appear twice.
+    let text_chunk_count = verbose_events
+        .iter()
+        .filter(|e| matches!(e, StreamEvent::TextChunk(_)))
+        .count();
+    assert_eq!(
+        text_chunk_count, 0,
+        "Once streaming mode is active in a turn, ALL verbose text must be suppressed"
+    );
+
+    // The streamed text must appear exactly once
+    let result = processor.finish();
+    assert_eq!(
+        result.response_text, "streamed",
+        "response_text must contain streamed text exactly once"
+    );
+}
+
 #[test]
 fn test_system_without_subtype_still_works() {
     let mut processor = StreamProcessor::new();
