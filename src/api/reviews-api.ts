@@ -87,6 +87,13 @@ export interface RequestTaskChangesInput {
   feedback: string;
 }
 
+/**
+ * Input for re-queueing an escalated task for AI re-review
+ */
+export interface ReReviewTaskInput {
+  task_id: string;
+}
+
 // ============================================================================
 // Reviews API
 // ============================================================================
@@ -168,6 +175,15 @@ export const reviewsApi = {
    */
   requestTaskChanges: (input: RequestTaskChangesInput) =>
     typedInvoke("request_task_changes_for_review", { input }, z.void()),
+
+  /**
+   * Re-queue an escalated task for AI re-review
+   * Transitions Escalated → PendingReview without re-executing.
+   * @param input Re-review input with task_id
+   * @returns void on success
+   */
+  reReviewTask: (input: ReReviewTaskInput) =>
+    typedInvoke("re_review_task_from_escalated", { input }, z.void()),
 } as const;
 
 // ============================================================================

@@ -185,6 +185,12 @@ pub struct RequestTaskChangesInput {
     pub feedback: String,
 }
 
+/// Input for re-queueing an escalated task for AI re-review
+#[derive(Debug, Deserialize)]
+pub struct ReReviewTaskInput {
+    pub task_id: String,
+}
+
 // ============================================================================
 // Review Issue Types
 // ============================================================================
