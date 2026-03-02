@@ -324,6 +324,7 @@ impl TaskRepository for MemoryTaskRepository {
         include_archived: bool,
         ideation_session_id: Option<&str>,
         execution_plan_id: Option<&str>,
+        categories: Option<&[String]>,
     ) -> AppResult<Vec<Task>> {
         let tasks = self.tasks.read().await;
 
@@ -364,6 +365,13 @@ impl TaskRepository for MemoryTaskRepository {
                         .as_ref()
                         .is_none_or(|id| id.as_str() != epid)
                     {
+                        return false;
+                    }
+                }
+
+                // Match category if provided (any of the categories)
+                if let Some(cats) = categories {
+                    if !cats.iter().any(|c| *c == t.category.to_string()) {
                         return false;
                     }
                 }

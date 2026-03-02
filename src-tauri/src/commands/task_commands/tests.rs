@@ -660,7 +660,7 @@ async fn test_list_paginated_empty_results() {
     // No tasks exist
     let result = state
         .task_repo
-        .list_paginated(&project_id, None, 0, 20, false, None, None)
+        .list_paginated(&project_id, None, 0, 20, false, None, None, None)
         .await
         .unwrap();
 
@@ -692,7 +692,7 @@ async fn test_list_paginated_first_page() {
     // Get first page (limit 3)
     let result = state
         .task_repo
-        .list_paginated(&project_id, None, 0, 3, false, None, None)
+        .list_paginated(&project_id, None, 0, 3, false, None, None, None)
         .await
         .unwrap();
 
@@ -724,7 +724,7 @@ async fn test_list_paginated_last_page() {
     // Get last page (offset 3, limit 3 = should return 2 tasks)
     let result = state
         .task_repo
-        .list_paginated(&project_id, None, 3, 3, false, None, None)
+        .list_paginated(&project_id, None, 3, 3, false, None, None, None)
         .await
         .unwrap();
 
@@ -748,7 +748,7 @@ async fn test_list_paginated_offset_beyond_total() {
     // Request offset 10 (beyond total of 3)
     let result = state
         .task_repo
-        .list_paginated(&project_id, None, 10, 20, false, None, None)
+        .list_paginated(&project_id, None, 10, 20, false, None, None, None)
         .await
         .unwrap();
 
@@ -784,7 +784,7 @@ async fn test_list_paginated_excludes_archived_by_default() {
     // List without archived (include_archived = false)
     let result = state
         .task_repo
-        .list_paginated(&project_id, None, 0, 20, false, None, None)
+        .list_paginated(&project_id, None, 0, 20, false, None, None, None)
         .await
         .unwrap();
 
@@ -823,7 +823,7 @@ async fn test_list_paginated_includes_archived_when_requested() {
     // List with archived (include_archived = true)
     let result = state
         .task_repo
-        .list_paginated(&project_id, None, 0, 20, true, None, None)
+        .list_paginated(&project_id, None, 0, 20, true, None, None, None)
         .await
         .unwrap();
 
@@ -869,7 +869,7 @@ async fn test_list_paginated_ordered_by_created_at_desc() {
     // Get paginated tasks
     let result = state
         .task_repo
-        .list_paginated(&project_id, None, 0, 20, false, None, None)
+        .list_paginated(&project_id, None, 0, 20, false, None, None, None)
         .await
         .unwrap();
 

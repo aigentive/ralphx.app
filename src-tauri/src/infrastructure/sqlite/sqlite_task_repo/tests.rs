@@ -1189,7 +1189,7 @@ async fn test_list_paginated_respects_limit() {
     }
 
     let tasks = repo
-        .list_paginated(&project_id, None, 0, 3, false, None, None)
+        .list_paginated(&project_id, None, 0, 3, false, None, None, None)
         .await
         .unwrap();
     assert_eq!(tasks.len(), 3);
@@ -1208,11 +1208,11 @@ async fn test_list_paginated_offset_skips_tasks() {
     }
 
     let page1 = repo
-        .list_paginated(&project_id, None, 0, 2, false, None, None)
+        .list_paginated(&project_id, None, 0, 2, false, None, None, None)
         .await
         .unwrap();
     let page2 = repo
-        .list_paginated(&project_id, None, 2, 2, false, None, None)
+        .list_paginated(&project_id, None, 2, 2, false, None, None, None)
         .await
         .unwrap();
 
@@ -1243,6 +1243,7 @@ async fn test_list_paginated_filters_by_status() {
             false,
             None,
             None,
+            None,
         )
         .await
         .unwrap();
@@ -1264,16 +1265,61 @@ async fn test_list_paginated_include_archived_flag() {
     repo.archive(&to_archive.id).await.unwrap();
 
     let active_only = repo
-        .list_paginated(&project_id, None, 0, 10, false, None, None)
+        .list_paginated(&project_id, None, 0, 10, false, None, None, None)
         .await
         .unwrap();
     assert_eq!(active_only.len(), 1);
 
     let with_archived = repo
-        .list_paginated(&project_id, None, 0, 10, true, None, None)
+        .list_paginated(&project_id, None, 0, 10, true, None, None, None)
         .await
         .unwrap();
     assert_eq!(with_archived.len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_paginated_filters_by_category() {
+    let conn = setup_test_db();
+    let repo = SqliteTaskRepository::new(conn);
+    let project_id = ProjectId::from_string("test-project".to_string());
+
+    let regular = Task::new_with_category(
+        ProjectId::from_string("test-project".to_string()),
+        "Regular Task".to_string(),
+        TaskCategory::Regular,
+    );
+    let merge = Task::new_with_category(
+        ProjectId::from_string("test-project".to_string()),
+        "Merge Task".to_string(),
+        TaskCategory::PlanMerge,
+    );
+    repo.create(regular).await.unwrap();
+    repo.create(merge).await.unwrap();
+
+    // Filter for plan_merge only
+    let plan_merge_cats = vec!["plan_merge".to_string()];
+    let merge_tasks = repo
+        .list_paginated(&project_id, None, 0, 10, false, None, None, Some(&plan_merge_cats))
+        .await
+        .unwrap();
+    assert_eq!(merge_tasks.len(), 1);
+    assert_eq!(merge_tasks[0].title, "Merge Task");
+
+    // Filter for regular only
+    let regular_cats = vec!["regular".to_string()];
+    let regular_tasks = repo
+        .list_paginated(&project_id, None, 0, 10, false, None, None, Some(&regular_cats))
+        .await
+        .unwrap();
+    assert_eq!(regular_tasks.len(), 1);
+    assert_eq!(regular_tasks[0].title, "Regular Task");
+
+    // No category filter returns all
+    let all_tasks = repo
+        .list_paginated(&project_id, None, 0, 10, false, None, None, None)
+        .await
+        .unwrap();
+    assert_eq!(all_tasks.len(), 2);
 }
 
 // ==================== GET_OLDEST_READY_TASK(S) TESTS ====================

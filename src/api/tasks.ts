@@ -123,6 +123,7 @@ export const tasksApi = {
   list: (params: {
     projectId: string;
     statuses?: string[];
+    categories?: string[];
     offset?: number;
     limit?: number;
     includeArchived?: boolean;

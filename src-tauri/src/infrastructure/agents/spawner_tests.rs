@@ -100,6 +100,7 @@ impl TaskRepository for MockTaskRepoForSpawner {
         _: bool,
         _: Option<&str>,
         _: Option<&str>,
+        _: Option<&[String]>,
     ) -> AppResult<Vec<Task>> {
         Ok(vec![])
     }

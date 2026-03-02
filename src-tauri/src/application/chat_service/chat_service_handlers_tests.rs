@@ -93,6 +93,7 @@ impl TaskRepository for StubTaskRepo {
         _: bool,
         _: Option<&str>,
         _: Option<&str>,
+        _: Option<&[String]>,
     ) -> AppResult<Vec<Task>> {
         Ok(vec![])
     }

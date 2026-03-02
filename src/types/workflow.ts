@@ -424,6 +424,15 @@ export const defaultWorkflow: WorkflowSchema = {
       mapsTo: "approved",
       groups: [
         {
+          id: "awaiting_merge",
+          label: "Awaiting Merge",
+          statuses: ["blocked"],
+          icon: "Clock",
+          accentColor: "hsl(220 10% 40%)",
+          canDragFrom: false,
+          canDropTo: false,
+        },
+        {
           id: "merging",
           label: "Merging",
           statuses: ["pending_merge", "merging"],

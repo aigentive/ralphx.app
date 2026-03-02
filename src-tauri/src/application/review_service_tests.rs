@@ -299,6 +299,7 @@ impl TaskRepository for MockTaskRepo {
         _include_archived: bool,
         _ideation_session_id: Option<&str>,
         _execution_plan_id: Option<&str>,
+        _categories: Option<&[String]>,
     ) -> AppResult<Vec<Task>> {
         Ok(self.tasks.read().unwrap().values().cloned().collect())
     }

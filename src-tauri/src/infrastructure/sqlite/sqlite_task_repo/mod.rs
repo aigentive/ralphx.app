@@ -543,13 +543,16 @@ impl TaskRepository for SqliteTaskRepository {
         include_archived: bool,
         ideation_session_id: Option<&str>,
         execution_plan_id: Option<&str>,
+        categories: Option<&[String]>,
     ) -> AppResult<Vec<Task>> {
         let project_id = project_id.as_str().to_string();
         let ideation_session_id = ideation_session_id.map(|s| s.to_string());
         let execution_plan_id = execution_plan_id.map(|s| s.to_string());
+        let categories: Option<Vec<String>> = categories.map(|c| c.to_vec());
         let status_count = statuses.as_ref().map_or(0, |s| s.len());
         let has_session_filter = ideation_session_id.is_some();
         let has_execution_plan_filter = execution_plan_id.is_some();
+        let category_count = categories.as_ref().map_or(0, |c| c.len());
         self.db
             .run(move |conn| {
                 let query = query_builder::build_paginated_query(
@@ -557,6 +560,7 @@ impl TaskRepository for SqliteTaskRepository {
                     include_archived,
                     has_session_filter,
                     has_execution_plan_filter,
+                    category_count,
                 );
                 let mut stmt = conn.prepare(&query)?;
 
@@ -575,6 +579,12 @@ impl TaskRepository for SqliteTaskRepository {
 
                 if let Some(ref epid) = execution_plan_id {
                     params.push(Box::new(epid.clone()));
+                }
+
+                if let Some(ref cats) = categories {
+                    for cat in cats {
+                        params.push(Box::new(cat.clone()));
+                    }
                 }
 
                 params.push(Box::new(limit as i64));

@@ -683,6 +683,7 @@ impl TaskRepository for MockTaskRepository {
         _include_archived: bool,
         _ideation_session_id: Option<&str>,
         _execution_plan_id: Option<&str>,
+        _categories: Option<&[String]>,
     ) -> AppResult<Vec<Task>> {
         // Simple mock implementation
         Ok(self

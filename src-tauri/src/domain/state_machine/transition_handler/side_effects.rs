@@ -947,6 +947,7 @@ impl<'a> super::TransitionHandler<'a> {
                     false,  // exclude archived
                     None,   // no session filter
                     Some(ep_id.as_str()),
+                    None,   // no category filter
                 )
                 .await
             {
