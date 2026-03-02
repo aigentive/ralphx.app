@@ -25,8 +25,8 @@ use crate::domain::entities::{AgentRunId, ChatContextType, ChatConversationId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskRepository, TaskStepRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
+    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentKey, RunningAgentRegistry};
 use tokio_util::sync::CancellationToken;
@@ -47,6 +47,7 @@ pub(super) struct BackgroundRunRepos {
     pub message_queue: Arc<MessageQueue>,
     pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
     pub task_step_repo: Option<Arc<dyn TaskStepRepository>>,
+    pub review_repo: Option<Arc<dyn ReviewRepository>>,
 }
 
 /// Full context for a background agent run, replacing 29 individual parameters.
@@ -190,6 +191,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
             message_queue,
             running_agent_registry,
             task_step_repo,
+            review_repo,
         } = repos;
 
         tracing::debug!("send_background start");
@@ -532,6 +534,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     &task_step_repo,
                     &app_handle,
                     &interactive_process_registry,
+                    &review_repo,
                 )
                 .await;
 
@@ -714,6 +717,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     team_mode,
                     run_chain_id.clone(),
                     &interactive_process_registry,
+                    &review_repo,
                 )
                 .await;
             }

@@ -288,6 +288,7 @@ pub struct CompleteReviewRequest {
     pub summary: Option<String>,
     pub feedback: Option<String>,
     pub issues: Option<Vec<ReviewIssue>>,
+    pub escalation_reason: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

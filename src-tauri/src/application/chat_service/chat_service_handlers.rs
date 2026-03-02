@@ -18,13 +18,14 @@ use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
     InternalStatus, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
-    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, TaskId, TaskStepStatus,
+    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, ReviewNote, ReviewOutcome,
+    ReviewerType, TaskId, TaskStepStatus,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskProposalRepository, TaskRepository, TaskStepRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
+    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
 };
 use crate::application::InteractiveProcessRegistry;
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
@@ -110,6 +111,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
     app_handle: &Option<AppHandle<R>>,
     interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
+    review_repo: &Option<Arc<dyn ReviewRepository>>,
 ) {
     // Handle task state transition (only for TaskExecution)
     if context_type == ChatContextType::TaskExecution {
@@ -319,6 +321,24 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     updated_task.touch();
                     let _ = task_repo.update(&updated_task).await;
 
+                    // Store a ReviewNote so the frontend can display why the task was escalated.
+                    if let Some(ref repo) = review_repo {
+                        let reason = "Review agent exited without calling complete_review";
+                        let note = ReviewNote::with_notes(
+                            task_id.clone(),
+                            ReviewerType::Ai,
+                            ReviewOutcome::Rejected,
+                            reason.to_string(),
+                        );
+                        if let Err(e) = repo.add_note(&note).await {
+                            tracing::warn!(
+                                task_id = task_id.as_str(),
+                                error = %e,
+                                "Failed to store escalation ReviewNote after incomplete review"
+                            );
+                        }
+                    }
+
                     // Transition to Escalated (no scheduler needed)
                     let transition_service = TaskTransitionService::new(
                         Arc::clone(task_repo),
@@ -467,6 +487,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     team_mode: bool,
     run_chain_id: Option<String>,
     interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
+    review_repo: &Option<Arc<dyn ReviewRepository>>,
 ) -> bool {
     // Handle cancellation: skip all recovery/transitions, just mark as stopped
     if matches!(stream_error, Some(StreamError::Cancelled)) {
@@ -642,6 +663,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                                 running_agent_registry,
                                             ),
                                             task_step_repo: None,
+                                            review_repo: review_repo.clone(),
                                         },
                                         execution_state: execution_state.clone(),
                                         question_state: question_state.clone(),
@@ -1136,6 +1158,24 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                 &retry_after,
                                 "review",
                                 context_id,
+                            );
+                        }
+                    }
+
+                    // Store a ReviewNote so the frontend can display why the task was escalated.
+                    if let Some(ref repo) = review_repo {
+                        let reason = format!("Review agent crashed: {}", error);
+                        let note = ReviewNote::with_notes(
+                            task_id.clone(),
+                            ReviewerType::Ai,
+                            ReviewOutcome::Rejected,
+                            reason,
+                        );
+                        if let Err(e) = repo.add_note(&note).await {
+                            tracing::warn!(
+                                task_id = task_id.as_str(),
+                                error = %e,
+                                "Failed to store escalation ReviewNote after agent error"
                             );
                         }
                     }

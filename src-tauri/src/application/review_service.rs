@@ -126,11 +126,16 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
             ReviewToolOutcome::Escalate => {
                 review.reject(input.notes.clone());
                 self.review_repo.update(review).await?;
+                // Prefer escalation_reason (concise human explanation) over generic notes.
+                let escalation_note = input
+                    .escalation_reason
+                    .as_deref()
+                    .unwrap_or(&input.notes);
                 self.add_review_note(
                     &review.task_id,
                     ReviewerType::Ai,
                     ReviewOutcome::Rejected,
-                    &input.notes,
+                    escalation_note,
                 )
                 .await?;
                 Ok(None)

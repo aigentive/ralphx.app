@@ -67,6 +67,7 @@ async fn test_complete_review_rejected_when_task_already_review_passed() {
         summary: None,
         feedback: None,
         issues: None,
+        escalation_reason: None,
     };
 
     let result = complete_review(State(state), Json(req)).await;
@@ -104,6 +105,7 @@ async fn test_complete_review_rejected_when_task_merged() {
         summary: None,
         feedback: None,
         issues: None,
+        escalation_reason: None,
     };
 
     let result = complete_review(State(state), Json(req)).await;
@@ -137,6 +139,7 @@ async fn test_complete_review_rejected_when_task_ready() {
         summary: None,
         feedback: Some("looks wrong".to_string()),
         issues: None,
+        escalation_reason: None,
     };
 
     let result = complete_review(State(state), Json(req)).await;
@@ -179,6 +182,7 @@ async fn test_complete_review_guard_does_not_fire_for_reviewing_task() {
         summary: None,
         feedback: None,
         issues: None,
+        escalation_reason: None,
     };
 
     let result = complete_review(State(state), Json(req)).await;
@@ -217,6 +221,7 @@ async fn test_complete_review_no_ipr_entry_is_safe() {
         summary: None,
         feedback: None,
         issues: None,
+        escalation_reason: None,
     };
     let result = complete_review(State(state.clone()), Json(req)).await;
 
@@ -277,6 +282,7 @@ async fn test_complete_review_ipr_removed_on_success() {
         summary: Some("LGTM".to_string()),
         feedback: None,
         issues: None,
+        escalation_reason: None,
     };
     let result = complete_review(State(state.clone()), Json(req)).await;
 
@@ -347,6 +353,7 @@ async fn test_complete_review_ipr_removed_on_needs_changes() {
         summary: Some("Found issues".to_string()),
         feedback: Some("Please fix the error handling".to_string()),
         issues: None,
+        escalation_reason: None,
     };
     let result = complete_review(State(state.clone()), Json(req)).await;
 
@@ -415,6 +422,7 @@ async fn test_complete_review_ipr_removed_on_escalate() {
         summary: Some("Complex issue requiring human review".to_string()),
         feedback: Some("Needs a human expert to decide".to_string()),
         issues: None,
+        escalation_reason: None,
     };
     let result = complete_review(State(state.clone()), Json(req)).await;
 

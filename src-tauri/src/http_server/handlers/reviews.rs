@@ -127,13 +127,20 @@ pub async fn complete_review(
             .collect()
     });
 
-    // Create review note for history
+    // Create review note for history.
+    // For escalations, prefer escalation_reason over generic feedback so the
+    // frontend EscalatedTaskDetail can display a precise reason.
+    let note_content = if matches!(outcome, ReviewToolOutcome::Escalate) {
+        req.escalation_reason.clone().or_else(|| req.feedback.clone())
+    } else {
+        req.feedback.clone()
+    };
     let review_note = ReviewNote::with_content(
         task_id.clone(),
         ReviewerType::Ai,
         review_outcome,
         req.summary.clone(),
-        feedback.clone(),
+        note_content,
         domain_issues,
     );
     state

@@ -976,6 +976,11 @@ export const ALL_TOOLS: Tool[] = [
           },
           description: "Specific issues found during review",
         },
+        escalation_reason: {
+          type: "string",
+          description:
+            "Required when decision is 'escalate': concise explanation of why human review is needed",
+        },
       },
       required: ["task_id", "decision", "feedback"],
     },
