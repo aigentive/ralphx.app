@@ -87,7 +87,7 @@ impl InternalStatus {
             PendingReview => &[Reviewing],
             Reviewing => &[ReviewPassed, RevisionNeeded, Escalated, Stopped, Paused],
             ReviewPassed => &[Approved, RevisionNeeded],
-            Escalated => &[Approved, RevisionNeeded],
+            Escalated => &[Approved, RevisionNeeded, PendingReview],
             RevisionNeeded => &[ReExecuting, Cancelled],
             ReExecuting => &[PendingReview, Failed, Blocked, Stopped, Paused],
 

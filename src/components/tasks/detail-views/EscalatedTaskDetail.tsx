@@ -34,6 +34,9 @@ import {
   MessageSquare,
   HelpCircle,
   ThumbsUp,
+  RefreshCw,
+  XCircle,
+  Clock,
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
@@ -50,10 +53,91 @@ function getLatestEscalationReview(
   return history[0] ?? null;
 }
 
+type EscalationType = "reason_provided" | "agent_error" | "incomplete" | "failed";
+
+interface EscalationInfo {
+  type: EscalationType;
+  header: string;
+  subtitle: string;
+  reason: string | null;
+  suggestReReview: boolean;
+}
+
+function parseMetadataError(metadata: string | null | undefined): string | null {
+  if (!metadata) return null;
+  try {
+    const obj = JSON.parse(metadata) as Record<string, unknown>;
+    const err = obj["last_agent_error"];
+    return typeof err === "string" ? err : null;
+  } catch {
+    return null;
+  }
+}
+
+function determineEscalationInfo(
+  review: ReviewNoteResponse | null,
+  metadata: string | null | undefined
+): EscalationInfo {
+  const agentError = parseMetadataError(metadata);
+  const notes = review?.notes ?? null;
+
+  if (notes) {
+    const notesLower = notes.toLowerCase();
+    const isTimeout = notesLower.includes("timed out");
+    const isFailed = /failed \d+ times/.test(notesLower);
+    if (isTimeout || isFailed) {
+      return {
+        type: "failed",
+        header: "Review Failed",
+        subtitle: "The reviewer couldn't complete after multiple attempts",
+        reason: notes,
+        suggestReReview: false,
+      };
+    }
+    return {
+      type: "reason_provided",
+      header: "Escalated to Human",
+      subtitle: "AI reviewer couldn't make a decision",
+      reason: notes,
+      suggestReReview: false,
+    };
+  }
+
+  if (agentError) {
+    return {
+      type: "agent_error",
+      header: "Review Interrupted",
+      subtitle: "Review agent encountered an error",
+      reason: `Review agent encountered an error: ${agentError}`,
+      suggestReReview: true,
+    };
+  }
+
+  return {
+    type: "incomplete",
+    header: "Review Incomplete",
+    subtitle: "Review was interrupted before completion",
+    reason: "The review was interrupted before completion (app restart or timeout)",
+    suggestReReview: true,
+  };
+}
+
+const ESCALATION_ICON_MAP: Record<EscalationType, React.ElementType> = {
+  reason_provided: Bot,
+  agent_error: XCircle,
+  incomplete: Clock,
+  failed: AlertTriangle,
+};
+
 /**
  * EscalationReasonCard - Shows why AI escalated (reason text only)
  */
-function EscalationReasonCard({ review }: { review: ReviewNoteResponse | null }) {
+function EscalationReasonCard({
+  escalationInfo,
+}: {
+  escalationInfo: EscalationInfo;
+}) {
+  const Icon = ESCALATION_ICON_MAP[escalationInfo.type];
   return (
     <DetailCard variant="warning">
       {/* Header */}
@@ -62,7 +146,7 @@ function EscalationReasonCard({ review }: { review: ReviewNoteResponse | null })
           className="flex items-center justify-center w-9 h-9 rounded-xl shrink-0"
           style={{ backgroundColor: "rgba(255, 159, 10, 0.2)" }}
         >
-          <Bot className="w-5 h-5" style={{ color: "#ff9f0a" }} />
+          <Icon className="w-5 h-5" style={{ color: "#ff9f0a" }} />
         </div>
         <div>
           <span className="text-[13px] font-semibold text-white/80 block">
@@ -75,10 +159,13 @@ function EscalationReasonCard({ review }: { review: ReviewNoteResponse | null })
       </div>
 
       {/* Reason text */}
-      {review?.notes ? (
-        <div className="text-[13px] text-white/55 leading-relaxed pl-12" style={{ wordBreak: "break-word" }}>
+      {escalationInfo.reason ? (
+        <div
+          className="text-[13px] text-white/55 leading-relaxed pl-12"
+          style={{ wordBreak: "break-word" }}
+        >
           <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-            {review.notes}
+            {escalationInfo.reason}
           </ReactMarkdown>
         </div>
       ) : (
@@ -95,12 +182,16 @@ function EscalationReasonCard({ review }: { review: ReviewNoteResponse | null })
  */
 function DecisionButtonsCard({
   taskId,
+  suggestReReview,
   onApproveSuccess,
   onRequestChangesSuccess,
+  onReReviewSuccess,
 }: {
   taskId: string;
+  suggestReReview: boolean;
   onApproveSuccess?: () => void;
   onRequestChangesSuccess?: () => void;
+  onReReviewSuccess?: () => void;
 }) {
   const queryClient = useQueryClient();
   const [showFeedback, setShowFeedback] = useState(false);
@@ -131,6 +222,17 @@ function DecisionButtonsCard({
     },
   });
 
+  const reReviewMutation = useMutation({
+    mutationFn: async () => {
+      await api.reviews.reReviewTask({ task_id: taskId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      onReReviewSuccess?.();
+    },
+  });
+
   const handleRequestChangesClick = () => {
     if (showFeedback && feedback.trim()) {
       requestChangesMutation.mutate(feedback.trim());
@@ -150,7 +252,71 @@ function DecisionButtonsCard({
     approveMutation.mutate();
   }, [confirm, approveMutation]);
 
-  const isLoading = approveMutation.isPending || requestChangesMutation.isPending;
+  const isLoading =
+    approveMutation.isPending ||
+    requestChangesMutation.isPending ||
+    reReviewMutation.isPending;
+
+  const reReviewButton = (
+    <Button
+      data-testid="re-review-button"
+      onClick={() => reReviewMutation.mutate()}
+      disabled={isLoading || showFeedback}
+      className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
+      style={{
+        backgroundColor: "#ff6b35",
+        color: "white",
+      }}
+    >
+      {reReviewMutation.isPending ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : (
+        <RefreshCw className="w-4 h-4" />
+      )}
+      Re-Review
+    </Button>
+  );
+
+  const approveButton = (
+    <Button
+      data-testid="approve-button"
+      onClick={handleApprove}
+      disabled={isLoading || showFeedback}
+      className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
+      style={{
+        backgroundColor: "hsl(142 70% 45%)",
+        color: "white",
+      }}
+    >
+      {approveMutation.isPending ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : (
+        <ThumbsUp className="w-4 h-4" />
+      )}
+      Approve Anyway
+    </Button>
+  );
+
+  const requestChangesButton = (
+    <Button
+      data-testid="request-changes-button"
+      onClick={handleRequestChangesClick}
+      disabled={isLoading || (showFeedback && !feedback.trim())}
+      variant="ghost"
+      className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
+      style={{
+        color: "hsl(35 100% 55%)",
+        backgroundColor: "hsl(220 10% 16%)",
+      }}
+    >
+      {requestChangesMutation.isPending ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : (
+        <RotateCcw className="w-4 h-4" />
+      )}
+      {showFeedback ? "Submit" : "Request Changes"}
+    </Button>
+  );
 
   return (
     <DetailCard>
@@ -177,44 +343,21 @@ function DecisionButtonsCard({
         </div>
       )}
 
-      {/* Decision buttons */}
+      {/* Decision buttons — re-review first when suggested */}
       <div className="flex gap-2 justify-end">
-        <Button
-          data-testid="approve-button"
-          onClick={handleApprove}
-          disabled={isLoading || showFeedback}
-          className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] transition-colors"
-          style={{
-            backgroundColor: "hsl(142 70% 45%)",
-            color: "white",
-          }}
-        >
-          {approveMutation.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <ThumbsUp className="w-4 h-4" />
-          )}
-          Approve Anyway
-        </Button>
-
-        <Button
-          data-testid="request-changes-button"
-          onClick={handleRequestChangesClick}
-          disabled={isLoading || (showFeedback && !feedback.trim())}
-          variant="ghost"
-          className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px]"
-          style={{
-            color: "hsl(35 100% 55%)",
-            backgroundColor: "hsl(220 10% 16%)",
-          }}
-        >
-          {requestChangesMutation.isPending ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : (
-            <RotateCcw className="w-4 h-4" />
-          )}
-          {showFeedback ? "Submit" : "Request Changes"}
-        </Button>
+        {suggestReReview ? (
+          <>
+            {reReviewButton}
+            {approveButton}
+            {requestChangesButton}
+          </>
+        ) : (
+          <>
+            {approveButton}
+            {requestChangesButton}
+            {reReviewButton}
+          </>
+        )}
       </div>
 
       {showFeedback && (
@@ -229,9 +372,13 @@ function DecisionButtonsCard({
         </button>
       )}
 
-      {(approveMutation.error || requestChangesMutation.error) && (
+      {(approveMutation.error ||
+        requestChangesMutation.error ||
+        reReviewMutation.error) && (
         <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
-          {approveMutation.error?.message || requestChangesMutation.error?.message}
+          {approveMutation.error?.message ||
+            requestChangesMutation.error?.message ||
+            reReviewMutation.error?.message}
         </p>
       )}
 
@@ -243,7 +390,8 @@ function DecisionButtonsCard({
 export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTaskDetailProps) {
   const { data: history, isLoading } = useTaskStateHistory(task.id);
   const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
-  const escalationReview = getLatestEscalationReview(history);
+  const escalationReview = getLatestEscalationReview(history ?? []);
+  const escalationInfo = determineEscalationInfo(escalationReview, task.metadata);
 
   // Fetch structured issues from review issues API
   const { data: issues = [] } = useQuery({
@@ -270,8 +418,8 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
       {/* Status Banner */}
       <StatusBanner
         icon={HelpCircle}
-        title="Escalated to Human"
-        subtitle="AI reviewer couldn't make a decision"
+        title={escalationInfo.header}
+        subtitle={escalationInfo.subtitle}
         variant="warning"
         badge={
           <StatusPill
@@ -286,7 +434,7 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
       {/* Escalation Reason */}
       <section data-testid="ai-escalation-reason-section">
         <SectionTitle>Why AI Escalated</SectionTitle>
-        <EscalationReasonCard review={escalationReview} />
+        <EscalationReasonCard escalationInfo={escalationInfo} />
       </section>
 
       {/* Issues Found */}
@@ -304,7 +452,7 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
         <SectionTitle>Previous Attempts</SectionTitle>
         <DetailCard>
           <ReviewTimeline
-            history={history}
+            history={history ?? []}
             filter={(e) => e.outcome === "changes_requested"}
             showAttemptNumbers
             emptyMessage="No previous attempts"
@@ -317,7 +465,10 @@ export function EscalatedTaskDetail({ task, isHistorical = false }: EscalatedTas
       {!isHistorical && (
         <section data-testid="action-buttons">
           <SectionTitle>Your Decision</SectionTitle>
-          <DecisionButtonsCard taskId={task.id} />
+          <DecisionButtonsCard
+            taskId={task.id}
+            suggestReReview={escalationInfo.suggestReReview}
+          />
         </section>
       )}
     </TwoColumnLayout>

@@ -378,7 +378,7 @@ pub async fn get_fix_task_attempts(
 // Commands - Task-based approval (for human review after AI review)
 // ============================================================================
 
-use super::review_commands_types::{ApproveTaskInput, RequestTaskChangesInput};
+use super::review_commands_types::{ApproveTaskInput, ReReviewTaskInput, RequestTaskChangesInput};
 use crate::application::{TaskSchedulerService, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -580,6 +580,78 @@ pub async fn request_task_changes_for_review(
             "task_id": task_id.as_str(),
             "old_status": old_status,
             "new_status": "revision_needed",
+        }),
+    );
+
+    Ok(())
+}
+
+/// Re-queue an escalated task for AI re-review
+/// Transitions Escalated → PendingReview, skipping re-execution.
+/// Use when the review was interrupted or the AI couldn't make a decision.
+#[tauri::command]
+pub async fn re_review_task_from_escalated(
+    input: ReReviewTaskInput,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let task_id = TaskId::from_string(input.task_id);
+
+    // 1. Get task and validate state is Escalated
+    let task = state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Task not found: {}", task_id.as_str()))?;
+
+    if task.internal_status != InternalStatus::Escalated {
+        return Err(format!(
+            "Task must be in 'escalated' status to re-review. Current status: {}.",
+            task.internal_status.as_str()
+        ));
+    }
+
+    // 2. Transition to PendingReview (state machine auto-triggers AI reviewer)
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_attachment_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+
+    let old_status = task.internal_status.as_str().to_string();
+    transition_service
+        .transition_task(&task_id, InternalStatus::PendingReview)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Emit events
+    let _ = app.emit(
+        "review:re_review_requested",
+        serde_json::json!({
+            "task_id": task_id.as_str(),
+        }),
+    );
+    let _ = app.emit(
+        "task:status_changed",
+        serde_json::json!({
+            "task_id": task_id.as_str(),
+            "old_status": old_status,
+            "new_status": "pending_review",
         }),
     );
 
