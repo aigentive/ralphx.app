@@ -179,7 +179,8 @@ fn create_chat_service(
     .with_task_proposal_repo(state.task_proposal_repo.clone())
     .with_task_step_repo(state.task_step_repo.clone())
     .with_streaming_state_cache(state.streaming_state_cache.clone())
-    .with_interactive_process_registry(state.interactive_process_registry.clone());
+    .with_interactive_process_registry(state.interactive_process_registry.clone())
+    .with_review_repo(state.review_repo.clone());
     if let Some(svc) = team_service {
         service = service.with_team_service(svc);
     }

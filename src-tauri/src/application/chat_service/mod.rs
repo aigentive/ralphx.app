@@ -37,8 +37,9 @@ use crate::domain::entities::{
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, StateHistoryMetadata,
-    TaskDependencyRepository, TaskProposalRepository, TaskRepository, TaskStepRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
+    StateHistoryMetadata, TaskDependencyRepository, TaskProposalRepository, TaskRepository,
+    TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, QueuedMessage, RunningAgentKey, RunningAgentRegistry};
 use async_trait::async_trait;
@@ -278,6 +279,7 @@ pub struct ClaudeChatService<R: Runtime = tauri::Wry> {
     plan_branch_repo: std::sync::Mutex<Option<Arc<dyn PlanBranchRepository>>>,
     task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     task_step_repo: Option<Arc<dyn TaskStepRepository>>,
+    review_repo: Option<Arc<dyn ReviewRepository>>,
     model: String,
     /// When true, agent resolution uses team-lead variants if configured.
     /// Uses AtomicBool for interior mutability so team_mode can be set
@@ -341,6 +343,7 @@ impl<R: Runtime> ClaudeChatService<R> {
             plan_branch_repo: std::sync::Mutex::new(None),
             task_proposal_repo: None,
             task_step_repo: None,
+            review_repo: None,
             model: "sonnet".to_string(),
             team_mode: AtomicBool::new(false),
             team_service: None,
@@ -371,6 +374,11 @@ impl<R: Runtime> ClaudeChatService<R> {
 
     pub fn with_task_step_repo(mut self, repo: Arc<dyn TaskStepRepository>) -> Self {
         self.task_step_repo = Some(repo);
+        self
+    }
+
+    pub fn with_review_repo(mut self, repo: Arc<dyn ReviewRepository>) -> Self {
+        self.review_repo = Some(repo);
         self
     }
 
@@ -1085,6 +1093,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 running_agent_registry: Arc::clone(&self.running_agent_registry),
                 task_proposal_repo: self.task_proposal_repo.clone(),
                 task_step_repo: self.task_step_repo.clone(),
+                review_repo: self.review_repo.clone(),
             },
             execution_state: self.execution_state.clone(),
             question_state: self.question_state.clone(),

@@ -444,7 +444,7 @@ fn reviewing_to_escalated() {
 fn escalated_transitions() {
     use InternalStatus::*;
     let transitions = Escalated.valid_transitions();
-    assert_eq!(transitions, &[Approved, RevisionNeeded]);
+    assert_eq!(transitions, &[Approved, RevisionNeeded, PendingReview]);
 }
 
 #[test]

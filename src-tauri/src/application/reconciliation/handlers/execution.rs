@@ -10,7 +10,8 @@ use crate::application::chat_service::{MergeAutoCompleteContext, reconcile_merge
 use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::domain::entities::{
-    AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, TaskId,
+    AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, ReviewNote, ReviewOutcome,
+    ReviewerType, TaskId,
 };
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::infrastructure::agents::claude::reconciliation_config;
@@ -1245,6 +1246,30 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 true
             }
             RecoveryActionKind::Transition(next_status) => {
+                // Store escalation reason before transitioning to Escalated from a Review context
+                if matches!(context, RecoveryContext::Review)
+                    && matches!(next_status, InternalStatus::Escalated)
+                {
+                    if let Some(ref repo) = self.review_repo {
+                        let reason = decision
+                            .reason
+                            .as_deref()
+                            .unwrap_or("Review recovery: task escalated by reconciler");
+                        let note = ReviewNote::with_notes(
+                            task.id.clone(),
+                            ReviewerType::Ai,
+                            ReviewOutcome::Rejected,
+                            reason.to_string(),
+                        );
+                        if let Err(e) = repo.add_note(&note).await {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                error = %e,
+                                "Failed to store escalation ReviewNote during recovery"
+                            );
+                        }
+                    }
+                }
                 if let Err(e) = self
                     .transition_service
                     .transition_task(&task.id, next_status)

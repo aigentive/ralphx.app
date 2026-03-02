@@ -27,8 +27,8 @@ use crate::commands::execution_commands::ExecutionState;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository,
+    MemoryEventRepository, PlanBranchRepository, ProjectRepository, ReviewRepository,
+    TaskDependencyRepository, TaskRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
@@ -55,6 +55,7 @@ pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     pub(crate) execution_state: Arc<ExecutionState>,
     pub(crate) plan_branch_repo: Option<Arc<dyn PlanBranchRepository>>,
     pub(crate) interactive_process_registry: Option<Arc<InteractiveProcessRegistry>>,
+    pub(crate) review_repo: Option<Arc<dyn ReviewRepository>>,
     pub(crate) app_handle: Option<AppHandle<R>>,
     pub(crate) policy: RecoveryPolicy,
     pub(crate) prompt_tracker: Arc<Mutex<HashSet<String>>>,
@@ -96,6 +97,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             execution_state,
             plan_branch_repo: None,
             interactive_process_registry: None,
+            review_repo: None,
             app_handle,
             policy: RecoveryPolicy,
             prompt_tracker: Arc::new(Mutex::new(HashSet::new())),
@@ -117,6 +119,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
         registry: Arc<InteractiveProcessRegistry>,
     ) -> Self {
         self.interactive_process_registry = Some(registry);
+        self
+    }
+
+    pub fn with_review_repo(
+        mut self,
+        repo: Arc<dyn crate::domain::repositories::ReviewRepository>,
+    ) -> Self {
+        self.review_repo = Some(repo);
         self
     }
 }
