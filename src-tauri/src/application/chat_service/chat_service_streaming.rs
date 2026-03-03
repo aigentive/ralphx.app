@@ -367,6 +367,11 @@ pub async fn process_stream_background<R: Runtime>(
                             between_interactive_turns,
                             "[STREAM_EOF] stdout closed — process exited"
                         );
+                        // Process exited between interactive turns — treat as
+                        // normal completion, same as cancellation-token path.
+                        if between_interactive_turns {
+                            silent_interactive_exit = true;
+                        }
                         break;
                     }
                     Ok(Err(e)) => {
@@ -1625,7 +1630,7 @@ pub async fn process_stream_background<R: Runtime>(
         });
     }
 
-    if !status.success() && !has_output && !silent_interactive_exit {
+    if !status.success() && !has_output && turns_finalized == 0 && !silent_interactive_exit {
         let stderr_trimmed = outcome.stderr_text.trim().to_string();
         // Check for recoverable provider errors in stderr
         if let Some(provider_err) =
