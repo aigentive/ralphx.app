@@ -254,11 +254,13 @@ fn test_apply_global_rate_limit_backpressure_expired_does_not_block() {
 // AgentExit + Step Completion Override Tests
 // ========================================
 //
-// These verify that handle_stream_error overrides Failed → PendingReview
-// when all steps are completed (execution_complete was called successfully).
+// These verify the all_steps_completed helper and that handle_stream_error
+// overrides Failed → PendingReview when all steps are completed.
 
+use crate::application::chat_service::chat_service_handlers::all_steps_completed;
 use crate::domain::entities::{TaskStep, TaskStepId};
 use crate::domain::repositories::TaskStepRepository;
+use crate::error::AppError;
 use std::collections::HashMap;
 
 struct StubTaskStepRepo {
@@ -276,7 +278,52 @@ impl TaskStepRepository for StubTaskStepRepo {
     async fn get_by_task(&self, _: &TaskId) -> AppResult<Vec<TaskStep>> {
         Ok(self.steps.clone())
     }
-    async fn get_by_task_and_status(&self, _: &TaskId, _: TaskStepStatus) -> AppResult<Vec<TaskStep>> {
+    async fn get_by_task_and_status(
+        &self,
+        _: &TaskId,
+        _: TaskStepStatus,
+    ) -> AppResult<Vec<TaskStep>> {
+        Ok(vec![])
+    }
+    async fn update(&self, _: &TaskStep) -> AppResult<()> {
+        Ok(())
+    }
+    async fn delete(&self, _: &TaskStepId) -> AppResult<()> {
+        Ok(())
+    }
+    async fn delete_by_task(&self, _: &TaskId) -> AppResult<()> {
+        Ok(())
+    }
+    async fn count_by_status(&self, _: &TaskId) -> AppResult<HashMap<TaskStepStatus, u32>> {
+        Ok(HashMap::new())
+    }
+    async fn bulk_create(&self, steps: Vec<TaskStep>) -> AppResult<Vec<TaskStep>> {
+        Ok(steps)
+    }
+    async fn reorder(&self, _: &TaskId, _: Vec<TaskStepId>) -> AppResult<()> {
+        Ok(())
+    }
+}
+
+/// Stub that always returns a DB error for get_by_task.
+struct StubErrorTaskStepRepo;
+
+#[async_trait]
+impl TaskStepRepository for StubErrorTaskStepRepo {
+    async fn create(&self, step: TaskStep) -> AppResult<TaskStep> {
+        Ok(step)
+    }
+    async fn get_by_id(&self, _: &TaskStepId) -> AppResult<Option<TaskStep>> {
+        Ok(None)
+    }
+    async fn get_by_task(&self, _: &TaskId) -> AppResult<Vec<TaskStep>> {
+        Err(AppError::Database("simulated DB error".into()))
+    }
+    async fn get_by_task_and_status(
+        &self,
+        _: &TaskId,
+        _: TaskStepStatus,
+    ) -> AppResult<Vec<TaskStep>> {
         Ok(vec![])
     }
     async fn update(&self, _: &TaskStep) -> AppResult<()> {
@@ -305,6 +352,14 @@ fn make_step(task_id: &TaskId, status: TaskStepStatus) -> TaskStep {
     step
 }
 
+fn run<F: std::future::Future>(f: F) -> F::Output {
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(f)
+}
+
 /// AgentExit with all steps completed should override target_status to PendingReview.
 /// This covers the scenario where execution_complete was called (marking steps done)
 /// but the agent exited with signal code=None (IPR removal → EOF → signal).
@@ -319,47 +374,8 @@ fn test_agent_exit_all_steps_complete_overrides_to_pending_review() {
     let step_repo: Option<Arc<dyn TaskStepRepository>> =
         Some(Arc::new(StubTaskStepRepo { steps }));
 
-    let stream_error = StreamError::AgentExit {
-        exit_code: None,
-        stderr: "signal terminated".into(),
-    };
-    let initial_target = InternalStatus::Failed;
-
-    // Replicate the override logic from handle_stream_error
-    let target_status = if initial_target == InternalStatus::Failed
-        && matches!(&stream_error, StreamError::AgentExit { .. })
-    {
-        let all_steps_done = if let Some(ref repo) = step_repo {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async { repo.get_by_task(&task_id).await })
-                .map(|steps| {
-                    !steps.is_empty()
-                        && steps.iter().all(|s| {
-                            s.status == TaskStepStatus::Completed
-                                || s.status == TaskStepStatus::Skipped
-                        })
-                })
-                .unwrap_or(false)
-        } else {
-            false
-        };
-        if all_steps_done {
-            InternalStatus::PendingReview
-        } else {
-            initial_target
-        }
-    } else {
-        initial_target
-    };
-
-    assert_eq!(
-        target_status,
-        InternalStatus::PendingReview,
-        "AgentExit with all steps complete should override to PendingReview"
-    );
+    let result = run(all_steps_completed(&step_repo, &task_id));
+    assert!(result, "All Completed+Skipped steps → should return true");
 }
 
 /// AgentExit with incomplete steps should remain Failed.
@@ -374,104 +390,26 @@ fn test_agent_exit_incomplete_steps_stays_failed() {
     let step_repo: Option<Arc<dyn TaskStepRepository>> =
         Some(Arc::new(StubTaskStepRepo { steps }));
 
-    let stream_error = StreamError::AgentExit {
-        exit_code: None,
-        stderr: String::new(),
-    };
-    let initial_target = InternalStatus::Failed;
-
-    let target_status = if initial_target == InternalStatus::Failed
-        && matches!(&stream_error, StreamError::AgentExit { .. })
-    {
-        let all_steps_done = if let Some(ref repo) = step_repo {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async { repo.get_by_task(&task_id).await })
-                .map(|steps| {
-                    !steps.is_empty()
-                        && steps.iter().all(|s| {
-                            s.status == TaskStepStatus::Completed
-                                || s.status == TaskStepStatus::Skipped
-                        })
-                })
-                .unwrap_or(false)
-        } else {
-            false
-        };
-        if all_steps_done {
-            InternalStatus::PendingReview
-        } else {
-            initial_target
-        }
-    } else {
-        initial_target
-    };
-
-    assert_eq!(
-        target_status,
-        InternalStatus::Failed,
-        "AgentExit with incomplete steps should remain Failed"
-    );
+    let result = run(all_steps_completed(&step_repo, &task_id));
+    assert!(!result, "InProgress/Pending steps present → should return false");
 }
 
 /// AgentExit with no steps at all should remain Failed.
 #[test]
 fn test_agent_exit_no_steps_stays_failed() {
+    let task_id = TaskId::new();
     let step_repo: Option<Arc<dyn TaskStepRepository>> =
         Some(Arc::new(StubTaskStepRepo { steps: vec![] }));
 
-    let task_id = TaskId::new();
-    let stream_error = StreamError::AgentExit {
-        exit_code: None,
-        stderr: String::new(),
-    };
-    let initial_target = InternalStatus::Failed;
-
-    let target_status = if initial_target == InternalStatus::Failed
-        && matches!(&stream_error, StreamError::AgentExit { .. })
-    {
-        let all_steps_done = if let Some(ref repo) = step_repo {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async { repo.get_by_task(&task_id).await })
-                .map(|steps| {
-                    !steps.is_empty()
-                        && steps.iter().all(|s| {
-                            s.status == TaskStepStatus::Completed
-                                || s.status == TaskStepStatus::Skipped
-                        })
-                })
-                .unwrap_or(false)
-        } else {
-            false
-        };
-        if all_steps_done {
-            InternalStatus::PendingReview
-        } else {
-            initial_target
-        }
-    } else {
-        initial_target
-    };
-
-    assert_eq!(
-        target_status,
-        InternalStatus::Failed,
-        "AgentExit with empty steps should remain Failed"
-    );
+    let result = run(all_steps_completed(&step_repo, &task_id));
+    assert!(!result, "Empty step list → should return false (guard against trivially true)");
 }
 
 /// Non-AgentExit errors should not trigger the override, even with complete steps.
 #[test]
 fn test_timeout_error_does_not_override_even_with_complete_steps() {
     let task_id = TaskId::new();
-    let steps = vec![
-        make_step(&task_id, TaskStepStatus::Completed),
-    ];
+    let steps = vec![make_step(&task_id, TaskStepStatus::Completed)];
     let _step_repo: Option<Arc<dyn TaskStepRepository>> =
         Some(Arc::new(StubTaskStepRepo { steps }));
 
@@ -502,44 +440,61 @@ fn test_timeout_error_does_not_override_even_with_complete_steps() {
 fn test_agent_exit_no_step_repo_stays_failed() {
     let task_id = TaskId::new();
     let step_repo: Option<Arc<dyn TaskStepRepository>> = None;
-    let stream_error = StreamError::AgentExit {
-        exit_code: None,
-        stderr: String::new(),
-    };
-    let initial_target = InternalStatus::Failed;
 
-    let target_status = if initial_target == InternalStatus::Failed
-        && matches!(&stream_error, StreamError::AgentExit { .. })
-    {
-        let all_steps_done = if let Some(ref repo) = step_repo {
-            let rt = tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-                .unwrap();
-            rt.block_on(async { repo.get_by_task(&task_id).await })
-                .map(|steps| {
-                    !steps.is_empty()
-                        && steps.iter().all(|s| {
-                            s.status == TaskStepStatus::Completed
-                                || s.status == TaskStepStatus::Skipped
-                        })
-                })
-                .unwrap_or(false)
-        } else {
-            false
-        };
-        if all_steps_done {
-            InternalStatus::PendingReview
-        } else {
-            initial_target
-        }
-    } else {
-        initial_target
-    };
+    let result = run(all_steps_completed(&step_repo, &task_id));
+    assert!(!result, "No step repo → should fail-safe to false");
+}
 
-    assert_eq!(
-        target_status,
-        InternalStatus::Failed,
-        "No step repo should fail-safe to Failed"
+// ========================================
+// New: all_steps_completed helper unit tests
+// ========================================
+
+/// "No output" path: worker exits cleanly with no text output but all steps done.
+/// Helper must return true so the caller transitions to PendingReview.
+#[test]
+fn test_no_output_path_all_steps_complete() {
+    let task_id = TaskId::new();
+    let steps = vec![
+        make_step(&task_id, TaskStepStatus::Completed),
+        make_step(&task_id, TaskStepStatus::Skipped),
+    ];
+    let step_repo: Option<Arc<dyn TaskStepRepository>> =
+        Some(Arc::new(StubTaskStepRepo { steps }));
+
+    let result = run(all_steps_completed(&step_repo, &task_id));
+    assert!(
+        result,
+        "No-output path: all Completed+Skipped → helper returns true"
     );
+}
+
+/// step_repo returns Err → helper must return false (safe fallback, never panic).
+#[test]
+fn test_step_repo_error_falls_through() {
+    let task_id = TaskId::new();
+    let step_repo: Option<Arc<dyn TaskStepRepository>> =
+        Some(Arc::new(StubErrorTaskStepRepo));
+
+    let result = run(all_steps_completed(&step_repo, &task_id));
+    assert!(
+        !result,
+        "DB error on step query → helper must safe-fallback to false"
+    );
+}
+
+/// All steps Skipped (no Completed) → helper must return true.
+/// Skipped steps mean the agent legitimately bypassed them — work is considered done.
+#[test]
+fn test_all_skipped_no_completed() {
+    let task_id = TaskId::new();
+    let steps = vec![
+        make_step(&task_id, TaskStepStatus::Skipped),
+        make_step(&task_id, TaskStepStatus::Skipped),
+        make_step(&task_id, TaskStepStatus::Skipped),
+    ];
+    let step_repo: Option<Arc<dyn TaskStepRepository>> =
+        Some(Arc::new(StubTaskStepRepo { steps }));
+
+    let result = run(all_steps_completed(&step_repo, &task_id));
+    assert!(result, "All Skipped → helper returns true");
 }

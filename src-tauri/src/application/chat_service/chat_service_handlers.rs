@@ -38,6 +38,33 @@ use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::AgentErrorPayload;
 use super::EventContextPayload;
 
+/// Returns true if all steps for `task_id` are Completed or Skipped (and at least one
+/// step exists). Safe-fallback: returns false if repo is None or returns an error.
+pub(crate) async fn all_steps_completed(
+    task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
+    task_id: &TaskId,
+) -> bool {
+    let Some(ref repo) = task_step_repo else {
+        return false;
+    };
+    match repo.get_by_task(task_id).await {
+        Ok(steps) => {
+            !steps.is_empty()
+                && steps.iter().all(|s| {
+                    s.status == TaskStepStatus::Completed || s.status == TaskStepStatus::Skipped
+                })
+        }
+        Err(e) => {
+            tracing::warn!(
+                task_id = task_id.as_str(),
+                error = %e,
+                "Failed to query steps for all-complete check"
+            );
+            false
+        }
+    }
+}
+
 /// Parse an ISO 8601 retry_after string and set the global provider rate limit gate
 /// on ExecutionState. Called from all agent error contexts (TaskExecution, Merge, Review)
 /// so a single rate limit detection blocks ALL subsequent spawns.
@@ -190,27 +217,8 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                     } else {
                         // Check if all steps are completed — worker found all work
                         // already done and exited cleanly with no output.
-                        let all_steps_done = if let Some(ref step_repo) = task_step_repo {
-                            match step_repo.get_by_task(&task_id).await {
-                                Ok(steps) => {
-                                    !steps.is_empty()
-                                        && steps.iter().all(|s| {
-                                            s.status == TaskStepStatus::Completed
-                                                || s.status == TaskStepStatus::Skipped
-                                        })
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        task_id = task_id.as_str(),
-                                        error = %e,
-                                        "Failed to query steps for all-complete check"
-                                    );
-                                    false
-                                }
-                            }
-                        } else {
-                            false
-                        };
+                        let all_steps_done =
+                            all_steps_completed(task_step_repo, &task_id).await;
 
                         if all_steps_done {
                             tracing::info!(
@@ -902,27 +910,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     let target_status = if target_status == InternalStatus::Failed
                         && matches!(stream_error, Some(StreamError::AgentExit { .. }))
                     {
-                        let all_steps_done = if let Some(ref step_repo) = task_step_repo {
-                            match step_repo.get_by_task(&task_id).await {
-                                Ok(steps) => {
-                                    !steps.is_empty()
-                                        && steps.iter().all(|s| {
-                                            s.status == TaskStepStatus::Completed
-                                                || s.status == TaskStepStatus::Skipped
-                                        })
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        task_id = task_id.as_str(),
-                                        error = %e,
-                                        "Failed to query steps for AgentExit recovery check"
-                                    );
-                                    false
-                                }
-                            }
-                        } else {
-                            false
-                        };
+                        let all_steps_done =
+                            all_steps_completed(task_step_repo, &task_id).await;
 
                         if all_steps_done {
                             tracing::info!(
