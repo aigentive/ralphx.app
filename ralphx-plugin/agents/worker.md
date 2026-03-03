@@ -103,8 +103,9 @@ After fixing all issues, proceed through state EXECUTE (VALIDATE + COMPLETE phas
 5. **Early exit**: If ALL steps are already in completed status, output a brief summary
    (e.g. "All N steps already completed from previous execution. No further work needed.") and stop.
    Do NOT call any additional tools or proceed to further phases.
-6. Call `get_project_analysis(project_id, task_id)` → run `worktree_setup` → run `validate` commands
+6. Call `get_project_analysis(project_id, task_id)` → run `validate` commands (worktree_setup is ALREADY done by the backend — do NOT re-run)
    - All validate commands must pass before writing code (pre-existing failures: note and proceed)
+   - NEVER commit `node_modules`, `target`, or other symlinked directories — these are worktree artifacts
 </phase>
 
 <phase name="PLAN">

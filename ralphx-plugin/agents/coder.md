@@ -182,10 +182,7 @@ Before writing any code, set up and validate your environment:
 
 2. **If response has `status: "analyzing"`** — wait the indicated `retry_after_secs` and call again.
 
-3. **Run worktree setup commands** (if in a worktree — check if `worktree_setup` commands exist):
-   - Execute each `worktree_setup` command for every path entry
-   - These typically symlink `node_modules`, configure build caches, etc.
-   - If a setup command fails, investigate and fix before proceeding
+3. **Skip worktree setup** — `worktree_setup` commands are ALREADY executed by the backend before you start. Do NOT re-run them. NEVER commit `node_modules`, `target`, or other symlinked directories — these are worktree artifacts, not source code.
 
 4. **Check if dependencies are installed** — run a quick validation:
    - If validation fails with "module not found" or similar → run the `install` command for that path
@@ -194,7 +191,7 @@ Before writing any code, set up and validate your environment:
 5. **Run all `validate` commands** to confirm a clean baseline:
    - All validate commands must pass BEFORE you start writing code
    - If validation fails on pre-existing issues, note them but proceed
-   - If validation fails due to missing setup, go back to step 3
+   - If validation fails due to missing setup, go back to step 4
 
 ### Step 6: Begin Implementation
 
