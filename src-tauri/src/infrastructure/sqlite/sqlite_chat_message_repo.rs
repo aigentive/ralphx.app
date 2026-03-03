@@ -83,7 +83,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         self.db.run(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, created_at
-                 FROM chat_messages WHERE session_id = ?1 ORDER BY created_at ASC",
+                 FROM chat_messages WHERE session_id = ?1 ORDER BY created_at ASC, rowid ASC",
             )?;
             let messages = stmt
                 .query_map([session_id_str], ChatMessage::from_row)?
@@ -98,7 +98,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             // Get messages that belong to a project but NOT to a session (direct project chat)
             let mut stmt = conn.prepare(
                 "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, created_at
-                 FROM chat_messages WHERE project_id = ?1 AND session_id IS NULL ORDER BY created_at ASC",
+                 FROM chat_messages WHERE project_id = ?1 AND session_id IS NULL ORDER BY created_at ASC, rowid ASC",
             )?;
             let messages = stmt
                 .query_map([project_id_str], ChatMessage::from_row)?
@@ -112,7 +112,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         self.db.run(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, created_at
-                 FROM chat_messages WHERE task_id = ?1 ORDER BY created_at ASC",
+                 FROM chat_messages WHERE task_id = ?1 ORDER BY created_at ASC, rowid ASC",
             )?;
             let messages = stmt
                 .query_map([task_id_str], ChatMessage::from_row)?
@@ -129,7 +129,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         self.db.run(move |conn| {
             let mut stmt = conn.prepare(
                 "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, created_at
-                 FROM chat_messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
+                 FROM chat_messages WHERE conversation_id = ?1 ORDER BY created_at ASC, rowid ASC",
             )?;
             let messages = stmt
                 .query_map([conv_id_str], ChatMessage::from_row)?
@@ -192,7 +192,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
             // Get the most recent messages, but return them in ascending order
             let mut stmt = conn.prepare(
                 "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, created_at
-                 FROM chat_messages WHERE session_id = ?1 ORDER BY created_at DESC LIMIT ?2",
+                 FROM chat_messages WHERE session_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT ?2",
             )?;
             let mut messages: Vec<ChatMessage> = stmt
                 .query_map(rusqlite::params![session_id_str, limit], |row| {

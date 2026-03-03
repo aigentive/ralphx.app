@@ -1217,4 +1217,215 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(screen.getByText(/Streaming now/)).toBeInTheDocument();
     });
   });
+
+  describe("ID-based assistant filtering — Task #8 fix", () => {
+    // Verifies that filtering uses max(createdAt) + id tiebreaker instead of array index.
+    // The old code found the "last assistant by index" which breaks when array order ≠ timestamp order.
+
+    it("filters the assistant with the most recent createdAt, not the last by array position", () => {
+      // Scenario: an older assistant message appears LAST in the array (out-of-order delivery),
+      // but the NEWER one (by timestamp) is the one being streamed and should be filtered.
+      const messages: ChatMessageData[] = [
+        { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+        // Newer assistant — higher timestamp but NOT last in array
+        { id: "msg-3", role: "assistant", content: "Newer response", createdAt: new Date(2026, 0, 1, 12, 2).toISOString(), toolCalls: null, contentBlocks: null },
+        // Older assistant — lower timestamp but LAST in array (old index-based code would filter this)
+        { id: "msg-2", role: "assistant", content: "Older response", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={false}
+          streamingContentBlocks={[{ type: "text", text: "Streaming..." }]}
+          isFinalizing={false}
+        />
+      );
+
+      // The NEWEST assistant by timestamp (msg-3, createdAt=12:02) should be filtered
+      expect(screen.queryByText("Newer response")).not.toBeInTheDocument();
+      // The OLDER assistant (msg-2, last by index) should still be visible
+      expect(screen.getByText("Older response")).toBeInTheDocument();
+      expect(screen.getByText("Hello")).toBeInTheDocument();
+    });
+
+    it("uses id as tiebreaker when two assistants have equal createdAt timestamps", () => {
+      const sameTime = new Date(2026, 0, 1, 12, 1).toISOString();
+      const messages: ChatMessageData[] = [
+        { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+        { id: "msg-aaa", role: "assistant", content: "Response aaa", createdAt: sameTime, toolCalls: null, contentBlocks: null },
+        // "msg-zzz" > "msg-aaa" lexically → msg-zzz wins tiebreaker and should be filtered
+        { id: "msg-zzz", role: "assistant", content: "Response zzz", createdAt: sameTime, toolCalls: null, contentBlocks: null },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={false}
+          streamingContentBlocks={[{ type: "text", text: "Streaming..." }]}
+          isFinalizing={false}
+        />
+      );
+
+      // "msg-zzz" has lexically larger id → it is the "most recent" and should be filtered
+      expect(screen.queryByText("Response zzz")).not.toBeInTheDocument();
+      expect(screen.getByText("Response aaa")).toBeInTheDocument();
+    });
+
+    it("filters by isFinalizing path using same ID-based logic", () => {
+      const messages: ChatMessageData[] = [
+        { id: "msg-1", role: "user", content: "Hi", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+        { id: "msg-3", role: "assistant", content: "Newer assistant", createdAt: new Date(2026, 0, 1, 12, 2).toISOString(), toolCalls: null, contentBlocks: null },
+        { id: "msg-2", role: "assistant", content: "Older assistant", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          isAgentRunning={false}
+          streamingContentBlocks={[]}
+          isFinalizing={true}
+        />
+      );
+
+      // isFinalizing=true activates the filter — newest by timestamp should be filtered
+      expect(screen.queryByText("Newer assistant")).not.toBeInTheDocument();
+      expect(screen.getByText("Older assistant")).toBeInTheDocument();
+    });
+  });
+
+  describe("scroll-to-bottom on shouldFilterLastAssistant clear — Task #9 fix", () => {
+    // Verifies that scrollToBottom() is called when shouldFilterLastAssistant transitions true→false.
+    // This ensures the finalized assistant message is visible after streaming ends.
+
+    beforeEach(() => {
+      mockScrollToBottom.mockClear();
+    });
+
+    it("calls scrollToBottom when active streaming ends (streamingContentBlocks cleared)", () => {
+      const messages: ChatMessageData[] = [
+        { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+        { id: "msg-2", role: "assistant", content: "Response", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
+      ];
+
+      // Start with streaming active → shouldFilterLastAssistant=true
+      const { rerender } = render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          streamingContentBlocks={[{ type: "text", text: "Streaming..." }]}
+          isFinalizing={false}
+        />
+      );
+
+      mockScrollToBottom.mockClear(); // ignore any initial scroll calls
+
+      // Streaming ends → shouldFilterLastAssistant transitions true→false
+      rerender(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          streamingContentBlocks={[]}
+          isFinalizing={false}
+        />
+      );
+
+      expect(mockScrollToBottom).toHaveBeenCalledOnce();
+    });
+
+    it("calls scrollToBottom when isFinalizing transitions from true to false", () => {
+      const messages: ChatMessageData[] = [
+        { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+        { id: "msg-2", role: "assistant", content: "Response", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
+      ];
+
+      // isFinalizing=true → shouldFilterLastAssistant=true
+      const { rerender } = render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          streamingContentBlocks={[]}
+          isFinalizing={true}
+        />
+      );
+
+      mockScrollToBottom.mockClear();
+
+      // isFinalizing clears → shouldFilterLastAssistant transitions true→false
+      rerender(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          streamingContentBlocks={[]}
+          isFinalizing={false}
+        />
+      );
+
+      expect(mockScrollToBottom).toHaveBeenCalledOnce();
+    });
+
+    it("does NOT call scrollToBottom when filter stays false across renders", () => {
+      const messages: ChatMessageData[] = [
+        { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+      ];
+
+      const { rerender } = render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          streamingContentBlocks={[]}
+          isFinalizing={false}
+        />
+      );
+
+      mockScrollToBottom.mockClear();
+
+      rerender(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          streamingContentBlocks={[]}
+          isFinalizing={false}
+        />
+      );
+
+      expect(mockScrollToBottom).not.toHaveBeenCalled();
+    });
+
+    it("does NOT call scrollToBottom in history mode when filter clears", () => {
+      const messages: ChatMessageData[] = [
+        { id: "msg-1", role: "user", content: "Hello", createdAt: new Date(2026, 0, 1, 12, 0).toISOString(), toolCalls: null, contentBlocks: null },
+        { id: "msg-2", role: "assistant", content: "Response", createdAt: new Date(2026, 0, 1, 12, 1).toISOString(), toolCalls: null, contentBlocks: null },
+      ];
+
+      // Start with streaming active in history mode
+      const { rerender } = render(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          streamingContentBlocks={[{ type: "text", text: "Streaming..." }]}
+          isFinalizing={false}
+          scrollToTimestamp="2026-01-01T12:00:00.000Z"
+        />
+      );
+
+      mockScrollToBottom.mockClear();
+
+      // Streaming ends — but history mode should suppress the scroll-to-bottom
+      rerender(
+        <ChatMessageList
+          {...defaultProps}
+          messages={messages}
+          streamingContentBlocks={[]}
+          isFinalizing={false}
+          scrollToTimestamp="2026-01-01T12:00:00.000Z"
+        />
+      );
+
+      expect(mockScrollToBottom).not.toHaveBeenCalled();
+    });
+  });
 });

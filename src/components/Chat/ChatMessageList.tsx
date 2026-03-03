@@ -131,6 +131,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // Internal ref for scroll operations
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const hasScrolledRef = useRef<string | null>(null);
+    // Track previous shouldFilterLastAssistant to detect false→true→false transition
+    const prevShouldFilterRef = useRef(false);
     const isTestEnv = import.meta.env.VITEST;
 
     // Forward the ref to parent
@@ -232,25 +234,42 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
                               (streamingTasks && streamingTasks.size > 0);
     const shouldFilterLastAssistant = hasActiveStreaming || isFinalizing;
 
+    // When filter clears (streaming/finalizing ends), scroll to bottom so the newly
+    // revealed finalized assistant message is visible.
+    useEffect(() => {
+      if (scrollToTimestamp) return; // Don't auto-scroll in history mode
+      if (prevShouldFilterRef.current && !shouldFilterLastAssistant) {
+        scrollToBottom();
+      }
+      prevShouldFilterRef.current = shouldFilterLastAssistant;
+    }, [shouldFilterLastAssistant, scrollToBottom, scrollToTimestamp]);
+
     const timeline = useMemo((): TimelineItem[] => {
       const items: TimelineItem[] = [];
 
-      // Exclude the last assistant message from DB when active streaming/finalizing —
+      // Exclude the streaming assistant message from DB when active streaming/finalizing —
       // it's being rendered live in streamingContentBlocks. Do NOT filter based solely on
       // isAgentRunning: during team sessions the lead runs for extended periods, and filtering
       // without active streaming blocks hides historical assistant messages between turns.
+      //
+      // Use ID-based filtering: find the assistant message with the most recent createdAt
+      // (with id as tiebreaker) so filtering is stable regardless of array order.
       const filteredMessages = shouldFilterLastAssistant
         ? (() => {
-            // Find the last assistant message index
-            let lastAssistantIdx = -1;
-            for (let i = messages.length - 1; i >= 0; i--) {
-              if (messages[i]!.role === "assistant") {
-                lastAssistantIdx = i;
-                break;
+            // Find the most recently created assistant message by timestamp (stable, not index)
+            let latestAssistantId: string | null = null;
+            let latestAssistantTime = -Infinity;
+            for (const msg of messages) {
+              if (msg.role === "assistant") {
+                const t = new Date(msg.createdAt).getTime();
+                if (t > latestAssistantTime || (t === latestAssistantTime && msg.id > (latestAssistantId ?? ""))) {
+                  latestAssistantTime = t;
+                  latestAssistantId = msg.id;
+                }
               }
             }
-            if (lastAssistantIdx >= 0) {
-              return messages.filter((_, idx) => idx !== lastAssistantIdx);
+            if (latestAssistantId !== null) {
+              return messages.filter((msg) => msg.id !== latestAssistantId);
             }
             return messages;
           })()

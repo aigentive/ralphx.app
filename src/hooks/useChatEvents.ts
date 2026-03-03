@@ -15,7 +15,7 @@
  * stopped, error, session_recovered). This hook adds streaming UI features.
  */
 
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, type Dispatch, type SetStateAction } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { chatKeys } from "@/hooks/useChat";
@@ -61,6 +61,25 @@ export function useChatEvents({
   const supportsStreamingText = config?.supportsStreamingText ?? false;
   const supportsSubagentTasks = config?.supportsSubagentTasks ?? false;
 
+  // ── Finalization two-effect contract ────────────────────────────────────────
+  // `activeCancelFnsRef` is a ref (not a local variable) so finalization watchers
+  // survive effect re-runs triggered by unrelated deps (e.g., user sends a message).
+  // The main subscription effect NEVER cancels finalization on cleanup.
+  // Only the dedicated `[activeConversationId, contextId]` effect below cancels on
+  // genuine context switch — prevents isFinalizing from being interrupted mid-stream.
+  // ❌ Do NOT add activeCancelFnsRef cleanup to the main effect. ❌ Do NOT add unrelated
+  // deps to the context-switch effect (it must only fire on real navigation).
+  // ────────────────────────────────────────────────────────────────────────────
+  const activeCancelFnsRef = useRef<Array<() => void>>([]);
+
+  // Genuine context switch: cancel pending finalizations when conversation/context changes.
+  useEffect(() => {
+    return () => {
+      activeCancelFnsRef.current.slice().forEach(fn => fn());
+      activeCancelFnsRef.current = [];
+    };
+  }, [activeConversationId, contextId]);
+
   useEffect(() => {
     // Clear streaming state immediately when conversation changes to ensure clean slate
     // This runs BEFORE subscribing to new events, preventing stale state from previous conversation
@@ -69,9 +88,6 @@ export function useChatEvents({
     setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
 
     const unsubscribes: Unsubscribe[] = [];
-
-    // Track pending finalization cleanups so they can be cancelled on effect teardown
-    const activeCancelFns: Array<() => void> = [];
 
     // Helper: check if event matches current context
     const isRelevant = (payload: { conversation_id?: string; context_id?: string }) =>
@@ -430,11 +446,11 @@ export function useChatEvents({
               unsubscribeCache();
               unsubscribeCache = undefined;
             }
-            const idx = activeCancelFns.indexOf(clearFinalizing);
-            if (idx >= 0) activeCancelFns.splice(idx, 1);
+            const idx = activeCancelFnsRef.current.indexOf(clearFinalizing);
+            if (idx >= 0) activeCancelFnsRef.current.splice(idx, 1);
           };
 
-          activeCancelFns.push(clearFinalizing);
+          activeCancelFnsRef.current.push(clearFinalizing);
 
           // Safety fallback — prevents isFinalizing from being stuck forever
           safetyTimerId = setTimeout(clearFinalizing, 3000);
@@ -470,7 +486,8 @@ export function useChatEvents({
     );
 
     // ── agent:run_completed ──────────────────────────────────────────
-    // Clear all streaming state on run completion
+    // Clear all streaming state on run completion.
+    // Query invalidation is owned by useAgentEvents to avoid duplicate refetches.
     unsubscribes.push(
       bus.subscribe<{
         conversation_id: string;
@@ -482,14 +499,12 @@ export function useChatEvents({
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
         setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
         setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(payload.conversation_id),
-        });
       })
     );
 
     // ── agent:turn_completed ────────────────────────────────────────
-    // Clear streaming state on turn completion (agent still alive in interactive mode)
+    // Clear streaming state on turn completion (agent still alive in interactive mode).
+    // Query invalidation is owned by useAgentEvents to avoid duplicate refetches.
     unsubscribes.push(
       bus.subscribe<{
         conversation_id: string;
@@ -501,14 +516,12 @@ export function useChatEvents({
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
         setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
         setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(payload.conversation_id),
-        });
       })
     );
 
     // ── agent:error ──────────────────────────────────────────────────
-    // Clear streaming state on error
+    // Clear ALL streaming state on error.
+    // Query invalidation is owned by useAgentEvents to avoid duplicate refetches.
     unsubscribes.push(
       bus.subscribe<{
         conversation_id: string;
@@ -516,12 +529,11 @@ export function useChatEvents({
         context_type?: string;
         error: string;
       }>("agent:error", (payload) => {
-        if (!payload.conversation_id) return;
+        if (!isRelevant(payload)) return;
 
         setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(payload.conversation_id),
-        });
+        setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
+        setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
       })
     );
 
@@ -530,9 +542,12 @@ export function useChatEvents({
       setStreamingToolCalls(prev => prev.length === 0 ? prev : []);
       setStreamingContentBlocks(prev => prev.length === 0 ? prev : []);
       setStreamingTasks(prev => prev.size === 0 ? prev : new Map());
-      setIsFinalizing(false);
-      // Cancel any pending finalization watchers (timers + cache subscriptions)
-      activeCancelFns.slice().forEach(fn => fn());
+      // NOTE: Do NOT cancel activeCancelFnsRef.current here — only cancel on genuine
+      // context switch (handled by the [activeConversationId, contextId] effect above).
+      // Cancelling here would interrupt isFinalizing for same-context re-renders
+      // (e.g., when user sends a message while finalization is in progress).
+      // NOTE: Do NOT call setIsFinalizing(false) here — the context-switch effect
+      // clears isFinalizing via clearFinalizing() when it's genuinely needed.
       unsubscribes.forEach((unsub) => unsub());
     };
   }, [

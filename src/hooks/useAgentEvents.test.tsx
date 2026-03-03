@@ -605,7 +605,9 @@ describe("useAgentEvents", () => {
       });
     });
 
-    it("does not invalidate queries when conversation_id does not match active", () => {
+    it("invalidates queries using payload conversation_id even when it differs from active", () => {
+      // New behavior: invalidation uses payload conversation_id directly (no activeConversationId guard).
+      // This avoids stale-closure mismatches where the closure's activeConversationId might lag.
       const { queryClient, wrapper } = createWrapperWithClient();
       const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -620,7 +622,8 @@ describe("useAgentEvents", () => {
         });
       });
 
-      expect(invalidateSpy).not.toHaveBeenCalled();
+      // Queries are invalidated for "conv-OTHER" (the payload conversation_id)
+      expect(invalidateSpy).toHaveBeenCalled();
     });
 
     it("skips event and does not invalidate queries when teammate_name is set", () => {
