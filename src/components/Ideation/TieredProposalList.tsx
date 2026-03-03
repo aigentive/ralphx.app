@@ -111,6 +111,8 @@ export interface TieredProposalListProps {
   onNavigateToTask?: (taskId: string) => void;
   /** Callback when card is clicked to open detail sheet */
   onViewDetail?: (proposalId: string, enrichment: ProposalDetailEnrichment) => void;
+  /** ID of the currently selected proposal (for highlight state) */
+  selectedProposalId?: string | null;
 }
 
 // ============================================================================
@@ -222,6 +224,7 @@ export const TieredProposalList = React.memo(function TieredProposalList({
   isReadOnly,
   onNavigateToTask,
   onViewDetail,
+  selectedProposalId,
 }: TieredProposalListProps) {
   // Compute tier assignments from dependency graph
   const { tierMap, maxTier } = useDependencyTiers(dependencyGraph);
@@ -336,6 +339,7 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                     isReadOnly?: boolean;
                     onNavigateToTask?: (taskId: string) => void;
                     onViewDetail?: (proposalId: string, enrichment: ProposalDetailEnrichment) => void;
+                    isSelected?: boolean;
                   } = {};
 
                   if (dependsOnDetails.length > 0) {
@@ -365,6 +369,9 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                   }
                   if (onViewDetail !== undefined) {
                     optionalProps.onViewDetail = onViewDetail;
+                  }
+                  if (selectedProposalId === proposal.id) {
+                    optionalProps.isSelected = true;
                   }
 
                   return (

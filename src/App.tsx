@@ -1016,6 +1016,7 @@ function AppContent() {
                   onDeleteSession={handleDeleteSession}
                   onEditProposal={handleEditProposal}
                   onViewProposal={handleViewProposal}
+                  selectedProposalId={viewingProposalId}
                   onRemoveProposal={handleRemoveProposal}
                   onReorderProposals={handleReorderProposals}
                   onApply={handleApplyProposals}
