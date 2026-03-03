@@ -370,6 +370,33 @@ pub(crate) fn has_prior_rebase_conflict(task: &Task) -> bool {
         .unwrap_or(false)
 }
 
+/// Check if a task had a source_update_conflict that was resolved by the merger agent.
+///
+/// Returns `true` if metadata contains `source_conflict_resolved: true`. Set by
+/// `handle_source_update_resolution` after the agent merges the target INTO the source
+/// branch. Used to skip the rebase step on the PendingMerge retry — rebasing would drop
+/// the agent's merge commit and replay individual commits, re-encountering the same conflicts.
+pub(crate) fn has_source_conflict_resolved(task: &Task) -> bool {
+    parse_metadata(task)
+        .and_then(|v| v.get("source_conflict_resolved")?.as_bool())
+        .unwrap_or(false)
+}
+
+/// Set the `source_conflict_resolved` flag in a task's metadata.
+///
+/// Called after the merger agent successfully resolves a source←target conflict.
+/// Signals `dispatch_merge_strategy` to use squash-only instead of rebase on retry.
+pub(crate) fn set_source_conflict_resolved(task: &mut Task) {
+    let mut meta = parse_metadata(task).unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert(
+            "source_conflict_resolved".to_string(),
+            serde_json::json!(true),
+        );
+    }
+    task.metadata = Some(meta.to_string());
+}
+
 /// Check if a task has the `branch_missing` flag set in its metadata.
 pub(crate) fn has_branch_missing_metadata(task: &Task) -> bool {
     parse_metadata(task)

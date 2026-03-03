@@ -144,3 +144,8 @@ mod plan_branch_guard_tests;
 // Integration tests: merged-branch guards working together (cascade + on_enter + base branch)
 // Tests Guards B/C/D/E cooperating across multi-task plan scenarios
 mod merged_branch_guard_integration;
+
+// Regression tests for source_conflict_resolved metadata flag.
+// Prevents the source_update_conflict retry loop: after agent resolves source←target conflict,
+// retry must use squash-only (not rebase) to avoid dropping the agent's merge commit.
+mod source_conflict_resolved_tests;

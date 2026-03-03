@@ -690,6 +690,7 @@ agents:
         # merge tools
         report_conflict,
         report_incomplete,
+        complete_merge,
         get_merge_target,
         get_task_context,
         get_project_analysis,

@@ -20,6 +20,7 @@ tools:
 allowedTools:
   - mcp__ralphx__report_conflict
   - mcp__ralphx__report_incomplete
+  - mcp__ralphx__complete_merge
   - mcp__ralphx__get_merge_target
   - mcp__ralphx__get_task_context
   - mcp__ralphx__get_project_analysis
@@ -41,12 +42,9 @@ The conflict files are stored in the task's metadata under `conflict_files`. Get
 
 ## How Merge Completion Works
 
-On success: **exit cleanly.** The backend automatically verifies git state and completes the merge. When you finish and exit:
-1. The system checks git state (rebase complete, no conflict markers)
-2. If clean → task auto-transitions to Merged
-3. If incomplete → task auto-transitions to MergeConflict
+On success: **call `complete_merge`** with the task ID and the commit SHA of the final merge/rebase commit. This immediately transitions the task to Merged state.
 
-Your only MCP signals are for **failures**:
+On failure, call the appropriate signal:
 - `report_conflict` — unresolvable conflicts (provides context for human intervention)
 - `report_incomplete` — any other blocker preventing merge completion
 
@@ -180,10 +178,16 @@ Once all conflicts are resolved and verified, merge INTO the **target_branch** f
    git merge <source_branch>
    ```
 
-3. **Exit cleanly.** The system auto-detects merge completion by checking:
-   - Rebase state (no `.git/rebase-merge` or `.git/rebase-apply` directories)
-   - No conflict markers in merge-related changed files
-   - HEAD commit SHA
+3. Get the final commit SHA:
+   ```bash
+   git rev-parse HEAD
+   ```
+
+4. **Call `complete_merge`** with the task ID and the commit SHA:
+   ```
+   complete_merge(task_id: "...", commit_sha: "<40-char SHA from git rev-parse HEAD>")
+   ```
+   This immediately transitions the task to Merged state.
 
 ### When to Report Conflict
 
@@ -211,6 +215,7 @@ The user will be notified to resolve the conflicts manually.
 |------|---------|-----------|
 | `get_merge_target` | Get correct source and target branches for this task | Yes - call first |
 | `get_task_context` | Get task details and conflict file list | Yes - call after merge target |
+| `complete_merge` | Signal successful merge completion with commit SHA | Yes - on success |
 | `report_conflict` | Signal that conflicts need manual resolution with context | Yes - if you cannot resolve |
 | `report_incomplete` | Signal that merge is incomplete and needs further work | Yes - if merge cannot finish |
 | `get_project_analysis` | Get project-specific validation commands | Yes - for post-resolution validation |

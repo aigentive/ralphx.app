@@ -15,7 +15,8 @@ use super::commit_messages::{build_plan_merge_commit_msg, build_squash_commit_ms
 use super::merge_completion::complete_merge_internal;
 use super::merge_helpers::{
     clear_merge_deferred_metadata, compute_merge_worktree_path, has_merge_deferred_metadata,
-    has_prior_rebase_conflict, has_prior_validation_failure, parse_metadata, task_targets_branch,
+    has_prior_rebase_conflict, has_prior_validation_failure, has_source_conflict_resolved,
+    parse_metadata, task_targets_branch,
 };
 use super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
 use crate::application::GitService;
@@ -961,14 +962,18 @@ impl<'a> super::TransitionHandler<'a> {
                     (outcome, MergeHandlerOptions::squash())
                 }
                 MergeStrategy::RebaseSquash => {
-                    // If a previous attempt hit rebase conflicts and a merger agent was spawned,
-                    // skip the rebase step and use squash-only. The merger resolved conflicts on
-                    // the source branch — rebasing again would replay the original (pre-resolution)
-                    // commits and re-encounter the same conflicts, wasting another merger cycle.
-                    if has_prior_rebase_conflict(task) {
+                    // If a previous attempt hit rebase conflicts or a source←target conflict was
+                    // resolved by the merger agent, skip the rebase step and use squash-only.
+                    // In both cases the source branch contains merge commits that rebase would
+                    // drop, replaying individual commits and re-encountering the same conflicts.
+                    let skip_rebase = has_prior_rebase_conflict(task)
+                        || has_source_conflict_resolved(task);
+                    if skip_rebase {
                         tracing::info!(
                             task_id = task_id_str,
-                            "Prior rebase conflict detected — using squash-only to avoid re-encountering conflicts"
+                            prior_rebase_conflict = has_prior_rebase_conflict(task),
+                            source_conflict_resolved = has_source_conflict_resolved(task),
+                            "Skipping rebase — using squash-only to avoid re-encountering conflicts"
                         );
                         let outcome = self
                             .squash_worktree_strategy(

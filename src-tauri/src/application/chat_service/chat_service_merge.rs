@@ -31,7 +31,7 @@ use crate::infrastructure::agents::claude::scheduler_config;
 use crate::infrastructure::agents::claude::reconciliation_config;
 use crate::domain::state_machine::transition_handler::{
     format_validation_error_metadata, merge_metadata_into, parse_metadata,
-    run_validation_commands,
+    run_validation_commands, set_source_conflict_resolved,
 };
 
 /// RAII guard that removes a task from ExecutionState::auto_completes_in_flight on drop.
@@ -574,7 +574,10 @@ async fn handle_source_update_resolution<R: Runtime>(
             target_branch = %target_branch,
             "attempt_merge_auto_complete: source branch now up-to-date with target — retrying task merge"
         );
-        // Clear source_update_conflict flag so the PendingMerge retry proceeds normally
+        // Clear source_update_conflict flag and set source_conflict_resolved so the
+        // PendingMerge retry uses squash-only instead of rebase. Rebasing would drop the
+        // agent's merge commit (target merged INTO source) and replay individual commits,
+        // re-encountering the same conflicts.
         {
             let mut m = meta.clone().unwrap_or_else(|| serde_json::json!({}));
             if let Some(obj) = m.as_object_mut() {
@@ -583,6 +586,7 @@ async fn handle_source_update_resolution<R: Runtime>(
                 obj.remove("error");
             }
             task.metadata = Some(m.to_string());
+            set_source_conflict_resolved(task);
             task.touch();
             if let Err(e) = ctx.task_repo.update(task).await {
                 tracing::warn!(
