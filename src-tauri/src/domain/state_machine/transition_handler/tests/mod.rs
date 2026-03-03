@@ -22,6 +22,7 @@ mod merge_workflow;
 mod metadata_skip_guard;
 mod transitions_agents;
 mod transitions_basic;
+mod transitions_branchless_merge;
 
 // Tests for merge-hang fixes (step 0, deadline, timeouts, config)
 mod merge_cleanup;

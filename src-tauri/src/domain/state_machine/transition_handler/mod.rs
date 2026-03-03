@@ -162,6 +162,32 @@ impl<'a> TransitionHandler<'a> {
                             exit_actions::check_revision_cap_or_fail(&ctx, auto_state).await;
                     }
 
+                    // Skip merge pipeline for branchless tasks (e.g., external repo work).
+                    // If the task has no task_branch, there's nothing to merge —
+                    // go directly to Merged.
+                    if matches!(new_state, State::Approved)
+                        && matches!(auto_state, State::PendingMerge)
+                    {
+                        if let Some(ref task_repo) =
+                            self.machine.context.services.task_repo
+                        {
+                            let task_id = TaskId::from_string(
+                                self.machine.context.task_id.clone(),
+                            );
+                            if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await
+                            {
+                                if task.task_branch.is_none() {
+                                    tracing::info!(
+                                        task_id = %self.machine.context.task_id,
+                                        "No task branch — skipping merge pipeline, \
+                                         auto-transitioning to Merged"
+                                    );
+                                    auto_state = State::Merged;
+                                }
+                            }
+                        }
+                    }
+
                     self.on_exit(&new_state, &auto_state).await;
                     if let Err(e) = self.on_enter(&auto_state).await {
                         self.emit_on_enter_error(&auto_state, &e).await;
