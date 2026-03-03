@@ -718,6 +718,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     run_chain_id.clone(),
                     &interactive_process_registry,
                     &review_repo,
+                    &task_step_repo,
                 )
                 .await;
             }

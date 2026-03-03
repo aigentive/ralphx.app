@@ -488,6 +488,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     run_chain_id: Option<String>,
     interactive_process_registry: &Option<Arc<InteractiveProcessRegistry>>,
     review_repo: &Option<Arc<dyn ReviewRepository>>,
+    task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
 ) -> bool {
     // Handle cancellation: skip all recovery/transitions, just mark as stopped
     if matches!(stream_error, Some(StreamError::Cancelled)) {
@@ -895,6 +896,46 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             }
                         }
                     }
+
+                    // AgentExit with all steps completed → agent called execution_complete
+                    // successfully but exited with signal (code=None). Override to PendingReview.
+                    let target_status = if target_status == InternalStatus::Failed
+                        && matches!(stream_error, Some(StreamError::AgentExit { .. }))
+                    {
+                        let all_steps_done = if let Some(ref step_repo) = task_step_repo {
+                            match step_repo.get_by_task(&task_id).await {
+                                Ok(steps) => {
+                                    !steps.is_empty()
+                                        && steps.iter().all(|s| {
+                                            s.status == TaskStepStatus::Completed
+                                                || s.status == TaskStepStatus::Skipped
+                                        })
+                                }
+                                Err(e) => {
+                                    tracing::warn!(
+                                        task_id = task_id.as_str(),
+                                        error = %e,
+                                        "Failed to query steps for AgentExit recovery check"
+                                    );
+                                    false
+                                }
+                            }
+                        } else {
+                            false
+                        };
+
+                        if all_steps_done {
+                            tracing::info!(
+                                task_id = task_id.as_str(),
+                                "AgentExit with all steps completed — overriding Failed → PendingReview"
+                            );
+                            InternalStatus::PendingReview
+                        } else {
+                            target_status
+                        }
+                    } else {
+                        target_status
+                    };
 
                     let transition_service = TaskTransitionService::new(
                         Arc::clone(task_repo),
