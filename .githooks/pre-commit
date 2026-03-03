@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Pre-commit hook: reject commits containing node_modules paths.
+# Worktree agents create node_modules symlinks for performance; this hook
+# prevents those symlinks from being accidentally committed.
+
+staged=$(git diff --cached --name-only --diff-filter=ACR)
+
+bad=$(echo "$staged" | grep -E '(^|/)node_modules(/|$)' || true)
+
+if [ -n "$bad" ]; then
+    echo "ERROR: Refusing to commit node_modules paths:"
+    echo "$bad" | sed 's/^/  /'
+    echo ""
+    echo "These are likely worktree symlinks. Remove them from staging:"
+    echo "  git reset HEAD <path>"
+    exit 1
+fi
