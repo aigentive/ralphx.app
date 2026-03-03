@@ -375,6 +375,7 @@ export function IntegratedChatPanel({
     isHistoryMode,
     isAgentContext,
     isAgentRunning,
+    isGenerating: agentStatus === "generating",
     isConversationInCurrentContext,
     agentRunStatus: agentRunQuery.data?.status ?? undefined,
     setAgentRunning,
@@ -572,17 +573,15 @@ export function IntegratedChatPanel({
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [onClose]);
 
-  // Sort messages by createdAt for historical display.
-  // During active streaming, preserve insertion order to prevent optimistic messages
-  // from jumping around due to client/server clock skew.
+  // Sort messages by createdAt always. Secondary sort by id provides stable
+  // tiebreaking when timestamps are equal (e.g. optimistic + DB messages share ms).
   const sortedMessages = useMemo(() => {
-    if (isAgentRunning || isSending) {
-      return [...messagesData];
-    }
-    return [...messagesData].sort((a, b) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    );
-  }, [messagesData, isAgentRunning, isSending]);
+    return [...messagesData].sort((a, b) => {
+      const timeDiff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      if (timeDiff !== 0) return timeDiff;
+      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+    });
+  }, [messagesData]);
 
   // Loading state: show skeleton when conversations list is loading OR active conversation is loading
   const isConversationsLoading = conversations.isLoading;

@@ -769,7 +769,8 @@ describe("useChatEvents", () => {
         { id: "tc1", name: "Read", arguments: {} },
       ]);
       expect(toolCallResult).toEqual([]);
-      expect(mockInvalidateQueries).toHaveBeenCalled();
+      // Query invalidation is now owned by useAgentEvents — not called here
+      expect(mockInvalidateQueries).not.toHaveBeenCalled();
     });
   });
 
@@ -798,7 +799,8 @@ describe("useChatEvents", () => {
         { id: "tc1", name: "Read", arguments: {} },
       ]);
       expect(toolCallResult).toEqual([]);
-      expect(mockInvalidateQueries).toHaveBeenCalled();
+      // Query invalidation is now owned by useAgentEvents — not called here
+      expect(mockInvalidateQueries).not.toHaveBeenCalled();
     });
   });
 
@@ -818,15 +820,16 @@ describe("useChatEvents", () => {
         });
       });
 
-      // Tool calls use functional updater
+      // All three streaming state setters are called (full clear on error)
       expect(props.setStreamingToolCalls).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingContentBlocks).toHaveBeenCalledTimes(1);
+      expect(props.setStreamingTasks).toHaveBeenCalledTimes(1);
       const result = executeUpdater<ToolCall[]>(props.setStreamingToolCalls, [
         { id: "tc1", name: "Read", arguments: {} },
       ]);
       expect(result).toEqual([]);
-      expect(mockInvalidateQueries).toHaveBeenCalled();
-      // Note: agent:error only clears tool calls, not content blocks or tasks
-      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
+      // Query invalidation is now owned by useAgentEvents — not called here
+      expect(mockInvalidateQueries).not.toHaveBeenCalled();
     });
   });
 
@@ -1139,7 +1142,7 @@ describe("useChatEvents", () => {
       expect(task!.status).toBe("running");
     });
 
-    it("should not clear task position markers on agent:error (preserves visible state)", () => {
+    it("should clear all streaming state including task position markers on agent:error", () => {
       const props = makeProps();
       renderAndClear(props);
 
@@ -1176,11 +1179,10 @@ describe("useChatEvents", () => {
         });
       });
 
-      // agent:error clears streamingToolCalls only — content blocks and tasks persist
-      // so the user can see what was running when the error occurred.
-      expect(props.setStreamingContentBlocks).not.toHaveBeenCalled();
-      expect(props.setStreamingTasks).not.toHaveBeenCalled();
+      // agent:error clears ALL streaming state (tool calls, content blocks, tasks)
       expect(props.setStreamingToolCalls).toHaveBeenCalled();
+      expect(props.setStreamingContentBlocks).toHaveBeenCalled();
+      expect(props.setStreamingTasks).toHaveBeenCalled();
     });
   });
 
@@ -1410,11 +1412,13 @@ describe("useChatEvents", () => {
 
       unmount();
 
-      // Cleanup uses functional updaters for all three + resets isFinalizing
+      // Cleanup uses functional updaters for all three streaming state setters.
+      // setIsFinalizing is NOT called on unmount — finalization is only cancelled on
+      // genuine context switch via the dedicated [activeConversationId, contextId] effect.
       expect(props.setStreamingToolCalls).toHaveBeenCalled();
       expect(props.setStreamingContentBlocks).toHaveBeenCalled();
       expect(props.setStreamingTasks).toHaveBeenCalled();
-      expect(props.setIsFinalizing).toHaveBeenCalledWith(false);
+      expect(props.setIsFinalizing).not.toHaveBeenCalledWith(false);
 
       // All subscriptions should be removed
       for (const [, handlers] of subscriptions) {

@@ -31,6 +31,8 @@ interface UseChatRecoveryProps {
   isHistoryMode: boolean;
   isAgentContext: boolean;
   isAgentRunning: boolean;
+  /** Whether the agent is actively streaming chunks (generating state). Suppresses polling to avoid redundant refetches during streaming. */
+  isGenerating: boolean;
   /** Whether active conversation belongs to current context */
   isConversationInCurrentContext: boolean;
   /** Backend agent run status */
@@ -55,6 +57,7 @@ export function useChatRecovery({
   isHistoryMode,
   isAgentContext,
   isAgentRunning,
+  isGenerating,
   isConversationInCurrentContext,
   agentRunStatus,
   setAgentRunning,
@@ -113,9 +116,12 @@ export function useChatRecovery({
 
   // Live updates: poll active conversation while agent is running (store state or backend status).
   // Consolidates two previously-separate intervals that both polled the same query key.
+  // Suppressed during active streaming — events (agent:chunk, agent:message_created) already
+  // drive UI updates, so polling is redundant and would cause unnecessary refetches.
   useEffect(() => {
     if (!activeConversationId) return undefined;
     if (!isAgentRunning && agentRunStatus !== "running") return undefined;
+    if (isGenerating) return undefined;
 
     const intervalId = setInterval(() => {
       queryClient.invalidateQueries({
@@ -124,7 +130,7 @@ export function useChatRecovery({
     }, 2000);
 
     return () => clearInterval(intervalId);
-  }, [activeConversationId, isAgentRunning, agentRunStatus, queryClient]);
+  }, [activeConversationId, isAgentRunning, isGenerating, agentRunStatus, queryClient]);
 
   // If a run is active but no conversation is selected, keep refreshing the list
   useEffect(() => {

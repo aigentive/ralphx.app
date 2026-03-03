@@ -131,7 +131,7 @@ export function useAgentEvents(activeConversationId: string | null) {
           // Active-conversation assistant messages are handled exclusively by useChatEvents
           // to avoid duplicate DB refetches that cause visual artifacts during streaming.
           queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(conversation_id),
+            queryKey: chatKeys.conversation(conversation_id), // use payload ID, not stale closure
           });
         }
       })
@@ -157,16 +157,14 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Clear agent status for the specific context (run is done)
         setAgentStatus(eventContextKey, "idle");
 
-        // Invalidate agent run status
-        if (conversation_id === activeConversationId) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.agentRun(activeConversationId),
-          });
-
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(activeConversationId),
-          });
-        }
+        // Invalidate using conversation_id from the payload — avoids stale closure mismatch
+        // where activeConversationId in the closure might differ from the just-completed run.
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.agentRun(conversation_id),
+        });
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(conversation_id),
+        });
 
         // NOTE: Queue processing is now handled by the BACKEND
         // The backend automatically processes queued messages via --resume
@@ -193,16 +191,13 @@ export function useAgentEvents(activeConversationId: string | null) {
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
         setAgentStatus(eventContextKey, "waiting_for_input");
 
-        // Invalidate queries to pick up messages flushed after the completed turn
-        if (conversation_id === activeConversationId) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.agentRun(activeConversationId),
-          });
-
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(activeConversationId),
-          });
-        }
+        // Invalidate using conversation_id from payload to avoid stale closure mismatch
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.agentRun(conversation_id),
+        });
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(conversation_id),
+        });
       })
     );
 
@@ -244,14 +239,13 @@ export function useAgentEvents(activeConversationId: string | null) {
 
         setAgentStatus(eventContextKey, "idle");
 
-        if (conversation_id === activeConversationId) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.agentRun(activeConversationId),
-          });
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(activeConversationId),
-          });
-        }
+        // Invalidate using conversation_id from payload to avoid stale closure mismatch
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.agentRun(conversation_id),
+        });
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(conversation_id),
+        });
       })
     );
 
@@ -275,15 +269,13 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Clear agent status on error for the specific context
         setAgentStatus(eventContextKey, "idle");
 
-        // Invalidate queries to refresh state
-        if (conversation_id === activeConversationId) {
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.agentRun(activeConversationId),
-          });
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversation(activeConversationId),
-          });
-        }
+        // Invalidate using conversation_id from payload to avoid stale closure mismatch
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.agentRun(conversation_id),
+        });
+        queryClient.invalidateQueries({
+          queryKey: chatKeys.conversation(conversation_id),
+        });
 
         // Show error toast for agent failures in execution contexts
         if (["task_execution", "review", "merge"].includes(context_type)) {
