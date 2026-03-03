@@ -129,8 +129,20 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
+    // team:artifact_created — moved to Effect 1 so bumpArtifactVersion fires
+    // even when no team:created event happened first (e.g. MCP-created artifacts).
+    unsubs.push(
+      bus.subscribe<TeamArtifactCreatedPayload>("team:artifact_created", (payload) => {
+        // contextKey format: "prefix:contextId" — extract contextId for matching
+        const contextId = contextKey.split(":").slice(1).join(":");
+        if (payload.session_id === contextId) {
+          bumpArtifactVersion(payload.session_id);
+        }
+      }),
+    );
+
     return () => unsubs.forEach((u) => u());
-  }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive, setPendingPlan, addTeammate]);
+  }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive, setPendingPlan, addTeammate, bumpArtifactVersion]);
 
   // ── Effect 2: Subscribe to remaining events when team is active ──────────
   useEffect(() => {
@@ -222,23 +234,11 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
-    // team:artifact_created — bump version counter so artifact lists refetch
-    // Matches by session_id (which equals the context_id portion of contextKey)
-    unsubs.push(
-      bus.subscribe<TeamArtifactCreatedPayload>("team:artifact_created", (payload) => {
-        // contextKey format: "prefix:contextId" — extract contextId for matching
-        const contextId = contextKey.split(":").slice(1).join(":");
-        if (payload.session_id === contextId) {
-          bumpArtifactVersion(payload.session_id);
-        }
-      }),
-    );
-
     return () => unsubs.forEach((u) => u());
   }, [
     bus, contextKey, isTeamActive, matchKey,
     updateTeammateStatus, setTeammateConversationId,
     updateTeammateCost,
-    addTeamMessage, bumpArtifactVersion,
+    addTeamMessage,
   ]);
 }
