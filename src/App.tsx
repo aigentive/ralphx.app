@@ -272,6 +272,9 @@ function AppContent() {
     return activeSession;
   }, [sessionData?.session, activeSession]);
 
+  // Mirror PlanningView's isReadOnly: sessions that are not "active" are read-only
+  const isIdeationReadOnly = resolvedSession?.status !== "active";
+
   // Sync proposals from sessionData to the store
   useEffect(() => {
     if (sessionData?.proposals) {
@@ -540,6 +543,11 @@ function AppContent() {
     setViewingProposalId(proposalId);
     setViewingEnrichment(enrichment);
   }, []);
+
+  const handleNavigateToTaskFromSheet = useCallback((taskId: string) => {
+    setCurrentView("kanban");
+    setSelectedTaskId(taskId);
+  }, [setCurrentView, setSelectedTaskId]);
 
   const handleSaveProposal = useCallback(
     async (proposalId: string, data: UpdateProposalInput) => {
@@ -1117,8 +1125,10 @@ function AppContent() {
       <ProposalDetailSheet
         proposal={viewingProposal}
         {...(viewingEnrichment !== undefined && { enrichment: viewingEnrichment })}
+        isReadOnly={isIdeationReadOnly}
         onClose={() => { setViewingProposalId(null); setViewingEnrichment(undefined); }}
         onEdit={handleEditProposal}
+        onNavigateToTask={handleNavigateToTaskFromSheet}
       />
 
       {/* Confirmation Dialog */}
