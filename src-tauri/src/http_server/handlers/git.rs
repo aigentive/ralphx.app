@@ -17,6 +17,7 @@ use crate::application::{GitService, TaskSchedulerService, TaskTransitionService
 use crate::domain::entities::{task_metadata::MergeFailureSource, InternalStatus, TaskId};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::transition_handler::{parse_metadata, set_source_conflict_resolved};
 
 // ============================================================================
 // Request/Response Types
@@ -267,6 +268,103 @@ pub async fn complete_merge(
         .await
         .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?
     {
+        // Check if this is a source_update_conflict completion — the commit is on the
+        // source branch (agent merged target INTO source), not the target branch.
+        let is_source_update = parse_metadata(&task)
+            .and_then(|v| v.get("source_update_conflict")?.as_bool())
+            .unwrap_or(false);
+
+        if is_source_update {
+            tracing::info!(
+                task_id = task_id.as_str(),
+                commit_sha = %req.commit_sha,
+                "Source update conflict resolved by agent, transitioning back to PendingMerge"
+            );
+
+            // Clear source_update_conflict and set source_conflict_resolved for squash-only retry
+            {
+                let mut meta = parse_metadata(&task).unwrap_or_else(|| serde_json::json!({}));
+                if let Some(obj) = meta.as_object_mut() {
+                    obj.remove("source_update_conflict");
+                    obj.remove("conflict_files");
+                    obj.remove("error");
+                }
+                task.metadata = Some(meta.to_string());
+                set_source_conflict_resolved(&mut task);
+            }
+            task.touch();
+            state
+                .app_state
+                .task_repo
+                .update(&task)
+                .await
+                .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
+
+            // Transition Merging → PendingMerge
+            let scheduler_concrete = Arc::new(
+                TaskSchedulerService::new(
+                    Arc::clone(&state.execution_state),
+                    Arc::clone(&state.app_state.project_repo),
+                    Arc::clone(&state.app_state.task_repo),
+                    Arc::clone(&state.app_state.task_dependency_repo),
+                    Arc::clone(&state.app_state.chat_message_repo),
+                    Arc::clone(&state.app_state.chat_attachment_repo),
+                    Arc::clone(&state.app_state.chat_conversation_repo),
+                    Arc::clone(&state.app_state.agent_run_repo),
+                    Arc::clone(&state.app_state.ideation_session_repo),
+                    Arc::clone(&state.app_state.activity_event_repo),
+                    Arc::clone(&state.app_state.message_queue),
+                    Arc::clone(&state.app_state.running_agent_registry),
+                    Arc::clone(&state.app_state.memory_event_repo),
+                    state.app_state.app_handle.as_ref().cloned(),
+                )
+                .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
+                .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry)),
+            );
+            scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+            let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
+
+            let transition_service = TaskTransitionService::new(
+                Arc::clone(&state.app_state.task_repo),
+                Arc::clone(&state.app_state.task_dependency_repo),
+                Arc::clone(&state.app_state.project_repo),
+                Arc::clone(&state.app_state.chat_message_repo),
+                Arc::clone(&state.app_state.chat_attachment_repo),
+                Arc::clone(&state.app_state.chat_conversation_repo),
+                Arc::clone(&state.app_state.agent_run_repo),
+                Arc::clone(&state.app_state.ideation_session_repo),
+                Arc::clone(&state.app_state.activity_event_repo),
+                Arc::clone(&state.app_state.message_queue),
+                Arc::clone(&state.app_state.running_agent_registry),
+                Arc::clone(&state.execution_state),
+                state.app_state.app_handle.as_ref().cloned(),
+                Arc::clone(&state.app_state.memory_event_repo),
+            )
+            .with_task_scheduler(task_scheduler)
+            .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
+            .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
+
+            transition_service
+                .transition_task(&task_id, InternalStatus::PendingMerge)
+                .await
+                .map_err(|e| json_error(StatusCode::INTERNAL_SERVER_ERROR, e.to_string(), None))?;
+
+            // Close stdin via IPR to signal EOF to the merger agent
+            {
+                use crate::application::interactive_process_registry::InteractiveProcessKey;
+                let key = InteractiveProcessKey::new("merge", task_id.as_str());
+                if state.app_state.interactive_process_registry.remove(&key).await.is_some() {
+                    tracing::info!("IPR removed for merger on task {} (source update conflict resolved)", task_id.as_str());
+                }
+            }
+
+            return Ok(Json(MergeOperationResponse {
+                success: true,
+                message: "Source update completed, retrying merge".to_string(),
+                new_status: "pending_merge".to_string(),
+            }));
+        }
+
         return Err(json_error(
             StatusCode::BAD_REQUEST,
             format!(

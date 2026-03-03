@@ -698,3 +698,330 @@ mod ipr_removal {
         let _ = child.kill().await;
     }
 }
+
+mod source_update_conflict {
+    use super::*;
+    use crate::application::AppState;
+    use crate::commands::ExecutionState;
+    use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
+    use crate::domain::state_machine::transition_handler::parse_metadata;
+    use std::sync::Arc;
+
+    async fn setup_git_test_state() -> HttpServerState {
+        let app_state = Arc::new(AppState::new_test());
+        let execution_state = Arc::new(ExecutionState::new());
+        let tracker = crate::application::TeamStateTracker::new();
+        let team_service = Arc::new(crate::application::TeamService::new_without_events(
+            Arc::new(tracker.clone()),
+        ));
+        HttpServerState {
+            app_state,
+            execution_state,
+            team_tracker: tracker,
+            team_service,
+        }
+    }
+
+    /// Set up a real git repo where the commit is on the source branch but NOT on target.
+    /// This simulates what happens when the merger agent resolves a source_update_conflict
+    /// by merging target INTO source — the resulting commit is on the source branch only.
+    fn setup_source_update_repo() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().expect("create temp dir");
+        let repo = dir.path();
+
+        // Init repo
+        std::process::Command::new("git")
+            .args(["init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "t@t.com"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "T"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Initial commit on main
+        std::fs::write(repo.join("readme.md"), "# test").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create task-branch with a commit (simulates agent's merge commit on source)
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("feat.txt"), "merged target into source").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "merge target into source"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Get the commit SHA on task-branch (NOT on main)
+        let sha_bytes = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap()
+            .stdout;
+        let sha = String::from_utf8(sha_bytes).unwrap().trim().to_string();
+
+        // Switch back to main so it stays untouched
+        std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        (dir, sha)
+    }
+
+    /// Seed a project + Merging task with source_update_conflict metadata.
+    async fn seed_source_update_task(
+        state: &HttpServerState,
+        repo_path: &std::path::Path,
+        metadata: Option<&str>,
+    ) -> TaskId {
+        let project_id = ProjectId::new();
+        let mut project = Project::new(
+            "test-project".to_string(),
+            repo_path.to_string_lossy().to_string(),
+        );
+        project.id = project_id.clone();
+        project.base_branch = Some("main".to_string());
+        state.app_state.project_repo.create(project).await.unwrap();
+
+        let mut task = Task::new(project_id, "Source update conflict test".to_string());
+        task.internal_status = InternalStatus::Merging;
+        task.task_branch = Some("task-branch".to_string());
+        task.metadata = metadata.map(String::from);
+        let task_id = task.id.clone();
+        state.app_state.task_repo.create(task).await.unwrap();
+
+        task_id
+    }
+
+    /// complete_merge with source_update_conflict: transitions to PendingMerge,
+    /// sets source_conflict_resolved, removes IPR, returns success.
+    #[tokio::test]
+    async fn test_source_update_conflict_transitions_to_pending_merge() {
+        let (dir, source_sha) = setup_source_update_repo();
+        let state = setup_git_test_state().await;
+
+        let metadata = r#"{"source_update_conflict": true, "conflict_files": ["src/lib.rs"], "target_branch": "main"}"#;
+        let task_id = seed_source_update_task(&state, dir.path(), Some(metadata)).await;
+
+        // Register IPR
+        let mut child = tokio::process::Command::new("cat")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn cat for source update IPR test");
+        let stdin = child.stdin.take().expect("cat stdin");
+        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
+            "merge",
+            task_id.as_str(),
+        );
+        state
+            .app_state
+            .interactive_process_registry
+            .register(key.clone(), stdin)
+            .await;
+
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: source_sha,
+            }),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "complete_merge should succeed for source_update_conflict: {:?}",
+            result
+        );
+
+        let resp = result.unwrap().0;
+        assert!(resp.success);
+        assert_eq!(resp.new_status, "pending_merge");
+        assert!(resp.message.contains("Source update completed"));
+
+        // Verify task state
+        let task = state
+            .app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        // After transitioning to PendingMerge, the on_enter handler may auto-complete
+        // the merge (since source is now up-to-date with target). Either PendingMerge
+        // or Merged is correct — both prove the handler worked.
+        assert!(
+            task.internal_status == InternalStatus::PendingMerge
+                || task.internal_status == InternalStatus::Merged,
+            "Task should be in PendingMerge or Merged (auto-completed). Got: {:?}",
+            task.internal_status
+        );
+        let meta = parse_metadata(&task).unwrap();
+        assert_eq!(
+            meta.get("source_conflict_resolved").and_then(|v| v.as_bool()),
+            Some(true),
+            "source_conflict_resolved flag must be set in metadata"
+        );
+
+        // source_update_conflict should be cleared from metadata
+        let meta = parse_metadata(&task).unwrap();
+        assert!(
+            meta.get("source_update_conflict").is_none(),
+            "source_update_conflict must be cleared from metadata"
+        );
+        assert!(
+            meta.get("conflict_files").is_none(),
+            "conflict_files must be cleared from metadata"
+        );
+
+        // IPR should be removed
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "IPR must be removed after source update conflict resolution"
+        );
+
+        let _ = child.kill().await;
+    }
+
+    /// complete_merge with commit NOT on target and NO source_update_conflict → 400 error.
+    #[tokio::test]
+    async fn test_no_source_update_flag_returns_400() {
+        let (dir, source_sha) = setup_source_update_repo();
+        let state = setup_git_test_state().await;
+
+        // No source_update_conflict in metadata
+        let metadata = r#"{"some_other_key": true}"#;
+        let task_id = seed_source_update_task(&state, dir.path(), Some(metadata)).await;
+
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: source_sha,
+            }),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "complete_merge should fail when commit not on target and no source_update_conflict"
+        );
+
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.0, StatusCode::BAD_REQUEST,
+            "Should return 400 BAD_REQUEST"
+        );
+    }
+
+    /// complete_merge with source_update_conflict when source_conflict_resolved already set
+    /// is idempotent — still transitions to PendingMerge successfully.
+    #[tokio::test]
+    async fn test_source_update_idempotent_with_existing_resolved_flag() {
+        let (dir, source_sha) = setup_source_update_repo();
+        let state = setup_git_test_state().await;
+
+        // Both flags set (edge case: resolved already set from prior attempt)
+        let metadata =
+            r#"{"source_update_conflict": true, "source_conflict_resolved": true, "target_branch": "main"}"#;
+        let task_id = seed_source_update_task(&state, dir.path(), Some(metadata)).await;
+
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: source_sha,
+            }),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "complete_merge should still succeed when source_conflict_resolved already set: {:?}",
+            result
+        );
+
+        let resp = result.unwrap().0;
+        assert_eq!(resp.new_status, "pending_merge");
+
+        // Verify flag is still set
+        let task = state
+            .app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        let meta = parse_metadata(&task).unwrap();
+        assert_eq!(
+            meta.get("source_conflict_resolved").and_then(|v| v.as_bool()),
+            Some(true),
+            "source_conflict_resolved flag must still be set"
+        );
+    }
+
+    /// complete_merge with no metadata at all and commit not on target → 400 error.
+    #[tokio::test]
+    async fn test_no_metadata_returns_400() {
+        let (dir, source_sha) = setup_source_update_repo();
+        let state = setup_git_test_state().await;
+
+        let task_id = seed_source_update_task(&state, dir.path(), None).await;
+
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: source_sha,
+            }),
+        )
+        .await;
+
+        assert!(
+            result.is_err(),
+            "complete_merge should fail when no metadata and commit not on target"
+        );
+
+        let err = result.unwrap_err();
+        assert_eq!(err.0, StatusCode::BAD_REQUEST);
+    }
+}
