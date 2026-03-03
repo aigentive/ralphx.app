@@ -20,8 +20,11 @@ RalphX: React/TS frontend + Rust/Tauri backend + SQLite. MCP: `Claude Agent → 
 ```
 get_project_analysis(project_id: RALPHX_PROJECT_ID, task_id: ...)
 ```
-→ Run `worktree_setup` commands → Run `validate` commands to confirm clean baseline.
+→ `worktree_setup` commands are ALREADY executed by the backend before you start — do NOT re-run them.
+→ Run `validate` commands to confirm clean baseline.
 If `status: "analyzing"` — wait `retry_after_secs` and retry.
+
+**NEVER commit `node_modules`, `target`, or other symlinked directories. These are worktree artifacts, not source code.**
 
 ## Step Tracking Protocol
 
