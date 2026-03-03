@@ -45,6 +45,8 @@ export interface ProposalCardProps {
   onNavigateToTask?: (taskId: string) => void;
   /** Callback when card body is clicked to open detail sheet */
   onViewDetail?: (proposalId: string, enrichment: { dependsOnDetails: DependencyDetail[]; blocksCount: number; isOnCriticalPath: boolean }) => void;
+  /** Whether this card is currently selected (detail sheet open) */
+  isSelected?: boolean;
 }
 
 // ============================================================================
@@ -67,6 +69,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   isReadOnly = false,
   onNavigateToTask,
   onViewDetail,
+  isSelected = false,
 }: ProposalCardProps) {
   const [isDepsExpanded, setIsDepsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -119,13 +122,15 @@ export const ProposalCard = React.memo(function ProposalCard({
         onViewDetail ? "cursor-pointer" : undefined
       )}
       style={{
-        padding: "14px 16px",
+        padding: isSelected ? "13px 15px" : "14px 16px",
         background: isHovered
           ? "hsla(220 10% 100% / 0.04)"
           : "hsla(220 10% 100% / 0.02)",
-        border: isHighlighted
-          ? "1px solid hsla(45 93% 50% / 0.4)"
-          : "1px solid hsla(220 10% 100% / 0.06)",
+        border: isSelected
+          ? "2px solid hsl(14 100% 55%)"
+          : isHighlighted
+            ? "1px solid hsla(45 93% 50% / 0.4)"
+            : "1px solid hsla(220 10% 100% / 0.06)",
         boxShadow: isHovered
           ? "0 2px 8px hsla(220 10% 0% / 0.2)"
           : "0 1px 2px hsla(220 10% 0% / 0.1)",

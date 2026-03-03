@@ -79,6 +79,8 @@ interface PlanningViewProps {
   onApply: (options: ApplyProposalsInput) => Promise<ApplyProposalsResultResponse>;
   /** Callback to open proposal detail sheet */
   onViewProposal?: (proposalId: string, enrichment: ProposalDetailEnrichment) => void;
+  /** ID of currently selected proposal (for highlight state in cards) */
+  selectedProposalId?: string | null;
   /** Footer slot for execution controls — renders below left section */
   footer?: React.ReactNode;
 }
@@ -139,6 +141,7 @@ export function PlanningView({
   onReorderProposals,
   onApply,
   onViewProposal,
+  selectedProposalId,
   footer,
 }: PlanningViewProps) {
   const [chatPanelWidth, setChatPanelWidth] = useState(CHAT_PANEL_DEFAULT_WIDTH);
@@ -1107,6 +1110,7 @@ export function PlanningView({
                           onNavigateToTask={handleNavigateToTask}
                           onViewHistoricalPlan={handleViewHistoricalPlan}
                           {...(onViewProposal !== undefined && { onViewDetail: onViewProposal })}
+                          {...(selectedProposalId != null && { selectedProposalId })}
                         />
                       )}
                     </div>
