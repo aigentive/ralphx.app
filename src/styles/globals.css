@@ -523,6 +523,15 @@ body {
   }
 }
 
+@keyframes slide-in-from-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
 /* Badge pop animation for review count changes */
 @keyframes badge-pop {
   0% {
