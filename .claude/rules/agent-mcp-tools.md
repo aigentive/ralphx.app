@@ -77,6 +77,7 @@ AgentConfig {
 "ralphx-merger": [
     "report_conflict",
     "report_incomplete",
+    "complete_merge",
     "get_merge_target",  // ← ADD
     "get_task_context",
 ],

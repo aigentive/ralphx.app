@@ -919,6 +919,25 @@ export const ALL_TOOLS: Tool[] = [
     },
   },
   {
+    name: "complete_merge",
+    description:
+      "Signal that merge conflicts have been resolved and the merge is complete. Call this after successfully resolving all conflicts, staging changes, and completing the rebase/merge. Provide the commit SHA of the final merge commit (use `git rev-parse HEAD`). This transitions the task from Merging to Merged state.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: {
+          type: "string",
+          description: "The task ID whose merge is complete",
+        },
+        commit_sha: {
+          type: "string",
+          description: "Full 40-character SHA of the merge/rebase commit (from `git rev-parse HEAD`)",
+        },
+      },
+      required: ["task_id", "commit_sha"],
+    },
+  },
+  {
     name: "get_merge_target",
     description:
       "Get the resolved merge target branches for a task. " +
@@ -1483,6 +1502,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // merge tools
     "report_conflict",
     "report_incomplete",
+    "complete_merge",
     "get_merge_target",
     // project analysis tools
     "get_project_analysis",
