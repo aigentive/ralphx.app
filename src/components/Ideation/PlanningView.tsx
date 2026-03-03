@@ -47,6 +47,7 @@ import { PlanBrowser } from "./PlanBrowser";
 import { StartSessionPanel } from "./StartSessionPanel";
 import { ProposalsToolbar } from "./ProposalsToolbar";
 import { TieredProposalList } from "./TieredProposalList";
+import type { ProposalDetailEnrichment } from "./ProposalDetailSheet";
 import { ProactiveSyncNotificationBanner } from "./ProactiveSyncNotification";
 import { ProposalsEmptyState } from "./ProposalsEmptyState";
 import { AcceptedSessionBanner } from "./AcceptedSessionBanner";
@@ -76,6 +77,8 @@ interface PlanningViewProps {
   onRemoveProposal: (proposalId: string) => void;
   onReorderProposals: (proposalIds: string[]) => void;
   onApply: (options: ApplyProposalsInput) => Promise<ApplyProposalsResultResponse>;
+  /** Callback to open proposal detail sheet */
+  onViewProposal?: (proposalId: string, enrichment: ProposalDetailEnrichment) => void;
   /** Footer slot for execution controls — renders below left section */
   footer?: React.ReactNode;
 }
@@ -135,6 +138,7 @@ export function PlanningView({
   onRemoveProposal,
   onReorderProposals,
   onApply,
+  onViewProposal,
   footer,
 }: PlanningViewProps) {
   const [chatPanelWidth, setChatPanelWidth] = useState(CHAT_PANEL_DEFAULT_WIDTH);
@@ -385,7 +389,9 @@ export function PlanningView({
   const [teamArtifacts, setTeamArtifacts] = useState<TeamArtifactSummary[]>([]);
   const artifactVersion = useTeamStore((s) => s.artifactVersion[session?.id ?? ""] ?? 0);
   useEffect(() => {
-    if (!session?.id || !session.teamMode || session.teamMode === "solo") {
+    const hasTeamMode = session?.teamMode && session.teamMode !== "solo";
+    const hasArtifacts = artifactVersion > 0;
+    if (!session?.id || (!hasTeamMode && !hasArtifacts)) {
       setTeamArtifacts([]);
       return;
     }
@@ -1100,6 +1106,7 @@ export function PlanningView({
                           {...(isReadOnly && { isReadOnly })}
                           onNavigateToTask={handleNavigateToTask}
                           onViewHistoricalPlan={handleViewHistoricalPlan}
+                          {...(onViewProposal !== undefined && { onViewDetail: onViewProposal })}
                         />
                       )}
                     </div>

@@ -43,6 +43,8 @@ export interface ProposalCardProps {
   isReadOnly?: boolean;
   /** Callback to navigate to the created task in kanban */
   onNavigateToTask?: (taskId: string) => void;
+  /** Callback when card body is clicked to open detail sheet */
+  onViewDetail?: (proposalId: string, enrichment: { dependsOnDetails: DependencyDetail[]; blocksCount: number; isOnCriticalPath: boolean }) => void;
 }
 
 // ============================================================================
@@ -64,6 +66,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   isOnCriticalPath,
   isReadOnly = false,
   onNavigateToTask,
+  onViewDetail,
 }: ProposalCardProps) {
   const [isDepsExpanded, setIsDepsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -97,12 +100,23 @@ export const ProposalCard = React.memo(function ProposalCard({
 
   const priorityColor = priorityColors[effectivePriority] || priorityColors.medium;
 
+  const handleCardClick = () => {
+    if (onViewDetail) {
+      onViewDetail(proposal.id, {
+        dependsOnDetails: dependsOnDetails ?? [],
+        blocksCount: blocksCount ?? 0,
+        isOnCriticalPath: isOnCriticalPath ?? false,
+      });
+    }
+  };
+
   return (
     <div
       data-testid={`proposal-card-${proposal.id}`}
       className={cn(
         "group relative rounded-xl",
-        "transition-all duration-200 ease-out"
+        "transition-all duration-200 ease-out",
+        onViewDetail ? "cursor-pointer" : undefined
       )}
       style={{
         padding: "14px 16px",
@@ -115,12 +129,11 @@ export const ProposalCard = React.memo(function ProposalCard({
         boxShadow: isHovered
           ? "0 2px 8px hsla(220 10% 0% / 0.2)"
           : "0 1px 2px hsla(220 10% 0% / 0.1)",
-        ...(isOnCriticalPath && {
-          borderBottom: "2px solid hsla(14 100% 60% / 0.4)",
-        }),
+
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={onViewDetail ? handleCardClick : undefined}
     >
       <div className="flex items-start gap-3 pl-2">
         {/* Content */}

@@ -153,4 +153,79 @@ describe("ProposalCard", () => {
     expect(card).toHaveClass("rounded-xl");
     expect(card).toHaveClass("transition-all");
   });
+
+  it("calls onViewDetail with proposal id and enrichment when card is clicked", async () => {
+    const user = userEvent.setup();
+    const onViewDetail = vi.fn();
+    render(
+      <ProposalCard
+        {...defaultProps}
+        onViewDetail={onViewDetail}
+        dependsOnDetails={[{ proposalId: "dep-1", title: "Dep" }]}
+        blocksCount={2}
+        isOnCriticalPath={true}
+      />
+    );
+    const card = screen.getByTestId("proposal-card-proposal-1");
+    await user.click(card);
+    expect(onViewDetail).toHaveBeenCalledWith("proposal-1", {
+      dependsOnDetails: [{ proposalId: "dep-1", title: "Dep" }],
+      blocksCount: 2,
+      isOnCriticalPath: true,
+    });
+  });
+
+  it("does not call onViewDetail when edit button is clicked (stopPropagation)", async () => {
+    const user = userEvent.setup();
+    const onViewDetail = vi.fn();
+    const onEdit = vi.fn();
+    render(
+      <ProposalCard
+        {...defaultProps}
+        onEdit={onEdit}
+        onViewDetail={onViewDetail}
+      />
+    );
+    const card = screen.getByTestId("proposal-card-proposal-1");
+    const buttons = within(card).getAllByRole("button");
+    // Click edit button — should NOT trigger card click
+    await user.click(buttons[0]);
+    expect(onEdit).toHaveBeenCalledWith("proposal-1");
+    expect(onViewDetail).not.toHaveBeenCalled();
+  });
+
+  it("does not call onViewDetail when delete button is clicked (stopPropagation)", async () => {
+    const user = userEvent.setup();
+    const onViewDetail = vi.fn();
+    const onRemove = vi.fn();
+    render(
+      <ProposalCard
+        {...defaultProps}
+        onRemove={onRemove}
+        onViewDetail={onViewDetail}
+      />
+    );
+    const card = screen.getByTestId("proposal-card-proposal-1");
+    const buttons = within(card).getAllByRole("button");
+    await user.click(buttons[1]);
+    expect(onRemove).toHaveBeenCalledWith("proposal-1");
+    expect(onViewDetail).not.toHaveBeenCalled();
+  });
+
+  it("adds cursor-pointer class when onViewDetail provided", () => {
+    render(
+      <ProposalCard
+        {...defaultProps}
+        onViewDetail={vi.fn()}
+      />
+    );
+    const card = screen.getByTestId("proposal-card-proposal-1");
+    expect(card).toHaveClass("cursor-pointer");
+  });
+
+  it("does not add cursor-pointer when onViewDetail not provided", () => {
+    render(<ProposalCard {...defaultProps} />);
+    const card = screen.getByTestId("proposal-card-proposal-1");
+    expect(card).not.toHaveClass("cursor-pointer");
+  });
 });
