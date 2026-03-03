@@ -7,6 +7,8 @@ export { PlanningView, IdeationView } from "./PlanningView";
 export { PriorityBadge } from "./PriorityBadge";
 export { ProposalCard } from "./ProposalCard";
 export { ProposalEditModal } from "./ProposalEditModal";
+export { ProposalDetailSheet } from "./ProposalDetailSheet";
+export type { ProposalDetailEnrichment } from "./ProposalDetailSheet";
 export { ProposalList } from "./ProposalList";
 export { ProposalsToolbar } from "./ProposalsToolbar";
 export { PlanBrowser } from "./PlanBrowser";

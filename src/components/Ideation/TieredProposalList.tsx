@@ -9,6 +9,7 @@ import React, { useMemo } from "react";
 import type { TaskProposal } from "@/types/ideation";
 import type { DependencyGraphResponse } from "@/api/ideation.types";
 import { ProposalCard, type DependencyDetail } from "./ProposalCard";
+import type { ProposalDetailEnrichment } from "./ProposalDetailSheet";
 import { ProposalTierGroup } from "./ProposalTierGroup";
 import { useDependencyTiers, getDependencyReason } from "@/hooks/useDependencyGraph";
 
@@ -108,6 +109,8 @@ export interface TieredProposalListProps {
   isReadOnly?: boolean;
   /** Callback to navigate to a created task in kanban */
   onNavigateToTask?: (taskId: string) => void;
+  /** Callback when card is clicked to open detail sheet */
+  onViewDetail?: (proposalId: string, enrichment: ProposalDetailEnrichment) => void;
 }
 
 // ============================================================================
@@ -218,6 +221,7 @@ export const TieredProposalList = React.memo(function TieredProposalList({
   onViewHistoricalPlan,
   isReadOnly,
   onNavigateToTask,
+  onViewDetail,
 }: TieredProposalListProps) {
   // Compute tier assignments from dependency graph
   const { tierMap, maxTier } = useDependencyTiers(dependencyGraph);
@@ -331,6 +335,7 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                     onViewHistoricalPlan?: (artifactId: string, version: number) => void;
                     isReadOnly?: boolean;
                     onNavigateToTask?: (taskId: string) => void;
+                    onViewDetail?: (proposalId: string, enrichment: ProposalDetailEnrichment) => void;
                   } = {};
 
                   if (dependsOnDetails.length > 0) {
@@ -357,6 +362,9 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                   }
                   if (onNavigateToTask !== undefined) {
                     optionalProps.onNavigateToTask = onNavigateToTask;
+                  }
+                  if (onViewDetail !== undefined) {
+                    optionalProps.onViewDetail = onViewDetail;
                   }
 
                   return (

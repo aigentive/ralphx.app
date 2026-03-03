@@ -16,6 +16,8 @@ import { ChatPanel } from "@/components/Chat/ChatPanel";
 import { KanbanSplitLayout, Navigation } from "@/components/layout";
 import { PermissionDialog } from "@/components/PermissionDialog";
 import { IdeationView, ProposalEditModal } from "@/components/Ideation";
+import { ProposalDetailSheet } from "@/components/Ideation/ProposalDetailSheet";
+import type { ProposalDetailEnrichment } from "@/components/Ideation/ProposalDetailSheet";
 import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { ActivityView } from "@/components/activity";
 import { SettingsView } from "@/components/settings";
@@ -182,6 +184,12 @@ function AppContent() {
   const [editingProposalId, setEditingProposalId] = useState<string | null>(null);
   const editingProposal = editingProposalId
     ? allProposals[editingProposalId] ?? null
+    : null;
+
+  const [viewingProposalId, setViewingProposalId] = useState<string | null>(null);
+  const [viewingEnrichment, setViewingEnrichment] = useState<ProposalDetailEnrichment | undefined>(undefined);
+  const viewingProposal = viewingProposalId
+    ? allProposals[viewingProposalId] ?? null
     : null;
 
   const [isExecutionLoading, setIsExecutionLoading] = useState(false);
@@ -526,6 +534,11 @@ function AppContent() {
 
   const handleEditProposal = useCallback((proposalId: string) => {
     setEditingProposalId(proposalId);
+  }, []);
+
+  const handleViewProposal = useCallback((proposalId: string, enrichment: ProposalDetailEnrichment) => {
+    setViewingProposalId(proposalId);
+    setViewingEnrichment(enrichment);
   }, []);
 
   const handleSaveProposal = useCallback(
@@ -994,6 +1007,7 @@ function AppContent() {
                   onArchiveSession={handleArchiveSession}
                   onDeleteSession={handleDeleteSession}
                   onEditProposal={handleEditProposal}
+                  onViewProposal={handleViewProposal}
                   onRemoveProposal={handleRemoveProposal}
                   onReorderProposals={handleReorderProposals}
                   onApply={handleApplyProposals}
@@ -1097,6 +1111,14 @@ function AppContent() {
         onSave={handleSaveProposal}
         onCancel={() => setEditingProposalId(null)}
         isSaving={updateProposal.isPending}
+      />
+
+      {/* Proposal Detail Sheet - Read-only detail view */}
+      <ProposalDetailSheet
+        proposal={viewingProposal}
+        {...(viewingEnrichment !== undefined && { enrichment: viewingEnrichment })}
+        onClose={() => { setViewingProposalId(null); setViewingEnrichment(undefined); }}
+        onEdit={handleEditProposal}
       />
 
       {/* Confirmation Dialog */}
