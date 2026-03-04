@@ -180,9 +180,14 @@ pub fn kill_process(pid: u32) {
     {
         // Kill children first (MCP server nodes, etc.)
         // pkill is still needed because nix can't enumerate children by parent PID.
+        // Uses .spawn() instead of .output() to avoid blocking the tokio runtime —
+        // .output() waits synchronously for pkill to finish, starving async timeouts.
         let _ = std::process::Command::new("pkill")
             .args(["-TERM", "-P", &pid.to_string()])
-            .output();
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
 
         // Then kill the parent process via direct syscall (non-blocking)
         match signal::kill(Pid::from_raw(pid as i32), Signal::SIGTERM) {
@@ -224,9 +229,13 @@ pub fn kill_process_immediate(pid: u32) {
     #[cfg(unix)]
     {
         // Kill children first via pkill (SIGKILL)
+        // Uses .spawn() instead of .output() — see kill_process() comment.
         let _ = std::process::Command::new("pkill")
             .args(["-KILL", "-P", &pid.to_string()])
-            .output();
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
 
         // Try process group kill (negative PID) — catches children in same PGID
         let _ = signal::kill(Pid::from_raw(-(pid as i32)), Signal::SIGKILL);
@@ -567,11 +576,11 @@ pub fn kill_orphaned_mcp_servers() -> u32 {
                 let count = pids.len() as u32;
 
                 for pid_str in &pids {
-                    if let Ok(pid) = pid_str.trim().parse::<u32>() {
+                    if let Ok(pid) = pid_str.trim().parse::<i32>() {
                         tracing::info!(pid, "Killing orphaned MCP server process");
-                        let _ = std::process::Command::new("kill")
-                            .args(["-TERM", pid_str.trim()])
-                            .output();
+                        // Use nix syscall instead of spawning a `kill` process —
+                        // non-blocking and already imported in this file.
+                        let _ = signal::kill(Pid::from_raw(pid), Signal::SIGTERM);
                     }
                 }
 
