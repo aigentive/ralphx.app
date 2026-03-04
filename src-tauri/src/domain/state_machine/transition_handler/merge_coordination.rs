@@ -40,8 +40,14 @@ const MERGE_DEBRIS_METADATA_KEYS: &[&str] = &[
 /// meaning there's no debris from prior attempts that needs cleaning up.
 /// When `true`, `pre_merge_cleanup` can skip all cleanup steps (Phase 1 GUARD fast-path).
 ///
-/// Checks task metadata for any of the `MERGE_DEBRIS_METADATA_KEYS`.
+/// Checks task metadata for any of the `MERGE_DEBRIS_METADATA_KEYS`, and also
+/// checks whether `worktree_path` is set (worktree existence = potential debris
+/// even when metadata was not written, e.g. after a cleanup timeout).
 pub(crate) fn is_first_clean_attempt(task: &Task) -> bool {
+    // Even if no debris metadata, a worktree_path signals potential debris on disk
+    if task.worktree_path.is_some() {
+        return false;
+    }
     let Some(ref metadata_str) = task.metadata else {
         return true;
     };
@@ -821,6 +827,7 @@ impl<'a> super::TransitionHandler<'a> {
                         crate::domain::services::kill_worktree_processes_async(
                             &worktree_path_buf,
                             lsof_timeout,
+                            true, // merge cleanup: SIGKILL immediately
                         ),
                     )
                     .await

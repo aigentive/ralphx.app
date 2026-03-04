@@ -48,7 +48,7 @@ async fn test_lsof_timeout_returns_within_bound() {
 
     // Create a worktree to scan (just the repo itself — real directory with files)
     let start = std::time::Instant::now();
-    crate::domain::services::kill_worktree_processes_async(git_repo.path(), 2).await;
+    crate::domain::services::kill_worktree_processes_async(git_repo.path(), 2, false).await;
     let elapsed = start.elapsed();
 
     // Should complete quickly (well within 5s); on timeout it would still return

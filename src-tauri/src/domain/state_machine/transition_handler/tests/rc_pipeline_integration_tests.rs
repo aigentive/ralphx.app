@@ -74,7 +74,7 @@ async fn test_rc1_lsof_kill_on_drop_returns_within_timeout_bound() {
 
     // 1-second timeout — tight enough to show cancellation works
     let start = std::time::Instant::now();
-    crate::domain::services::kill_worktree_processes_async(git_repo.path(), 1).await;
+    crate::domain::services::kill_worktree_processes_async(git_repo.path(), 1, false).await;
     let elapsed = start.elapsed();
 
     // Must return within 2x the timeout. The old spawn_blocking approach returned

@@ -35,7 +35,7 @@ fn test_collect_pids_in_worktree_runs_without_panic() {
 async fn test_collect_pids_in_worktree_async_completes() {
     let dir = tempfile::tempdir().unwrap();
     // With +d (non-recursive), this should complete quickly even on dirs with subdirectories.
-    crate::domain::services::kill_worktree_processes_async(dir.path(), 5).await;
+    crate::domain::services::kill_worktree_processes_async(dir.path(), 5, false).await;
     // No panic, no hang — test passes.
 }
 

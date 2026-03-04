@@ -339,7 +339,7 @@ pub async fn deferred_merge_cleanup(
         if wt_path.exists() {
             // Use lsof to find PIDs, then SIGKILL each
             let lsof_timeout = git_runtime_config().worktree_lsof_timeout_secs;
-            crate::domain::services::kill_worktree_processes_async(&wt_path, lsof_timeout).await;
+            crate::domain::services::kill_worktree_processes_async(&wt_path, lsof_timeout, true).await;
         }
     }
 
