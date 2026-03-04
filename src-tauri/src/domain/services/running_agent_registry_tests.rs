@@ -363,7 +363,7 @@ async fn test_kill_worktree_processes_async_completes_within_timeout() {
     let _ = std::fs::create_dir_all(&tmp);
 
     let start = std::time::Instant::now();
-    kill_worktree_processes_async(&tmp, 5).await;
+    kill_worktree_processes_async(&tmp, 5, false).await;
     let elapsed = start.elapsed();
 
     // Should complete well within 5s since no heavy scanning needed
@@ -380,7 +380,7 @@ async fn test_kill_worktree_processes_async_completes_within_timeout() {
 async fn test_kill_worktree_processes_async_nonexistent_path() {
     // Non-existent path — should not panic, just log debug
     let bogus = std::path::PathBuf::from("/tmp/ralphx_test_nonexistent_worktree_path_12345");
-    kill_worktree_processes_async(&bogus, 2).await;
+    kill_worktree_processes_async(&bogus, 2, false).await;
     // If we get here without panic, the test passes
 }
 
@@ -392,7 +392,7 @@ async fn test_kill_worktree_processes_async_timeout_returns_quickly() {
     let _ = std::fs::create_dir_all(&tmp);
 
     let start = std::time::Instant::now();
-    kill_worktree_processes_async(&tmp, 1).await;
+    kill_worktree_processes_async(&tmp, 1, false).await;
     let elapsed = start.elapsed();
 
     // Must return within timeout + small overhead (async dispatch overhead)
@@ -424,7 +424,7 @@ async fn test_kill_worktree_processes_async_waits_for_process_exit() {
     tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     assert!(is_process_alive(pid));
 
-    kill_worktree_processes_async(&dir_path, 10).await;
+    kill_worktree_processes_async(&dir_path, 10, false).await;
 
     // Reap the zombie so is_process_alive correctly reports dead
     let _ = child.wait();
@@ -612,7 +612,7 @@ async fn test_kill_worktree_processes_async_escalates_to_sigkill() {
     assert!(is_process_alive(pid));
 
     let start = std::time::Instant::now();
-    kill_worktree_processes_async(&dir_path, 15).await;
+    kill_worktree_processes_async(&dir_path, 15, false).await;
     let elapsed = start.elapsed();
 
     // Should take ≥4s (SIGTERM wait window) but <15s (outer lsof timeout)

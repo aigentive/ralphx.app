@@ -292,6 +292,18 @@ impl<'a> super::TransitionHandler<'a> {
                     cleanup_timeout_secs,
                     "pre_merge_cleanup timed out (OS-thread timeout) — proceeding to merge anyway (cleanup is best-effort)"
                 );
+                // Set debris metadata so GUARD knows this is a retry on next attempt
+                // (prevents is_first_clean_attempt from skipping cleanup when stale worktree remains)
+                super::merge_helpers::merge_metadata_into(task, &serde_json::json!({
+                    "merge_failure_source": "cleanup_timeout",
+                }));
+                if let Err(e) = task_repo.update(task).await {
+                    tracing::warn!(
+                        task_id = %task_id_str,
+                        error = %e,
+                        "Failed to persist cleanup_timeout debris metadata"
+                    );
+                }
                 emit_merge_progress(
                     app_handle,
                     task_id_str,

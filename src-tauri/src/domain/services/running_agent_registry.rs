@@ -364,7 +364,7 @@ pub fn kill_worktree_processes(path: &Path) {
 ///
 /// On timeout, logs a warning and returns — this is non-fatal because agents
 /// have already been killed by PID before this point.
-pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
+pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64, immediate_kill: bool) {
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let display_path = canonical.display().to_string();
     let start = std::time::Instant::now();
@@ -397,13 +397,18 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
                 tracing::info!(
                     pid,
                     worktree = %display_path,
+                    immediate_kill,
                     "Killing lingering process from worktree (async)"
                 );
-                kill_process(pid);
+                if immediate_kill {
+                    kill_process_immediate(pid);
+                } else {
+                    kill_process(pid);
+                }
             }
-            // Wait for processes to die after SIGTERM; escalate to SIGKILL if needed.
+            // Wait for processes to die; immediate_kill skips SIGTERM grace period.
             let survivors =
-                await_process_death(&unique_pids, std::time::Duration::from_secs(5), false).await;
+                await_process_death(&unique_pids, std::time::Duration::from_secs(5), immediate_kill).await;
             if !survivors.is_empty() {
                 tracing::warn!(
                     survivor_pids = ?survivors,
