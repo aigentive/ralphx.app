@@ -42,12 +42,13 @@ export function AttentionMergeCard({ task, onViewDetails, onRetry }: AttentionMe
         className="w-3.5 h-3.5 shrink-0"
         style={{ color: attentionStyle.color }}
       />
-      <span
-        className="flex-1 text-xs font-medium truncate min-w-0"
+      <button
+        className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
         style={{ color: "hsl(220 10% 88%)" }}
+        onClick={handleViewDetails}
       >
         {task.title}
-      </span>
+      </button>
       <span
         className="text-[11px] shrink-0 max-w-[120px] truncate"
         style={{ color: "hsl(220 10% 50%)" }}

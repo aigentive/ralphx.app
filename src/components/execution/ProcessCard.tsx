@@ -9,6 +9,7 @@ import { Pause, Square, Loader2 } from "lucide-react";
 import type { RunningProcess } from "@/api/running-processes";
 import { useEffect, useState } from "react";
 import { getStatusIconConfig } from "@/types/status-icons";
+import { useUiStore } from "@/stores/uiStore";
 
 interface ProcessCardProps {
   /** The running process data */
@@ -158,6 +159,7 @@ export function ProcessCard({
 }: ProcessCardProps) {
   const statusStyle = getStatusBadgeStyle(process.internalStatus);
   const originStyle = getOriginBadgeStyle(process.triggerOrigin);
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
 
   // Live elapsed time ticker (updates every second)
   const [elapsedTime, setElapsedTime] = useState(process.elapsedSeconds);
@@ -189,13 +191,14 @@ export function ProcessCard({
           className="w-3.5 h-3.5 animate-spin shrink-0"
           style={{ color: statusStyle.color }}
         />
-        <span
-          className="flex-1 text-xs font-medium truncate min-w-0"
+        <button
+          className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
           style={{ color: "hsl(220 10% 88%)" }}
           title={process.title}
+          onClick={() => setSelectedTaskId(process.taskId)}
         >
           {process.title}
-        </span>
+        </button>
         <span
           className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
           style={{

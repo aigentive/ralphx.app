@@ -7,6 +7,7 @@
 import { PriorityBadge } from "@/components/Ideation/PriorityBadge";
 import { priorityFromScore } from "@/lib/priority";
 import type { QueuedTask } from "@/hooks/useQueuedTasks";
+import { useUiStore } from "@/stores/uiStore";
 
 interface QueuedTaskRowProps {
   /** Queue position (1-indexed) */
@@ -17,6 +18,7 @@ interface QueuedTaskRowProps {
 
 export function QueuedTaskRow({ position, task }: QueuedTaskRowProps) {
   const priority = priorityFromScore(task.priority);
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
 
   return (
     <div
@@ -29,12 +31,13 @@ export function QueuedTaskRow({ position, task }: QueuedTaskRowProps) {
       >
         {position}
       </span>
-      <span
-        className="flex-1 text-xs font-medium truncate min-w-0"
+      <button
+        className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
         style={{ color: "hsl(220 10% 88%)" }}
+        onClick={() => setSelectedTaskId(task.id)}
       >
         {task.title}
-      </span>
+      </button>
       <span
         className="text-[11px] shrink-0 max-w-[100px] truncate"
         style={{ color: "hsl(220 10% 45%)" }}
