@@ -180,13 +180,14 @@ function UserPauseCard({
           className="w-3.5 h-3.5 shrink-0"
           style={{ color: "hsl(45 90% 55%)" }}
         />
-        <span
-          className="flex-1 text-xs font-medium truncate min-w-0"
+        <button
+          className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
           style={{ color: "hsl(220 10% 88%)" }}
           title={task.title}
+          onClick={onView}
         >
           {task.title}
-        </span>
+        </button>
         <span
           className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
           style={{
@@ -280,13 +281,14 @@ function ProviderErrorCard({
           className="w-3.5 h-3.5 shrink-0"
           style={{ color: catStyle.color }}
         />
-        <span
-          className="flex-1 text-xs font-medium truncate min-w-0"
+        <button
+          className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
           style={{ color: "hsl(220 10% 88%)" }}
           title={task.title}
+          onClick={onView}
         >
           {task.title}
-        </span>
+        </button>
         <span
           className="text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0"
           style={{

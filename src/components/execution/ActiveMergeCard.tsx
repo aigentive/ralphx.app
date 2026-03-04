@@ -9,6 +9,7 @@ import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { useCallback, useState } from "react";
 import { getStatusIconConfig } from "@/types/status-icons";
 import { BranchBadge } from "@/components/shared/BranchBadge";
+import { useUiStore } from "@/stores/uiStore";
 
 interface ActiveMergeCardProps {
   task: MergePipelineTask;
@@ -33,6 +34,7 @@ export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
   const stoppedStyle = getStatusIconConfig("stopped");
   const [startTime] = useState(() => new Date(Date.now() - 30000));
   const elapsedTime = formatElapsedTime(startTime);
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
 
   const handleStop = useCallback(() => {
     onStop(task.taskId);
@@ -51,12 +53,13 @@ export function ActiveMergeCard({ task, onStop }: ActiveMergeCardProps) {
         className="w-3.5 h-3.5 animate-spin shrink-0"
         style={{ color: mergingStyle.color }}
       />
-      <span
-        className="flex-1 text-xs font-medium truncate min-w-0"
+      <button
+        className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
         style={{ color: "hsl(220 10% 88%)" }}
+        onClick={() => setSelectedTaskId(task.taskId)}
       >
         {task.title}
-      </span>
+      </button>
       <span className="shrink-0 max-w-[100px] truncate">
         <BranchBadge branch={task.targetBranch} variant="muted" size="sm" />
       </span>

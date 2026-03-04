@@ -10,6 +10,7 @@ import { Clock, Users } from "lucide-react";
 import type { MergePipelineTask } from "@/api/merge-pipeline";
 import { getStatusIconConfig } from "@/types/status-icons";
 import { BranchBadge } from "@/components/shared/BranchBadge";
+import { useUiStore } from "@/stores/uiStore";
 
 interface WaitingMergeCardProps {
   task: MergePipelineTask;
@@ -19,6 +20,7 @@ interface WaitingMergeCardProps {
 
 export function WaitingMergeCard({ task, runningCount }: WaitingMergeCardProps) {
   const pendingMergeStyle = getStatusIconConfig("pending_merge");
+  const setSelectedTaskId = useUiStore((s) => s.setSelectedTaskId);
 
   const deferredReason = task.isMainMergeDeferred
     ? runningCount && runningCount > 0
@@ -47,12 +49,13 @@ export function WaitingMergeCard({ task, runningCount }: WaitingMergeCardProps) 
           style={{ color: pendingMergeStyle.color }}
         />
       )}
-      <span
-        className="flex-1 text-xs font-medium truncate min-w-0"
+      <button
+        className="flex-1 text-xs font-medium truncate min-w-0 text-left cursor-pointer hover:opacity-75 transition-opacity"
         style={{ color: task.isMainMergeDeferred ? "hsl(220 10% 80%)" : "hsl(220 10% 70%)" }}
+        onClick={() => setSelectedTaskId(task.taskId)}
       >
         {task.title}
-      </span>
+      </button>
       {task.isMainMergeDeferred && (
         <span
           className="text-[10px] shrink-0 px-1.5 py-0.5 rounded-full"
