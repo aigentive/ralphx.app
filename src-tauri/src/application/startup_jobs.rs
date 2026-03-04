@@ -320,6 +320,11 @@ impl<R: Runtime> StartupJobRunner<R> {
         // Phase 0: Clean up stale git state before any task recovery
         self.cleanup_stale_git_state(&projects).await;
 
+        // Phase 0.5: Resume deferred cleanup for tasks that were Merged but had
+        // Phase 3 cleanup interrupted (app crash/restart). Runs before merge
+        // recovery so worktrees and branches are cleaned before new merges.
+        self.resume_pending_cleanup(&projects).await;
+
         // Phase 1: Merge-first recovery — process PendingMerge and Merging tasks
         // before spawning other agents. This ensures main branch is in a clean state
         // before worker/reviewer agents start. PendingMerge first so fast-path
@@ -917,6 +922,76 @@ impl<R: Runtime> StartupJobRunner<R> {
                 );
                 let _ = GitService::abort_merge(repo_path).await;
             }
+        }
+    }
+
+    /// Resume deferred cleanup for tasks that completed merge (Phase 2) but had
+    /// Phase 3 cleanup interrupted (e.g., app crash/restart).
+    ///
+    /// Scans Merged tasks across all given projects for the `pending_cleanup`
+    /// metadata flag. For each, runs the deferred cleanup (worktree removal,
+    /// branch deletion, metadata clearing).
+    async fn resume_pending_cleanup(&self, projects: &[crate::domain::entities::Project]) {
+        use crate::domain::state_machine::transition_handler::{
+            deferred_merge_cleanup, has_pending_cleanup_metadata,
+        };
+
+        let mut resumed = 0u32;
+
+        for project in projects {
+            let merged_tasks = match self
+                .task_repo
+                .get_by_status(&project.id, InternalStatus::Merged)
+                .await
+            {
+                Ok(tasks) => tasks,
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        project_id = project.id.as_str(),
+                        "Failed to fetch Merged tasks for pending cleanup resumption"
+                    );
+                    continue;
+                }
+            };
+
+            for task in merged_tasks {
+                if !has_pending_cleanup_metadata(&task) {
+                    continue;
+                }
+
+                info!(
+                    task_id = task.id.as_str(),
+                    task_branch = ?task.task_branch,
+                    worktree_path = ?task.worktree_path,
+                    "Phase 0.5: Resuming deferred cleanup for Merged task"
+                );
+
+                // Fire-and-forget: don't block startup on cleanup
+                let task_repo = Arc::clone(&self.task_repo);
+                let working_dir = project.working_directory.clone();
+                let task_id = task.id.clone();
+                let task_branch = task.task_branch.clone();
+                let worktree_path = task.worktree_path.clone();
+                tokio::spawn(async move {
+                    deferred_merge_cleanup(
+                        task_id,
+                        task_repo,
+                        working_dir,
+                        task_branch,
+                        worktree_path,
+                    )
+                    .await;
+                });
+
+                resumed += 1;
+            }
+        }
+
+        if resumed > 0 {
+            info!(count = resumed, "Phase 0.5: Resumed deferred cleanup tasks");
+        } else {
+            debug!("Phase 0.5: No pending cleanup tasks found");
         }
     }
 

@@ -149,3 +149,17 @@ mod merged_branch_guard_integration;
 // Prevents the source_update_conflict retry loop: after agent resolves source←target conflict,
 // retry must use squash-only (not rebase) to avoid dropping the agent's merge commit.
 mod source_conflict_resolved_tests;
+
+// Fast cleanup tests: remove_worktree_fast (rm -rf + prune) and conditional settle sleep
+mod fast_cleanup_tests;
+
+// Transient merge error inline retry tests (ROOT CAUSE #5):
+// is_transient_merge_error classification, deferred vs MergeIncomplete, branch re-check
+mod merge_outcome_transient_retry_tests;
+
+// Phase 1 GUARD tests: first-attempt skip, parallel worktree deletion, deferred orphan scan
+mod phase1_guard_tests;
+
+// Phase 2 MERGE + Phase 3 CLEANUP tests: immediate Merged status, deferred cleanup,
+// pending_cleanup metadata, startup resumption
+mod phase2_phase3_merge_tests;

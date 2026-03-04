@@ -25,13 +25,13 @@ fn test_pre_merge_cleanup_timeout_default() {
     );
 }
 
-/// GitRuntimeConfig::default() includes step_0b_kill_timeout_secs = 20.
+/// GitRuntimeConfig::default() includes step_0b_kill_timeout_secs = 5 (merge speed overhaul).
 #[test]
 fn test_step_0b_kill_timeout_default() {
     let cfg = GitRuntimeConfig::default();
     assert_eq!(
-        cfg.step_0b_kill_timeout_secs, 20,
-        "Default step 0b kill timeout should be 20 seconds"
+        cfg.step_0b_kill_timeout_secs, 5,
+        "Default step 0b kill timeout should be 5 seconds"
     );
 }
 

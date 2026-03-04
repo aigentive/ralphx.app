@@ -151,6 +151,8 @@ async fn test_stale_index_lock_doesnt_block_merge() {
     let mut task = Task::new(project_id.clone(), "Stale lock test".to_string());
     task.internal_status = InternalStatus::PendingMerge;
     task.task_branch = Some(git_repo.task_branch.clone());
+    // Simulate a retry so Phase 1 GUARD runs cleanup (including stale lock removal)
+    task.metadata = Some(serde_json::json!({"merge_failure_source": "test_prior_failure"}).to_string());
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
@@ -321,9 +323,18 @@ async fn test_stale_task_worktree_cleaned_before_merge() {
         updated.metadata,
     );
 
-    // Stale worktree should have been removed by cleanup
+    // Phase 3 deferred cleanup runs as tokio::spawn — yield to let it execute
+    // before checking the worktree is removed.
+    for _ in 0..20 {
+        if !task_wt_path.exists() {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+
+    // Stale worktree should have been removed by deferred cleanup (Phase 3)
     assert!(
         !task_wt_path.exists(),
-        "Stale task worktree should be removed by pre_merge_cleanup"
+        "Stale task worktree should be removed by deferred merge cleanup (Phase 3)"
     );
 }

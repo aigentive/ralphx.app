@@ -12,6 +12,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
+#[cfg(unix)]
+use nix::sys::signal::{self, Signal};
+#[cfg(unix)]
+use nix::unistd::Pid;
+
 /// Key for identifying a running agent by context
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
 pub struct RunningAgentKey {
@@ -133,20 +138,22 @@ pub trait RunningAgentRegistry: Send + Sync {
 
 /// Check if a process with the given PID is still alive.
 ///
-/// Uses `kill -0` on Unix to probe without sending a signal.
+/// Uses `nix::sys::signal::kill(pid, None)` (signal 0) on Unix — a direct syscall
+/// that does NOT spawn a child process. The old `std::process::Command::new("kill")`
+/// approach was blocking and starved the tokio runtime when called from async context.
+///
 /// Returns false if the process does not exist or we lack permissions.
 /// Returns false for PID 0, which refers to the process group on Unix
-/// and would incorrectly report as alive via `kill -0`.
+/// and would incorrectly report as alive via signal 0.
 pub fn is_process_alive(pid: u32) -> bool {
     if pid == 0 {
         return false;
     }
     #[cfg(unix)]
     {
-        let output = std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .output();
-        matches!(output, Ok(result) if result.status.success())
+        // signal::kill with None sends signal 0 — checks existence without signaling.
+        // Ok(()) = process exists, Err(ESRCH) = no such process, other errors = treat as dead.
+        signal::kill(Pid::from_raw(pid as i32), None).is_ok()
     }
 
     #[cfg(windows)]
@@ -161,33 +168,30 @@ pub fn is_process_alive(pid: u32) -> bool {
 
 /// Send SIGTERM to a process and all its children (process tree kill).
 ///
-/// On Unix: first kills children via `pkill -TERM -P <pid>`, then kills the parent.
+/// On Unix: first kills children via `pkill -TERM -P <pid>`, then kills the parent
+/// via `nix::sys::signal::kill` (non-blocking syscall, no process spawn).
 /// This prevents orphaned child processes (e.g. MCP server nodes) from lingering.
 pub fn kill_process(pid: u32) {
+    if pid <= 1 {
+        tracing::warn!(pid, "kill_process: refusing to kill PID {pid} (safety guard)");
+        return;
+    }
     #[cfg(unix)]
     {
         // Kill children first (MCP server nodes, etc.)
+        // pkill is still needed because nix can't enumerate children by parent PID.
         let _ = std::process::Command::new("pkill")
             .args(["-TERM", "-P", &pid.to_string()])
             .output();
 
-        // Then kill the parent process
-        let output = std::process::Command::new("kill")
-            .args(["-TERM", &pid.to_string()])
-            .output();
-
-        match output {
-            Ok(result) => {
-                if !result.status.success() {
-                    let stderr = String::from_utf8_lossy(&result.stderr);
-                    // "No such process" is fine - process already exited
-                    if !stderr.contains("No such process") {
-                        tracing::warn!("Failed to kill process {}: {}", pid, stderr);
-                    }
-                }
+        // Then kill the parent process via direct syscall (non-blocking)
+        match signal::kill(Pid::from_raw(pid as i32), Signal::SIGTERM) {
+            Ok(()) => {}
+            Err(nix::errno::Errno::ESRCH) => {
+                // Process already exited — fine
             }
             Err(e) => {
-                tracing::warn!("Failed to run kill command: {}", e);
+                tracing::warn!("Failed to SIGTERM process {}: {}", pid, e);
             }
         }
     }
@@ -195,6 +199,54 @@ pub fn kill_process(pid: u32) {
     #[cfg(windows)]
     {
         // /T flag kills the process tree on Windows
+        let _ = std::process::Command::new("taskkill")
+            .args(["/PID", &pid.to_string(), "/T", "/F"])
+            .output();
+    }
+}
+
+/// Send SIGKILL immediately to a process and its children — no graceful shutdown.
+///
+/// Use this for merge cleanup where the process is expendable and graceful
+/// shutdown would waste time. SIGKILL cannot be caught or ignored.
+///
+/// On Unix: kills children via `pkill -KILL -P <pid>`, then kills the parent
+/// via direct syscall. Also attempts process group kill.
+///
+/// Safety: refuses to kill PID 0 (caller's process group) or PID 1 (init).
+/// Negative PID in `kill(2)` sends to the entire process group — `kill(-1, SIGKILL)`
+/// would kill every process the user owns.
+pub fn kill_process_immediate(pid: u32) {
+    if pid <= 1 {
+        tracing::warn!(pid, "kill_process_immediate: refusing to kill PID {pid} (safety guard)");
+        return;
+    }
+    #[cfg(unix)]
+    {
+        // Kill children first via pkill (SIGKILL)
+        let _ = std::process::Command::new("pkill")
+            .args(["-KILL", "-P", &pid.to_string()])
+            .output();
+
+        // Try process group kill (negative PID) — catches children in same PGID
+        let _ = signal::kill(Pid::from_raw(-(pid as i32)), Signal::SIGKILL);
+
+        // Kill the parent process directly
+        match signal::kill(Pid::from_raw(pid as i32), Signal::SIGKILL) {
+            Ok(()) => {
+                tracing::info!(pid, "kill_process_immediate: sent SIGKILL");
+            }
+            Err(nix::errno::Errno::ESRCH) => {
+                // Already dead
+            }
+            Err(e) => {
+                tracing::warn!(pid, error = %e, "kill_process_immediate: SIGKILL failed");
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    {
         let _ = std::process::Command::new("taskkill")
             .args(["/PID", &pid.to_string(), "/T", "/F"])
             .output();
@@ -351,7 +403,7 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
             }
             // Wait for processes to die after SIGTERM; escalate to SIGKILL if needed.
             let survivors =
-                await_process_death(&unique_pids, std::time::Duration::from_secs(5)).await;
+                await_process_death(&unique_pids, std::time::Duration::from_secs(5), false).await;
             if !survivors.is_empty() {
                 tracing::warn!(
                     survivor_pids = ?survivors,
@@ -388,14 +440,53 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64) {
     );
 }
 
-/// Waits for processes to die after SIGTERM, escalating to SIGKILL if they linger.
+/// Waits for processes to die, with optional immediate SIGKILL.
 ///
-/// Polls every 300ms checking `is_process_alive()` for each PID. If any processes
-/// remain alive after `timeout`, sends SIGKILL to survivors and does a final check.
+/// When `immediate_kill` is false (default): polls every 300ms checking `is_process_alive()`
+/// for each PID. If any processes remain alive after `timeout`, escalates to SIGKILL.
+///
+/// When `immediate_kill` is true (merge cleanup): sends SIGKILL immediately via
+/// `kill_process_immediate()`, then does a brief poll for confirmation. This avoids
+/// the 5s SIGTERM grace period that wastes time during merge cleanup.
+///
+/// `is_process_alive()` uses a non-blocking `nix` syscall (signal 0), NOT
+/// `std::process::Command` — safe to call from async context without starving tokio.
+///
 /// Returns any PIDs still alive after all attempts (unkillable processes).
-async fn await_process_death(pids: &[u32], timeout: std::time::Duration) -> Vec<u32> {
+pub(crate) async fn await_process_death(
+    pids: &[u32],
+    timeout: std::time::Duration,
+    immediate_kill: bool,
+) -> Vec<u32> {
     if pids.is_empty() {
         return Vec::new();
+    }
+
+    if immediate_kill {
+        tracing::info!(
+            pid_count = pids.len(),
+            "await_process_death: immediate SIGKILL mode"
+        );
+
+        for &pid in pids {
+            kill_process_immediate(pid);
+        }
+
+        // Brief wait for SIGKILL to take effect
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let still_alive: Vec<u32> = pids
+            .iter()
+            .copied()
+            .filter(|&p| is_process_alive(p))
+            .collect();
+        if !still_alive.is_empty() {
+            tracing::error!(
+                unkillable_pids = ?still_alive,
+                "await_process_death: processes survived immediate SIGKILL — unkillable"
+            );
+        }
+        return still_alive;
     }
 
     tracing::info!(
@@ -408,7 +499,11 @@ async fn await_process_death(pids: &[u32], timeout: std::time::Duration) -> Vec<
     let poll_interval = std::time::Duration::from_millis(300);
 
     loop {
-        let survivors: Vec<u32> = pids.iter().copied().filter(|&p| is_process_alive(p)).collect();
+        let survivors: Vec<u32> = pids
+            .iter()
+            .copied()
+            .filter(|&p| is_process_alive(p))
+            .collect();
 
         if survivors.is_empty() {
             tracing::info!("await_process_death: all processes exited cleanly");
@@ -422,18 +517,18 @@ async fn await_process_death(pids: &[u32], timeout: std::time::Duration) -> Vec<
                 "await_process_death: processes did not exit after SIGTERM — escalating to SIGKILL"
             );
 
-            #[cfg(unix)]
             for &pid in &survivors {
-                let _ = std::process::Command::new("kill")
-                    .args(["-KILL", &pid.to_string()])
-                    .output();
+                kill_process_immediate(pid);
             }
 
             // Brief wait for SIGKILL to take effect before final check.
             tokio::time::sleep(std::time::Duration::from_millis(500)).await;
 
-            let still_alive: Vec<u32> =
-                survivors.iter().copied().filter(|&p| is_process_alive(p)).collect();
+            let still_alive: Vec<u32> = survivors
+                .iter()
+                .copied()
+                .filter(|&p| is_process_alive(p))
+                .collect();
             if !still_alive.is_empty() {
                 tracing::error!(
                     unkillable_pids = ?still_alive,

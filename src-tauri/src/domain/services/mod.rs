@@ -28,8 +28,9 @@ pub use rule_ingestion_service::{IngestionResult, RuleIngestionService};
 pub use rule_parser::{MarkdownChunk, ParsedRuleFile, RuleFrontmatter, RuleParser};
 // Running agent registry for tracking and stopping agents
 pub use running_agent_registry::{
-    is_process_alive, kill_process, kill_worktree_processes, kill_worktree_processes_async,
-    MemoryRunningAgentRegistry, RunningAgentInfo, RunningAgentKey, RunningAgentRegistry,
+    is_process_alive, kill_process, kill_process_immediate, kill_worktree_processes,
+    kill_worktree_processes_async, MemoryRunningAgentRegistry, RunningAgentInfo, RunningAgentKey,
+    RunningAgentRegistry,
 };
 pub use workflow_service::{
     AppliedColumn, AppliedWorkflow, ColumnMappingError, ValidationResult, WorkflowService,

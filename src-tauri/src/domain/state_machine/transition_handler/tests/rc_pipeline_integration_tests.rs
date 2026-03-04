@@ -221,6 +221,8 @@ async fn test_rc1_cleanup_steps_run_after_lsof_step_with_stale_lock() {
     task.internal_status = InternalStatus::PendingMerge;
     task.task_branch = Some(git_repo.task_branch.clone());
     task.worktree_path = Some(task_wt_path.to_string_lossy().to_string());
+    // Simulate a retry so Phase 1 GUARD runs cleanup (stale lock + worktree removal)
+    task.metadata = Some(serde_json::json!({"merge_failure_source": "test_prior_failure"}).to_string());
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 

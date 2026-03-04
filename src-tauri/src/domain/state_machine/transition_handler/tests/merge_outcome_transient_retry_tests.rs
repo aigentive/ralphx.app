@@ -1,0 +1,574 @@
+// Tests for transient merge error inline retry (ROOT CAUSE #5)
+//
+// Verifies that transient git errors (lock contention, index.lock, etc.) get
+// deferred (stay in PendingMerge for fast retry) instead of transitioning to
+// MergeIncomplete (which incurs 60s+ backoff via reconciliation).
+//
+// Test categories:
+// A. is_transient_merge_error classification (unit tests)
+// B. Transient git errors → deferred (not MergeIncomplete)
+// C. Permanent git errors → MergeIncomplete (unchanged behavior)
+// D. Branch not found → re-check + MergeIncomplete if truly missing
+
+use super::helpers::*;
+use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
+use crate::domain::state_machine::TransitionHandler;
+
+// ==================
+// A. is_transient_merge_error classification
+// ==================
+
+#[test]
+fn test_transient_error_index_lock() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "fatal: Unable to create '/repo/.git/index.lock': File exists.".to_string(),
+    );
+    assert!(
+        is_transient_merge_error(&err),
+        "index.lock errors should be transient"
+    );
+}
+
+#[test]
+fn test_transient_error_cannot_lock_ref() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "error: cannot lock ref 'refs/heads/main': is at abc123 but expected def456".to_string(),
+    );
+    assert!(
+        is_transient_merge_error(&err),
+        "cannot lock ref errors should be transient"
+    );
+}
+
+#[test]
+fn test_transient_error_unable_to_create_lock() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "Unable to create '/repo/.git/refs/heads/main.lock': File exists".to_string(),
+    );
+    assert!(
+        is_transient_merge_error(&err),
+        "Unable to create lock errors should be transient"
+    );
+}
+
+#[test]
+fn test_transient_error_fetch_head() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "fatal: FETCH_HEAD has changed since start of fetch".to_string(),
+    );
+    assert!(
+        is_transient_merge_error(&err),
+        "FETCH_HEAD errors should be transient"
+    );
+}
+
+#[test]
+fn test_transient_error_shallow_file() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "fatal: shallow file has changed since we read it".to_string(),
+    );
+    assert!(
+        is_transient_merge_error(&err),
+        "shallow file changed errors should be transient"
+    );
+}
+
+#[test]
+fn test_permanent_error_not_a_git_repo() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "fatal: not a git repository".to_string(),
+    );
+    assert!(
+        !is_transient_merge_error(&err),
+        "not a git repository should be permanent"
+    );
+}
+
+#[test]
+fn test_permanent_error_merge_conflict() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "CONFLICT (content): Merge conflict in src/main.rs".to_string(),
+    );
+    assert!(
+        !is_transient_merge_error(&err),
+        "merge conflicts should be permanent"
+    );
+}
+
+#[test]
+fn test_permanent_error_not_something_we_can_merge() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "merge: abc123 - not something we can merge".to_string(),
+    );
+    assert!(
+        !is_transient_merge_error(&err),
+        "not something we can merge should be permanent"
+    );
+}
+
+#[test]
+fn test_permanent_error_history_diverged() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::GitOperation(
+        "fatal: refusing to merge unrelated histories".to_string(),
+    );
+    assert!(
+        !is_transient_merge_error(&err),
+        "unrelated histories should be permanent"
+    );
+}
+
+#[test]
+fn test_non_git_error_is_not_transient() {
+    use super::super::merge_outcome_handler::is_transient_merge_error;
+    let err = crate::error::AppError::Database("connection reset".to_string());
+    assert!(
+        !is_transient_merge_error(&err),
+        "non-git errors should not be transient"
+    );
+}
+
+// ==================
+// B. Transient git error → deferred (not MergeIncomplete)
+// ==================
+
+/// Transient git errors (index.lock) should be deferred instead of
+/// transitioning to MergeIncomplete. The task stays in PendingMerge
+/// for fast retry via the PendingMerge reconciler.
+#[tokio::test]
+async fn test_transient_git_error_defers_instead_of_merge_incomplete() {
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let emitter = Arc::new(MockEventEmitter::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Transient error test".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some("feature/test".to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task.clone()).await.unwrap();
+
+    let project = Project::new("test".to_string(), "/tmp/test".to_string());
+
+    let services = TaskServices::new(
+        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
+        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
+    );
+
+    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Transient error: index.lock
+    let outcome = MergeOutcome::GitError(crate::error::AppError::GitOperation(
+        "fatal: Unable to create '/repo/.git/index.lock': File exists.".to_string(),
+    ));
+    let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/test"),
+        source_branch: "feature/test",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
+
+    // Task should stay in PendingMerge (deferred), NOT transition to MergeIncomplete
+    assert_eq!(
+        task.internal_status,
+        InternalStatus::PendingMerge,
+        "Transient error should defer (stay in PendingMerge), not go to MergeIncomplete"
+    );
+
+    // Metadata should contain merge_deferred marker
+    let meta: serde_json::Value =
+        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    let recovery = meta.get("merge_recovery");
+    assert!(
+        recovery.is_some(),
+        "Should have merge_recovery metadata recording the transient failure"
+    );
+
+    // Should NOT emit pending_merge -> merge_incomplete transition
+    let events = emitter.get_events();
+    assert!(
+        !events.iter().any(|e| e.method == "emit_status_change"
+            && e.args.get(2).map(|s| s.as_str()) == Some("merge_incomplete")),
+        "Should NOT emit merge_incomplete status change for transient errors"
+    );
+}
+
+/// Transient git error: "cannot lock ref" should also be deferred.
+#[tokio::test]
+async fn test_cannot_lock_ref_error_defers() {
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let emitter = Arc::new(MockEventEmitter::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Lock ref test".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some("feature/test".to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task.clone()).await.unwrap();
+
+    let project = Project::new("test".to_string(), "/tmp/test".to_string());
+
+    let services = TaskServices::new(
+        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
+        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
+    );
+
+    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let outcome = MergeOutcome::GitError(crate::error::AppError::GitOperation(
+        "error: cannot lock ref 'refs/heads/main': is at abc123 but expected def456".to_string(),
+    ));
+    let opts = MergeHandlerOptions::squash();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/test"),
+        source_branch: "feature/test",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
+
+    assert_eq!(
+        task.internal_status,
+        InternalStatus::PendingMerge,
+        "cannot lock ref should defer (stay in PendingMerge)"
+    );
+}
+
+// ==================
+// C. Permanent git error → MergeIncomplete (unchanged behavior)
+// ==================
+
+/// Permanent git errors should still transition to MergeIncomplete.
+#[tokio::test]
+async fn test_permanent_git_error_transitions_to_merge_incomplete() {
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let emitter = Arc::new(MockEventEmitter::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Permanent error test".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some("feature/test".to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task.clone()).await.unwrap();
+
+    let project = Project::new("test".to_string(), "/tmp/test".to_string());
+
+    let services = TaskServices::new(
+        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
+        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
+    );
+
+    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Permanent error: not a git repository
+    let outcome = MergeOutcome::GitError(crate::error::AppError::GitOperation(
+        "fatal: not a git repository (or any of the parent directories): .git".to_string(),
+    ));
+    let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/test"),
+        source_branch: "feature/test",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
+
+    // Permanent errors should go to MergeIncomplete as before
+    assert_eq!(
+        task.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Permanent git error should transition to MergeIncomplete"
+    );
+
+    // Should emit status change to merge_incomplete
+    let events = emitter.get_events();
+    assert!(
+        events.iter().any(|e| e.method == "emit_status_change"
+            && e.args.get(2).map(|s| s.as_str()) == Some("merge_incomplete")),
+        "Should emit merge_incomplete status change for permanent errors"
+    );
+}
+
+// ==================
+// D. Branch not found with re-check
+// ==================
+
+/// Branch not found with non-existent repo path should transition to MergeIncomplete
+/// (the re-check can't verify the branch, so we fall through to MergeIncomplete).
+#[tokio::test]
+async fn test_branch_not_found_nonexistent_repo_transitions_to_merge_incomplete() {
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let emitter = Arc::new(MockEventEmitter::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Branch not found test".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some("feature/missing".to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task.clone()).await.unwrap();
+
+    let project = Project::new("test".to_string(), "/tmp/nonexistent-repo".to_string());
+
+    let services = TaskServices::new(
+        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
+        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
+    );
+
+    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let outcome = MergeOutcome::BranchNotFound {
+        branch: "feature/missing".to_string(),
+    };
+    let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path: std::path::Path::new("/tmp/nonexistent-repo"),
+        source_branch: "feature/missing",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
+
+    // Branch truly doesn't exist → MergeIncomplete
+    assert_eq!(
+        task.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Branch not found with non-existent repo should go to MergeIncomplete"
+    );
+
+    // Metadata should have branch_missing flag
+    let meta: serde_json::Value =
+        serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+    assert_eq!(meta.get("branch_missing"), Some(&serde_json::json!(true)));
+}
+
+/// Branch not found in a real git repo where the branch truly doesn't exist
+/// should also transition to MergeIncomplete.
+#[tokio::test]
+async fn test_branch_not_found_real_repo_truly_missing_transitions_to_merge_incomplete() {
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
+
+    // Set up a real git repo
+    let real_repo = setup_real_git_repo();
+    let repo_path = real_repo.path();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let emitter = Arc::new(MockEventEmitter::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Branch missing real repo".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some("feature/does-not-exist".to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task.clone()).await.unwrap();
+
+    let project = Project::new(
+        "test".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
+
+    let services = TaskServices::new(
+        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
+        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
+    );
+
+    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let outcome = MergeOutcome::BranchNotFound {
+        branch: "feature/does-not-exist".to_string(),
+    };
+    let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path,
+        source_branch: "feature/does-not-exist",
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
+
+    // Branch truly doesn't exist → MergeIncomplete
+    assert_eq!(
+        task.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Truly missing branch should transition to MergeIncomplete"
+    );
+}
+
+/// Branch not found in a real git repo where the branch DOES exist (race condition)
+/// should defer instead of transitioning to MergeIncomplete.
+#[tokio::test]
+async fn test_branch_not_found_but_branch_exists_on_recheck_defers() {
+    use super::super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+    use super::super::merge_strategies::MergeOutcome;
+
+    // Set up a real git repo — the task branch exists in the repo
+    let real_repo = setup_real_git_repo();
+    let repo_path = real_repo.path();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let emitter = Arc::new(MockEventEmitter::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Branch race condition test".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    task.task_branch = Some(real_repo.task_branch.clone());
+    let task_id = task.id.clone();
+    task_repo.create(task.clone()).await.unwrap();
+
+    let project = Project::new(
+        "test".to_string(),
+        repo_path.to_string_lossy().to_string(),
+    );
+
+    let services = TaskServices::new(
+        Arc::new(crate::domain::state_machine::mocks::MockAgentSpawner::new()),
+        Arc::clone(&emitter) as Arc<dyn EventEmitter>,
+        Arc::new(crate::domain::state_machine::mocks::MockNotifier::new()),
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(crate::domain::state_machine::mocks::MockReviewStarter::new()),
+        Arc::new(crate::application::MockChatService::new())
+            as Arc<dyn crate::application::ChatService>,
+    );
+
+    let context = create_context_with_services(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    // Simulate race: BranchNotFound was returned but the branch exists now
+    let outcome = MergeOutcome::BranchNotFound {
+        branch: real_repo.task_branch.clone(),
+    };
+    let opts = MergeHandlerOptions::merge();
+    let task_repo_arc = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+
+    let mut ctx = MergeContext {
+        task: &mut task,
+        task_id: &task_id,
+        task_id_str: task_id.as_str(),
+        project: &project,
+        repo_path,
+        source_branch: &real_repo.task_branch,
+        target_branch: "main",
+        task_repo: &task_repo_arc,
+        plan_branch_repo: &None,
+        opts: &opts,
+    };
+
+    handler.handle_merge_outcome(outcome, &mut ctx).await;
+
+    // Branch exists on re-check → should defer (stay in PendingMerge)
+    assert_eq!(
+        task.internal_status,
+        InternalStatus::PendingMerge,
+        "Branch found on re-check should defer (stay in PendingMerge), not MergeIncomplete"
+    );
+
+    // Should NOT emit merge_incomplete
+    let events = emitter.get_events();
+    assert!(
+        !events.iter().any(|e| e.method == "emit_status_change"
+            && e.args.get(2).map(|s| s.as_str()) == Some("merge_incomplete")),
+        "Should NOT emit merge_incomplete when branch found on re-check"
+    );
+}

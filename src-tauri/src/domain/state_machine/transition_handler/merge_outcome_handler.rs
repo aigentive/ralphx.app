@@ -141,6 +141,30 @@ async fn transition_to_merge_incomplete(
         .await;
 }
 
+/// Patterns that indicate transient git errors (lock contention, concurrent access).
+/// These match the patterns in `git_cmd::TRANSIENT_PATTERNS` plus additional merge-specific ones.
+// NOTE: All patterns must be lowercase — comparison uses .to_lowercase() on error messages
+const TRANSIENT_GIT_PATTERNS: &[&str] = &[
+    "index.lock",
+    "unable to create",
+    "cannot lock ref",
+    "fetch_head",
+    "shallow file has changed",
+];
+
+/// Classify whether a merge error is transient (worth retrying immediately)
+/// vs permanent (should go to MergeIncomplete for reconciliation).
+///
+/// Transient: lock contention, index.lock, concurrent ref updates
+/// Permanent: not a git repo, merge conflicts, unrelated histories
+pub(super) fn is_transient_merge_error(error: &crate::error::AppError) -> bool {
+    if !matches!(error, crate::error::AppError::GitOperation(_)) {
+        return false;
+    }
+    let msg = error.to_string().to_lowercase();
+    TRANSIENT_GIT_PATTERNS.iter().any(|pat| msg.contains(pat))
+}
+
 impl<'a> super::TransitionHandler<'a> {
     /// Handle a MergeOutcome uniformly for all merge strategy arms.
     pub(super) async fn handle_merge_outcome(
@@ -183,6 +207,7 @@ impl<'a> super::TransitionHandler<'a> {
                     super::TaskCore { task: &mut *ctx.task, task_id: ctx.task_id, task_id_str: ctx.task_id_str, task_repo: ctx.task_repo },
                     super::BranchPair { source_branch: ctx.source_branch, target_branch: ctx.target_branch },
                     &branch,
+                    ctx.repo_path,
                 )
                 .await;
             }
@@ -398,13 +423,35 @@ impl<'a> super::TransitionHandler<'a> {
             )
             .await;
         } else {
+            // Phase 2 complete: task is Merged. Now run post-merge activities
+            // synchronously (fast: plan branch, deps, scheduling) then spawn
+            // Phase 3 deferred cleanup in the background (slow: worktree, branch).
             self.post_merge_cleanup(task_id_str, task_id, repo_path, plan_branch_repo)
                 .await;
+
+            // Phase 3: spawn fire-and-forget cleanup for slow operations
+            let task_repo_clone = Arc::clone(task_repo);
+            let task_id_clone = task_id.clone();
+            let project_dir = project.working_directory.clone();
+            let task_branch_clone = task.task_branch.clone();
+            let worktree_path_clone = task.worktree_path.clone();
+            tokio::spawn(async move {
+                super::merge_completion::deferred_merge_cleanup(
+                    task_id_clone,
+                    task_repo_clone,
+                    project_dir,
+                    task_branch_clone,
+                    worktree_path_clone,
+                )
+                .await;
+            });
         }
 
-        // Clean up merge worktree after merge completion (success or failure)
+        // Clean up merge worktree after merge completion (success or failure).
+        // This is the temporary worktree used for the merge operation itself,
+        // separate from the task's worktree (handled by Phase 3).
         if merge_path != repo_path {
-            if let Err(e) = GitService::delete_worktree(repo_path, merge_path).await {
+            if let Err(e) = super::cleanup_helpers::remove_worktree_fast(merge_path, repo_path).await {
                 tracing::warn!(task_id = task_id_str, error = %e, "Failed to delete merge worktree after merge completion (non-fatal)");
             }
         }
@@ -547,10 +594,36 @@ impl<'a> super::TransitionHandler<'a> {
         tc: super::TaskCore<'_>,
         bp: super::BranchPair<'_>,
         missing_branch: &str,
+        repo_path: &Path,
     ) {
         let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
-        tracing::error!(task_id = task_id_str, missing_branch = %missing_branch, "Branch does not exist");
+        tracing::warn!(task_id = task_id_str, missing_branch = %missing_branch, "Branch not found, re-checking");
+
+        // Re-check if branch exists now (race condition: concurrent operation may have created it)
+        let branch_exists = git_cmd::run_status(
+            &["rev-parse", "--verify", &format!("refs/heads/{}", missing_branch)],
+            repo_path,
+        )
+        .await
+        .unwrap_or(false);
+
+        if branch_exists {
+            tracing::info!(
+                task_id = task_id_str,
+                branch = %missing_branch,
+                "Branch found on re-check — deferring for fast retry"
+            );
+            self.handle_outcome_deferred(
+                super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
+                super::BranchPair { source_branch, target_branch },
+                &format!("branch '{}' appeared on re-check (race condition)", missing_branch),
+            )
+            .await;
+            return;
+        }
+
+        tracing::error!(task_id = task_id_str, missing_branch = %missing_branch, "Branch confirmed missing after re-check");
 
         let mut recovery = get_or_create_recovery(task);
         let attempt = retry_attempt_count(&recovery);
@@ -659,6 +732,25 @@ impl<'a> super::TransitionHandler<'a> {
                 super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
                 super::BranchPair { source_branch, target_branch },
                 &format!("branch lock: {}", error),
+            )
+            .await;
+            return;
+        }
+
+        // Transient errors (lock contention, index.lock, etc.) → defer instead of
+        // MergeIncomplete. This avoids the 60s+ backoff from reconciliation and lets
+        // the PendingMerge reconciler retry in seconds.
+        if is_transient_merge_error(&error) {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %error,
+                strategy = opts.strategy_label,
+                "Transient git error, deferring for fast retry"
+            );
+            self.handle_outcome_deferred(
+                super::TaskCore { task: &mut *task, task_id, task_id_str, task_repo },
+                super::BranchPair { source_branch, target_branch },
+                &format!("transient git error: {}", error),
             )
             .await;
             return;

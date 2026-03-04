@@ -368,6 +368,8 @@ async fn gap3_pre_merge_cleanup_deletes_all_worktree_types() {
 
     // Set task.worktree_path to merge-{id} (simulating a stale merge attempt)
     task.worktree_path = Some(merge_wt.clone());
+    // Simulate a retry: set merge failure metadata so Phase 1 GUARD runs cleanup
+    task.metadata = Some(serde_json::json!({"merge_failure_source": "test_prior_failure"}).to_string());
     task_repo.create(task).await.unwrap();
 
     // Verify all worktrees exist before cleanup

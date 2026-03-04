@@ -599,7 +599,9 @@ async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path()
         result
     );
 
-    // Verify task in DB has task_branch and worktree_path cleared
+    // Phase 2: complete_merge_internal now defers cleanup to Phase 3.
+    // task_branch and worktree_path are NOT cleared immediately — instead
+    // pending_cleanup metadata is set for deferred cleanup.
     let stored_task = s
         .task_repo
         .get_by_id(&task.id)
@@ -607,22 +609,58 @@ async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path()
         .unwrap()
         .expect("Task should exist in DB");
 
-    assert!(
-        stored_task.task_branch.is_none(),
-        "task_branch must be cleared after merge cleanup so re-execution creates a fresh branch"
-    );
-    assert!(
-        stored_task.worktree_path.is_none(),
-        "worktree_path must be cleared after merge cleanup so re-execution creates a fresh worktree"
+    assert_eq!(
+        stored_task.internal_status,
+        InternalStatus::Merged,
+        "Task must be Merged after complete_merge_internal"
     );
 
-    // Also verify the in-memory task struct was updated
+    // pending_cleanup metadata must be set (Phase 3 will clean up)
+    use crate::domain::state_machine::transition_handler::has_pending_cleanup_metadata;
     assert!(
-        task.task_branch.is_none(),
-        "In-memory task.task_branch must also be None after complete_merge_internal"
+        has_pending_cleanup_metadata(&stored_task),
+        "pending_cleanup metadata must be set for deferred cleanup"
+    );
+
+    // Verify task_branch and worktree_path are still set (cleanup deferred)
+    // They will be cleared by deferred_merge_cleanup (Phase 3)
+    assert!(
+        stored_task.task_branch.is_some(),
+        "task_branch should still be set (cleanup deferred to Phase 3)"
     );
     assert!(
-        task.worktree_path.is_none(),
-        "In-memory task.worktree_path must also be None after complete_merge_internal"
+        stored_task.worktree_path.is_some(),
+        "worktree_path should still be set (cleanup deferred to Phase 3)"
+    );
+
+    // Now run Phase 3 deferred cleanup to verify it clears the fields
+    use crate::domain::state_machine::transition_handler::deferred_merge_cleanup;
+    deferred_merge_cleanup(
+        task.id.clone(),
+        task_repo.clone(),
+        repo_path.to_string_lossy().to_string(),
+        task.task_branch.clone(),
+        task.worktree_path.clone(),
+    )
+    .await;
+
+    let final_task = s
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("Task should exist after cleanup");
+
+    assert!(
+        final_task.task_branch.is_none(),
+        "task_branch must be cleared after deferred cleanup (Phase 3)"
+    );
+    assert!(
+        final_task.worktree_path.is_none(),
+        "worktree_path must be cleared after deferred cleanup (Phase 3)"
+    );
+    assert!(
+        !has_pending_cleanup_metadata(&final_task),
+        "pending_cleanup must be cleared after deferred cleanup (Phase 3)"
     );
 }

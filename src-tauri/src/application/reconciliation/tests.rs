@@ -292,20 +292,21 @@ fn pending_merge_deferred_waits_when_not_stale() {
 
 #[test]
 fn merge_incomplete_retry_delay_uses_exponential_backoff_and_cap() {
-    // With jitter, delay is in [base, base + base/4]. Check bounds.
+    // Base = 5s (merge speed overhaul). With jitter, delay is in [base, base + base/4].
     let d0 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(0).num_seconds();
-    assert!((30..=30 + 30 / 4).contains(&d0), "retry 0: got {d0}");
+    assert!((5..=5 + 5 / 4).contains(&d0), "retry 0: got {d0}");
 
     let d1 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(1).num_seconds();
-    assert!((60..=60 + 60 / 4).contains(&d1), "retry 1: got {d1}");
+    assert!((10..=10 + 10 / 4).contains(&d1), "retry 1: got {d1}");
 
     let d2 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(2).num_seconds();
-    assert!((120..=120 + 120 / 4).contains(&d2), "retry 2: got {d2}");
+    assert!((20..=20 + 20 / 4).contains(&d2), "retry 2: got {d2}");
 
-    // At high retry counts, base_delay caps at merge_incomplete_retry_max_secs (1800)
+    // Exponent caps at 6, so base_delay = 5 * 64 = 320 (below max 1800).
+    // With base=5, exponent saturation at 6 gives 320s as the effective ceiling.
     let d10 = ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(10).num_seconds();
     assert!(
-        (1800..=1800 + 1800 / 4).contains(&d10),
+        (320..=320 + 320 / 4).contains(&d10),
         "retry 10: got {d10}"
     );
 }
@@ -2826,23 +2827,25 @@ fn merge_incomplete_retry_delay_includes_jitter() {
 fn merge_incomplete_retry_delay_caps_at_configured_max() {
     let cfg = reconciliation_config();
     let max_secs = cfg.merge_incomplete_retry_max_secs as i64;
-    // At high retry counts, base delay saturates at max.
-    // Jitter adds up to base_delay/4, but total must not exceed max + max/4.
+    let base_secs = cfg.merge_incomplete_retry_base_secs as i64;
+    // Exponent caps at 6, so saturated base = base * 64.
+    // If saturated base < max, the effective ceiling is saturated base, not max.
+    let saturated = (base_secs * 64).min(max_secs);
     for _ in 0..20 {
         let delay =
             ReconciliationRunner::<tauri::Wry>::merge_incomplete_retry_delay(100).num_seconds();
         assert!(
-            delay <= max_secs + max_secs / 4,
-            "Delay {} exceeded max {} + jitter ceiling {}",
+            delay <= saturated + saturated / 4,
+            "Delay {} exceeded saturated {} + jitter ceiling {}",
             delay,
-            max_secs,
-            max_secs / 4,
+            saturated,
+            saturated / 4,
         );
         assert!(
-            delay >= max_secs,
-            "Delay {} should be at least the base max {}",
+            delay >= saturated,
+            "Delay {} should be at least the saturated base {}",
             delay,
-            max_secs,
+            saturated,
         );
     }
 }
