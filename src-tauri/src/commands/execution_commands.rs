@@ -652,15 +652,22 @@ pub async fn get_execution_status(
             continue;
         }
 
+        let task_id = TaskId::from_string(key.context_id);
+        let task = match app_state.task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => task,
+            _ => continue,
+        };
+
         if let Some(pid) = &effective_project_id {
-            let task_id = TaskId::from_string(key.context_id);
-            let task = match app_state.task_repo.get_by_id(&task_id).await {
-                Ok(Some(task)) => task,
-                _ => continue,
-            };
             if task.project_id != *pid {
                 continue;
             }
+        }
+
+        // Skip entries whose task status doesn't match the expected running
+        // status for this context type (e.g., Failed task with TaskExecution entry)
+        if !context_matches_running_status_for_gc(context_type, task.internal_status) {
+            continue;
         }
 
         running_count += 1;
