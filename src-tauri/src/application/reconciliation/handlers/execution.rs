@@ -13,6 +13,7 @@ use crate::domain::entities::{
     AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, ReviewNote, ReviewOutcome,
     ReviewerType, TaskId,
 };
+use crate::domain::services::RunningAgentKey;
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
 use crate::infrastructure::agents::claude::reconciliation_config;
 
@@ -67,6 +68,52 @@ fn process_is_alive(pid: u32) -> bool {
 }
 
 impl<R: Runtime> ReconciliationRunner<R> {
+    /// Check if an IPR entry for a context is backed by a live process.
+    ///
+    /// The IPR (InteractiveProcessRegistry) stores `ChildStdin` handles keyed by
+    /// (context_type, context_id). An entry existing does NOT mean the process is alive —
+    /// the cleanup in `spawn_send_message_background` can be skipped (team mode, panic,
+    /// cancellation), leaving a stale entry that blocks reconciliation forever.
+    ///
+    /// This method cross-references the IPR entry against the running_agent_registry PID:
+    /// - If IPR has no entry → returns false (no interactive process)
+    /// - If IPR has entry AND registry has entry with alive PID → returns true
+    /// - If IPR has entry BUT no registry entry or PID is dead → removes stale IPR entry, returns false
+    pub(crate) async fn is_ipr_process_alive(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+    ) -> bool {
+        let ipr = match self.interactive_process_registry {
+            Some(ref ipr) => ipr,
+            None => return false,
+        };
+
+        let ipr_key = InteractiveProcessKey::new(context_type.to_string(), context_id);
+        if !ipr.has_process(&ipr_key).await {
+            return false;
+        }
+
+        // IPR has an entry — verify the underlying process is still alive
+        let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
+        let pid_alive = match self.running_agent_registry.get(&registry_key).await {
+            Some(info) => process_is_alive(info.pid),
+            None => false, // Registry cleaned but IPR wasn't → stale
+        };
+
+        if !pid_alive {
+            warn!(
+                context_type = %context_type,
+                context_id,
+                "Removing stale IPR entry — process no longer alive"
+            );
+            ipr.remove(&ipr_key).await;
+            return false;
+        }
+
+        true
+    }
+
     /// Startup-only recovery: re-queue Failed tasks that failed due to transient timeouts.
     ///
     /// Runs once at app startup (not in the recurring loop). Finds tasks in Failed state where
@@ -255,18 +302,29 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 }
             }
 
-            // Skip entries with an active interactive process — the CLI is alive
-            // between turns, waiting for the next stdin message.
+            // Skip entries with an active interactive process AND a live PID.
+            // If IPR has an entry but the PID is dead, the entry is stale — remove
+            // it so reconciliation can proceed instead of being blocked forever.
             if let Some(ref ipr) = self.interactive_process_registry {
                 let ipr_key =
                     InteractiveProcessKey::new(&key.context_type, &key.context_id);
                 if ipr.has_process(&ipr_key).await {
-                    tracing::debug!(
+                    if pid_alive {
+                        tracing::debug!(
+                            context_type = key.context_type,
+                            context_id = key.context_id,
+                            "Skipping prune for interactive process"
+                        );
+                        continue;
+                    }
+                    // PID is dead but IPR still has entry → stale, remove it
+                    warn!(
                         context_type = key.context_type,
                         context_id = key.context_id,
-                        "Skipping prune for interactive process"
+                        pid = info.pid,
+                        "Removing stale IPR entry during prune — PID no longer alive"
                     );
-                    continue;
+                    ipr.remove(&ipr_key).await;
                 }
             }
 
@@ -419,17 +477,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
-        // Skip if there's an active interactive process — the agent is alive between turns
-        if let Some(ref ipr) = self.interactive_process_registry {
-            let ipr_key =
-                InteractiveProcessKey::new(ChatContextType::TaskExecution.to_string(), task.id.as_str());
-            if ipr.has_process(&ipr_key).await {
-                tracing::debug!(
-                    task_id = task.id.as_str(),
-                    "Skipping execution reconciliation: interactive process active"
-                );
-                return true;
-            }
+        // Skip if there's a live interactive process — the agent is alive between turns.
+        // Cross-references IPR against registry PID to detect stale entries.
+        if self
+            .is_ipr_process_alive(ChatContextType::TaskExecution, task.id.as_str())
+            .await
+        {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping execution reconciliation: interactive process active"
+            );
+            return true;
         }
 
         let run = self.load_execution_run(task, status).await;
@@ -552,17 +610,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
-        // Skip if there's an active interactive process — the agent is alive between turns
-        if let Some(ref ipr) = self.interactive_process_registry {
-            let ipr_key =
-                InteractiveProcessKey::new(ChatContextType::Review.to_string(), task.id.as_str());
-            if ipr.has_process(&ipr_key).await {
-                tracing::debug!(
-                    task_id = task.id.as_str(),
-                    "Skipping review reconciliation: interactive process active"
-                );
-                return true;
-            }
+        // Skip if there's a live interactive process — the agent is alive between turns.
+        // Cross-references IPR against registry PID to detect stale entries.
+        if self
+            .is_ipr_process_alive(ChatContextType::Review, task.id.as_str())
+            .await
+        {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping review reconciliation: interactive process active"
+            );
+            return true;
         }
 
         let run = self
@@ -1065,21 +1123,18 @@ impl<R: Runtime> ReconciliationRunner<R> {
             task.id.as_str(),
         );
 
-        // Skip recovery if the process has an active interactive slot — it's alive
+        // Skip recovery if the process has a live interactive slot — it's alive
         // between turns, waiting for the next stdin message. Stopping it would kill
-        // a healthy interactive agent.
-        if let Some(ref ipr) = self.interactive_process_registry {
-            let ipr_key = InteractiveProcessKey::new(
-                ChatContextType::TaskExecution.to_string(),
-                task.id.as_str(),
+        // a healthy interactive agent. Cross-references PID liveness to avoid stale entries.
+        if self
+            .is_ipr_process_alive(ChatContextType::TaskExecution, task.id.as_str())
+            .await
+        {
+            tracing::debug!(
+                task_id = task_id.as_str(),
+                "Skipping recovery stop — active interactive process"
             );
-            if ipr.has_process(&ipr_key).await {
-                tracing::debug!(
-                    task_id = task_id.as_str(),
-                    "Skipping recovery stop — active interactive process"
-                );
-                return false;
-            }
+            return false;
         }
 
         let registry_running = self.running_agent_registry.is_running(&key).await;
@@ -1183,7 +1238,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
         decision: RecoveryDecision,
     ) -> bool {
         match decision.action {
-            RecoveryActionKind::None => false,
+            RecoveryActionKind::None => {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    status = ?status,
+                    context = ?context,
+                    "Reconciliation policy returned None — no recovery action taken"
+                );
+                false
+            }
             RecoveryActionKind::ExecuteEntryActions => {
                 // Clean stale registry entry before re-spawning agent.
                 // Without this, try_register fails (old slot occupied), the message
@@ -1203,21 +1266,19 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     task.id.as_str(),
                 );
 
-                // Skip recovery re-spawn if the process has an active interactive
+                // Skip recovery re-spawn if the process has a live interactive
                 // slot — the agent is alive between turns and doesn't need respawning.
-                if let Some(ref ipr) = self.interactive_process_registry {
-                    let ipr_key = InteractiveProcessKey::new(
-                        chat_context.to_string(),
-                        task.id.as_str(),
+                // Cross-references PID liveness to avoid stale entries.
+                if self
+                    .is_ipr_process_alive(chat_context, task.id.as_str())
+                    .await
+                {
+                    tracing::debug!(
+                        task_id = task.id.as_str(),
+                        context_type = %chat_context,
+                        "Skipping recovery re-spawn — active interactive process"
                     );
-                    if ipr.has_process(&ipr_key).await {
-                        tracing::debug!(
-                            task_id = task.id.as_str(),
-                            context_type = %chat_context,
-                            "Skipping recovery re-spawn — active interactive process"
-                        );
-                        return false;
-                    }
+                    return false;
                 }
 
                 if self.running_agent_registry.is_running(&registry_key).await {
