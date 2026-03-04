@@ -44,8 +44,10 @@ pub struct IdeationSession {
     pub title: Option<String>,
     /// Current status of the session
     pub status: IdeationSessionStatus,
-    /// The implementation plan artifact for this session
+    /// The implementation plan artifact for this session (owned by this session)
     pub plan_artifact_id: Option<ArtifactId>,
+    /// Plan artifact inherited from parent session (read-only; child cannot modify)
+    pub inherited_plan_artifact_id: Option<ArtifactId>,
     /// Optional reference to a draft task that seeded this session
     pub seed_task_id: Option<TaskId>,
     /// Optional parent session for session linking (follow-on work, etc.)
@@ -74,6 +76,7 @@ pub struct IdeationSessionBuilder {
     title: Option<String>,
     status: Option<IdeationSessionStatus>,
     plan_artifact_id: Option<ArtifactId>,
+    inherited_plan_artifact_id: Option<ArtifactId>,
     seed_task_id: Option<TaskId>,
     parent_session_id: Option<IdeationSessionId>,
     created_at: Option<DateTime<Utc>>,
@@ -118,6 +121,12 @@ impl IdeationSessionBuilder {
     /// Set the plan artifact ID
     pub fn plan_artifact_id(mut self, plan_artifact_id: ArtifactId) -> Self {
         self.plan_artifact_id = Some(plan_artifact_id);
+        self
+    }
+
+    /// Set the inherited plan artifact ID (read-only, from parent session)
+    pub fn inherited_plan_artifact_id(mut self, inherited_plan_artifact_id: ArtifactId) -> Self {
+        self.inherited_plan_artifact_id = Some(inherited_plan_artifact_id);
         self
     }
 
@@ -185,6 +194,7 @@ impl IdeationSessionBuilder {
             title: self.title,
             status: self.status.unwrap_or_default(),
             plan_artifact_id: self.plan_artifact_id,
+            inherited_plan_artifact_id: self.inherited_plan_artifact_id,
             seed_task_id: self.seed_task_id,
             parent_session_id: self.parent_session_id,
             created_at: self.created_at.unwrap_or(now),
@@ -282,6 +292,9 @@ impl IdeationSession {
                 .unwrap_or(IdeationSessionStatus::Active),
             plan_artifact_id: row
                 .get::<_, Option<String>>("plan_artifact_id")?
+                .map(ArtifactId::from_string),
+            inherited_plan_artifact_id: row
+                .get::<_, Option<String>>("inherited_plan_artifact_id")?
                 .map(ArtifactId::from_string),
             seed_task_id: row
                 .get::<_, Option<String>>("seed_task_id")?

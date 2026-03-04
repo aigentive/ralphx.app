@@ -264,6 +264,12 @@ impl IdeationSessionRepository for MockIdeationRepo {
     ) -> AppResult<Vec<IdeationSession>> {
         unimplemented!()
     }
+    async fn get_by_inherited_plan_artifact_id(
+        &self,
+        _artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>> {
+        unimplemented!()
+    }
     async fn get_children(
         &self,
         _parent_id: &IdeationSessionId,

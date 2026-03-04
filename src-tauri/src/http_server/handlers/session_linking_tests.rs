@@ -8,6 +8,7 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         title: None,
         status: IdeationSessionStatus::Active,
         plan_artifact_id: None,
+        inherited_plan_artifact_id: None,
         seed_task_id: None,
         parent_session_id: None,
         created_at: chrono::Utc::now(),

@@ -178,7 +178,9 @@ pub async fn create_child_session(
         project_id: parent.project_id.clone(),
         title: req.title.clone(),
         status: IdeationSessionStatus::Active,
-        plan_artifact_id: if req.inherit_context {
+        // Child starts with no own plan — the inherited plan is read-only via inherited_plan_artifact_id
+        plan_artifact_id: None,
+        inherited_plan_artifact_id: if req.inherit_context {
             parent.plan_artifact_id.clone()
         } else {
             None
@@ -414,7 +416,7 @@ pub async fn create_child_session(
         title,
         status: created_session.status.to_string(),
         created_at: created_session.created_at.to_rfc3339(),
-        inherited_plan_id: created_session.plan_artifact_id.map(|id| id.to_string()),
+        inherited_plan_id: created_session.inherited_plan_artifact_id.map(|id| id.to_string()),
         initial_prompt: req.initial_prompt.clone(),
         parent_context,
         orchestration_triggered,

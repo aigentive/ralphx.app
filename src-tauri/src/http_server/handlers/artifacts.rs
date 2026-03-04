@@ -15,7 +15,7 @@ use crate::domain::entities::{
 pub async fn create_plan_artifact(
     State(state): State<HttpServerState>,
     Json(req): Json<CreatePlanArtifactRequest>,
-) -> Result<Json<ArtifactResponse>, StatusCode> {
+) -> Result<Json<ArtifactResponse>, HttpError> {
     let session_id = IdeationSessionId::from_string(req.session_id);
 
     // Get session and check for existing plan
@@ -35,7 +35,7 @@ pub async fn create_plan_artifact(
         .ok_or(StatusCode::NOT_FOUND)?;
 
     // Guard: reject mutations on Archived/Accepted sessions
-    assert_session_mutable(&session).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+    assert_session_mutable(&session).map_err(|e| HttpError::validation(e.to_string()))?;
 
     // Create the specification artifact
     let bucket_id = ArtifactBucketId::from_string("prd-library");
@@ -49,7 +49,10 @@ pub async fn create_plan_artifact(
         bucket_id: Some(bucket_id),
     };
 
-    // If session has an existing plan, chain to it via previous_version_id
+    // Chain only to the session's OWN plan (plan_artifact_id), never to an inherited one.
+    // Child sessions with inherit_context=true have plan_artifact_id=None and
+    // inherited_plan_artifact_id=Some(parent_id). The else branch below creates a fresh,
+    // independent artifact for them — not chained to the parent's plan.
     let created = if let Some(existing_plan_id) = &session.plan_artifact_id {
         let existing_artifact_id = existing_plan_id.clone();
         state
@@ -123,7 +126,7 @@ pub async fn create_plan_artifact(
 pub async fn update_plan_artifact(
     State(state): State<HttpServerState>,
     Json(req): Json<UpdatePlanArtifactRequest>,
-) -> Result<Json<ArtifactResponse>, StatusCode> {
+) -> Result<Json<ArtifactResponse>, HttpError> {
     let input_artifact_id = ArtifactId::from_string(req.artifact_id);
 
     // Resolve stale IDs: walk the version chain forward to find the latest version.
@@ -174,7 +177,30 @@ pub async fn update_plan_artifact(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     if let Some(session) = owning_sessions.first() {
-        assert_session_mutable(session).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+        assert_session_mutable(session).map_err(|e| HttpError::validation(e.to_string()))?;
+    }
+
+    // Guard: reject update if this artifact is only referenced as an inherited plan
+    // (no session owns it via plan_artifact_id, but some session has it as inherited_plan_artifact_id)
+    if owning_sessions.is_empty() {
+        let inherited_sessions = state
+            .app_state
+            .ideation_session_repo
+            .get_by_inherited_plan_artifact_id(old_artifact_id.as_str())
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to find sessions with inherited artifact {}: {}",
+                    old_artifact_id.as_str(),
+                    e
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+        if !inherited_sessions.is_empty() {
+            return Err(HttpError::validation(
+                "Cannot update inherited plan. Use create_plan_artifact to create a session-specific plan.".to_string(),
+            ));
+        }
     }
 
     // Create NEW artifact with incremented version (version chain, not in-place update)
@@ -339,7 +365,7 @@ pub async fn get_plan_artifact(
 pub async fn link_proposals_to_plan(
     State(state): State<HttpServerState>,
     Json(req): Json<LinkProposalsToPlanRequest>,
-) -> Result<Json<SuccessResponse>, StatusCode> {
+) -> Result<Json<SuccessResponse>, HttpError> {
     let input_artifact_id = ArtifactId::from_string(req.artifact_id);
 
     // Resolve stale artifact ID to latest version in the chain
@@ -388,7 +414,7 @@ pub async fn link_proposals_to_plan(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
     if let Some(session) = owning_sessions.first() {
-        assert_session_mutable(session).map_err(|_| StatusCode::UNPROCESSABLE_ENTITY)?;
+        assert_session_mutable(session).map_err(|e| HttpError::validation(e.to_string()))?;
     }
 
     // Update each proposal
@@ -455,31 +481,42 @@ pub async fn get_session_plan(
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    if let Some(artifact_id) = session.plan_artifact_id {
-        let artifact = state
-            .app_state
-            .artifact_repo
-            .get_by_id(&artifact_id)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to get plan artifact {} for session {}: {}",
-                    artifact_id.as_str(),
-                    session_id.as_str(),
-                    e
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .ok_or(StatusCode::NOT_FOUND)?;
-
-        Ok(Json(Some(ArtifactResponse::from(artifact))))
+    // Prefer the session's own plan; fall back to the inherited plan (read-only)
+    let (artifact_id, is_inherited) = if let Some(own_plan_id) = session.plan_artifact_id {
+        (own_plan_id, false)
+    } else if let Some(inherited_id) = session.inherited_plan_artifact_id {
+        (inherited_id, true)
     } else {
-        Ok(Json(None))
-    }
+        return Ok(Json(None));
+    };
+
+    let artifact = state
+        .app_state
+        .artifact_repo
+        .get_by_id(&artifact_id)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to get plan artifact {} for session {}: {}",
+                artifact_id.as_str(),
+                session_id.as_str(),
+                e
+            );
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    let mut response = ArtifactResponse::from(artifact);
+    response.is_inherited = Some(is_inherited);
+    Ok(Json(Some(response)))
 }
 
 /// Get version history for a plan artifact
 /// Returns list of version summaries from newest to oldest
+#[cfg(test)]
+#[path = "artifacts_tests.rs"]
+mod tests;
+
 pub async fn get_plan_artifact_history(
     State(state): State<HttpServerState>,
     Path(artifact_id): Path<String>,
