@@ -189,6 +189,19 @@ impl<'a> super::TransitionHandler<'a> {
                                             plan_branch_repo,
                                         )
                                         .await;
+
+                                        // Phase 3: fire-and-forget cleanup
+                                        let cleanup_task_id = task_id.clone();
+                                        let cleanup_repo = Arc::clone(task_repo);
+                                        let cleanup_dir = project.working_directory.clone();
+                                        let cleanup_branch = task.task_branch.clone();
+                                        let cleanup_wt = task.worktree_path.clone();
+                                        tokio::spawn(async move {
+                                            super::merge_completion::deferred_merge_cleanup(
+                                                cleanup_task_id, cleanup_repo, cleanup_dir,
+                                                cleanup_branch, cleanup_wt,
+                                            ).await;
+                                        });
                                     }
                                     return true;
                                 }
@@ -312,6 +325,19 @@ impl<'a> super::TransitionHandler<'a> {
         } else {
             self.post_merge_cleanup(task_id_str, task_id, repo_path, plan_branch_repo)
                 .await;
+
+            // Phase 3: fire-and-forget cleanup
+            let cleanup_task_id = task_id.clone();
+            let cleanup_repo = Arc::clone(task_repo);
+            let cleanup_dir = project.working_directory.clone();
+            let cleanup_branch = task.task_branch.clone();
+            let cleanup_wt = task.worktree_path.clone();
+            tokio::spawn(async move {
+                super::merge_completion::deferred_merge_cleanup(
+                    cleanup_task_id, cleanup_repo, cleanup_dir,
+                    cleanup_branch, cleanup_wt,
+                ).await;
+            });
         }
         true
     }
@@ -414,6 +440,19 @@ impl<'a> super::TransitionHandler<'a> {
                                         plan_branch_repo,
                                     )
                                     .await;
+
+                                    // Phase 3: fire-and-forget cleanup
+                                    let cleanup_task_id = task_id.clone();
+                                    let cleanup_repo = Arc::clone(task_repo);
+                                    let cleanup_dir = project.working_directory.clone();
+                                    let cleanup_branch = task.task_branch.clone();
+                                    let cleanup_wt = task.worktree_path.clone();
+                                    tokio::spawn(async move {
+                                        super::merge_completion::deferred_merge_cleanup(
+                                            cleanup_task_id, cleanup_repo, cleanup_dir,
+                                            cleanup_branch, cleanup_wt,
+                                        ).await;
+                                    });
                                 }
                                 return true;
                             }
@@ -486,6 +525,19 @@ impl<'a> super::TransitionHandler<'a> {
                 } else {
                     self.post_merge_cleanup(task_id_str, task_id, repo_path, plan_branch_repo)
                         .await;
+
+                    // Phase 3: fire-and-forget cleanup
+                    let cleanup_task_id = task_id.clone();
+                    let cleanup_repo = Arc::clone(task_repo);
+                    let cleanup_dir = project.working_directory.clone();
+                    let cleanup_branch = task.task_branch.clone();
+                    let cleanup_wt = task.worktree_path.clone();
+                    tokio::spawn(async move {
+                        super::merge_completion::deferred_merge_cleanup(
+                            cleanup_task_id, cleanup_repo, cleanup_dir,
+                            cleanup_branch, cleanup_wt,
+                        ).await;
+                    });
                 }
                 true
             }

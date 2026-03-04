@@ -4,6 +4,7 @@
 // - run_cleanup_step: timeout-wrapped async operation with standardized logging
 // - CleanupStepResult: typed outcome replacing bare bool
 
+use std::path::Path;
 use std::time::Duration;
 
 /// Returned when an [`os_thread_timeout`] expires.
@@ -101,5 +102,99 @@ where
             );
             CleanupStepResult::TimedOut { elapsed: deadline }
         }
+    }
+}
+
+/// Fast worktree removal: `rm -rf` + `git worktree prune`.
+///
+/// Unlike `GitService::delete_worktree` which calls `git worktree remove --force`
+/// (6-10s because it runs `git status` internally), this function removes the
+/// directory directly and then prunes git's worktree tracking.
+///
+/// Safe for merge cleanup because worktree data is irrelevant after the merge
+/// commit is on the target branch.
+///
+/// # Errors
+///
+/// Returns an error if directory removal fails AND the path still exists.
+/// Non-existent paths are treated as success (idempotent).
+/// `git worktree prune` failures are logged but not propagated (best-effort).
+pub(crate) async fn remove_worktree_fast(
+    worktree_path: &Path,
+    repo_path: &Path,
+) -> Result<(), String> {
+    remove_worktree_dir(worktree_path).await?;
+    git_worktree_prune(repo_path).await;
+    Ok(())
+}
+
+/// Remove worktree directory only (rm -rf), WITHOUT running `git worktree prune`.
+///
+/// Use this in parallel loops where multiple worktrees are deleted concurrently.
+/// After all deletions complete, call `git_worktree_prune` once to avoid
+/// concurrent git lock contention.
+pub(crate) async fn remove_worktree_dir(worktree_path: &Path) -> Result<(), String> {
+    if !worktree_path.exists() {
+        tracing::debug!(
+            worktree = %worktree_path.display(),
+            "remove_worktree_dir: path does not exist, skipping"
+        );
+        return Ok(());
+    }
+
+    // rm -rf via tokio async fs
+    if let Err(e) = tokio::fs::remove_dir_all(worktree_path).await {
+        tracing::warn!(
+            worktree = %worktree_path.display(),
+            error = %e,
+            "remove_worktree_dir: tokio::fs::remove_dir_all failed, trying rm -rf fallback"
+        );
+        // Fallback: shell rm -rf for permission issues (e.g., read-only .git dirs)
+        let output = tokio::process::Command::new("rm")
+            .args(["-rf", worktree_path.to_str().unwrap_or_default()])
+            .output()
+            .await
+            .map_err(|e| format!("Failed to spawn rm -rf: {}", e))?;
+
+        if !output.status.success() && worktree_path.exists() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!(
+                "rm -rf failed for '{}': {}",
+                worktree_path.display(),
+                stderr
+            ));
+        }
+    }
+
+    Ok(())
+}
+
+/// Run `git worktree prune` to clean up git's worktree tracking.
+///
+/// Call this once after removing worktree directories (not per-worktree)
+/// to avoid concurrent git index.lock contention.
+pub(crate) async fn git_worktree_prune(repo_path: &Path) {
+    match tokio::process::Command::new("git")
+        .args(["worktree", "prune"])
+        .current_dir(repo_path)
+        .output()
+        .await
+    {
+        Ok(output) if !output.status.success() => {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            tracing::warn!(
+                repo = %repo_path.display(),
+                error = %stderr,
+                "git_worktree_prune: failed (non-fatal)"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                repo = %repo_path.display(),
+                error = %e,
+                "git_worktree_prune: failed to spawn (non-fatal)"
+            );
+        }
+        _ => {}
     }
 }

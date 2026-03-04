@@ -1,6 +1,9 @@
 // Merge completion: finalize merge and cleanup branch/worktree
 //
 // Extracted from side_effects.rs — handles post-merge finalization and resource cleanup.
+//
+// Phase 2 MERGE: complete_merge_internal marks Merged immediately (no blocking cleanup).
+// Phase 3 CLEANUP: deferred_merge_cleanup runs in background via tokio::spawn.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -15,14 +18,18 @@ use crate::domain::entities::{
         MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
         MergeRecoverySource, MergeRecoveryState,
     },
-    InternalStatus, Project, Task,
+    InternalStatus, Project, Task, TaskId,
 };
 use crate::domain::repositories::TaskRepository;
 use crate::error::{AppError, AppResult};
 
 use super::merge_validation::emit_merge_progress;
 
-/// Complete a merge operation by transitioning task to Merged and cleaning up.
+/// Complete a merge operation by transitioning task to Merged (Phase 2 MERGE).
+///
+/// Marks the task Merged immediately without blocking on cleanup. Sets
+/// `pending_cleanup` metadata so Phase 3 (deferred_merge_cleanup) can
+/// handle worktree/branch deletion in the background.
 ///
 /// This is shared logic used by:
 /// - Programmatic merge success path (PendingMerge side effect)
@@ -41,9 +48,8 @@ use super::merge_validation::emit_merge_progress;
 /// 1. Updates task.merge_commit_sha
 /// 2. Updates task.internal_status to Merged
 /// 3. Persists status change to history
-/// 4. Deletes worktree (if Worktree mode)
-/// 5. Deletes task branch
-/// 6. Emits task:merged and task:status_changed events
+/// 4. Sets `pending_cleanup` metadata (cleared by Phase 3)
+/// 5. Emits task:merged and task:status_changed events
 ///
 /// # Errors
 /// Returns `AppError::Validation` if the commit is not on the target branch.
@@ -171,9 +177,12 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
         }
     }
 
-    // 2. Update task with merge commit SHA and status
+    // 2. Update task with merge commit SHA, status, and pending_cleanup in ONE write.
+    // Combining status + pending_cleanup into a single update eliminates the crash
+    // window where status=Merged but pending_cleanup is not yet set.
     task.merge_commit_sha = Some(commit_sha.to_string());
     task.internal_status = InternalStatus::Merged;
+    set_pending_cleanup_metadata(task);
     task.touch();
 
     task_repo.update(task).await.map_err(|e| {
@@ -181,7 +190,7 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
         e
     })?;
 
-    // 2. Record status change in history
+    // 3. Record status change in history
     if let Err(e) = task_repo
         .persist_status_change(
             &task_id,
@@ -193,9 +202,6 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     {
         tracing::warn!(error = %e, task_id = task_id_str, "Failed to record merge transition (non-fatal)");
     }
-
-    // 3. Cleanup branch and worktree
-    cleanup_branch_and_worktree_internal(task, project, task_repo).await;
 
     // 4. Emit events (intentional: no frontend listeners is OK)
     if let Some(handle) = app_handle {
@@ -247,125 +253,192 @@ pub async fn complete_merge_internal<R: tauri::Runtime>(
     Ok(())
 }
 
-/// Cleanup task branch and worktree after successful merge (standalone version).
+// NOTE: The old `cleanup_branch_and_worktree_internal` function has been replaced
+// by `deferred_merge_cleanup` (Phase 3). The old function ran synchronously during
+// `complete_merge_internal`, blocking the merge result. The new function runs as a
+// fire-and-forget `tokio::spawn` after the task is already marked Merged.
+
+// ==================
+// Pending cleanup metadata helpers
+// ==================
+
+/// Set `pending_cleanup` flag in task metadata.
 ///
-/// This is the standalone version that can be called from `complete_merge_internal`.
-/// For use within TransitionHandler, use the async method which has access to services.
+/// Called by `complete_merge_internal` (Phase 2) so that Phase 3 cleanup
+/// can be deferred and survive app restarts.
+pub fn set_pending_cleanup_metadata(task: &mut Task) {
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("pending_cleanup".to_string(), serde_json::json!(true));
+    }
+    task.metadata = Some(meta.to_string());
+}
+
+/// Check if task has `pending_cleanup` metadata flag set.
+pub fn has_pending_cleanup_metadata(task: &Task) -> bool {
+    task.metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .and_then(|v| v.get("pending_cleanup")?.as_bool())
+        .unwrap_or(false)
+}
+
+/// Clear `pending_cleanup` flag from task metadata.
+pub fn clear_pending_cleanup_metadata(task: &mut Task) {
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.remove("pending_cleanup");
+    }
+    task.metadata = Some(meta.to_string());
+}
+
+// ==================
+// Phase 3: Deferred merge cleanup
+// ==================
+
+/// Fire-and-forget cleanup after merge completion (Phase 3).
 ///
-/// After deleting the git branch and worktree, clears `task.task_branch` and
-/// `task.worktree_path` to `None` and persists the update. This prevents a
-/// reopened task from seeing stale (now-deleted) branch/worktree values and
-/// skipping branch setup on re-execution.
-pub(super) async fn cleanup_branch_and_worktree_internal(
-    task: &mut Task,
-    project: &Project,
-    task_repo: &Arc<dyn TaskRepository>,
+/// Called via `tokio::spawn` after `complete_merge_internal` marks the task Merged.
+/// Handles the slow operations that don't need to block the merge result:
+/// - Kill worktree processes (SIGKILL)
+/// - Delete worktree (rm -rf + prune)
+/// - Delete task branch
+/// - Clear task_branch/worktree_path fields
+/// - Clear `pending_cleanup` metadata
+///
+/// All operations are non-fatal — the merge is already done. If cleanup fails,
+/// it will be retried on app restart via `resume_pending_cleanup`.
+pub async fn deferred_merge_cleanup(
+    task_id: TaskId,
+    task_repo: Arc<dyn TaskRepository>,
+    project_working_dir: String,
+    task_branch: Option<String>,
+    worktree_path: Option<String>,
 ) {
-    let task_id_str = task.id.as_str().to_string();
+    let task_id_str = task_id.as_str().to_string();
+    let repo_path = Path::new(&project_working_dir);
 
-    let Some(ref task_branch) = task.task_branch.clone() else {
-        tracing::debug!(task_id = task_id_str, "No branch to cleanup");
-        return;
-    };
+    tracing::info!(
+        task_id = %task_id_str,
+        task_branch = ?task_branch,
+        worktree_path = ?worktree_path,
+        "Phase 3: starting deferred merge cleanup"
+    );
 
-    let repo_path = Path::new(&project.working_directory);
-
-    // Delete worktree first, then branch
-    if let Some(ref worktree_path) = task.worktree_path.clone() {
-        let worktree_path_buf = PathBuf::from(worktree_path);
-
-        // Defence-in-depth: if the worktree is still in active use (e.g. validation
-        // running via a WorktreePermit), log a warning. The kill_worktree_processes
-        // call below + CancellationToken (Fix 4) should have already stopped the work,
-        // but if not, this warning surfaces a potential race condition.
-        if crate::domain::services::is_worktree_in_use(&worktree_path_buf) {
-            tracing::warn!(
-                task_id = task_id_str,
-                worktree = %worktree_path,
-                "Worktree is still marked as in-use (WorktreePermit held) — proceeding with cleanup"
-            );
-        }
-
-        // Kill any lingering processes with files open in the worktree
-        // (prevents race where a validation subprocess from a prior attempt
-        // still holds files, causing delete_worktree to fail or corrupt state).
-        // Matches pre_merge_cleanup step 0 pattern (merge_coordination.rs).
-        if worktree_path_buf.exists() {
+    // Step 1: Kill worktree processes via SIGKILL (instant, no SIGTERM wait)
+    if let Some(ref wt_path_str) = worktree_path {
+        let wt_path = PathBuf::from(wt_path_str);
+        if wt_path.exists() {
+            // Use lsof to find PIDs, then SIGKILL each
             let lsof_timeout = git_runtime_config().worktree_lsof_timeout_secs;
-            crate::domain::services::kill_worktree_processes_async(
-                &worktree_path_buf,
-                lsof_timeout,
-            )
-            .await;
-            // Brief settle time for process tree cleanup after SIGTERM
-            tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            crate::domain::services::kill_worktree_processes_async(&wt_path, lsof_timeout).await;
         }
+    }
 
-        if !worktree_path_buf.exists() {
-            tracing::info!(
-                task_id = task_id_str,
-                worktree = %worktree_path,
-                "worktree already removed, skipping deletion"
-            );
-        } else {
-            match GitService::delete_worktree(repo_path, &worktree_path_buf).await {
+    // Step 2: Delete worktree via fast path (rm -rf + git worktree prune)
+    if let Some(ref wt_path_str) = worktree_path {
+        let wt_path = PathBuf::from(wt_path_str);
+        if repo_path.exists() {
+            if let Err(e) = super::cleanup_helpers::remove_worktree_fast(&wt_path, repo_path).await
+            {
+                tracing::warn!(
+                    task_id = %task_id_str,
+                    error = %e,
+                    worktree = %wt_path_str,
+                    "Phase 3: remove_worktree_fast failed (non-fatal)"
+                );
+            } else {
+                tracing::info!(
+                    task_id = %task_id_str,
+                    worktree = %wt_path_str,
+                    "Phase 3: worktree removed"
+                );
+            }
+        }
+    }
+
+    // Step 3: Delete task branch
+    if let Some(ref branch) = task_branch {
+        if repo_path.exists() {
+            match GitService::delete_branch(repo_path, branch, true).await {
                 Ok(_) => {
                     tracing::info!(
-                        task_id = task_id_str,
-                        worktree = %worktree_path,
-                        "Deleted worktree after merge"
+                        task_id = %task_id_str,
+                        branch = %branch,
+                        "Phase 3: task branch deleted"
                     );
                 }
                 Err(e) => {
                     tracing::warn!(
+                        task_id = %task_id_str,
                         error = %e,
-                        task_id = task_id_str,
-                        worktree = %worktree_path,
-                        "Failed to delete worktree (non-fatal)"
+                        branch = %branch,
+                        "Phase 3: failed to delete task branch (non-fatal)"
                     );
                 }
             }
         }
     }
 
-    // Delete the branch from main repo.
-    // The branch is no longer checked out in any worktree, so force-delete works
-    // without needing to checkout a different branch in the main repo.
-    match GitService::delete_branch(repo_path, task_branch, true).await {
-        Ok(_) => {
-            tracing::info!(
-                task_id = task_id_str,
-                branch = %task_branch,
-                "Deleted task branch after merge"
+    // Step 4+5: Clear task_branch/worktree_path fields and pending_cleanup metadata.
+    // Re-fetch task from DB for freshness (other operations may have updated it).
+    match task_repo.get_by_id(&task_id).await {
+        Ok(Some(mut fresh_task)) => {
+            // Race condition guard: if task status changed from Merged (e.g.,
+            // reconciler moved it to a different state), skip field clearing
+            // to avoid clobbering a re-execution's branch/worktree assignment.
+            if fresh_task.internal_status != InternalStatus::Merged {
+                tracing::warn!(
+                    task_id = %task_id_str,
+                    actual_status = ?fresh_task.internal_status,
+                    "Phase 3: task status changed from Merged, skipping field clearing"
+                );
+                // Still clear pending_cleanup to avoid infinite retry on startup
+                clear_pending_cleanup_metadata(&mut fresh_task);
+                fresh_task.touch();
+                let _ = task_repo.update(&fresh_task).await;
+                return;
+            }
+
+            fresh_task.task_branch = None;
+            fresh_task.worktree_path = None;
+            clear_pending_cleanup_metadata(&mut fresh_task);
+            fresh_task.touch();
+
+            if let Err(e) = task_repo.update(&fresh_task).await {
+                tracing::warn!(
+                    task_id = %task_id_str,
+                    error = %e,
+                    "Phase 3: failed to clear task fields after cleanup (non-fatal)"
+                );
+            } else {
+                tracing::info!(
+                    task_id = %task_id_str,
+                    "Phase 3: deferred merge cleanup complete"
+                );
+            }
+        }
+        Ok(None) => {
+            tracing::warn!(
+                task_id = %task_id_str,
+                "Phase 3: task not found in DB (may have been deleted)"
             );
         }
         Err(e) => {
             tracing::warn!(
+                task_id = %task_id_str,
                 error = %e,
-                task_id = task_id_str,
-                branch = %task_branch,
-                "Failed to delete task branch (non-fatal)"
+                "Phase 3: failed to re-fetch task for cleanup (non-fatal)"
             );
         }
-    }
-
-    // Clear stale branch/worktree fields so a reopened task doesn't see deleted values.
-    // on_enter(Executing) checks task.task_branch.is_some() to decide whether to skip
-    // branch setup — if these are left set, re-execution will try to use a deleted branch.
-    task.task_branch = None;
-    task.worktree_path = None;
-    task.touch();
-    if let Err(e) = task_repo.update(task).await {
-        tracing::warn!(
-            error = %e,
-            task_id = task_id_str,
-            "Failed to clear task_branch/worktree_path after cleanup (non-fatal)"
-        );
-    } else {
-        tracing::info!(
-            task_id = task_id_str,
-            "Cleared task_branch and worktree_path after merge cleanup"
-        );
     }
 }
 
@@ -459,10 +532,10 @@ mod tests {
     }
 
     /// Fix #3: When pre_merge_cleanup already deleted the worktree,
-    /// cleanup_branch_and_worktree_internal should skip worktree deletion
-    /// but still delete the branch and clear task fields.
+    /// deferred_merge_cleanup should skip worktree deletion but still
+    /// delete the branch and clear task fields.
     #[tokio::test]
-    async fn test_cleanup_branch_and_worktree_skips_already_deleted_worktree() {
+    async fn test_deferred_cleanup_skips_already_deleted_worktree() {
         let (_dir, repo_path_str) = make_test_repo();
         let repo_path = Path::new(&repo_path_str);
 
@@ -488,7 +561,8 @@ mod tests {
             "Branch should exist before cleanup"
         );
 
-        let task_repo: Arc<dyn TaskRepository> = Arc::new(MemoryTaskRepository::new());
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let task_repo_dyn: Arc<dyn TaskRepository> = Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
         let project_id = ProjectId::from_string("proj-fix3".to_string());
 
         let mut task = Task::new(project_id.clone(), "Fix3 test".to_string());
@@ -496,23 +570,33 @@ mod tests {
         task.task_branch = Some(branch_name.to_string());
         // Non-existent worktree path — simulates pre_merge_cleanup already deleted it
         task.worktree_path = Some("/tmp/nonexistent-worktree-fix3-test".to_string());
-        task_repo.create(task.clone()).await.unwrap();
+        set_pending_cleanup_metadata(&mut task);
+        let task_id = task.id.clone();
+        task_repo.create(task).await.unwrap();
 
-        let mut project = Project::new("fix3-project".to_string(), repo_path_str.clone());
-        project.id = project_id;
-        project.base_branch = Some("main".to_string());
+        deferred_merge_cleanup(
+            task_id.clone(),
+            task_repo_dyn,
+            repo_path_str.clone(),
+            Some(branch_name.to_string()),
+            Some("/tmp/nonexistent-worktree-fix3-test".to_string()),
+        )
+        .await;
 
-        cleanup_branch_and_worktree_internal(&mut task, &project, &task_repo).await;
+        // Re-fetch task from repo to check DB state
+        let updated_task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
 
         // Both fields must be cleared after cleanup
         assert!(
-            task.worktree_path.is_none(),
+            updated_task.worktree_path.is_none(),
             "worktree_path should be None after cleanup (was already deleted)"
         );
         assert!(
-            task.task_branch.is_none(),
+            updated_task.task_branch.is_none(),
             "task_branch should be None after cleanup"
         );
+        // pending_cleanup must be cleared
+        assert!(!has_pending_cleanup_metadata(&updated_task));
 
         // Branch must be deleted from the real git repo
         let branch_check_after = std::process::Command::new("git")

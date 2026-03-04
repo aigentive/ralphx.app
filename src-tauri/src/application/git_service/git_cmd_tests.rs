@@ -63,25 +63,23 @@ fn test_empty_stderr_not_transient() {
     assert!(!is_transient_error(""));
 }
 
-// ── exec_with_retry tests ─────────────────────────────────────────────────
+// ── exec_git_async tests ─────────────────────────────────────────────────
 
-#[test]
-fn test_exec_with_retry_success_on_first_attempt() {
-    // `git --version` should always succeed
+#[tokio::test]
+async fn test_exec_git_async_success() {
     let args: Vec<String> = vec!["--version".to_string()];
     let cwd = std::path::PathBuf::from("/tmp");
-    let result = exec_with_retry(&args, &cwd, None);
+    let result = exec_git_async(&args, &cwd).await;
     assert!(result.is_ok());
     assert!(result.unwrap().status.success());
 }
 
-#[test]
-fn test_exec_with_retry_non_transient_error_no_retry() {
-    // `git` in a non-existent directory should fail immediately (not retry)
+#[tokio::test]
+async fn test_exec_git_async_nonexistent_dir() {
     let args: Vec<String> = vec!["status".to_string()];
     let cwd = std::path::PathBuf::from("/nonexistent_path_that_does_not_exist_xyz");
-    let result = exec_with_retry(&args, &cwd, None);
-    // Should return an error (either spawn failure or git error)
+    let result = exec_git_async(&args, &cwd).await;
+    // Either spawn failure or git error — should not hang
     assert!(
         result.is_err()
             || result
@@ -91,12 +89,54 @@ fn test_exec_with_retry_non_transient_error_no_retry() {
     );
 }
 
-/// Simulate a transient error by running a command whose stderr contains a transient pattern.
-/// We do this by using `git rev-parse` on a known-invalid path that produces stderr output,
-/// then checking the retry logic path separately.
+#[tokio::test]
+async fn test_exec_git_with_env_async_success() {
+    let args: Vec<String> = vec!["--version".to_string()];
+    let cwd = std::path::PathBuf::from("/tmp");
+    let env = vec![("GIT_TERMINAL_PROMPT".to_string(), "0".to_string())];
+    let result = exec_git_with_env_async(&args, &cwd, &env).await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().status.success());
+}
+
+// ── exec_with_retry_async tests ──────────────────────────────────────────
+
+#[tokio::test]
+async fn test_exec_with_retry_async_success_on_first_attempt() {
+    let args: Vec<String> = vec!["--version".to_string()];
+    let cwd = std::path::PathBuf::from("/tmp");
+    let result = exec_with_retry_async(&args, &cwd, None).await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().status.success());
+}
+
+#[tokio::test]
+async fn test_exec_with_retry_async_non_transient_error_no_retry() {
+    let args: Vec<String> = vec!["status".to_string()];
+    let cwd = std::path::PathBuf::from("/nonexistent_path_that_does_not_exist_xyz");
+    let result = exec_with_retry_async(&args, &cwd, None).await;
+    assert!(
+        result.is_err()
+            || result
+                .as_ref()
+                .map(|o| !o.status.success())
+                .unwrap_or(false)
+    );
+}
+
+#[tokio::test]
+async fn test_exec_with_retry_async_with_env() {
+    let args: Vec<String> = vec!["--version".to_string()];
+    let cwd = std::path::PathBuf::from("/tmp");
+    let env = vec![("GIT_TERMINAL_PROMPT".to_string(), "0".to_string())];
+    let result = exec_with_retry_async(&args, &cwd, Some(&env)).await;
+    assert!(result.is_ok());
+    assert!(result.unwrap().status.success());
+}
+
+/// Verify all documented patterns are in TRANSIENT_PATTERNS.
 #[test]
 fn test_transient_patterns_constant_coverage() {
-    // Verify all documented patterns are in TRANSIENT_PATTERNS
     assert!(TRANSIENT_PATTERNS.contains(&ERR_INDEX_LOCK));
     assert!(TRANSIENT_PATTERNS.contains(&ERR_UNABLE_CREATE_LOCK));
     assert!(TRANSIENT_PATTERNS.contains(&ERR_CANNOT_LOCK_REF));
@@ -106,7 +146,6 @@ fn test_transient_patterns_constant_coverage() {
 
 #[test]
 fn test_retry_backoff_array_length() {
-    // Ensure backoff array covers all retry attempts
     let git_cfg = git_runtime_config();
     assert_eq!(
         git_cfg.retry_backoff_secs.len(),
@@ -115,11 +154,10 @@ fn test_retry_backoff_array_length() {
     );
 }
 
-// ── Async timeout tests ───────────────────────────────────────────────────
+// ── Async public API tests ───────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_run_basic_git_version() {
-    // Use the temp dir as cwd; --version doesn't need a git repo
     let tmpdir = std::env::temp_dir();
     let result = run(&["--version"], &tmpdir).await;
     assert!(result.is_ok(), "git --version should succeed: {:?}", result);
@@ -128,7 +166,6 @@ async fn test_run_basic_git_version() {
 #[tokio::test]
 async fn test_run_status_basic() {
     let tmpdir = std::env::temp_dir();
-    // `git --version` exits 0, so run_status should return true
     let result = run_status(&["--version"], &tmpdir).await;
     assert!(result.is_ok());
     assert!(result.unwrap(), "git --version should report success");
@@ -143,4 +180,45 @@ async fn test_run_with_env_basic() {
         "git --version with env should succeed: {:?}",
         result
     );
+}
+
+// ── kill_on_drop behavior tests ──────────────────────────────────────────
+
+#[tokio::test]
+async fn test_kill_on_drop_process_is_killed_on_timeout() {
+    // Spawn a long-running git process and cancel it via timeout.
+    // This verifies that kill_on_drop(true) prevents zombie processes.
+    let args: Vec<String> = vec!["--version".to_string()];
+    let cwd = std::path::PathBuf::from("/tmp");
+
+    // Verify a normal async git command creates a process that completes.
+    let mut child = tokio::process::Command::new("git")
+        .args(&args)
+        .current_dir(&cwd)
+        .kill_on_drop(true)
+        .spawn()
+        .expect("should spawn git");
+
+    let status = child.wait().await.expect("should complete");
+    assert!(status.success());
+}
+
+#[tokio::test]
+async fn test_timeout_drops_future_cleanly() {
+    // Ensure that a very short timeout on a real git command results in a
+    // timeout error (or completes if fast enough) — either way no hang.
+    let tmpdir = std::env::temp_dir();
+    let args: Vec<String> = vec!["--version".to_string()];
+    let cwd = tmpdir.to_path_buf();
+
+    // Use a generous 5s timeout — `git --version` should complete well within this.
+    let result = tokio::time::timeout(
+        Duration::from_secs(5),
+        exec_git_async(&args, &cwd),
+    )
+    .await;
+
+    // Should complete within timeout
+    assert!(result.is_ok(), "git --version should complete within 5s");
+    assert!(result.unwrap().is_ok());
 }

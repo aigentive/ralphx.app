@@ -962,6 +962,22 @@ async fn complete_merge_and_schedule<R: Runtime>(
         ))
         .await;
     } else {
+        // Phase 3: fire-and-forget cleanup (worktree, branch, metadata)
+        {
+            use crate::domain::state_machine::transition_handler::deferred_merge_cleanup;
+            let cleanup_task_id = ctx.task_id.clone();
+            let cleanup_repo = Arc::clone(ctx.task_repo);
+            let cleanup_dir = project.working_directory.clone();
+            let cleanup_branch = task.task_branch.clone();
+            let cleanup_wt = task.worktree_path.clone();
+            tokio::spawn(async move {
+                deferred_merge_cleanup(
+                    cleanup_task_id, cleanup_repo, cleanup_dir,
+                    cleanup_branch, cleanup_wt,
+                ).await;
+            });
+        }
+
         // Auto-unblock tasks that were waiting on this task
         // (auto-complete merge path - on_enter(Merged) won't be triggered)
         use crate::application::task_transition_service::RepoBackedDependencyManager;

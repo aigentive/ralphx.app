@@ -304,6 +304,10 @@ pub(super) fn compute_plan_update_worktree_path(project: &Project, task_id: &str
 ///
 /// Merge worktree paths follow the convention: `{parent}/{slug}/merge-{task_id}`
 /// Returns `Some(task_id)` if the path matches, `None` otherwise.
+///
+/// Currently unused in production (Step 5 orphan scan moved to Phase 3 deferred cleanup)
+/// but retained for Phase 3 implementation and existing test coverage.
+#[allow(dead_code)]
 pub(super) fn extract_task_id_from_merge_path(path: &str) -> Option<&str> {
     let basename = path.rsplit('/').next()?;
     basename.strip_prefix("merge-")
@@ -314,6 +318,10 @@ pub(super) fn extract_task_id_from_merge_path(path: &str) -> Option<&str> {
 /// Only covers `PendingMerge` and `Merging` where a merge worktree is actively in use.
 /// Excludes `MergeIncomplete` and `MergeConflict` (human-waiting states) to allow
 /// other tasks to clean up orphaned worktrees when merging to the same branch.
+///
+/// Currently unused in production (Step 5 orphan scan moved to Phase 3 deferred cleanup)
+/// but retained for Phase 3 implementation and existing test coverage.
+#[allow(dead_code)]
 pub(super) async fn is_task_in_merge_workflow(
     task_repo: &Arc<dyn TaskRepository>,
     task_id_str: &str,

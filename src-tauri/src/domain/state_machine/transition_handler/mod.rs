@@ -50,6 +50,10 @@ mod tests;
 
 // -- Public re-exports --
 pub use merge_completion::complete_merge_internal;
+pub use merge_completion::{
+    deferred_merge_cleanup, has_pending_cleanup_metadata, set_pending_cleanup_metadata,
+    clear_pending_cleanup_metadata,
+};
 pub use merge_helpers::resolve_merge_branches;
 pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata, MetadataUpdate};
 

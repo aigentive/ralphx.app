@@ -20,9 +20,43 @@ use super::cleanup_helpers::{run_cleanup_step, CleanupStepResult};
 use super::merge_helpers::{
     compute_merge_worktree_path, compute_plan_update_worktree_path, compute_rebase_worktree_path,
     compute_source_update_worktree_path, compute_task_worktree_path,
-    extract_task_id_from_merge_path, is_task_in_merge_workflow,
 };
 use super::merge_validation::emit_merge_progress;
+
+/// Metadata keys that indicate a prior merge attempt has been made.
+///
+/// If any of these keys are present in `task.metadata`, the task has been through
+/// a merge cycle before and cleanup must run (debris may exist).
+const MERGE_DEBRIS_METADATA_KEYS: &[&str] = &[
+    "merge_failure_source",
+    "source_conflict_resolved",
+    "plan_update_conflict",
+    "merge_error",
+];
+
+/// Check whether this is a first clean merge attempt with no prior debris.
+///
+/// Returns `true` when the task has never been through a merge failure cycle —
+/// meaning there's no debris from prior attempts that needs cleaning up.
+/// When `true`, `pre_merge_cleanup` can skip all cleanup steps (Phase 1 GUARD fast-path).
+///
+/// Checks task metadata for any of the `MERGE_DEBRIS_METADATA_KEYS`.
+pub(crate) fn is_first_clean_attempt(task: &Task) -> bool {
+    let Some(ref metadata_str) = task.metadata else {
+        return true;
+    };
+    let Ok(metadata) = serde_json::from_str::<serde_json::Value>(metadata_str) else {
+        // Malformed metadata — conservative: run cleanup when in doubt
+        return false;
+    };
+    let Some(obj) = metadata.as_object() else {
+        return true;
+    };
+    // If any debris key is present, this is a retry
+    !MERGE_DEBRIS_METADATA_KEYS
+        .iter()
+        .any(|key| obj.contains_key(*key))
+}
 
 /// Ensure the plan branch exists as a git ref (lazy creation for merge target).
 ///
@@ -624,40 +658,82 @@ pub(super) async fn check_main_merge_deferral(
 }
 
 impl<'a> super::TransitionHandler<'a> {
-    /// Pre-merge cleanup: remove debris from any prior failed attempts and stale locks.
+    /// Phase 1 GUARD: fast pre-merge cleanup with first-attempt skip optimization.
     ///
-    /// Runs unconditionally on EVERY merge attempt (first or retry) so that transient
-    /// failures from a previous run never block the current one.
+    /// On first clean attempt (no prior failure metadata, no running agents),
+    /// skips cleanup entirely — returns in microseconds.
     ///
-    /// Steps:
-    ///   0. Stop any running agents (review/merge) and kill worktree processes
-    ///   1. Remove stale `.git/index.lock`
-    ///   2. Delete the task worktree to unlock the task branch
-    ///   3. Prune stale worktree references
-    ///   4. Delete own merge/rebase worktrees from a prior attempt
-    ///   5. Scan and remove orphaned merge worktrees targeting the same branch
-    ///   6. Clean the working tree (git clean)
+    /// On retry attempts or when agents are running, executes targeted cleanup:
+    ///   0a. Cancel in-flight validation tokens (instant)
+    ///   0b. Stop running agents — uses SIGKILL immediate (no SIGTERM grace period)
+    ///   1.  Remove stale `.git/index.lock`
+    ///   2.  Delete the task worktree to unlock the task branch
+    ///   3.  Prune stale worktree references
+    ///   4.  Delete own merge/rebase/plan-update/source-update worktrees (PARALLEL)
+    ///
+    /// Step 5 (orphaned worktree scan) has been moved to Phase 3 deferred cleanup —
+    /// it's not critical for merge success and is the slowest step.
     pub(super) async fn pre_merge_cleanup(
         &self,
         task_id_str: &str,
         task: &crate::domain::entities::Task,
         project: &crate::domain::entities::Project,
         repo_path: &Path,
-        target_branch: &str,
-        task_repo: &Arc<dyn TaskRepository>,
+        _target_branch: &str,
+        _task_repo: &Arc<dyn TaskRepository>,
     ) {
         let cleanup_start = std::time::Instant::now();
         let app_handle = self.machine.context.services.app_handle.as_ref();
 
+        // --- Phase 1 GUARD: first-attempt skip optimization (ROOT CAUSE #3) ---
+        // If this is the first merge attempt AND no agents are running for this task,
+        // skip all cleanup steps — there's no debris to clean.
+        let is_first = is_first_clean_attempt(task);
+        if is_first {
+            // Quick agent check: are review/merge agents currently running?
+            let review_running = self
+                .machine
+                .context
+                .services
+                .chat_service
+                .is_agent_running(
+                    crate::domain::entities::ChatContextType::Review,
+                    task_id_str,
+                )
+                .await;
+            let merge_running = self
+                .machine
+                .context
+                .services
+                .chat_service
+                .is_agent_running(
+                    crate::domain::entities::ChatContextType::Merge,
+                    task_id_str,
+                )
+                .await;
+
+            if !review_running && !merge_running {
+                tracing::info!(
+                    task_id = task_id_str,
+                    elapsed_us = cleanup_start.elapsed().as_micros() as u64,
+                    "pre_merge_cleanup: GUARD fast-path — first clean attempt, no agents running, skipping all cleanup"
+                );
+                return;
+            }
+            tracing::info!(
+                task_id = task_id_str,
+                review_running,
+                merge_running,
+                "pre_merge_cleanup: first attempt but agents running — proceeding with cleanup"
+            );
+        } else {
+            tracing::info!(
+                task_id = task_id_str,
+                "pre_merge_cleanup: retry attempt (debris metadata found) — running full cleanup"
+            );
+        }
+
         // --- Step 0a: Cancel in-flight validation for this task ---
-        // If a previous merge attempt's validation is still running, cancel it now.
-        // The CancellationToken triggers process kill via spawn_cancellable_command.
-        let step_start = std::time::Instant::now();
-        tracing::info!(
-            task_id = task_id_str,
-            total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
-            "pre_merge_cleanup: step 0a starting (cancel validation)"
-        );
         if let Some((_, token)) = self
             .machine
             .context
@@ -671,16 +747,8 @@ impl<'a> super::TransitionHandler<'a> {
                 "pre_merge_cleanup: cancelled in-flight validation"
             );
         }
-        tracing::info!(
-            task_id = task_id_str,
-            elapsed_ms = step_start.elapsed().as_millis() as u64,
-            "pre_merge_cleanup: step 0a complete (cancel validation)"
-        );
 
-        // --- Step 0b: Stop running agents and kill worktree processes ---
-        // The reviewer (or merger from a prior attempt) may still be running IN the
-        // task worktree. We must stop it BEFORE attempting worktree deletion to avoid
-        // git lock contention that causes the 5+ minute hang (see merge-hang RCA).
+        // --- Step 0b: Stop running agents (SIGKILL immediate for merge cleanup) ---
         let step_start = std::time::Instant::now();
         emit_merge_progress(
             app_handle,
@@ -688,11 +756,6 @@ impl<'a> super::TransitionHandler<'a> {
             MergePhase::new(MergePhase::MERGE_CLEANUP),
             MergePhaseStatus::Started,
             "Stopping running agents...".to_string(),
-        );
-        tracing::info!(
-            task_id = task_id_str,
-            total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
-            "pre_merge_cleanup: step 0b starting — stopping any running agents"
         );
         let agent_stop_timeout_secs = git_runtime_config().agent_stop_timeout_secs;
         let mut any_agent_was_running = false;
@@ -739,9 +802,7 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
         }
-        // Agents have been signalled — now scan for OS-level processes still holding
-        // worktree files open (e.g., kill_on_drop:false agents that outlived their handle).
-        // Skip lsof scan entirely if no agents were registered — nothing to scan for.
+        // Scan for OS-level processes still holding worktree files open — only if agents were running
         if any_agent_was_running {
             emit_merge_progress(
                 app_handle,
@@ -749,10 +810,6 @@ impl<'a> super::TransitionHandler<'a> {
                 MergePhase::new(MergePhase::MERGE_CLEANUP),
                 MergePhaseStatus::Started,
                 "Scanning worktree for orphaned processes...".to_string(),
-            );
-            tracing::info!(
-                task_id = task_id_str,
-                "pre_merge_cleanup: agents stopped, scanning worktree for orphaned processes"
             );
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
@@ -768,43 +825,42 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                     .await
                     {
-                        Ok(()) => {
-                            // kill_worktree_processes_async completed within timeout
-                        }
+                        Ok(()) => {}
                         Err(_os_elapsed) => {
                             tracing::warn!(
                                 task_id = %task_id_str,
                                 worktree = %worktree_path,
                                 step_0b_timeout_secs,
-                                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
-                                "pre_merge_cleanup step 0b: kill_worktree_processes_async timed out (OS-thread timeout) — proceeding to next step"
+                                "pre_merge_cleanup step 0b: kill_worktree_processes_async timed out — proceeding"
                             );
                         }
                     }
                 }
             }
+            // Conditional settle sleep — only when agents were actually killed
+            let agent_kill_settle_secs = git_runtime_config().agent_kill_settle_secs;
+            if agent_kill_settle_secs > 0 {
+                tracing::info!(
+                    task_id = task_id_str,
+                    settle_secs = agent_kill_settle_secs,
+                    "pre_merge_cleanup: agents were killed, waiting {}s for process tree cleanup",
+                    agent_kill_settle_secs,
+                );
+                tokio::time::sleep(std::time::Duration::from_secs(agent_kill_settle_secs)).await;
+            }
         } else {
             tracing::info!(
                 task_id = task_id_str,
-                "pre_merge_cleanup: no agents were registered — skipping worktree process scan"
+                "pre_merge_cleanup: no agents running — skipping process scan and settle sleep"
             );
         }
-        // Brief settle time for process tree cleanup after SIGTERM
-        let agent_kill_settle_secs = git_runtime_config().agent_kill_settle_secs;
-        tokio::time::sleep(std::time::Duration::from_secs(agent_kill_settle_secs)).await;
         tracing::info!(
             task_id = task_id_str,
             elapsed_ms = step_start.elapsed().as_millis() as u64,
-            "pre_merge_cleanup: step 0b complete (stop agents + kill worktree processes)"
+            "pre_merge_cleanup: step 0b complete"
         );
 
         // --- Step 1: Remove stale index.lock ---
-        let step_start = std::time::Instant::now();
-        tracing::info!(
-            task_id = task_id_str,
-            total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
-            "pre_merge_cleanup: step 1 starting — removing stale index.lock"
-        );
         let index_lock_stale_secs = git_runtime_config().index_lock_stale_secs;
         match GitService::remove_stale_index_lock(repo_path, index_lock_stale_secs) {
             Ok(true) => {
@@ -822,26 +878,15 @@ impl<'a> super::TransitionHandler<'a> {
                 );
             }
         }
-        tracing::info!(
-            task_id = task_id_str,
-            elapsed_ms = step_start.elapsed().as_millis() as u64,
-            "pre_merge_cleanup: step 1 complete (remove stale index.lock)"
-        );
 
+        // --- Step 2: Delete task worktree ---
         {
-            // --- Step 2: Delete task worktree ---
-            let step_start = std::time::Instant::now();
             emit_merge_progress(
                 app_handle,
                 task_id_str,
                 MergePhase::new(MergePhase::MERGE_CLEANUP),
                 MergePhaseStatus::Started,
                 "Removing stale worktrees...".to_string(),
-            );
-            tracing::info!(
-                task_id = task_id_str,
-                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
-                "pre_merge_cleanup: step 2 starting — deleting task worktree"
             );
             if let Some(ref worktree_path) = task.worktree_path {
                 let worktree_path_buf = PathBuf::from(worktree_path);
@@ -852,18 +897,16 @@ impl<'a> super::TransitionHandler<'a> {
                         "Skipping task worktree deletion — path is the main working tree"
                     );
                 } else if worktree_path_buf.exists() {
-                    // Abort any stale merge/rebase state left from a prior failed attempt
-                    super::merge_helpers::clean_stale_git_state(&worktree_path_buf, task_id_str).await;
-                    tracing::info!(
-                        task_id = task_id_str,
-                        worktree_path = %worktree_path,
-                        "Deleting task worktree before programmatic merge to unlock branch"
-                    );
+                    super::merge_helpers::clean_stale_git_state(&worktree_path_buf, task_id_str)
+                        .await;
                     match run_cleanup_step(
-                        "step 2 task worktree deletion",
+                        "step 2 task worktree deletion (fast)",
                         git_runtime_config().cleanup_worktree_timeout_secs,
                         task_id_str,
-                        GitService::delete_worktree(repo_path, &worktree_path_buf),
+                        super::cleanup_helpers::remove_worktree_fast(
+                            &worktree_path_buf,
+                            repo_path,
+                        ),
                     )
                     .await
                     {
@@ -871,7 +914,6 @@ impl<'a> super::TransitionHandler<'a> {
                         CleanupStepResult::TimedOut { elapsed } => {
                             tracing::warn!(
                                 task_id = task_id_str,
-                                worktree_path = %worktree_path,
                                 elapsed_ms = elapsed.as_millis() as u64,
                                 "Task worktree deletion timed out — branch may still be locked"
                             );
@@ -879,7 +921,6 @@ impl<'a> super::TransitionHandler<'a> {
                         CleanupStepResult::Error { ref message } => {
                             tracing::warn!(
                                 task_id = task_id_str,
-                                worktree_path = %worktree_path,
                                 error = %message,
                                 "Task worktree deletion failed — branch may still be locked"
                             );
@@ -887,19 +928,8 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
             }
-            tracing::info!(
-                task_id = task_id_str,
-                elapsed_ms = step_start.elapsed().as_millis() as u64,
-                "pre_merge_cleanup: step 2 complete (delete task worktree)"
-            );
 
             // --- Step 3: Prune stale worktree refs ---
-            let step_start = std::time::Instant::now();
-            tracing::info!(
-                task_id = task_id_str,
-                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
-                "pre_merge_cleanup: step 3 starting — pruning stale worktree refs"
-            );
             if let Err(e) = GitService::prune_worktrees(repo_path).await {
                 tracing::warn!(
                     task_id = task_id_str,
@@ -907,23 +937,20 @@ impl<'a> super::TransitionHandler<'a> {
                     "Failed to prune stale worktrees (non-fatal)"
                 );
             }
-            tracing::info!(
-                task_id = task_id_str,
-                elapsed_ms = step_start.elapsed().as_millis() as u64,
-                "pre_merge_cleanup: step 3 complete (prune worktree refs)"
-            );
 
-            // --- Step 4: Delete own stale merge/rebase worktrees ---
+            // --- Step 4: Delete own stale merge/rebase worktrees (PARALLEL) ---
             let step_start = std::time::Instant::now();
             tracing::info!(
                 task_id = task_id_str,
-                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
-                "pre_merge_cleanup: step 4 starting — deleting own stale merge/rebase worktrees"
+                "pre_merge_cleanup: step 4 starting — parallel deletion of stale worktrees"
             );
-            for (wt_label, own_wt) in [
+            let worktree_specs: Vec<(&str, String)> = vec![
                 ("task", compute_task_worktree_path(project, task_id_str)),
                 ("merge", compute_merge_worktree_path(project, task_id_str)),
-                ("rebase", compute_rebase_worktree_path(project, task_id_str)),
+                (
+                    "rebase",
+                    compute_rebase_worktree_path(project, task_id_str),
+                ),
                 (
                     "plan-update",
                     compute_plan_update_worktree_path(project, task_id_str),
@@ -932,143 +959,98 @@ impl<'a> super::TransitionHandler<'a> {
                     "source-update",
                     compute_source_update_worktree_path(project, task_id_str),
                 ),
-            ] {
-                let own_wt_path = PathBuf::from(&own_wt);
-                if own_wt_path.exists() {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        worktree_path = %own_wt,
-                        "Cleaning up stale {} worktree from previous attempt",
-                        wt_label
-                    );
-                    match run_cleanup_step(
-                        &format!("step 4 {} worktree deletion", wt_label),
-                        git_runtime_config().cleanup_git_op_timeout_secs,
-                        task_id_str,
-                        GitService::delete_worktree(repo_path, &own_wt_path),
-                    )
-                    .await
-                    {
+            ];
+
+            // Filter to only existing worktrees, then delete in parallel
+            let existing_worktrees: Vec<(&str, PathBuf)> = worktree_specs
+                .iter()
+                .filter_map(|(label, path_str)| {
+                    let path = PathBuf::from(path_str);
+                    if path.exists() {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            worktree_path = %path_str,
+                            wt_type = *label,
+                            "Cleaning up stale {} worktree from previous attempt",
+                            label
+                        );
+                        Some((*label, path))
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if !existing_worktrees.is_empty() {
+                let cleanup_timeout = git_runtime_config().cleanup_git_op_timeout_secs;
+                // Pre-allocate step labels so the borrow checker is happy
+                let step_labels: Vec<String> = existing_worktrees
+                    .iter()
+                    .map(|(label, _)| format!("step 4 {} worktree deletion (fast)", label))
+                    .collect();
+                // Use remove_worktree_dir (no prune) in parallel to avoid
+                // concurrent git index.lock contention. Single prune runs after.
+                let futs: Vec<_> = existing_worktrees
+                    .iter()
+                    .zip(step_labels.iter())
+                    .map(|((_, wt_path), step_label)| {
+                        run_cleanup_step(
+                            step_label,
+                            cleanup_timeout,
+                            task_id_str,
+                            super::cleanup_helpers::remove_worktree_dir(wt_path),
+                        )
+                    })
+                    .collect();
+
+                let results = futures::future::join_all(futs).await;
+                for (i, result) in results.iter().enumerate() {
+                    let (label, wt_path) = &existing_worktrees[i];
+                    match result {
                         CleanupStepResult::Ok => {}
                         CleanupStepResult::TimedOut { elapsed } => {
                             tracing::warn!(
                                 task_id = task_id_str,
-                                worktree_path = %own_wt,
-                                wt_type = wt_label,
+                                worktree_path = %wt_path.display(),
+                                wt_type = *label,
                                 elapsed_ms = elapsed.as_millis() as u64,
                                 "Stale {} worktree deletion timed out",
-                                wt_label
+                                label
                             );
                         }
                         CleanupStepResult::Error { ref message } => {
                             tracing::warn!(
                                 task_id = task_id_str,
-                                worktree_path = %own_wt,
-                                wt_type = wt_label,
+                                worktree_path = %wt_path.display(),
+                                wt_type = *label,
                                 error = %message,
                                 "Stale {} worktree deletion failed",
-                                wt_label
+                                label
                             );
                         }
                     }
                 }
+
+                // Single git worktree prune after all parallel rm-rf ops
+                super::cleanup_helpers::git_worktree_prune(repo_path).await;
             }
             tracing::info!(
                 task_id = task_id_str,
                 elapsed_ms = step_start.elapsed().as_millis() as u64,
-                "pre_merge_cleanup: step 4 complete (delete stale worktrees)"
+                deleted_count = existing_worktrees.len(),
+                "pre_merge_cleanup: step 4 complete (parallel worktree deletion)"
             );
 
-            // --- Step 5: Scan for orphaned merge worktrees ---
-            let step_start = std::time::Instant::now();
-            emit_merge_progress(
-                app_handle,
-                task_id_str,
-                MergePhase::new(MergePhase::MERGE_CLEANUP),
-                MergePhaseStatus::Started,
-                "Scanning for orphaned worktrees...".to_string(),
-            );
-            tracing::info!(
-                task_id = task_id_str,
-                total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
-                "pre_merge_cleanup: step 5 starting — scanning for orphaned merge worktrees"
-            );
-            let worktrees_result = tokio::time::timeout(
-                std::time::Duration::from_secs(git_runtime_config().cleanup_git_op_timeout_secs),
-                GitService::list_worktrees(repo_path),
-            )
-            .await;
-            match worktrees_result {
-                Ok(Ok(worktrees)) => {
-                    for wt in &worktrees {
-                        let Some(other_task_id) = extract_task_id_from_merge_path(&wt.path) else {
-                            continue;
-                        };
-                        if other_task_id == task_id_str {
-                            continue;
-                        }
-                        let wt_branch = wt.branch.as_deref().unwrap_or("");
-                        if wt_branch != target_branch {
-                            continue;
-                        }
-                        if is_task_in_merge_workflow(task_repo, other_task_id).await {
-                            tracing::info!(
-                                task_id = task_id_str,
-                                other_task_id = other_task_id,
-                                worktree_path = %wt.path,
-                                "Skipping merge worktree cleanup — owning task is still in merge workflow"
-                            );
-                            continue;
-                        }
-                        tracing::info!(
-                            task_id = task_id_str,
-                            other_task_id = other_task_id,
-                            worktree_path = %wt.path,
-                            target_branch = %target_branch,
-                            "Cleaning up orphaned merge worktree from non-active task"
-                        );
-                        let orphan_path = PathBuf::from(&wt.path);
-                        if let Err(e) = GitService::delete_worktree(repo_path, &orphan_path).await {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                other_task_id = other_task_id,
-                                error = %e,
-                                worktree_path = %wt.path,
-                                "Failed to delete orphaned merge worktree (non-fatal)"
-                            );
-                        }
-                    }
-                }
-                Ok(Err(e)) => {
-                    tracing::warn!(
-                        task_id = task_id_str,
-                        error = %e,
-                        "Failed to list worktrees for orphan scan (non-fatal)"
-                    );
-                }
-                Err(_elapsed) => {
-                    tracing::warn!(
-                        task_id = task_id_str,
-                        timeout_secs = git_runtime_config().cleanup_git_op_timeout_secs,
-                        "pre_merge_cleanup: step 5 worktree list timed out (non-fatal)"
-                    );
-                }
-            }
-            tracing::info!(
-                task_id = task_id_str,
-                elapsed_ms = step_start.elapsed().as_millis() as u64,
-                "pre_merge_cleanup: step 5 complete (scan orphaned worktrees)"
-            );
+            // Step 5 DEFERRED: orphaned merge worktree scan moved to Phase 3 (fire-and-forget).
+            // The scan is not critical for merge success — it's a hygiene operation that
+            // lists all worktrees and checks each against the task repo, which is slow.
+            // TODO(Phase 3): Move to deferred cleanup after merge completion.
         }
 
-        // Step 6 REMOVED: clean_working_tree(repo_path) was running `git reset --hard HEAD`
-        // + `git clean -fd` on the MAIN repo before every merge attempt. This destroyed
-        // uncommitted user changes. In Worktree mode, merges happen in isolated worktrees
-        // and checkout-free merges use plumbing (merge-tree/commit-tree/update-ref) that
-        // don't need a clean working tree. Removing this preserves the user's local state.
         tracing::info!(
             task_id = task_id_str,
             total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
+            is_first_attempt = is_first,
             "pre_merge_cleanup: complete"
         );
     }

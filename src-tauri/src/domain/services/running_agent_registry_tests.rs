@@ -435,6 +435,157 @@ async fn test_kill_worktree_processes_async_waits_for_process_exit() {
     );
 }
 
+// ===== Non-blocking process check tests (nix-based) =====
+
+#[test]
+fn test_is_process_alive_current_process() {
+    // Current process is always alive
+    let pid = std::process::id();
+    assert!(is_process_alive(pid), "Current process should be alive");
+}
+
+#[test]
+fn test_is_process_alive_nonexistent_pid() {
+    // PID 999999 is almost certainly not running
+    assert!(
+        !is_process_alive(999999),
+        "Non-existent PID should report dead"
+    );
+}
+
+#[test]
+fn test_is_process_alive_pid_zero() {
+    // PID 0 is special (process group) and should always return false
+    assert!(!is_process_alive(0), "PID 0 should always return false");
+}
+
+#[test]
+fn test_is_process_alive_spawned_child() {
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id();
+
+    assert!(is_process_alive(pid), "Spawned child should be alive");
+
+    // Kill and reap
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(
+        !is_process_alive(pid),
+        "Killed child should be dead after wait()"
+    );
+}
+
+#[test]
+fn test_kill_process_immediate_kills_child() {
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id();
+
+    assert!(is_process_alive(pid));
+
+    kill_process_immediate(pid);
+
+    // Reap the zombie
+    let _ = child.wait();
+
+    assert!(
+        !is_process_alive(pid),
+        "Process should be dead after kill_process_immediate"
+    );
+}
+
+#[test]
+fn test_kill_process_immediate_sigterm_resistant() {
+    // Spawn a process that ignores SIGTERM
+    let mut child = std::process::Command::new("bash")
+        .args(["-c", "trap '' TERM; sleep 60"])
+        .spawn()
+        .expect("spawn bash");
+    let pid = child.id();
+
+    // Give bash time to set up the trap
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(is_process_alive(pid));
+
+    // kill_process_immediate sends SIGKILL which cannot be trapped
+    kill_process_immediate(pid);
+
+    // Reap the zombie
+    let _ = child.wait();
+
+    assert!(
+        !is_process_alive(pid),
+        "SIGTERM-resistant process should be dead after SIGKILL"
+    );
+}
+
+#[tokio::test]
+async fn test_await_process_death_immediate_kill_fast() {
+    // Spawn a SIGTERM-resistant process
+    let mut child = std::process::Command::new("bash")
+        .args(["-c", "trap '' TERM; sleep 60"])
+        .spawn()
+        .expect("spawn bash");
+    let pid = child.id();
+
+    std::thread::sleep(std::time::Duration::from_millis(200));
+    assert!(is_process_alive(pid));
+
+    let start = std::time::Instant::now();
+    let _survivors = await_process_death(
+        &[pid],
+        std::time::Duration::from_secs(5),
+        true, // immediate_kill = true → SIGKILL right away
+    )
+    .await;
+    let elapsed = start.elapsed();
+
+    // Should complete very quickly (< 2s) since SIGKILL is immediate
+    assert!(
+        elapsed.as_secs() < 2,
+        "immediate_kill should not wait for SIGTERM timeout, took {:?}",
+        elapsed
+    );
+
+    // Note: _survivors may contain pid because our test process is the parent,
+    // so the killed child becomes a zombie until we call wait(). In real usage,
+    // the caller doesn't own the child handle so zombies don't occur.
+    // Reap the zombie and verify the process is truly dead.
+    let _ = child.wait();
+    assert!(
+        !is_process_alive(pid),
+        "Process should be dead after SIGKILL + reap"
+    );
+}
+
+#[tokio::test]
+async fn test_await_process_death_graceful_exit() {
+    // Spawn a short-lived process
+    let mut child = std::process::Command::new("sleep")
+        .arg("0.1")
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id();
+
+    // Wait for it to finish naturally
+    let _ = child.wait();
+
+    let survivors = await_process_death(
+        &[pid],
+        std::time::Duration::from_secs(2),
+        false,
+    )
+    .await;
+
+    assert!(survivors.is_empty(), "Already-dead process should not be a survivor");
+}
+
 /// Verify SIGKILL escalation for processes that ignore SIGTERM.
 /// This test takes ~5-6s due to the SIGTERM wait window.
 #[tokio::test]

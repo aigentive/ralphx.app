@@ -1,13 +1,16 @@
-//! Async git command runner — single point of spawn_blocking for all git operations.
+//! Async git command runner — all git operations use `tokio::process::Command`
+//! with `kill_on_drop(true)` to prevent zombie processes on timeout.
 //!
 //! All git commands are executed with:
+//! - `kill_on_drop(true)` — process is SIGKILL'd when the future is dropped (e.g. on timeout).
 //! - A configurable timeout (from `git_runtime_config()`) to prevent hung processes.
 //! - Configurable retry attempts with backoff for known transient errors.
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::git_runtime_config;
 use std::path::Path;
-use std::process::{Command, Output, Stdio};
+use std::process::{Output, Stdio};
 use std::time::Duration;
+use tokio::process::Command;
 use tokio::time::timeout;
 
 // ── Transient error pattern constants ────────────────────────────────────────
@@ -46,35 +49,37 @@ fn is_transient_error(stderr: &str) -> bool {
     TRANSIENT_PATTERNS.iter().any(|pat| stderr.contains(pat))
 }
 
-/// Execute a git command synchronously (blocking). Returns the full output.
-fn exec_git(args: &[String], cwd: &std::path::PathBuf) -> AppResult<Output> {
+/// Execute a single git command asynchronously with `kill_on_drop(true)`.
+async fn exec_git_async(args: &[String], cwd: &Path) -> AppResult<Output> {
     Command::new("git")
         .args(args)
         .current_dir(cwd)
+        .kill_on_drop(true)
         .output()
+        .await
         .map_err(|e| AppError::GitOperation(format!("git {}: {}", args.join(" "), e)))
 }
 
-/// Execute a git command synchronously with additional env vars. Returns the full output.
-fn exec_git_with_env(
+/// Execute a single git command asynchronously with env vars and `kill_on_drop(true)`.
+async fn exec_git_with_env_async(
     args: &[String],
-    cwd: &std::path::PathBuf,
+    cwd: &Path,
     env: &[(String, String)],
 ) -> AppResult<Output> {
     let mut cmd = Command::new("git");
-    cmd.args(args).current_dir(cwd);
+    cmd.args(args).current_dir(cwd).kill_on_drop(true);
     for (key, val) in env {
         cmd.env(key, val);
     }
     cmd.output()
+        .await
         .map_err(|e| AppError::GitOperation(format!("git {}: {}", args.join(" "), e)))
 }
 
-/// Run a blocking git command with retry-on-transient. Meant to be called inside
-/// `spawn_blocking`. Returns the `Output` of the last successful attempt.
-fn exec_with_retry(
+/// Async retry loop for transient git errors. Uses `tokio::time::sleep` for backoff.
+async fn exec_with_retry_async(
     args: &[String],
-    cwd: &std::path::PathBuf,
+    cwd: &Path,
     env: Option<&[(String, String)]>,
 ) -> AppResult<Output> {
     let git_cfg = git_runtime_config();
@@ -84,8 +89,8 @@ fn exec_with_retry(
 
     for attempt in 0..max_retries {
         let result = match env {
-            Some(e) => exec_git_with_env(args, cwd, e),
-            None => exec_git(args, cwd),
+            Some(e) => exec_git_with_env_async(args, cwd, e).await,
+            None => exec_git_async(args, cwd).await,
         };
 
         match result {
@@ -111,7 +116,7 @@ fn exec_with_retry(
                     attempt + 1,
                     stderr.trim()
                 )));
-                std::thread::sleep(Duration::from_secs(backoff));
+                tokio::time::sleep(Duration::from_secs(backoff)).await;
             }
             Err(e) => {
                 // spawn/IO error — not retriable
@@ -131,8 +136,10 @@ fn exec_with_retry(
 
 // ── Public API ────────────────────────────────────────────────────────────────
 
-/// Run a git command on the blocking threadpool, returning full Output.
+/// Run a git command asynchronously, returning full Output.
 ///
+/// Uses `tokio::process::Command` with `kill_on_drop(true)` — when the timeout
+/// fires, the future is dropped, which kills the git process immediately.
 /// Applies a configurable timeout and retries for transient errors.
 pub(crate) async fn run(args: &[&str], cwd: &Path) -> AppResult<Output> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
@@ -141,15 +148,15 @@ pub(crate) async fn run(args: &[&str], cwd: &Path) -> AppResult<Output> {
 
     timeout(
         Duration::from_secs(timeout_secs),
-        tokio::task::spawn_blocking(move || exec_with_retry(&args, &cwd, None)),
+        exec_with_retry_async(&args, &cwd, None),
     )
     .await
     .map_err(|_| AppError::GitOperation(format!("git command timed out after {timeout_secs}s")))?
-    .map_err(|e| AppError::GitOperation(format!("git task join error: {e}")))?
 }
 
-/// Run a git command with additional environment variables on the blocking threadpool.
+/// Run a git command with additional environment variables.
 ///
+/// Uses `tokio::process::Command` with `kill_on_drop(true)`.
 /// Applies a configurable timeout and retries for transient errors.
 pub(crate) async fn run_with_env(
     args: &[&str],
@@ -166,40 +173,39 @@ pub(crate) async fn run_with_env(
 
     timeout(
         Duration::from_secs(timeout_secs),
-        tokio::task::spawn_blocking(move || exec_with_retry(&args, &cwd, Some(&env))),
+        exec_with_retry_async(&args, &cwd, Some(&env)),
     )
     .await
     .map_err(|_| AppError::GitOperation(format!("git command timed out after {timeout_secs}s")))?
-    .map_err(|e| AppError::GitOperation(format!("git task join error: {e}")))?
 }
 
 /// Run a git command returning just success/failure (for existence checks).
 ///
-/// Applies a configurable timeout. Status checks are not retried (they should be fast and
-/// idempotent).
+/// Uses `tokio::process::Command` with `kill_on_drop(true)`.
+/// Status checks are not retried (they should be fast and idempotent).
 pub(crate) async fn run_status(args: &[&str], cwd: &Path) -> AppResult<bool> {
     let args: Vec<String> = args.iter().map(|s| s.to_string()).collect();
     let cwd = cwd.to_path_buf();
     let timeout_secs = git_runtime_config().cmd_timeout_secs;
 
-    timeout(
-        Duration::from_secs(timeout_secs),
-        tokio::task::spawn_blocking(move || {
-            Command::new("git")
-                .args(&args)
-                .current_dir(&cwd)
-                .stdout(Stdio::null())
-                .stderr(Stdio::null())
-                .status()
-                .map(|s| s.success())
-                .unwrap_or(false)
-        }),
-    )
+    let result = timeout(Duration::from_secs(timeout_secs), async {
+        Command::new("git")
+            .args(&args)
+            .current_dir(&cwd)
+            .kill_on_drop(true)
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .await
+            .map(|s| s.success())
+            .unwrap_or(false)
+    })
     .await
     .map_err(|_| {
         AppError::GitOperation(format!("git status check timed out after {timeout_secs}s"))
-    })?
-    .map_err(|e| AppError::GitOperation(format!("git task join error: {e}")))
+    })?;
+
+    Ok(result)
 }
 
 #[cfg(test)]

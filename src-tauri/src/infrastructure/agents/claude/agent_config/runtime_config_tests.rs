@@ -21,6 +21,53 @@ fn test_all_defaults_are_sensible() {
     assert_eq!(cfg.limits.max_resume_attempts, 5);
 }
 
+/// Merge speed overhaul: verify reduced timeout defaults for faster merge pipeline.
+#[test]
+fn test_merge_speed_defaults() {
+    let recon = ReconciliationConfig::default();
+    let git = GitRuntimeConfig::default();
+
+    // Reconciliation — merge-speed targets
+    assert_eq!(recon.attempt_merge_deadline_secs, 60, "merge deadline: 600→60");
+    assert_eq!(recon.merge_incomplete_retry_base_secs, 5, "retry base: 30→5");
+
+    // Git — agent cleanup speed targets
+    assert_eq!(git.agent_stop_timeout_secs, 3, "agent stop: 10→3");
+    assert_eq!(git.agent_kill_settle_secs, 0, "kill settle: 1→0");
+    assert_eq!(git.cleanup_worktree_timeout_secs, 5, "worktree cleanup: 10→5");
+    assert_eq!(git.step_0b_kill_timeout_secs, 5, "step 0b kill: 20→5");
+}
+
+/// Verify env overrides still work for the changed merge-speed fields.
+#[test]
+fn test_merge_speed_env_overrides() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_RECONCILIATION_ATTEMPT_MERGE_DEADLINE_SECS" => Some("90".to_string()),
+        "RALPHX_RECONCILIATION_MERGE_INCOMPLETE_RETRY_BASE_SECS" => Some("10".to_string()),
+        "RALPHX_GIT_AGENT_STOP_TIMEOUT_SECS" => Some("7".to_string()),
+        "RALPHX_GIT_AGENT_KILL_SETTLE_SECS" => Some("2".to_string()),
+        "RALPHX_GIT_CLEANUP_WORKTREE_TIMEOUT_SECS" => Some("8".to_string()),
+        "RALPHX_GIT_STEP_0B_KILL_TIMEOUT_SECS" => Some("12".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 90);
+    assert_eq!(cfg.reconciliation.merge_incomplete_retry_base_secs, 10);
+    assert_eq!(cfg.git.agent_stop_timeout_secs, 7);
+    assert_eq!(cfg.git.agent_kill_settle_secs, 2);
+    assert_eq!(cfg.git.cleanup_worktree_timeout_secs, 8);
+    assert_eq!(cfg.git.step_0b_kill_timeout_secs, 12);
+}
+
 #[test]
 fn test_env_overrides_apply() {
     let mut cfg = AllRuntimeConfig {
@@ -133,7 +180,7 @@ fn test_validation_deadline_env_override() {
 
     assert_eq!(cfg.reconciliation.validation_deadline_secs, 900);
     // merge deadline should remain unchanged
-    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 600);
+    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 60);
 }
 
 #[test]
@@ -182,5 +229,5 @@ fn test_branch_freshness_timeout_env_override() {
 
     assert_eq!(cfg.reconciliation.branch_freshness_timeout_secs, 120);
     // Other reconciliation fields should remain unchanged
-    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 600);
+    assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 60);
 }
