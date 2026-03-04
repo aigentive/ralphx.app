@@ -68,6 +68,13 @@ pub trait IdeationSessionRepository: Send + Sync {
         plan_artifact_id: &str,
     ) -> AppResult<Vec<IdeationSession>>;
 
+    /// Get sessions that have a specific inherited plan artifact ID
+    /// Used in update_plan_artifact to detect and reject attempts to modify inherited plans
+    async fn get_by_inherited_plan_artifact_id(
+        &self,
+        artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>>;
+
     /// Get all child sessions for a given parent session ID
     async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>>;
 

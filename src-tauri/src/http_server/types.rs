@@ -1,5 +1,6 @@
 // Request/Response types for HTTP server endpoints
 
+use axum::{http::StatusCode, response::IntoResponse, Json};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
@@ -412,6 +413,10 @@ pub struct ArtifactResponse {
     /// The ideation session this artifact belongs to (only set on update responses)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session_id: Option<String>,
+    /// Whether this plan was inherited from a parent session (only set on get_session_plan responses).
+    /// When true, the plan is read-only — use create_plan_artifact to create a session-specific plan.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub is_inherited: Option<bool>,
 }
 
 impl From<Artifact> for ArtifactResponse {
@@ -431,6 +436,7 @@ impl From<Artifact> for ArtifactResponse {
             created_by: artifact.metadata.created_by.clone(),
             previous_artifact_id: None,
             session_id: None,
+            is_inherited: None,
         }
     }
 }
@@ -1179,4 +1185,105 @@ pub struct ExecutionCompleteResponse {
 pub struct SuccessResponse {
     pub success: bool,
     pub message: String,
+}
+
+// ============================================================================
+// HTTP Error Type
+// ============================================================================
+
+/// HTTP handler error that preserves validation messages in the response body.
+///
+/// `From<StatusCode>` allows existing `?` operators on `Result<T, StatusCode>`
+/// to compile unchanged when handler return types use `HttpError` as the error type.
+#[derive(Debug)]
+pub struct HttpError {
+    pub status: StatusCode,
+    pub message: Option<String>,
+}
+
+impl HttpError {
+    /// 422 Unprocessable Entity with an actionable message body.
+    pub fn validation(message: String) -> Self {
+        Self {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            message: Some(message),
+        }
+    }
+}
+
+impl From<StatusCode> for HttpError {
+    fn from(status: StatusCode) -> Self {
+        Self {
+            status,
+            message: None,
+        }
+    }
+}
+
+impl IntoResponse for HttpError {
+    fn into_response(self) -> axum::response::Response {
+        match self.message {
+            Some(msg) => {
+                (self.status, Json(serde_json::json!({"error": msg}))).into_response()
+            }
+            None => self.status.into_response(),
+        }
+    }
+}
+
+#[cfg(test)]
+mod http_error_tests {
+    use super::*;
+
+    #[test]
+    fn test_validation_error_has_422_status_and_message() {
+        let err = HttpError::validation(
+            "Cannot modify accepted session. Reopen it first.".to_string(),
+        );
+        assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(
+            err.message.as_deref(),
+            Some("Cannot modify accepted session. Reopen it first.")
+        );
+    }
+
+    #[test]
+    fn test_validation_error_message_is_not_sensitive() {
+        // Verify the message is a user-actionable string, not a raw DB error
+        let err = HttpError::validation("Validation error: Cannot modify archived session. Reopen it first.".to_string());
+        let msg = err.message.unwrap();
+        assert!(msg.contains("Reopen it first"), "Message should guide the user");
+        assert!(!msg.contains("SQLITE"), "Should not leak DB internals");
+        assert!(!msg.contains("rusqlite"), "Should not leak internal library names");
+    }
+
+    #[test]
+    fn test_from_status_code_has_no_message() {
+        let err = HttpError::from(StatusCode::NOT_FOUND);
+        assert_eq!(err.status, StatusCode::NOT_FOUND);
+        assert!(err.message.is_none(), "StatusCode errors should have no body message");
+    }
+
+    #[test]
+    fn test_from_internal_server_error_has_no_message() {
+        let err = HttpError::from(StatusCode::INTERNAL_SERVER_ERROR);
+        assert_eq!(err.status, StatusCode::INTERNAL_SERVER_ERROR);
+        assert!(err.message.is_none(), "Internal errors should not expose messages");
+    }
+
+    #[tokio::test]
+    async fn test_validation_error_into_response_status() {
+        use axum::response::IntoResponse;
+        let err = HttpError::validation("Cannot modify archived session.".to_string());
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn test_status_only_error_into_response() {
+        use axum::response::IntoResponse;
+        let err = HttpError::from(StatusCode::NOT_FOUND);
+        let response = err.into_response();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
 }

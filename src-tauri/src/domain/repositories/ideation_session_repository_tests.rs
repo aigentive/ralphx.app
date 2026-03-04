@@ -115,6 +115,23 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
             .collect())
     }
 
+    async fn get_by_inherited_plan_artifact_id(
+        &self,
+        artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(self
+            .sessions
+            .iter()
+            .filter(|s| {
+                s.inherited_plan_artifact_id
+                    .as_ref()
+                    .map(|id| id.as_str())
+                    == Some(artifact_id)
+            })
+            .cloned()
+            .collect())
+    }
+
     async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
         Ok(self
             .sessions
@@ -164,6 +181,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         title: Some("Test Session".to_string()),
         status: IdeationSessionStatus::Active,
         plan_artifact_id: None,
+        inherited_plan_artifact_id: None,
         seed_task_id: None,
         parent_session_id: None,
         created_at: Utc::now(),

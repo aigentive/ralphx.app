@@ -331,7 +331,8 @@ export const ALL_TOOLS: Tool[] = [
     description:
       "Create a new ideation session as a child of an existing session. Use when you want to create follow-on work that inherits context from the parent session. " +
       "The child session starts with 'active' status. " +
-      "When inherit_context is true (default), the child references the parent's plan artifact by ID (copy-on-write: modifications create a new version) AND inherits the parent's team_mode and team_config. " +
+      "When inherit_context is true (default), the child receives a read-only reference to the parent's plan artifact AND inherits the parent's team_mode and team_config. " +
+      "The inherited plan cannot be modified — call create_plan_artifact to create an independent plan for the child session. " +
       "Parent proposals are NOT copied to the child — use get_parent_session_context to access them.",
     inputSchema: {
       type: "object",
@@ -350,7 +351,7 @@ export const ALL_TOOLS: Tool[] = [
         },
         inherit_context: {
           type: "boolean",
-          description: "If true, child references parent's plan artifact by ID and inherits team_mode/team_config from parent. Parent proposals accessible via get_parent_session_context. Default: true.",
+          description: "If true, child receives a read-only reference to parent's plan artifact and inherits team_mode/team_config from parent. To create a new plan, call create_plan_artifact — it creates an independent plan for the child. Parent proposals accessible via get_parent_session_context. Default: true.",
         },
         initial_prompt: {
           type: "string",

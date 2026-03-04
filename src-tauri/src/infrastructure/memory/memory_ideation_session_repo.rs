@@ -160,6 +160,25 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             .collect())
     }
 
+    async fn get_by_inherited_plan_artifact_id(
+        &self,
+        artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(self
+            .sessions
+            .read()
+            .unwrap()
+            .values()
+            .filter(|s| {
+                s.inherited_plan_artifact_id
+                    .as_ref()
+                    .map(|id| id.as_str())
+                    == Some(artifact_id)
+            })
+            .cloned()
+            .collect())
+    }
+
     async fn get_children(&self, parent_id: &IdeationSessionId) -> AppResult<Vec<IdeationSession>> {
         let mut children: Vec<_> = self
             .sessions

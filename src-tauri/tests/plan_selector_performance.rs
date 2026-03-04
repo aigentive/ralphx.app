@@ -54,6 +54,7 @@ async fn create_accepted_session(
         team_mode: None,
         team_config_json: None,
         title_source: None,
+        inherited_plan_artifact_id: None,
     };
 
     state

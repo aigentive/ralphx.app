@@ -13,7 +13,8 @@ export const PLAN_TOOLS: Tool[] = [
   {
     name: "create_plan_artifact",
     description:
-      "Create a new implementation plan artifact linked to the ideation session. Use this when the user describes a complex feature that needs architectural planning before breaking into tasks. The plan is stored as a Specification artifact and can be referenced by task proposals.",
+      "Create a new implementation plan artifact linked to the ideation session. Use this when the user describes a complex feature that needs architectural planning before breaking into tasks. The plan is stored as a Specification artifact and can be referenced by task proposals. " +
+      "For child sessions that inherited a parent's plan: calling this creates a completely independent plan for the child session — it does NOT modify or copy from the parent's plan.",
     inputSchema: {
       type: "object",
       properties: {
@@ -96,7 +97,8 @@ export const PLAN_TOOLS: Tool[] = [
   {
     name: "get_session_plan",
     description:
-      "Get the implementation plan artifact for the current ideation session, if one exists. Use to check if a plan has already been created before suggesting a new one.",
+      "Get the implementation plan artifact for the current ideation session, if one exists. Use to check if a plan has already been created before suggesting a new one. " +
+      "Response includes an `is_inherited` boolean: if true, the plan was inherited from a parent session and is read-only — call create_plan_artifact to create an independent plan for this session.",
     inputSchema: {
       type: "object",
       properties: {
