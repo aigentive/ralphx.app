@@ -7,6 +7,18 @@ import { render, screen, fireEvent, act } from "@testing-library/react";
 import { ProcessCard } from "./ProcessCard";
 import type { RunningProcess } from "@/api/running-processes";
 
+// Stable mock references for uiStore
+const { mockSetSelectedTaskId } = vi.hoisted(() => ({
+  mockSetSelectedTaskId: vi.fn(),
+}));
+
+vi.mock("@/stores/uiStore", () => ({
+  useUiStore: vi.fn((selector: (s: { setSelectedTaskId: typeof mockSetSelectedTaskId }) => unknown) => {
+    const state = { setSelectedTaskId: mockSetSelectedTaskId };
+    return selector ? selector(state) : state;
+  }),
+}));
+
 // Mock process data helper
 function createMockProcess(overrides?: Partial<RunningProcess>): RunningProcess {
   return {
@@ -453,6 +465,38 @@ describe("ProcessCard", () => {
 
       expect(pauseButton).not.toBeDisabled();
       expect(stopButton).not.toBeDisabled();
+    });
+  });
+
+  describe("click-to-navigate", () => {
+    it("calls setSelectedTaskId with process.taskId when title is clicked", () => {
+      const process = createMockProcess({ taskId: "task-nav-123", title: "Navigate to me" });
+      render(
+        <ProcessCard
+          process={process}
+          onPause={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+
+      fireEvent.click(screen.getByText("Navigate to me"));
+
+      expect(mockSetSelectedTaskId).toHaveBeenCalledWith("task-nav-123");
+      expect(mockSetSelectedTaskId).toHaveBeenCalledOnce();
+    });
+
+    it("title is rendered as a button element", () => {
+      const process = createMockProcess({ title: "My Task" });
+      render(
+        <ProcessCard
+          process={process}
+          onPause={vi.fn()}
+          onStop={vi.fn()}
+        />
+      );
+
+      const titleEl = screen.getByText("My Task");
+      expect(titleEl.tagName).toBe("BUTTON");
     });
   });
 });

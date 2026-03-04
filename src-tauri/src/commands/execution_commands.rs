@@ -2339,6 +2339,10 @@ async fn validate_resume(task: &Task, state: &AppState) -> ResumeValidationResul
 }
 
 #[cfg(test)]
+#[path = "execution_commands_running_count_tests.rs"]
+mod running_count_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::entities::GitMode;
