@@ -46,6 +46,21 @@ async fn register_task_execution(registry: &dyn RunningAgentRegistry, task_id: &
         .await;
 }
 
+/// Register an ideation entry in the registry with a session ID.
+async fn register_ideation(registry: &dyn RunningAgentRegistry, session_id: &str) {
+    let key = RunningAgentKey::new("ideation", session_id);
+    registry
+        .register(
+            key,
+            9999, // fake pid
+            "conv-ideation".to_string(),
+            "run-ideation".to_string(),
+            None,
+            None,
+        )
+        .await;
+}
+
 /// Replicate the counting logic from `get_execution_status` so we can
 /// verify it without needing Tauri `State<'_>` wrappers.
 async fn count_running(app_state: &AppState) -> u32 {
@@ -58,10 +73,13 @@ async fn count_running(app_state: &AppState) -> u32 {
             Err(_) => continue,
         };
 
-        if !matches!(
-            context_type,
-            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
-        ) {
+        if !uses_execution_slot(context_type) {
+            continue;
+        }
+
+        // Ideation uses session IDs (not task IDs) — no task lookup or GC needed.
+        if matches!(context_type, ChatContextType::Ideation) {
+            running_count += 1;
             continue;
         }
 
@@ -82,20 +100,24 @@ async fn count_running(app_state: &AppState) -> u32 {
 }
 
 /// Same filter used by `get_running_processes` — returns how many entries
-/// survive the guard.
+/// survive the guard (task-based contexts only, excludes ideation).
 async fn count_visible_processes(app_state: &AppState) -> usize {
     let registry_entries = app_state.running_agent_registry.list_all().await;
     let mut count = 0usize;
 
     for (key, _) in registry_entries {
-        if !is_execution_context_type(&key.context_type) {
-            continue;
-        }
-
         let context_type = match ChatContextType::from_str(&key.context_type) {
             Ok(value) => value,
             Err(_) => continue,
         };
+
+        // Only task-based execution contexts appear in the process list
+        if !matches!(
+            context_type,
+            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+        ) {
+            continue;
+        }
 
         let task_id = TaskId::from_string(key.context_id);
         let task = match app_state.task_repo.get_by_id(&task_id).await {
@@ -273,4 +295,101 @@ fn test_guard_non_execution_contexts_always_false() {
             "{ctx:?} should never match any status"
         );
     }
+}
+
+// =========================================================================
+// Ideation: counted in running count but excluded from process list
+// =========================================================================
+
+#[tokio::test]
+async fn test_ideation_entry_counted_in_running_count() {
+    let state = AppState::with_repos(
+        Arc::new(MemoryTaskRepository::new()),
+        Arc::new(MemoryProjectRepository::new()),
+    );
+    register_ideation(&*state.running_agent_registry, "session-abc").await;
+
+    let count = count_running(&state).await;
+    assert_eq!(count, 1, "Ideation entry must be counted as running");
+}
+
+#[tokio::test]
+async fn test_ideation_entry_excluded_from_process_list() {
+    let state = AppState::with_repos(
+        Arc::new(MemoryTaskRepository::new()),
+        Arc::new(MemoryProjectRepository::new()),
+    );
+    register_ideation(&*state.running_agent_registry, "session-abc").await;
+
+    let process_count = count_visible_processes(&state).await;
+    assert_eq!(
+        process_count, 0,
+        "Ideation entry must NOT appear in process list"
+    );
+}
+
+#[tokio::test]
+async fn test_mixed_executing_task_and_ideation() {
+    // 1 executing task + 1 ideation session → count=2, process list=1
+    let (state, task) = setup_with_task(InternalStatus::Executing).await;
+    register_task_execution(&*state.running_agent_registry, &task.id).await;
+    register_ideation(&*state.running_agent_registry, "session-xyz").await;
+
+    let entries = state.running_agent_registry.list_all().await;
+    assert_eq!(entries.len(), 2, "registry should have 2 entries");
+
+    let running_count = count_running(&state).await;
+    let process_count = count_visible_processes(&state).await;
+
+    assert_eq!(
+        running_count, 2,
+        "Both executing task and ideation must be counted"
+    );
+    assert_eq!(
+        process_count, 1,
+        "Only the executing task should appear in process list"
+    );
+}
+
+#[tokio::test]
+async fn test_ideation_not_affected_by_failed_task_regression() {
+    // 1 ideation + 1 failed task (stale) → count=1, process list=0
+    let (state, task) = setup_with_task(InternalStatus::Failed).await;
+    register_task_execution(&*state.running_agent_registry, &task.id).await;
+    register_ideation(&*state.running_agent_registry, "session-live").await;
+
+    let running_count = count_running(&state).await;
+    let process_count = count_visible_processes(&state).await;
+
+    assert_eq!(
+        running_count, 1,
+        "Only ideation should be counted (failed task excluded)"
+    );
+    assert_eq!(
+        process_count, 0,
+        "Failed task must not appear in process list"
+    );
+}
+
+// =========================================================================
+// uses_execution_slot: ideation IS an execution slot context
+// =========================================================================
+
+#[test]
+fn test_uses_execution_slot_includes_ideation() {
+    assert!(
+        uses_execution_slot(ChatContextType::Ideation),
+        "Ideation must use an execution slot"
+    );
+    assert!(uses_execution_slot(ChatContextType::TaskExecution));
+    assert!(uses_execution_slot(ChatContextType::Review));
+    assert!(uses_execution_slot(ChatContextType::Merge));
+    assert!(
+        !uses_execution_slot(ChatContextType::Task),
+        "Task chat must NOT use an execution slot"
+    );
+    assert!(
+        !uses_execution_slot(ChatContextType::Project),
+        "Project chat must NOT use an execution slot"
+    );
 }

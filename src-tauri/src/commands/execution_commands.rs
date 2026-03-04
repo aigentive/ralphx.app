@@ -10,6 +10,7 @@ use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::RwLock;
 
+use crate::application::chat_service::uses_execution_slot;
 use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::application::reconciliation::UserRecoveryAction;
 use crate::application::{
@@ -634,7 +635,11 @@ pub async fn get_execution_status(
     // Keep execution state synchronized to global execution contexts.
     let global_running_count = registry_entries
         .iter()
-        .filter(|(key, _)| is_execution_context_type(&key.context_type))
+        .filter(|(key, _)| {
+            ChatContextType::from_str(&key.context_type)
+                .map(uses_execution_slot)
+                .unwrap_or(false)
+        })
         .count() as u32;
     execution_state.set_running_count(global_running_count);
 
@@ -645,10 +650,13 @@ pub async fn get_execution_status(
             Err(_) => continue,
         };
 
-        if !matches!(
-            context_type,
-            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
-        ) {
+        if !uses_execution_slot(context_type) {
+            continue;
+        }
+
+        // Ideation uses session IDs (not task IDs) — no task lookup or GC needed.
+        if matches!(context_type, ChatContextType::Ideation) {
+            running_count += 1;
             continue;
         }
 
@@ -1769,14 +1777,18 @@ pub async fn get_running_processes(
     let registry_entries = state.running_agent_registry.list_all().await;
 
     for (key, _) in registry_entries {
-        if !is_execution_context_type(&key.context_type) {
-            continue;
-        }
-
         let context_type = match ChatContextType::from_str(&key.context_type) {
             Ok(value) => value,
             Err(_) => continue,
         };
+
+        // Only include task-based execution contexts in the process list
+        if !matches!(
+            context_type,
+            ChatContextType::TaskExecution | ChatContextType::Review | ChatContextType::Merge
+        ) {
+            continue;
+        }
 
         let task_id = TaskId::from_string(key.context_id);
         let task = match state.task_repo.get_by_id(&task_id).await {
@@ -1847,10 +1859,6 @@ pub async fn get_running_processes(
     Ok(RunningProcessesResponse { processes })
 }
 
-fn is_execution_context_type(context_type: &str) -> bool {
-    matches!(context_type, "task_execution" | "review" | "merge")
-}
-
 fn process_is_alive_for_gc(pid: u32) -> bool {
     // PID 0 refers to the process group on macOS/Unix — `kill -0 0` succeeds
     // but doesn't mean a real agent is alive. Placeholder PIDs from try_register
@@ -1904,7 +1912,12 @@ async fn prune_stale_execution_registry_entries(app_state: &AppState) {
     }
 
     for (key, info) in entries {
-        if !is_execution_context_type(&key.context_type) {
+        let context_type = match ChatContextType::from_str(&key.context_type) {
+            Ok(ct) => ct,
+            Err(_) => continue,
+        };
+
+        if !uses_execution_slot(context_type) {
             continue;
         }
 
@@ -1931,11 +1944,6 @@ async fn prune_stale_execution_registry_entries(app_state: &AppState) {
             }
         }
 
-        let context_type = match ChatContextType::from_str(&key.context_type) {
-            Ok(context_type) => context_type,
-            Err(_) => continue,
-        };
-
         let pid_alive = process_is_alive_for_gc(info.pid);
         let run = match app_state
             .agent_run_repo
@@ -1954,15 +1962,19 @@ async fn prune_stale_execution_registry_entries(app_state: &AppState) {
             stale = true;
         }
 
-        let task_id = TaskId::from_string(key.context_id.clone());
-        match app_state.task_repo.get_by_id(&task_id).await {
-            Ok(Some(task)) => {
-                if !context_matches_running_status_for_gc(context_type, task.internal_status) {
+        // For ideation: staleness is determined solely by pid/run status (already checked above).
+        // Session IDs are not task IDs — skip the task lookup.
+        if !matches!(context_type, ChatContextType::Ideation) {
+            let task_id = TaskId::from_string(key.context_id.clone());
+            match app_state.task_repo.get_by_id(&task_id).await {
+                Ok(Some(task)) => {
+                    if !context_matches_running_status_for_gc(context_type, task.internal_status) {
+                        stale = true;
+                    }
+                }
+                Ok(None) | Err(_) => {
                     stale = true;
                 }
-            }
-            Ok(None) | Err(_) => {
-                stale = true;
             }
         }
 
