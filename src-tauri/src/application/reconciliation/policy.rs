@@ -77,6 +77,28 @@ impl RecoveryPolicy {
                         reason: None,
                     };
                 }
+                // Cancelled/Failed agent runs: the agent died without completing.
+                // Re-execute entry actions to respawn (within retry budget enforced
+                // by the caller in reconcile_completed_execution).
+                if matches!(
+                    evidence.run_status,
+                    Some(AgentRunStatus::Cancelled) | Some(AgentRunStatus::Failed)
+                ) {
+                    if evidence.can_start {
+                        return RecoveryDecision {
+                            action: RecoveryActionKind::ExecuteEntryActions,
+                            reason: Some(
+                                "Agent run cancelled/failed — re-executing.".to_string(),
+                            ),
+                        };
+                    }
+                    return RecoveryDecision {
+                        action: RecoveryActionKind::Prompt,
+                        reason: Some(
+                            "Agent run cancelled/failed but max concurrency reached.".to_string(),
+                        ),
+                    };
+                }
                 if evidence.run_status.is_none() {
                     if evidence.can_start {
                         return RecoveryDecision {
@@ -109,6 +131,26 @@ impl RecoveryPolicy {
                     return RecoveryDecision {
                         action: RecoveryActionKind::ExecuteEntryActions,
                         reason: None,
+                    };
+                }
+                if matches!(
+                    evidence.run_status,
+                    Some(AgentRunStatus::Cancelled) | Some(AgentRunStatus::Failed)
+                ) {
+                    if evidence.can_start {
+                        return RecoveryDecision {
+                            action: RecoveryActionKind::ExecuteEntryActions,
+                            reason: Some(
+                                "Review agent cancelled/failed — re-executing.".to_string(),
+                            ),
+                        };
+                    }
+                    return RecoveryDecision {
+                        action: RecoveryActionKind::Prompt,
+                        reason: Some(
+                            "Review agent cancelled/failed but max concurrency reached."
+                                .to_string(),
+                        ),
                     };
                 }
                 if evidence.run_status.is_none() {
@@ -150,6 +192,26 @@ impl RecoveryPolicy {
                         action: RecoveryActionKind::AttemptMergeAutoComplete,
                         reason: Some(
                             "Merge timed out — attempting auto-complete before escalating."
+                                .to_string(),
+                        ),
+                    };
+                }
+                if matches!(
+                    evidence.run_status,
+                    Some(AgentRunStatus::Cancelled) | Some(AgentRunStatus::Failed)
+                ) {
+                    if evidence.can_start {
+                        return RecoveryDecision {
+                            action: RecoveryActionKind::ExecuteEntryActions,
+                            reason: Some(
+                                "Merger agent cancelled/failed — re-executing.".to_string(),
+                            ),
+                        };
+                    }
+                    return RecoveryDecision {
+                        action: RecoveryActionKind::Prompt,
+                        reason: Some(
+                            "Merger agent cancelled/failed but max concurrency reached."
                                 .to_string(),
                         ),
                     };

@@ -1,9 +1,12 @@
 use super::*;
+use crate::application::interactive_process_registry::{
+    InteractiveProcessKey, InteractiveProcessRegistry,
+};
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatConversationId, InternalStatus, MergeFailureSource,
-    Project, Task, TaskId,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversationId, InternalStatus,
+    MergeFailureSource, Project, Task, TaskId,
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::reconciliation_config;
@@ -4305,4 +4308,736 @@ fn has_merge_pipeline_active_returns_false_for_malformed_timestamp() {
         !ReconciliationRunner::<tauri::Wry>::has_merge_pipeline_active(&task),
         "Malformed timestamp should not be treated as active"
     );
+}
+
+// ============================================================================
+// Stale IPR detection tests
+// ============================================================================
+
+/// Helper: create a test stdin pipe via `cat` subprocess.
+async fn create_test_stdin() -> (tokio::process::ChildStdin, tokio::process::Child) {
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .expect("failed to spawn cat");
+    let stdin = child.stdin.take().expect("no stdin");
+    (stdin, child)
+}
+
+fn build_reconciler_with_ipr(
+    app_state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    ipr: Arc<InteractiveProcessRegistry>,
+) -> ReconciliationRunner<tauri::Wry> {
+    let transition_service = Arc::new(TaskTransitionService::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(execution_state),
+        None,
+        Arc::clone(&app_state.memory_event_repo),
+    ));
+
+    ReconciliationRunner::new(
+        Arc::clone(&app_state.task_repo),
+        Arc::clone(&app_state.task_dependency_repo),
+        Arc::clone(&app_state.project_repo),
+        Arc::clone(&app_state.chat_conversation_repo),
+        Arc::clone(&app_state.chat_message_repo),
+        Arc::clone(&app_state.chat_attachment_repo),
+        Arc::clone(&app_state.ideation_session_repo),
+        Arc::clone(&app_state.activity_event_repo),
+        Arc::clone(&app_state.message_queue),
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&app_state.memory_event_repo),
+        Arc::clone(&app_state.agent_run_repo),
+        transition_service,
+        Arc::clone(execution_state),
+        None,
+    )
+    .with_interactive_process_registry(ipr)
+}
+
+#[tokio::test]
+async fn is_ipr_process_alive_returns_false_when_no_ipr_entry() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, ipr);
+
+    // No entry in IPR → false
+    let alive = reconciler
+        .is_ipr_process_alive(ChatContextType::TaskExecution, "task-1")
+        .await;
+    assert!(!alive, "Should return false when no IPR entry exists");
+}
+
+#[tokio::test]
+async fn is_ipr_process_alive_returns_false_when_no_ipr_configured() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    // Build without IPR
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let alive = reconciler
+        .is_ipr_process_alive(ChatContextType::TaskExecution, "task-1")
+        .await;
+    assert!(!alive, "Should return false when IPR is None");
+}
+
+#[tokio::test]
+async fn is_ipr_process_alive_returns_true_when_process_alive() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    // Spawn a real process and register in IPR
+    let (stdin, child) = create_test_stdin().await;
+    let pid = child.id().expect("cat should have PID");
+    let key = InteractiveProcessKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        "task-1",
+    );
+    ipr.register(key.clone(), stdin).await;
+
+    // Also register in running_agent_registry with the real PID
+    let registry_key = RunningAgentKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        "task-1",
+    );
+    app_state
+        .running_agent_registry
+        .register(registry_key, pid, "conv-1".into(), "run-1".into(), None, None)
+        .await;
+
+    let alive = reconciler
+        .is_ipr_process_alive(ChatContextType::TaskExecution, "task-1")
+        .await;
+    assert!(alive, "Should return true when IPR entry exists AND PID is alive");
+
+    // IPR entry should NOT have been removed
+    assert!(
+        ipr.has_process(&key).await,
+        "IPR entry should be preserved for live process"
+    );
+
+    // Cleanup
+    drop(child);
+}
+
+#[tokio::test]
+async fn is_ipr_process_alive_removes_stale_entry_no_registry() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    // Register in IPR but NOT in running_agent_registry (simulates registry cleanup
+    // that happened but IPR wasn't cleaned — the stale entry scenario)
+    let (stdin, child) = create_test_stdin().await;
+    let key = InteractiveProcessKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        "task-1",
+    );
+    ipr.register(key.clone(), stdin).await;
+    assert!(ipr.has_process(&key).await, "Precondition: IPR has entry");
+
+    let alive = reconciler
+        .is_ipr_process_alive(ChatContextType::TaskExecution, "task-1")
+        .await;
+    assert!(!alive, "Should return false when no registry entry exists");
+
+    // Stale IPR entry should have been removed
+    assert!(
+        !ipr.has_process(&key).await,
+        "Stale IPR entry should be removed when no registry entry"
+    );
+
+    drop(child);
+}
+
+#[tokio::test]
+async fn is_ipr_process_alive_removes_stale_entry_dead_pid() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    // Register in IPR
+    let (stdin, child) = create_test_stdin().await;
+    let key = InteractiveProcessKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        "task-1",
+    );
+    ipr.register(key.clone(), stdin).await;
+
+    // Register in registry with a dead PID (PID 0 is treated as dead)
+    let registry_key = RunningAgentKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        "task-1",
+    );
+    app_state
+        .running_agent_registry
+        .register(registry_key, 0, "conv-1".into(), "run-1".into(), None, None)
+        .await;
+
+    let alive = reconciler
+        .is_ipr_process_alive(ChatContextType::TaskExecution, "task-1")
+        .await;
+    assert!(!alive, "Should return false when PID is dead (pid=0)");
+
+    // Stale IPR entry should have been removed
+    assert!(
+        !ipr.has_process(&key).await,
+        "Stale IPR entry should be removed when PID is dead"
+    );
+
+    drop(child);
+}
+
+#[tokio::test]
+async fn is_ipr_process_alive_works_for_review_context() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    // Register stale IPR entry for Review context
+    let (stdin, child) = create_test_stdin().await;
+    let key = InteractiveProcessKey::new(ChatContextType::Review.to_string(), "task-2");
+    ipr.register(key.clone(), stdin).await;
+    // No registry entry → stale
+
+    let alive = reconciler
+        .is_ipr_process_alive(ChatContextType::Review, "task-2")
+        .await;
+    assert!(!alive, "Should detect stale IPR for Review context");
+    assert!(
+        !ipr.has_process(&key).await,
+        "Should remove stale Review IPR entry"
+    );
+
+    drop(child);
+}
+
+#[tokio::test]
+async fn is_ipr_process_alive_works_for_merge_context() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    // Register stale IPR entry for Merge context
+    let (stdin, child) = create_test_stdin().await;
+    let key = InteractiveProcessKey::new(ChatContextType::Merge.to_string(), "task-3");
+    ipr.register(key.clone(), stdin).await;
+    // No registry entry → stale
+
+    let alive = reconciler
+        .is_ipr_process_alive(ChatContextType::Merge, "task-3")
+        .await;
+    assert!(!alive, "Should detect stale IPR for Merge context");
+    assert!(
+        !ipr.has_process(&key).await,
+        "Should remove stale Merge IPR entry"
+    );
+
+    drop(child);
+}
+
+#[tokio::test]
+async fn reconcile_execution_proceeds_with_stale_ipr() {
+    // Integration test: reconcile_completed_execution should NOT skip when IPR is stale.
+    // Before the fix, a stale IPR entry would cause reconciliation to return true
+    // (skip), leaving the task stuck in Executing forever.
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    // Create project + task in Executing state
+    let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+    let mut task = Task::new(project.id.clone(), "Stuck Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Register stale IPR entry (process died but IPR wasn't cleaned)
+    let (stdin, child) = create_test_stdin().await;
+    let key = InteractiveProcessKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        task.id.as_str(),
+    );
+    ipr.register(key.clone(), stdin).await;
+    // No registry entry → stale IPR
+
+    // Before fix: this would return true (skip reconciliation) due to IPR entry.
+    // After fix: detects stale IPR, removes it, and proceeds with reconciliation.
+    let reconciled = reconciler
+        .reconcile_completed_execution(&task, InternalStatus::Executing)
+        .await;
+
+    // IPR entry should have been cleaned up
+    assert!(
+        !ipr.has_process(&key).await,
+        "Stale IPR entry should be removed during reconciliation"
+    );
+
+    // Reconciliation should have done something (not skipped)
+    // The exact outcome depends on run evidence, but the key assertion is
+    // that the stale IPR didn't block reconciliation from proceeding.
+    // (reconciled can be true or false depending on what the policy decides,
+    // but it should NOT have been short-circuited by the IPR check)
+    let _ = reconciled; // Assert is on IPR cleanup above
+
+    drop(child);
+}
+
+#[tokio::test]
+async fn reconcile_execution_skips_for_live_ipr() {
+    // Verify that healthy IPR entries are NOT disturbed — regression guard.
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    // Create project + task in Executing state
+    let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+    let mut task = Task::new(project.id.clone(), "Active Task".to_string());
+    task.internal_status = InternalStatus::Executing;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Register IPR entry with a live process
+    let (stdin, child) = create_test_stdin().await;
+    let pid = child.id().expect("cat should have PID");
+    let key = InteractiveProcessKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        task.id.as_str(),
+    );
+    ipr.register(key.clone(), stdin).await;
+
+    // Also register in running_agent_registry with the real PID
+    let registry_key = RunningAgentKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        task.id.as_str(),
+    );
+    app_state
+        .running_agent_registry
+        .register(registry_key, pid, "conv-1".into(), "run-1".into(), None, None)
+        .await;
+
+    // Should skip reconciliation (return true) because process is alive
+    let reconciled = reconciler
+        .reconcile_completed_execution(&task, InternalStatus::Executing)
+        .await;
+    assert!(reconciled, "Should skip reconciliation for live IPR process");
+
+    // IPR entry should be preserved
+    assert!(
+        ipr.has_process(&key).await,
+        "Live IPR entry should NOT be removed"
+    );
+
+    drop(child);
+}
+
+#[tokio::test]
+async fn reconcile_review_proceeds_with_stale_ipr() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+    let mut task = Task::new(project.id.clone(), "Review Task".to_string());
+    task.internal_status = InternalStatus::Reviewing;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Register stale IPR entry for Review context
+    let (stdin, child) = create_test_stdin().await;
+    let key = InteractiveProcessKey::new(
+        ChatContextType::Review.to_string(),
+        task.id.as_str(),
+    );
+    ipr.register(key.clone(), stdin).await;
+
+    let _reconciled = reconciler
+        .reconcile_reviewing_task(&task, InternalStatus::Reviewing)
+        .await;
+
+    assert!(
+        !ipr.has_process(&key).await,
+        "Stale Review IPR entry should be removed during reconciliation"
+    );
+
+    drop(child);
+}
+
+#[tokio::test]
+async fn reconcile_merge_proceeds_with_stale_ipr() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+    let mut task = Task::new(project.id.clone(), "Merge Task".to_string());
+    task.internal_status = InternalStatus::Merging;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Register stale IPR entry for Merge context
+    let (stdin, child) = create_test_stdin().await;
+    let key = InteractiveProcessKey::new(
+        ChatContextType::Merge.to_string(),
+        task.id.as_str(),
+    );
+    ipr.register(key.clone(), stdin).await;
+
+    let _reconciled = reconciler
+        .reconcile_merging_task(&task, InternalStatus::Merging)
+        .await;
+
+    assert!(
+        !ipr.has_process(&key).await,
+        "Stale Merge IPR entry should be removed during reconciliation"
+    );
+
+    drop(child);
+}
+
+#[tokio::test]
+async fn reconcile_re_executing_proceeds_with_stale_ipr() {
+    // Specifically tests ReExecuting — the original stuck state that prompted this fix.
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+    let mut task = Task::new(project.id.clone(), "ReExecuting Task".to_string());
+    task.internal_status = InternalStatus::ReExecuting;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Register stale IPR entry
+    let (stdin, child) = create_test_stdin().await;
+    let key = InteractiveProcessKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        task.id.as_str(),
+    );
+    ipr.register(key.clone(), stdin).await;
+
+    let _reconciled = reconciler
+        .reconcile_completed_execution(&task, InternalStatus::ReExecuting)
+        .await;
+
+    assert!(
+        !ipr.has_process(&key).await,
+        "Stale IPR for ReExecuting task should be removed during reconciliation"
+    );
+
+    drop(child);
+}
+
+// ─── Policy tests for Cancelled/Failed handling (PRIMARY FIX) ───
+
+#[test]
+fn execution_policy_restarts_on_cancelled_run() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Cancelled),
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Execution, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::ExecuteEntryActions);
+    assert!(decision.reason.unwrap().contains("cancelled/failed"));
+}
+
+#[test]
+fn execution_policy_restarts_on_failed_run() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Failed),
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Execution, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::ExecuteEntryActions);
+    assert!(decision.reason.unwrap().contains("cancelled/failed"));
+}
+
+#[test]
+fn execution_policy_prompts_on_cancelled_at_capacity() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Cancelled),
+        registry_running: false,
+        can_start: false,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Execution, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::Prompt);
+    assert!(decision.reason.unwrap().contains("max concurrency"));
+}
+
+#[test]
+fn execution_policy_prompts_on_failed_at_capacity() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Failed),
+        registry_running: false,
+        can_start: false,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Execution, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::Prompt);
+    assert!(decision.reason.unwrap().contains("max concurrency"));
+}
+
+#[test]
+fn review_policy_restarts_on_cancelled_run() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Cancelled),
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Review, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::ExecuteEntryActions);
+    assert!(decision.reason.unwrap().contains("cancelled/failed"));
+}
+
+#[test]
+fn review_policy_restarts_on_failed_run() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Failed),
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Review, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::ExecuteEntryActions);
+    assert!(decision.reason.unwrap().contains("cancelled/failed"));
+}
+
+#[test]
+fn review_policy_prompts_on_cancelled_at_capacity() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Cancelled),
+        registry_running: false,
+        can_start: false,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Review, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::Prompt);
+    assert!(decision.reason.unwrap().contains("max concurrency"));
+}
+
+#[test]
+fn merge_policy_restarts_on_cancelled_run() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Cancelled),
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::ExecuteEntryActions);
+    assert!(decision.reason.unwrap().contains("cancelled/failed"));
+}
+
+#[test]
+fn merge_policy_restarts_on_failed_run() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Failed),
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::ExecuteEntryActions);
+    assert!(decision.reason.unwrap().contains("cancelled/failed"));
+}
+
+#[test]
+fn merge_policy_prompts_on_failed_at_capacity() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Failed),
+        registry_running: false,
+        can_start: false,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::Prompt);
+    assert!(decision.reason.unwrap().contains("max concurrency"));
+}
+
+// ─── Regression tests: Running run still returns None ───
+
+#[test]
+fn execution_policy_none_for_running_in_registry() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Running),
+        registry_running: true,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Execution, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::None);
+}
+
+#[test]
+fn review_policy_none_for_running_in_registry() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Running),
+        registry_running: true,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Review, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::None);
+}
+
+#[test]
+fn merge_policy_none_for_running_in_registry() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Running),
+        registry_running: true,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::None);
+}
+
+// ─── Regression: Completed run behavior unchanged ───
+
+#[test]
+fn review_policy_re_executes_on_completed_run() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Completed),
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Review, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::ExecuteEntryActions);
+}
+
+#[test]
+fn merge_policy_auto_completes_on_completed_run() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Completed),
+        registry_running: false,
+        can_start: true,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::AttemptMergeAutoComplete);
+}
+
+#[test]
+fn merge_policy_prompts_on_cancelled_at_capacity() {
+    let policy = RecoveryPolicy;
+    let evidence = RecoveryEvidence {
+        run_status: Some(AgentRunStatus::Cancelled),
+        registry_running: false,
+        can_start: false,
+        is_stale: false,
+        is_deferred: false,
+    };
+    let decision = policy.decide_reconciliation(RecoveryContext::Merge, evidence);
+    assert_eq!(decision.action, RecoveryActionKind::Prompt);
+    assert!(decision.reason.unwrap().contains("max concurrency"));
+}
+
+// ─── Combined IPR+Policy integration test ───
+
+#[tokio::test]
+async fn reconcile_re_executing_stale_ipr_and_no_run_triggers_recovery() {
+    // Exercises BOTH fixes together: stale IPR entry gets cleaned up,
+    // AND the policy (run_status=None, can_start=true) returns ExecuteEntryActions.
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::with_max_concurrent(5));
+    let ipr = Arc::new(InteractiveProcessRegistry::new());
+    let reconciler = build_reconciler_with_ipr(&app_state, &execution_state, Arc::clone(&ipr));
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+    let mut task = Task::new(project.id.clone(), "Stuck ReExecuting Task".to_string());
+    task.internal_status = InternalStatus::ReExecuting;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Register a stale IPR entry (no matching registry PID → will be detected as stale)
+    let (stdin, child) = create_test_stdin().await;
+    let ipr_key = InteractiveProcessKey::new(
+        ChatContextType::TaskExecution.to_string(),
+        task.id.as_str(),
+    );
+    ipr.register(ipr_key.clone(), stdin).await;
+
+    // No agent_run in DB, no registry entry → policy sees run_status=None, can_start=true
+    // → ExecuteEntryActions (the fix that would have unblocked task 68c414a2)
+    let reconciled = reconciler
+        .reconcile_completed_execution(&task, InternalStatus::ReExecuting)
+        .await;
+
+    // IPR fix: stale entry removed
+    assert!(
+        !ipr.has_process(&ipr_key).await,
+        "Stale IPR entry should be removed by is_ipr_process_alive check"
+    );
+
+    // Policy fix: reconciliation should have attempted recovery (entry actions)
+    // Note: entry actions fail silently in test (no real transition handler wired),
+    // but reconcile_completed_execution returns true when it attempts recovery.
+    assert!(
+        reconciled,
+        "Reconciliation should return true — policy returns ExecuteEntryActions for missing run"
+    );
+
+    drop(child);
 }
