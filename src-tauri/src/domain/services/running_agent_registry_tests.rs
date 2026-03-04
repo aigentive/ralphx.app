@@ -586,6 +586,154 @@ async fn test_await_process_death_graceful_exit() {
     assert!(survivors.is_empty(), "Already-dead process should not be a survivor");
 }
 
+// ===== Regression tests for pkill .spawn() fix (7dbc2f32) =====
+// Before the fix, kill_process() and kill_process_immediate() used
+// std::process::Command::new("pkill").output() which blocks the tokio
+// worker thread, starving tokio::time::timeout. The fix changed to .spawn().
+
+/// Key regression test: kill_process() must not block the tokio runtime.
+/// Before the fix, .output() would block and tokio::time::timeout could
+/// never fire. With .spawn(), the call returns nearly instantly.
+#[tokio::test]
+async fn test_kill_process_does_not_block_tokio_timeout() {
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id();
+
+    assert!(is_process_alive(pid));
+
+    let start = std::time::Instant::now();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        kill_process(pid);
+    })
+    .await;
+    let elapsed = start.elapsed();
+
+    // The timeout must NOT fire — kill_process should return almost instantly
+    assert!(
+        result.is_ok(),
+        "kill_process() blocked the tokio runtime — timeout fired after {:?}",
+        elapsed
+    );
+    assert!(
+        elapsed.as_millis() < 1000,
+        "kill_process() took too long ({:?}), should return nearly instantly",
+        elapsed
+    );
+
+    // Reap the zombie
+    let _ = child.wait();
+}
+
+/// Same regression test for kill_process_immediate() — must not block tokio.
+#[tokio::test]
+async fn test_kill_process_immediate_does_not_block_tokio_timeout() {
+    let mut child = std::process::Command::new("sleep")
+        .arg("60")
+        .spawn()
+        .expect("spawn sleep");
+    let pid = child.id();
+
+    assert!(is_process_alive(pid));
+
+    let start = std::time::Instant::now();
+    let result = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        kill_process_immediate(pid);
+    })
+    .await;
+    let elapsed = start.elapsed();
+
+    assert!(
+        result.is_ok(),
+        "kill_process_immediate() blocked the tokio runtime — timeout fired after {:?}",
+        elapsed
+    );
+    assert!(
+        elapsed.as_millis() < 1000,
+        "kill_process_immediate() took too long ({:?}), should return nearly instantly",
+        elapsed
+    );
+
+    // Reap the zombie
+    let _ = child.wait();
+}
+
+/// Verify that kill_process_immediate (which uses .spawn() for pkill +
+/// process group SIGKILL) still kills child processes despite fire-and-forget.
+/// The process group kill `kill(-(pid), SIGKILL)` is the reliable mechanism
+/// for child killing; pkill -P is supplementary and platform-dependent.
+#[tokio::test]
+async fn test_kill_process_immediate_kills_process_group_children() {
+    use std::os::unix::process::CommandExt;
+
+    // Spawn a parent as its own process group leader (setpgid(0,0))
+    // so that kill(-(pid), SIGKILL) targets this group.
+    // In real usage, agent processes are session leaders with PID=PGID.
+    let mut parent = unsafe {
+        std::process::Command::new("bash")
+            .args(["-c", "sleep 60 & sleep 60 & wait"])
+            .pre_exec(|| {
+                nix::unistd::setpgid(
+                    nix::unistd::Pid::from_raw(0),
+                    nix::unistd::Pid::from_raw(0),
+                )
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+            })
+            .spawn()
+            .expect("spawn bash parent")
+    };
+    let parent_pid = parent.id();
+
+    // Give bash time to spawn children
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    // Find child PIDs via pgrep -P
+    let pgrep_output = std::process::Command::new("pgrep")
+        .args(["-P", &parent_pid.to_string()])
+        .output()
+        .expect("pgrep");
+    let child_pids: Vec<u32> = String::from_utf8_lossy(&pgrep_output.stdout)
+        .lines()
+        .filter_map(|l| l.trim().parse::<u32>().ok())
+        .collect();
+
+    assert!(
+        !child_pids.is_empty(),
+        "Parent bash should have spawned at least one child process"
+    );
+    for &cpid in &child_pids {
+        assert!(
+            is_process_alive(cpid),
+            "Child {cpid} should be alive before kill"
+        );
+    }
+
+    // kill_process_immediate uses .spawn() for pkill + process group SIGKILL
+    kill_process_immediate(parent_pid);
+
+    // Give fire-and-forget pkill + process group kill time to propagate
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+
+    // Reap the parent
+    let _ = parent.wait();
+
+    // Parent should be dead
+    assert!(
+        !is_process_alive(parent_pid),
+        "Parent process should be dead after kill_process_immediate"
+    );
+
+    // Children should also be dead (via process group SIGKILL)
+    for &cpid in &child_pids {
+        assert!(
+            !is_process_alive(cpid),
+            "Child process {cpid} should be dead — process group SIGKILL should have killed it"
+        );
+    }
+}
+
 /// Verify SIGKILL escalation for processes that ignore SIGTERM.
 /// This test takes ~5-6s due to the SIGTERM wait window.
 #[tokio::test]
