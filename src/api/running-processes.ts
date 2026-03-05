@@ -11,6 +11,7 @@ export type {
   StepProgressSummary,
   RunningProcess,
   RunningProcessesResponse,
+  RunningIdeationSession,
   TeammateSummary,
 } from "./running-processes.types";
 
@@ -19,6 +20,7 @@ export {
   StepProgressSummarySchema,
   RunningProcessSchema,
   RunningProcessesResponseSchema,
+  RunningIdeationSessionSchema,
   TeammateSummarySchema,
 } from "./running-processes.schemas";
 
@@ -27,6 +29,7 @@ export {
   transformStepProgressSummary,
   transformTeammateSummary,
   transformRunningProcess,
+  transformRunningIdeationSession,
   transformRunningProcessesResponse,
 } from "./running-processes.transforms";
 

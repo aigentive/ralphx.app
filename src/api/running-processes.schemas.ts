@@ -51,8 +51,19 @@ export const RunningProcessSchema = z.object({
 });
 
 /**
+ * Running ideation session schema from Rust (snake_case)
+ */
+export const RunningIdeationSessionSchema = z.object({
+  session_id: z.string(),
+  title: z.string(),
+  elapsed_seconds: z.number().int().nullable(),
+  team_mode: z.string().nullable(),
+});
+
+/**
  * Running processes response schema from Rust (snake_case)
  */
 export const RunningProcessesResponseSchema = z.object({
   processes: z.array(RunningProcessSchema),
+  ideation_sessions: z.array(RunningIdeationSessionSchema),
 });

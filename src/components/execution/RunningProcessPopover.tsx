@@ -13,12 +13,15 @@ import {
 import { Settings } from "lucide-react";
 import { ProcessCard } from "./ProcessCard";
 import { TeamProcessGroup } from "./TeamProcessGroup";
-import type { RunningProcess } from "@/api/running-processes";
+import { IdeationSessionCard } from "./IdeationSessionCard";
+import type { RunningProcess, RunningIdeationSession } from "@/api/running-processes";
 import { cn } from "@/lib/utils";
 
 interface RunningProcessPopoverProps {
   /** List of currently running processes */
   processes: RunningProcess[];
+  /** List of running ideation sessions */
+  ideationSessions?: RunningIdeationSession[];
   /** Global running count from execution status (source of truth for capacity) */
   runningCount?: number;
   /** Current max concurrent tasks */
@@ -41,6 +44,7 @@ interface RunningProcessPopoverProps {
 
 export function RunningProcessPopover({
   processes,
+  ideationSessions = [],
   runningCount,
   maxConcurrent,
   open,
@@ -52,6 +56,7 @@ export function RunningProcessPopover({
   alignOffset = -24,
 }: RunningProcessPopoverProps) {
   const effectiveRunningCount = runningCount ?? processes.length;
+  const hasAnyRunning = processes.length > 0 || ideationSessions.length > 0;
 
   return (
     <Popover open={open} onOpenChange={onOpenChange}>
@@ -107,7 +112,7 @@ export function RunningProcessPopover({
             scrollbarColor: "hsla(220 10% 100% / 0.1) transparent",
           }}
         >
-          {processes.length === 0 ? (
+          {!hasAnyRunning ? (
             <div
               className="py-6 text-center text-xs"
               style={{ color: "hsl(220 10% 42%)" }}
@@ -115,23 +120,41 @@ export function RunningProcessPopover({
               No running processes
             </div>
           ) : (
-            processes.map((process) =>
-              process.teamName ? (
-                <TeamProcessGroup
-                  key={process.taskId}
-                  process={process}
-                  onPause={onPauseProcess}
-                  onStop={onStopProcess}
-                />
-              ) : (
-                <ProcessCard
-                  key={process.taskId}
-                  process={process}
-                  onPause={onPauseProcess}
-                  onStop={onStopProcess}
-                />
-              )
-            )
+            <>
+              {ideationSessions.length > 0 && (
+                <>
+                  {ideationSessions.map((session) => (
+                    <IdeationSessionCard
+                      key={session.sessionId}
+                      session={session}
+                    />
+                  ))}
+                  {processes.length > 0 && (
+                    <div
+                      className="mx-2 my-1"
+                      style={{ borderBottom: "1px solid hsla(220 20% 100% / 0.06)" }}
+                    />
+                  )}
+                </>
+              )}
+              {processes.map((process) =>
+                process.teamName ? (
+                  <TeamProcessGroup
+                    key={process.taskId}
+                    process={process}
+                    onPause={onPauseProcess}
+                    onStop={onStopProcess}
+                  />
+                ) : (
+                  <ProcessCard
+                    key={process.taskId}
+                    process={process}
+                    onPause={onPauseProcess}
+                    onStop={onStopProcess}
+                  />
+                )
+              )}
+            </>
           )}
         </div>
 

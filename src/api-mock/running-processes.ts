@@ -11,6 +11,7 @@ import type { RunningProcessesResponse } from "@/api/running-processes";
 // ============================================================================
 
 const mockRunningProcesses: RunningProcessesResponse = {
+  ideationSessions: [],
   processes: [
     {
       taskId: "task-1",

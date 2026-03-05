@@ -17,8 +17,8 @@ use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
 };
 use crate::domain::entities::{
-    task_step::StepProgressSummary, AgentRunId, AgentRunStatus, ChatContextType, InternalStatus,
-    ProjectId, Task, TaskId,
+    task_step::StepProgressSummary, types::IdeationSessionId, AgentRunId, AgentRunStatus,
+    ChatContextType, InternalStatus, ProjectId, Task, TaskId,
 };
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -1743,11 +1743,26 @@ pub struct RunningProcess {
     pub task_branch: Option<String>,
 }
 
+/// A running ideation session with enriched data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunningIdeationSession {
+    /// Session ID
+    pub session_id: String,
+    /// Session title
+    pub title: String,
+    /// Elapsed time in seconds since session was created
+    pub elapsed_seconds: Option<i64>,
+    /// Team mode (solo, research, debate)
+    pub team_mode: Option<String>,
+}
+
 /// Response for get_running_processes
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RunningProcessesResponse {
     /// List of running processes
     pub processes: Vec<RunningProcess>,
+    /// List of running ideation sessions
+    pub ideation_sessions: Vec<RunningIdeationSession>,
 }
 
 /// Get all currently running processes (tasks with active execution contexts)
@@ -1773,7 +1788,9 @@ pub async fn get_running_processes(
     prune_stale_execution_registry_entries(&state).await;
 
     let mut processes = Vec::new();
+    let mut ideation_sessions = Vec::new();
     let mut seen_task_ids = std::collections::HashSet::new();
+    let mut seen_session_ids = std::collections::HashSet::new();
     let registry_entries = state.running_agent_registry.list_all().await;
 
     for (key, _) in registry_entries {
@@ -1781,6 +1798,34 @@ pub async fn get_running_processes(
             Ok(value) => value,
             Err(_) => continue,
         };
+
+        // Collect ideation sessions separately
+        if context_type == ChatContextType::Ideation {
+            let session_id_str = key.context_id.clone();
+            if !seen_session_ids.insert(session_id_str.clone()) {
+                continue;
+            }
+            let session_id = IdeationSessionId(session_id_str.clone());
+            if let Ok(Some(session)) = state.ideation_session_repo.get_by_id(&session_id).await {
+                if let Some(pid) = &effective_project_id {
+                    if session.project_id != *pid {
+                        continue;
+                    }
+                }
+                let elapsed_seconds = {
+                    let now = chrono::Utc::now();
+                    let elapsed = now.signed_duration_since(session.created_at);
+                    Some(elapsed.num_seconds())
+                };
+                ideation_sessions.push(RunningIdeationSession {
+                    session_id: session_id_str,
+                    title: session.title.unwrap_or_else(|| "Untitled Session".to_string()),
+                    elapsed_seconds,
+                    team_mode: session.team_mode,
+                });
+            }
+            continue;
+        }
 
         // Only include task-based execution contexts in the process list
         if !matches!(
@@ -1856,7 +1901,7 @@ pub async fn get_running_processes(
         });
     }
 
-    Ok(RunningProcessesResponse { processes })
+    Ok(RunningProcessesResponse { processes, ideation_sessions })
 }
 
 fn process_is_alive_for_gc(pid: u32) -> bool {

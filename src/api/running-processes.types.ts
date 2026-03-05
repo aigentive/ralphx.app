@@ -50,8 +50,19 @@ export interface RunningProcess {
 }
 
 /**
+ * Running ideation session - frontend representation (camelCase)
+ */
+export interface RunningIdeationSession {
+  sessionId: string;
+  title: string;
+  elapsedSeconds: number | null;
+  teamMode: string | null;
+}
+
+/**
  * Running processes response - frontend representation (camelCase)
  */
 export interface RunningProcessesResponse {
   processes: RunningProcess[];
+  ideationSessions: RunningIdeationSession[];
 }

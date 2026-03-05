@@ -21,7 +21,7 @@ import {
 } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { RunningProcessPopover } from "./RunningProcessPopover";
-import type { RunningProcess } from "@/api/running-processes";
+import type { RunningProcess, RunningIdeationSession } from "@/api/running-processes";
 import { MergePipelinePopover } from "./MergePipelinePopover";
 import type { MergePipelineResponse } from "@/api/merge-pipeline";
 import { QueuedTasksPopover } from "./QueuedTasksPopover";
@@ -67,6 +67,8 @@ interface ExecutionControlBarProps {
   showBattleModeToggle?: boolean;
   /** List of running processes (for popover) */
   runningProcesses?: RunningProcess[];
+  /** List of running ideation sessions (for popover) */
+  ideationSessions?: RunningIdeationSession[];
   /** Called when pause button clicked for a specific process */
   onPauseProcess?: (taskId: string) => void;
   /** Called when stop button clicked for a specific process */
@@ -123,6 +125,7 @@ export function ExecutionControlBar({
   onBattleModeToggle,
   showBattleModeToggle = false,
   runningProcesses = [],
+  ideationSessions = [],
   onPauseProcess = () => {},
   onStopProcess = () => {},
   onOpenSettings = () => {},
@@ -206,6 +209,7 @@ export function ExecutionControlBar({
           <div className="flex items-center gap-1.5">
             <RunningProcessPopover
               processes={runningProcesses}
+              ideationSessions={ideationSessions}
               runningCount={runningCount}
               maxConcurrent={maxConcurrent}
               open={isPopoverOpen}
