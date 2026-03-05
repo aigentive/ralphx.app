@@ -45,7 +45,7 @@ This is a **large codebase** (~100k+ lines across Rust backend + React frontend)
 ## Team Management
 > Apply whenever TeamCreate is available.
 
-**Model selection:** Default → `sonnet`. Escalate to `opus` ONLY for: deep multi-file investigation, complex architecture across modules, subtle race conditions, or when Sonnet produced insufficient results.
+**Model selection:** Default → `sonnet`. Escalate to `opus` ONLY for: deep multi-file investigation, complex architecture across modules, subtle race conditions, or when Sonnet produced insufficient results. ❌ `"inherit"` model — breaks Plan agents (they go idle without responding). Always specify explicit model.
 **Verification rule:** When lower-tier models (Sonnet/Haiku) implement, verify with max-tier (Opus) before committing. ❌ Committing Sonnet work without Opus review.
 
 | Rule | Detail |
