@@ -331,6 +331,16 @@ export function PlanningView({
     };
   }, [eventBus, session?.id]);
 
+  // Hydrate isAnalyzingDependencies from backend state on mount and after refetches.
+  // The backend persists analysis state in the analyzing_dependencies HashSet and returns
+  // it via analysis_in_progress in the dependency graph response. This survives page
+  // refreshes and navigation — local useState(false) would reset on unmount.
+  useEffect(() => {
+    if (dependencyGraph?.analysisInProgress === true) {
+      setIsAnalyzingDependencies(true);
+    }
+  }, [dependencyGraph?.analysisInProgress]);
+
   // Small UX hint when dependency graph refreshes automatically
   useEffect(() => {
     if (!session?.id || proposals.length === 0) {

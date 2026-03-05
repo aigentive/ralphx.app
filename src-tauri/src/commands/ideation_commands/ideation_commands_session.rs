@@ -155,6 +155,12 @@ pub async fn archive_ideation_session(
         analyzing.remove(&session_id);
     }
 
+    // Clean up debounce_generations to prevent unbounded HashMap growth
+    {
+        let mut gens = state.debounce_generations.lock().unwrap();
+        gens.remove(&session_id);
+    }
+
     state
         .ideation_session_repo
         .update_status(&session_id, IdeationSessionStatus::Archived)
@@ -246,6 +252,12 @@ pub async fn delete_ideation_session(
     {
         let mut analyzing = state.analyzing_dependencies.write().await;
         analyzing.remove(&session_id);
+    }
+
+    // Clean up debounce_generations to prevent unbounded HashMap growth
+    {
+        let mut gens = state.debounce_generations.lock().unwrap();
+        gens.remove(&session_id);
     }
 
     // 5. Delete the session (existing CASCADE handles proposals/messages)
@@ -468,6 +480,25 @@ pub async fn spawn_dependency_suggester(
     // Require at least 2 proposals for meaningful analysis
     if proposals.len() < 2 {
         return Err("At least 2 proposals are required for dependency analysis".to_string());
+    }
+
+    // Guard against concurrent analysis: return error if already in progress for this session.
+    {
+        let analyzing = state.analyzing_dependencies.read().await;
+        if analyzing.contains(&session_id_typed) {
+            return Err(
+                "Dependency analysis already in progress for this session".to_string(),
+            );
+        }
+    }
+
+    // Increment debounce generation to invalidate any pending auto-trigger debounce tasks
+    // that captured an older generation. std::sync::Mutex lock released immediately before
+    // any async operations.
+    {
+        let mut gens = state.debounce_generations.lock().unwrap();
+        let gen = gens.entry(session_id_typed.clone()).or_insert(0);
+        *gen = gen.wrapping_add(1);
     }
 
     // Get existing dependencies
