@@ -69,6 +69,339 @@ async fn test_commit_all_excludes_environment_artifacts() {
 }
 
 // =========================================================================
+// commit_all: Safe Staging (No Deletions)
+// =========================================================================
+
+#[tokio::test]
+async fn test_commit_all_does_not_stage_deleted_files() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    // Create two files and commit them
+    std::fs::write(repo.join("keep.txt"), "keep me").unwrap();
+    std::fs::write(repo.join("delete_me.txt"), "will be deleted").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Delete one file from disk, modify the other
+    std::fs::remove_file(repo.join("delete_me.txt")).unwrap();
+    std::fs::write(repo.join("keep.txt"), "modified").unwrap();
+
+    let sha = GitService::commit_all(repo, "safe commit")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    // Verify delete_me.txt is still in HEAD (deletion was NOT staged)
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    assert!(
+        tree_output.contains("delete_me.txt"),
+        "Deleted file must NOT be staged by commit_all"
+    );
+    assert!(tree_output.contains("keep.txt"));
+
+    // Verify keep.txt was updated
+    let show = Command::new("git")
+        .args(["show", "HEAD:keep.txt"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&show.stdout).trim(),
+        "modified"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_all_stages_new_untracked_files() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    std::fs::write(repo.join("initial.txt"), "initial").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Create new untracked file
+    std::fs::write(repo.join("new_file.txt"), "brand new").unwrap();
+
+    let sha = GitService::commit_all(repo, "add new file")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    assert!(
+        tree_output.contains("new_file.txt"),
+        "New untracked files must be staged by commit_all"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_all_stages_modified_files() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    std::fs::write(repo.join("file.txt"), "original").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    std::fs::write(repo.join("file.txt"), "modified content").unwrap();
+
+    let sha = GitService::commit_all(repo, "modify file")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    let show = Command::new("git")
+        .args(["show", "HEAD:file.txt"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8_lossy(&show.stdout).trim(),
+        "modified content"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_all_including_deletions_stages_deleted_files() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    std::fs::write(repo.join("keep.txt"), "keep").unwrap();
+    std::fs::write(repo.join("remove.txt"), "remove me").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    std::fs::remove_file(repo.join("remove.txt")).unwrap();
+    std::fs::write(repo.join("keep.txt"), "updated").unwrap();
+
+    let sha = GitService::commit_all_including_deletions(repo, "merge commit")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    assert!(
+        !tree_output.contains("remove.txt"),
+        "commit_all_including_deletions must stage deletions"
+    );
+    assert!(tree_output.contains("keep.txt"));
+}
+
+#[tokio::test]
+async fn test_commit_all_handles_files_with_spaces() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    std::fs::write(repo.join("normal.txt"), "init").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    std::fs::write(repo.join("file with spaces.txt"), "content").unwrap();
+
+    let sha = GitService::commit_all(repo, "spaces in name")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    assert!(
+        tree_output.contains("file with spaces.txt"),
+        "Files with spaces must be staged correctly"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_all_handles_renamed_files() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    std::fs::write(repo.join("old_name.txt"), "content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Rename via git mv so git detects it as a rename
+    Command::new("git")
+        .args(["mv", "old_name.txt", "new name.txt"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    let sha = GitService::commit_all(repo, "rename file")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    assert!(
+        tree_output.contains("new name.txt"),
+        "Renamed file must appear with new name"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_all_handles_utf8_filenames() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    std::fs::write(repo.join("base.txt"), "init").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    std::fs::write(repo.join("café.txt"), "utf8 content").unwrap();
+
+    let sha = GitService::commit_all(repo, "utf8 filename")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    // Use -z to get unquoted filenames (git ls-tree quotes UTF-8 by default)
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "-z", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    assert!(
+        tree_output.contains("café.txt"),
+        "UTF-8 filenames must be staged correctly"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_all_returns_none_when_only_deletions() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    std::fs::write(repo.join("only_file.txt"), "content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Only change is a deletion — commit_all should skip it and return None
+    std::fs::remove_file(repo.join("only_file.txt")).unwrap();
+
+    let result = GitService::commit_all(repo, "should be empty").await.unwrap();
+    assert!(
+        result.is_none(),
+        "commit_all should return None when the only changes are deletions"
+    );
+
+    // Verify file still exists in HEAD
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    assert!(tree_output.contains("only_file.txt"));
+}
+
+// =========================================================================
 // Conflict Marker Detection Tests
 // =========================================================================
 
