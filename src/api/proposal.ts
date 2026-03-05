@@ -63,6 +63,14 @@ const DependencyGraphResponseSchema = z.object({
   critical_path: z.array(z.string()),
   has_cycles: z.boolean(),
   cycles: z.array(z.array(z.string())).nullable(),
+  analysis_in_progress: z.boolean().optional(),
+  message: z.string().nullable().optional(),
+  summary: z.object({
+    total_proposals: z.number(),
+    root_count: z.number(),
+    leaf_count: z.number(),
+    max_depth: z.number(),
+  }).nullable().optional(),
 });
 
 const ApplyProposalsResultResponseSchema = z.object({
@@ -172,6 +180,18 @@ function transformDependencyGraph(raw: RawGraph): DependencyGraphResponse {
     criticalPath: raw.critical_path,
     hasCycles: raw.has_cycles,
     cycles: raw.cycles,
+    ...(raw.analysis_in_progress !== undefined && { analysisInProgress: raw.analysis_in_progress }),
+    ...(raw.message !== undefined && { message: raw.message }),
+    ...(raw.summary !== undefined && {
+      summary: raw.summary
+        ? {
+            totalProposals: raw.summary.total_proposals,
+            rootCount: raw.summary.root_count,
+            leafCount: raw.summary.leaf_count,
+            maxDepth: raw.summary.max_depth,
+          }
+        : null,
+    }),
   };
 }
 

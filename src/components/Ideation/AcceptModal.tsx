@@ -348,7 +348,7 @@ export function AcceptModal({
             type="button"
             onClick={handleAccept}
             disabled={!canAccept}
-            className="px-4 py-2 rounded text-sm font-medium transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 rounded text-sm font-medium transition-colors"
             style={{
               backgroundColor: canAccept ? "var(--accent-primary)" : "var(--bg-hover)",
               color: canAccept ? "var(--bg-base)" : "var(--text-secondary)",
@@ -356,9 +356,16 @@ export function AcceptModal({
               opacity: isAccepting ? 0.7 : 1,
             }}
           >
-            {isAccepting
-              ? "Accepting..."
-              : `Accept Plan (${proposalCount} ${proposalCount === 1 ? "task" : "tasks"})`}
+            {isAccepting ? (
+              "Accepting..."
+            ) : isAnalyzingDependencies ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                Checking dependencies...
+              </>
+            ) : (
+              `Accept Plan (${proposalCount} ${proposalCount === 1 ? "task" : "tasks"})`
+            )}
           </button>
         </div>
       </div>

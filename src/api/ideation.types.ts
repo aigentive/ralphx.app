@@ -81,12 +81,22 @@ export interface DependencyGraphEdgeResponse {
   reason: string | null;
 }
 
+export interface DependencyAnalysisSummary {
+  totalProposals: number;
+  rootCount: number;
+  leafCount: number;
+  maxDepth: number;
+}
+
 export interface DependencyGraphResponse {
   nodes: DependencyGraphNodeResponse[];
   edges: DependencyGraphEdgeResponse[];
   criticalPath: string[];
   hasCycles: boolean;
   cycles: string[][] | null;
+  analysisInProgress?: boolean;
+  message?: string | null;
+  summary?: DependencyAnalysisSummary | null;
 }
 
 export interface ApplyProposalsResultResponse {

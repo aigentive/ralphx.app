@@ -108,6 +108,16 @@ export const DependencyGraphEdgeResponseSchema = z.object({
 });
 
 /**
+ * Dependency analysis summary (snake_case from Rust)
+ */
+export const DependencyAnalysisSummarySchema = z.object({
+  total_proposals: z.number(),
+  root_count: z.number(),
+  leaf_count: z.number(),
+  max_depth: z.number(),
+});
+
+/**
  * Dependency graph response (snake_case from Rust)
  */
 export const DependencyGraphResponseSchema = z.object({
@@ -116,6 +126,9 @@ export const DependencyGraphResponseSchema = z.object({
   critical_path: z.array(z.string()),
   has_cycles: z.boolean(),
   cycles: z.array(z.array(z.string())).nullable(),
+  analysis_in_progress: z.boolean().optional(),
+  message: z.string().nullable().optional(),
+  summary: DependencyAnalysisSummarySchema.nullable().optional(),
 });
 
 /**

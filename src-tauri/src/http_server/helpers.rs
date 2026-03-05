@@ -555,11 +555,53 @@ pub async fn maybe_trigger_dependency_analysis(
     let ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
     let artifact_repo = Arc::clone(&app_state.artifact_repo);
     let analyzing_dependencies = Arc::clone(&app_state.analyzing_dependencies);
+    let debounce_generations = Arc::clone(&app_state.debounce_generations);
+
+    // Increment generation counter and capture value before spawning.
+    // Use a scoped block to ensure the std::sync::Mutex is released before any .await point.
+    let captured_gen = {
+        let mut gens = debounce_generations.lock().unwrap();
+        let gen = gens
+            .entry(IdeationSessionId::from_string(session_id_str.clone()))
+            .or_insert(0);
+        *gen = gen.wrapping_add(1);
+        *gen
+    };
 
     // Spawn with debounce delay
     tokio::spawn(async move {
         // Debounce: wait 2 seconds before triggering
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
+
+        // Gate 1: gen staleness check — if a newer trigger arrived, discard this task
+        {
+            let gens = debounce_generations.lock().unwrap();
+            let current_gen = gens
+                .get(&IdeationSessionId::from_string(session_id_str.clone()))
+                .copied()
+                .unwrap_or(0);
+            if current_gen != captured_gen {
+                tracing::debug!(
+                    "Skipping stale dependency analysis trigger for session {}, gen {} != {}",
+                    session_id_str,
+                    captured_gen,
+                    current_gen
+                );
+                return;
+            }
+        }
+
+        // Gate 2: analysis already in progress — skip if another agent is running
+        {
+            let analyzing = analyzing_dependencies.read().await;
+            if analyzing.contains(&IdeationSessionId::from_string(session_id_str.clone())) {
+                tracing::debug!(
+                    "Skipping dependency analysis for session {}, analysis already in progress",
+                    session_id_str
+                );
+                return;
+            }
+        }
 
         // Re-fetch proposals after the delay (they may have changed)
         let proposals = match task_proposal_repo

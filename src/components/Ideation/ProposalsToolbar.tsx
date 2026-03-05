@@ -201,8 +201,17 @@ export function ProposalsToolbar({
               }
             }}
           >
-            <Check className="w-3 h-3" />
-            {acceptLabel}
+            {isAnalyzingDependencies ? (
+            <>
+              <Loader2 className="w-3 h-3 animate-spin" />
+              Checking dependencies...
+            </>
+          ) : (
+            <>
+              <Check className="w-3 h-3" />
+              {acceptLabel}
+            </>
+          )}
           </Button>
         )}
       </div>

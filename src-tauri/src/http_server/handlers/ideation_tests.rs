@@ -606,3 +606,208 @@ async fn test_session_deletion_does_not_affect_other_sessions() {
     assert!(!set.contains(&session_a), "deleted session should be gone from analyzing set");
     assert!(set.contains(&session_b), "other session should remain in analyzing set");
 }
+
+// ── Debounce generation counter tests ────────────────────────────────────────
+
+/// stale_gen_skips: Simulate 5 rapid triggers; verify only the last-gen task proceeds.
+///
+/// Gate 1 in `maybe_trigger_dependency_analysis` reads `debounce_generations[session]`
+/// after the 2-second sleep and compares it to the captured value at spawn time.
+/// All but the final trigger will see a stale gen and return early.
+#[tokio::test]
+async fn test_debounce_stale_gen_skips() {
+    let state = setup_test_state().await;
+    let session_id = IdeationSessionId::new();
+    let debounce_generations = Arc::clone(&state.app_state.debounce_generations);
+
+    // Simulate 5 rapid triggers by incrementing the gen counter 5 times,
+    // capturing each value as a task would at spawn time.
+    let mut captured_gens: Vec<u64> = Vec::new();
+    for _ in 0..5 {
+        let captured = {
+            let mut gens = debounce_generations.lock().unwrap();
+            let gen = gens.entry(session_id.clone()).or_insert(0);
+            *gen = gen.wrapping_add(1);
+            *gen
+        };
+        captured_gens.push(captured);
+    }
+
+    // After 5 triggers the current gen must be 5.
+    let current_gen = {
+        let gens = debounce_generations.lock().unwrap();
+        *gens.get(&session_id).unwrap_or(&0)
+    };
+    assert_eq!(current_gen, 5, "gen should be 5 after 5 rapid triggers");
+
+    // Only the last captured value matches → that task would proceed.
+    assert_eq!(captured_gens[4], current_gen, "last trigger gen must match current");
+
+    // All earlier captured values are stale → those tasks would skip (gate 1).
+    for &captured in &captured_gens[..4] {
+        assert_ne!(
+            captured, current_gen,
+            "earlier trigger gen {captured} should be stale"
+        );
+    }
+}
+
+/// analysis_already_running_guard: Gen matches (gate 1 passes) but
+/// `analyzing_dependencies` already contains the session (gate 2 blocks spawn).
+#[tokio::test]
+async fn test_debounce_analysis_already_running_guard() {
+    let state = setup_test_state().await;
+    let session_id = IdeationSessionId::new();
+
+    // Simulate one trigger: increment gen and capture value.
+    let captured_gen = {
+        let mut gens = state.app_state.debounce_generations.lock().unwrap();
+        let gen = gens.entry(session_id.clone()).or_insert(0);
+        *gen = gen.wrapping_add(1);
+        *gen
+    };
+
+    // Mark session as already analyzing (an agent is running).
+    {
+        let mut analyzing = state.app_state.analyzing_dependencies.write().await;
+        analyzing.insert(session_id.clone());
+    }
+
+    // Gate 1: gen must match (no newer trigger).
+    let current_gen = {
+        let gens = state.app_state.debounce_generations.lock().unwrap();
+        *gens.get(&session_id).unwrap_or(&0)
+    };
+    assert_eq!(current_gen, captured_gen, "gate 1 should pass: gen matches");
+
+    // Gate 2: analyzing_dependencies contains session → spawn must be skipped.
+    let is_analyzing = state
+        .app_state
+        .analyzing_dependencies
+        .read()
+        .await
+        .contains(&session_id);
+    assert!(is_analyzing, "gate 2 must block: analysis already in progress");
+}
+
+/// manual_auto_coexistence: A manual trigger increments the gen counter, making
+/// any concurrently pending auto-trigger with the old gen stale.
+#[tokio::test]
+async fn test_debounce_manual_auto_coexistence() {
+    let state = setup_test_state().await;
+    let session_id = IdeationSessionId::new();
+
+    // Auto-trigger path: increment gen, capture value (gen=1).
+    let auto_captured_gen = {
+        let mut gens = state.app_state.debounce_generations.lock().unwrap();
+        let gen = gens.entry(session_id.clone()).or_insert(0);
+        *gen = gen.wrapping_add(1);
+        *gen
+    };
+    assert_eq!(auto_captured_gen, 1);
+
+    // Before the auto-trigger's 2s sleep completes, a manual trigger fires
+    // (spawn_dependency_suggester path) — increments gen to 2.
+    {
+        let mut gens = state.app_state.debounce_generations.lock().unwrap();
+        let gen = gens.entry(session_id.clone()).or_insert(0);
+        *gen = gen.wrapping_add(1);
+    }
+
+    // Auto-trigger wakes up and reads current gen.
+    let current_gen = {
+        let gens = state.app_state.debounce_generations.lock().unwrap();
+        *gens.get(&session_id).unwrap_or(&0)
+    };
+    assert_eq!(current_gen, 2, "gen should be 2 after manual trigger");
+
+    // Gate 1 fails for the auto-trigger: captured_gen(1) ≠ current_gen(2) → skip.
+    assert_ne!(
+        auto_captured_gen, current_gen,
+        "auto-trigger with stale gen should be skipped after manual trigger"
+    );
+}
+
+/// session_delete_clears_gen: After a session is deleted/archived, its
+/// `debounce_generations` entry must be removed to prevent unbounded growth.
+#[tokio::test]
+async fn test_debounce_session_delete_clears_gen() {
+    let state = setup_test_state().await;
+    let session_id = IdeationSessionId::new();
+
+    // Simulate several triggers building up the gen counter.
+    {
+        let mut gens = state.app_state.debounce_generations.lock().unwrap();
+        let gen = gens.entry(session_id.clone()).or_insert(0);
+        *gen = 3; // directly set to 3 to represent 3 prior triggers
+    }
+
+    // Verify the entry exists before cleanup.
+    {
+        let gens = state.app_state.debounce_generations.lock().unwrap();
+        assert!(gens.contains_key(&session_id), "gen entry should exist before cleanup");
+        assert_eq!(*gens.get(&session_id).unwrap(), 3);
+    }
+
+    // Simulate the cleanup added to archive_ideation_session / delete_ideation_session.
+    {
+        let mut gens = state.app_state.debounce_generations.lock().unwrap();
+        gens.remove(&session_id);
+    }
+
+    // Entry must be gone.
+    {
+        let gens = state.app_state.debounce_generations.lock().unwrap();
+        assert!(
+            !gens.contains_key(&session_id),
+            "gen entry must be removed after session deletion/archive"
+        );
+    }
+}
+
+/// independent_sessions: Two sessions debounce independently — gen counters and
+/// cleanup of one session must not affect the other.
+#[tokio::test]
+async fn test_debounce_independent_sessions() {
+    let state = setup_test_state().await;
+    let session_a = IdeationSessionId::new();
+    let session_b = IdeationSessionId::new();
+
+    // Session A: 3 triggers.
+    for _ in 0..3 {
+        let mut gens = state.app_state.debounce_generations.lock().unwrap();
+        let gen = gens.entry(session_a.clone()).or_insert(0);
+        *gen = gen.wrapping_add(1);
+    }
+
+    // Session B: 2 triggers.
+    for _ in 0..2 {
+        let mut gens = state.app_state.debounce_generations.lock().unwrap();
+        let gen = gens.entry(session_b.clone()).or_insert(0);
+        *gen = gen.wrapping_add(1);
+    }
+
+    // Verify independent counters.
+    let (gen_a, gen_b) = {
+        let gens = state.app_state.debounce_generations.lock().unwrap();
+        (
+            *gens.get(&session_a).unwrap_or(&0),
+            *gens.get(&session_b).unwrap_or(&0),
+        )
+    };
+    assert_eq!(gen_a, 3, "session A should have gen=3");
+    assert_eq!(gen_b, 2, "session B should have gen=2");
+
+    // Deleting session A must not affect session B.
+    {
+        let mut gens = state.app_state.debounce_generations.lock().unwrap();
+        gens.remove(&session_a);
+    }
+
+    let (gen_a_after, gen_b_after) = {
+        let gens = state.app_state.debounce_generations.lock().unwrap();
+        (gens.get(&session_a).copied(), gens.get(&session_b).copied())
+    };
+    assert!(gen_a_after.is_none(), "session A gen should be removed");
+    assert_eq!(gen_b_after, Some(2), "session B gen should be unaffected");
+}
