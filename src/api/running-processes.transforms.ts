@@ -5,12 +5,14 @@ import {
   StepProgressSummarySchema,
   RunningProcessSchema,
   RunningProcessesResponseSchema,
+  RunningIdeationSessionSchema,
   TeammateSummarySchema,
 } from "./running-processes.schemas";
 import type {
   StepProgressSummary,
   RunningProcess,
   RunningProcessesResponse,
+  RunningIdeationSession,
   TeammateSummary,
 } from "./running-processes.types";
 import { transformTaskStep } from "@/types/task-step";
@@ -79,6 +81,20 @@ export function transformRunningProcess(
 }
 
 /**
+ * Transform RunningIdeationSessionSchema (snake_case) → RunningIdeationSession (camelCase)
+ */
+export function transformRunningIdeationSession(
+  raw: z.infer<typeof RunningIdeationSessionSchema>
+): RunningIdeationSession {
+  return {
+    sessionId: raw.session_id,
+    title: raw.title,
+    elapsedSeconds: raw.elapsed_seconds,
+    teamMode: raw.team_mode,
+  };
+}
+
+/**
  * Transform RunningProcessesResponseSchema (snake_case) → RunningProcessesResponse (camelCase)
  */
 export function transformRunningProcessesResponse(
@@ -86,5 +102,6 @@ export function transformRunningProcessesResponse(
 ): RunningProcessesResponse {
   return {
     processes: raw.processes.map(transformRunningProcess),
+    ideationSessions: raw.ideation_sessions.map(transformRunningIdeationSession),
   };
 }

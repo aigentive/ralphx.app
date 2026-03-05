@@ -962,6 +962,7 @@ function AppContent() {
                       onStop={handleStop}
                       showBattleModeToggle={false}
                       runningProcesses={runningProcessesData?.processes ?? []}
+                      ideationSessions={runningProcessesData?.ideationSessions ?? []}
                       onPauseProcess={handlePauseProcess}
                       onStopProcess={handleStopProcess}
                       onOpenSettings={handleOpenSettings}
@@ -997,6 +998,7 @@ function AppContent() {
                       onBattleModeToggle={handleBattleModeToggle}
                       showBattleModeToggle
                       runningProcesses={runningProcessesData?.processes ?? []}
+                      ideationSessions={runningProcessesData?.ideationSessions ?? []}
                       onPauseProcess={handlePauseProcess}
                       onStopProcess={handleStopProcess}
                       onOpenSettings={handleOpenSettings}
@@ -1037,6 +1039,7 @@ function AppContent() {
                       onStop={handleStop}
                       showBattleModeToggle={false}
                       runningProcesses={runningProcessesData?.processes ?? []}
+                      ideationSessions={runningProcessesData?.ideationSessions ?? []}
                       onPauseProcess={handlePauseProcess}
                       onStopProcess={handleStopProcess}
                       onOpenSettings={handleOpenSettings}
