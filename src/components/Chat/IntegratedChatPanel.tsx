@@ -576,11 +576,24 @@ export function IntegratedChatPanel({
   // Sort messages by createdAt always. Secondary sort by id provides stable
   // tiebreaking when timestamps are equal (e.g. optimistic + DB messages share ms).
   const sortedMessages = useMemo(() => {
-    return [...messagesData].sort((a, b) => {
-      const timeDiff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-      if (timeDiff !== 0) return timeDiff;
-      return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
-    });
+    return [...messagesData]
+      // Hide session recovery rehydration prompts from UI.
+      // Primary: metadata flag set by backend. Fallback: content prefix for pre-existing rows.
+      .filter((msg) => {
+        if (msg.metadata) {
+          try {
+            const meta = JSON.parse(msg.metadata);
+            if (meta.recovery_context) return false;
+          } catch { /* not JSON, keep message */ }
+        }
+        if (msg.role === "user" && msg.content.startsWith("<instructions>")) return false;
+        return true;
+      })
+      .sort((a, b) => {
+        const timeDiff = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+        if (timeDiff !== 0) return timeDiff;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
   }, [messagesData]);
 
   // Loading state: show skeleton when conversations list is loading OR active conversation is loading

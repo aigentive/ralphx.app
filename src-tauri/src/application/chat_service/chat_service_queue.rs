@@ -147,12 +147,16 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
             }
 
             // Persist user message
-            let user_msg = chat_service_context::create_user_message(
+            let mut user_msg = chat_service_context::create_user_message(
                 context_type,
                 context_id,
                 &queued_msg.content,
                 conversation_id,
             );
+            // Mark session recovery rehydration prompts so the frontend can hide them
+            if queued_msg.content.starts_with("<instructions>") {
+                user_msg.metadata = Some(r#"{"recovery_context":true}"#.to_string());
+            }
             let user_msg_id = user_msg.id.as_str().to_string();
             let user_msg_created_at = user_msg.created_at.to_rfc3339();
             let _ = chat_message_repo.create(user_msg).await;
