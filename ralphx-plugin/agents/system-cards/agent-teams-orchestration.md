@@ -5,192 +5,22 @@
 
 ## Tool Reference
 
-### TeamCreate — Create a team
+| Tool | Purpose | Audience | Key Args / Notes |
+|------|---------|----------|------------------|
+| `TeamCreate` | Create team config + shared task directory | both | `team_name` (use `ideation-<session_id>` for ideation teams), `description` |
+| `TaskCreate` | Add work items to team's shared task list | both | `subject` (imperative), `description` (full context), `activeForm` (spinner text) |
+| `Task` | Spawn a teammate subprocess | both | `subagent_type: "general-purpose"`, `name` (unique within team), `team_name`, `prompt`, `model`, `mode: "bypassPermissions"`. Ideation: `run_in_background: true`. Execution: foreground only (MCP requires it). |
+| `SendMessage` | Communicate with teammates | both | `type: "message"\|"broadcast"\|"shutdown_request"`, `recipient` (teammate name), `content`, `summary`. Broadcast = N API calls — use only for critical team-wide issues. |
+| `TaskUpdate` | Assign tasks, set status, add dependencies | both | `taskId`, `owner`, `status`, `addBlockedBy` |
+| `TaskList` | Check team progress — all tasks + owners | both | (no args) |
+| `TeamDelete` | Cleanup after shutdown | both | (no args) — only after `shutdown_response(approve)` from all teammates |
+| `request_team_plan` | **BLOCKING** — request human approval before spawning | both | `process: "ideation"\|"worker-execution"`, `teammates: [{role, model, prompt_summary}]`. Backend records plan but does NOT auto-spawn. Lead waits for approval before calling `Task`. |
+| `save_team_session_state` | Persist team state for recovery after interruption | ideation | `session_id`, `state` (JSON: phase, teammates, tasks, artifacts so far) |
+| `get_team_session_state` | Restore prior state at Phase 0 RECOVER | ideation | `session_id` — returns saved state or null if fresh session |
 
-Creates the team config and shared task list on disk.
+**Parallel spawning:** Emit ALL `Task` calls in one response. Multiple calls in one message = simultaneous launch.
 
-```json
-{
-  "team_name": "ideation-<session_id>",
-  "description": "Research team for <topic>"
-}
-```
-
-Creates:
-- `~/.claude/teams/<team_name>/config.json` — membership registry (auto-populated as teammates join)
-- `~/.claude/tasks/<team_name>/` — shared task list directory
-
-**Naming convention:** Always use `ideation-<session_id>` for ideation teams so the team name maps to the session.
-
----
-
-### TaskCreate — Add work items to the shared task list
-
-```json
-{
-  "subject": "Research React state management patterns",
-  "description": "Investigate existing hooks, stores, and data flow in src/hooks/ and src/stores/. Document patterns for state synchronization between Kanban and detail views.",
-  "activeForm": "Researching React state patterns"
-}
-```
-
-- `subject`: imperative form, concise (e.g., "Research X", "Analyze Y")
-- `description`: full context — what to investigate, which files/dirs, expected output
-- `activeForm`: present continuous form shown in UI spinner while in_progress
-
-Tasks get auto-incremented IDs (1, 2, 3...). Set dependencies via `TaskUpdate` with `addBlockedBy`.
-
----
-
-### Task — Spawn a teammate subprocess
-
-This is the critical tool. Each call spawns an independent Claude Code subprocess that joins the team.
-
-```json
-{
-  "subagent_type": "general-purpose",
-  "name": "frontend-researcher",
-  "team_name": "ideation-<session_id>",
-  "description": "Research frontend patterns",
-  "prompt": "<full instructions — see Prompt Authoring below>",
-  "model": "sonnet",
-  "mode": "bypassPermissions",
-  "run_in_background": true
-}
-```
-
-#### Parameters explained
-
-| Parameter | Required | Values | Purpose |
-|-----------|----------|--------|---------|
-| `subagent_type` | Yes | `"general-purpose"` (default for teammates) | Determines available tools. `general-purpose` = all tools (Read, Write, Edit, Bash, Glob, Grep, Task tools, SendMessage) |
-| `name` | Yes | e.g. `"frontend-researcher"`, `"backend-analyst"` | Human-readable name. Used for `SendMessage` recipient, task ownership, team config. Must be unique within the team |
-| `team_name` | Yes | Must match `TeamCreate` name | Joins this team, gets access to shared task list |
-| `description` | Yes | 3-5 words | Short summary shown in UI |
-| `prompt` | Yes | Full instructions string | Everything the teammate needs — they cannot see your conversation history |
-| `model` | No | `"haiku"`, `"sonnet"`, `"opus"` | Model powering the teammate. See Model Selection below |
-| `mode` | No | `"default"`, `"bypassPermissions"`, `"plan"` | Permission mode. `bypassPermissions` lets teammate edit/run without asking. `plan` requires plan approval before implementation |
-| `run_in_background` | No | `true` / `false` | `true` = async launch (returns immediately, teammate runs in background). Required for parallel spawning |
-
-#### Parallel spawning
-
-To launch multiple teammates concurrently, include multiple `Task` tool calls in a **single message**:
-
-```
-Message contains 3 Task calls (all in one response):
-  Task { name: "frontend-researcher", ... }
-  Task { name: "backend-analyst", ... }
-  Task { name: "infra-specialist", ... }
-```
-
-They launch simultaneously as independent subprocesses.
-
-#### Model selection guide
-
-| Model | Cost | Use When |
-|-------|------|----------|
-| `haiku` | Lowest | Simple file searches, data collection, straightforward lookups |
-| `sonnet` | Medium | Code analysis, pattern research, most research tasks |
-| `opus` | Highest | Architecture decisions, complex synthesis, cross-system analysis |
-
-Default to `sonnet` for research teammates. Use `opus` only for architectural analysis or synthesis tasks.
-
----
-
-### SendMessage — Communicate with teammates
-
-#### Direct message (most common)
-
-```json
-{
-  "type": "message",
-  "recipient": "frontend-researcher",
-  "content": "Backend team found shared types need an `email` field. Check if your frontend components handle this.",
-  "summary": "Relay backend finding about email field"
-}
-```
-
-- `recipient`: teammate's `name` (from Task spawn)
-- `content`: the full message text
-- `summary`: 5-10 word preview shown in UI
-
-#### Broadcast (use sparingly — sends to ALL teammates)
-
-```json
-{
-  "type": "broadcast",
-  "content": "STOP: Breaking change found in base types. Hold all work until resolved.",
-  "summary": "Critical blocking issue found"
-}
-```
-
-**Warning:** Broadcast sends a separate message to every teammate. N teammates = N API calls. Only use for critical team-wide issues.
-
-#### Shutdown request
-
-```json
-{
-  "type": "shutdown_request",
-  "recipient": "frontend-researcher",
-  "content": "Research complete, wrapping up session"
-}
-```
-
-The teammate receives a shutdown request and must respond with `shutdown_response` (approve/reject). Wait for approval before calling `TeamDelete`.
-
----
-
-### TaskUpdate — Manage tasks
-
-#### Assign a task to a teammate
-
-```json
-{
-  "taskId": "1",
-  "owner": "frontend-researcher",
-  "status": "in_progress"
-}
-```
-
-#### Mark task complete
-
-```json
-{
-  "taskId": "1",
-  "status": "completed"
-}
-```
-
-#### Set dependencies
-
-```json
-{
-  "taskId": "3",
-  "addBlockedBy": ["1", "2"]
-}
-```
-
-Task #3 cannot start until #1 and #2 are completed.
-
----
-
-### TaskList — Check team progress
-
-```json
-{}
-```
-
-Returns all tasks with: id, subject, status, owner, blockedBy. Use this to monitor progress and find unassigned work.
-
----
-
-### TeamDelete — Cleanup after shutdown
-
-```json
-{}
-```
-
-Removes team config and task directories. **Only call after all teammates have confirmed shutdown** via `shutdown_response(approve)`.
+**Model guide:** `haiku` — simple lookups | `sonnet` — most tasks (default) | `opus` — architecture/synthesis
 
 ---
 
@@ -232,54 +62,47 @@ TeamDelete
 
 ---
 
+## Artifact Workflow (Ideation Teams)
+
+```
+Teammates → create_team_artifact(type: "TeamResearch")
+                    |
+                    ↓
+Lead → get_team_artifacts() → synthesize findings
+                    |
+                    ↓
+Lead → create_team_artifact(type: "TeamSummary")
+                    |
+                    ↓
+Lead → create_plan_artifact() — links to TeamSummary
+                    |
+                    ↓
+Plan artifact linked to session — proposals reference it
+```
+
+Teammates ALWAYS create a TeamResearch artifact (not just SendMessage). The lead synthesizes into TeamSummary, then creates the plan artifact.
+
+---
+
 ## Prompt Authoring for Teammates
 
 The `prompt` parameter is the ONLY context the teammate receives. It must be self-contained.
 
-### Required sections in every teammate prompt
+| Required Section | Content | Why |
+|-----------------|---------|-----|
+| Role identity | `"You are {role} on team {team-name}"` | No implicit context |
+| Mission | Specific scope + hard boundaries | Prevents overlap with other teammates |
+| Codebase context | Project overview + relevant dirs/files | No shared history |
+| Files to investigate | Specific paths (not "find X") | Saves search rounds |
+| Expected output | Numbered deliverables | Defines done |
+| When done | `create_team_artifact` → `SendMessage` to lead → `TaskUpdate` complete | Audit trail + progress |
 
-```
-You are {role-name} on team {team-name}.
-
-## Your Mission
-{What to research/analyze — be specific about scope}
-
-## Codebase Context
-- Project: RalphX — Native Mac GUI for autonomous AI dev
-- Frontend: React/TS in src/ (Zustand, TanStack Query, Tailwind)
-- Backend: Rust/Tauri in src-tauri/ (Clean architecture, SQLite)
-{Add domain-specific context relevant to this teammate's scope}
-
-## Files to Investigate
-{List specific directories and files — don't make them search blindly}
-
-## Expected Output
-1. {Specific deliverable — e.g., "List of existing patterns with file locations"}
-2. {Specific deliverable — e.g., "Integration constraints affecting other teammates"}
-3. {Specific deliverable — e.g., "Recommended approach with trade-offs"}
-
-## When Done
-1. Create a research artifact:
-   Use the MCP tool `create_team_artifact` with:
-   - session_id: "{session_id}"
-   - title: "{Your Role} Research Findings"
-   - content: "{your findings in markdown}"
-   - artifact_type: "TeamResearch"
-
-2. Send a summary message to the team lead:
-   Use SendMessage with type: "message", recipient: "team-lead" (or whatever your name is)
-
-3. Mark your task as completed:
-   Use TaskUpdate with taskId: "{task_id}", status: "completed"
-```
-
-### Prompt tips
-
-- **Be specific about files**: "Read `src/stores/ideationStore.ts`" not "find the ideation store"
-- **Set clear boundaries**: "Only investigate frontend hooks — the backend team handles Rust"
-- **Include session_id**: Teammates need it for MCP tool calls
-- **Include task_id**: So they can mark their task complete
-- **Give context about other teammates**: "A backend-analyst is researching the Rust service layer. If you find cross-layer issues, message me."
+**Tips:**
+- Include `session_id` — required for MCP tool calls
+- Include `task_id` — so teammates can mark their task complete
+- Name other teammates and their scope — prevents duplicate work
+- Scope boundaries: "Only investigate frontend hooks — backend team handles Rust"
+- Use `mode: "bypassPermissions"` — teammates should not prompt for permissions
 
 ---
 
@@ -298,125 +121,71 @@ Include these in the teammate's prompt instructions so they know which MCP tools
 
 ---
 
-## Complete Example: Research Team for a Feature
+## Complete Example: Research Team
 
 ```
-Phase 0: RECOVER — read this system card, check session state
+Phase 0: RECOVER
+  → get_team_session_state(session_id) — check for prior interrupted state
+  → Read this system card
 
-Phase 2: TEAM COMPOSITION
-  → Decided: 2 specialists (frontend-researcher, backend-analyst)
-  → Call request_team_plan() for user approval
-  → User approves (backend records the plan but does NOT spawn teammates)
+Phase 1: COMPOSE
+  → Analyze task → decide roles (e.g., frontend-researcher, backend-analyst)
+
+Phase 2: APPROVE
+  → request_team_plan(process="ideation", teammates=[...]) — BLOCKS until user approves
+  → save_team_session_state(session_id, {phase: "approved", teammates: [...]})
 
 Phase 3: EXPLORE (after approval)
-  → Lead creates team and spawns teammates natively
-
-  Step 1: TeamCreate
-    team_name: "ideation-abc123"
-    description: "Research team for user auth feature"
-
-  Step 2: TaskCreate (x2)
-    Task #1: "Research frontend auth patterns"
-    Task #2: "Research backend auth service layer"
-
-  Step 3: Task (spawn both in ONE message)
-    Teammate 1: name="frontend-researcher", model="sonnet", task=#1
-    Teammate 2: name="backend-analyst", model="sonnet", task=#2
-
-  Step 4: Monitor
-    - Read automatic messages from teammates
-    - Relay cross-layer discoveries via SendMessage
-    - Wait for both to mark tasks complete
+  → TeamCreate(team_name="ideation-<session_id>")
+  → TaskCreate x2 (Task #1: frontend research, Task #2: backend research)
+  → Task x2 in ONE message — parallel spawn, run_in_background: true
+  → Monitor: read messages, relay cross-layer findings via SendMessage
 
 Phase 4: PLAN
-  - get_team_artifacts() to collect all TeamResearch
-  - Synthesize into master plan
-  - create_plan_artifact()
+  → get_team_artifacts() — collect all TeamResearch artifacts
+  → create_team_artifact(type="TeamSummary") — synthesize findings
+  → create_plan_artifact() — links to TeamSummary
 
-Phase 7: FINALIZE
-  - SendMessage shutdown_request to each teammate
-  - Wait for shutdown_response(approve) from each
-  - TeamDelete
+Phase 5: FINALIZE
+  → SendMessage shutdown_request to each teammate
+  → Wait for shutdown_response(approve) from each
+  → TeamDelete
 ```
 
 ---
 
-## Complete Example: Execution Team for a Task
-
-Worker-team leads coordinate coder teammates for wave-based implementation. Unlike ideation teams (research-focused), execution teams write code with exclusive file ownership and validation gates.
+## Complete Example: Execution Team
 
 ```
-Phase 0: RECOVER — read this system card, check team session state
+Phase 0: RECOVER
+  → get_team_session_state(task_id) — check for prior interrupted state
 
 Phase 1: ANALYZE
-  → get_task_context(task_id) → full task details + plan artifact
-  → get_artifact(plan_artifact_id) → extract implementation plan for this task
-  → get_project_analysis(project_id, task_id) → validation commands + environment baseline
+  → get_task_context(task_id) + get_artifact(plan_artifact_id)
+  → get_project_analysis(project_id, task_id) — validation baseline
 
 Phase 2: DECOMPOSE
-  → Break task into atomic sub-scopes with file ownership:
-     Scope 1: API types (src/types/auth.ts) — Wave 1
-     Scope 2: Backend handlers (src-tauri/src/http_server/handlers/auth.rs) — Wave 1
-     Scope 3: React hooks (src/hooks/useAuth.ts) — Wave 2 (depends on #1, #2)
-     Scope 4: Tests (tests/auth.test.ts) — Wave 3 (depends on all)
+  → Break into file-ownership scopes with wave ordering:
+     Wave 1: types + backend handler (independent, no deps)
+     Wave 2: React hooks (depends on Wave 1 outputs)
+     Wave 3: Tests (depends on all)
 
 Phase 3: APPROVE
-  → request_team_plan(process="worker-execution", teammates=[
-       { role: "coder-1", model: "sonnet", prompt_summary: "Implement API types" },
-       { role: "coder-2", model: "sonnet", prompt_summary: "Implement backend handlers" }
-     ])
-  → User approves in UI → proceed
+  → request_team_plan(process="worker-execution", teammates=[...]) — BLOCKS until approval
 
-Phase 4: EXECUTE (wave-by-wave)
+Phase 4: EXECUTE (wave-by-wave — foreground only, MCP required)
+  Wave 1:
+    → TeamCreate + TaskCreate x2
+    → Task x2 in ONE message (no run_in_background)
+    → Each coder: start_step → implement → complete_step → SendMessage to lead
+    → Wave gate: npm run typecheck + cargo test --lib (all must pass before Wave 2)
+  Wave 2+: repeat with dependent scopes, passing Wave 1 outputs as context in prompt
 
-  -- Wave 1 --
-  Step 1: TeamCreate
-    team_name: "task-42"
-    description: "Execution team for user auth"
-
-  Step 2: TaskCreate (x2)
-    Task #1: "Implement API types" (file ownership: src/types/auth.ts)
-    Task #2: "Implement backend handlers" (file ownership: src-tauri/.../auth.rs)
-
-  Step 3: Spawn coders FOREGROUND (NO run_in_background — MCP requires it)
-    Coder 1: name="coder-1", model="sonnet", mode="bypassPermissions"
-      → Coder calls start_step(task_id, "Implement auth types")
-      → Coder writes code, calls complete_step(task_id, "Implement auth types")
-      → Coder sends message to lead: "Auth types done, exported UserResponse"
-      → Coder marks task completed
-    Coder 2: name="coder-2", model="sonnet", mode="bypassPermissions"
-      → Same flow with start_step / complete_step for progress tracking
-
-  Step 4: Wave validation gate
-    → get_project_analysis(project_id, task_id) → get validation commands
-    → Run: npm run typecheck, cargo test --lib
-    → All pass → proceed to Wave 2
-    → Any fail → create fix tasks, spawn fix coders, re-validate (max 3 attempts)
-
-  -- Wave 2 --
-  Step 5: TaskCreate for dependent scopes (React hooks)
-    → Spawn coder-3 with context: "Wave 1 outputs: auth types at src/types/auth.ts"
-    → Coder uses start_step / complete_step for progress
-    → Wave validation gate (same as Step 4)
-
-  -- Wave 3 --
-  Step 6: TaskCreate for tests
-    → Spawn coder-4
-    → Final wave validation gate
-
-Phase 5: VALIDATE (final)
+Phase 5: VALIDATE + COMPLETE
   → Run ALL validation: typecheck + lint + tests
-  → Gate passes → proceed to COMPLETE
-
-Phase 6: COMPLETE
-  → Mark task complete via MCP
-  → SendMessage shutdown_request to each coder
-  → Wait for shutdown_response(approve) from each
-  → TeamDelete
-  → Provide execution summary (waves, coders, files modified, validation status)
+  → execution_complete(task_id)
+  → SendMessage shutdown_request to each coder → wait → TeamDelete
 ```
-
-**Key differences from ideation teams:**
 
 | Aspect | Ideation Team | Execution Team |
 |--------|---------------|----------------|
