@@ -244,9 +244,10 @@ pub async fn resolve_merge_conflict(
 
     // Commit the resolved merge
     let commit_message = format!("Merge resolution for task: {}", task.title);
-    let commit_sha = GitService::commit_all(&working_path, &commit_message)
-        .await
-        .map_err(|e| format!("Failed to commit resolved merge: {}", e))?;
+    let commit_sha =
+        GitService::commit_all_including_deletions(&working_path, &commit_message)
+            .await
+            .map_err(|e| format!("Failed to commit resolved merge: {}", e))?;
 
     // Update task with merge commit SHA if commit was made
     if let Some(sha) = &commit_sha {

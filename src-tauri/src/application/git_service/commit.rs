@@ -6,24 +6,45 @@ impl GitService {
     // Commit Operations
     // =========================================================================
 
-    /// Stage all changes and create a commit
+    /// Stage modified/new files (excluding deletions) and create a commit.
     ///
-    /// Returns the commit SHA if a commit was created, None if there was nothing to commit.
+    /// SAFETY: This intentionally does NOT stage file deletions. Using `git add -A`
+    /// in worktrees would stage deletions for every file absent from the worktree
+    /// but present in the repo, causing catastrophic data loss on auto-commit.
     ///
-    /// # Arguments
-    /// * `path` - Path to the git repository or worktree
-    /// * `message` - Commit message
+    /// For merge conflict resolution where deletions are intentional, use
+    /// `commit_all_including_deletions` instead.
+    ///
+    /// # Errors
+    /// Returns `AppError::GitOperation` if git commands fail.
     pub async fn commit_all(path: &Path, message: &str) -> AppResult<Option<String>> {
         debug!(
             "Committing all changes in {:?} with message: {}",
             path, message
         );
 
-        // Stage all changes
-        // git add -A respects .gitignore, so node_modules and src-tauri/target
-        // are automatically excluded without needing pathspec guards.
-        let add_output = git_cmd::run(&["add", "-A"], path).await?;
+        Self::stage_non_deletion_changes(path).await?;
 
+        Self::commit_staged(path, message).await
+    }
+
+    /// Stage ALL changes including deletions and create a commit.
+    ///
+    /// Only use this for merge conflict resolution where the user has intentionally
+    /// resolved conflicts (which may include file deletions).
+    ///
+    /// # Errors
+    /// Returns `AppError::GitOperation` if git commands fail.
+    pub async fn commit_all_including_deletions(
+        path: &Path,
+        message: &str,
+    ) -> AppResult<Option<String>> {
+        debug!(
+            "Committing all changes (including deletions) in {:?} with message: {}",
+            path, message
+        );
+
+        let add_output = git_cmd::run(&["add", "-A"], path).await?;
         if !add_output.status.success() {
             let stderr = String::from_utf8_lossy(&add_output.stderr);
             return Err(AppError::GitOperation(format!(
@@ -32,13 +53,85 @@ impl GitService {
             )));
         }
 
-        // Check if there's anything to commit
+        Self::commit_staged(path, message).await
+    }
+
+    /// Stage modified and new files, skipping deletions.
+    ///
+    /// Uses `git status --porcelain -z` for NUL-separated output that handles
+    /// filenames with spaces, quotes, and special characters without quoting.
+    async fn stage_non_deletion_changes(path: &Path) -> AppResult<()> {
+        // -z: NUL-separated, no quoting — safe for all filenames
+        let status_output = git_cmd::run(&["status", "--porcelain", "-z"], path).await?;
+        if !status_output.status.success() {
+            let stderr = String::from_utf8_lossy(&status_output.stderr);
+            return Err(AppError::GitOperation(format!(
+                "Failed to get git status: {}",
+                stderr
+            )));
+        }
+
+        let stdout = String::from_utf8_lossy(&status_output.stdout);
+        let mut files_to_stage: Vec<String> = Vec::new();
+        let mut skipped_deletions: Vec<String> = Vec::new();
+
+        // Format: "XY filename\0" — renames have two entries: "R  newname\0oldname\0"
+        let entries: Vec<&str> = stdout.split('\0').collect();
+        let mut i = 0;
+        while i < entries.len() {
+            let entry = entries[i];
+            if entry.is_empty() {
+                i += 1;
+                continue;
+            }
+
+            let status_code = entry.get(..2).unwrap_or("");
+            let filename = entry.get(3..).unwrap_or("");
+
+            if status_code.contains('D') {
+                skipped_deletions.push(filename.to_string());
+                i += 1;
+                continue;
+            }
+
+            // Renames (R) and copies (C) have a second NUL-separated entry (old name)
+            if status_code.starts_with('R') || status_code.starts_with('C') {
+                files_to_stage.push(filename.to_string());
+                i += 2; // skip the old-name entry
+                continue;
+            }
+
+            files_to_stage.push(filename.to_string());
+            i += 1;
+        }
+
+        if !skipped_deletions.is_empty() {
+            tracing::warn!(
+                count = skipped_deletions.len(),
+                files = ?skipped_deletions,
+                "Skipped staging {} deleted file(s) in auto-commit (safety: prevents worktree deletion propagation)",
+                skipped_deletions.len()
+            );
+        }
+
+        for file in &files_to_stage {
+            let add_output = git_cmd::run(&["add", "--", file], path).await?;
+            if !add_output.status.success() {
+                let stderr = String::from_utf8_lossy(&add_output.stderr);
+                tracing::warn!("Failed to stage file {}: {}", file, stderr);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Commit whatever is currently staged, returning the SHA or None if nothing staged.
+    async fn commit_staged(path: &Path, message: &str) -> AppResult<Option<String>> {
         if !Self::has_staged_changes(path).await? {
             debug!("No changes to commit");
             return Ok(None);
         }
 
-        // Create the commit
         let commit_output = git_cmd::run(&["commit", "-m", message], path).await?;
 
         if !commit_output.status.success() {
@@ -49,7 +142,6 @@ impl GitService {
             )));
         }
 
-        // Get the commit SHA
         let sha = Self::get_head_sha(path).await?;
         Ok(Some(sha))
     }
