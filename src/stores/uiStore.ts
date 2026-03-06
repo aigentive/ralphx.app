@@ -18,6 +18,8 @@ import {
   loadCollapsedColumns,
   saveCollapsedColumns,
 } from "@/components/tasks/TaskBoard/Column.utils";
+import { useIdeationStore } from "@/stores/ideationStore";
+import { useProjectStore } from "@/stores/projectStore";
 
 enableMapSet();
 
@@ -74,6 +76,47 @@ function applyTaskSelection(
 
 function saveChatVisibility(visibility: Record<ViewType, boolean>): void {
   localStorage.setItem(CHAT_VISIBILITY_KEY, JSON.stringify(visibility));
+}
+
+// ============================================================================
+// Per-Project Route Persistence
+// ============================================================================
+
+const VIEW_BY_PROJECT_KEY = "ralphx-views-by-project";
+const SESSION_BY_PROJECT_KEY = "ralphx-sessions-by-project";
+
+function loadViewByProject(): Record<string, ViewType> {
+  try {
+    const stored = localStorage.getItem(VIEW_BY_PROJECT_KEY);
+    return stored ? (JSON.parse(stored) as Record<string, ViewType>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveViewByProject(map: Record<string, ViewType>): void {
+  try {
+    localStorage.setItem(VIEW_BY_PROJECT_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore write errors */
+  }
+}
+
+function loadSessionByProject(): Record<string, string | null> {
+  try {
+    const stored = localStorage.getItem(SESSION_BY_PROJECT_KEY);
+    return stored ? (JSON.parse(stored) as Record<string, string | null>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSessionByProject(map: Record<string, string | null>): void {
+  try {
+    localStorage.setItem(SESSION_BY_PROJECT_KEY, JSON.stringify(map));
+  } catch {
+    /* ignore write errors */
+  }
 }
 
 // ============================================================================
@@ -190,6 +233,10 @@ interface UiState {
   activityFilter: ActivityFilter;
   /** Set of collapsed column IDs (persisted to localStorage) */
   collapsedColumns: Set<string>;
+  /** Per-project last view (persisted to localStorage) */
+  viewByProject: Record<string, ViewType>;
+  /** Per-project last ideation session ID (persisted to localStorage) */
+  sessionByProject: Record<string, string | null>;
 }
 
 // ============================================================================
@@ -306,6 +353,10 @@ interface UiActions {
   setCollapsedColumns: (columns: Set<string>) => void;
   /** Set the view to return to when leaving team split view */
   setPreviousView: (view: ViewType | null) => void;
+  /** Atomically save old project state, restore new project state, clear ephemeral state */
+  switchToProject: (oldProjectId: string | null, newProjectId: string) => void;
+  /** Remove stale per-project route entries for a deleted project */
+  cleanupProjectRoute: (projectId: string) => void;
 }
 
 // ============================================================================
@@ -353,6 +404,8 @@ export const useUiStore = create<UiState & UiActions>()(
     previousView: null,
     activityFilter: { taskId: null, sessionId: null },
     collapsedColumns: loadCollapsedColumns(),
+    viewByProject: loadViewByProject(),
+    sessionByProject: loadSessionByProject(),
 
     // Actions
     toggleSidebar: () =>
@@ -392,7 +445,12 @@ export const useUiStore = create<UiState & UiActions>()(
 
     setCurrentView: (view) =>
       set((state) => {
+        const projectId = useProjectStore.getState().activeProjectId;
         state.currentView = view;
+        if (projectId) {
+          state.viewByProject[projectId] = view;
+          saveViewByProject(state.viewByProject);
+        }
       }),
 
     openModal: (type, context) =>
@@ -679,6 +737,45 @@ export const useUiStore = create<UiState & UiActions>()(
     setPreviousView: (view) =>
       set((state) => {
         state.previousView = view;
+      }),
+
+    switchToProject: (oldProjectId, newProjectId) =>
+      set((state) => {
+        // SAVE phase — skip if oldProjectId is null (first load)
+        if (oldProjectId) {
+          state.viewByProject[oldProjectId] = state.currentView;
+          state.sessionByProject[oldProjectId] = useIdeationStore.getState().activeSessionId;
+        }
+
+        // RESTORE phase — resolve view, fallback ephemeral views to kanban
+        let restoredView: ViewType = state.viewByProject[newProjectId] ?? "kanban";
+        if (restoredView === "task_detail" || restoredView === "team") {
+          restoredView = "kanban";
+        }
+
+        // Persist updated maps
+        saveViewByProject(state.viewByProject);
+        saveSessionByProject(state.sessionByProject);
+
+        // CLEAN + RESTORE (atomic)
+        state.currentView = restoredView;
+        state.selectedTaskId = null;
+        state.graphSelection = null;
+        state.taskHistoryState = null;
+        state.boardSearchQuery = null;
+        state.battleModeActive = false;
+        state.battleModePanelRestoreState = null;
+        state.activityFilter = { taskId: null, sessionId: null };
+        state.graphRightPanelUserOpen = false;
+        state.graphRightPanelCompactOpen = false;
+      }),
+
+    cleanupProjectRoute: (projectId) =>
+      set((state) => {
+        delete state.viewByProject[projectId];
+        delete state.sessionByProject[projectId];
+        saveViewByProject(state.viewByProject);
+        saveSessionByProject(state.sessionByProject);
       }),
   }))
 );

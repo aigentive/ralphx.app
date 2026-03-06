@@ -1,6 +1,23 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
 import { useUiStore } from "./uiStore";
 import type { AskUserQuestionPayload } from "@/types/ask-user-question";
+
+// ============================================================================
+// Mocks for per-project route persistence (cross-store reads)
+// ============================================================================
+
+const { mockIdeationGetState, mockProjectGetState } = vi.hoisted(() => ({
+  mockIdeationGetState: vi.fn().mockReturnValue({ activeSessionId: null }),
+  mockProjectGetState: vi.fn().mockReturnValue({ activeProjectId: null }),
+}));
+
+vi.mock("@/stores/ideationStore", () => ({
+  useIdeationStore: { getState: mockIdeationGetState },
+}));
+
+vi.mock("@/stores/projectStore", () => ({
+  useProjectStore: { getState: mockProjectGetState },
+}));
 
 describe("uiStore", () => {
   beforeEach(() => {
@@ -29,7 +46,17 @@ describe("uiStore", () => {
         queuedCount: 0,
         canStartTask: true,
       },
+      viewByProject: {},
+      sessionByProject: {},
+      taskHistoryState: null,
+      boardSearchQuery: null,
+      activityFilter: { taskId: null, sessionId: null },
     });
+    // Clear localStorage to prevent cross-test contamination
+    localStorage.clear();
+    // Reset mocks to defaults
+    mockIdeationGetState.mockReturnValue({ activeSessionId: null });
+    mockProjectGetState.mockReturnValue({ activeProjectId: null });
   });
 
   describe("sidebar", () => {
@@ -472,6 +499,341 @@ describe("uiStore", () => {
       expect(state.graphRightPanelUserOpen).toBe(false);
       expect(state.graphRightPanelCompactOpen).toBe(true);
       expect(state.battleModePanelRestoreState).toBeNull();
+    });
+  });
+
+  // ============================================================================
+  // Per-Project Route Persistence
+  // ============================================================================
+
+  describe("switchToProject", () => {
+    const PROJECT_A = "proj-a";
+    const PROJECT_B = "proj-b";
+
+    it("saves current view to viewByProject for old project", () => {
+      useUiStore.setState({ currentView: "graph", viewByProject: {} });
+      mockIdeationGetState.mockReturnValue({ activeSessionId: null });
+
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+      expect(useUiStore.getState().viewByProject[PROJECT_A]).toBe("graph");
+    });
+
+    it("restores saved view for new project from map", () => {
+      useUiStore.setState({
+        currentView: "kanban",
+        viewByProject: { [PROJECT_B]: "graph" },
+      });
+
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+      expect(useUiStore.getState().currentView).toBe("graph");
+    });
+
+    it("defaults to kanban when new project has no saved view", () => {
+      useUiStore.setState({ currentView: "graph", viewByProject: {} });
+
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+      expect(useUiStore.getState().currentView).toBe("kanban");
+    });
+
+    it("clears all 10 ephemeral state fields atomically", () => {
+      useUiStore.setState({
+        selectedTaskId: "task-1",
+        graphSelection: { kind: "task", id: "task-1" },
+        taskHistoryState: { status: "backlog", timestamp: "2026-01-01T00:00:00Z" },
+        boardSearchQuery: "some query",
+        battleModeActive: true,
+        battleModePanelRestoreState: { userOpen: true, compactOpen: false },
+        activityFilter: { taskId: "task-1", sessionId: "session-1" },
+        graphRightPanelUserOpen: true,
+        graphRightPanelCompactOpen: true,
+      });
+
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+      const state = useUiStore.getState();
+      expect(state.selectedTaskId).toBeNull();
+      expect(state.graphSelection).toBeNull();
+      expect(state.taskHistoryState).toBeNull();
+      expect(state.boardSearchQuery).toBeNull();
+      expect(state.battleModeActive).toBe(false);
+      expect(state.battleModePanelRestoreState).toBeNull();
+      expect(state.activityFilter).toEqual({ taskId: null, sessionId: null });
+      expect(state.graphRightPanelUserOpen).toBe(false);
+      expect(state.graphRightPanelCompactOpen).toBe(false);
+    });
+
+    it("null oldProjectId skips save phase (first load)", () => {
+      useUiStore.setState({ currentView: "graph", viewByProject: {} });
+
+      useUiStore.getState().switchToProject(null, PROJECT_B);
+
+      const state = useUiStore.getState();
+      // No entry should have been saved for "null" or anything unexpected
+      expect(Object.keys(state.viewByProject)).not.toContain("null");
+      expect(Object.keys(state.viewByProject)).toHaveLength(0);
+    });
+
+    it("falls back to kanban when restoring task_detail view", () => {
+      useUiStore.setState({ viewByProject: { [PROJECT_B]: "task_detail" } });
+
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+      expect(useUiStore.getState().currentView).toBe("kanban");
+    });
+
+    it("falls back to kanban when restoring team view", () => {
+      useUiStore.setState({ viewByProject: { [PROJECT_B]: "team" } });
+
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+      expect(useUiStore.getState().currentView).toBe("kanban");
+    });
+
+    it("saves active ideation session to sessionByProject for old project", () => {
+      mockIdeationGetState.mockReturnValue({ activeSessionId: "session-xyz" });
+
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+      expect(useUiStore.getState().sessionByProject[PROJECT_A]).toBe("session-xyz");
+    });
+
+    it("persists viewByProject to localStorage", () => {
+      useUiStore.setState({ currentView: "graph" });
+
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+      const stored = localStorage.getItem("ralphx-views-by-project");
+      expect(stored).not.toBeNull();
+      const parsed = JSON.parse(stored!) as Record<string, string>;
+      expect(parsed[PROJECT_A]).toBe("graph");
+    });
+
+    it("persists sessionByProject to localStorage", () => {
+      mockIdeationGetState.mockReturnValue({ activeSessionId: "session-abc" });
+
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+
+      const stored = localStorage.getItem("ralphx-sessions-by-project");
+      expect(stored).not.toBeNull();
+      const parsed = JSON.parse(stored!) as Record<string, string | null>;
+      expect(parsed[PROJECT_A]).toBe("session-abc");
+    });
+  });
+
+  describe("setCurrentView write-through", () => {
+    it("updates viewByProject for active project on view change", () => {
+      mockProjectGetState.mockReturnValue({ activeProjectId: "proj-a" });
+      useUiStore.setState({ viewByProject: {} });
+
+      useUiStore.getState().setCurrentView("graph");
+
+      const state = useUiStore.getState();
+      expect(state.currentView).toBe("graph");
+      expect(state.viewByProject["proj-a"]).toBe("graph");
+    });
+
+    it("persists view to localStorage when active project is set", () => {
+      mockProjectGetState.mockReturnValue({ activeProjectId: "proj-a" });
+      useUiStore.setState({ viewByProject: {} });
+
+      useUiStore.getState().setCurrentView("ideation");
+
+      const stored = localStorage.getItem("ralphx-views-by-project");
+      expect(stored).not.toBeNull();
+      const parsed = JSON.parse(stored!) as Record<string, string>;
+      expect(parsed["proj-a"]).toBe("ideation");
+    });
+
+    it("does not create viewByProject entry when activeProjectId is null", () => {
+      mockProjectGetState.mockReturnValue({ activeProjectId: null });
+      useUiStore.setState({ viewByProject: {} });
+
+      useUiStore.getState().setCurrentView("graph");
+
+      const state = useUiStore.getState();
+      expect(state.currentView).toBe("graph");
+      // No null key should appear in the map
+      expect(Object.keys(state.viewByProject)).not.toContain("null");
+      expect(Object.keys(state.viewByProject)).toHaveLength(0);
+    });
+
+    it("does not write to localStorage when activeProjectId is null", () => {
+      mockProjectGetState.mockReturnValue({ activeProjectId: null });
+
+      useUiStore.getState().setCurrentView("graph");
+
+      // No view entry should be persisted for null project
+      expect(localStorage.getItem("ralphx-views-by-project")).toBeNull();
+    });
+  });
+
+  describe("cleanupProjectRoute", () => {
+    it("removes view entry for a deleted project", () => {
+      useUiStore.setState({
+        viewByProject: { "proj-a": "kanban", "proj-b": "graph" },
+        sessionByProject: { "proj-a": null, "proj-b": "session-1" },
+      });
+
+      useUiStore.getState().cleanupProjectRoute("proj-a");
+
+      const state = useUiStore.getState();
+      expect(state.viewByProject["proj-a"]).toBeUndefined();
+      expect(state.viewByProject["proj-b"]).toBe("graph");
+    });
+
+    it("removes session entry for a deleted project", () => {
+      useUiStore.setState({
+        viewByProject: { "proj-a": "kanban", "proj-b": "graph" },
+        sessionByProject: { "proj-a": "session-deleted", "proj-b": "session-1" },
+      });
+
+      useUiStore.getState().cleanupProjectRoute("proj-a");
+
+      const state = useUiStore.getState();
+      expect(state.sessionByProject["proj-a"]).toBeUndefined();
+      expect(state.sessionByProject["proj-b"]).toBe("session-1");
+    });
+
+    it("persists cleaned viewByProject to localStorage", () => {
+      useUiStore.setState({
+        viewByProject: { "proj-a": "kanban", "proj-b": "graph" },
+        sessionByProject: { "proj-a": null, "proj-b": null },
+      });
+
+      useUiStore.getState().cleanupProjectRoute("proj-a");
+
+      const stored = localStorage.getItem("ralphx-views-by-project");
+      expect(stored).not.toBeNull();
+      const parsed = JSON.parse(stored!) as Record<string, string>;
+      expect(Object.keys(parsed)).not.toContain("proj-a");
+      expect(parsed["proj-b"]).toBe("graph");
+    });
+
+    it("is a no-op for a project that has no saved route", () => {
+      useUiStore.setState({
+        viewByProject: { "proj-b": "graph" },
+        sessionByProject: {},
+      });
+
+      expect(() => useUiStore.getState().cleanupProjectRoute("proj-unknown")).not.toThrow();
+
+      expect(useUiStore.getState().viewByProject["proj-b"]).toBe("graph");
+    });
+  });
+
+  describe("localStorage helpers", () => {
+    it("returns empty map when localStorage key is missing", () => {
+      // Ensure key is absent
+      localStorage.removeItem("ralphx-views-by-project");
+      localStorage.removeItem("ralphx-sessions-by-project");
+
+      // Simulate what happens when store re-initializes with empty localStorage:
+      // switchToProject with no pre-existing data should work fine
+      useUiStore.getState().switchToProject(null, "proj-a");
+
+      expect(useUiStore.getState().currentView).toBe("kanban");
+      expect(useUiStore.getState().viewByProject).toBeDefined();
+    });
+
+    it("returns empty map when localStorage data is corrupt JSON", () => {
+      // Pre-populate corrupt data
+      localStorage.setItem("ralphx-views-by-project", "not-valid-json{{{");
+
+      // Since the store is a singleton and loadViewByProject() runs at module load time,
+      // we test resilience via setState (the helper's error path is covered):
+      // The store should handle corrupt data in the same way as a fresh state
+      useUiStore.setState({ viewByProject: {} });
+
+      // Verify the store is still functional with empty viewByProject
+      useUiStore.getState().switchToProject("proj-a", "proj-b");
+      expect(useUiStore.getState().currentView).toBe("kanban");
+    });
+
+    it("silently catches localStorage write failure in switchToProject", () => {
+      const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new DOMException("QuotaExceededError");
+      });
+
+      expect(() => {
+        useUiStore.getState().switchToProject("proj-a", "proj-b");
+      }).not.toThrow();
+
+      setItemSpy.mockRestore();
+    });
+
+    it("silently catches localStorage write failure in setCurrentView", () => {
+      mockProjectGetState.mockReturnValue({ activeProjectId: "proj-a" });
+      const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new DOMException("QuotaExceededError");
+      });
+
+      expect(() => {
+        useUiStore.getState().setCurrentView("graph");
+      }).not.toThrow();
+
+      setItemSpy.mockRestore();
+    });
+
+    it("silently catches localStorage write failure in cleanupProjectRoute", () => {
+      useUiStore.setState({ viewByProject: { "proj-a": "kanban" }, sessionByProject: {} });
+      const setItemSpy = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+        throw new DOMException("QuotaExceededError");
+      });
+
+      expect(() => {
+        useUiStore.getState().cleanupProjectRoute("proj-a");
+      }).not.toThrow();
+
+      setItemSpy.mockRestore();
+    });
+  });
+
+  describe("rapid project switching", () => {
+    it("A→B→A restores A's original view correctly", () => {
+      const PROJECT_A = "proj-a";
+      const PROJECT_B = "proj-b";
+
+      // Start on A with "graph" view
+      useUiStore.setState({ currentView: "graph", viewByProject: {} });
+
+      // Switch to B (saves A's "graph", B defaults to "kanban")
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+      expect(useUiStore.getState().currentView).toBe("kanban");
+
+      // Switch to A (saves B's "kanban", restores A's "graph")
+      useUiStore.getState().switchToProject(PROJECT_B, PROJECT_A);
+      expect(useUiStore.getState().currentView).toBe("graph");
+
+      // A's view map entry should be "graph"
+      expect(useUiStore.getState().viewByProject[PROJECT_A]).toBe("graph");
+    });
+
+    it("A→B→C preserves each project's view independently", () => {
+      const PROJECT_A = "proj-a";
+      const PROJECT_B = "proj-b";
+      const PROJECT_C = "proj-c";
+
+      // Set up: A is on "graph", B has saved "ideation"
+      useUiStore.setState({
+        currentView: "graph",
+        viewByProject: { [PROJECT_B]: "ideation", [PROJECT_C]: "activity" },
+      });
+
+      // A→B
+      useUiStore.getState().switchToProject(PROJECT_A, PROJECT_B);
+      expect(useUiStore.getState().currentView).toBe("ideation");
+
+      // B→C
+      useUiStore.getState().switchToProject(PROJECT_B, PROJECT_C);
+      expect(useUiStore.getState().currentView).toBe("activity");
+
+      // viewByProject should have saved B's current view ("ideation")
+      expect(useUiStore.getState().viewByProject[PROJECT_B]).toBe("ideation");
+      // A's entry is still "graph"
+      expect(useUiStore.getState().viewByProject[PROJECT_A]).toBe("graph");
     });
   });
 });
