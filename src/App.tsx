@@ -147,11 +147,15 @@ function AppContent() {
   const setChatWidth = useChatStore((s) => s.setWidth);
   const clearMessages = useChatStore((s) => s.clearMessages);
 
+  const switchToProject = useUiStore((s) => s.switchToProject);
+
   // Project state
   const activeProjectId = useProjectStore((s) => s.activeProjectId);
   const setProjects = useProjectStore((s) => s.setProjects);
   const addProject = useProjectStore((s) => s.addProject);
   const selectProject = useProjectStore((s) => s.selectProject);
+
+  const prevProjectIdRef = useRef<string | null>(activeProjectId);
 
   // Fetch projects from backend
   const { data: fetchedProjects, isLoading: isLoadingProjects } = useProjects();
@@ -308,6 +312,34 @@ function AppContent() {
       });
     }
   }, [activeProjectId]);
+
+  // Project switch: save/restore per-project view + ideation session
+  // Runs AFTER the setActiveProject backend sync effect (order matters in React)
+  useEffect(() => {
+    const prevId = prevProjectIdRef.current;
+    prevProjectIdRef.current = activeProjectId;
+
+    if (prevId !== activeProjectId && activeProjectId) {
+      // Atomic view state save/clean/restore
+      switchToProject(prevId, activeProjectId);
+
+      // Restore ideation session (separate store, same synchronous tick)
+      const sessionByProject = useUiStore.getState().sessionByProject;
+      const restoredSessionId = sessionByProject[activeProjectId] ?? null;
+
+      if (restoredSessionId) {
+        const sessions = useIdeationStore.getState().sessions;
+        if (sessions[restoredSessionId]) {
+          setActiveSession(restoredSessionId);
+        } else {
+          // Session was deleted/not yet loaded — don't restore stale ID
+          setActiveSession(null);
+        }
+      } else {
+        setActiveSession(null);
+      }
+    }
+  }, [activeProjectId, switchToProject, setActiveSession]);
 
   // Load persisted chat width from localStorage on mount
   useEffect(() => {
