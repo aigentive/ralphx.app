@@ -134,52 +134,54 @@ export function usePlanArtifactEvents() {
         }
 
         if (parsed.data.type === "updated") {
-          const { artifactId, previousArtifactId, artifact } = parsed.data;
+          const { sessionId, artifactId, previousArtifactId, artifact } =
+            parsed.data;
 
           // Dedup: skip if we already processed this exact event
           const eventKey = `updated:${artifact.id}:${artifact.version}`;
           if (lastProcessedRef.current === eventKey) return;
           lastProcessedRef.current = eventKey;
 
-          // Find the session that has this artifact linked
-          // Check active session first (most common case)
-          // Match against previousArtifactId because the store's session
-          // still holds the old artifact ID when this event arrives
           const currentSessions = sessionsRef.current;
           const currentActiveSessionId = activeSessionIdRef.current;
-          const activeSession = currentActiveSessionId
-            ? currentSessions[currentActiveSessionId]
-            : null;
-          const isActiveSessionArtifact =
-            activeSession?.planArtifactId === previousArtifactId ||
-            activeSession?.planArtifactId === artifactId;
 
-          if (isActiveSessionArtifact) {
-            // Update store directly for active session
-            const planArtifact: Artifact = {
-              id: artifact.id,
-              type: "specification",
-              name: artifact.name,
-              content: { type: "inline", text: artifact.content },
-              metadata: {
-                createdAt: new Date().toISOString(),
-                createdBy: AGENT_ORCHESTRATOR,
-                version: artifact.version,
-              },
-              derivedFrom: [],
-            };
+          const planArtifact: Artifact = {
+            id: artifact.id,
+            type: "specification",
+            name: artifact.name,
+            content: { type: "inline", text: artifact.content },
+            metadata: {
+              createdAt: new Date().toISOString(),
+              createdBy: AGENT_ORCHESTRATOR,
+              version: artifact.version,
+            },
+            derivedFrom: [],
+          };
+
+          // Tier 1: sessionId match — most reliable, use when backend provides it
+          if (sessionId && currentActiveSessionId === sessionId) {
             setPlanArtifactRef.current(planArtifact);
+            updateSessionRef.current(sessionId, { planArtifactId: artifact.id });
+            queryClientRef.current.invalidateQueries({
+              queryKey: ideationKeys.sessionWithData(sessionId),
+            });
+            return;
           }
 
-          // Immediately update planArtifactId on all matching sessions
-          // so the next rapid update event can still match.
-          // Without this, the session holds the old ID and subsequent
-          // events with a different previousArtifactId get silently dropped.
+          // Tier 2: planArtifactId matching — fallback when sessionId absent/null
+          // Match against previousArtifactId because the store's session
+          // still holds the old artifact ID when this event arrives.
+          // Immediately update planArtifactId so rapid subsequent events still match.
+          let tier2Matched = false;
           for (const session of Object.values(currentSessions)) {
             if (
               session.planArtifactId === previousArtifactId ||
               session.planArtifactId === artifactId
             ) {
+              tier2Matched = true;
+              if (session.id === currentActiveSessionId) {
+                setPlanArtifactRef.current(planArtifact);
+              }
               if (session.planArtifactId !== artifact.id) {
                 updateSessionRef.current(session.id, {
                   planArtifactId: artifact.id,
@@ -189,6 +191,14 @@ export function usePlanArtifactEvents() {
                 queryKey: ideationKeys.sessionWithData(session.id),
               });
             }
+          }
+
+          // Tier 3: safety net — if nothing matched but we have an active session,
+          // invalidate its query so it re-fetches and picks up the latest artifact
+          if (!tier2Matched && currentActiveSessionId) {
+            queryClientRef.current.invalidateQueries({
+              queryKey: ideationKeys.sessionWithData(currentActiveSessionId),
+            });
           }
         }
       })
