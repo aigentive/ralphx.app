@@ -238,6 +238,42 @@ impl MessageQueue {
         false
     }
 
+    /// Remove messages older than `threshold_secs` seconds from the queue.
+    ///
+    /// Returns the list of dropped messages so callers can emit warnings.
+    /// Messages with unparseable timestamps are retained (safe default).
+    /// Rehydration messages injected by `queue_front` are freshly created and
+    /// will always be within the threshold, so no special handling is needed.
+    pub fn remove_stale(
+        &self,
+        context_type: ChatContextType,
+        context_id: &str,
+        threshold_secs: u64,
+    ) -> Vec<QueuedMessage> {
+        let key = QueueKey::new(context_type, context_id.to_string());
+        let mut queues = self.queues.lock().unwrap();
+        let queue = match queues.get_mut(&key) {
+            Some(q) => q,
+            None => return vec![],
+        };
+
+        let now = chrono::Utc::now();
+        let mut dropped = vec![];
+        queue.retain(|msg| {
+            let is_stale = chrono::DateTime::parse_from_rfc3339(&msg.created_at)
+                .map(|ts| {
+                    let age = now.signed_duration_since(ts.with_timezone(&chrono::Utc));
+                    age.num_seconds() > threshold_secs as i64
+                })
+                .unwrap_or(false); // unparseable → retain (safe default)
+            if is_stale {
+                dropped.push(msg.clone());
+            }
+            !is_stale
+        });
+        dropped
+    }
+
     // =========================================================================
     // Backwards-compatible methods for TaskId (used by existing code)
     // =========================================================================

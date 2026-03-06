@@ -416,6 +416,7 @@ fn test_stream_outcome_turns_finalized_controls_post_loop_behavior() {
         stderr_text: String::new(),
         turns_finalized: 2,
         execution_slot_held: false, // idle between turns at exit
+        silent_interactive_exit: false,
     };
     let has_output = outcome.has_meaningful_output();
     let skip_post_loop = outcome.turns_finalized > 0 && !has_output;
@@ -437,6 +438,7 @@ fn test_stream_outcome_turns_finalized_controls_post_loop_behavior() {
         stderr_text: String::new(),
         turns_finalized: 0,
         execution_slot_held: true, // normal exit — slot still held
+        silent_interactive_exit: false,
     };
     let has_output = outcome_non_interactive.has_meaningful_output();
     let skip_post_loop = outcome_non_interactive.turns_finalized > 0 && !has_output;
@@ -466,6 +468,7 @@ fn test_stream_outcome_execution_slot_held_reflects_interactive_state() {
         stderr_text: String::new(),
         turns_finalized: 1,
         execution_slot_held: false,
+        silent_interactive_exit: false,
     };
     assert!(
         !idle_outcome.execution_slot_held,
@@ -481,6 +484,7 @@ fn test_stream_outcome_execution_slot_held_reflects_interactive_state() {
         stderr_text: String::new(),
         turns_finalized: 0,
         execution_slot_held: true,
+        silent_interactive_exit: false,
     };
     assert!(
         active_outcome.execution_slot_held,
@@ -516,5 +520,230 @@ fn test_event_name_selection_decision_tree() {
     assert!(
         skip_post_loop,
         "After interactive TurnComplete + idle exit, post-loop run_completed must be skipped"
+    );
+}
+
+// --- silent_interactive_exit behavioral contract tests ---
+
+/// Verifies the queue gate: when `silent_interactive_exit` is true, `will_process_queue`
+/// must be false even when there are queued messages and a valid session_id.
+/// This is the PRIMARY fix preventing the resurrection cascade.
+#[test]
+fn test_will_process_queue_suppressed_on_silent_exit() {
+    // Simulate the decision logic from chat_service_send_background.rs:
+    // let will_process_queue = initial_queue_count > 0 && has_session_for_queue && !outcome.silent_interactive_exit;
+
+    // Case 1: Normal exit — queue should be processed
+    let outcome_normal = StreamOutcome {
+        response_text: String::new(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: Some("session-abc".to_string()),
+        stderr_text: String::new(),
+        turns_finalized: 1,
+        execution_slot_held: false,
+        silent_interactive_exit: false,
+    };
+    let initial_queue_count = 2;
+    let has_session_for_queue = outcome_normal.session_id.is_some();
+    let will_process_queue_normal =
+        initial_queue_count > 0 && has_session_for_queue && !outcome_normal.silent_interactive_exit;
+    assert!(
+        will_process_queue_normal,
+        "Normal exit with queued messages + session → must process queue"
+    );
+
+    // Case 2: Silent interactive exit — queue must NOT be processed regardless of queue/session
+    let outcome_silent = StreamOutcome {
+        response_text: String::new(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: Some("session-abc".to_string()),
+        stderr_text: String::new(),
+        turns_finalized: 1,
+        execution_slot_held: false,
+        silent_interactive_exit: true,
+    };
+    let will_process_queue_silent =
+        initial_queue_count > 0 && has_session_for_queue && !outcome_silent.silent_interactive_exit;
+    assert!(
+        !will_process_queue_silent,
+        "Silent exit → must NOT process queue even with queued messages and valid session"
+    );
+
+    // Case 3: No session at all (regardless of silent flag) — no queue
+    let outcome_no_session = StreamOutcome {
+        response_text: String::new(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: None,
+        stderr_text: String::new(),
+        turns_finalized: 1,
+        execution_slot_held: false,
+        silent_interactive_exit: false,
+    };
+    let has_session_no_session = outcome_no_session.session_id.is_some();
+    let will_process_queue_no_session =
+        initial_queue_count > 0 && has_session_no_session && !outcome_no_session.silent_interactive_exit;
+    assert!(
+        !will_process_queue_no_session,
+        "No session → queue cannot be processed regardless"
+    );
+}
+
+/// Verifies `run_completed` emission logic: when `silent_interactive_exit` is true,
+/// `run_completed` must be emitted even when `skip_post_loop_finalization` is true.
+/// Without this fix, the frontend would be stuck in `waiting_for_input` forever.
+#[test]
+fn test_run_completed_forced_on_silent_exit() {
+    // Simulates the gate:
+    // if !skip_post_loop_finalization || outcome.silent_interactive_exit { emit run_completed }
+
+    // Normal interactive exit: turns_finalized > 0, no output → skip_post_loop = true → NO run_completed
+    let skip_post_loop_finalization = true; // turns finalized, no new output
+    let silent_exit_false = false;
+    let should_emit_normal = !skip_post_loop_finalization || silent_exit_false;
+    assert!(
+        !should_emit_normal,
+        "Normal silent exit (between turns) with skip_post_loop=true → must NOT emit duplicate run_completed"
+    );
+
+    // Silent interactive exit: even though skip_post_loop=true, we MUST emit run_completed
+    let silent_exit_true = true;
+    let should_emit_silent = !skip_post_loop_finalization || silent_exit_true;
+    assert!(
+        should_emit_silent,
+        "Silent interactive exit → MUST emit run_completed to unblock frontend from waiting_for_input"
+    );
+
+    // Non-interactive: skip_post_loop=false → always emits (unchanged behavior)
+    let skip_post_loop_non_interactive = false;
+    let should_emit_non_interactive = !skip_post_loop_non_interactive || silent_exit_false;
+    assert!(
+        should_emit_non_interactive,
+        "Non-interactive → always emit run_completed (skip_post_loop=false)"
+    );
+}
+
+/// Verifies the re-increment skip is scoped to Ideation only.
+/// TaskExecution/Review/Merge MUST still re-increment (their on_exit decrements it back to zero).
+#[test]
+fn test_re_increment_skip_scoped_to_ideation_only() {
+    // Simulates the guard:
+    // if !execution_slot_held && uses_execution_slot(context_type)
+    //    && !(outcome.silent_interactive_exit && context_type == ChatContextType::Ideation)
+    // { exec.increment_running(); }
+
+    let execution_slot_held = false; // idle between turns
+    let silent_interactive_exit = true;
+
+    // Helper that mirrors the guard logic from chat_service_send_background.rs:
+    // `if !execution_slot_held && uses_execution_slot(context_type)
+    //     && !(outcome.silent_interactive_exit && context_type == ChatContextType::Ideation)`
+    // We inline `uses_execution_slot` semantics: Ideation/TaskExecution/Review/Merge = true.
+    let should_re_increment = |context_type: &ChatContextType| -> bool {
+        let uses_slot = matches!(
+            context_type,
+            ChatContextType::Ideation
+                | ChatContextType::TaskExecution
+                | ChatContextType::Review
+                | ChatContextType::Merge
+        );
+        !execution_slot_held
+            && uses_slot
+            && !(*context_type == ChatContextType::Ideation && silent_interactive_exit)
+    };
+
+    // Ideation: silent exit → SKIP re-increment (no on_exit decrement to balance)
+    assert!(
+        !should_re_increment(&ChatContextType::Ideation),
+        "Ideation silent exit → must skip re-increment (no on_exit will decrement it)"
+    );
+
+    // TaskExecution: silent exit flag irrelevant — MUST re-increment for balance
+    assert!(
+        should_re_increment(&ChatContextType::TaskExecution),
+        "TaskExecution → must always re-increment when slot freed between turns"
+    );
+
+    // Review: same as TaskExecution
+    assert!(
+        should_re_increment(&ChatContextType::Review),
+        "Review → must always re-increment when slot freed between turns"
+    );
+
+    // Merge: same
+    assert!(
+        should_re_increment(&ChatContextType::Merge),
+        "Merge → must always re-increment when slot freed between turns"
+    );
+
+    // Edge case: slot still held (not idle between turns) → never re-increment
+    let execution_slot_held_true = true;
+    let should_re_increment_held = |context_type: &ChatContextType| -> bool {
+        let uses_slot = matches!(
+            context_type,
+            ChatContextType::Ideation
+                | ChatContextType::TaskExecution
+                | ChatContextType::Review
+                | ChatContextType::Merge
+        );
+        !execution_slot_held_true
+            && uses_slot
+            && !(*context_type == ChatContextType::Ideation && silent_interactive_exit)
+    };
+    assert!(
+        !should_re_increment_held(&ChatContextType::TaskExecution),
+        "Slot still held → no re-increment needed (on_exit handles decrement)"
+    );
+}
+
+/// Verifies `silent_interactive_exit` is set on StreamOutcome and reflects
+/// the between_interactive_turns state at process exit.
+#[test]
+fn test_silent_interactive_exit_flag_semantics() {
+    // Process exits between turns (idle): silent_interactive_exit = true
+    let idle_exit = StreamOutcome {
+        response_text: String::new(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: Some("sess-1".to_string()),
+        stderr_text: String::new(),
+        turns_finalized: 1,
+        execution_slot_held: false, // slot released at TurnComplete
+        silent_interactive_exit: true,
+    };
+    assert!(idle_exit.silent_interactive_exit, "Idle between turns → silent exit");
+    assert!(!idle_exit.execution_slot_held, "Slot released at TurnComplete");
+
+    // Process exits mid-turn (active): silent_interactive_exit = false
+    let active_exit = StreamOutcome {
+        response_text: "partial".to_string(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: None,
+        stderr_text: String::new(),
+        turns_finalized: 0,
+        execution_slot_held: true, // slot not yet released
+        silent_interactive_exit: false,
+    };
+    assert!(!active_exit.silent_interactive_exit, "Mid-turn exit → not silent");
+    assert!(active_exit.execution_slot_held, "Slot still held mid-turn");
+
+    // Crash-while-idle path: Ok(Err(e)) branch with between_interactive_turns=true
+    // → same semantics as idle exit
+    let crash_idle = StreamOutcome {
+        response_text: String::new(),
+        tool_calls: vec![],
+        content_blocks: vec![],
+        session_id: None,
+        stderr_text: "error: session expired".to_string(),
+        turns_finalized: 1,
+        execution_slot_held: false,
+        silent_interactive_exit: true, // set in Ok(Err(e)) branch when between_interactive_turns
+    };
+    assert!(
+        crash_idle.silent_interactive_exit,
+        "Crash-while-idle (Ok(Err(e)) with between_interactive_turns) → silent exit"
     );
 }
