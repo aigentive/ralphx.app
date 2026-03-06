@@ -8,7 +8,7 @@
  * PendingMerge is typically very brief (1-3 seconds).
  */
 
-import { useMemo, useState } from "react";
+import { useMemo, useState, useCallback } from "react";
 import {
   Loader2,
   GitMerge,
@@ -20,7 +20,9 @@ import {
   ChevronRight,
   Wrench,
   RefreshCw,
+  Square,
 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useConflictDiff } from "@/hooks/useConflictDiff";
 import { ConflictDiffViewer } from "@/components/diff/ConflictDiffViewer";
 import {
@@ -35,6 +37,9 @@ import { useMergeProgressEvents } from "@/hooks/useMergeProgressEvents";
 import { useConflictDetection } from "@/hooks/useConflictDetection";
 import { MergePhaseTimeline } from "./MergePhaseTimeline";
 import { ValidationProgress } from "./shared/ValidationProgress";
+import { useConfirmation } from "@/hooks/useConfirmation";
+import { api } from "@/lib/tauri";
+import { taskKeys } from "@/hooks/useTasks";
 import type { Task } from "@/types/task";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
 import { useMergePipeline } from "@/hooks/useMergePipeline";
@@ -288,6 +293,35 @@ function MergeProgressSteps({
 }
 
 export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTaskDetailProps) {
+  // Action buttons state
+  const queryClient = useQueryClient();
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const stopMutation = useMutation({
+    mutationFn: async () => {
+      await api.tasks.stop(task.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      setActionError(null);
+    },
+    onError: (err) => {
+      setActionError(err instanceof Error ? err.message : "Failed to stop merge");
+    },
+  });
+
+  const handleStop = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Stop merge?",
+      description: "This will stop the merge agent and leave the task in its current state.",
+      confirmText: "Stop Merge",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    stopMutation.mutate();
+  }, [confirm, stopMutation]);
+
   const status = isHistorical && viewStatus ? viewStatus : task.internalStatus;
   const isProgrammaticPhase = status === "pending_merge";
   const isAgentPhase = status === "merging";
@@ -434,6 +468,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
     : AlertTriangle;
 
   return (
+    <>
     <TwoColumnLayout
       description={task.description}
       testId="merging-task-detail"
@@ -629,6 +664,36 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         </section>
       )}
 
+      {/* Actions — only for active (non-historical) agent-assisted merges */}
+      {!isHistorical && isAgentPhase && (
+        <section data-testid="merging-actions-section">
+          <SectionTitle>Actions</SectionTitle>
+          <DetailCard>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                data-testid="stop-merge-action"
+                onClick={handleStop}
+                disabled={stopMutation.isPending}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: "rgba(255, 69, 58, 0.15)",
+                  color: "#ff453a",
+                }}
+              >
+                <Square className="w-3.5 h-3.5" />
+                Stop Merge
+              </button>
+            </div>
+            {actionError && (
+              <p className="mt-2 text-[12px]" style={{ color: "#ff453a" }}>
+                {actionError}
+              </p>
+            )}
+          </DetailCard>
+        </section>
+      )}
+
       {/* Branch Info */}
       <section data-testid="branch-info-section">
         <SectionTitle muted>Branch</SectionTitle>
@@ -643,5 +708,7 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
         )}
       </section>
     </TwoColumnLayout>
+    {!isHistorical && isAgentPhase && <ConfirmationDialog {...confirmationDialogProps} />}
+    </>
   );
 }

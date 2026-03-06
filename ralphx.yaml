@@ -104,7 +104,7 @@ timeouts:
     # chat_service_streaming.rs — max time with no parseable stream events from merger agent
     merge_parse_stall_secs: 180 # Env: RALPHX_STREAM_MERGE_PARSE_STALL_SECS
     # chat_service_streaming.rs — max stdout silence for reviewer agent
-    review_line_read_secs: 300 # Env: RALPHX_STREAM_REVIEW_LINE_READ_SECS
+    review_line_read_secs: 600 # Env: RALPHX_STREAM_REVIEW_LINE_READ_SECS
     # chat_service_streaming.rs — max time with no parseable events from reviewer
     review_parse_stall_secs: 120 # Env: RALPHX_STREAM_REVIEW_PARSE_STALL_SECS
     # chat_service_streaming.rs — max stdout silence for worker/ideation/other agents
