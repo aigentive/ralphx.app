@@ -306,10 +306,7 @@ export function useAgentEvents(activeConversationId: string | null) {
         conversation_id: string;
         message: string;
       }>("agent:session_recovered", (payload) => {
-        // Show non-blocking info toast
-        toast.info(payload.message, {
-          duration: 4000,
-        });
+        console.info("[session-recovery]", payload.message);
       })
     );
 
