@@ -247,7 +247,8 @@ export function ChatInput({
 
     if (questionMode) {
       // Question answers must be delivered immediately — never queue
-      clearInput();
+      // Don't clearInput() here — let handleQuestionSend clear after successful submission.
+      // Premature clearing causes lost input when the backend call fails (e.g., stale session).
       await onSend(trimmedValue);
     } else if (isAgentGenerating && onQueue) {
       // Agent actively generating — queue the message (will be sent when turn completes)

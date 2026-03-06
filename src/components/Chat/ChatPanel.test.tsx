@@ -186,7 +186,7 @@ vi.mock("@/hooks/useAskUserQuestion", () => ({
   useAskUserQuestion: () => ({
     activeQuestion: null,
     answeredQuestion: undefined,
-    submitAnswer: vi.fn(),
+    submitAnswer: vi.fn().mockResolvedValue(true),
     dismissQuestion: vi.fn(),
     clearAnswered: vi.fn(),
     isLoading: false,

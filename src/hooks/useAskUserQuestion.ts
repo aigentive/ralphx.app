@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import { api } from "@/lib/tauri";
 import { useUiStore } from "@/stores/uiStore";
@@ -57,15 +58,26 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
   }, [cancelAutoDismissTimer]);
 
   // Hydrate on mount: fetch pending questions from backend in case the Tauri event was missed
-  // (e.g., the panel wasn't mounted when the agent called ask_user_question)
+  // (e.g., the panel wasn't mounted when the agent called ask_user_question).
+  // Also clears stale questions when backend says no question is pending (TTL kill scenario).
   useEffect(() => {
     if (!currentSessionId) return;
+
+    // Snapshot requestId before async call for race detection
+    const preCallRequestId = useUiStore.getState().activeQuestions[currentSessionId]?.requestId;
 
     api.askUserQuestion.getPendingQuestions().then((questions) => {
       const match = questions.find((q) => q.sessionId === currentSessionId);
       if (match) {
         cancelAutoDismissTimer();
         setActiveQuestion(currentSessionId, match);
+      } else {
+        // Clear stale: backend says no pending question, but store still has one.
+        // Only clear if requestId unchanged (an event didn't replace it during the call).
+        const currentQuestion = useUiStore.getState().activeQuestions[currentSessionId];
+        if (currentQuestion && currentQuestion.requestId === preCallRequestId) {
+          clearActiveQuestion(currentSessionId);
+        }
       }
     }).catch(() => {
       // Non-critical — event listener is the primary delivery path
@@ -73,6 +85,46 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
   // Run once per session ID change — intentionally excludes activeQuestion to avoid loops
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currentSessionId]);
+
+  // Reconcile on window focus: detect stale questions when returning to the app.
+  // If the agent died via TTL while app was backgrounded, no events were emitted.
+  useEffect(() => {
+    if (!currentSessionId) return undefined;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+
+      // Only check if there's an active question for this session
+      const questionForSession = useUiStore.getState().activeQuestions[currentSessionId!];
+      if (!questionForSession) return;
+
+      const preCallRequestId = questionForSession.requestId;
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        api.askUserQuestion.getPendingQuestions().then((pending) => {
+          const stillPending = pending.some((q) => q.sessionId === currentSessionId);
+          if (!stillPending) {
+            // Verify question wasn't replaced by a new event during the API call
+            const current = useUiStore.getState().activeQuestions[currentSessionId!];
+            if (current && current.requestId === preCallRequestId) {
+              clearActiveQuestion(currentSessionId!);
+            }
+          }
+        }).catch(() => {
+          // Non-critical — don't disrupt UX
+        });
+      }, 500);
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
+  }, [currentSessionId, clearActiveQuestion]);
 
   // Set up event listener for agent questions — stores ALL incoming questions by sessionId
   useEffect(() => {
@@ -109,10 +161,13 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
    * or answerQuestion (legacy task flow) otherwise.
    */
   const submitAnswer = useCallback(
-    async (response: AskUserQuestionResponse) => {
+    async (response: AskUserQuestionResponse): Promise<boolean> => {
       if (!activeQuestion || !currentSessionId) {
-        return;
+        return false;
       }
+
+      // Capture the requestId we're answering — a new question may arrive while we await.
+      const submittedRequestId = activeQuestion.requestId;
 
       setIsLoading(true);
       try {
@@ -126,21 +181,32 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
           await api.askUserQuestion.answerQuestion(response);
         }
 
-        // Move to answered state
-        const summary = response.selectedOptions.length > 0
-          ? response.selectedOptions.join(", ")
-          : response.customResponse ?? "";
-        setAnsweredQuestion(currentSessionId, summary);
-        clearActiveQuestion(currentSessionId);
+        // Only clear if the question hasn't been replaced by a new one while we were awaiting.
+        const currentQuestion = useUiStore.getState().activeQuestions[currentSessionId];
+        if (!currentQuestion || currentQuestion.requestId === submittedRequestId) {
+          const summary = response.selectedOptions.length > 0
+            ? response.selectedOptions.join(", ")
+            : response.customResponse ?? "";
+          setAnsweredQuestion(currentSessionId, summary);
+          clearActiveQuestion(currentSessionId);
 
-        // Auto-dismiss the answered banner after 3500ms
-        cancelAutoDismissTimer();
-        autoDismissTimerRef.current = setTimeout(() => {
-          clearAnsweredQuestion(currentSessionId);
-          autoDismissTimerRef.current = null;
-        }, 3500);
+          // Auto-dismiss the answered banner after 3500ms
+          cancelAutoDismissTimer();
+          autoDismissTimerRef.current = setTimeout(() => {
+            clearAnsweredQuestion(currentSessionId);
+            autoDismissTimerRef.current = null;
+          }, 3500);
+        }
+        return true;
       } catch {
-        // Don't clear question on error so user can retry
+        // Check if the question was already cleaned up (e.g., by useAgentEvents on agent death).
+        const currentQuestion = useUiStore.getState().activeQuestions[currentSessionId];
+        if (currentQuestion?.requestId === submittedRequestId) {
+          // Stale question still showing — dismiss it with feedback.
+          toast.error("Agent session expired — question is no longer active", { duration: 5000 });
+          clearActiveQuestion(currentSessionId);
+        }
+        return false;
       } finally {
         setIsLoading(false);
       }

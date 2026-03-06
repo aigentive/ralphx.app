@@ -11,7 +11,7 @@ import type { AskUserQuestionPayload, AskUserQuestionResponse } from "@/types/as
 
 export interface UseQuestionInputParams {
   activeQuestion: AskUserQuestionPayload | null;
-  submitAnswer: (response: AskUserQuestionResponse) => Promise<void>;
+  submitAnswer: (response: AskUserQuestionResponse) => Promise<boolean>;
   handleSend: (text: string) => Promise<void>;
 }
 
@@ -82,9 +82,11 @@ export function useQuestionInput({
         return; // Nothing to submit
       }
 
-      await submitAnswer(response);
-      setSelectedOptions(new Set());
-      setQuestionInputValue("");
+      const success = await submitAnswer(response);
+      if (success) {
+        setSelectedOptions(new Set());
+        setQuestionInputValue("");
+      }
     },
     [activeQuestion, selectedOptions, submitAnswer, handleSend]
   );
