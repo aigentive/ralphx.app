@@ -365,7 +365,8 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 if session_changed_after_resume(
                     stored_session_id.as_deref(),
                     claude_session_id.as_deref(),
-                ) {
+                ) && !outcome.silent_interactive_exit
+                {
                     tracing::warn!(
                         stored_session_id = %stored_session_id.as_deref().unwrap_or(""),
                         new_session_id = %claude_session_id.as_deref().unwrap_or(""),
