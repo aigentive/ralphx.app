@@ -71,8 +71,8 @@ pub async fn await_question(
         }
     };
 
-    // Wait for answer with 5 minute timeout
-    let timeout = tokio::time::Duration::from_secs(300);
+    // Wait for answer with 14 minute timeout (840s backend < 900s MCP AbortController)
+    let timeout = tokio::time::Duration::from_secs(840);
     let start = tokio::time::Instant::now();
 
     loop {

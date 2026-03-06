@@ -49,6 +49,7 @@ export interface PendingTeamPlan {
   }>;
   originContextType: string;
   originContextId: string;
+  createdAt: number;
 }
 
 interface ActiveTeam {

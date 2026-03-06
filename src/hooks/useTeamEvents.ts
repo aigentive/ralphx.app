@@ -19,6 +19,7 @@ import { useEventBus } from "@/providers/EventProvider";
 import { useTeamStore } from "@/stores/teamStore";
 import { useChatStore } from "@/stores/chatStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
+import { getPendingPlans } from "@/api/team";
 import type { ContextType } from "@/types/chat-conversation";
 import type { Unsubscribe } from "@/lib/event-bus";
 import type {
@@ -44,7 +45,11 @@ export function useTeamEvents(contextKey: string | null) {
   const disbandTeam = useTeamStore((s) => s.disbandTeam);
   const setTeamActive = useChatStore((s) => s.setTeamActive);
   const setPendingPlan = useTeamStore((s) => s.setPendingPlan);
+  const clearPendingPlan = useTeamStore((s) => s.clearPendingPlan);
   const bumpArtifactVersion = useTeamStore((s) => s.bumpArtifactVersion);
+
+  // Derive contextId from contextKey (format: "prefix:contextId")
+  const contextId = contextKey ? contextKey.split(":").slice(1).join(":") : null;
 
   // Derive isTeamActive from the teamStore so effect 2 re-runs when team is created
   const selectActive = useCallback(
@@ -103,6 +108,7 @@ export function useTeamEvents(contextKey: string | null) {
             teammates: payload.teammates,
             originContextType: payload.context_type,
             originContextId: payload.context_id,
+            createdAt: Date.now(),
           });
         }
       }),
@@ -143,6 +149,78 @@ export function useTeamEvents(contextKey: string | null) {
 
     return () => unsubs.forEach((u) => u());
   }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive, setPendingPlan, addTeammate, bumpArtifactVersion]);
+
+  // ── Effect 3: Mount-time hydration — restore pending plans on mount ───────
+  // Handles app restarts or remounts where plan was pending before component mounted.
+  useEffect(() => {
+    if (!contextKey || !contextId) return;
+
+    getPendingPlans(contextId).then((plans) => {
+      // Restore the most recent plan (first in array)
+      const plan = plans[0];
+      if (plan) {
+        setPendingPlan(contextKey, {
+          planId: plan.plan_id,
+          process: plan.process,
+          teammates: plan.teammates.map((t) => ({
+            role: t.role,
+            model: t.model,
+            tools: t.tools,
+            mcp_tools: t.mcp_tools,
+            prompt_summary: t.prompt_summary,
+            ...(t.preset !== undefined && { preset: t.preset }),
+          })),
+          originContextType: plan.context_type,
+          originContextId: plan.context_id,
+          createdAt: plan.created_at_ms,
+        });
+      }
+    }).catch(() => {
+      // Non-critical — event listener is the primary delivery path
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextKey, contextId]);
+
+  // ── Effect 4: Visibility reconciliation — detect stale plans on focus ─────
+  // Mirrors useAskUserQuestion.ts reconciliation pattern.
+  // If the agent died via TTL while app was backgrounded, no events were emitted.
+  useEffect(() => {
+    if (!contextKey || !contextId) return undefined;
+
+    let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+
+      // Only check if there's a pending plan for this contextKey
+      const pendingPlan = useTeamStore.getState().pendingPlans[contextKey!];
+      if (!pendingPlan) return;
+
+      const preCallPlanId = pendingPlan.planId;
+
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        getPendingPlans(contextId!).then((plans) => {
+          const stillPending = plans.some((p) => p.plan_id === preCallPlanId);
+          if (!stillPending) {
+            // Verify plan wasn't replaced by a new event during the API call
+            const current = useTeamStore.getState().pendingPlans[contextKey!];
+            if (current && current.planId === preCallPlanId) {
+              clearPendingPlan(contextKey!);
+            }
+          }
+        }).catch(() => {
+          // Non-critical — don't disrupt UX
+        });
+      }, 500);
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if (debounceTimer) clearTimeout(debounceTimer);
+    };
+  }, [contextKey, contextId, clearPendingPlan]);
 
   // ── Effect 2: Subscribe to remaining events when team is active ──────────
   useEffect(() => {

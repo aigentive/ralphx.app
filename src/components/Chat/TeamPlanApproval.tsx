@@ -3,19 +3,31 @@
  *
  * Shows when a team lead requests plan approval via request_team_plan.
  * Displays teammate composition and approve/reject buttons.
+ * Auto-rejects after 15 minutes with countdown display.
  */
 
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Check, X, Users } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { approveTeamPlan, rejectTeamPlan } from "@/api/team";
 import { useTeamStore } from "@/stores/teamStore";
 import type { PendingTeamPlan } from "@/stores/teamStore";
 import type { ContextType } from "@/types/chat-conversation";
 
+const PLAN_TIMEOUT_MS = 900_000; // 15 minutes
+const EXPIRED_DISPLAY_MS = 2_000; // show "Expired" for 2s before clearing
+
 interface TeamPlanApprovalProps {
   plan: PendingTeamPlan;
   contextKey: string;
+}
+
+function formatCountdown(ms: number): string {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 export const TeamPlanApproval = React.memo(function TeamPlanApproval({
@@ -25,6 +37,66 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
   const clearPendingPlan = useTeamStore((s) => s.clearPendingPlan);
   const [isApproving, setIsApproving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expired, setExpired] = useState(false);
+  const [remainingMs, setRemainingMs] = useState(() =>
+    Math.max(0, PLAN_TIMEOUT_MS - (Date.now() - plan.createdAt)),
+  );
+
+  const expiredTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Auto-reject timer and countdown
+  useEffect(() => {
+    const initialRemaining = Math.max(
+      0,
+      PLAN_TIMEOUT_MS - (Date.now() - plan.createdAt),
+    );
+
+    if (initialRemaining <= 0) {
+      // Already expired on mount
+      setRemainingMs(0);
+      setExpired(true);
+      rejectTeamPlan(plan.planId).catch(() => {
+        // Best-effort
+      });
+      clearTimerRef.current = setTimeout(() => {
+        clearPendingPlan(contextKey);
+      }, EXPIRED_DISPLAY_MS);
+      return;
+    }
+
+    // Countdown interval
+    countdownRef.current = setInterval(() => {
+      const remaining = Math.max(
+        0,
+        PLAN_TIMEOUT_MS - (Date.now() - plan.createdAt),
+      );
+      setRemainingMs(remaining);
+    }, 1000);
+
+    // Auto-reject after remaining time
+    expiredTimerRef.current = setTimeout(async () => {
+      if (countdownRef.current) {
+        clearInterval(countdownRef.current);
+        countdownRef.current = null;
+      }
+      setRemainingMs(0);
+      setExpired(true);
+      rejectTeamPlan(plan.planId).catch(() => {
+        // Best-effort
+      });
+      clearTimerRef.current = setTimeout(() => {
+        clearPendingPlan(contextKey);
+      }, EXPIRED_DISPLAY_MS);
+    }, initialRemaining);
+
+    return () => {
+      if (countdownRef.current) clearInterval(countdownRef.current);
+      if (expiredTimerRef.current) clearTimeout(expiredTimerRef.current);
+      if (clearTimerRef.current) clearTimeout(clearTimerRef.current);
+    };
+  }, [plan.planId, plan.createdAt, contextKey, clearPendingPlan]);
 
   const handleApprove = useCallback(async () => {
     setIsApproving(true);
@@ -37,10 +109,27 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
       );
       clearPendingPlan(contextKey);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to approve team plan");
-      setIsApproving(false);
+      const msg = e instanceof Error ? e.message : "Failed to approve team plan";
+      const isExpiredError =
+        msg.toLowerCase().includes("plan expired") ||
+        msg.toLowerCase().includes("expired");
+      if (isExpiredError) {
+        toast.error(
+          "Plan already expired — agent already received timeout response",
+        );
+        clearPendingPlan(contextKey);
+      } else {
+        setError(msg);
+        setIsApproving(false);
+      }
     }
-  }, [plan.planId, plan.originContextType, plan.originContextId, contextKey, clearPendingPlan]);
+  }, [
+    plan.planId,
+    plan.originContextType,
+    plan.originContextId,
+    contextKey,
+    clearPendingPlan,
+  ]);
 
   const handleReject = useCallback(async () => {
     try {
@@ -50,6 +139,38 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
     }
     clearPendingPlan(contextKey);
   }, [plan.planId, contextKey, clearPendingPlan]);
+
+  // Expired state — show briefly before clearing
+  if (expired) {
+    return (
+      <div
+        className="mx-3 my-2 rounded-lg overflow-hidden"
+        style={{
+          backgroundColor: "hsl(220 10% 10%)",
+          border: "1px solid hsl(220 10% 20%)",
+        }}
+      >
+        <div
+          className="flex items-center gap-2 px-3 py-2.5"
+          style={{ backgroundColor: "hsl(220 10% 12%)" }}
+        >
+          <Users className="w-3.5 h-3.5" style={{ color: "hsl(220 10% 40%)" }} />
+          <span className="text-[11px]" style={{ color: "hsl(220 10% 50%)" }}>
+            Team Plan — {plan.process}
+          </span>
+          <span
+            className="ml-auto text-[10px] px-1.5 py-0.5 rounded"
+            style={{
+              backgroundColor: "hsl(220 10% 16%)",
+              color: "hsl(220 10% 45%)",
+            }}
+          >
+            Expired
+          </span>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -128,32 +249,39 @@ export const TeamPlanApproval = React.memo(function TeamPlanApproval({
 
       {/* Actions */}
       <div
-        className="flex items-center justify-end gap-2 px-3 py-2"
+        className="flex items-center justify-between gap-2 px-3 py-2"
         style={{ borderTop: "1px solid hsl(220 10% 14%)" }}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={handleReject}
-          disabled={isApproving}
-          className="text-[11px] h-7 gap-1"
-        >
-          <X className="w-3 h-3" />
-          Reject
-        </Button>
-        <Button
-          size="sm"
-          onClick={handleApprove}
-          disabled={isApproving}
-          className="text-[11px] h-7 gap-1"
-          style={{
-            backgroundColor: "hsl(25 80% 45%)",
-            color: "white",
-          }}
-        >
-          <Check className="w-3 h-3" />
-          {isApproving ? "Approving..." : "Approve"}
-        </Button>
+        {/* Countdown */}
+        <span className="text-[10px]" style={{ color: "hsl(220 10% 40%)" }}>
+          Expires in {formatCountdown(remainingMs)}
+        </span>
+
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleReject}
+            disabled={isApproving}
+            className="text-[11px] h-7 gap-1"
+          >
+            <X className="w-3 h-3" />
+            Reject
+          </Button>
+          <Button
+            size="sm"
+            onClick={handleApprove}
+            disabled={isApproving}
+            className="text-[11px] h-7 gap-1"
+            style={{
+              backgroundColor: "hsl(25 80% 45%)",
+              color: "white",
+            }}
+          >
+            <Check className="w-3 h-3" />
+            {isApproving ? "Approving..." : "Approve"}
+          </Button>
+        </div>
       </div>
     </div>
   );
