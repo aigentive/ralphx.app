@@ -320,14 +320,11 @@ export function StateTimelineNav({
     // Transient states to skip in the timeline
     // - ready: brief transition between draft and executing
     // - pending_review: brief wait for AI reviewer
-    // - reviewing: AI review in progress (info shown in review_passed)
-    // - pending_merge/merging: omit from history nav once merged
+    // - pending_merge: brief programmatic merge attempt (1-3s)
     const transientStatuses: InternalStatus[] = [
       "ready",
       "pending_review",
-      "reviewing",
       "pending_merge",
-      "merging",
     ];
 
     // Intermediate retry/failure states that add noise once a task reaches

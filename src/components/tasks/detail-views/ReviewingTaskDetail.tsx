@@ -4,6 +4,7 @@
  * Shows animated review progress with step indicator and clean layout.
  */
 
+import { useState, useCallback } from "react";
 import {
   Loader2,
   Bot,
@@ -12,7 +13,10 @@ import {
   Sparkles,
   AlertTriangle,
   XCircle,
+  Square,
+  ArrowUpRight,
 } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   SectionTitle,
   DetailCard,
@@ -22,6 +26,9 @@ import {
 } from "./shared";
 import { ValidationProgress } from "./shared/ValidationProgress";
 import { DurationDisplay } from "./shared/DurationDisplay";
+import { useConfirmation } from "@/hooks/useConfirmation";
+import { api } from "@/lib/tauri";
+import { taskKeys } from "@/hooks/useTasks";
 import type { Task } from "@/types/task";
 import { useTaskStateHistory } from "@/hooks/useReviews";
 import { useValidationEvents } from "@/hooks/useValidationEvents";
@@ -222,7 +229,63 @@ export function ReviewingTaskDetail({
   // Live validation events for setup/install progress
   const liveValidationSteps = useValidationEvents(task.id, "review");
 
+  // Action buttons state
+  const queryClient = useQueryClient();
+  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const stopMutation = useMutation({
+    mutationFn: async () => {
+      await api.tasks.stop(task.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      setActionError(null);
+    },
+    onError: (err) => {
+      setActionError(err instanceof Error ? err.message : "Failed to stop review");
+    },
+  });
+
+  const escalateMutation = useMutation({
+    mutationFn: async () => {
+      await api.tasks.move(task.id, "escalated");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+      setActionError(null);
+    },
+    onError: (err) => {
+      setActionError(err instanceof Error ? err.message : "Failed to escalate task");
+    },
+  });
+
+  const handleStop = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Stop review?",
+      description: "This will stop the AI review and move the task back to a stoppable state.",
+      confirmText: "Stop Review",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    stopMutation.mutate();
+  }, [confirm, stopMutation]);
+
+  const handleEscalate = useCallback(async () => {
+    const confirmed = await confirm({
+      title: "Escalate to human review?",
+      description: "This will skip the AI review and escalate the task for human review.",
+      confirmText: "Escalate",
+      variant: "destructive",
+    });
+    if (!confirmed) return;
+    escalateMutation.mutate();
+  }, [confirm, escalateMutation]);
+
+  const isActionLoading = stopMutation.isPending || escalateMutation.isPending;
+
   return (
+    <>
     <TwoColumnLayout
       description={task.description}
       testId="reviewing-task-detail"
@@ -278,6 +341,52 @@ export function ReviewingTaskDetail({
           variant={isHistorical ? outcomeConfig?.variant ?? "info" : "info"}
         />
       </section>
+
+      {/* Actions — only for active (non-historical) reviews */}
+      {!isHistorical && (
+        <section data-testid="reviewing-actions-section">
+          <SectionTitle>Actions</SectionTitle>
+          <DetailCard>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                data-testid="stop-review-action"
+                onClick={handleStop}
+                disabled={isActionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: "rgba(255, 69, 58, 0.15)",
+                  color: "#ff453a",
+                }}
+              >
+                <Square className="w-3.5 h-3.5" />
+                Stop Review
+              </button>
+              <button
+                type="button"
+                data-testid="escalate-review-action"
+                onClick={handleEscalate}
+                disabled={isActionLoading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: "rgba(255, 159, 10, 0.15)",
+                  color: "#ff9f0a",
+                }}
+              >
+                <ArrowUpRight className="w-3.5 h-3.5" />
+                Escalate
+              </button>
+            </div>
+            {actionError && (
+              <p className="mt-2 text-[12px]" style={{ color: "#ff453a" }}>
+                {actionError}
+              </p>
+            )}
+          </DetailCard>
+        </section>
+      )}
     </TwoColumnLayout>
+    {!isHistorical && <ConfirmationDialog {...confirmationDialogProps} />}
+    </>
   );
 }

@@ -42,7 +42,7 @@ impl Default for StreamTimeoutsConfig {
         Self {
             merge_line_read_secs: 600,
             merge_parse_stall_secs: 180,
-            review_line_read_secs: 300,
+            review_line_read_secs: 600,
             review_parse_stall_secs: 120,
             default_line_read_secs: 600,
             default_parse_stall_secs: 180,
