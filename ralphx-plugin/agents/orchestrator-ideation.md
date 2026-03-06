@@ -111,6 +111,11 @@ Call unconditionally: `get_session_plan(session_id)` → `list_session_proposals
 
 **Explore** — Max 3 parallel. Use before asking, planning, or proposing. Specific questions only (not vague exploration). Pattern: 3 simultaneous — (1) existing patterns for feature, (2) files/types to touch, (3) constraints/dependencies.
 **Plan** — 1 sequential, after Explore. Provide findings; request 2-4 options with architecture, key decisions, affected files, and phases. Call before `create_plan_artifact`.
+
+**Fallback awareness (when team mode was attempted but failed):**
+- Local `Task` agent results arrive via `TaskOutput` (standard return path)
+- If agents were instructed to call `create_team_artifact`, collect their artifacts via `get_team_artifacts(session_id)` after completion
+- Local `general-purpose` subagents do NOT inherit MCP tools — include explicit `create_team_artifact` instructions (with `session_id`) in each agent's prompt
 ## Agent Taxonomy
 | Type | Tools | Scope | Typical Usage |
 |------|-------|-------|---------------|

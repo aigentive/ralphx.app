@@ -40,7 +40,7 @@ skills:
 |------|------|
 | Before plan approval | Call `TeamCreate` FIRST to register the team, THEN `request_team_plan` with that `team_name` |
 | After `request_team_plan` approval | `TaskCreate` (one per teammate) → then spawn via `Task` (parallel) |
-| TeamCreate fallback | ONLY if TeamCreate throws a tool execution error — not by choice |
+| TeamCreate fallback | ONLY if: (a) TeamCreate throws a tool execution error, (b) `request_team_plan` times out (300s backend timeout), or (c) `request_team_plan` is rejected by user — not by choice |
 | Before proposals | `create_plan_artifact` MUST exist first |
 | Phase 0 RECOVER | Call `get_session_plan` + `list_session_proposals` on EVERY first message |
 | System card | Read `agent-teams-orchestration.md` at Phase 0 MANDATORY |
@@ -76,10 +76,10 @@ You have two ways to delegate work. Choose based on whether agents need to coord
 
 | Mode | Tool | When | Coordination |
 |------|------|------|-------------|
-| **Local agents** | `Task` (fire-and-forget) | Independent parallel work — research, focused analysis, no cross-agent communication needed. **Also the fallback ONLY when TeamCreate throws a tool execution error** — `create_team_artifact` works regardless (MCP access is unaffected by team mode). | None. Each agent gets a self-contained prompt, works alone, returns results to you. You synthesize. |
+| **Local agents** | `Task` (fire-and-forget) | Independent parallel work — research, focused analysis, no cross-agent communication needed. **Also the fallback when TeamCreate throws a tool execution error, `request_team_plan` times out (300s), or user rejects the plan** — `create_team_artifact` works regardless (MCP access is unaffected by team mode). | None. Each agent gets a self-contained prompt, works alone, returns results to you. You synthesize. |
 | **Team mode** | `TeamCreate` + `Task` + `SendMessage` + shared `TaskList` | Collaborative work — agents need to build on each other's output, relay discoveries, iterate together. Preferred when CLI supports it (progressive enhancement). | Full. Shared task board, inter-agent messaging, you monitor and relay cross-cutting findings. |
 
-**Decision rule:** If agents don't need to talk to each other → local agents. If findings compound across agents → team mode. If TeamCreate throws a tool execution error (not a user cancellation) → local agents as fallback.
+**Decision rule:** If agents don't need to talk to each other → local agents. If findings compound across agents → team mode. If TeamCreate throws a tool execution error, `request_team_plan` times out (300s), or user rejects the plan → local agents as fallback.
 
 **Local agent example** (parallel independent research):
 ```
@@ -170,12 +170,22 @@ If team mode selected → proceed to Phase 2.
 
 ### Phase 3: EXPLORE (team mode)
 
-> **TeamCreate already happened in Phase 2.** If it threw a tool execution error, fall back to local parallel `Task` agents. If TeamCreate succeeded, you MUST use the native team path. Both paths produce the same artifacts — the fallback path just omits `team_name` and `SendMessage`.
+> **TeamCreate already happened in Phase 2.** If it threw a tool execution error, `request_team_plan` timed out (300s backend timeout), or the user rejected the plan — fall back to local parallel `Task` agents. If TeamCreate succeeded, you MUST use the native team path. Both paths produce the same artifacts — the fallback path just omits `team_name` and `SendMessage`.
 
-**Fallback path (ONLY if TeamCreate threw a tool execution error in Phase 2):**
+**Fallback path (ONLY if TeamCreate threw a tool execution error, `request_team_plan` timed out, or user rejected the plan):**
 - Omit `team_name` from all `Task` calls; skip `SendMessage` / `TeamDelete`
 - Teammates still call `create_team_artifact` (MCP access is unaffected by team mode)
 - Lead waits for all `Task` completions → collect via `get_team_artifacts` → proceed to PLAN
+
+**Polling rules (fallback path only):**
+
+| Rule | Detail |
+|------|--------|
+| **Artifacts = only channel** | No `SendMessage` in fallback. Local agents communicate via `create_team_artifact` → lead reads via `get_team_artifacts(session_id)` |
+| **Poll on completion** | After each background `Task` notification, call `get_team_artifacts(session_id)` to collect findings |
+| **Poll proactively** | If agents still running after 2-3 minutes, poll anyway — agents may have created partial artifacts |
+| **Synthesize incrementally** | Process artifacts as they arrive. If one agent fails, synthesize from available artifacts |
+| **MCP tools for local agents** | Local `general-purpose` subagents do NOT inherit MCP tools. Lead MUST include `create_team_artifact` and `get_team_artifacts` instructions in the agent prompt with explicit `session_id` |
 
 **Step 1: Create tasks** (native team path only):
 ```json
@@ -258,6 +268,6 @@ Tool reference and prompt templates: see `ralphx-plugin/agents/system-cards/agen
 - **Over-compose teams** — 2-5 specialists maximum for most tasks
 - **Skip linking artifacts** — use related_artifact_id to connect team findings to master plan
 - **Treat teammate idle as error** — idle is normal between turns
-- **Skip TeamCreate after approval** — if TeamCreate succeeds, MUST use native team path; only fall back if TeamCreate throws a tool execution error (not a user cancellation)
+- **Skip TeamCreate after approval** — if TeamCreate succeeds, MUST use native team path; only fall back if TeamCreate throws a tool execution error, `request_team_plan` times out (300s), or user rejects the plan
 
 </do-not>

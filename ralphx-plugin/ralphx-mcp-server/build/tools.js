@@ -1254,6 +1254,8 @@ export const TOOL_ALLOWLIST = {
         "get_parent_session_context",
         // session context recovery
         "get_session_messages",
+        // team artifact tools (for local Task agent fallback)
+        "get_team_artifacts",
         // memory read tools
         "search_memories",
         "get_memory",
