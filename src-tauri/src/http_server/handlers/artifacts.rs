@@ -312,6 +312,7 @@ pub async fn update_plan_artifact(
             serde_json::json!({
                 "artifactId": created.id.as_str(),
                 "previousArtifactId": old_artifact_id.as_str(),
+                "sessionId": sessions.first().map(|s| s.id.as_str()),
                 "artifact": {
                     "id": created.id.as_str(),
                     "name": created.name,
