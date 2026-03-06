@@ -393,3 +393,189 @@ fn test_uses_execution_slot_includes_ideation() {
         "Project chat must NOT use an execution slot"
     );
 }
+
+// =========================================================================
+// Phase: idle ideation sessions must not inflate global_running_count
+// =========================================================================
+
+/// Helper: replicate the FIXED `get_execution_status` global count logic.
+/// Uses ExecutionState.interactive_idle_count() to subtract idle slots.
+async fn count_global_running_with_state(
+    app_state: &AppState,
+    execution_state: &ExecutionState,
+) -> u32 {
+    let registry_entries = app_state.running_agent_registry.list_all().await;
+    let total_with_slot = registry_entries
+        .iter()
+        .filter(|(key, _)| {
+            ChatContextType::from_str(&key.context_type)
+                .map(uses_execution_slot)
+                .unwrap_or(false)
+        })
+        .count();
+    (total_with_slot.saturating_sub(execution_state.interactive_idle_count())) as u32
+}
+
+/// Helper: replicate the per-project running count from `get_execution_status`,
+/// excluding idle ideation sessions.
+async fn count_project_running_with_state(
+    app_state: &AppState,
+    execution_state: &ExecutionState,
+) -> u32 {
+    let registry_entries = app_state.running_agent_registry.list_all().await;
+    let mut running_count = 0u32;
+
+    for (key, _) in registry_entries {
+        let context_type = match ChatContextType::from_str(&key.context_type) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+
+        if !uses_execution_slot(context_type) {
+            continue;
+        }
+
+        if matches!(context_type, ChatContextType::Ideation) {
+            let slot_key = format!("{}/{}", key.context_type, key.context_id);
+            if !execution_state.is_interactive_idle(&slot_key) {
+                running_count += 1;
+            }
+            continue;
+        }
+
+        let task_id = TaskId::from_string(key.context_id);
+        let task = match app_state.task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => task,
+            _ => continue,
+        };
+
+        if !context_matches_running_status_for_gc(context_type, task.internal_status) {
+            continue;
+        }
+
+        running_count += 1;
+    }
+
+    running_count
+}
+
+/// Test 1: 2 ideation sessions registered → mark 1 idle → global count == 1
+#[tokio::test]
+async fn test_idle_ideation_excluded_from_global_running_count() {
+    let state = AppState::with_repos(
+        Arc::new(MemoryTaskRepository::new()),
+        Arc::new(MemoryProjectRepository::new()),
+    );
+    let exec_state = ExecutionState::new();
+
+    register_ideation(&*state.running_agent_registry, "session-active").await;
+    register_ideation(&*state.running_agent_registry, "session-idle").await;
+
+    // Mark second session as idle between turns
+    exec_state.mark_interactive_idle("ideation/session-idle");
+
+    let global_count = count_global_running_with_state(&state, &exec_state).await;
+    assert_eq!(
+        global_count, 1,
+        "Idle ideation session must not inflate global running count"
+    );
+}
+
+/// Test 2: GC prune cleans idle slots — after pruning a registry entry,
+/// interactive_idle_count() must return 0 (no ghost entries).
+#[tokio::test]
+async fn test_gc_prune_clears_interactive_idle_slot() {
+    let state = AppState::with_repos(
+        Arc::new(MemoryTaskRepository::new()),
+        Arc::new(MemoryProjectRepository::new()),
+    );
+    let exec_state = ExecutionState::new();
+
+    register_ideation(&*state.running_agent_registry, "session-gone").await;
+    exec_state.mark_interactive_idle("ideation/session-gone");
+
+    assert_eq!(exec_state.interactive_idle_count(), 1, "Should have 1 idle slot before pruning");
+
+    // Simulate what prune does: remove from registry AND remove from idle slots
+    let entries = state.running_agent_registry.list_all().await;
+    for (key, info) in entries {
+        let _ = state
+            .running_agent_registry
+            .unregister(&key, &info.agent_run_id)
+            .await;
+        let slot_key = format!("{}/{}", key.context_type, key.context_id);
+        exec_state.remove_interactive_slot(&slot_key);
+    }
+
+    assert_eq!(
+        exec_state.interactive_idle_count(),
+        0,
+        "Ghost idle slot must be removed after GC prune"
+    );
+}
+
+/// Test 3: Per-project count excludes idle ideation sessions.
+#[tokio::test]
+async fn test_per_project_count_excludes_idle_ideation() {
+    let state = AppState::with_repos(
+        Arc::new(MemoryTaskRepository::new()),
+        Arc::new(MemoryProjectRepository::new()),
+    );
+    let exec_state = ExecutionState::new();
+
+    register_ideation(&*state.running_agent_registry, "session-idle").await;
+    exec_state.mark_interactive_idle("ideation/session-idle");
+
+    let project_count = count_project_running_with_state(&state, &exec_state).await;
+    assert_eq!(
+        project_count, 0,
+        "Idle ideation session must not appear in per-project running count"
+    );
+}
+
+/// Test 4: Slot key format consistency — key used by streaming code matches
+/// the key used by count logic. Format: "{context_type}/{context_id}".
+#[test]
+fn test_slot_key_format_consistency() {
+    let context_type = "ideation";
+    let context_id = "session-abc-123";
+    let slot_key = format!("{}/{}", context_type, context_id);
+
+    // The key format used when marking idle must match the key used when checking.
+    let exec_state = ExecutionState::new();
+    exec_state.mark_interactive_idle(&slot_key);
+
+    // Check using the same format that count_global_running_with_state uses
+    assert!(
+        exec_state.is_interactive_idle(&slot_key),
+        "Slot key format must be consistent: '{}'",
+        slot_key
+    );
+    assert_eq!(slot_key, "ideation/session-abc-123");
+}
+
+/// Test 5: Generating (non-idle) ideation session IS counted in both global
+/// and per-project running counts.
+#[tokio::test]
+async fn test_generating_ideation_counted_in_running_counts() {
+    let state = AppState::with_repos(
+        Arc::new(MemoryTaskRepository::new()),
+        Arc::new(MemoryProjectRepository::new()),
+    );
+    let exec_state = ExecutionState::new();
+
+    // Register ideation session — NOT marked idle, so it's actively generating
+    register_ideation(&*state.running_agent_registry, "session-generating").await;
+
+    let global_count = count_global_running_with_state(&state, &exec_state).await;
+    let project_count = count_project_running_with_state(&state, &exec_state).await;
+
+    assert_eq!(
+        global_count, 1,
+        "Generating ideation must count toward global running count"
+    );
+    assert_eq!(
+        project_count, 1,
+        "Generating ideation must count toward per-project running count"
+    );
+}

@@ -10,7 +10,7 @@ fn test_timeout_config_task_execution() {
 #[test]
 fn test_timeout_config_review() {
     let config = StreamTimeoutConfig::for_context(&ChatContextType::Review);
-    assert_eq!(config.line_read_timeout, Duration::from_secs(300));
+    assert_eq!(config.line_read_timeout, Duration::from_secs(600));
     assert_eq!(config.parse_stall_timeout, Duration::from_secs(120));
 }
 
@@ -62,12 +62,13 @@ fn test_timeout_config_default_no_teammate() {
 #[test]
 fn test_timeout_config_ordering() {
     // Merge needs generous timeouts (agent may run silent tests for minutes)
-    // Review is faster than default, merge matches default
+    // Review line_read matches default (600s) — reviewer may run cargo test
+    // Review parse_stall is lower than default (120s < 180s) — still useful for stall detection
     let merge = StreamTimeoutConfig::for_context(&ChatContextType::Merge);
     let review = StreamTimeoutConfig::for_context(&ChatContextType::Review);
     let default = StreamTimeoutConfig::for_context(&ChatContextType::TaskExecution);
 
-    assert!(review.line_read_timeout < default.line_read_timeout);
+    assert_eq!(review.line_read_timeout, default.line_read_timeout);
     assert!(review.parse_stall_timeout < default.parse_stall_timeout);
     // Merge matches default — merger agents may run silent test suites
     assert_eq!(merge.line_read_timeout, default.line_read_timeout);

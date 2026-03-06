@@ -55,7 +55,8 @@ export function RunningProcessPopover({
   children,
   alignOffset = -24,
 }: RunningProcessPopoverProps) {
-  const effectiveRunningCount = runningCount ?? processes.length;
+  const activeIdeationCount = ideationSessions.filter((s) => s.isGenerating).length;
+  const effectiveRunningCount = runningCount ?? (processes.length + activeIdeationCount);
   const hasAnyRunning = processes.length > 0 || ideationSessions.length > 0;
 
   return (

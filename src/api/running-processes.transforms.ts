@@ -91,6 +91,7 @@ export function transformRunningIdeationSession(
     title: raw.title,
     elapsedSeconds: raw.elapsed_seconds,
     teamMode: raw.team_mode,
+    isGenerating: raw.is_generating,
   };
 }
 
