@@ -100,6 +100,10 @@ impl ProcessRepository for MockProcessRepository {
         let processes = self.processes.lock().await;
         Ok(processes.contains_key(id.as_str()))
     }
+
+    async fn fail_all_active(&self, _reason: &str) -> AppResult<usize> {
+        Ok(0)
+    }
 }
 
 // ==================== Test Helpers ====================

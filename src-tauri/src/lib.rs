@@ -229,6 +229,30 @@ pub fn run() {
                 });
             }
 
+            // Cleanup stale process state from previous session.
+            // All spawned agent team processes are children of the Tauri app, so any
+            // restart (including crash) leaves their DB rows in an active state.
+            {
+                let team_repo = Arc::clone(&app_state.team_session_repo);
+                tauri::async_runtime::block_on(async move {
+                    match team_repo.disband_all_active("app_restart").await {
+                        Ok(n) => info!(count = n, "Disbanded stale team sessions on startup"),
+                        Err(e) => warn!(error = %e, "Failed to disband stale team sessions"),
+                    }
+                });
+            }
+
+            // All spawned processes are Tauri children — app restart means they are dead.
+            {
+                let process_repo = Arc::clone(&app_state.process_repo);
+                tauri::async_runtime::block_on(async move {
+                    match process_repo.fail_all_active("app_restart").await {
+                        Ok(n) => info!(count = n, "Marked stale research processes failed on startup"),
+                        Err(e) => warn!(error = %e, "Failed to mark stale research processes failed on startup"),
+                    }
+                });
+            }
+
             // Start HTTP server for MCP proxy on port 3847
             // Create a second AppState for HTTP server with its own DB connection,
             // but share in-memory state (question_state, permission_state, message_queue)

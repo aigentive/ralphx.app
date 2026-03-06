@@ -355,6 +355,20 @@ impl ProcessRepository for SqliteProcessRepository {
             })
             .await
     }
+
+    async fn fail_all_active(&self, _reason: &str) -> AppResult<usize> {
+        let completed_at = Utc::now().to_rfc3339();
+
+        self.db
+            .run(move |conn| {
+                let count = conn.execute(
+                    "UPDATE processes SET status = 'failed', completed_at = ?1 WHERE status IN ('pending', 'running')",
+                    rusqlite::params![completed_at],
+                )?;
+                Ok(count)
+            })
+            .await
+    }
 }
 
 #[cfg(test)]

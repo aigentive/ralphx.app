@@ -402,6 +402,71 @@ async fn test_checkpoint_preserved() {
     assert_eq!(loaded.progress.last_checkpoint, Some(checkpoint_id));
 }
 
+// ==================== FAIL ALL ACTIVE TESTS ====================
+
+#[tokio::test]
+async fn test_mark_running_processes_as_failed() {
+    let conn = setup_test_db();
+    let repo = SqliteProcessRepository::new(conn);
+
+    let running = create_running_process();
+    let brief = ResearchBrief::new("Completed research");
+    let mut completed = ResearchProcess::new("Completed", brief, "researcher");
+    completed.start();
+    completed.complete();
+
+    let running_id = running.id.clone();
+    let completed_id = completed.id.clone();
+
+    repo.create(running).await.unwrap();
+    repo.create(completed).await.unwrap();
+
+    let count = repo.fail_all_active("app_restart").await.unwrap();
+    assert_eq!(count, 1);
+
+    let running_after = repo.get_by_id(&running_id).await.unwrap().unwrap();
+    assert_eq!(running_after.status(), ResearchProcessStatus::Failed);
+
+    // Completed process is unaffected
+    let completed_after = repo.get_by_id(&completed_id).await.unwrap().unwrap();
+    assert_eq!(completed_after.status(), ResearchProcessStatus::Completed);
+}
+
+#[tokio::test]
+async fn test_fail_all_active_includes_pending_processes() {
+    let conn = setup_test_db();
+    let repo = SqliteProcessRepository::new(conn);
+
+    let pending = create_test_process();
+    let running = create_running_process();
+    let pending_id = pending.id.clone();
+    let running_id = running.id.clone();
+
+    repo.create(pending).await.unwrap();
+    repo.create(running).await.unwrap();
+
+    let count = repo.fail_all_active("app_restart").await.unwrap();
+    assert_eq!(count, 2);
+
+    assert_eq!(
+        repo.get_by_id(&pending_id).await.unwrap().unwrap().status(),
+        ResearchProcessStatus::Failed
+    );
+    assert_eq!(
+        repo.get_by_id(&running_id).await.unwrap().unwrap().status(),
+        ResearchProcessStatus::Failed
+    );
+}
+
+#[tokio::test]
+async fn test_fail_all_active_noop_when_no_active_processes() {
+    let conn = setup_test_db();
+    let repo = SqliteProcessRepository::new(conn);
+
+    let count = repo.fail_all_active("app_restart").await.unwrap();
+    assert_eq!(count, 0);
+}
+
 #[tokio::test]
 async fn test_get_all_ordered_by_created_at_desc() {
     let conn = setup_test_db();

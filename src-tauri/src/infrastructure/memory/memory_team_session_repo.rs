@@ -110,6 +110,18 @@ impl TeamSessionRepository for MemoryTeamSessionRepository {
         }
         Ok(())
     }
+
+    async fn disband_all_active(&self, _reason: &str) -> AppResult<usize> {
+        let mut sessions = self.sessions.write().unwrap();
+        let now = Utc::now();
+        let mut count = 0usize;
+        for s in sessions.iter_mut().filter(|s| s.disbanded_at.is_none()) {
+            s.disbanded_at = Some(now);
+            s.updated_at = now;
+            count += 1;
+        }
+        Ok(count)
+    }
 }
 
 #[cfg(test)]
