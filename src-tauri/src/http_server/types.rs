@@ -912,6 +912,25 @@ pub struct GetSessionMessagesResponse {
 // Request/Response Types - Team Endpoints
 // ============================================================================
 
+/// POST /api/team/plan/request — Phase 1: register team plan and return plan_id immediately
+#[derive(Debug, Serialize)]
+pub struct TeamPlanRegisterResponse {
+    pub success: bool,
+    pub plan_id: String,
+    pub message: String,
+}
+
+/// GET /api/team/plan/pending/:context_id — frontend reconciliation response
+#[derive(Debug, Serialize)]
+pub struct GetPendingPlanResponse {
+    pub has_pending: bool,
+    pub plan_id: Option<String>,
+    pub context_id: String,
+    pub process: Option<String>,
+    pub teammate_count: Option<usize>,
+    pub created_at: Option<String>,
+}
+
 /// POST /api/team/plan — request approval for a team plan
 #[derive(Debug, Deserialize)]
 pub struct RequestTeamPlanRequest {

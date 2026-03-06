@@ -7,8 +7,8 @@
  * 3. Returns answer to agent as tool result
  */
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
-/** Timeout for long-polling (5 minutes) */
-const QUESTION_TIMEOUT_MS = 5 * 60 * 1000;
+/** Timeout for long-polling (15 minutes — staggered 1 min above backend's 14 min) */
+const QUESTION_TIMEOUT_MS = 15 * 60 * 1000;
 /**
  * Handle an ask_user_question tool call.
  *

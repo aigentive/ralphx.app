@@ -317,8 +317,8 @@ pub struct PendingTeammate {
 pub struct TeamStateTracker {
     teams: Arc<RwLock<HashMap<String, TeamState>>>,
     pending_plans: Arc<RwLock<HashMap<String, PendingTeamPlan>>>,
-    /// Watch channels for blocking plan approval — plan_id → sender
-    plan_channels: Arc<RwLock<HashMap<String, watch::Sender<Option<PlanDecision>>>>>,
+    /// Watch channels for blocking plan approval — plan_id → (sender, created_at)
+    plan_channels: Arc<RwLock<HashMap<String, (watch::Sender<Option<PlanDecision>>, std::time::Instant)>>>,
 }
 
 impl std::fmt::Debug for TeamStateTracker {
@@ -347,13 +347,43 @@ impl TeamStateTracker {
     }
 
     /// Store a validated team plan pending user approval.
-    /// Also cleans up stale plans older than 30 minutes to prevent memory leaks.
+    ///
+    /// Safety invariants enforced on every write:
+    /// 1. Single-plan-per-context: cancels any existing pending plan for the same `context_id`.
+    /// 2. Plan GC: removes stale plans older than 30 minutes.
+    /// 3. Channel GC: removes watch channels older than 20 minutes and channels belonging
+    ///    to plans that were just cancelled (piggyback sweep, avoids a separate GC task).
     pub async fn store_pending_plan(&self, plan: PendingTeamPlan) {
-        let mut plans = self.pending_plans.write().await;
-        // Cleanup stale plans (older than 30 minutes)
-        let stale_cutoff = Utc::now() - chrono::Duration::minutes(30);
-        plans.retain(|_id, p| p.created_at > stale_cutoff);
-        plans.insert(plan.plan_id.clone(), plan);
+        // Phase 1: update pending plans, collect IDs of old plans for the same context.
+        let superseded_ids: Vec<String> = {
+            let mut plans = self.pending_plans.write().await;
+            // Cleanup stale plans (older than 30 minutes)
+            let stale_cutoff = Utc::now() - chrono::Duration::minutes(30);
+            plans.retain(|_id, p| p.created_at > stale_cutoff);
+            // Single-plan-per-context: collect and remove old plans for this context_id.
+            let superseded: Vec<String> = plans
+                .values()
+                .filter(|p| p.context_id == plan.context_id && p.plan_id != plan.plan_id)
+                .map(|p| p.plan_id.clone())
+                .collect();
+            for id in &superseded {
+                plans.remove(id);
+            }
+            plans.insert(plan.plan_id.clone(), plan);
+            superseded
+        };
+
+        // Phase 2: sweep plan_channels — remove GC'd entries and cancelled-plan channels.
+        {
+            let mut channels = self.plan_channels.write().await;
+            let now = std::time::Instant::now();
+            channels.retain(|id, (_tx, created_at)| {
+                if superseded_ids.contains(id) {
+                    return false; // cancel superseded plan's channel
+                }
+                now.duration_since(*created_at) < std::time::Duration::from_secs(20 * 60)
+            });
+        }
     }
 
     /// Take a pending plan by ID (removes it from the store)
@@ -369,14 +399,29 @@ impl TeamStateTracker {
     ) -> watch::Receiver<Option<PlanDecision>> {
         let (tx, rx) = watch::channel(None);
         let mut channels = self.plan_channels.write().await;
-        channels.insert(plan_id.to_string(), tx);
+        channels.insert(plan_id.to_string(), (tx, std::time::Instant::now()));
         rx
+    }
+
+    /// Check whether a plan channel exists (used for approve-at-timeout guard).
+    pub async fn plan_channel_exists(&self, plan_id: &str) -> bool {
+        let channels = self.plan_channels.read().await;
+        channels.contains_key(plan_id)
+    }
+
+    /// Subscribe to a plan channel for long-polling (returns None if channel not found).
+    pub async fn subscribe_plan_channel(
+        &self,
+        plan_id: &str,
+    ) -> Option<watch::Receiver<Option<PlanDecision>>> {
+        let channels = self.plan_channels.read().await;
+        channels.get(plan_id).map(|(tx, _)| tx.subscribe())
     }
 
     /// Signal plan approval/rejection through the watch channel
     pub async fn resolve_plan(&self, plan_id: &str, decision: PlanDecision) -> bool {
         let channels = self.plan_channels.read().await;
-        if let Some(tx) = channels.get(plan_id) {
+        if let Some((tx, _)) = channels.get(plan_id) {
             let _ = tx.send(Some(decision));
             true
         } else {
@@ -388,6 +433,12 @@ impl TeamStateTracker {
     pub async fn remove_plan_channel(&self, plan_id: &str) {
         let mut channels = self.plan_channels.write().await;
         channels.remove(plan_id);
+    }
+
+    /// Get the pending plan for a context_id (for frontend reconciliation).
+    pub async fn get_pending_plan_for_context(&self, context_id: &str) -> Option<PendingTeamPlan> {
+        let plans = self.pending_plans.read().await;
+        plans.values().find(|p| p.context_id == context_id).cloned()
     }
 
     /// Create a new team

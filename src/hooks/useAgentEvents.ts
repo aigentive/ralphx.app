@@ -15,6 +15,7 @@ import type { ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, ContextType } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
 import { useUiStore } from "@/stores/uiStore";
+import { useTeamStore } from "@/stores/teamStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { chatKeys } from "./useChat";
 import type { Unsubscribe } from "@/lib/event-bus";
@@ -34,6 +35,7 @@ export function useAgentEvents(activeConversationId: string | null) {
   const deleteQueuedMessage = useChatStore((s) => s.deleteQueuedMessage);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const clearActiveQuestion = useUiStore((s) => s.clearActiveQuestion);
+  const clearPendingPlan = useTeamStore((s) => s.clearPendingPlan);
 
   useEffect(() => {
     const unsubscribes: Unsubscribe[] = [];
@@ -163,6 +165,10 @@ export function useAgentEvents(activeConversationId: string | null) {
         // so questions can no longer be answered.
         clearActiveQuestion(eventContextId);
 
+        // Clear any pending team plan — the lead agent is gone so the plan
+        // can no longer be approved or rejected.
+        clearPendingPlan(eventContextKey);
+
         // Invalidate using conversation_id from the payload — avoids stale closure mismatch
         // where activeConversationId in the closure might differ from the just-completed run.
         queryClient.invalidateQueries({
@@ -248,6 +254,10 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Clean up any pending questions — agent is being killed
         clearActiveQuestion(eventContextId);
 
+        // Clear any pending team plan — the lead agent is gone so the plan
+        // can no longer be approved or rejected.
+        clearPendingPlan(eventContextKey);
+
         // Invalidate using conversation_id from payload to avoid stale closure mismatch
         queryClient.invalidateQueries({
           queryKey: chatKeys.agentRun(conversation_id),
@@ -281,6 +291,10 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Clean up any pending questions — agent errored out
         clearActiveQuestion(eventContextId);
 
+        // Clear any pending team plan — the lead agent is gone so the plan
+        // can no longer be approved or rejected.
+        clearPendingPlan(eventContextKey);
+
         // Invalidate using conversation_id from payload to avoid stale closure mismatch
         queryClient.invalidateQueries({
           queryKey: chatKeys.agentRun(conversation_id),
@@ -313,5 +327,5 @@ export function useAgentEvents(activeConversationId: string | null) {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, activeConversationId, queryClient, setAgentStatus, deleteQueuedMessage, setActiveConversation, clearActiveQuestion]);
+  }, [bus, activeConversationId, queryClient, setAgentStatus, deleteQueuedMessage, setActiveConversation, clearActiveQuestion, clearPendingPlan]);
 }

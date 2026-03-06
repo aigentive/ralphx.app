@@ -159,6 +159,43 @@ export async function approveTeamPlan(
   return ApproveTeamPlanResponseSchema.parse(await resp.json());
 }
 
+// ============================================================================
+// Pending Plans
+// ============================================================================
+
+export const PendingPlanFromServerSchema = z.object({
+  plan_id: z.string(),
+  process: z.string(),
+  teammates: z.array(z.object({
+    role: z.string(),
+    model: z.string(),
+    tools: z.array(z.string()),
+    mcp_tools: z.array(z.string()),
+    prompt_summary: z.string(),
+    preset: z.string().nullable().optional(),
+  })),
+  context_type: z.string(),
+  context_id: z.string(),
+  created_at_ms: z.number(),
+});
+
+export const PendingPlansResponseSchema = z.object({
+  plans: z.array(PendingPlanFromServerSchema),
+});
+
+export type PendingPlanFromServer = z.infer<typeof PendingPlanFromServerSchema>;
+
+export async function getPendingPlans(contextId: string): Promise<PendingPlanFromServer[]> {
+  try {
+    const resp = await fetch(`${MCP_SERVER_URL}/api/team/plan/pending/${contextId}`);
+    if (!resp.ok) return [];
+    const data = PendingPlansResponseSchema.parse(await resp.json());
+    return data.plans;
+  } catch {
+    return [];
+  }
+}
+
 export async function rejectTeamPlan(planId: string): Promise<void> {
   const resp = await fetch(`${MCP_SERVER_URL}/api/team/plan/reject`, {
     method: "POST",

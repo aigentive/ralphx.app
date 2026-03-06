@@ -198,8 +198,10 @@ pub async fn start_http_server(
             "/api/conversations/:id/active-state",
             get(get_conversation_active_state),
         )
-        // Team endpoints (agent teams)
-        .route("/api/team/plan", post(request_team_plan))
+        // Team endpoints (agent teams) — two-phase plan flow
+        .route("/api/team/plan/request", post(request_team_plan_register))
+        .route("/api/team/plan/await/:plan_id", get(await_team_plan))
+        .route("/api/team/plan/pending/:context_id", get(get_pending_plan))
         .route("/api/team/plan/approve", post(approve_team_plan))
         .route("/api/team/plan/reject", post(reject_team_plan))
         .route("/api/team/spawn", post(request_teammate_spawn))

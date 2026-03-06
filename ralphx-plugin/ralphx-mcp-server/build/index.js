@@ -18,6 +18,7 @@ import { callTauri, callTauriGet, TauriClientError } from "./tauri-client.js";
 import { getFilteredTools, isToolAllowed, getAllowedToolNames, logAllTools, getToolsByAgent, setAgentType, } from "./tools.js";
 import { permissionRequestTool, handlePermissionRequest, } from "./permission-handler.js";
 import { handleAskUserQuestion } from "./question-handler.js";
+import { handleRequestTeamPlan } from "./team-plan-handler.js";
 /**
  * Parse command line arguments for --agent-type
  * Returns the agent type if found, undefined otherwise
@@ -186,6 +187,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             };
         }
         return handleAskUserQuestion(args);
+    }
+    // Special handling for request_team_plan (two-phase: register POST + long-poll GET)
+    if (name === "request_team_plan") {
+        // Still check authorization (must be in agent's allowlist)
+        if (!isToolAllowed(name)) {
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `ERROR: Tool "${name}" is not available for agent type "${AGENT_TYPE}".`,
+                    },
+                ],
+                isError: true,
+            };
+        }
+        const leadSessionId = globalThis.process.env.RALPHX_LEAD_SESSION_ID;
+        return handleRequestTeamPlan(args, RALPHX_CONTEXT_TYPE ?? "ideation", RALPHX_CONTEXT_ID ?? "", leadSessionId);
     }
     // Authorization check (defense in depth)
     if (!isToolAllowed(name)) {
@@ -363,61 +381,6 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             // POST /api/projects/:project_id/analysis
             const { project_id, entries } = args;
             result = await callTauri(`projects/${project_id}/analysis`, { entries });
-        }
-        else if (name === "request_team_plan") {
-            // POST /api/team/plan
-            // team_name comes from the lead agent's TeamCreate call (required);
-            // lead_session_id comes from the env var set by chat_service_context on the lead process.
-            const teamPlanArgs = args;
-            const leadSessionId = globalThis.process.env.RALPHX_LEAD_SESSION_ID;
-            // Validate team_name is present (required field)
-            const teamName = teamPlanArgs.team_name;
-            if (!teamName) {
-                return {
-                    content: [{
-                            type: "text",
-                            text: `ERROR: team_name is required for request_team_plan. Pass the exact team name from your TeamCreate call.`,
-                        }],
-                    isError: true,
-                };
-            }
-            // Validate team exists in Claude Code's registry before forwarding
-            const os = await import("os");
-            const fs = await import("fs");
-            const path = await import("path");
-            const configPath = path.join(os.homedir(), ".claude", "teams", teamName, "config.json");
-            if (!fs.existsSync(configPath)) {
-                return {
-                    content: [{
-                            type: "text",
-                            text: `ERROR: Team '${teamName}' not found in Claude Code registry at ${configPath}. Make sure you call TeamCreate with this exact team name before calling request_team_plan.`,
-                        }],
-                    isError: true,
-                };
-            }
-            // Read lead_session_id from config as fallback when env var is not set
-            let resolvedLeadSessionId = leadSessionId;
-            if (!resolvedLeadSessionId) {
-                try {
-                    const configContent = JSON.parse(fs.readFileSync(configPath, "utf-8"));
-                    if (configContent.leadSessionId) {
-                        resolvedLeadSessionId = configContent.leadSessionId;
-                        console.error(`[RalphX MCP] lead_session_id resolved from team config: ${resolvedLeadSessionId}`);
-                    }
-                }
-                catch (e) {
-                    console.error(`[RalphX MCP] Warning: could not read team config for lead_session_id fallback: ${e}`);
-                }
-            }
-            console.error(`[RalphX MCP] request_team_plan: lead_session_id=${resolvedLeadSessionId ?? "NULL"}, env_var=${leadSessionId ?? "NOT_SET"}, team=${teamName}, context_id=${RALPHX_CONTEXT_ID ?? "EMPTY"}`);
-            result = await callTauri("team/plan", {
-                context_type: RALPHX_CONTEXT_TYPE ?? "ideation",
-                context_id: RALPHX_CONTEXT_ID ?? "",
-                process: teamPlanArgs.process,
-                teammates: teamPlanArgs.teammates,
-                team_name: teamName,
-                lead_session_id: resolvedLeadSessionId ?? null,
-            });
         }
         else if (name === "request_teammate_spawn") {
             // POST /api/team/spawn
