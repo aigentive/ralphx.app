@@ -409,7 +409,7 @@ describe("AcceptModal", () => {
   describe("Analyzing Dependencies State", () => {
     it("disables accept button when isAnalyzingDependencies is true", () => {
       render(<AcceptModal {...defaultProps} isAnalyzingDependencies={true} />);
-      const acceptButton = screen.getByRole("button", { name: /Accept Plan/i });
+      const acceptButton = screen.getByRole("button", { name: /Checking dependencies/i });
       expect(acceptButton).toBeDisabled();
     });
 
@@ -434,7 +434,7 @@ describe("AcceptModal", () => {
       const onAccept = vi.fn();
       const user = userEvent.setup();
       render(<AcceptModal {...defaultProps} onAccept={onAccept} isAnalyzingDependencies={true} />);
-      const acceptButton = screen.getByRole("button", { name: /Accept Plan/i });
+      const acceptButton = screen.getByRole("button", { name: /Checking dependencies/i });
       await user.click(acceptButton);
       expect(onAccept).not.toHaveBeenCalled();
     });
@@ -595,7 +595,7 @@ describe("AcceptModal", () => {
 
     it("disables accept button when analyzing", () => {
       render(<AcceptModal {...defaultProps} isAnalyzingDependencies={true} />);
-      const acceptButton = screen.getByRole("button", { name: /Accept Plan/i });
+      const acceptButton = screen.getByRole("button", { name: /Checking dependencies/i });
       expect(acceptButton).toBeDisabled();
     });
 
