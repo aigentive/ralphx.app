@@ -14,6 +14,7 @@ import { useEventBus } from "@/providers/EventProvider";
 import type { ChatMessageResponse } from "@/api/chat";
 import type { ChatConversation, ContextType } from "@/types/chat-conversation";
 import { useChatStore } from "@/stores/chatStore";
+import { useUiStore } from "@/stores/uiStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { chatKeys } from "./useChat";
 import type { Unsubscribe } from "@/lib/event-bus";
@@ -32,6 +33,7 @@ export function useAgentEvents(activeConversationId: string | null) {
   const setAgentStatus = useChatStore((s) => s.setAgentStatus);
   const deleteQueuedMessage = useChatStore((s) => s.deleteQueuedMessage);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+  const clearActiveQuestion = useUiStore((s) => s.clearActiveQuestion);
 
   useEffect(() => {
     const unsubscribes: Unsubscribe[] = [];
@@ -157,6 +159,10 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Clear agent status for the specific context (run is done)
         setAgentStatus(eventContextKey, "idle");
 
+        // Clean up any pending questions for this session — the agent is gone,
+        // so questions can no longer be answered.
+        clearActiveQuestion(eventContextId);
+
         // Invalidate using conversation_id from the payload — avoids stale closure mismatch
         // where activeConversationId in the closure might differ from the just-completed run.
         queryClient.invalidateQueries({
@@ -239,6 +245,9 @@ export function useAgentEvents(activeConversationId: string | null) {
 
         setAgentStatus(eventContextKey, "idle");
 
+        // Clean up any pending questions — agent is being killed
+        clearActiveQuestion(eventContextId);
+
         // Invalidate using conversation_id from payload to avoid stale closure mismatch
         queryClient.invalidateQueries({
           queryKey: chatKeys.agentRun(conversation_id),
@@ -268,6 +277,9 @@ export function useAgentEvents(activeConversationId: string | null) {
 
         // Clear agent status on error for the specific context
         setAgentStatus(eventContextKey, "idle");
+
+        // Clean up any pending questions — agent errored out
+        clearActiveQuestion(eventContextId);
 
         // Invalidate using conversation_id from payload to avoid stale closure mismatch
         queryClient.invalidateQueries({
@@ -304,5 +316,5 @@ export function useAgentEvents(activeConversationId: string | null) {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, activeConversationId, queryClient, setAgentStatus, deleteQueuedMessage, setActiveConversation]);
+  }, [bus, activeConversationId, queryClient, setAgentStatus, deleteQueuedMessage, setActiveConversation, clearActiveQuestion]);
 }

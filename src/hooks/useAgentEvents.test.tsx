@@ -15,6 +15,8 @@ import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAgentEvents } from "./useAgentEvents";
 import { useChatStore } from "@/stores/chatStore";
+import { useUiStore } from "@/stores/uiStore";
+import type { AskUserQuestionPayload } from "@/types/ask-user-question";
 
 // ============================================================================
 // Mock EventBus
@@ -766,6 +768,130 @@ describe("useAgentEvents", () => {
 
       // Error clears the running state
       expect(useChatStore.getState().agentStatus["task_execution:task-123"]).toBeUndefined();
+    });
+  });
+
+  describe("stale question cleanup", () => {
+    const testQuestion: AskUserQuestionPayload = {
+      requestId: "req-1",
+      taskId: "task-123",
+      sessionId: "task-123",
+      question: "Approve team?",
+      header: "Team",
+      options: [{ label: "Yes", description: "Approve" }],
+      multiSelect: false,
+    };
+
+    it("clears active question on agent:run_completed", () => {
+      const wrapper = createWrapper();
+
+      // Set up an active question for this context
+      act(() => {
+        useUiStore.getState().setActiveQuestion("task-123", testQuestion);
+      });
+      expect(useUiStore.getState().activeQuestions["task-123"]).toBeDefined();
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "task",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      // Question should be cleaned up when agent dies
+      expect(useUiStore.getState().activeQuestions["task-123"]).toBeUndefined();
+    });
+
+    it("clears active question on agent:stopped", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useUiStore.getState().setActiveQuestion("task-123", testQuestion);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:stopped", {
+          context_type: "task",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          agent_run_id: "run-1",
+        });
+      });
+
+      expect(useUiStore.getState().activeQuestions["task-123"]).toBeUndefined();
+    });
+
+    it("clears active question on agent:error", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useUiStore.getState().setActiveQuestion("task-123", testQuestion);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:error", {
+          context_type: "task",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          error: "Agent crashed",
+        });
+      });
+
+      expect(useUiStore.getState().activeQuestions["task-123"]).toBeUndefined();
+    });
+
+    it("clears ideation session question on agent:run_completed", () => {
+      const wrapper = createWrapper();
+      const ideationQuestion = { ...testQuestion, sessionId: "session-789" };
+
+      act(() => {
+        useUiStore.getState().setActiveQuestion("session-789", ideationQuestion);
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "ideation",
+          context_id: "session-789",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      expect(useUiStore.getState().activeQuestions["session-789"]).toBeUndefined();
+    });
+
+    it("does not affect questions for other contexts", () => {
+      const wrapper = createWrapper();
+
+      act(() => {
+        useUiStore.getState().setActiveQuestion("task-123", testQuestion);
+        useUiStore.getState().setActiveQuestion("task-456", { ...testQuestion, sessionId: "task-456" });
+      });
+
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_completed", {
+          context_type: "task",
+          context_id: "task-123",
+          conversation_id: "conv-1",
+          status: "completed",
+        });
+      });
+
+      // Only task-123 should be cleared
+      expect(useUiStore.getState().activeQuestions["task-123"]).toBeUndefined();
+      expect(useUiStore.getState().activeQuestions["task-456"]).toBeDefined();
     });
   });
 
