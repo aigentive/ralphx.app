@@ -18,6 +18,32 @@ import {
   loadCollapsedColumns,
   saveCollapsedColumns,
 } from "@/components/tasks/TaskBoard/Column.utils";
+
+// ============================================================================
+// Show Merge Tasks Persistence
+// ============================================================================
+
+const SHOW_MERGE_TASKS_KEY = "ralphx-show-merge-tasks";
+
+function loadShowMergeTasks(): boolean {
+  try {
+    const saved = localStorage.getItem(SHOW_MERGE_TASKS_KEY);
+    if (saved !== null) {
+      return JSON.parse(saved) as boolean;
+    }
+  } catch {
+    /* ignore parse errors */
+  }
+  return true; // default: visible
+}
+
+function saveShowMergeTasks(show: boolean): void {
+  try {
+    localStorage.setItem(SHOW_MERGE_TASKS_KEY, JSON.stringify(show));
+  } catch {
+    /* ignore write errors */
+  }
+}
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProjectStore } from "@/stores/projectStore";
 
@@ -387,7 +413,7 @@ export const useUiStore = create<UiState & UiActions>()(
       canStartTask: true,
     },
     showArchived: false,
-    showMergeTasks: false,
+    showMergeTasks: loadShowMergeTasks(),
     boardSearchQuery: null,
     isSearching: false,
     selectedTaskId: null,
@@ -566,6 +592,7 @@ export const useUiStore = create<UiState & UiActions>()(
     setShowMergeTasks: (show) =>
       set((state) => {
         state.showMergeTasks = show;
+        saveShowMergeTasks(show);
       }),
 
     setBoardSearchQuery: (query) =>
