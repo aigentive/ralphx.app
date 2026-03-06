@@ -197,3 +197,58 @@ Phase 5: VALIDATE + COMPLETE
 | Background mode | `run_in_background: true` | **Foreground only** (MCP access required) |
 | Plan approval | `request_team_plan()` | `request_team_plan()` (same) |
 | Teammate model | Typically `sonnet` | Dynamic: `haiku` (simple), `sonnet` (complex), `opus` (architecture) |
+
+---
+
+## Fallback: Local Agents
+
+When native team mode is unavailable, lead falls back to local `Task` subagents without a team registry.
+
+### Fallback Triggers
+
+| Trigger | Description |
+|---------|-------------|
+| `TeamCreate` error | Tool call fails — team registry unavailable or config invalid |
+| `request_team_plan` timeout | Backend times out waiting for human approval (300s default in `teams.rs`) |
+| `request_team_plan` rejection | User rejects the proposed team plan |
+
+On any of these triggers, skip `TeamCreate` / `TeamDelete` and spawn local `Task` agents directly.
+
+### Artifact Flow in Fallback
+
+```
+Lead → Task (local agent, run_in_background: true)
+              |
+              ↓
+    [Agent does work]
+    [Agent calls create_team_artifact(type: "TeamResearch")]
+              |
+              ↓
+Lead → get_team_artifacts(session_id) → collect findings
+              |
+              ↓
+Lead → synthesize → create_team_artifact(type: "TeamSummary")
+              |
+              ↓
+Lead → create_plan_artifact()
+```
+
+### Key Differences from Team Mode
+
+| Aspect | Team Mode | Fallback (Local Agents) |
+|--------|-----------|------------------------|
+| Coordination | `SendMessage` + `SharedTaskList` | **Artifacts only** — no messaging |
+| Progress tracking | `TaskList` — see all owners + statuses | `get_team_artifacts(session_id)` — poll after each agent |
+| Team registry | Yes — teammates registered, discoverable | **None** — local agents are anonymous |
+| Task list | Shared via `TeamCreate` | **None** — lead tracks work in prompt only |
+| MCP access | Inherited via team config | **Explicit** — lead must include MCP tool instructions in each agent prompt |
+
+### Polling Rules
+
+| Rule | Detail |
+|------|--------|
+| **Artifacts = only channel** | No `SendMessage` in fallback. Local agents communicate via `create_team_artifact` → lead reads via `get_team_artifacts(session_id)` |
+| **Poll on completion** | After each background `Task` notification, call `get_team_artifacts(session_id)` to collect findings |
+| **Poll proactively** | If agents still running after 2-3 minutes, poll anyway — agents may have created partial artifacts |
+| **Synthesize incrementally** | Process artifacts as they arrive. If one agent fails, synthesize from available artifacts |
+| **MCP tools for local agents** | Local `general-purpose` subagents do NOT inherit MCP tools. Lead MUST include `create_team_artifact` and `get_team_artifacts` instructions in the agent prompt with explicit `session_id` |
