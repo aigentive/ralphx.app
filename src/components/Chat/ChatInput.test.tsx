@@ -1082,7 +1082,7 @@ describe("ChatInput", () => {
         expect(onSend).toHaveBeenCalledWith("2");
       });
 
-      it("clears matched options after send", async () => {
+      it("does not clear matched options from ChatInput — clearing is handled by handleQuestionSend", async () => {
         const user = userEvent.setup();
         const onSend = vi.fn().mockResolvedValue(undefined);
         render(
@@ -1093,8 +1093,9 @@ describe("ChatInput", () => {
         await user.type(textarea, "2");
         await user.keyboard("{Enter}");
 
-        // After send, the last call should clear matched options
-        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([]);
+        // ChatInput should NOT clear matched options — that's the caller's responsibility
+        // (handleQuestionSend clears after successful submission)
+        expect(questionModeProps.onMatchedOptions).toHaveBeenLastCalledWith([1]);
       });
     });
   });

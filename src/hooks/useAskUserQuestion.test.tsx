@@ -25,6 +25,15 @@ vi.mock("@/providers/EventProvider", () => ({
   }),
 }));
 
+// Mock sonner toast
+vi.mock("sonner", () => ({
+  toast: {
+    success: vi.fn(),
+    error: vi.fn(),
+    info: vi.fn(),
+  },
+}));
+
 // Mock Tauri invoke for answering questions
 const mockInvoke = vi.fn();
 vi.mock("@tauri-apps/api/core", () => ({
@@ -611,6 +620,391 @@ describe("useAskUserQuestion", () => {
 
       // Should still be undefined
       expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
+    });
+  });
+
+  describe("submitAnswer return value and error handling", () => {
+    it("returns true on successful submission", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      let returnValue: boolean | undefined;
+      await act(async () => {
+        returnValue = await result.current.submitAnswer(response);
+      });
+
+      expect(returnValue).toBe(true);
+    });
+
+    it("returns false when no active question", async () => {
+      // Don't set an active question
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      let returnValue: boolean | undefined;
+      await act(async () => {
+        returnValue = await result.current.submitAnswer(response);
+      });
+
+      expect(returnValue).toBe(false);
+    });
+
+    it("returns false when API call fails", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      mockResolve.mockRejectedValueOnce(new Error("Session expired"));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      let returnValue: boolean | undefined;
+      await act(async () => {
+        returnValue = await result.current.submitAnswer(response);
+      });
+
+      expect(returnValue).toBe(false);
+    });
+
+    it("clears stale active question on API failure", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      mockResolve.mockRejectedValueOnce(new Error("Session expired"));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      // Stale question should be cleaned up on error
+      expect(useUiStore.getState().activeQuestions[TEST_SESSION]).toBeUndefined();
+    });
+
+    it("does not set answered state on API failure", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      mockResolve.mockRejectedValueOnce(new Error("Session expired"));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      expect(useUiStore.getState().answeredQuestions[TEST_SESSION]).toBeUndefined();
+    });
+
+    it("resets isLoading after API failure", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      mockResolve.mockRejectedValueOnce(new Error("Session expired"));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      expect(result.current.isLoading).toBe(false);
+    });
+
+    it("does not wipe a new question when old submit completes", async () => {
+      // Set up original question
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      // Make resolveQuestion slow — simulate in-flight API call
+      let resolveApi!: () => void;
+      mockResolve.mockImplementationOnce(() => new Promise<void>((r) => { resolveApi = r; }));
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      // Start the submit (won't complete yet)
+      let submitPromise: Promise<boolean>;
+      act(() => {
+        submitPromise = result.current.submitAnswer(response);
+      });
+
+      // While submit is in-flight, a NEW question arrives for the same session
+      const newQuestion: AskUserQuestionPayload = {
+        requestId: "req-NEW-456",
+        taskId: "task-123",
+        sessionId: TEST_SESSION,
+        question: "Pick a strategy",
+        header: "Strategy",
+        options: [{ label: "A", description: "Option A" }],
+        multiSelect: false,
+      };
+      act(() => {
+        useUiStore.getState().setActiveQuestion(TEST_SESSION, newQuestion);
+      });
+
+      // Now the old API call completes successfully
+      await act(async () => {
+        resolveApi();
+        await submitPromise!;
+      });
+
+      // The NEW question must still be in the store — old submit must NOT wipe it
+      const currentQuestion = useUiStore.getState().activeQuestions[TEST_SESSION];
+      expect(currentQuestion).toBeDefined();
+      expect(currentQuestion?.requestId).toBe("req-NEW-456");
+    });
+
+    it("does not show error toast when question already cleared by agent death", async () => {
+      const { toast: toastMock } = await import("sonner");
+
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      mockResolve.mockRejectedValueOnce(new Error("Session expired"));
+
+      // Agent death clears the question before submit's catch runs
+      useUiStore.getState().clearActiveQuestion(TEST_SESSION);
+
+      const response: AskUserQuestionResponse = {
+        requestId: "req-test-123",
+        selectedOptions: ["JWT tokens"],
+      };
+
+      await act(async () => {
+        await result.current.submitAnswer(response);
+      });
+
+      // Toast should NOT fire — question was already cleaned up by agent death
+      expect(toastMock.error).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("stale question cleanup on mount and focus", () => {
+    it("clears stale question on mount when backend has no pending question", async () => {
+      // Pre-populate store with a question the backend no longer knows about
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      mockGetPending.mockResolvedValueOnce([]);
+
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve(); // flush microtasks
+      });
+
+      expect(useUiStore.getState().activeQuestions[TEST_SESSION]).toBeUndefined();
+    });
+
+    it("preserves question on mount when backend confirms it is still pending", async () => {
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      mockGetPending.mockResolvedValueOnce([validPayload]);
+
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(useUiStore.getState().activeQuestions[TEST_SESSION]).toEqual(validPayload);
+    });
+
+    it("does not clear event-delivered question when mount hydration resolves after event", async () => {
+      // Pre-populate with old question
+      const oldQuestion = { ...validPayload, requestId: "old-req" };
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, oldQuestion);
+
+      // Deferred promise for getPendingQuestions — we control when it resolves
+      let resolveGetPending!: (value: AskUserQuestionPayload[]) => void;
+      mockGetPending.mockImplementationOnce(
+        () => new Promise<AskUserQuestionPayload[]>((r) => { resolveGetPending = r; })
+      );
+
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      // While API is in-flight, a NEW question arrives via event
+      const newQuestion = { ...validPayload, requestId: "new-req" };
+      act(() => {
+        emitEvent("agent:ask_user_question", newQuestion);
+      });
+
+      expect(result.current.activeQuestion?.requestId).toBe("new-req");
+
+      // Now the old API call resolves with empty (backend has nothing pending)
+      await act(async () => {
+        resolveGetPending([]);
+        await Promise.resolve();
+      });
+
+      // The new event-delivered question must survive — requestId changed, so cleanup skips
+      expect(useUiStore.getState().activeQuestions[TEST_SESSION]).toBeDefined();
+      expect(useUiStore.getState().activeQuestions[TEST_SESSION]?.requestId).toBe("new-req");
+    });
+
+    it("clears stale question on visibilitychange when backend has no pending question", async () => {
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      // Wait for mount hydration to complete
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Now set an active question (simulating one that arrived while app was foregrounded)
+      act(() => {
+        useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      });
+      expect(result.current.activeQuestion).toEqual(validPayload);
+
+      // Backend will report no pending questions
+      mockGetPending.mockResolvedValueOnce([]);
+
+      // Simulate returning to the app
+      Object.defineProperty(document, "visibilityState", { value: "visible", writable: true, configurable: true });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      // Advance past debounce
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      // Flush the promise from getPendingQuestions
+      await act(async () => {
+        await Promise.resolve();
+        await Promise.resolve(); // extra flush for chained .then()
+      });
+
+      expect(useUiStore.getState().activeQuestions[TEST_SESSION]).toBeUndefined();
+    });
+
+    it("does not check backend on visibilitychange when no active question", async () => {
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      // Wait for mount hydration
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Reset call count after mount
+      mockGetPending.mockClear();
+
+      // Dispatch visibilitychange with no active question
+      Object.defineProperty(document, "visibilityState", { value: "visible", writable: true, configurable: true });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Should NOT have called getPendingQuestions — no question to check
+      expect(mockGetPending).not.toHaveBeenCalled();
+    });
+
+    it("debounces rapid visibilitychange events", async () => {
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      // Wait for mount hydration
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Set active question
+      act(() => {
+        useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      });
+
+      // Reset after mount
+      mockGetPending.mockClear();
+      mockGetPending.mockResolvedValue([validPayload]); // keep question alive
+
+      Object.defineProperty(document, "visibilityState", { value: "visible", writable: true, configurable: true });
+
+      // Dispatch 3 rapid visibilitychange events
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      // Advance past debounce
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Only one call — debounce collapsed the 3 events
+      expect(mockGetPending).toHaveBeenCalledTimes(1);
+    });
+
+    it("does not clear question when document becomes hidden", async () => {
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      // Wait for mount hydration
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Set active question
+      act(() => {
+        useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      });
+
+      mockGetPending.mockClear();
+
+      // Document becomes hidden
+      Object.defineProperty(document, "visibilityState", { value: "hidden", writable: true, configurable: true });
+      act(() => {
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+
+      act(() => {
+        vi.advanceTimersByTime(500);
+      });
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // Question should still be present — no cleanup on hidden
+      expect(useUiStore.getState().activeQuestions[TEST_SESSION]).toEqual(validPayload);
+      // getPendingQuestions should not have been called
+      expect(mockGetPending).not.toHaveBeenCalled();
     });
   });
 });
