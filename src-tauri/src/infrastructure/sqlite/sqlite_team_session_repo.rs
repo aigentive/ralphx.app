@@ -203,4 +203,17 @@ impl TeamSessionRepository for SqliteTeamSessionRepository {
             })
             .await
     }
+
+    async fn disband_all_active(&self, _reason: &str) -> AppResult<usize> {
+        self.db
+            .run(move |conn| {
+                let now = Utc::now().to_rfc3339();
+                let count = conn.execute(
+                    "UPDATE team_sessions SET disbanded_at = ?1, updated_at = ?2 WHERE disbanded_at IS NULL",
+                    rusqlite::params![now, now],
+                )?;
+                Ok(count)
+            })
+            .await
+    }
 }

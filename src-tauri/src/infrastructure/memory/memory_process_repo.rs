@@ -119,6 +119,18 @@ impl ProcessRepository for MemoryProcessRepository {
         let processes = self.processes.read().await;
         Ok(processes.contains_key(id))
     }
+
+    async fn fail_all_active(&self, reason: &str) -> AppResult<usize> {
+        let mut processes = self.processes.write().await;
+        let mut count = 0usize;
+        for process in processes.values_mut() {
+            if process.is_active() {
+                process.fail(reason);
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
 }
 
 #[cfg(test)]

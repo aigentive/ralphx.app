@@ -406,6 +406,147 @@ async fn test_set_disbanded_does_not_affect_other_sessions() {
     assert!(found2.disbanded_at.is_none());
 }
 
+// ==================== DISBAND ALL ACTIVE TESTS ====================
+
+#[tokio::test]
+async fn test_disband_all_active_returns_count_of_affected_rows() {
+    let conn = setup_test_db();
+    let repo = SqliteTeamSessionRepository::new(conn);
+
+    let s1 = TeamSession::new("team-a", "ctx-1", "project");
+    let s2 = TeamSession::new("team-b", "ctx-2", "task");
+    let s3 = TeamSession::new("team-c", "ctx-3", "project");
+    let id3 = s3.id.clone();
+
+    repo.create(s1).await.unwrap();
+    repo.create(s2).await.unwrap();
+    repo.create(s3).await.unwrap();
+
+    // Pre-disband one so it is excluded
+    repo.set_disbanded(&id3).await.unwrap();
+
+    let count = repo.disband_all_active("app_restart").await.unwrap();
+    assert_eq!(count, 2);
+}
+
+#[tokio::test]
+async fn test_disband_all_active_makes_get_active_for_context_return_none() {
+    let conn = setup_test_db();
+    let repo = SqliteTeamSessionRepository::new(conn);
+
+    let s1 = TeamSession::new("team-a", "ctx-1", "project");
+    let s2 = TeamSession::new("team-b", "ctx-1", "project");
+
+    repo.create(s1).await.unwrap();
+    repo.create(s2).await.unwrap();
+
+    // Confirm there is an active session before cleanup
+    assert!(repo
+        .get_active_for_context("project", "ctx-1")
+        .await
+        .unwrap()
+        .is_some());
+
+    repo.disband_all_active("app_restart").await.unwrap();
+
+    // After cleanup, no active sessions remain
+    assert!(repo
+        .get_active_for_context("project", "ctx-1")
+        .await
+        .unwrap()
+        .is_none());
+}
+
+#[tokio::test]
+async fn test_disband_all_active_returns_zero_when_no_active_sessions() {
+    let conn = setup_test_db();
+    let repo = SqliteTeamSessionRepository::new(conn);
+
+    let count = repo.disband_all_active("app_restart").await.unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn test_disband_all_active_does_not_overwrite_already_disbanded_timestamp() {
+    let conn = setup_test_db();
+    let repo = SqliteTeamSessionRepository::new(conn);
+
+    let session = TeamSession::new("team-a", "ctx-1", "project");
+    let id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    repo.set_disbanded(&id).await.unwrap();
+    let first_disbanded_at = repo
+        .get_by_id(&id)
+        .await
+        .unwrap()
+        .unwrap()
+        .disbanded_at
+        .unwrap();
+
+    // disband_all_active should not touch already-disbanded rows
+    let count = repo.disband_all_active("app_restart").await.unwrap();
+    assert_eq!(count, 0);
+
+    let still_disbanded_at = repo
+        .get_by_id(&id)
+        .await
+        .unwrap()
+        .unwrap()
+        .disbanded_at
+        .unwrap();
+    assert_eq!(first_disbanded_at, still_disbanded_at);
+}
+
+#[tokio::test]
+async fn test_disband_all_active_clears_orphaned_sessions() {
+    let conn = setup_test_db();
+    let repo = SqliteTeamSessionRepository::new(conn);
+
+    let s1 = TeamSession::new("team-a", "ctx-1", "project");
+    let s2 = TeamSession::new("team-b", "ctx-2", "task");
+    let s3 = TeamSession::new("team-c", "ctx-3", "project");
+    let id1 = s1.id.clone();
+    let id2 = s2.id.clone();
+    let id3 = s3.id.clone();
+
+    repo.create(s1).await.unwrap();
+    repo.create(s2).await.unwrap();
+    repo.create(s3).await.unwrap();
+
+    // Pre-disband s3 so it is excluded from cleanup
+    repo.set_disbanded(&id3).await.unwrap();
+    let pre_disbanded_at = repo
+        .get_by_id(&id3)
+        .await
+        .unwrap()
+        .unwrap()
+        .disbanded_at
+        .unwrap();
+
+    let count = repo.disband_all_active("app_restart").await.unwrap();
+    assert_eq!(count, 2);
+
+    // The two orphaned sessions now have disbanded_at set
+    let s1_after = repo.get_by_id(&id1).await.unwrap().unwrap();
+    let s2_after = repo.get_by_id(&id2).await.unwrap().unwrap();
+    assert!(s1_after.disbanded_at.is_some());
+    assert!(s2_after.disbanded_at.is_some());
+
+    // The pre-disbanded session's timestamp is unchanged
+    let s3_after = repo.get_by_id(&id3).await.unwrap().unwrap();
+    assert_eq!(s3_after.disbanded_at.unwrap(), pre_disbanded_at);
+}
+
+#[tokio::test]
+async fn test_disband_all_active_noop_when_empty() {
+    let conn = setup_test_db();
+    let repo = SqliteTeamSessionRepository::new(conn);
+
+    let count = repo.disband_all_active("app_restart").await.unwrap();
+    assert_eq!(count, 0);
+}
+
 // ==================== FROM SHARED TESTS ====================
 
 #[tokio::test]

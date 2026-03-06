@@ -47,6 +47,10 @@ pub trait ProcessRepository: Send + Sync {
 
     /// Check if a process exists
     async fn exists(&self, id: &ResearchProcessId) -> AppResult<bool>;
+
+    /// Mark all pending/running processes as failed (bulk startup cleanup).
+    /// Returns the number of rows updated.
+    async fn fail_all_active(&self, reason: &str) -> AppResult<usize>;
 }
 
 #[cfg(test)]

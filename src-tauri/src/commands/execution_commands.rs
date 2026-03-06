@@ -11,14 +11,13 @@ use tauri::{AppHandle, Emitter, Runtime, State};
 use tokio::sync::RwLock;
 
 use crate::application::chat_service::uses_execution_slot;
-use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::application::reconciliation::UserRecoveryAction;
 use crate::application::{
     AppState, ReconciliationRunner, TaskSchedulerService, TaskTransitionService,
 };
 use crate::domain::entities::{
-    task_step::StepProgressSummary, types::IdeationSessionId, AgentRunId, AgentRunStatus,
-    ChatContextType, InternalStatus, ProjectId, Task, TaskId,
+    task_step::StepProgressSummary, types::IdeationSessionId, ChatContextType, InternalStatus,
+    ProjectId, Task, TaskId,
 };
 use crate::domain::execution::ExecutionSettings;
 use crate::domain::state_machine::services::TaskScheduler;
@@ -1928,37 +1927,6 @@ pub async fn get_running_processes(
     Ok(RunningProcessesResponse { processes, ideation_sessions })
 }
 
-fn process_is_alive_for_gc(pid: u32) -> bool {
-    // PID 0 refers to the process group on macOS/Unix — `kill -0 0` succeeds
-    // but doesn't mean a real agent is alive. Placeholder PIDs from try_register
-    // use pid=0 before update_agent_process fills in the real PID.
-    if pid == 0 {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(true)
-    }
-
-    #[cfg(windows)]
-    {
-        std::process::Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
-            .output()
-            .map(|output| {
-                if !output.status.success() {
-                    return true;
-                }
-                let text = String::from_utf8_lossy(&output.stdout);
-                !text.to_ascii_lowercase().contains("no tasks are running")
-            })
-            .unwrap_or(true)
-    }
-}
 
 fn context_matches_running_status_for_gc(
     context_type: ChatContextType,
@@ -1983,7 +1951,16 @@ async fn prune_stale_execution_registry_entries(
         return;
     }
 
-    for (key, info) in entries {
+    let engine = crate::application::PruneEngine::new(
+        Arc::clone(&app_state.running_agent_registry),
+        Arc::clone(&app_state.agent_run_repo),
+        Arc::clone(&app_state.task_repo),
+        Some(Arc::clone(&app_state.interactive_process_registry)),
+    );
+
+    let mut pruned_any = false;
+
+    for (key, info) in &entries {
         let context_type = match ChatContextType::from_str(&key.context_type) {
             Ok(ct) => ct,
             Err(_) => continue,
@@ -2002,80 +1979,37 @@ async fn prune_stale_execution_registry_entries(
             }
         }
 
-        // Skip entries with an active interactive process — the CLI is alive
-        // between turns, waiting for the next stdin message.
-        {
-            let ipr_key = InteractiveProcessKey::new(&key.context_type, &key.context_id);
-            if app_state.interactive_process_registry.has_process(&ipr_key).await {
-                tracing::debug!(
-                    context_type = key.context_type,
-                    context_id = key.context_id,
-                    "Skipping prune for interactive process"
-                );
-                continue;
-            }
-        }
+        // Compute pid liveness once; both the IPR check and staleness evaluation use it.
+        let pid_alive = crate::domain::services::is_process_alive(info.pid);
 
-        let pid_alive = process_is_alive_for_gc(info.pid);
-        let run = match app_state
-            .agent_run_repo
-            .get_by_id(&AgentRunId::from_string(&info.agent_run_id))
-            .await
-        {
-            Ok(run) => run,
-            Err(_) => continue,
-        };
-
-        let mut stale = !pid_alive;
-        if !matches!(
-            run.as_ref().map(|r| r.status),
-            Some(AgentRunStatus::Running)
-        ) {
-            stale = true;
-        }
-
-        // For ideation: staleness is determined solely by pid/run status (already checked above).
-        // Session IDs are not task IDs — skip the task lookup.
-        if !matches!(context_type, ChatContextType::Ideation) {
-            let task_id = TaskId::from_string(key.context_id.clone());
-            match app_state.task_repo.get_by_id(&task_id).await {
-                Ok(Some(task)) => {
-                    if !context_matches_running_status_for_gc(context_type, task.internal_status) {
-                        stale = true;
-                    }
-                }
-                Ok(None) | Err(_) => {
-                    stale = true;
-                }
-            }
-        }
-
-        if !stale {
+        // PID-verified IPR check: skip if interactive process is alive; remove stale
+        // IPR entries (PID dead) so reconciliation is not blocked forever.
+        if engine.check_ipr_skip(key, pid_alive).await {
             continue;
         }
 
-        if pid_alive {
-            let _ = app_state.running_agent_registry.stop(&key).await;
-        } else {
-            let _ = app_state
-                .running_agent_registry
-                .unregister(&key, &info.agent_run_id)
-                .await;
+        if engine.evaluate_and_prune(key, info, pid_alive).await {
+            // Clean up any interactive idle slot tracking for this pruned entry
+            // so ghost entries don't persist in interactive_idle_slots.
+            let slot_key = format!("{}/{}", key.context_type, key.context_id);
+            execution_state.remove_interactive_slot(&slot_key);
+            pruned_any = true;
         }
+    }
 
-        // Clean up any interactive idle slot tracking for this pruned entry
-        // so ghost entries don't persist in interactive_idle_slots.
-        let slot_key = format!("{}/{}", key.context_type, key.context_id);
-        execution_state.remove_interactive_slot(&slot_key);
-
-        if let Some(agent_run) = run {
-            if agent_run.status == AgentRunStatus::Running {
-                let _ = app_state
-                    .agent_run_repo
-                    .cancel(&AgentRunId::from_string(&info.agent_run_id))
-                    .await;
-            }
-        }
+    // Correct the running count if entries were pruned.  The GC runs every ~5s so
+    // this keeps the slot counter accurate between 30s reconciliation cycles (Bug 3).
+    if pruned_any {
+        let remaining = app_state.running_agent_registry.list_all().await;
+        let idle_count = remaining
+            .iter()
+            .filter(|(k, _)| {
+                let slot_key = format!("{}/{}", k.context_type, k.context_id);
+                execution_state.is_interactive_idle(&slot_key)
+            })
+            .count() as u32;
+        execution_state
+            .set_running_count((remaining.len() as u32).saturating_sub(idle_count));
     }
 }
 

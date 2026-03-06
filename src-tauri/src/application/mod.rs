@@ -16,6 +16,7 @@ pub mod memory_orchestration;
 pub mod permission_state;
 pub mod plan_ranking;
 pub mod priority_service;
+pub mod prune_engine;
 pub mod qa_service;
 pub mod question_state;
 pub mod reconciliation;
@@ -58,6 +59,7 @@ pub use plan_ranking::{
     compute_interaction_score, compute_recency_score, ScoreBreakdown,
 };
 pub use priority_service::PriorityService;
+pub use prune_engine::PruneEngine;
 pub use qa_service::{QAPrepStatus, QAService, TaskQAState};
 pub use question_state::{PendingQuestionInfo, QuestionAnswer, QuestionOption, QuestionState};
 pub use reconciliation::ReconciliationRunner;
@@ -78,6 +80,8 @@ pub use team_state_tracker::TeamStateTracker;
 
 #[cfg(test)]
 mod app_state_shared_state_tests;
+#[cfg(test)]
+mod prune_engine_tests;
 
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
 pub use chat_service::{

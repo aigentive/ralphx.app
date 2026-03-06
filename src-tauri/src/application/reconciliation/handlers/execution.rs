@@ -1,16 +1,15 @@
 // Execution, review, QA, and paused-task reconciliation handlers,
 // plus orchestration (reconcile_task, reconcile_stuck_tasks) and apply_recovery_decision.
 
-use std::str::FromStr;
+use std::sync::Arc;
 
 use tauri::{Emitter, Runtime};
 use tracing::warn;
 
 use crate::application::chat_service::{MergeAutoCompleteContext, reconcile_merge_auto_complete};
 use crate::application::interactive_process_registry::InteractiveProcessKey;
-use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::domain::entities::{
-    AgentRunId, AgentRunStatus, ChatContextType, InternalStatus, ReviewNote, ReviewOutcome,
+    AgentRunStatus, ChatContextType, InternalStatus, ReviewNote, ReviewOutcome,
     ReviewerType, TaskId,
 };
 use crate::domain::services::RunningAgentKey;
@@ -21,51 +20,6 @@ use super::super::policy::{
     RecoveryActionKind, RecoveryContext, RecoveryDecision, RecoveryEvidence, UserRecoveryAction,
 };
 use super::super::ReconciliationRunner;
-
-fn context_matches_task_status(context_type: ChatContextType, status: InternalStatus) -> bool {
-    match context_type {
-        ChatContextType::TaskExecution => {
-            status == InternalStatus::Executing || status == InternalStatus::ReExecuting
-        }
-        ChatContextType::Review => status == InternalStatus::Reviewing,
-        ChatContextType::Merge => status == InternalStatus::Merging,
-        ChatContextType::Task | ChatContextType::Ideation | ChatContextType::Project => {
-            AGENT_ACTIVE_STATUSES.contains(&status)
-        }
-    }
-}
-
-fn process_is_alive(pid: u32) -> bool {
-    // PID 0 refers to the process group on macOS/Unix — `kill -0 0` succeeds
-    // but doesn't mean a real agent is alive. Placeholder PIDs from try_register
-    // use pid=0 before update_agent_process fills in the real PID.
-    if pid == 0 {
-        return false;
-    }
-    #[cfg(unix)]
-    {
-        std::process::Command::new("kill")
-            .args(["-0", &pid.to_string()])
-            .status()
-            .map(|status| status.success())
-            .unwrap_or(true)
-    }
-
-    #[cfg(windows)]
-    {
-        std::process::Command::new("tasklist")
-            .args(["/FI", &format!("PID eq {}", pid), "/FO", "CSV", "/NH"])
-            .output()
-            .map(|output| {
-                if !output.status.success() {
-                    return true;
-                }
-                let text = String::from_utf8_lossy(&output.stdout);
-                !text.to_ascii_lowercase().contains("no tasks are running")
-            })
-            .unwrap_or(true)
-    }
-}
 
 impl<R: Runtime> ReconciliationRunner<R> {
     /// Check if an IPR entry for a context is backed by a live process.
@@ -97,7 +51,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // IPR has an entry — verify the underlying process is still alive
         let registry_key = RunningAgentKey::new(context_type.to_string(), context_id);
         let pid_alive = match self.running_agent_registry.get(&registry_key).await {
-            Some(info) => process_is_alive(info.pid),
+            Some(info) => crate::domain::services::is_process_alive(info.pid),
             None => false, // Registry cleaned but IPR wasn't → stale
         };
 
@@ -269,15 +223,18 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return;
         }
 
+        let engine = crate::application::PruneEngine::new(
+            Arc::clone(&self.running_agent_registry),
+            Arc::clone(&self.agent_run_repo),
+            Arc::clone(&self.task_repo),
+            self.interactive_process_registry.clone(),
+        );
+
         let mut removed = 0u32;
 
-        for (key, info) in entries {
-            let context_type = ChatContextType::from_str(&key.context_type).ok();
-            let pid_alive = process_is_alive(info.pid);
-
+        for (key, info) in &entries {
             // Skip in-flight registrations: try_register inserts pid=0/empty agent_run_id as
-            // placeholder; update_agent_process fills real values ~40ms later. Pruning during
-            // this window would incorrectly delete a valid registration.
+            // placeholder; update_agent_process fills real values ~40ms later.
             if info.agent_run_id.is_empty() {
                 tracing::debug!(
                     context_type = key.context_type,
@@ -302,131 +259,25 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 }
             }
 
-            // Skip entries with an active interactive process AND a live PID.
-            // If IPR has an entry but the PID is dead, the entry is stale — remove
-            // it so reconciliation can proceed instead of being blocked forever.
-            if let Some(ref ipr) = self.interactive_process_registry {
-                let ipr_key =
-                    InteractiveProcessKey::new(&key.context_type, &key.context_id);
-                if ipr.has_process(&ipr_key).await {
-                    if pid_alive {
-                        tracing::debug!(
-                            context_type = key.context_type,
-                            context_id = key.context_id,
-                            "Skipping prune for interactive process"
-                        );
-                        continue;
-                    }
-                    // PID is dead but IPR still has entry → stale, remove it
-                    warn!(
-                        context_type = key.context_type,
-                        context_id = key.context_id,
-                        pid = info.pid,
-                        "Removing stale IPR entry during prune — PID no longer alive"
-                    );
-                    ipr.remove(&ipr_key).await;
-                }
-            }
+            // Compute pid liveness once; both the IPR check and staleness evaluation use it.
+            let pid_alive = crate::domain::services::is_process_alive(info.pid);
 
-            let run = match self
-                .agent_run_repo
-                .get_by_id(&AgentRunId::from_string(&info.agent_run_id))
-                .await
-            {
-                Ok(run) => run,
-                Err(e) => {
-                    warn!(
-                        context_type = key.context_type,
-                        context_id = key.context_id,
-                        run_id = info.agent_run_id,
-                        error = %e,
-                        "Failed to load agent_run while pruning running registry; keeping entry"
-                    );
-                    continue;
-                }
-            };
-
-            let mut stale_reasons: Vec<&str> = Vec::new();
-
-            if !pid_alive {
-                stale_reasons.push("pid_missing");
-            }
-
-            match run.as_ref() {
-                Some(agent_run) if agent_run.status != AgentRunStatus::Running => {
-                    stale_reasons.push("run_not_running");
-                }
-                None => {
-                    stale_reasons.push("run_missing");
-                }
-                _ => {}
-            }
-
-            if let Some(ctx) = context_type {
-                if matches!(
-                    ctx,
-                    ChatContextType::TaskExecution
-                        | ChatContextType::Review
-                        | ChatContextType::Merge
-                ) {
-                    let task_id = TaskId::from_string(key.context_id.clone());
-                    match self.task_repo.get_by_id(&task_id).await {
-                        Ok(Some(task)) => {
-                            if !context_matches_task_status(ctx, task.internal_status) {
-                                stale_reasons.push("task_status_mismatch");
-                            }
-                        }
-                        Ok(None) => stale_reasons.push("task_missing"),
-                        Err(e) => {
-                            warn!(
-                                context_type = key.context_type,
-                                context_id = key.context_id,
-                                error = %e,
-                                "Failed to load task while pruning running registry; keeping entry"
-                            );
-                            continue;
-                        }
-                    }
-                }
-            }
-
-            if stale_reasons.is_empty() {
+            // PID-verified IPR check: skip if interactive process is alive; remove stale
+            // IPR entries (PID dead) so reconciliation is not blocked forever.
+            if engine.check_ipr_skip(key, pid_alive).await {
                 continue;
             }
 
-            if pid_alive {
-                let _ = self.running_agent_registry.stop(&key).await;
-            } else {
-                let _ = self
-                    .running_agent_registry
-                    .unregister(&key, &info.agent_run_id)
-                    .await;
+            if engine.evaluate_and_prune(key, info, pid_alive).await {
+                removed += 1;
             }
-            removed += 1;
-
-            if let Some(agent_run) = run {
-                if agent_run.status == AgentRunStatus::Running {
-                    let _ = self
-                        .agent_run_repo
-                        .cancel(&AgentRunId::from_string(&info.agent_run_id))
-                        .await;
-                }
-            }
-
-            warn!(
-                context_type = key.context_type,
-                context_id = key.context_id,
-                pid = info.pid,
-                run_id = info.agent_run_id,
-                reasons = stale_reasons.join(","),
-                "Pruned stale running agent registry entry"
-            );
         }
 
-        let remaining_entries = self.running_agent_registry.list_all().await;
-        let registry_count = remaining_entries.len() as u32;
+        // Always recalculate running count from remaining entries.
         // Subtract idle interactive processes that already freed their execution slot
         // via TurnComplete but still have a registry entry (process alive, waiting for stdin).
+        let remaining_entries = self.running_agent_registry.list_all().await;
+        let registry_count = remaining_entries.len() as u32;
         let idle_count = remaining_entries
             .iter()
             .filter(|(key, _)| {

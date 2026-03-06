@@ -43,4 +43,7 @@ pub trait TeamSessionRepository: Send + Sync {
 
     /// Mark a session as disbanded
     async fn set_disbanded(&self, id: &TeamSessionId) -> AppResult<()>;
+
+    /// Mark all active (non-disbanded) sessions as disbanded. Returns the count of rows affected.
+    async fn disband_all_active(&self, reason: &str) -> AppResult<usize>;
 }

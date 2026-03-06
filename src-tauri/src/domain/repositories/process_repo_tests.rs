@@ -92,6 +92,10 @@ impl ProcessRepository for MockProcessRepository {
     async fn exists(&self, _id: &ResearchProcessId) -> AppResult<bool> {
         Ok(self.return_process.is_some())
     }
+
+    async fn fail_all_active(&self, _reason: &str) -> AppResult<usize> {
+        Ok(0)
+    }
 }
 
 fn create_test_process() -> ResearchProcess {
