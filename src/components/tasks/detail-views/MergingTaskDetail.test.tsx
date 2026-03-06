@@ -3,17 +3,40 @@
  *
  * Covers: progress rendering with mock merge_progress events,
  * reload-style remount recovery, fallback when events are missing/delayed,
- * and validation progress display.
+ * validation progress display, and Stop Merge action button.
  */
 
 import React from "react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, cleanup } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { MergingTaskDetail } from "./MergingTaskDetail";
 import type { Task } from "@/types/task";
 import type { MergeProgressEvent } from "@/types/events";
+
+const mockConfirmation = {
+  confirm: vi.fn(async () => true),
+  confirmationDialogProps: {},
+  ConfirmationDialog: () => null,
+};
+
+vi.mock("@/hooks/useConfirmation", () => ({
+  useConfirmation: vi.fn(() => mockConfirmation),
+}));
+
+vi.mock("@/lib/tauri", () => ({
+  api: {
+    tasks: {
+      stop: vi.fn(async () => ({})),
+    },
+  },
+}));
+
+import { api } from "@/lib/tauri";
+
+const mockApiTasksStop = vi.mocked(api.tasks.stop);
 
 // Stable mock listeners for EventBus
 const mockListeners = new Map<string, Set<(payload: unknown) => void>>();
@@ -100,6 +123,9 @@ describe("MergingTaskDetail", () => {
     mockListeners.clear();
     // Mock invoke to return resolved promises for hydration calls
     vi.mocked(invoke).mockResolvedValue(undefined);
+    mockConfirmation.confirm = vi.fn(async () => true);
+    mockApiTasksStop.mockReset();
+    mockApiTasksStop.mockResolvedValue({} as never);
   });
 
   describe("progress rendering", () => {
@@ -606,6 +632,71 @@ describe("MergingTaskDetail", () => {
       renderWithProviders(<MergingTaskDetail task={task} isHistorical viewStatus="merging" />);
 
       expect(screen.getByText("Resolving Conflicts")).toBeInTheDocument();
+    });
+  });
+
+  describe("Stop Merge action button", () => {
+    it("shows Stop Merge button during active agent merge", () => {
+      const task = createTestTask({ internalStatus: "merging" });
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      expect(screen.getByTestId("merging-actions-section")).toBeInTheDocument();
+      expect(screen.getByTestId("stop-merge-action")).toBeInTheDocument();
+      expect(screen.getByText("Stop Merge")).toBeInTheDocument();
+    });
+
+    it("hides Stop Merge button in historical mode", () => {
+      const task = createTestTask({ internalStatus: "merging" });
+      renderWithProviders(<MergingTaskDetail task={task} isHistorical viewStatus="merging" />);
+
+      expect(screen.queryByTestId("merging-actions-section")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("stop-merge-action")).not.toBeInTheDocument();
+    });
+
+    it("hides Stop Merge button during programmatic merge phase (pending_merge)", () => {
+      const task = createTestTask({ internalStatus: "pending_merge" });
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      expect(screen.queryByTestId("merging-actions-section")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("stop-merge-action")).not.toBeInTheDocument();
+    });
+
+    it("shows confirmation dialog when Stop Merge is clicked", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "merging" });
+      mockConfirmation.confirm = vi.fn(async () => false);
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      await user.click(screen.getByTestId("stop-merge-action"));
+
+      expect(mockConfirmation.confirm).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: "Stop merge?",
+          variant: "destructive",
+        })
+      );
+    });
+
+    it("calls api.tasks.stop when Stop Merge is confirmed", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "merging" });
+      mockConfirmation.confirm = vi.fn(async () => true);
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      await user.click(screen.getByTestId("stop-merge-action"));
+
+      expect(mockApiTasksStop).toHaveBeenCalledWith("task-123");
+    });
+
+    it("does not call api when confirmation is cancelled", async () => {
+      const user = userEvent.setup();
+      const task = createTestTask({ internalStatus: "merging" });
+      mockConfirmation.confirm = vi.fn(async () => false);
+      renderWithProviders(<MergingTaskDetail task={task} />);
+
+      await user.click(screen.getByTestId("stop-merge-action"));
+
+      expect(mockApiTasksStop).not.toHaveBeenCalled();
     });
   });
 
