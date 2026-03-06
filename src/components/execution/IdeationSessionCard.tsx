@@ -5,7 +5,7 @@
  * Line 2: elapsed time · team mode badge
  */
 
-import { MessageSquare, Loader2 } from "lucide-react";
+import { MessageSquare, Loader2, Pause } from "lucide-react";
 import type { RunningIdeationSession } from "@/api/running-processes";
 import { useEffect, useState } from "react";
 
@@ -40,10 +40,17 @@ export function IdeationSessionCard({ session }: IdeationSessionCardProps) {
     >
       {/* Line 1: Icon | Title | Badge */}
       <div className="flex items-center gap-2">
-        <Loader2
-          className="w-3.5 h-3.5 animate-spin shrink-0"
-          style={{ color: "hsl(14 100% 60%)" }}
-        />
+        {session.isGenerating ? (
+          <Loader2
+            className="w-3.5 h-3.5 animate-spin shrink-0"
+            style={{ color: "hsl(14 100% 60%)" }}
+          />
+        ) : (
+          <Pause
+            className="w-3.5 h-3.5 shrink-0"
+            style={{ color: "hsl(220 10% 45%)" }}
+          />
+        )}
         <span
           className="flex-1 text-xs font-medium truncate min-w-0"
           style={{ color: "hsl(220 10% 88%)" }}

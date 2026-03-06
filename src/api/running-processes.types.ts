@@ -57,6 +57,7 @@ export interface RunningIdeationSession {
   title: string;
   elapsedSeconds: number | null;
   teamMode: string | null;
+  isGenerating: boolean;
 }
 
 /**

@@ -58,6 +58,7 @@ export const RunningIdeationSessionSchema = z.object({
   title: z.string(),
   elapsed_seconds: z.number().int().nullable(),
   team_mode: z.string().nullable(),
+  is_generating: z.boolean(),
 });
 
 /**

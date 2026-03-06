@@ -386,6 +386,15 @@ impl ExecutionState {
         set.contains(key)
     }
 
+    /// Count how many interactive slots are currently idle.
+    /// Used by `get_execution_status` to compute active count = registry_count - idle_count.
+    pub fn interactive_idle_count(&self) -> usize {
+        self.interactive_idle_slots
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .len()
+    }
+
     /// Emit execution:status_changed event with current state
     pub fn emit_status_changed<R: Runtime>(&self, handle: &AppHandle<R>, reason: &str) {
         let blocked_until = self.provider_blocked_until_epoch();
@@ -628,20 +637,25 @@ pub async fn get_execution_status(
     }
 
     // Runtime GC pass to prune stale rows on every status poll.
-    prune_stale_execution_registry_entries(&app_state).await;
+    prune_stale_execution_registry_entries(&app_state, &execution_state).await;
 
     let registry_entries = app_state.running_agent_registry.list_all().await;
 
     // Keep execution state synchronized to global execution contexts.
-    let global_running_count = registry_entries
+    // Subtract idle interactive slots (processes alive between turns that already
+    // freed their execution slot via TurnComplete) to avoid re-inflating the counter.
+    let total_with_slot = registry_entries
         .iter()
         .filter(|(key, _)| {
             ChatContextType::from_str(&key.context_type)
                 .map(uses_execution_slot)
                 .unwrap_or(false)
         })
-        .count() as u32;
-    execution_state.set_running_count(global_running_count);
+        .count();
+    let active_count =
+        (total_with_slot.saturating_sub(execution_state.interactive_idle_count())) as u32;
+    execution_state.set_running_count(active_count);
+    let global_running_count = active_count;
 
     let mut running_count = 0u32;
     for (key, _) in registry_entries {
@@ -655,8 +669,12 @@ pub async fn get_execution_status(
         }
 
         // Ideation uses session IDs (not task IDs) — no task lookup or GC needed.
+        // Only count ideation sessions that are actively generating (not idle between turns).
         if matches!(context_type, ChatContextType::Ideation) {
-            running_count += 1;
+            let slot_key = format!("{}/{}", key.context_type, key.context_id);
+            if !execution_state.is_interactive_idle(&slot_key) {
+                running_count += 1;
+            }
             continue;
         }
 
@@ -1754,6 +1772,8 @@ pub struct RunningIdeationSession {
     pub elapsed_seconds: Option<i64>,
     /// Team mode (solo, research, debate)
     pub team_mode: Option<String>,
+    /// Whether the agent is actively generating (false = idle between turns)
+    pub is_generating: bool,
 }
 
 /// Response for get_running_processes
@@ -1777,6 +1797,7 @@ pub struct RunningProcessesResponse {
 pub async fn get_running_processes(
     project_id: Option<String>,
     active_project_state: State<'_, Arc<ActiveProjectState>>,
+    execution_state: State<'_, Arc<ExecutionState>>,
     state: State<'_, AppState>,
 ) -> Result<RunningProcessesResponse, String> {
     let effective_project_id = match project_id {
@@ -1785,7 +1806,7 @@ pub async fn get_running_processes(
     };
 
     // Keep the registry clean so process rows reflect truly running agents.
-    prune_stale_execution_registry_entries(&state).await;
+    prune_stale_execution_registry_entries(&state, &execution_state).await;
 
     let mut processes = Vec::new();
     let mut ideation_sessions = Vec::new();
@@ -1817,11 +1838,14 @@ pub async fn get_running_processes(
                     let elapsed = now.signed_duration_since(session.created_at);
                     Some(elapsed.num_seconds())
                 };
+                let slot_key = format!("ideation/{}", session_id_str);
+                let is_generating = !execution_state.is_interactive_idle(&slot_key);
                 ideation_sessions.push(RunningIdeationSession {
                     session_id: session_id_str,
                     title: session.title.unwrap_or_else(|| "Untitled Session".to_string()),
                     elapsed_seconds,
                     team_mode: session.team_mode,
+                    is_generating,
                 });
             }
             continue;
@@ -1950,7 +1974,10 @@ fn context_matches_running_status_for_gc(
     }
 }
 
-async fn prune_stale_execution_registry_entries(app_state: &AppState) {
+async fn prune_stale_execution_registry_entries(
+    app_state: &AppState,
+    execution_state: &ExecutionState,
+) {
     let entries = app_state.running_agent_registry.list_all().await;
     if entries.is_empty() {
         return;
@@ -2035,6 +2062,11 @@ async fn prune_stale_execution_registry_entries(app_state: &AppState) {
                 .unregister(&key, &info.agent_run_id)
                 .await;
         }
+
+        // Clean up any interactive idle slot tracking for this pruned entry
+        // so ghost entries don't persist in interactive_idle_slots.
+        let slot_key = format!("{}/{}", key.context_type, key.context_id);
+        execution_state.remove_interactive_slot(&slot_key);
 
         if let Some(agent_run) = run {
             if agent_run.status == AgentRunStatus::Running {
