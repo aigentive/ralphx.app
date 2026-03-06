@@ -133,6 +133,9 @@ pub struct StreamOutcome {
     /// to re-increment it (process was idle between turns at exit time).
     /// Used by the caller to prevent double-decrement in on_exit.
     pub execution_slot_held: bool,
+    /// True when the process exited while idle between interactive turns.
+    /// Suppresses queue processing and run_completed emission is forced.
+    pub silent_interactive_exit: bool,
 }
 
 impl StreamOutcome {
@@ -380,6 +383,9 @@ pub async fn process_stream_background<R: Runtime>(
                             error = %e,
                             "Stream read error"
                         );
+                        if between_interactive_turns {
+                            silent_interactive_exit = true;
+                        }
                         break;
                     }
                     Err(_) => {
@@ -1549,6 +1555,7 @@ pub async fn process_stream_background<R: Runtime>(
         stderr_text: stderr_content,
         turns_finalized,
         execution_slot_held,
+        silent_interactive_exit,
     };
 
     // Final flush of accumulated content so post-loop error returns don't lose data

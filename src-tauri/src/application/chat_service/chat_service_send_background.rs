@@ -501,6 +501,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // on_exit decrement produces the correct final count (net zero).
                 if !execution_slot_held
                     && super::uses_execution_slot(context_type)
+                    && !(outcome.silent_interactive_exit && context_type == ChatContextType::Ideation)
                 {
                     if let Some(ref exec) = execution_state {
                         exec.increment_running();
@@ -538,13 +539,32 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 )
                 .await;
 
+                // Staleness guard (defense-in-depth): drop stale queued messages before
+                // processing on ANY process exit. Catches OOM/SIGKILL scenarios where
+                // silent_interactive_exit flag cannot be set.
+                let staleness_threshold_secs: u64 = std::env::var("QUEUE_STALENESS_THRESHOLD_SECS")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(300);
+                let stale_dropped =
+                    message_queue.remove_stale(context_type, &context_id, staleness_threshold_secs);
+                for msg in &stale_dropped {
+                    tracing::warn!(
+                        "[QUEUE] Dropped stale queued message (age > {}s) id={} for context {}:{}",
+                        staleness_threshold_secs,
+                        msg.id,
+                        context_type,
+                        context_id,
+                    );
+                }
+
                 // Check if there are queued messages to process
                 // If yes, DON'T emit run_completed yet - emit it after queue processing
                 // Use the stream's session_id if available, otherwise fall back to stored session_id
                 let effective_session_id = claude_session_id.clone().or(stored_session_id.clone());
                 let initial_queue_count = message_queue.get_queued(context_type, &context_id).len();
                 let has_session_for_queue = effective_session_id.is_some();
-                let will_process_queue = initial_queue_count > 0 && has_session_for_queue;
+                let will_process_queue = initial_queue_count > 0 && has_session_for_queue && !outcome.silent_interactive_exit;
 
                 if initial_queue_count > 0 && claude_session_id.is_none() && stored_session_id.is_some() {
                     tracing::info!(
@@ -560,7 +580,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     let conv_id_str = conversation_id.as_str();
                     streaming_state_cache.clear(&conv_id_str).await;
 
-                    if !skip_post_loop_finalization {
+                    if !skip_post_loop_finalization || outcome.silent_interactive_exit {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 "agent:run_completed",

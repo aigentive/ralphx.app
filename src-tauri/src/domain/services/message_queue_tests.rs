@@ -352,3 +352,108 @@ fn test_with_key_methods() {
     // Should be empty
     assert!(queue.get_queued_with_key(&key).is_empty());
 }
+
+#[test]
+fn test_remove_stale_drops_old_messages() {
+    let queue = MessageQueue::new();
+
+    // Manually construct a stale message (created 10 minutes ago)
+    let stale_ts = (chrono::Utc::now() - chrono::Duration::seconds(600)).to_rfc3339();
+    let fresh_ts = chrono::Utc::now().to_rfc3339();
+
+    {
+        let key = QueueKey::new(ChatContextType::Ideation, "sess-stale".to_string());
+        let mut queues = queue.queues.lock().unwrap();
+        let q = queues.entry(key).or_default();
+        q.push(QueuedMessage {
+            id: "stale-1".to_string(),
+            content: "Old message".to_string(),
+            created_at: stale_ts,
+            is_editing: false,
+        });
+        q.push(QueuedMessage {
+            id: "fresh-1".to_string(),
+            content: "Fresh message".to_string(),
+            created_at: fresh_ts,
+            is_editing: false,
+        });
+    }
+
+    // Threshold: 300s — stale-1 (600s old) should be dropped, fresh-1 kept
+    let dropped = queue.remove_stale(ChatContextType::Ideation, "sess-stale", 300);
+    assert_eq!(dropped.len(), 1);
+    assert_eq!(dropped[0].id, "stale-1");
+
+    let remaining = queue.get_queued(ChatContextType::Ideation, "sess-stale");
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].id, "fresh-1");
+}
+
+#[test]
+fn test_remove_stale_empty_queue() {
+    let queue = MessageQueue::new();
+    let dropped = queue.remove_stale(ChatContextType::Task, "nonexistent", 300);
+    assert!(dropped.is_empty());
+}
+
+#[test]
+fn test_remove_stale_all_fresh_messages_retained() {
+    let queue = MessageQueue::new();
+
+    // Fresh messages (created now)
+    queue.queue(ChatContextType::Task, "task-fresh", "Msg 1".to_string());
+    queue.queue(ChatContextType::Task, "task-fresh", "Msg 2".to_string());
+
+    let dropped = queue.remove_stale(ChatContextType::Task, "task-fresh", 300);
+    assert!(dropped.is_empty());
+
+    let remaining = queue.get_queued(ChatContextType::Task, "task-fresh");
+    assert_eq!(remaining.len(), 2);
+}
+
+#[test]
+fn test_remove_stale_rehydration_messages_retained() {
+    // queue_front messages are created with fresh timestamps — they must survive the staleness check
+    let queue = MessageQueue::new();
+
+    // Simulate a rehydration message injected by queue_front (freshly created)
+    let rehydration = queue.queue_front(
+        ChatContextType::Ideation,
+        "sess-recover",
+        "Rehydration prompt".to_string(),
+    );
+
+    let dropped = queue.remove_stale(ChatContextType::Ideation, "sess-recover", 300);
+    assert!(
+        dropped.is_empty(),
+        "Fresh rehydration message should not be dropped"
+    );
+
+    let remaining = queue.get_queued(ChatContextType::Ideation, "sess-recover");
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].id, rehydration.id);
+}
+
+#[test]
+fn test_remove_stale_unparseable_timestamp_retained() {
+    let queue = MessageQueue::new();
+
+    {
+        let key = QueueKey::new(ChatContextType::Task, "task-bad-ts".to_string());
+        let mut queues = queue.queues.lock().unwrap();
+        let q = queues.entry(key).or_default();
+        q.push(QueuedMessage {
+            id: "bad-ts-1".to_string(),
+            content: "Unparseable timestamp".to_string(),
+            created_at: "not-a-timestamp".to_string(),
+            is_editing: false,
+        });
+    }
+
+    // Messages with unparseable timestamps should be retained (safe default)
+    let dropped = queue.remove_stale(ChatContextType::Task, "task-bad-ts", 300);
+    assert!(dropped.is_empty(), "Unparseable timestamp should be retained");
+
+    let remaining = queue.get_queued(ChatContextType::Task, "task-bad-ts");
+    assert_eq!(remaining.len(), 1);
+}
