@@ -163,3 +163,7 @@ mod phase1_guard_tests;
 // Phase 2 MERGE + Phase 3 CLEANUP tests: immediate Merged status, deferred cleanup,
 // pending_cleanup metadata, startup resumption
 mod phase2_phase3_merge_tests;
+
+// Locked worktree tests: empirical verification of unlock + double-force behavior
+// RC1: single --force fails on locked worktrees; -f -f and unlock+prune succeed
+mod locked_worktree_tests;

@@ -1019,8 +1019,8 @@ impl<'a> super::TransitionHandler<'a> {
                     .iter()
                     .map(|(label, _)| format!("step 4 {} worktree deletion (fast)", label))
                     .collect();
-                // Use remove_worktree_dir (no prune) in parallel to avoid
-                // concurrent git index.lock contention. Single prune runs after.
+                // Use remove_worktree_fast (unlock + double-force + rm-rf + prune) in parallel.
+                // remove_worktree_fast handles locked worktrees via unlock + -f -f before removal.
                 let futs: Vec<_> = existing_worktrees
                     .iter()
                     .zip(step_labels.iter())
@@ -1029,7 +1029,7 @@ impl<'a> super::TransitionHandler<'a> {
                             step_label,
                             cleanup_timeout,
                             task_id_str,
-                            super::cleanup_helpers::remove_worktree_dir(wt_path),
+                            super::cleanup_helpers::remove_worktree_fast(wt_path, repo_path),
                         )
                     })
                     .collect();
@@ -1061,9 +1061,6 @@ impl<'a> super::TransitionHandler<'a> {
                         }
                     }
                 }
-
-                // Single git worktree prune after all parallel rm-rf ops
-                super::cleanup_helpers::git_worktree_prune(repo_path).await;
             }
             tracing::info!(
                 task_id = task_id_str,

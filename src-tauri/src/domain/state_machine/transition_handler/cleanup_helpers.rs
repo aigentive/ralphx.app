@@ -123,10 +123,19 @@ pub(crate) async fn remove_worktree_fast(
     worktree_path: &Path,
     repo_path: &Path,
 ) -> Result<(), String> {
-    // Try scoped git worktree remove first (cleans git metadata atomically)
-    // Ignore errors — path may already be gone or locked
+    // Unlock first (ignore errors — worktree may not be locked, or path may be gone).
+    // This allows `git worktree prune` to clean up stale locked metadata entries.
     let _ = tokio::process::Command::new("git")
-        .args(["worktree", "remove", "--force", worktree_path.to_str().unwrap_or_default()])
+        .args(["worktree", "unlock", worktree_path.to_str().unwrap_or_default()])
+        .current_dir(repo_path)
+        .output()
+        .await;
+
+    // Try scoped git worktree remove with double-force (cleans git metadata atomically).
+    // -f -f overrides locks (git 2.17+); single --force only bypasses dirty-tree checks.
+    // Ignore errors — path may already be gone.
+    let _ = tokio::process::Command::new("git")
+        .args(["worktree", "remove", "-f", "-f", worktree_path.to_str().unwrap_or_default()])
         .current_dir(repo_path)
         .output()
         .await;

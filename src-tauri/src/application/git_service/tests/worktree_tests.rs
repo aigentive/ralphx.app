@@ -822,6 +822,159 @@ async fn test_create_worktree_fails_when_branch_exists() {
 }
 
 // =========================================================================
+// Locked stale entry retry guard tests
+// =========================================================================
+
+/// Helper: lock a worktree path so git metadata records it as locked.
+fn lock_worktree_sync(repo: &std::path::Path, wt: &std::path::Path) {
+    Command::new("git")
+        .args(["worktree", "lock", wt.to_str().unwrap()])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+}
+
+/// create_worktree: stale locked entry at target path → retry guard unlocks + prunes → retry succeeds.
+///
+/// Scenario: a previous worktree at the same path was locked (e.g. by SIGKILL aftermath),
+/// then the directory was deleted. The locked git metadata blocks `git worktree add`.
+/// The retry guard should detect "locked" in stderr, run unlock+prune, and retry successfully.
+#[tokio::test]
+async fn test_create_worktree_retries_after_locked_stale_entry() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    let wt_path = temp_dir.path().join("worktrees").join("task-wt");
+
+    // Step 1: Create a worktree at wt_path with a temporary branch
+    Command::new("git")
+        .args(["branch", "temp-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            wt_path.to_str().unwrap(),
+            "temp-branch",
+        ])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    assert!(wt_path.exists(), "Worktree should exist before locking");
+
+    // Step 2: Lock the worktree — simulates SIGKILL leaving locked metadata
+    lock_worktree_sync(repo, &wt_path);
+
+    // Step 3: Delete the directory — leaves stale locked metadata in git
+    std::fs::remove_dir_all(&wt_path).unwrap();
+    assert!(!wt_path.exists(), "Directory should be gone");
+
+    // Step 4: create_worktree should succeed via retry guard (unlock+prune+retry)
+    let result = GitService::create_worktree(repo, &wt_path, "new-task-branch", "main").await;
+    assert!(
+        result.is_ok(),
+        "create_worktree should succeed after unlock+prune of stale locked entry: {:?}",
+        result.err()
+    );
+
+    // Worktree should now exist on the new branch
+    assert!(wt_path.exists(), "Worktree should exist after retry");
+    let branch = GitService::get_current_branch(&wt_path).await.unwrap();
+    assert_eq!(branch, "new-task-branch", "Worktree should be on new branch");
+
+    // Clean up
+    let _ = GitService::delete_worktree(repo, &wt_path).await;
+}
+
+/// checkout_existing_branch_worktree: stale locked entry at target path → retry guard → success.
+///
+/// Same scenario as above but for the existing-branch checkout path (used by merge worktrees).
+#[tokio::test]
+async fn test_checkout_existing_branch_worktree_retries_after_locked_stale_entry() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    let wt_path = temp_dir.path().join("worktrees").join("merge-wt");
+
+    // Create another branch for the eventual checkout
+    Command::new("git")
+        .args(["branch", "target-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Step 1: Create a worktree at wt_path with a temporary branch
+    Command::new("git")
+        .args(["branch", "temp-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            wt_path.to_str().unwrap(),
+            "temp-branch",
+        ])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    assert!(wt_path.exists(), "Worktree should exist before locking");
+
+    // Step 2: Lock the worktree
+    lock_worktree_sync(repo, &wt_path);
+
+    // Step 3: Delete the directory — leaves stale locked metadata
+    std::fs::remove_dir_all(&wt_path).unwrap();
+    assert!(!wt_path.exists(), "Directory should be gone");
+
+    // Step 4: checkout_existing_branch_worktree should succeed via retry guard
+    let result =
+        GitService::checkout_existing_branch_worktree(repo, &wt_path, "target-branch").await;
+    assert!(
+        result.is_ok(),
+        "checkout_existing_branch_worktree should succeed after unlock+prune of stale locked entry: {:?}",
+        result.err()
+    );
+
+    assert!(wt_path.exists(), "Worktree should exist after retry");
+    let branch = GitService::get_current_branch(&wt_path).await.unwrap();
+    assert_eq!(branch, "target-branch", "Worktree should be on target branch");
+
+    // Clean up
+    let _ = GitService::delete_worktree(repo, &wt_path).await;
+}
+
+/// create_worktree with no locked entry succeeds on first attempt (no extra git calls).
+/// This is already covered by test_worktree_creation_new_branch_when_not_exists but
+/// is repeated here explicitly as a guard that the retry path is not triggered unnecessarily.
+#[tokio::test]
+async fn test_create_worktree_no_locked_entry_succeeds_first_attempt() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    let wt_path = temp_dir.path().join("worktrees").join("clean-wt");
+
+    // No stale entry — should succeed on first attempt without any retry
+    let result = GitService::create_worktree(repo, &wt_path, "clean-branch", "main").await;
+    assert!(
+        result.is_ok(),
+        "create_worktree should succeed on first attempt when no locked entry: {:?}",
+        result.err()
+    );
+    assert!(wt_path.exists(), "Worktree should exist");
+    let branch = GitService::get_current_branch(&wt_path).await.unwrap();
+    assert_eq!(branch, "clean-branch");
+
+    let _ = GitService::delete_worktree(repo, &wt_path).await;
+}
+
+// =========================================================================
 // remove_stale_index_lock Tests
 // =========================================================================
 
