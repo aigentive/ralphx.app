@@ -477,7 +477,8 @@ export function PlanDisplay({
               "flex items-center gap-1 transition-opacity duration-150",
               isVersionDropdownOpen || isHovered ? "opacity-100" : "opacity-0"
             )}>
-              {showApprove && !isApproved && (
+              {/* Verification buttons — visible whenever plan has verification, regardless of approval settings */}
+              {hasVerification && !isApproved && (
                 <>
                   {/* Verify First — shown when unverified */}
                   {showVerifyFirst && (
@@ -552,41 +553,43 @@ export function PlanDisplay({
                       Skip
                     </Button>
                   )}
-
-                  {/* Approve — disabled when verification blocks */}
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={verificationBlocked ? undefined : onApprove}
-                    disabled={verificationBlocked}
-                    title={
-                      verificationBlocked
-                        ? "Complete or skip verification before approving"
-                        : undefined
-                    }
-                    className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-                    style={{
-                      color: verificationBlocked ? "hsl(220 10% 50%)" : "hsl(14 100% 60%)",
-                      background: verificationBlocked ? "transparent" : "hsla(14 100% 60% / 0.1)",
-                      border: verificationBlocked
-                        ? "1px solid hsla(220 10% 100% / 0.08)"
-                        : "1px solid hsla(14 100% 60% / 0.2)",
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!verificationBlocked) {
-                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!verificationBlocked) {
-                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
-                      }
-                    }}
-                  >
-                    <Sparkles className="w-3 h-3" />
-                    Approve
-                  </Button>
                 </>
+              )}
+
+              {/* Approve — only when plan approval is enabled */}
+              {showApprove && !isApproved && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={verificationBlocked ? undefined : onApprove}
+                  disabled={verificationBlocked}
+                  title={
+                    verificationBlocked
+                      ? "Complete or skip verification before approving"
+                      : undefined
+                  }
+                  className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{
+                    color: verificationBlocked ? "hsl(220 10% 50%)" : "hsl(14 100% 60%)",
+                    background: verificationBlocked ? "transparent" : "hsla(14 100% 60% / 0.1)",
+                    border: verificationBlocked
+                      ? "1px solid hsla(220 10% 100% / 0.08)"
+                      : "1px solid hsla(14 100% 60% / 0.2)",
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!verificationBlocked) {
+                      e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!verificationBlocked) {
+                      e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                    }
+                  }}
+                >
+                  <Sparkles className="w-3 h-3" />
+                  Approve
+                </Button>
               )}
 
               {isApproved && (
