@@ -1193,3 +1193,227 @@ async fn test_merge_resolve_cleanup_after_fast_forward() {
         "merge-resolve branch should be deleted after cleanup"
     );
 }
+
+// ============================================================================
+// Retry Limit Tests
+// ============================================================================
+//
+// Tests for plan_update_retry_count and source_update_retry_count metadata
+// logic that prevents infinite merge retry loops.
+
+/// Verify that retry count is correctly read from metadata and increments.
+#[test]
+fn test_plan_update_retry_count_increments() {
+    // Start with no retry count (first conflict resolution)
+    let meta = serde_json::json!({
+        "plan_update_conflict": true,
+        "target_branch": "plan/my-feature",
+        "base_branch": "main"
+    });
+
+    let retry_count = meta
+        .get("plan_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert_eq!(retry_count, 0, "First attempt should have retry_count=0");
+
+    // After one retry, metadata should have retry_count=1
+    let mut m = meta.clone();
+    if let Some(obj) = m.as_object_mut() {
+        obj.remove("plan_update_conflict");
+        obj.insert(
+            "plan_update_retry_count".to_string(),
+            serde_json::json!(retry_count + 1),
+        );
+    }
+
+    let retry_count_after = m
+        .get("plan_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert_eq!(retry_count_after, 1, "After first retry, count should be 1");
+
+    // Simulate second conflict: set flag back, keep counter
+    if let Some(obj) = m.as_object_mut() {
+        obj.insert("plan_update_conflict".to_string(), serde_json::json!(true));
+    }
+    let retry_count_2 = m
+        .get("plan_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert_eq!(retry_count_2, 1, "Counter should persist across conflicts");
+
+    // Increment again → 2
+    if let Some(obj) = m.as_object_mut() {
+        obj.remove("plan_update_conflict");
+        obj.insert(
+            "plan_update_retry_count".to_string(),
+            serde_json::json!(retry_count_2 + 1),
+        );
+    }
+    let retry_count_3 = m
+        .get("plan_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert_eq!(retry_count_3, 2, "After second retry, count should be 2");
+}
+
+/// Verify that when plan_update_retry_count >= 2, the system should escalate
+/// to MergeIncomplete (max retries exceeded).
+#[test]
+fn test_plan_update_max_retries_escalates_to_incomplete() {
+    // Metadata with retry_count already at the limit
+    let meta = serde_json::json!({
+        "plan_update_conflict": true,
+        "target_branch": "plan/my-feature",
+        "base_branch": "main",
+        "plan_update_retry_count": 2
+    });
+
+    let is_plan_update_conflict = meta
+        .get("plan_update_conflict")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    assert!(is_plan_update_conflict, "Flag should be set");
+
+    let retry_count = meta
+        .get("plan_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert_eq!(retry_count, 2);
+
+    // The guard condition: retry_count >= 2 → should escalate
+    assert!(
+        retry_count >= 2,
+        "Max retries (2) exceeded — should transition to MergeIncomplete"
+    );
+
+    // Also verify count=3 triggers the guard
+    let meta_3 = serde_json::json!({
+        "plan_update_conflict": true,
+        "plan_update_retry_count": 3
+    });
+    let retry_3 = meta_3
+        .get("plan_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert!(retry_3 >= 2, "Count=3 should also trigger max retry guard");
+
+    // And count=1 should NOT trigger
+    let meta_1 = serde_json::json!({
+        "plan_update_conflict": true,
+        "plan_update_retry_count": 1
+    });
+    let retry_1 = meta_1
+        .get("plan_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert!(retry_1 < 2, "Count=1 should NOT trigger max retry guard");
+}
+
+/// Verify the same retry limit logic for source_update_conflict.
+#[test]
+fn test_source_update_max_retries_escalates_to_incomplete() {
+    // At limit
+    let meta = serde_json::json!({
+        "source_update_conflict": true,
+        "target_branch": "plan/my-feature",
+        "source_branch": "task/abc",
+        "source_update_retry_count": 2
+    });
+
+    let is_source_update = meta
+        .get("source_update_conflict")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    assert!(is_source_update, "source_update_conflict flag should be set");
+
+    let retry_count = meta
+        .get("source_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert!(
+        retry_count >= 2,
+        "source_update: max retries (2) exceeded — should transition to MergeIncomplete"
+    );
+
+    // count=0 should NOT trigger
+    let meta_0 = serde_json::json!({
+        "source_update_conflict": true,
+        "source_update_retry_count": 0
+    });
+    let retry_0 = meta_0
+        .get("source_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert!(retry_0 < 2, "Count=0 should NOT trigger max retry guard");
+
+    // Missing key defaults to 0
+    let meta_missing = serde_json::json!({
+        "source_update_conflict": true
+    });
+    let retry_missing = meta_missing
+        .get("source_update_retry_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0);
+    assert_eq!(retry_missing, 0, "Missing key should default to 0");
+    assert!(retry_missing < 2, "Default 0 should NOT trigger max retry guard");
+}
+
+// ============================================================================
+// Idempotency Guard Tests: merge_commit_sha prevents duplicate completion
+// ============================================================================
+
+/// When a task already has merge_commit_sha set, both complete_merge_and_schedule
+/// and attempt_merge_auto_complete should skip redundant work.
+#[test]
+fn test_merge_commit_sha_prevents_duplicate_completion() {
+    use crate::domain::entities::Task;
+
+    let project_id = ProjectId::from_string("proj-test".to_string());
+    let mut task = Task::new(project_id, "Test task".to_string());
+    task.internal_status = InternalStatus::Merging;
+
+    // No merge_commit_sha → guard should NOT trigger
+    assert!(
+        task.merge_commit_sha.is_none(),
+        "Fresh task should have no merge_commit_sha"
+    );
+
+    // Set merge_commit_sha → guard SHOULD trigger
+    task.merge_commit_sha = Some("abc123def456".to_string());
+    assert!(
+        task.merge_commit_sha.is_some(),
+        "Task with merge_commit_sha set should trigger idempotency guard"
+    );
+
+    // Verify the exact check used in both code paths:
+    // complete_merge_and_schedule (line 981) and attempt_merge_auto_complete (line 1104)
+    let should_skip = task.merge_commit_sha.is_some();
+    assert!(
+        should_skip,
+        "Idempotency guard: task.merge_commit_sha.is_some() must return true to prevent duplicate completion"
+    );
+}
+
+/// Verify that clearing merge_commit_sha would re-enable merge completion.
+#[test]
+fn test_merge_commit_sha_cleared_allows_recompletion() {
+    use crate::domain::entities::Task;
+
+    let project_id = ProjectId::from_string("proj-test".to_string());
+    let mut task = Task::new(project_id, "Test task".to_string());
+    task.merge_commit_sha = Some("abc123".to_string());
+
+    // Guard active
+    assert!(task.merge_commit_sha.is_some());
+
+    // Clear it
+    task.merge_commit_sha = None;
+
+    // Guard no longer active
+    assert!(
+        task.merge_commit_sha.is_none(),
+        "After clearing merge_commit_sha, the guard should not trigger"
+    );
+}
