@@ -240,7 +240,7 @@ ideation:
     # verification_reconciliation.rs — max adversarial review rounds [1,10]; hard cap, always terminates
     max_rounds: 5
     # If true, verification starts automatically when a plan is created
-    auto_verify: false
+    auto_verify: true
     # If true, apply_proposals is blocked unless the plan is verified or skipped
     require_verification_for_accept: true
     # Min proposals before auto-verification triggers (when auto_verify=true)
