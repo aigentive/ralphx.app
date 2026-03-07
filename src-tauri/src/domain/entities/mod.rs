@@ -3,6 +3,7 @@
 
 pub mod activity_event;
 pub mod agent_run;
+pub mod api_key;
 pub mod app_state;
 pub mod artifact;
 pub mod artifact_flow;
@@ -39,6 +40,7 @@ pub use activity_event::{
     ParseActivityEventRoleError, ParseActivityEventTypeError,
 };
 pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus, InterruptedConversation};
+pub use api_key::{ApiKey, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
 pub use app_state::AppSettings;
 pub use artifact::{
     Artifact, ArtifactBucket, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata,
@@ -109,8 +111,8 @@ pub use task_qa::TaskQA;
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};
 pub use team::{TeamMessageId, TeamMessageRecord, TeamSession, TeamSessionId, TeammateSnapshot};
 pub use types::{
-    ChatMessageId, ExecutionPlanId, IdeationSessionId, ProjectId, ReviewIssueId, SessionLinkId,
-    TaskId, TaskProposalId, TaskQAId, TaskStepId,
+    ApiKeyId, ChatMessageId, ExecutionPlanId, IdeationSessionId, ProjectId, ReviewIssueId,
+    SessionLinkId, TaskId, TaskProposalId, TaskQAId, TaskStepId,
 };
 pub use workflow::{
     ColumnBehavior, ConflictResolution, ExternalStatusMapping, ExternalSyncConfig,

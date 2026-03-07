@@ -12,10 +12,12 @@ use crate::domain::entities::{
 };
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::tools::complete_review::ReviewToolOutcome;
+use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 use std::sync::Arc;
 
 pub async fn complete_review(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Json(req): Json<CompleteReviewRequest>,
 ) -> Result<Json<CompleteReviewResponse>, (StatusCode, String)> {
     let task_id = TaskId::from_string(req.task_id);
@@ -28,6 +30,10 @@ pub async fn complete_review(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    // Enforce project scope (no-op for internal requests without the header)
+    task.assert_project_scope(&scope)
+        .map_err(|e| (e.status, e.message.unwrap_or_default()))?;
 
     if task.internal_status != InternalStatus::Reviewing {
         return Err((
@@ -280,9 +286,21 @@ pub async fn complete_review(
 
 pub async fn get_review_notes(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Path(task_id): Path<String>,
 ) -> Result<Json<ReviewNotesResponse>, (StatusCode, String)> {
     let task_id = TaskId::from_string(task_id);
+
+    // Load task to enforce project scope before returning review notes
+    let task = state
+        .app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+    task.assert_project_scope(&scope)
+        .map_err(|e| (e.status, e.message.unwrap_or_default()))?;
 
     // 1. Fetch all review notes for this task
     let notes = state
@@ -349,6 +367,7 @@ pub async fn get_review_notes(
 /// Only available when task is in ReviewPassed or Escalated status
 pub async fn approve_task(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Json(req): Json<super::ApproveTaskRequest>,
 ) -> Result<Json<CompleteReviewResponse>, (StatusCode, String)> {
     let task_id = TaskId::from_string(req.task_id);
@@ -361,6 +380,10 @@ pub async fn approve_task(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    // Enforce project scope (no-op for internal requests without the header)
+    task.assert_project_scope(&scope)
+        .map_err(|e| (e.status, e.message.unwrap_or_default()))?;
 
     if task.internal_status != InternalStatus::ReviewPassed
         && task.internal_status != InternalStatus::Escalated
@@ -445,6 +468,7 @@ pub async fn approve_task(
 /// Only available when task is in ReviewPassed or Escalated status
 pub async fn request_task_changes(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Json(req): Json<super::RequestTaskChangesRequest>,
 ) -> Result<Json<CompleteReviewResponse>, (StatusCode, String)> {
     let task_id = TaskId::from_string(req.task_id);
@@ -457,6 +481,10 @@ pub async fn request_task_changes(
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
         .ok_or_else(|| (StatusCode::NOT_FOUND, "Task not found".to_string()))?;
+
+    // Enforce project scope (no-op for internal requests without the header)
+    task.assert_project_scope(&scope)
+        .map_err(|e| (e.status, e.message.unwrap_or_default()))?;
 
     if task.internal_status != InternalStatus::ReviewPassed
         && task.internal_status != InternalStatus::Escalated

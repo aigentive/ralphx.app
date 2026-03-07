@@ -1,6 +1,7 @@
 // In-memory repository implementations for testing
 // These implementations use HashMap/RwLock for thread-safe in-memory storage
 
+pub mod memory_api_key_repo;
 pub mod memory_active_plan_repo;
 pub mod memory_activity_event_repo;
 pub mod memory_agent_profile_repo;
@@ -13,6 +14,7 @@ pub mod memory_chat_attachment_repo;
 pub mod memory_chat_conversation_repo;
 pub mod memory_chat_message_repo;
 pub mod memory_execution_plan_repo;
+pub mod memory_external_events_repo;
 pub mod memory_execution_settings_repo;
 pub mod memory_ideation_session_repo;
 pub mod memory_ideation_settings_repo;
@@ -41,6 +43,7 @@ pub mod memory_team_session_repo;
 pub mod memory_workflow_repo;
 
 // Re-exports for convenience
+pub use memory_api_key_repo::MemoryApiKeyRepository;
 pub use memory_active_plan_repo::MemoryActivePlanRepository;
 pub use memory_activity_event_repo::MemoryActivityEventRepository;
 pub use memory_agent_profile_repo::MemoryAgentProfileRepository;
@@ -53,6 +56,7 @@ pub use memory_chat_attachment_repo::MemoryChatAttachmentRepository;
 pub use memory_chat_conversation_repo::MemoryChatConversationRepository;
 pub use memory_chat_message_repo::MemoryChatMessageRepository;
 pub use memory_execution_plan_repo::MemoryExecutionPlanRepository;
+pub use memory_external_events_repo::MemoryExternalEventsRepository;
 pub use memory_execution_settings_repo::{
     MemoryExecutionSettingsRepository, MemoryGlobalExecutionSettingsRepository,
 };

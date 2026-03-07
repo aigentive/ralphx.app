@@ -353,6 +353,41 @@ impl std::fmt::Display for ExecutionPlanId {
     }
 }
 
+/// A unique identifier for an ApiKey
+/// Uses newtype pattern to prevent accidentally using other IDs where ApiKeyId is expected
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ApiKeyId(pub String);
+
+impl ApiKeyId {
+    /// Creates a new ApiKeyId with a random UUID v4
+    pub fn new() -> Self {
+        Self(uuid::Uuid::new_v4().to_string())
+    }
+
+    /// Creates an ApiKeyId from an existing string
+    /// Useful for database deserialization
+    pub fn from_string(s: impl Into<String>) -> Self {
+        Self(s.into())
+    }
+
+    /// Returns the inner string value
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl Default for ApiKeyId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for ApiKeyId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 #[cfg(test)]
 #[path = "types_tests.rs"]
 mod tests;

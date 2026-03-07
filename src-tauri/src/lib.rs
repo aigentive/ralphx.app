@@ -46,8 +46,8 @@ use tracing::{info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 
 use application::{
-    ChatResumptionRunner, ReconciliationRunner, StartupJobRunner, TaskSchedulerService,
-    TaskTransitionService,
+    ChatResumptionRunner, EventCleanupService, ReconciliationRunner, StartupJobRunner,
+    TaskSchedulerService, TaskTransitionService,
 };
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -318,6 +318,7 @@ pub fn run() {
             let startup_execution_settings_repo = Arc::clone(&app_state.execution_settings_repo);
             let startup_interactive_process_registry = Arc::clone(&app_state.interactive_process_registry);
             let startup_review_repo = Arc::clone(&app_state.review_repo);
+            let startup_external_events_repo = Arc::clone(&app_state.external_events_repo);
             // Clone app handle to enable event emission in startup tasks
             let startup_app_handle = app.handle().clone();
 
@@ -421,7 +422,8 @@ pub fn run() {
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
                 .with_step_repo(Arc::clone(&startup_step_repo))
-                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)));
+                .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry))
+                .with_external_events_repo(Arc::clone(&startup_external_events_repo)));
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
@@ -526,7 +528,8 @@ pub fn run() {
                     .with_task_scheduler(Arc::clone(&task_scheduler))
                     .with_plan_branch_repo(Arc::clone(&startup_plan_branch_repo))
                     .with_step_repo(Arc::clone(&startup_step_repo))
-                    .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry)));
+                    .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry))
+                    .with_external_events_repo(Arc::clone(&startup_external_events_repo)));
 
                 let reconcile_runner = ReconciliationRunner::new(
                     reconcile_task_repo,
@@ -577,6 +580,14 @@ pub fn run() {
                 let archive_job_memory_archive_repo = Arc::clone(&startup_memory_archive_repo);
                 let archive_job_memory_entry_repo = Arc::clone(&startup_memory_entry_repo);
                 let archive_job_project_repo = Arc::clone(&startup_project_repo);
+
+                // Spawn external_events cleanup job (hourly pruning of old rows)
+                let cleanup_external_events_repo = Arc::clone(&startup_external_events_repo);
+                tauri::async_runtime::spawn(async move {
+                    EventCleanupService::new(cleanup_external_events_repo)
+                        .run_loop()
+                        .await;
+                });
 
                 tauri::async_runtime::spawn(async move {
                     let archive_service = Arc::new(application::MemoryArchiveService::new(

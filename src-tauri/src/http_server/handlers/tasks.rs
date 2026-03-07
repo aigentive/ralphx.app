@@ -3,9 +3,11 @@ use tracing::error;
 
 use super::*;
 use crate::domain::entities::{Task, TaskId};
+use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 
 pub async fn update_task(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Json(req): Json<UpdateTaskRequest>,
 ) -> Result<Json<TaskResponse>, StatusCode> {
     let task_id = TaskId::from_string(req.task_id);
@@ -21,6 +23,9 @@ pub async fn update_task(
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Enforce project scope (no-op for internal requests without the header)
+    task.assert_project_scope(&scope).map_err(|e| e.status)?;
 
     // Update fields
     if let Some(title) = req.title {
@@ -44,6 +49,7 @@ pub async fn update_task(
 
 pub async fn add_task_note(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Json(req): Json<AddTaskNoteRequest>,
 ) -> Result<Json<TaskResponse>, StatusCode> {
     let task_id = TaskId::from_string(req.task_id);
@@ -59,6 +65,9 @@ pub async fn add_task_note(
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Enforce project scope (no-op for internal requests without the header)
+    task.assert_project_scope(&scope).map_err(|e| e.status)?;
 
     // Add note to description (append with newline separator)
     let note_text = format!("\n\n---\n**Note:** {}", req.note);
@@ -78,6 +87,7 @@ pub async fn add_task_note(
 
 pub async fn get_task_details(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Json(req): Json<GetTaskDetailsRequest>,
 ) -> Result<Json<TaskResponse>, StatusCode> {
     let task_id = TaskId::from_string(req.task_id);
@@ -92,6 +102,9 @@ pub async fn get_task_details(
             StatusCode::INTERNAL_SERVER_ERROR
         })?
         .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Enforce project scope (no-op for internal requests without the header)
+    task.assert_project_scope(&scope).map_err(|e| e.status)?;
 
     Ok(Json(task_to_response(&task)))
 }

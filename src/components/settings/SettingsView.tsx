@@ -30,6 +30,7 @@ import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
 import { GitSettingsSection } from "./GitSettingsSection";
 import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
+import { ApiKeysSection } from "./ApiKeysSection";
 import {
   MODEL_OPTIONS,
   SavingIndicator,
@@ -566,6 +567,7 @@ export function SettingsView({
           <GitSettingsSection />
           <ProjectAnalysisSection />
           <IdeationSettingsPanel />
+          <ApiKeysSection />
         </div>
       </ScrollArea>
     </div>

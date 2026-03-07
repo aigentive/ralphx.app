@@ -1,0 +1,544 @@
+/**
+ * Tool registration for ralphx-external-mcp
+ *
+ * All tools are v1_ prefixed per the versioning decision in the plan.
+ * Full tool implementations are in Phase 4 (discovery/ideation) and Phase 5 (pipeline).
+ * This module registers placeholder tool definitions for the server scaffold.
+ */
+
+import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import {
+  ListToolsRequestSchema,
+  CallToolRequestSchema,
+} from "@modelcontextprotocol/sdk/types.js";
+import type { ApiKeyContext } from "../types.js";
+import {
+  handleListProjects,
+  handleGetProjectStatus,
+  handleGetPipelineOverview,
+} from "./discovery.js";
+import {
+  handleStartIdeation,
+  handleGetIdeationStatus,
+  handleSendIdeationMessage,
+  handleListProposals,
+  handleGetProposalDetail,
+  handleGetPlan,
+  handleAcceptPlanAndSchedule,
+  handleModifyProposal,
+  handleAnalyzeDependencies,
+} from "./ideation.js";
+import {
+  handleGetTaskDetail,
+  handleGetTaskDiff,
+  handleGetReviewSummary,
+  handleApproveReview,
+  handleRequestChanges,
+  handleGetMergePipeline,
+  handleResolveEscalation,
+  handlePauseTask,
+  handleCancelTask,
+  handleRetryTask,
+  handleResumeScheduling,
+} from "./pipeline.js";
+import {
+  handleGetRecentEvents,
+  handleSubscribeEvents,
+  handleGetAttentionItems,
+  handleGetExecutionCapacity,
+} from "./events.js";
+
+/** Tool categories by phase */
+export const TOOL_CATEGORIES = {
+  discovery: ["v1_list_projects", "v1_get_project_status", "v1_get_pipeline_overview"],
+  ideation: [
+    "v1_start_ideation",
+    "v1_get_ideation_status",
+    "v1_send_ideation_message",
+    "v1_list_proposals",
+    "v1_get_proposal_detail",
+    "v1_get_plan",
+    "v1_accept_plan_and_schedule",
+    "v1_modify_proposal",
+    "v1_analyze_dependencies",
+  ],
+  pipeline: [
+    "v1_get_task_detail",
+    "v1_get_task_diff",
+    "v1_get_review_summary",
+    "v1_approve_review",
+    "v1_request_changes",
+    "v1_get_merge_pipeline",
+    "v1_resolve_escalation",
+    "v1_pause_task",
+    "v1_cancel_task",
+    "v1_retry_task",
+    "v1_resume_scheduling",
+  ],
+  events: [
+    "v1_subscribe_events",
+    "v1_get_recent_events",
+    "v1_get_attention_items",
+    "v1_get_execution_capacity",
+  ],
+} as const;
+
+/** Register all tool handlers on the MCP server */
+export function registerTools(
+  server: Server,
+  getKeyContext: () => ApiKeyContext | undefined
+): void {
+  // List tools — returns all available tool definitions
+  server.setRequestHandler(ListToolsRequestSchema, async () => ({
+    tools: [
+      // Flow 1: Project Discovery (Phase 4)
+      {
+        name: "v1_list_projects",
+        description: "List projects accessible to this API key",
+        inputSchema: {
+          type: "object" as const,
+          properties: {},
+          required: [],
+        },
+      },
+      {
+        name: "v1_get_project_status",
+        description: "Get project details, task counts, and running agent status",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            project_id: { type: "string", description: "Project ID" },
+          },
+          required: ["project_id"],
+        },
+      },
+      {
+        name: "v1_get_pipeline_overview",
+        description: "Get tasks grouped by pipeline stage with counts",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            project_id: { type: "string", description: "Project ID" },
+          },
+          required: ["project_id"],
+        },
+      },
+      // Flow 2: Ideation & Planning (Phase 4)
+      {
+        name: "v1_start_ideation",
+        description:
+          "Create an ideation session and spawn an orchestrator agent with the given prompt",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            project_id: { type: "string", description: "Target project ID" },
+            prompt: { type: "string", description: "Initial prompt for the orchestrator" },
+          },
+          required: ["project_id", "prompt"],
+        },
+      },
+      {
+        name: "v1_get_ideation_status",
+        description: "Get ideation session status, agent state, and proposal count",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+          },
+          required: ["session_id"],
+        },
+      },
+      {
+        name: "v1_send_ideation_message",
+        description: "Send a message to the ideation agent",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+            message: { type: "string", description: "Message to send" },
+          },
+          required: ["session_id", "message"],
+        },
+      },
+      {
+        name: "v1_list_proposals",
+        description: "List proposals in an ideation session",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+          },
+          required: ["session_id"],
+        },
+      },
+      {
+        name: "v1_get_proposal_detail",
+        description: "Get full proposal details including steps and acceptance criteria",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            proposal_id: { type: "string", description: "Proposal ID" },
+          },
+          required: ["proposal_id"],
+        },
+      },
+      {
+        name: "v1_get_plan",
+        description: "Get plan artifact content for an ideation session",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+          },
+          required: ["session_id"],
+        },
+      },
+      {
+        name: "v1_accept_plan_and_schedule",
+        description:
+          "Saga: apply proposals → create tasks → schedule (idempotent, resumable on failure)",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+          },
+          required: ["session_id"],
+        },
+      },
+      {
+        name: "v1_modify_proposal",
+        description: "Update a proposal before acceptance",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            proposal_id: { type: "string", description: "Proposal ID" },
+            changes: { type: "object", description: "Fields to update" },
+          },
+          required: ["proposal_id", "changes"],
+        },
+      },
+      {
+        name: "v1_analyze_dependencies",
+        description: "Get dependency graph for proposals in a session",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+          },
+          required: ["session_id"],
+        },
+      },
+      // Flow 3: Task Pipeline Supervision (Phase 5)
+      {
+        name: "v1_get_task_detail",
+        description: "Get full task details, steps, and branch info",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+          },
+          required: ["task_id"],
+        },
+      },
+      {
+        name: "v1_get_task_diff",
+        description: "Get git diff stats for a task branch",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+          },
+          required: ["task_id"],
+        },
+      },
+      {
+        name: "v1_get_review_summary",
+        description: "Get review notes and findings for a task",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+          },
+          required: ["task_id"],
+        },
+      },
+      {
+        name: "v1_approve_review",
+        description: "Approve a task review, moving it to merge",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+          },
+          required: ["task_id"],
+        },
+      },
+      {
+        name: "v1_request_changes",
+        description: "Request changes on a task review with feedback",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+            feedback: { type: "string", description: "Change request feedback" },
+          },
+          required: ["task_id", "feedback"],
+        },
+      },
+      {
+        name: "v1_get_merge_pipeline",
+        description: "Get all merge activity for scoped projects",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            project_id: { type: "string", description: "Project ID" },
+          },
+          required: ["project_id"],
+        },
+      },
+      {
+        name: "v1_resolve_escalation",
+        description: "Handle an escalated review for a task",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+            resolution: {
+              type: "string",
+              enum: ["approve", "request_changes", "cancel"],
+              description: "Resolution action",
+            },
+            feedback: { type: "string", description: "Optional feedback" },
+          },
+          required: ["task_id", "resolution"],
+        },
+      },
+      {
+        name: "v1_pause_task",
+        description: "Pause a running task",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+          },
+          required: ["task_id"],
+        },
+      },
+      {
+        name: "v1_cancel_task",
+        description: "Cancel a task",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+          },
+          required: ["task_id"],
+        },
+      },
+      {
+        name: "v1_retry_task",
+        description: "Retry a failed or stopped task",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+          },
+          required: ["task_id"],
+        },
+      },
+      {
+        name: "v1_resume_scheduling",
+        description:
+          "Resume a failed v1_accept_plan_and_schedule from its last successful step",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+          },
+          required: ["session_id"],
+        },
+      },
+      // Flow 4: Events & Monitoring (Phase 6)
+      {
+        name: "v1_subscribe_events",
+        description: "SSE stream of state change events for scoped projects",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            project_id: { type: "string", description: "Project ID to filter events" },
+          },
+          required: [],
+        },
+      },
+      {
+        name: "v1_get_recent_events",
+        description:
+          "Cursor-based event retrieval from DB (survives restarts). Pass last_id=0 for all recent events.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            project_id: { type: "string", description: "Project ID to filter events" },
+            last_id: {
+              type: "number",
+              description: "Last event ID received (0 for all recent)",
+            },
+            limit: { type: "number", description: "Max events to return (default: 50)" },
+          },
+          required: [],
+        },
+      },
+      {
+        name: "v1_get_attention_items",
+        description:
+          "Get tasks needing attention (escalated reviews, merge conflicts) for scoped projects",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            project_id: { type: "string", description: "Project ID" },
+          },
+          required: [],
+        },
+      },
+      {
+        name: "v1_get_execution_capacity",
+        description:
+          "Get execution capacity: can_start (bool), project_running (N), project_queued (N)",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            project_id: { type: "string", description: "Project ID" },
+          },
+          required: ["project_id"],
+        },
+      },
+    ],
+  }));
+
+  // Call tool handler — Flow 1 (discovery) and Flow 2 (ideation) implemented in Phase 4.
+  // Flow 3 (pipeline) and Flow 4 (events) remain stubs until Phase 5/6.
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    const { name, arguments: rawArgs } = request.params;
+    const args = (rawArgs ?? {}) as Record<string, unknown>;
+
+    const context = getKeyContext();
+    if (!context) {
+      return {
+        content: [
+          {
+            type: "text" as const,
+            text: JSON.stringify({ error: "unauthenticated", message: "No valid API key context." }),
+          },
+        ],
+        isError: true,
+      };
+    }
+
+    let text: string;
+    let isError = false;
+
+    switch (name) {
+      // --- Flow 1: Discovery ---
+      case "v1_list_projects":
+        text = await handleListProjects(args, context);
+        break;
+      case "v1_get_project_status":
+        text = await handleGetProjectStatus(args, context);
+        break;
+      case "v1_get_pipeline_overview":
+        text = await handleGetPipelineOverview(args, context);
+        break;
+
+      // --- Flow 2: Ideation ---
+      case "v1_start_ideation":
+        text = await handleStartIdeation(args, context);
+        break;
+      case "v1_get_ideation_status":
+        text = await handleGetIdeationStatus(args, context);
+        break;
+      case "v1_send_ideation_message":
+        text = await handleSendIdeationMessage(args, context);
+        break;
+      case "v1_list_proposals":
+        text = await handleListProposals(args, context);
+        break;
+      case "v1_get_proposal_detail":
+        text = await handleGetProposalDetail(args, context);
+        break;
+      case "v1_get_plan":
+        text = await handleGetPlan(args, context);
+        break;
+      case "v1_accept_plan_and_schedule":
+        text = await handleAcceptPlanAndSchedule(args, context);
+        break;
+      case "v1_modify_proposal":
+        text = await handleModifyProposal(args, context);
+        break;
+      case "v1_analyze_dependencies":
+        text = await handleAnalyzeDependencies(args, context);
+        break;
+
+      // --- Flow 3: Pipeline Supervision ---
+      case "v1_get_task_detail":
+        text = await handleGetTaskDetail(args, context);
+        break;
+      case "v1_get_task_diff":
+        text = await handleGetTaskDiff(args, context);
+        break;
+      case "v1_get_review_summary":
+        text = await handleGetReviewSummary(args, context);
+        break;
+      case "v1_approve_review":
+        text = await handleApproveReview(args, context);
+        break;
+      case "v1_request_changes":
+        text = await handleRequestChanges(args, context);
+        break;
+      case "v1_get_merge_pipeline":
+        text = await handleGetMergePipeline(args, context);
+        break;
+      case "v1_resolve_escalation":
+        text = await handleResolveEscalation(args, context);
+        break;
+      case "v1_pause_task":
+        text = await handlePauseTask(args, context);
+        break;
+      case "v1_cancel_task":
+        text = await handleCancelTask(args, context);
+        break;
+      case "v1_retry_task":
+        text = await handleRetryTask(args, context);
+        break;
+      case "v1_resume_scheduling":
+        text = await handleResumeScheduling(args, context);
+        break;
+
+      // --- Flow 4: Events & Monitoring ---
+      case "v1_get_recent_events":
+        text = await handleGetRecentEvents(args, context);
+        break;
+      case "v1_subscribe_events":
+        text = await handleSubscribeEvents(args, context);
+        break;
+      case "v1_get_attention_items":
+        text = await handleGetAttentionItems(args, context);
+        break;
+      case "v1_get_execution_capacity":
+        text = await handleGetExecutionCapacity(args, context);
+        break;
+
+      default:
+        text = JSON.stringify({
+          error: "not_implemented",
+          tool: name,
+          message: `Tool '${name}' is not recognized.`,
+        });
+        isError = true;
+        break;
+    }
+
+    return {
+      content: [{ type: "text" as const, text }],
+      isError,
+    };
+  });
+}

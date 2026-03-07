@@ -1,3 +1,5 @@
+pub mod api_keys;
+pub mod external;
 pub mod artifacts;
 pub mod conversations;
 pub mod execution;
@@ -15,6 +17,8 @@ pub mod tasks;
 pub mod teams;
 pub mod worker;
 
+pub use api_keys::*;
+pub use external::*;
 pub use artifacts::*;
 pub use conversations::*;
 pub use execution::*;
