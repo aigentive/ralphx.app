@@ -195,6 +195,9 @@ export function PlanningView({
   const reopenMutation = useReopenSession();
   const resetMutation = useResetAndReaccept();
 
+  // Mount once near the root of the ideation feature tree to handle plan_verification:status_changed events
+  useVerificationEvents();
+
   // Count tasks created from this session's proposals
   const sessionTaskCount = useMemo(
     () => proposals.filter((p) => p.createdTaskId != null).length,
@@ -637,7 +640,7 @@ export function PlanningView({
     }
   }, [proposals.length, isPlanExpanded, isSessionLoading, setIsPlanExpanded]);
 
-  // Reset plan expansion when switching sessions
+  // Reset plan expansion when switching sessions — default to expanded if session already has a plan
   const lastSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!session?.id) return;
@@ -645,10 +648,11 @@ export function PlanningView({
       lastSessionIdRef.current = session.id;
       autoOpenedPlanRef.current = false;
       userOverrideRef.current = false;
-      setIsPlanExpanded(false);
+      // Auto-expand on initial load if the session already has a plan
+      setIsPlanExpanded(!!session.planArtifactId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.id]);
+  }, [session?.id, session?.planArtifactId]);
 
   const handlePlanExpandedChange = useCallback((expanded: boolean) => {
     autoOpenedPlanRef.current = false;
