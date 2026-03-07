@@ -56,7 +56,7 @@ import { useIdeationHandlers } from "./useIdeationHandlers";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { DropZoneOverlay } from "./DropZoneOverlay";
-import { ideationApi } from "@/api/ideation";
+import { ideationApi, type SessionWithDataResponse } from "@/api/ideation";
 import { chatApi } from "@/api/chat";
 import { ReopenSessionDialog } from "./ReopenSessionDialog";
 import type { ReopenMode } from "./ReopenSessionDialog";
@@ -687,21 +687,39 @@ export function PlanningView({
 
   const handleSkipVerification = useCallback(async () => {
     if (!session) return;
+    // Optimistic update: immediately set verificationStatus to 'skipped' for instant accept button enablement
+    queryClient.setQueryData<SessionWithDataResponse | null>(
+      ideationKeys.sessionWithData(session.id),
+      (old) => old ? { ...old, session: { ...old.session, verificationStatus: "skipped" } } : old
+    );
     try {
       await ideationApi.verification.skip(session.id);
       queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
       queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(session.id) });
       queryClient.invalidateQueries({ queryKey: ["verification", session.id] });
     } catch (err) {
+      // Roll back optimistic update on failure
+      queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(session.id) });
       console.error("Failed to skip verification:", err);
       toast.error("Failed to skip verification");
     }
   }, [session, queryClient]);
 
-  // planVersionBeforeVerification is not yet surfaced by the API — button stays hidden until available
-  const handleRevertAndSkip = useCallback(() => {
-    // no-op: rendered only when planVersionBeforeVerification is defined (not yet available)
-  }, []);
+  // planVersionBeforeVerification: not yet surfaced by the API — PlanDisplay hides the button until defined
+  const planVersionBeforeVerification: string | undefined = undefined;
+
+  const handleRevertAndSkip = useCallback(async () => {
+    if (!session || !planVersionBeforeVerification) return;
+    try {
+      await ideationApi.verification.revertAndSkip(session.id, planVersionBeforeVerification);
+      queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+      queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(session.id) });
+      queryClient.invalidateQueries({ queryKey: ["verification", session.id] });
+    } catch (err) {
+      console.error("Failed to revert and skip verification:", err);
+      toast.error("Failed to revert plan");
+    }
+  }, [session, queryClient, planVersionBeforeVerification]);
 
   // ── End verification handlers ─────────────────────────────────────────────
 
@@ -1138,6 +1156,7 @@ export function PlanningView({
                             verificationStatus={session?.verificationStatus ?? "unverified"}
                             verificationInProgress={session?.verificationInProgress ?? false}
                             {...(session?.gapScore != null && { gapScore: session.gapScore })}
+                            {...(planVersionBeforeVerification !== undefined && { planVersionBeforeVerification })}
                             {...(verificationData?.currentRound !== undefined && { currentRound: verificationData.currentRound })}
                             {...(verificationData?.maxRounds !== undefined && { maxRounds: verificationData.maxRounds })}
                             {...(verificationData?.convergenceReason !== undefined && { convergenceReason: verificationData.convergenceReason })}
