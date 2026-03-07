@@ -388,6 +388,23 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return true;
         }
 
+        // TOCTOU guard: If the agent run completed normally AND the task already
+        // transitioned out of Executing, the normal completion handler already handled it.
+        // We check both conditions: if the agent completed but the task is still in
+        // Executing/ReExecuting, the transition may have failed (e.g., DB error) and
+        // reconciliation should continue trying to help.
+        if evidence.run_status == Some(AgentRunStatus::Completed)
+            && task.internal_status != InternalStatus::Executing
+            && task.internal_status != InternalStatus::ReExecuting
+        {
+            info!(
+                task_id = task.id.as_str(),
+                current_status = ?task.internal_status,
+                "Skipping execution reconciliation: agent run completed and task already transitioned"
+            );
+            return true;
+        }
+
         // C5: Wall-clock timeout for long-running executions
         if let Some(age) = self.latest_status_transition_age(task, status).await {
             let max_minutes = reconciliation_config().executing_max_wall_clock_minutes as i64;

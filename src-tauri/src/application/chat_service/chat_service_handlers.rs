@@ -498,8 +498,63 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     review_repo: &Option<Arc<dyn ReviewRepository>>,
     task_step_repo: &Option<Arc<dyn TaskStepRepository>>,
 ) -> bool {
-    // Handle cancellation: skip all recovery/transitions, just mark as stopped
-    if matches!(stream_error, Some(StreamError::Cancelled)) {
+    // Handle cancellation — distinguish "cancelled after normal completion" from "user stop"
+    if let Some(StreamError::Cancelled { turns_finalized }) = stream_error {
+        if *turns_finalized > 0 {
+            // Agent completed at least one turn (TurnComplete received) before the
+            // prune engine or other system cancellation killed the stream. The work
+            // is done — honour the completion by running the normal success path.
+            tracing::info!(
+                conversation_id = conversation_id.as_str(),
+                context_type = %context_type,
+                context_id,
+                turns_finalized,
+                "Stream cancelled after TurnComplete — treating as normal completion"
+            );
+            let _ = agent_run_repo
+                .complete(&AgentRunId::from_string(agent_run_id))
+                .await;
+
+            // Re-increment to counteract double-decrement (TurnComplete released slot, on_exit will release again)
+            if super::uses_execution_slot(context_type) {
+                if let Some(ref exec) = execution_state {
+                    exec.increment_running();
+                    tracing::debug!(
+                        %context_type,
+                        context_id,
+                        "Re-incremented before state transition to prevent double-decrement (cancellation path)"
+                    );
+                }
+            }
+
+            handle_stream_success(
+                context_type,
+                context_id,
+                true, // effective_has_output: turns were finalized → agent produced output
+                execution_state,
+                task_repo,
+                task_dependency_repo,
+                project_repo,
+                chat_message_repo,
+                chat_attachment_repo,
+                conversation_repo,
+                agent_run_repo,
+                ideation_session_repo,
+                activity_event_repo,
+                message_queue,
+                running_agent_registry,
+                memory_event_repo,
+                plan_branch_repo,
+                task_step_repo,
+                app_handle,
+                interactive_process_registry,
+                review_repo,
+            )
+            .await;
+            return false;
+        }
+
+        // turns_finalized == 0: genuine user-initiated stop or system cancel before completion
         tracing::info!(
             conversation_id = conversation_id.as_str(),
             context_type = %context_type,

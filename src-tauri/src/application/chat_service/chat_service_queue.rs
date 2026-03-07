@@ -15,7 +15,7 @@ use super::chat_service_types::{
 };
 use super::has_meaningful_output;
 use crate::application::question_state::QuestionState;
-use crate::domain::entities::{ChatContextType, ChatConversationId};
+use crate::domain::entities::{ChatContextType, ChatConversationId, InternalStatus, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, ChatMessageRepository, IdeationSessionRepository, TaskRepository,
 };
@@ -104,6 +104,37 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 tracing::info!("[QUEUE] Cancellation requested mid-queue, stopping");
                 break;
             }
+
+            // Guard: for task execution, verify task is still in Executing/ReExecuting state
+            if context_type == ChatContextType::TaskExecution {
+                let task_id = TaskId::from_string(context_id.to_string());
+                match task_repo.get_by_id(&task_id).await {
+                    Ok(Some(task)) => {
+                        if task.internal_status != InternalStatus::Executing
+                            && task.internal_status != InternalStatus::ReExecuting
+                        {
+                            let remaining = message_queue.get_queued(context_type, context_id).len();
+                            tracing::info!(
+                                "[QUEUE] Task {} has transitioned to {:?}, draining {} queued messages without spawning",
+                                context_id,
+                                task.internal_status,
+                                remaining + 1,
+                            );
+                            while message_queue.pop(context_type, context_id).is_some() {}
+                            break;
+                        }
+                    }
+                    Ok(None) => {
+                        tracing::warn!("[QUEUE] Task {} not found, draining queued messages", context_id);
+                        while message_queue.pop(context_type, context_id).is_some() {}
+                        break;
+                    }
+                    Err(e) => {
+                        tracing::warn!("[QUEUE] Failed to check task state for {}: {}, proceeding cautiously", context_id, e);
+                    }
+                }
+            }
+
             total_processed += 1;
             tracing::info!(
                 "[QUEUE] Processing queued message id={}, content_len={}",
