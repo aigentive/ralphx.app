@@ -1,0 +1,1164 @@
+openapi: "3.0.3"
+info:
+  title: RalphX External MCP API
+  description: |
+    The RalphX External MCP Server exposes 27 orchestration-level tools to external agents
+    via the Model Context Protocol (MCP) over HTTP using Streamable HTTP Transport.
+
+    All tool calls go through the /mcp endpoint using the MCP JSON-RPC protocol.
+    Authentication requires a Bearer token with the rxk_live_ prefix.
+
+    This schema documents the MCP server's tool catalog in OpenAPI format for reference.
+    Use the MCP SDK (not raw HTTP) to interact with these tools from agent code.
+  version: "1.0.0"
+  contact:
+    name: RalphX
+servers:
+  - url: "http://127.0.0.1:3848"
+    description: Default localhost server
+  - url: "https://{host}:{port}"
+    description: Remote server (TLS required)
+    variables:
+      host:
+        default: "127.0.0.1"
+      port:
+        default: "3848"
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      description: |
+        API key in rxk_live_{32 alphanumeric} format.
+        Validated against :3847/api/auth/validate-key with 30s TTL cache.
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+        message:
+          type: string
+          description: Human-readable error description
+        status:
+          type: integer
+          description: HTTP status code (when proxied from backend)
+
+    Project:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+
+    ProjectStatus:
+      type: object
+      required: [id, name]
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        task_counts:
+          type: object
+          additionalProperties:
+            type: integer
+          description: Task counts keyed by pipeline stage
+        running_agents:
+          type: integer
+        queued_tasks:
+          type: integer
+
+    PipelineStage:
+      type: object
+      properties:
+        stage:
+          type: string
+        count:
+          type: integer
+        tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+
+    IdeationSession:
+      type: object
+      properties:
+        session_id:
+          type: string
+        project_id:
+          type: string
+        status:
+          type: string
+          enum: [running, idle, completed]
+        proposal_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    Proposal:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+
+    ProposalDetail:
+      allOf:
+        - $ref: "#/components/schemas/Proposal"
+        - type: object
+          properties:
+            steps:
+              type: array
+              items:
+                type: object
+                properties:
+                  id:
+                    type: string
+                  description:
+                    type: string
+            acceptance_criteria:
+              type: array
+              items:
+                type: string
+            dependencies:
+              type: array
+              items:
+                type: string
+
+    Plan:
+      type: object
+      properties:
+        session_id:
+          type: string
+        content:
+          type: string
+          description: Plan artifact content (markdown)
+        version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    TaskDetail:
+      type: object
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        branch:
+          type: string
+        steps:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              subject:
+                type: string
+              status:
+                type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    DiffStats:
+      type: object
+      properties:
+        task_id:
+          type: string
+        branch:
+          type: string
+        files_changed:
+          type: integer
+        insertions:
+          type: integer
+        deletions:
+          type: integer
+        files:
+          type: array
+          items:
+            type: object
+            properties:
+              path:
+                type: string
+              insertions:
+                type: integer
+              deletions:
+                type: integer
+
+    ReviewSummary:
+      type: object
+      properties:
+        task_id:
+          type: string
+        status:
+          type: string
+        notes:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              severity:
+                type: string
+                enum: [critical, major, minor, suggestion]
+              body:
+                type: string
+              status:
+                type: string
+              created_at:
+                type: string
+                format: date-time
+
+    MergePipelineEntry:
+      type: object
+      properties:
+        task_id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+        branch:
+          type: string
+
+    ExternalEvent:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Autoincrement cursor ID — use as cursor for next poll
+        event_type:
+          type: string
+        project_id:
+          type: string
+        task_id:
+          type: string
+        payload:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+
+    EventPollResponse:
+      type: object
+      properties:
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalEvent"
+        next_cursor:
+          type: integer
+          nullable: true
+          description: Pass as cursor in next poll call to receive only newer events
+        has_more:
+          type: boolean
+
+    AttentionItems:
+      type: object
+      properties:
+        escalated_reviews:
+          type: array
+          items:
+            type: object
+            properties:
+              task_id:
+                type: string
+              title:
+                type: string
+              status:
+                type: string
+              updated_at:
+                type: string
+                format: date-time
+        failed_tasks:
+          type: array
+          items:
+            type: object
+            properties:
+              task_id:
+                type: string
+              title:
+                type: string
+              status:
+                type: string
+              updated_at:
+                type: string
+                format: date-time
+        merge_conflicts:
+          type: array
+          items:
+            type: object
+            properties:
+              task_id:
+                type: string
+              title:
+                type: string
+              status:
+                type: string
+              updated_at:
+                type: string
+                format: date-time
+
+    ExecutionCapacity:
+      type: object
+      properties:
+        can_start:
+          type: boolean
+          description: True if a new task can be started immediately
+        project_running:
+          type: integer
+          description: Number of tasks currently executing in the project
+        project_queued:
+          type: integer
+          description: Number of tasks queued waiting for execution slot
+
+paths:
+  /health:
+    get:
+      operationId: health
+      summary: Liveness check — always 200 if process is alive
+      security: []
+      responses:
+        "200":
+          description: Process is alive
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ok]
+
+  /ready:
+    get:
+      operationId: ready
+      summary: Readiness check — 200 only if backend is reachable
+      security: []
+      responses:
+        "200":
+          description: Backend reachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [ready]
+                  backend:
+                    type: string
+                    enum: [reachable]
+        "503":
+          description: Backend unreachable
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [not_ready]
+                  backend:
+                    type: string
+                    enum: [unreachable]
+
+  /mcp:
+    post:
+      operationId: mcpToolCall
+      summary: MCP protocol endpoint — all tool calls go here
+      description: |
+        MCP Streamable HTTP Transport endpoint. Use the MCP SDK rather than raw HTTP.
+
+        Session lifecycle:
+        - First POST: creates a new session. Response includes Mcp-Session-Id header.
+        - Subsequent requests: include Mcp-Session-Id header to resume session.
+        - Sessions are cleaned up on disconnect.
+
+        All 27 tools are routed through this single endpoint using MCP JSON-RPC protocol.
+
+        Tool categories and their operationIds below document each tool's input/output schema.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: MCP JSON-RPC request
+      responses:
+        "200":
+          description: MCP response
+        "401":
+          description: Missing or invalid Authorization header
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: Rate limited or IP locked out
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  # -------------------------------------------------------------------------
+  # Flow 1: Project Discovery (3 tools)
+  # -------------------------------------------------------------------------
+
+  /mcp#v1_list_projects:
+    post:
+      operationId: v1_list_projects
+      summary: List projects accessible to this API key
+      description: |
+        Returns all projects within the API key's project scope.
+        The backend filters by X-RalphX-Project-Scope header injected by the MCP server.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_list_projects
+              arguments: {}
+      responses:
+        "200":
+          description: Array of accessible projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Project"
+
+  /mcp#v1_get_project_status:
+    post:
+      operationId: v1_get_project_status
+      summary: Get project details, task counts, and running agent status
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_project_status
+              arguments:
+                project_id: "proj-abc123"
+      responses:
+        "200":
+          description: Project status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProjectStatus"
+
+  /mcp#v1_get_pipeline_overview:
+    post:
+      operationId: v1_get_pipeline_overview
+      summary: Get tasks grouped by pipeline stage with counts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_pipeline_overview
+              arguments:
+                project_id: "proj-abc123"
+      responses:
+        "200":
+          description: Pipeline stages with task counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PipelineStage"
+
+  # -------------------------------------------------------------------------
+  # Flow 2: Ideation & Planning (9 tools)
+  # -------------------------------------------------------------------------
+
+  /mcp#v1_start_ideation:
+    post:
+      operationId: v1_start_ideation
+      summary: Create an ideation session and spawn an orchestrator agent
+      description: |
+        Composite saga tool. Creates an ideation session, then spawns an orchestrator
+        agent with the given prompt. The agent runs asynchronously — poll
+        v1_get_ideation_status to check progress.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_start_ideation
+              arguments:
+                project_id: "proj-abc123"
+                prompt: "Add OAuth2 login with GitHub provider"
+      responses:
+        "200":
+          description: Ideation session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdeationSession"
+
+  /mcp#v1_get_ideation_status:
+    post:
+      operationId: v1_get_ideation_status
+      summary: Get ideation session status, agent state, and proposal count
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_ideation_status
+              arguments:
+                session_id: "sess-xyz789"
+      responses:
+        "200":
+          description: Ideation session status
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/IdeationSession"
+
+  /mcp#v1_send_ideation_message:
+    post:
+      operationId: v1_send_ideation_message
+      summary: Send a message to the ideation agent
+      description: |
+        Queues a message for the ideation orchestrator. The agent picks it up on its
+        next turn. Use v1_get_ideation_status to check if the agent has responded.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_send_ideation_message
+              arguments:
+                session_id: "sess-xyz789"
+                message: "Also add Google OAuth as an alternative"
+      responses:
+        "200":
+          description: Message queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queued:
+                    type: boolean
+
+  /mcp#v1_list_proposals:
+    post:
+      operationId: v1_list_proposals
+      summary: List proposals in an ideation session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_list_proposals
+              arguments:
+                session_id: "sess-xyz789"
+      responses:
+        "200":
+          description: List of proposals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Proposal"
+
+  /mcp#v1_get_proposal_detail:
+    post:
+      operationId: v1_get_proposal_detail
+      summary: Get full proposal details including steps and acceptance criteria
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_proposal_detail
+              arguments:
+                proposal_id: "prop-111"
+      responses:
+        "200":
+          description: Full proposal detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProposalDetail"
+
+  /mcp#v1_get_plan:
+    post:
+      operationId: v1_get_plan
+      summary: Get plan artifact content for an ideation session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_plan
+              arguments:
+                session_id: "sess-xyz789"
+      responses:
+        "200":
+          description: Plan artifact
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Plan"
+
+  /mcp#v1_accept_plan_and_schedule:
+    post:
+      operationId: v1_accept_plan_and_schedule
+      summary: "Saga: apply proposals, create tasks, and schedule execution"
+      description: |
+        Idempotent saga that runs three steps:
+        1. Apply all proposals in the session (create task records)
+        2. Create execution schedule
+        3. Start task execution
+
+        If any step fails, the saga records its progress. Call v1_resume_scheduling
+        to retry from the last successful step.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_accept_plan_and_schedule
+              arguments:
+                session_id: "sess-xyz789"
+      responses:
+        "200":
+          description: Saga result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [completed, partial_failure]
+                  tasks_created:
+                    type: integer
+                  tasks_scheduled:
+                    type: integer
+                  error:
+                    type: string
+
+  /mcp#v1_modify_proposal:
+    post:
+      operationId: v1_modify_proposal
+      summary: Update a proposal before acceptance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_modify_proposal
+              arguments:
+                proposal_id: "prop-111"
+                changes:
+                  title: "Add OAuth2 login with GitHub and Google"
+      responses:
+        "200":
+          description: Updated proposal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Proposal"
+
+  /mcp#v1_analyze_dependencies:
+    post:
+      operationId: v1_analyze_dependencies
+      summary: Get dependency graph for proposals in a session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_analyze_dependencies
+              arguments:
+                session_id: "sess-xyz789"
+      responses:
+        "200":
+          description: Dependency graph
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        title:
+                          type: string
+                  edges:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        from:
+                          type: string
+                        to:
+                          type: string
+                        type:
+                          type: string
+                          enum: [blocks, blocked_by]
+
+  # -------------------------------------------------------------------------
+  # Flow 3: Task Pipeline Supervision (11 tools)
+  # -------------------------------------------------------------------------
+
+  /mcp#v1_get_task_detail:
+    post:
+      operationId: v1_get_task_detail
+      summary: Get full task details, steps, and branch info
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_task_detail
+              arguments:
+                task_id: "task-abc"
+      responses:
+        "200":
+          description: Task detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TaskDetail"
+
+  /mcp#v1_get_task_diff:
+    post:
+      operationId: v1_get_task_diff
+      summary: Get git diff stats for a task branch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_task_diff
+              arguments:
+                task_id: "task-abc"
+      responses:
+        "200":
+          description: Diff statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DiffStats"
+
+  /mcp#v1_get_review_summary:
+    post:
+      operationId: v1_get_review_summary
+      summary: Get review notes and findings for a task
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_review_summary
+              arguments:
+                task_id: "task-abc"
+      responses:
+        "200":
+          description: Review summary with notes
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ReviewSummary"
+
+  /mcp#v1_approve_review:
+    post:
+      operationId: v1_approve_review
+      summary: Approve a task review, moving it to merge
+      description: Requires ADMIN permission (bitmask 4).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_approve_review
+              arguments:
+                task_id: "task-abc"
+      responses:
+        "200":
+          description: Review approved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                  new_status:
+                    type: string
+
+  /mcp#v1_request_changes:
+    post:
+      operationId: v1_request_changes
+      summary: Request changes on a task review with feedback
+      description: Requires WRITE permission (bitmask 2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_request_changes
+              arguments:
+                task_id: "task-abc"
+                feedback: "The error handling in the auth module needs to be more specific."
+      responses:
+        "200":
+          description: Changes requested
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                  new_status:
+                    type: string
+
+  /mcp#v1_get_merge_pipeline:
+    post:
+      operationId: v1_get_merge_pipeline
+      summary: Get all merge activity for scoped projects
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_merge_pipeline
+              arguments:
+                project_id: "proj-abc123"
+      responses:
+        "200":
+          description: Merge pipeline entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MergePipelineEntry"
+
+  /mcp#v1_resolve_escalation:
+    post:
+      operationId: v1_resolve_escalation
+      summary: Handle an escalated review for a task
+      description: |
+        Resolves an escalated review. Available resolutions:
+        - approve: move task to merge pipeline
+        - request_changes: send back to re-execution with feedback
+        - cancel: cancel the task
+
+        Requires ADMIN permission (bitmask 4).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            examples:
+              approve:
+                value:
+                  name: v1_resolve_escalation
+                  arguments:
+                    task_id: "task-abc"
+                    resolution: "approve"
+              request_changes:
+                value:
+                  name: v1_resolve_escalation
+                  arguments:
+                    task_id: "task-abc"
+                    resolution: "request_changes"
+                    feedback: "Needs better test coverage"
+      responses:
+        "200":
+          description: Escalation resolved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                  resolution:
+                    type: string
+                  new_status:
+                    type: string
+
+  /mcp#v1_pause_task:
+    post:
+      operationId: v1_pause_task
+      summary: Pause a running task
+      description: |
+        Sends a stop signal to the executing agent. The task transitions to Stopped status.
+        Use v1_retry_task to resume.
+        Requires WRITE permission (bitmask 2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_pause_task
+              arguments:
+                task_id: "task-abc"
+      responses:
+        "200":
+          description: Task paused
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                  new_status:
+                    type: string
+
+  /mcp#v1_cancel_task:
+    post:
+      operationId: v1_cancel_task
+      summary: Cancel a task
+      description: |
+        Cancels the task permanently. Cannot be undone.
+        Requires WRITE permission (bitmask 2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_cancel_task
+              arguments:
+                task_id: "task-abc"
+      responses:
+        "200":
+          description: Task cancelled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                  new_status:
+                    type: string
+
+  /mcp#v1_retry_task:
+    post:
+      operationId: v1_retry_task
+      summary: Retry a failed or stopped task
+      description: |
+        Re-queues the task for execution. Valid from Failed or Stopped states.
+        Requires WRITE permission (bitmask 2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_retry_task
+              arguments:
+                task_id: "task-abc"
+      responses:
+        "200":
+          description: Task queued for retry
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  task_id:
+                    type: string
+                  new_status:
+                    type: string
+
+  /mcp#v1_resume_scheduling:
+    post:
+      operationId: v1_resume_scheduling
+      summary: Resume a failed v1_accept_plan_and_schedule from its last successful step
+      description: |
+        Resumes an interrupted v1_accept_plan_and_schedule saga from the last checkpoint.
+        Idempotent — safe to call multiple times if the saga keeps failing at the same step.
+        Requires WRITE permission (bitmask 2).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_resume_scheduling
+              arguments:
+                session_id: "sess-xyz789"
+      responses:
+        "200":
+          description: Saga resumed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [completed, partial_failure]
+                  resumed_from_step:
+                    type: string
+                  tasks_created:
+                    type: integer
+
+  # -------------------------------------------------------------------------
+  # Flow 4: Events & Monitoring (4 tools)
+  # -------------------------------------------------------------------------
+
+  /mcp#v1_subscribe_events:
+    post:
+      operationId: v1_subscribe_events
+      summary: Fetch recent events and return a polling hint
+      description: |
+        Note: Real SSE streaming is not possible within a single MCP tool call.
+        This tool fetches the most recent batch of events and returns a subscription_hint
+        explaining how to poll with v1_get_recent_events.
+
+        To monitor for new events:
+        1. Call v1_subscribe_events to get initial events and a next_cursor.
+        2. Periodically call v1_get_recent_events with { project_id, cursor: <next_cursor> }.
+        3. Use the next_cursor from each response as the cursor for the next poll.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_subscribe_events
+              arguments:
+                project_id: "proj-abc123"
+      responses:
+        "200":
+          description: Recent events with polling instructions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/ExternalEvent"
+                  next_cursor:
+                    type: integer
+                  subscription_hint:
+                    type: string
+
+  /mcp#v1_get_recent_events:
+    post:
+      operationId: v1_get_recent_events
+      summary: Cursor-based event retrieval from DB
+      description: |
+        Fetches events from the persistent event store. Survives server restarts
+        because events are stored in SQLite, not memory.
+
+        Pass last_id=0 (or omit) to fetch the most recent events.
+        Pass the last event's id as cursor to fetch only newer events.
+        Maximum 200 events per call (default 50).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_recent_events
+              arguments:
+                project_id: "proj-abc123"
+                last_id: 42
+                limit: 50
+      responses:
+        "200":
+          description: Events since cursor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventPollResponse"
+
+  /mcp#v1_get_attention_items:
+    post:
+      operationId: v1_get_attention_items
+      summary: Get tasks needing human attention
+      description: |
+        Returns tasks in three categories that require human intervention:
+        - escalated_reviews: Reviews that were auto-escalated (agent exited without completing)
+        - failed_tasks: Tasks in Failed state
+        - merge_conflicts: Tasks with unresolved merge conflicts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_attention_items
+              arguments:
+                project_id: "proj-abc123"
+      responses:
+        "200":
+          description: Items needing attention
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AttentionItems"
+
+  /mcp#v1_get_execution_capacity:
+    post:
+      operationId: v1_get_execution_capacity
+      summary: Get execution capacity for a project
+      description: |
+        Returns whether a new task can be started immediately, plus current running
+        and queued counts. Use this before calling v1_accept_plan_and_schedule to
+        check if execution will begin immediately or enter the queue.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_execution_capacity
+              arguments:
+                project_id: "proj-abc123"
+      responses:
+        "200":
+          description: Execution capacity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExecutionCapacity"

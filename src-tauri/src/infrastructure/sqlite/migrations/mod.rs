@@ -76,6 +76,7 @@ mod v52_cleanup_stale_execution_plans;
 mod v53_merge_pipeline_active_column;
 mod v54_inherited_plan_artifact_id;
 mod v55_drop_spawn_orchestrator_jobs;
+mod v56_api_keys;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
@@ -160,9 +161,11 @@ mod v9_project_git_fields_tests;
 mod v49_backfill_execution_plans_tests;
 #[cfg(test)]
 mod v51_repair_plan_branches_tests;
+#[cfg(test)]
+mod v56_api_keys_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 55;
+pub const SCHEMA_VERSION: i32 = 56;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -451,6 +454,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 55,
         name: "drop_spawn_orchestrator_jobs",
         migrate: v55_drop_spawn_orchestrator_jobs::migrate,
+    },
+    Migration {
+        version: 56,
+        name: "api_keys",
+        migrate: v56_api_keys::migrate,
     },
 ];
 

@@ -20,6 +20,7 @@ use super::*;
 use crate::application::AppState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, ProjectId, Task};
+use crate::http_server::project_scope::ProjectScope;
 use axum::http::StatusCode;
 use std::sync::Arc;
 
@@ -70,7 +71,7 @@ async fn test_complete_review_rejected_when_task_already_review_passed() {
         escalation_reason: None,
     };
 
-    let result = complete_review(State(state), Json(req)).await;
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
 
     match result {
         Err((status, msg)) => {
@@ -108,7 +109,7 @@ async fn test_complete_review_rejected_when_task_merged() {
         escalation_reason: None,
     };
 
-    let result = complete_review(State(state), Json(req)).await;
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
 
     match result {
         Err((status, _)) => {
@@ -142,7 +143,7 @@ async fn test_complete_review_rejected_when_task_ready() {
         escalation_reason: None,
     };
 
-    let result = complete_review(State(state), Json(req)).await;
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
 
     match result {
         Err((status, msg)) => {
@@ -185,7 +186,7 @@ async fn test_complete_review_guard_does_not_fire_for_reviewing_task() {
         escalation_reason: None,
     };
 
-    let result = complete_review(State(state), Json(req)).await;
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
 
     // The guard-specific 400 must NOT be returned for a Reviewing task.
     // (The handler may return 200 or another error from transition — that's fine.)
@@ -223,7 +224,7 @@ async fn test_complete_review_no_ipr_entry_is_safe() {
         issues: None,
         escalation_reason: None,
     };
-    let result = complete_review(State(state.clone()), Json(req)).await;
+    let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
 
     // Guard must NOT fire (task is in Reviewing state), so 400 is not acceptable.
     // Transition may succeed (200) or fail (500) depending on in-memory repo support —
@@ -284,7 +285,7 @@ async fn test_complete_review_ipr_removed_on_success() {
         issues: None,
         escalation_reason: None,
     };
-    let result = complete_review(State(state.clone()), Json(req)).await;
+    let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
 
     // Only assert IPR removal when the full handler flow succeeded.
     // If the state transition fails (in-memory repo limitation), the IPR removal
@@ -355,7 +356,7 @@ async fn test_complete_review_ipr_removed_on_needs_changes() {
         issues: None,
         escalation_reason: None,
     };
-    let result = complete_review(State(state.clone()), Json(req)).await;
+    let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
 
     // Only assert IPR removal when the full handler flow succeeded.
     if result.is_ok() {
@@ -424,7 +425,7 @@ async fn test_complete_review_ipr_removed_on_escalate() {
         issues: None,
         escalation_reason: None,
     };
-    let result = complete_review(State(state.clone()), Json(req)).await;
+    let result = complete_review(State(state.clone()), ProjectScope(None), Json(req)).await;
 
     // Only assert IPR removal when the full handler flow succeeded.
     if result.is_ok() {

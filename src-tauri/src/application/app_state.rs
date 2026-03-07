@@ -15,11 +15,12 @@ use crate::domain::entities::IdeationSessionId;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
     ActivePlanRepository, ActivityEventRepository, AgentProfileRepository, AgentRunRepository,
-    AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository, ArtifactRepository,
-    ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
-    ExecutionPlanRepository, ExecutionSettingsRepository, GlobalExecutionSettingsRepository,
-    IdeationSessionRepository, IdeationSettingsRepository, MemoryArchiveRepository,
-    MemoryEntryRepository, MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
+    ApiKeyRepository, AppStateRepository, ArtifactBucketRepository, ArtifactFlowRepository,
+    ArtifactRepository, ChatAttachmentRepository, ChatConversationRepository,
+    ChatMessageRepository, ExecutionPlanRepository, ExecutionSettingsRepository,
+    ExternalEventsRepository, GlobalExecutionSettingsRepository, IdeationSessionRepository,
+    IdeationSettingsRepository, MemoryArchiveRepository, MemoryEntryRepository,
+    MemoryEventRepository, MethodologyRepository, PlanBranchRepository,
     PlanSelectionStatsRepository, ProcessRepository, ProjectRepository,
     ProposalDependencyRepository, ReviewRepository, ReviewSettingsRepository,
     SessionLinkRepository, TaskDependencyRepository, TaskProposalRepository, TaskQARepository,
@@ -31,9 +32,10 @@ use crate::error::AppResult;
 use crate::infrastructure::memory::{
     InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository, MemoryActivePlanRepository,
     MemoryActivityEventRepository, MemoryAgentProfileRepository, MemoryAgentRunRepository,
-    MemoryAppStateRepository, MemoryArtifactBucketRepository, MemoryArtifactFlowRepository,
-    MemoryArtifactRepository, MemoryChatAttachmentRepository, MemoryChatConversationRepository,
-    MemoryChatMessageRepository, MemoryExecutionPlanRepository, MemoryExecutionSettingsRepository,
+    MemoryApiKeyRepository, MemoryAppStateRepository, MemoryArtifactBucketRepository,
+    MemoryArtifactFlowRepository, MemoryArtifactRepository, MemoryChatAttachmentRepository,
+    MemoryChatConversationRepository, MemoryChatMessageRepository, MemoryExecutionPlanRepository,
+    MemoryExecutionSettingsRepository, MemoryExternalEventsRepository,
     MemoryGlobalExecutionSettingsRepository, MemoryIdeationSessionRepository,
     MemoryIdeationSettingsRepository, MemoryMethodologyRepository, MemoryPermissionRepository,
     MemoryPlanBranchRepository, MemoryPlanSelectionStatsRepository, MemoryProcessRepository,
@@ -47,10 +49,10 @@ use crate::infrastructure::sqlite::ReviewIssueRepository;
 use crate::infrastructure::sqlite::{
     get_app_data_db_path, get_default_db_path, open_connection, run_migrations,
     SqliteActivePlanRepository, SqliteActivityEventRepository, SqliteAgentProfileRepository,
-    SqliteAgentRunRepository, SqliteAppStateRepository, SqliteArtifactBucketRepository,
-    SqliteArtifactFlowRepository, SqliteArtifactRepository, SqliteChatAttachmentRepository,
-    SqliteChatConversationRepository, SqliteChatMessageRepository,
-    SqliteExecutionPlanRepository, SqliteExecutionSettingsRepository,
+    SqliteAgentRunRepository, SqliteApiKeyRepository, SqliteAppStateRepository,
+    SqliteArtifactBucketRepository, SqliteArtifactFlowRepository, SqliteArtifactRepository,
+    SqliteChatAttachmentRepository, SqliteChatConversationRepository, SqliteChatMessageRepository,
+    SqliteExecutionPlanRepository, SqliteExecutionSettingsRepository, SqliteExternalEventsRepository,
     SqliteGlobalExecutionSettingsRepository, SqliteIdeationSessionRepository,
     SqliteIdeationSettingsRepository, SqliteMemoryArchiveRepository, SqliteMemoryEntryRepository,
     SqliteMemoryEventRepository, SqliteMethodologyRepository, SqlitePermissionRepository,
@@ -73,6 +75,8 @@ pub struct AppState {
     pub task_step_repo: Arc<dyn TaskStepRepository>,
     /// Project repository (SQLite in production, in-memory for tests)
     pub project_repo: Arc<dyn ProjectRepository>,
+    /// API key repository for external API authentication
+    pub api_key_repo: Arc<dyn ApiKeyRepository>,
     /// Agent profile repository (SQLite in production)
     pub agent_profile_repo: Arc<dyn AgentProfileRepository>,
     /// TaskQA repository for QA artifacts
@@ -183,6 +187,12 @@ pub struct AppState {
     pub interactive_process_registry: Arc<crate::application::InteractiveProcessRegistry>,
     /// Tauri app handle for emitting events to frontend (None in tests)
     pub app_handle: Option<AppHandle>,
+    /// Shared database connection for raw SQL queries (e.g. external_events table).
+    /// All accesses MUST go through `db.run(|conn| { ... })` for non-blocking operation.
+    pub db: crate::infrastructure::sqlite::DbConnection,
+    /// Repository for external_events table — used by TaskTransitionService to dual-emit
+    /// state change events for external consumers (poll/SSE endpoints).
+    pub external_events_repo: Arc<dyn ExternalEventsRepository>,
 }
 
 impl AppState {
@@ -231,6 +241,9 @@ impl AppState {
             project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            api_key_repo: Arc::new(SqliteApiKeyRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -338,6 +351,10 @@ impl AppState {
                 SqliteQuestionRepository::from_shared(Arc::clone(&shared_conn)),
             ))),
             message_queue: Arc::new(MessageQueue::new()),
+            db: crate::infrastructure::sqlite::DbConnection::from_shared(Arc::clone(&shared_conn)),
+            external_events_repo: Arc::new(SqliteExternalEventsRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -382,6 +399,9 @@ impl AppState {
             project_repo: Arc::new(SqliteProjectRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
+            api_key_repo: Arc::new(SqliteApiKeyRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
             agent_profile_repo: Arc::new(SqliteAgentProfileRepository::from_shared(Arc::clone(
                 &shared_conn,
             ))),
@@ -489,6 +509,10 @@ impl AppState {
                 SqliteQuestionRepository::from_shared(Arc::clone(&shared_conn)),
             ))),
             message_queue: Arc::new(MessageQueue::new()),
+            db: crate::infrastructure::sqlite::DbConnection::from_shared(Arc::clone(&shared_conn)),
+            external_events_repo: Arc::new(SqliteExternalEventsRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -515,6 +539,7 @@ impl AppState {
             task_repo: Arc::clone(&task_repo),
             task_step_repo: Arc::new(MemoryTaskStepRepository::new()),
             project_repo: Arc::new(MemoryProjectRepository::new()),
+            api_key_repo: Arc::new(MemoryApiKeyRepository::new()),
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
             review_repo: Arc::new(MemoryReviewRepository::new()),
@@ -563,6 +588,11 @@ impl AppState {
                 MemoryQuestionRepository::new(),
             ))),
             message_queue: Arc::new(MessageQueue::new()),
+            db: crate::infrastructure::sqlite::DbConnection::new(
+                open_connection(&std::path::PathBuf::from(":memory:"))
+                    .expect("Failed to create in-memory connection for db field"),
+            ),
+            external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),
@@ -591,6 +621,7 @@ impl AppState {
             task_repo: Arc::clone(&task_repo),
             task_step_repo: Arc::new(MemoryTaskStepRepository::new()),
             project_repo,
+            api_key_repo: Arc::new(MemoryApiKeyRepository::new()),
             agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
             task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
             review_repo: Arc::new(MemoryReviewRepository::new()),
@@ -639,6 +670,11 @@ impl AppState {
                 MemoryQuestionRepository::new(),
             ))),
             message_queue: Arc::new(MessageQueue::new()),
+            db: crate::infrastructure::sqlite::DbConnection::new(
+                open_connection(&std::path::PathBuf::from(":memory:"))
+                    .expect("Failed to create in-memory connection for db field"),
+            ),
+            external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
             analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
             debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),

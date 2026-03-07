@@ -8,9 +8,11 @@ use super::*;
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactSummary, ArtifactType, TaskContext, TaskId,
 };
+use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 
 pub async fn get_task_context(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Path(task_id): Path<String>,
 ) -> Result<Json<TaskContext>, StatusCode> {
     let task_id = TaskId::from_string(task_id);
@@ -19,6 +21,12 @@ pub async fn get_task_context(
     let context = get_task_context_impl(&state.app_state, &task_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    // Enforce project scope (no-op for internal requests without the header)
+    context
+        .task
+        .assert_project_scope(&scope)
+        .map_err(|e| e.status)?;
 
     Ok(Json(context))
 }

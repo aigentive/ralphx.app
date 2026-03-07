@@ -7,6 +7,7 @@ pub mod chat_attachment_service;
 pub mod chat_resumption;
 pub mod chat_service;
 pub mod dependency_service;
+pub mod event_cleanup_service;
 pub mod diff_service;
 pub mod git_service;
 pub mod ideation_service;
@@ -43,6 +44,7 @@ pub use apply_service::{
 pub use chat_attachment_service::ChatAttachmentService;
 pub use chat_resumption::ChatResumptionRunner;
 pub use dependency_service::{DependencyAnalysis, DependencyService, ValidationResult};
+pub use event_cleanup_service::EventCleanupService;
 pub use diff_service::{ConflictDiff, DiffService, FileChange, FileChangeStatus, FileDiff};
 pub use git_service::{
     checkout_free::CheckoutFreeMergeResult, CommitInfo, DiffStats, GitService, MergeAttemptResult,

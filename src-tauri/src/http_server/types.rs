@@ -1250,6 +1250,58 @@ impl IntoResponse for HttpError {
     }
 }
 
+// ============================================================================
+// Request/Response Types - API Key Management
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct CreateApiKeyRequest {
+    pub name: String,
+    pub permissions: Option<i32>,
+    pub project_ids: Option<Vec<String>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CreateApiKeyResponse {
+    pub id: String,
+    pub name: String,
+    pub key: String,
+    pub key_prefix: String,
+    pub permissions: i32,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ApiKeyInfo {
+    pub id: String,
+    pub name: String,
+    pub key_prefix: String,
+    pub permissions: i32,
+    pub created_at: String,
+    pub revoked_at: Option<String>,
+    pub last_used_at: Option<String>,
+    pub project_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListApiKeysResponse {
+    pub keys: Vec<ApiKeyInfo>,
+    pub count: usize,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateApiKeyProjectsRequest {
+    pub project_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RotateApiKeyResponse {
+    pub id: String,
+    pub new_key: String,
+    pub key_prefix: String,
+    pub old_key_grace_expires_at: String,
+}
+
 #[cfg(test)]
 mod http_error_tests {
     use super::*;

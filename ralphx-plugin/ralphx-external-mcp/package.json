@@ -1,0 +1,32 @@
+{
+  "name": "ralphx-external-mcp",
+  "version": "1.0.0",
+  "description": "External MCP server for RalphX — enables external agents to orchestrate RalphX via MCP over HTTP+SSE",
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch",
+    "start": "node build/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": [
+    "mcp",
+    "ralphx",
+    "model-context-protocol",
+    "external-api"
+  ],
+  "author": "RalphX",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@vitest/ui": "^4.0.18",
+    "typescript": "^5.7.2",
+    "vitest": "^4.0.18"
+  }
+}

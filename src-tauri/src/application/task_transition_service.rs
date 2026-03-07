@@ -20,9 +20,9 @@ use crate::commands::ExecutionState;
 use crate::domain::entities::{InternalStatus, Task, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
-    ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
-    MemoryEventRepository, PlanBranchRepository, ProjectRepository, TaskDependencyRepository,
-    TaskRepository, TaskStepRepository,
+    ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository,
+    IdeationSessionRepository, MemoryEventRepository, PlanBranchRepository, ProjectRepository,
+    TaskDependencyRepository, TaskRepository, TaskStepRepository,
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::services::{
@@ -41,14 +41,85 @@ use crate::infrastructure::ClaudeCodeClient;
 // No-op service implementations (for services not yet fully implemented)
 // ============================================================================
 
-/// EventEmitter - emits events to Tauri app handle when available
+/// EventEmitter - emits events to Tauri app handle when available.
+///
+/// Dual-emits: fires the Tauri frontend event AND writes to the `external_events`
+/// table so external consumers (poll/SSE) can observe all state transitions.
 pub struct TauriEventEmitter<R: Runtime = tauri::Wry> {
     app_handle: Option<AppHandle<R>>,
+    /// Optional external events repo for dual-emit to DB.
+    external_events_repo: Option<Arc<dyn ExternalEventsRepository>>,
+    /// Optional task repo for resolving project_id during dual-emit.
+    task_repo_for_emit: Option<Arc<dyn TaskRepository>>,
 }
 
 impl<R: Runtime> TauriEventEmitter<R> {
     pub fn new(app_handle: Option<AppHandle<R>>) -> Self {
-        Self { app_handle }
+        Self {
+            app_handle,
+            external_events_repo: None,
+            task_repo_for_emit: None,
+        }
+    }
+
+    /// Attach external events repository and task repository for dual-emit.
+    pub fn with_external_events(
+        mut self,
+        external_events_repo: Arc<dyn ExternalEventsRepository>,
+        task_repo: Arc<dyn TaskRepository>,
+    ) -> Self {
+        self.external_events_repo = Some(external_events_repo);
+        self.task_repo_for_emit = Some(task_repo);
+        self
+    }
+
+    /// Write a status-change event to the external_events table.
+    /// Looks up the task's project_id via the task repo.
+    async fn write_external_event(&self, task_id: &str, old_status: &str, new_status: &str) {
+        let (Some(ref ext_repo), Some(ref task_repo)) =
+            (&self.external_events_repo, &self.task_repo_for_emit)
+        else {
+            return;
+        };
+
+        let project_id = {
+            let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
+            match task_repo.get_by_id(&tid).await {
+                Ok(Some(t)) => t.project_id.to_string(),
+                Ok(None) => {
+                    tracing::debug!(task_id = task_id, "write_external_event: task not found, skipping");
+                    return;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        task_id = task_id,
+                        "write_external_event: failed to fetch task project_id"
+                    );
+                    return;
+                }
+            }
+        };
+
+        let payload = serde_json::json!({
+            "task_id": task_id,
+            "project_id": project_id,
+            "old_status": old_status,
+            "new_status": new_status,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
+        })
+        .to_string();
+
+        if let Err(e) = ext_repo
+            .insert_event("task:status_changed", &project_id, &payload)
+            .await
+        {
+            tracing::warn!(
+                error = %e,
+                task_id = task_id,
+                "write_external_event: failed to insert into external_events (non-fatal)"
+            );
+        }
     }
 }
 
@@ -90,6 +161,8 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
                 }),
             );
         }
+        // Dual-emit: write to external_events table for external consumers.
+        self.write_external_event(task_id, old_status, new_status).await;
     }
 }
 
@@ -501,6 +574,11 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// Shared across all TaskServices instances so pre_merge_cleanup can cancel
     /// a running validation when a new merge attempt starts for the same task.
     validation_tokens: Arc<dashmap::DashMap<String, tokio_util::sync::CancellationToken>>,
+
+    /// External events repository for dual-emit of state changes.
+    /// When set, every status change is also written to the external_events DB table
+    /// so external consumers (poll/SSE) can observe transitions.
+    external_events_repo: Option<Arc<dyn ExternalEventsRepository>>,
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
@@ -597,6 +675,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             interactive_process_registry: None,
             merge_lock: Arc::new(tokio::sync::Mutex::new(())),
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
+            external_events_repo: None,
             validation_tokens: Arc::new(dashmap::DashMap::new()),
         }
     }
@@ -644,6 +723,21 @@ impl<R: Runtime> TaskTransitionService<R> {
         let mut s = self;
         s.interactive_process_registry = Some(ipr);
         s
+    }
+
+    /// Attach an external events repository so every state transition is also written
+    /// to the `external_events` DB table (dual-emit for poll/SSE consumers).
+    pub fn with_external_events_repo(
+        mut self,
+        repo: Arc<dyn ExternalEventsRepository>,
+    ) -> Self {
+        // Rebuild the event emitter with the external events repo + task repo.
+        self.event_emitter = Arc::new(
+            TauriEventEmitter::new(self._app_handle.clone())
+                .with_external_events(Arc::clone(&repo), Arc::clone(&self.task_repo)),
+        );
+        self.external_events_repo = Some(repo);
+        self
     }
 
     /// Transition a task to a new status, triggering appropriate entry actions.

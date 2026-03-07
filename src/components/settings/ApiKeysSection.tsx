@@ -1,0 +1,103 @@
+/**
+ * ApiKeysSection - Settings section for managing external API keys.
+ *
+ * Lists existing API keys and provides a "Create API Key" button
+ * that opens CreateKeyDialog.
+ */
+
+import { useState } from "react";
+import { KeyRound, Plus, AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { SectionCard } from "./SettingsView.shared";
+import { ApiKeyEntry } from "./ApiKeyEntry";
+import { CreateKeyDialog } from "./CreateKeyDialog";
+import { useApiKeys } from "@/hooks/useApiKeys";
+
+// ============================================================================
+// Component
+// ============================================================================
+
+export function ApiKeysSection() {
+  const { data: keys = [], isLoading, error } = useApiKeys();
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  return (
+    <>
+      <SectionCard
+        icon={
+          <KeyRound className="w-[18px] h-[18px] text-[var(--accent-primary)]" />
+        }
+        title="API Keys"
+        description="Manage external API keys for accessing RalphX programmatically"
+      >
+        {/* Error state */}
+        {error && (
+          <div className="mb-3 px-3 py-2 rounded-md flex items-center gap-2 bg-red-500/10 border border-red-500/20">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0" />
+            <p className="text-sm text-red-400">{error.message}</p>
+          </div>
+        )}
+
+        {/* Loading state */}
+        {isLoading && (
+          <div className="py-4 flex items-center justify-center">
+            <div className="w-4 h-4 border-2 border-[var(--accent-primary)] border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+
+        {/* Key list */}
+        {!isLoading && !error && keys.length > 0 && (
+          <div className="space-y-0">
+            {keys.map((key) => (
+              <ApiKeyEntry
+                key={key.id}
+                apiKey={key}
+                onKeyChanged={() => undefined}
+              />
+            ))}
+          </div>
+        )}
+
+        {/* Empty state */}
+        {!isLoading && !error && keys.length === 0 && (
+          <div className="py-6 flex flex-col items-center text-center gap-2">
+            <div
+              className="p-3 rounded-full"
+              style={{ background: "rgba(255,107,53,0.06)" }}
+            >
+              <KeyRound className="w-5 h-5 text-[var(--text-muted)]" />
+            </div>
+            <p className="text-sm text-[var(--text-muted)]">
+              No API keys yet
+            </p>
+            <p className="text-xs text-[var(--text-muted)] max-w-[240px]">
+              Create a key to allow external tools or CI pipelines to access RalphX
+            </p>
+          </div>
+        )}
+
+        {/* Create button */}
+        {!isLoading && (
+          <div className="pt-3 border-t border-[var(--border-subtle)] mt-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDialogOpen(true)}
+              data-testid="create-api-key-button"
+              className="h-8 px-3 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-surface-hover)] gap-1.5"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Create API Key
+            </Button>
+          </div>
+        )}
+      </SectionCard>
+
+      <CreateKeyDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onCreated={() => setDialogOpen(false)}
+      />
+    </>
+  );
+}

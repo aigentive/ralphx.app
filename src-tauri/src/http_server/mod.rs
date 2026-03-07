@@ -2,7 +2,7 @@
 // This allows the MCP server to call RalphX functionality via REST API
 
 use axum::{
-    routing::{get, post},
+    routing::{delete, get, post, put},
     Router,
 };
 use std::sync::Arc;
@@ -19,9 +19,11 @@ use crate::error::AppResult;
 
 mod handlers;
 pub mod helpers;
+pub mod project_scope;
 mod types;
 
 use handlers::*;
+pub use project_scope::*;
 pub use types::*;
 
 pub async fn start_http_server(
@@ -51,6 +53,15 @@ pub async fn start_http_server(
     };
 
     let app = Router::new()
+        // API key management endpoints (/api/auth/*)
+        .route("/api/auth/keys", post(create_api_key))
+        .route("/api/auth/keys", get(list_api_keys))
+        .route("/api/auth/keys/:id", delete(delete_api_key))
+        .route("/api/auth/keys/:id/rotate", post(rotate_api_key))
+        .route("/api/auth/keys/:id/projects", put(update_api_key_projects))
+        .route("/api/auth/validate-key", get(validate_api_key))
+        // Legacy validate_key endpoint (kept for backward compat)
+        .route("/api/validate_key", get(validate_key))
         // Ideation tools (orchestrator-ideation agent)
         .route("/api/create_task_proposal", post(create_task_proposal))
         .route("/api/update_task_proposal", post(update_task_proposal))
@@ -198,6 +209,43 @@ pub async fn start_http_server(
             "/api/conversations/:id/active-state",
             get(get_conversation_active_state),
         )
+        // External API endpoints (Phase 4 — external MCP server consumers)
+        .route("/api/external/projects", get(list_projects_http))
+        .route("/api/external/project/:id/status", get(get_project_status_http))
+        .route("/api/external/start_ideation", post(start_ideation_http))
+        .route(
+            "/api/external/ideation_status/:id",
+            get(get_ideation_status_http),
+        )
+        .route(
+            "/api/external/pipeline/:project_id",
+            get(get_pipeline_overview_http),
+        )
+        .route("/api/external/events/poll", get(poll_events_http))
+        .route("/api/external/events/stream", get(stream_events_http))
+        .route(
+            "/api/external/attention/:project_id",
+            get(get_attention_items_http),
+        )
+        .route(
+            "/api/external/execution_capacity/:project_id",
+            get(get_execution_capacity_http),
+        )
+        .route(
+            "/api/external/task_transition",
+            post(external_task_transition_http),
+        )
+        .route("/api/external/task/:id", get(get_task_detail_http))
+        .route("/api/external/task/:id/diff", get(get_task_diff_http))
+        .route(
+            "/api/external/task/:id/review_summary",
+            get(get_task_review_summary_http),
+        )
+        .route(
+            "/api/external/merge_pipeline/:project_id",
+            get(get_merge_pipeline_http),
+        )
+        .route("/api/external/review_action", post(review_action_http))
         // Team endpoints (agent teams) — two-phase plan flow
         .route("/api/team/plan/request", post(request_team_plan_register))
         .route("/api/team/plan/await/:plan_id", get(await_team_plan))

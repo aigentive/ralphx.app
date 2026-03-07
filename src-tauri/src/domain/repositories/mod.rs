@@ -5,6 +5,7 @@ pub mod active_plan_repository;
 pub mod activity_event_repository;
 pub mod agent_profile_repository;
 pub mod agent_run_repository;
+pub mod api_key_repository;
 pub mod app_state_repository;
 pub mod artifact_bucket_repository;
 pub mod artifact_flow_repository;
@@ -13,6 +14,7 @@ pub mod chat_attachment_repository;
 pub mod chat_conversation_repository;
 pub mod chat_message_repository;
 pub mod execution_plan_repository;
+pub mod external_events_repository;
 pub mod execution_settings_repository;
 pub mod ideation_session_repository;
 pub mod ideation_settings_repository;
@@ -48,6 +50,7 @@ pub use activity_event_repository::{
 };
 pub use agent_profile_repository::{AgentProfileId, AgentProfileRepository};
 pub use agent_run_repository::AgentRunRepository;
+pub use api_key_repository::ApiKeyRepository;
 pub use app_state_repository::AppStateRepository;
 pub use artifact_bucket_repository::ArtifactBucketRepository;
 pub use artifact_flow_repository::ArtifactFlowRepository;
@@ -56,6 +59,7 @@ pub use chat_attachment_repository::ChatAttachmentRepository;
 pub use chat_conversation_repository::ChatConversationRepository;
 pub use chat_message_repository::ChatMessageRepository;
 pub use execution_plan_repository::ExecutionPlanRepository;
+pub use external_events_repository::{ExternalEventRecord, ExternalEventsRepository};
 pub use execution_settings_repository::{
     ExecutionSettingsRepository, GlobalExecutionSettingsRepository,
 };
