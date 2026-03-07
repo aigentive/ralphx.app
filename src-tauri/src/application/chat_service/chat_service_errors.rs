@@ -259,8 +259,11 @@ pub enum StreamError {
     ProcessSpawnFailed { command: String, error: String },
     /// Agent completed but produced no meaningful output (no text, no tool calls).
     NoOutput { context_type: ChatContextType },
-    /// Agent run was cancelled (e.g., user-initiated stop).
-    Cancelled,
+    /// Agent run was cancelled (e.g., user-initiated stop or prune engine).
+    /// `turns_finalized` tracks how many interactive turns completed before cancellation.
+    /// When > 0, the agent completed normally and the cancellation path should still
+    /// transition the task (e.g., Executing → PendingReview).
+    Cancelled { turns_finalized: usize },
     /// Provider/API error that is potentially recoverable (rate limits, server errors, etc.).
     /// Task should be paused rather than failed, and auto-resumed when conditions improve.
     ProviderError {
@@ -316,7 +319,7 @@ impl std::fmt::Display for StreamError {
                     context_type
                 )
             }
-            Self::Cancelled => write!(f, "Agent run was cancelled"),
+            Self::Cancelled { .. } => write!(f, "Agent run was cancelled"),
             Self::ProviderError {
                 category, message, ..
             } => write!(f, "Provider error ({}): {}", category, message),
@@ -363,7 +366,7 @@ impl StreamError {
     /// `Paused` for recoverable provider errors (rate limits, server errors, etc.).
     pub fn suggested_task_status(&self) -> Option<InternalStatus> {
         match self {
-            Self::Cancelled => Some(InternalStatus::Cancelled),
+            Self::Cancelled { .. } => Some(InternalStatus::Cancelled),
             Self::ProviderError { .. } => Some(InternalStatus::Paused),
             Self::Timeout { .. }
             | Self::ParseStall { .. }

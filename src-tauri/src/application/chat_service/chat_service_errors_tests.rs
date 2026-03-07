@@ -118,7 +118,7 @@ fn test_stream_error_is_retryable() {
         StreamError::NoOutput {
             context_type: ChatContextType::TaskExecution,
         },
-        StreamError::Cancelled,
+        StreamError::Cancelled { turns_finalized: 0 },
     ];
 
     for err in &not_retryable {
@@ -164,7 +164,7 @@ fn test_stream_error_requires_session_clear() {
         StreamError::NoOutput {
             context_type: ChatContextType::TaskExecution,
         },
-        StreamError::Cancelled,
+        StreamError::Cancelled { turns_finalized: 0 },
     ];
 
     for err in &should_not_clear {
@@ -180,7 +180,7 @@ fn test_stream_error_requires_session_clear() {
 fn test_stream_error_suggested_task_status() {
     // Cancelled → Cancelled status
     assert_eq!(
-        StreamError::Cancelled.suggested_task_status(),
+        StreamError::Cancelled { turns_finalized: 0 }.suggested_task_status(),
         Some(InternalStatus::Cancelled)
     );
 
@@ -263,7 +263,7 @@ fn test_stream_error_display() {
     };
     assert!(agent_exit_empty.to_string().contains("42"));
 
-    let cancelled = StreamError::Cancelled;
+    let cancelled = StreamError::Cancelled { turns_finalized: 0 };
     assert!(cancelled.to_string().contains("cancelled"));
 
     let provider_err = StreamError::ProviderError {
@@ -697,7 +697,7 @@ fn test_timeout_is_not_provider_error() {
 
 #[test]
 fn test_cancelled_is_not_provider_error() {
-    assert!(!StreamError::Cancelled.is_provider_error());
+    assert!(!StreamError::Cancelled { turns_finalized: 0 }.is_provider_error());
 }
 
 #[test]
