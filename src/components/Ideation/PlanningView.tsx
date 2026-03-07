@@ -59,6 +59,7 @@ import { ideationApi } from "@/api/ideation";
 import { ReopenSessionDialog } from "./ReopenSessionDialog";
 import type { ReopenMode } from "./ReopenSessionDialog";
 import { useReopenSession, useResetAndReaccept } from "@/hooks/useIdeation";
+import { useVerificationEvents } from "@/hooks/useVerificationEvents";
 
 // ============================================================================
 // Types
@@ -149,6 +150,9 @@ export function PlanningView({
   const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const proposalsScrollRef = useRef<HTMLDivElement>(null);
+
+  // Subscribe to backend verification state changes → invalidates TanStack Query caches
+  useVerificationEvents();
 
   const planArtifact = useIdeationStore((state) => state.planArtifact);
   const ideationSettings = useIdeationStore((state) => state.ideationSettings);
