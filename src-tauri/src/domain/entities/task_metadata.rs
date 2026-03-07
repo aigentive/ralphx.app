@@ -291,6 +291,279 @@ pub enum MergeRecoveryState {
     RateLimited,
 }
 
+/// Execution recovery metadata stored in tasks.metadata
+/// Tracks the full history of execution timeout and retry attempts
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExecutionRecoveryMetadata {
+    /// Schema version for future compatibility
+    pub version: u32,
+    /// Append-only event log (capped at 50 events, oldest trimmed)
+    pub events: Vec<ExecutionRecoveryEvent>,
+    /// Current recovery state
+    pub last_state: ExecutionRecoveryState,
+    /// When true, reconciler will not auto-retry (user stopped retrying or max retries exceeded)
+    pub stop_retrying: bool,
+}
+
+impl ExecutionRecoveryMetadata {
+    /// Create new execution recovery metadata with empty event log
+    pub fn new() -> Self {
+        Self {
+            version: 1,
+            events: Vec::new(),
+            last_state: ExecutionRecoveryState::Retrying,
+            stop_retrying: false,
+        }
+    }
+
+    /// Maximum number of events to keep in the log
+    pub const MAX_EVENTS: usize = 50;
+
+    /// Append a new event to the log
+    /// Automatically trims oldest events if cap is exceeded
+    pub fn append_event(&mut self, event: ExecutionRecoveryEvent) {
+        self.events.push(event);
+        self.trim_if_needed();
+    }
+
+    /// Append a new event and update last_state
+    pub fn append_event_with_state(
+        &mut self,
+        event: ExecutionRecoveryEvent,
+        state: ExecutionRecoveryState,
+    ) {
+        self.append_event(event);
+        self.last_state = state;
+    }
+
+    /// Trim events if count exceeds MAX_EVENTS
+    /// Removes oldest events (from the beginning of the vector)
+    fn trim_if_needed(&mut self) {
+        if self.events.len() > Self::MAX_EVENTS {
+            let excess = self.events.len() - Self::MAX_EVENTS;
+            self.events.drain(0..excess);
+        }
+    }
+
+    /// Returns true if the last recorded failure is transient (safe to auto-retry)
+    /// Checks only the most recent event — not historical ones — to avoid stale state.
+    pub fn last_failure_is_transient(&self) -> bool {
+        self.events
+            .last()
+            .and_then(|e| e.failure_source.as_ref())
+            .map(|source| source.is_transient())
+            .unwrap_or(false)
+    }
+
+    /// Parse metadata from task's metadata JSON string
+    /// Returns Ok(Some(metadata)) if execution_recovery key exists and is valid
+    /// Returns Ok(None) if execution_recovery key doesn't exist
+    /// Returns Err if JSON is invalid or execution_recovery value can't be parsed
+    pub fn from_task_metadata(
+        metadata_json: Option<&str>,
+    ) -> Result<Option<Self>, serde_json::Error> {
+        let Some(json_str) = metadata_json else {
+            return Ok(None);
+        };
+        Self::from_json(json_str)
+    }
+
+    /// Parse metadata from a JSON string
+    /// Returns Ok(Some(metadata)) if execution_recovery key exists and is valid
+    /// Returns Ok(None) if execution_recovery key doesn't exist
+    pub fn from_json(json_str: &str) -> Result<Option<Self>, serde_json::Error> {
+        let value: serde_json::Value = serde_json::from_str(json_str)?;
+
+        if let Some(execution_recovery) = value.get("execution_recovery") {
+            let recovery: ExecutionRecoveryMetadata =
+                serde_json::from_value(execution_recovery.clone())?;
+            Ok(Some(recovery))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Update task's metadata JSON string with this execution recovery metadata
+    /// Preserves other keys in the metadata object
+    /// Returns updated JSON string
+    pub fn update_task_metadata(
+        &self,
+        existing_metadata: Option<&str>,
+    ) -> Result<String, serde_json::Error> {
+        let mut metadata_obj = if let Some(json_str) = existing_metadata {
+            serde_json::from_str::<serde_json::Value>(json_str)
+                .unwrap_or_else(|_| serde_json::json!({}))
+        } else {
+            serde_json::json!({})
+        };
+
+        if let Some(obj) = metadata_obj.as_object_mut() {
+            obj.insert(
+                "execution_recovery".to_string(),
+                serde_json::to_value(self)?,
+            );
+        }
+
+        serde_json::to_string(&metadata_obj)
+    }
+}
+
+impl Default for ExecutionRecoveryMetadata {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Individual execution recovery event
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExecutionRecoveryEvent {
+    /// When this event occurred
+    pub at: DateTime<Utc>,
+    /// Type of event
+    pub kind: ExecutionRecoveryEventKind,
+    /// Who/what triggered this event
+    pub source: ExecutionRecoverySource,
+    /// Reason code for categorization
+    pub reason_code: ExecutionRecoveryReasonCode,
+    /// Human-readable message
+    pub message: String,
+    /// Attempt number for retries
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attempt: Option<u32>,
+    /// Classification of the failure source for smart retry decisions
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_source: Option<ExecutionFailureSource>,
+}
+
+impl ExecutionRecoveryEvent {
+    /// Create a new execution recovery event
+    pub fn new(
+        kind: ExecutionRecoveryEventKind,
+        source: ExecutionRecoverySource,
+        reason_code: ExecutionRecoveryReasonCode,
+        message: impl Into<String>,
+    ) -> Self {
+        Self {
+            at: Utc::now(),
+            kind,
+            source,
+            reason_code,
+            message: message.into(),
+            attempt: None,
+            failure_source: None,
+        }
+    }
+
+    /// Builder method to add attempt number
+    pub fn with_attempt(mut self, attempt: u32) -> Self {
+        self.attempt = Some(attempt);
+        self
+    }
+
+    /// Builder method to set failure source classification
+    pub fn with_failure_source(mut self, failure_source: ExecutionFailureSource) -> Self {
+        self.failure_source = Some(failure_source);
+        self
+    }
+}
+
+/// Classification of why an execution failure occurred.
+/// Used by the reconciler to decide whether auto-retry is safe.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionFailureSource {
+    /// Agent stream produced no output within timeout — safe to auto-retry
+    TransientTimeout,
+    /// Agent stream stalled during parse — safe to auto-retry
+    ParseStall,
+    /// Agent process exited unexpectedly — safe to auto-retry
+    AgentCrash,
+    /// Provider returned an error (handled by Paused) — do NOT auto-retry here
+    ProviderError,
+    /// Wall-clock (C5) timeout fired — do NOT auto-retry (would loop infinitely)
+    WallClockTimeout,
+    /// Unknown/unclassified failure
+    Unknown,
+}
+
+impl ExecutionFailureSource {
+    /// Returns true if this failure source is transient and safe to auto-retry
+    pub fn is_transient(&self) -> bool {
+        matches!(
+            self,
+            ExecutionFailureSource::TransientTimeout
+                | ExecutionFailureSource::ParseStall
+                | ExecutionFailureSource::AgentCrash
+        )
+    }
+}
+
+/// Type of execution recovery event
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionRecoveryEventKind {
+    /// Execution failed and was recorded
+    Failed,
+    /// Automatic retry was triggered by the reconciler
+    AutoRetryTriggered,
+    /// Retry attempt started
+    AttemptStarted,
+    /// Retry attempt succeeded
+    AttemptSucceeded,
+    /// Manual retry initiated by user
+    ManualRetry,
+    /// User or system stopped further retries
+    StopRetrying,
+}
+
+/// Source of the execution recovery event
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionRecoverySource {
+    /// Triggered by system logic
+    System,
+    /// Triggered by automatic retry mechanism
+    Auto,
+    /// Triggered by user action
+    User,
+    /// Triggered by startup recovery (recover_timeout_failures) — GAP M5 sentinel
+    Startup,
+}
+
+/// Reason code for execution recovery event
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionRecoveryReasonCode {
+    /// Agent stream timed out (no output)
+    Timeout,
+    /// Agent stream stalled during parse
+    ParseStall,
+    /// Agent process exited unexpectedly
+    AgentExit,
+    /// Provider returned an error
+    ProviderError,
+    /// Wall-clock (C5) hard limit exceeded
+    WallClockExceeded,
+    /// Maximum retry budget exhausted
+    MaxRetriesExceeded,
+    /// User explicitly stopped retrying
+    UserStopped,
+    /// Unknown/unclassified reason
+    Unknown,
+}
+
+/// Current state of execution recovery
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionRecoveryState {
+    /// Currently retrying (auto-retry in progress)
+    Retrying,
+    /// Recovery permanently failed (max retries exceeded or user stopped)
+    Failed,
+    /// Execution completed successfully after retries
+    Succeeded,
+}
+
 #[cfg(test)]
 #[path = "task_metadata_tests.rs"]
 mod tests;

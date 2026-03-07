@@ -1,4 +1,5 @@
 use serde::Deserialize;
+use tracing::warn;
 
 // ── Top-level wrapper ────────────────────────────────────────────────────
 
@@ -105,6 +106,13 @@ pub struct ReconciliationConfig {
     pub merge_watcher_grace_secs: u64,
     /// Poll interval (seconds) for the merge completion watcher to check git state.
     pub merge_watcher_poll_secs: u64,
+    /// Max auto-retry attempts for Failed tasks with transient execution failures (timeout/crash/stall).
+    /// Independent of `executing_max_retries` (which tracks in-flight agent deaths).
+    pub execution_failed_max_retries: u64,
+    /// Initial backoff before retrying a Failed execution task (exponential base, seconds).
+    pub execution_failed_retry_base_secs: u64,
+    /// Cap on execution retry exponential backoff (seconds).
+    pub execution_failed_retry_max_secs: u64,
 }
 
 impl Default for ReconciliationConfig {
@@ -137,6 +145,9 @@ impl Default for ReconciliationConfig {
             branch_freshness_timeout_secs: 60,
             merge_watcher_grace_secs: 30,
             merge_watcher_poll_secs: 15,
+            execution_failed_max_retries: 3,
+            execution_failed_retry_base_secs: 30,
+            execution_failed_retry_max_secs: 600,
         }
     }
 }
@@ -333,6 +344,11 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.branch_freshness_timeout_secs, "RALPHX_RECONCILIATION_BRANCH_FRESHNESS_TIMEOUT_SECS");
     env_u64!(cfg.reconciliation.merge_watcher_grace_secs, "RALPHX_RECONCILIATION_MERGE_WATCHER_GRACE_SECS");
     env_u64!(cfg.reconciliation.merge_watcher_poll_secs, "RALPHX_RECONCILIATION_MERGE_WATCHER_POLL_SECS");
+    env_u64!(cfg.reconciliation.execution_failed_max_retries, "RALPHX_RECONCILIATION_EXECUTION_FAILED_MAX_RETRIES");
+    env_u64!(cfg.reconciliation.execution_failed_retry_base_secs, "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_BASE_SECS");
+    env_u64!(cfg.reconciliation.execution_failed_retry_max_secs, "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_MAX_SECS");
+
+    validate_reconciliation_config(&mut cfg.reconciliation);
 
     // Git
     env_u64!(cfg.git.cmd_timeout_secs, "RALPHX_GIT_CMD_TIMEOUT_SECS");
@@ -430,6 +446,35 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
         cfg.limits.max_resume_attempts,
         "RALPHX_LIMITS_MAX_RESUME_ATTEMPTS"
     );
+}
+
+/// Validate ReconciliationConfig fields and clamp to safe defaults on invalid values (GAP M7).
+/// Called after env overrides are applied so invalid YAML or env vars are caught.
+pub fn validate_reconciliation_config(cfg: &mut ReconciliationConfig) {
+    const DEFAULT_BASE: u64 = 30;
+    const DEFAULT_MAX: u64 = 600;
+    const DEFAULT_MAX_RETRIES: u64 = 3;
+
+    if cfg.execution_failed_max_retries == 0 {
+        warn!(
+            "execution_failed_max_retries must be > 0, got 0; clamping to {}",
+            DEFAULT_MAX_RETRIES
+        );
+        cfg.execution_failed_max_retries = DEFAULT_MAX_RETRIES;
+    }
+
+    if cfg.execution_failed_retry_base_secs > cfg.execution_failed_retry_max_secs {
+        warn!(
+            "execution_failed_retry_base_secs ({}) > execution_failed_retry_max_secs ({}); \
+             clamping to defaults ({}/{})",
+            cfg.execution_failed_retry_base_secs,
+            cfg.execution_failed_retry_max_secs,
+            DEFAULT_BASE,
+            DEFAULT_MAX,
+        );
+        cfg.execution_failed_retry_base_secs = DEFAULT_BASE;
+        cfg.execution_failed_retry_max_secs = DEFAULT_MAX;
+    }
 }
 
 #[cfg(test)]

@@ -171,6 +171,12 @@ reconciliation:
   merge_watcher_grace_secs: 30 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_GRACE_SECS
   # chat_service_merge.rs — poll interval for merge watcher git state checks
   merge_watcher_poll_secs: 15 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_POLL_SECS
+  # execution recovery — max auto-retry attempts for Failed tasks with transient failures (timeout/crash/stall)
+  execution_failed_max_retries: 3 # Env: RALPHX_RECONCILIATION_EXECUTION_FAILED_MAX_RETRIES
+  # execution recovery — initial backoff before retrying a Failed execution task (exponential base, seconds)
+  execution_failed_retry_base_secs: 30 # Env: RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_BASE_SECS
+  # execution recovery — cap on execution retry exponential backoff (seconds)
+  execution_failed_retry_max_secs: 600 # Env: RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_MAX_SECS
 
 git:
   # git_service/git_cmd.rs — per-command timeout to prevent hung git processes

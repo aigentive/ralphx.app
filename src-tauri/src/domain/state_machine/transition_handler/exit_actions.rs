@@ -141,6 +141,12 @@ pub(crate) async fn check_revision_cap_or_fail(ctx: &ExitContext, default_state:
 }
 
 /// Auto-commit uncommitted changes when exiting Executing/ReExecuting.
+///
+/// Skips the commit when the exit is due to a transient failure (Timeout, ParseStall,
+/// AgentCrash) to keep the branch clean before the reconciler retries (GAPs B4, H5).
+///
+/// On non-failure exits, updates `execution_recovery.last_state` to `Succeeded` if
+/// recovery metadata exists, preventing a stale "retrying" badge in the UI (GAP H11).
 pub(crate) async fn auto_commit_on_execution_done(ctx: &ExitContext) {
     let (Some(ref task_repo), Some(ref project_repo)) = (&ctx.task_repo, &ctx.project_repo) else {
         tracing::debug!(
@@ -163,6 +169,22 @@ pub(crate) async fn auto_commit_on_execution_done(ctx: &ExitContext) {
         );
         return;
     };
+
+    // GAPs B4, H5: Skip auto-commit for transient failures — the reconciler will retry
+    // with a fresh worktree/branch, so partial commits would only pollute the branch.
+    if let Ok(Some(recovery)) =
+        crate::domain::entities::ExecutionRecoveryMetadata::from_task_metadata(
+            task.metadata.as_deref(),
+        )
+    {
+        if recovery.last_failure_is_transient() {
+            tracing::info!(
+                task_id = %ctx.task_id,
+                "Skipping auto-commit for transient failure (will retry)"
+            );
+            return;
+        }
+    }
 
     let working_path = resolve_working_directory(&task, &project);
 
@@ -209,7 +231,57 @@ pub(crate) async fn auto_commit_on_execution_done(ctx: &ExitContext) {
             );
         }
     }
+
+    // GAP H11: Update execution_recovery.last_state to Succeeded when the task exits
+    // Executing/ReExecuting successfully. This clears the stale "retrying" badge in the
+    // UI after a successful retry. Only runs when the transient-failure guard above did
+    // not return early (i.e., this is not a transient failure exit).
+    // Guard: skip if the last event in the log is a Failed event — this function is
+    // called for both success and error paths in some edge cases, and we must not
+    // overwrite a Failed state with Succeeded.
+    if let Ok(Some(mut recovery)) =
+        crate::domain::entities::ExecutionRecoveryMetadata::from_task_metadata(
+            task.metadata.as_deref(),
+        )
+    {
+        let last_event_is_failure = recovery.events.last().map(|e| {
+            matches!(e.kind, crate::domain::entities::ExecutionRecoveryEventKind::Failed)
+        }).unwrap_or(false);
+        if !last_event_is_failure && recovery.last_state != crate::domain::entities::ExecutionRecoveryState::Succeeded {
+            recovery.last_state = crate::domain::entities::ExecutionRecoveryState::Succeeded;
+            match recovery.update_task_metadata(task.metadata.as_deref()) {
+                Ok(new_metadata) => {
+                    if let Err(e) = task_repo
+                        .update_metadata(&task_id, Some(new_metadata))
+                        .await
+                    {
+                        tracing::warn!(
+                            task_id = %ctx.task_id,
+                            error = %e,
+                            "Failed to update execution_recovery.last_state to Succeeded"
+                        );
+                    } else {
+                        tracing::info!(
+                            task_id = %ctx.task_id,
+                            "Updated execution_recovery.last_state to Succeeded"
+                        );
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = %ctx.task_id,
+                        error = %e,
+                        "Failed to serialize updated execution_recovery metadata"
+                    );
+                }
+            }
+        }
+    }
 }
+
+#[cfg(test)]
+#[path = "exit_actions_tests.rs"]
+mod tests;
 
 /// Resolve the working directory for a task.
 ///

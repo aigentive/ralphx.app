@@ -85,6 +85,9 @@ merge_starvation_guard_secs: 60
 branch_freshness_timeout_secs: 90
 merge_watcher_grace_secs: 30
 merge_watcher_poll_secs: 15
+execution_failed_max_retries: 3
+execution_failed_retry_base_secs: 30
+execution_failed_retry_max_secs: 600
 "#;
     let cfg: ReconciliationConfig = serde_yaml::from_str(yaml).unwrap();
     assert_eq!(cfg.branch_freshness_timeout_secs, 90);

@@ -815,6 +815,55 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                 obj.insert("failure_error".to_string(), serde_json::json!(error));
                                 obj.insert("is_timeout".to_string(), serde_json::json!(true));
                             }
+
+                            // Classify failure and write ExecutionRecoveryMetadata alongside
+                            // the flat metadata. Provider errors are handled separately
+                            // (they → Paused, not Failed) so we skip them here.
+                            if let Some(se) = stream_error {
+                                if !se.is_provider_error() {
+                                    use crate::domain::entities::{
+                                        ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+                                        ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode,
+                                        ExecutionRecoverySource, ExecutionRecoveryState,
+                                    };
+                                    let failure_source = se.to_execution_failure_source();
+                                    let reason_code = match se {
+                                        StreamError::Timeout { .. } => {
+                                            ExecutionRecoveryReasonCode::Timeout
+                                        }
+                                        StreamError::ParseStall { .. } => {
+                                            ExecutionRecoveryReasonCode::ParseStall
+                                        }
+                                        StreamError::AgentExit { .. } => {
+                                            ExecutionRecoveryReasonCode::AgentExit
+                                        }
+                                        _ => ExecutionRecoveryReasonCode::Unknown,
+                                    };
+                                    let recovery_event = ExecutionRecoveryEvent::new(
+                                        ExecutionRecoveryEventKind::Failed,
+                                        ExecutionRecoverySource::System,
+                                        reason_code,
+                                        error.chars().take(500).collect::<String>(),
+                                    )
+                                    .with_failure_source(failure_source);
+                                    let mut recovery =
+                                        ExecutionRecoveryMetadata::from_task_metadata(
+                                            task.metadata.as_deref(),
+                                        )
+                                        .unwrap_or(None)
+                                        .unwrap_or_default();
+                                    recovery.append_event_with_state(
+                                        recovery_event,
+                                        ExecutionRecoveryState::Retrying,
+                                    );
+                                    if let Ok(recovery_value) = serde_json::to_value(&recovery) {
+                                        obj.insert(
+                                            "execution_recovery".to_string(),
+                                            recovery_value,
+                                        );
+                                    }
+                                }
+                            }
                         }
                         let mut updated_task = task.clone();
                         updated_task.metadata =

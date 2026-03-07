@@ -1491,3 +1491,92 @@ fn test_truncate_error_message_short() {
     let short = "short error";
     assert_eq!(truncate_error_message(short), "short error");
 }
+
+// ── to_execution_failure_source() classification tests (GAP for handle_stream_error) ──
+
+#[test]
+fn to_execution_failure_source_timeout_maps_to_transient_timeout() {
+    use crate::domain::entities::ExecutionFailureSource;
+
+    let err = StreamError::Timeout {
+        context_type: ChatContextType::TaskExecution,
+        elapsed_secs: 600,
+    };
+    assert_eq!(err.to_execution_failure_source(), ExecutionFailureSource::TransientTimeout);
+}
+
+#[test]
+fn to_execution_failure_source_parse_stall_maps_to_parse_stall() {
+    use crate::domain::entities::ExecutionFailureSource;
+
+    let err = StreamError::ParseStall {
+        context_type: ChatContextType::TaskExecution,
+        elapsed_secs: 180,
+        lines_seen: 10,
+        lines_parsed: 0,
+    };
+    assert_eq!(err.to_execution_failure_source(), ExecutionFailureSource::ParseStall);
+}
+
+#[test]
+fn to_execution_failure_source_agent_exit_maps_to_agent_crash() {
+    use crate::domain::entities::ExecutionFailureSource;
+
+    let err = StreamError::AgentExit {
+        exit_code: Some(1),
+        stderr: "SIGKILL".into(),
+    };
+    assert_eq!(err.to_execution_failure_source(), ExecutionFailureSource::AgentCrash);
+}
+
+#[test]
+fn to_execution_failure_source_provider_error_maps_to_unknown() {
+    use crate::domain::entities::ExecutionFailureSource;
+
+    let err = StreamError::ProviderError {
+        category: ProviderErrorCategory::RateLimit,
+        message: "Rate limited".into(),
+        retry_after: None,
+    };
+    // Provider errors are handled via Paused state, not execution recovery
+    assert_eq!(err.to_execution_failure_source(), ExecutionFailureSource::Unknown);
+}
+
+#[test]
+fn to_execution_failure_source_timeout_is_transient() {
+    let err = StreamError::Timeout {
+        context_type: ChatContextType::TaskExecution,
+        elapsed_secs: 600,
+    };
+    assert!(err.to_execution_failure_source().is_transient());
+}
+
+#[test]
+fn to_execution_failure_source_parse_stall_is_transient() {
+    let err = StreamError::ParseStall {
+        context_type: ChatContextType::TaskExecution,
+        elapsed_secs: 180,
+        lines_seen: 5,
+        lines_parsed: 0,
+    };
+    assert!(err.to_execution_failure_source().is_transient());
+}
+
+#[test]
+fn to_execution_failure_source_agent_exit_is_transient() {
+    let err = StreamError::AgentExit {
+        exit_code: None,
+        stderr: String::new(),
+    };
+    assert!(err.to_execution_failure_source().is_transient());
+}
+
+#[test]
+fn to_execution_failure_source_provider_error_is_not_transient() {
+    let err = StreamError::ProviderError {
+        category: ProviderErrorCategory::ServerError,
+        message: "500".into(),
+        retry_after: None,
+    };
+    assert!(!err.to_execution_failure_source().is_transient());
+}
