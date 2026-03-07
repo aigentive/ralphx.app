@@ -33,6 +33,13 @@ vi.mock("@/lib/tauri", () => ({
   },
 }));
 
+vi.mock("@/lib/task-actions/task-actions", () => ({
+  stopExecutionRetry: vi.fn(async () => true),
+}));
+
+import { stopExecutionRetry } from "@/lib/task-actions/task-actions";
+const mockStopExecutionRetry = vi.mocked(stopExecutionRetry);
+
 const mockStepList = vi.fn(({ taskId, editable, hideCompletionNotes }) => (
   <div
     data-testid="mock-step-list"
@@ -741,6 +748,193 @@ describe("BasicTaskDetail", () => {
       expect(screen.getByTestId("failure-details")).toHaveTextContent(
         "npm run build exited with code 1"
       );
+    });
+  });
+
+  describe("execution_recovery sub-states for failed tasks", () => {
+    beforeEach(() => {
+      vi.clearAllMocks();
+      mockUseTaskSteps.mockReturnValue({
+        data: [],
+        isLoading: false,
+        isError: false,
+      } as ReturnType<typeof useTaskSteps>);
+      mockConfirmation.confirm = vi.fn(async () => true);
+    });
+
+    describe("sub-state 1: auto-retrying (last_state=retrying, stop_retrying=false)", () => {
+      it("shows auto-retrying section when last_state is retrying", () => {
+        const metadata = JSON.stringify({
+          execution_recovery: {
+            last_state: "retrying",
+            stop_retrying: false,
+            events: [],
+          },
+        });
+        const task = createTestTask({ internalStatus: "failed", metadata });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        expect(screen.getByTestId("auto-retrying-section")).toBeInTheDocument();
+        expect(screen.getByTestId("auto-retry-badge")).toBeInTheDocument();
+        expect(screen.getByTestId("stop-retrying-button")).toBeInTheDocument();
+      });
+
+      it("shows 'Auto-retrying' badge text with no count when events list is empty", () => {
+        const metadata = JSON.stringify({
+          execution_recovery: {
+            last_state: "retrying",
+            stop_retrying: false,
+            events: [],
+          },
+        });
+        const task = createTestTask({ internalStatus: "failed", metadata });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        expect(screen.getByTestId("auto-retry-badge")).toHaveTextContent("Auto-retrying");
+        expect(screen.getByTestId("auto-retry-badge")).not.toHaveTextContent("attempt");
+      });
+
+      it("shows attempt count from auto_retry_triggered events", () => {
+        const metadata = JSON.stringify({
+          execution_recovery: {
+            last_state: "retrying",
+            stop_retrying: false,
+            events: [
+              { kind: "auto_retry_triggered", timestamp: "2026-01-01T00:00:00Z" },
+              { kind: "auto_retry_triggered", timestamp: "2026-01-01T00:01:00Z" },
+            ],
+          },
+        });
+        const task = createTestTask({ internalStatus: "failed", metadata });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        expect(screen.getByTestId("auto-retry-badge")).toHaveTextContent("attempt 2");
+      });
+
+      it("does not count non-retry events", () => {
+        const metadata = JSON.stringify({
+          execution_recovery: {
+            last_state: "retrying",
+            stop_retrying: false,
+            events: [
+              { kind: "auto_retry_triggered", timestamp: "2026-01-01T00:00:00Z" },
+              { kind: "stop_requested", timestamp: "2026-01-01T00:01:00Z" },
+              { kind: "AutoRetryTriggered", timestamp: "2026-01-01T00:02:00Z" }, // wrong case — not counted
+            ],
+          },
+        });
+        const task = createTestTask({ internalStatus: "failed", metadata });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        // Only 1 valid snake_case event should be counted
+        expect(screen.getByTestId("auto-retry-badge")).toHaveTextContent("attempt 1");
+      });
+
+      it("calls stopExecutionRetry on Stop Retrying button click", async () => {
+        const user = userEvent.setup();
+        const metadata = JSON.stringify({
+          execution_recovery: {
+            last_state: "retrying",
+            stop_retrying: false,
+            events: [],
+          },
+        });
+        const task = createTestTask({ internalStatus: "failed", metadata });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        await user.click(screen.getByTestId("stop-retrying-button"));
+
+        await waitFor(() => {
+          expect(mockStopExecutionRetry).toHaveBeenCalledWith(task.id);
+        });
+      });
+    });
+
+    describe("sub-state 2: permanently failed (last_state=failed or stop_retrying=true)", () => {
+      it("does not show auto-retrying section when last_state is failed", () => {
+        const metadata = JSON.stringify({
+          execution_recovery: {
+            last_state: "failed",
+            stop_retrying: false,
+            events: [],
+          },
+        });
+        const task = createTestTask({ internalStatus: "failed", metadata });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        expect(screen.queryByTestId("auto-retrying-section")).not.toBeInTheDocument();
+      });
+
+      it("does not show auto-retrying section when stop_retrying is true", () => {
+        const metadata = JSON.stringify({
+          execution_recovery: {
+            last_state: "retrying",
+            stop_retrying: true,
+            events: [],
+          },
+        });
+        const task = createTestTask({ internalStatus: "failed", metadata });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        expect(screen.queryByTestId("auto-retrying-section")).not.toBeInTheDocument();
+      });
+
+      it("shows standard failed UI (failure details section) for permanently failed state", () => {
+        const metadata = JSON.stringify({
+          failure_error: "Max retries exceeded",
+          is_timeout: false,
+          execution_recovery: {
+            last_state: "failed",
+            stop_retrying: false,
+            events: [],
+          },
+        });
+        const task = createTestTask({ internalStatus: "failed", metadata });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        expect(screen.queryByTestId("auto-retrying-section")).not.toBeInTheDocument();
+        expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
+        expect(screen.getByText("Max retries exceeded")).toBeInTheDocument();
+      });
+    });
+
+    describe("sub-state 3: legacy (no execution_recovery metadata)", () => {
+      it("does not show auto-retrying section when no execution_recovery in metadata", () => {
+        const metadata = JSON.stringify({
+          failure_error: "Something went wrong",
+          is_timeout: false,
+        });
+        const task = createTestTask({ internalStatus: "failed", metadata });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        expect(screen.queryByTestId("auto-retrying-section")).not.toBeInTheDocument();
+      });
+
+      it("does not show auto-retrying section when metadata is null", () => {
+        const task = createTestTask({ internalStatus: "failed", metadata: null });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        expect(screen.queryByTestId("auto-retrying-section")).not.toBeInTheDocument();
+      });
+
+      it("shows standard failed UI for legacy tasks with no execution_recovery", () => {
+        const task = createTestTask({ internalStatus: "failed", metadata: null });
+
+        render(<BasicTaskDetail task={task} />, { wrapper: TestWrapper });
+
+        expect(screen.queryByTestId("auto-retrying-section")).not.toBeInTheDocument();
+        expect(screen.getByTestId("failure-reason-section")).toBeInTheDocument();
+      });
     });
   });
 

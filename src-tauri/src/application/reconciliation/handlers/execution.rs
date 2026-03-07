@@ -4,13 +4,16 @@
 use std::sync::Arc;
 
 use tauri::{Emitter, Runtime};
-use tracing::warn;
+use tracing::{info, warn};
 
 use crate::application::chat_service::{MergeAutoCompleteContext, reconcile_merge_auto_complete};
 use crate::application::interactive_process_registry::InteractiveProcessKey;
+use crate::application::GitService;
 use crate::domain::entities::{
-    AgentRunStatus, ChatContextType, InternalStatus, ReviewNote, ReviewOutcome,
-    ReviewerType, TaskId,
+    ActivityEvent, ActivityEventType, AgentRunStatus, ChatContextType, ExecutionFailureSource,
+    ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+    ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, InternalStatus,
+    ReviewNote, ReviewOutcome, ReviewerType, TaskId,
 };
 use crate::domain::services::RunningAgentKey;
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
@@ -70,12 +73,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     /// Startup-only recovery: re-queue Failed tasks that failed due to transient timeouts.
     ///
-    /// Runs once at app startup (not in the recurring loop). Finds tasks in Failed state where
-    /// `is_timeout: true` (in metadata) and `auto_retry_count_executing < 3`, then transitions
-    /// them back to Ready so they can be picked up on the next scheduling cycle.
+    /// Runs once at app startup (not in the recurring loop). Handles two formats (GAP M2):
+    /// - **Legacy**: `is_timeout: true` in flat metadata (old format)
+    /// - **New**: `execution_recovery` present with `last_state == Retrying`
     ///
-    /// Cap at 3 attempts prevents infinite retry on persistent failures; timeout-only filter
-    /// ensures we only recover transient overnight stalls, not logic errors.
+    /// Legacy tasks are migrated to the new `ExecutionRecoveryMetadata` format during recovery.
+    /// All startup-processed tasks get an `AutoRetryTriggered` event with `Startup` source,
+    /// which acts as a sentinel to prevent the reconciler loop from double-processing
+    /// the same task within 60 seconds (GAP M5).
     pub async fn recover_timeout_failures(&self) {
         let projects = match self.project_repo.get_all().await {
             Ok(projects) => projects,
@@ -84,6 +89,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 return;
             }
         };
+
+        let max_retries = crate::infrastructure::agents::claude::reconciliation_config()
+            .execution_failed_max_retries as u32;
 
         for project in &projects {
             let failed_tasks = match self
@@ -103,30 +111,58 @@ impl<R: Runtime> ReconciliationRunner<R> {
             };
 
             for task in failed_tasks {
-                let is_timeout = self.task_is_timeout_failure(&task);
-                let attempt_count =
-                    Self::auto_retry_count_for_status(&task, InternalStatus::Executing);
+                // Determine eligibility using BOTH legacy and new metadata formats (GAP M2).
+                let is_legacy_timeout = self.task_is_timeout_failure(&task);
+                let new_recovery =
+                    ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                        .ok()
+                        .flatten();
 
-                if !is_timeout || attempt_count >= 3 {
+                let is_new_retrying = new_recovery
+                    .as_ref()
+                    .map(|r| r.last_state == ExecutionRecoveryState::Retrying && !r.stop_retrying)
+                    .unwrap_or(false);
+
+                if !is_legacy_timeout && !is_new_retrying {
                     continue;
                 }
 
-                tracing::info!(
+                // Determine current attempt count from whichever format is active.
+                // Legacy uses the flat counter; new uses event log.
+                let attempt_count = if is_new_retrying {
+                    Self::execution_failed_auto_retry_count(&task)
+                } else {
+                    Self::auto_retry_count_for_status(&task, InternalStatus::Executing)
+                };
+
+                if attempt_count >= max_retries {
+                    tracing::debug!(
+                        task_id = task.id.as_str(),
+                        attempt_count = attempt_count,
+                        max_retries = max_retries,
+                        "Startup recovery: skipping task — max retries reached"
+                    );
+                    continue;
+                }
+
+                info!(
                     task_id = task.id.as_str(),
                     attempt_count = attempt_count,
+                    is_legacy = is_legacy_timeout,
                     "Startup recovery: re-queuing timeout-failed task"
                 );
 
-                // Increment attempt count before transitioning so the count persists
-                // across recovery cycles and the cap is enforced correctly next startup.
+                // Record structured AutoRetryTriggered event with Startup source (GAP M5 sentinel).
+                // For legacy tasks, this also creates the initial ExecutionRecoveryMetadata
+                // with a Failed event, migrating them to the new format (GAP M2).
                 if let Err(e) = self
-                    .record_auto_retry_metadata(&task, InternalStatus::Executing, attempt_count + 1)
+                    .record_execution_startup_retry_event(&task, attempt_count + 1)
                     .await
                 {
                     warn!(
                         task_id = task.id.as_str(),
                         error = %e,
-                        "Startup recovery: failed to increment attempt count (proceeding anyway)"
+                        "Startup recovery: failed to record startup retry event (proceeding anyway)"
                     );
                 }
 
@@ -136,7 +172,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     .await
                 {
                     Ok(_) => {
-                        tracing::info!(
+                        info!(
                             task_id = task.id.as_str(),
                             "Startup recovery: task transitioned Failed -> Ready"
                         );
@@ -195,6 +231,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 InternalStatus::QaRefining,
                 InternalStatus::QaTesting,
                 InternalStatus::Paused,
+                InternalStatus::Failed, // GAP B2: auto-retry eligible Failed executions
             ] {
                 let tasks = match self.task_repo.get_by_status(&project.id, status).await {
                     Ok(tasks) => tasks,
@@ -315,6 +352,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 self.reconcile_qa_task(task, status).await
             }
             InternalStatus::Paused => self.reconcile_paused_provider_error(task).await,
+            // GAP B3: Auto-retry Failed executions via reconcile_failed_execution_task
+            InternalStatus::Failed => self.reconcile_failed_execution_task(task, status).await,
             _ => false,
         }
     }
@@ -359,6 +398,39 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     max_minutes = max_minutes,
                     "Execution wall-clock timeout exceeded"
                 );
+                // GAP H1: Tag with WallClockTimeout so reconciler never retries these.
+                // Wall-clock failures are hard limits — retrying causes infinite C5→Failed→retry→C5 loop.
+                let mut recovery =
+                    ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                        .unwrap_or(None)
+                        .unwrap_or_default();
+                let wc_event = ExecutionRecoveryEvent::new(
+                    ExecutionRecoveryEventKind::Failed,
+                    ExecutionRecoverySource::System,
+                    ExecutionRecoveryReasonCode::WallClockExceeded,
+                    format!(
+                        "Wall-clock timeout exceeded ({} minutes)",
+                        age.num_minutes()
+                    ),
+                )
+                .with_failure_source(ExecutionFailureSource::WallClockTimeout);
+                recovery.append_event_with_state(wc_event, ExecutionRecoveryState::Failed);
+                recovery.stop_retrying = true;
+                if let Ok(updated_metadata) =
+                    recovery.update_task_metadata(task.metadata.as_deref())
+                {
+                    if let Err(e) = self
+                        .task_repo
+                        .update_metadata(&task.id, Some(updated_metadata))
+                        .await
+                    {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "Failed to write wall-clock timeout metadata (H1)"
+                        );
+                    }
+                }
                 return self
                     .apply_recovery_decision(
                         task,
@@ -450,6 +522,321 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         self.apply_recovery_decision(task, status, RecoveryContext::Execution, decision)
             .await
+    }
+
+    /// Core handler for auto-retrying Failed execution tasks (Wave 3 — GAPs B2, B3, B5, B6, B7,
+    /// B8, H1, H8, H10, M4, M6, M9).
+    ///
+    /// Decision tree:
+    /// 1. Re-fetch from DB (M4: staleness guard)
+    /// 2. Skip if no execution_recovery metadata (legacy tasks — not opted in)
+    /// 3. Skip if stop_retrying (user or system halted retries)
+    /// 4. Skip if last_state == Failed (permanent failure)
+    /// 5. Skip if last failure was WallClockTimeout (H1: C5 hard limit — would loop)
+    /// 6. Skip if retry_count >= max_retries (record permanent failure)
+    /// 7. Skip if backoff not elapsed (M6, M8: computed from last retry event timestamp)
+    /// 8. Skip if can_start_task() == false (B6: concurrency guard)
+    /// 9. Full git cleanup: delete worktree → delete branch → clear DB fields (B5, B8, H6, H8, M9)
+    /// 10. Clear stale flat metadata (B7)
+    /// 11. Emit ActivityEvent for visibility (H10)
+    /// 12. Record AutoRetryTriggered event in recovery metadata
+    /// 13. Dispatch TaskEvent::Retry → Failed → Ready
+    pub(crate) async fn reconcile_failed_execution_task(
+        &self,
+        task: &crate::domain::entities::Task,
+        _status: InternalStatus,
+    ) -> bool {
+        // GAP M4: Re-fetch task from DB — reconciler query can be up to 30s stale
+        let task = match self.task_repo.get_by_id(&task.id).await {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    "Task not found in DB during failed execution reconciliation"
+                );
+                return false;
+            }
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to re-fetch task for failed execution reconciliation"
+                );
+                return false;
+            }
+        };
+
+        // Skip if not actually Failed (could have been transitioned by another path)
+        if task.internal_status != InternalStatus::Failed {
+            return false;
+        }
+
+        // Parse execution recovery metadata — skip if absent (legacy tasks, not opted in)
+        let recovery =
+            match ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref()) {
+                Ok(Some(r)) => r,
+                Ok(None) => {
+                    tracing::debug!(
+                        task_id = task.id.as_str(),
+                        "Skipping failed execution reconciliation: no execution_recovery metadata (legacy)"
+                    );
+                    return false;
+                }
+                Err(e) => {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to parse execution recovery metadata"
+                    );
+                    return false;
+                }
+            };
+
+        // Skip if user or system halted retries
+        if recovery.stop_retrying {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping failed execution reconciliation: stop_retrying=true"
+            );
+            return false;
+        }
+
+        // GAP M5: Skip if startup recovery handled this task within the last 60s —
+        // prevents double-processing race between recover_timeout_failures() and the loop.
+        if Self::has_recent_startup_recovery(&task) {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping failed execution reconciliation: startup recovery sentinel active (< 60s)"
+            );
+            return false;
+        }
+
+        // Skip if recovery has reached permanent failure state
+        if recovery.last_state == ExecutionRecoveryState::Failed {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping failed execution reconciliation: last_state=Failed (permanent)"
+            );
+            return false;
+        }
+
+        // GAP H1: Skip if last failure was wall-clock timeout — retrying causes infinite C5 loop
+        let last_is_wall_clock = recovery
+            .events
+            .last()
+            .and_then(|e| e.failure_source.as_ref())
+            .map(|s| matches!(s, ExecutionFailureSource::WallClockTimeout))
+            .unwrap_or(false);
+        if last_is_wall_clock {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping failed execution reconciliation: wall-clock timeout (C5) — non-retryable"
+            );
+            return false;
+        }
+
+        // Check max retries — record permanent failure if budget exhausted
+        let retry_count = Self::execution_failed_auto_retry_count(&task);
+        let max_retries = reconciliation_config().execution_failed_max_retries as u32;
+        if retry_count >= max_retries {
+            warn!(
+                task_id = task.id.as_str(),
+                retry_count = retry_count,
+                max_retries = max_retries,
+                "Failed execution max retries exceeded — marking permanent failure"
+            );
+            if let Err(e) = self.set_execution_stop_retrying(&task).await {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to set stop_retrying flag after max retries"
+                );
+            }
+            return false;
+        }
+
+        // GAPs M6, M8: Check backoff elapsed — computed dynamically from last retry event
+        if let Some(next_retry_at) = Self::execution_next_retry_at(&task) {
+            if chrono::Utc::now() < next_retry_at {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    next_retry_at = %next_retry_at,
+                    "Skipping failed execution reconciliation: backoff not elapsed"
+                );
+                return false;
+            }
+        }
+
+        // GAP B6: Concurrency guard — skip if at max_concurrent capacity
+        if !self.execution_state.can_start_task() {
+            tracing::debug!(
+                task_id = task.id.as_str(),
+                "Skipping failed execution reconciliation: at max concurrency — will try next cycle"
+            );
+            return false;
+        }
+
+        // ── Git cleanup (GAPs B5, B8, H6, H8, M9) ───────────────────────────────────────────────
+        let project_data = match self.project_repo.get_by_id(&task.project_id).await {
+            Ok(Some(p)) => p,
+            Ok(None) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    "Project not found for task — skipping git cleanup"
+                );
+                return false;
+            }
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to get project for git cleanup during execution recovery"
+                );
+                return false;
+            }
+        };
+        let repo_path = std::path::Path::new(&project_data.working_directory);
+
+        // (1) Delete worktree FIRST — must happen before branch deletion (GAP H8)
+        //     git refuses to delete a branch checked out in a worktree.
+        if let Some(worktree_path_str) = task.worktree_path.as_deref() {
+            let worktree_path = std::path::Path::new(worktree_path_str);
+            if worktree_path.exists() {
+                if let Err(e) = GitService::delete_worktree(repo_path, worktree_path).await {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        worktree = worktree_path_str,
+                        error = %e,
+                        "Failed to delete worktree during execution recovery — continuing"
+                    );
+                }
+            }
+        }
+
+        // (2) Delete branch — log warn and continue if it fails (GAP M9)
+        //     on_enter_executing() handles branch_exists=true as fallback
+        if let Some(branch) = task.task_branch.as_deref() {
+            if let Err(e) = GitService::delete_branch(repo_path, branch, true).await {
+                warn!(
+                    task_id = task.id.as_str(),
+                    branch = branch,
+                    error = %e,
+                    "Failed to delete task branch during execution recovery — on_enter_executing handles branch_exists (M9)"
+                );
+                // Non-fatal: on_enter_executing will check out existing branch as fallback
+            }
+        }
+
+        // (3) Clear task_branch + worktree_path in DB so on_enter_executing gets a fresh start
+        let mut updated_task = task.clone();
+        updated_task.task_branch = None;
+        updated_task.worktree_path = None;
+        updated_task.touch();
+        if let Err(e) = self.task_repo.update(&updated_task).await {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to clear task_branch/worktree_path in DB during execution recovery"
+            );
+            // Continue — transition will still work, on_enter_executing recomputes branch name
+        }
+
+        // (4) GAP B7: Clear stale flat metadata (is_timeout, failure_error) to prevent
+        //     misclassification on subsequent attempts
+        if let Err(e) = self.clear_execution_flat_metadata(&task).await {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to clear execution flat metadata (B7)"
+            );
+        }
+
+        // Re-fetch task after metadata cleanup so record_execution_auto_retry_event uses the
+        // clean DB state as base. Without this, both clear_execution_flat_metadata and
+        // record_execution_auto_retry_event use the same stale in-memory snapshot — the latter
+        // call re-introduces is_timeout/failure_error by merging from the stale snapshot,
+        // causing task_is_timeout_failure() to misclassify subsequent attempts.
+        let task = match self.task_repo.get_by_id(&task.id).await {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    "Task not found after metadata cleanup — skipping auto-retry"
+                );
+                return false;
+            }
+            Err(e) => {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to re-fetch task after metadata cleanup — using stale snapshot"
+                );
+                task
+            }
+        };
+
+        // (5) GAP H10: Emit ActivityEvent so auto-retry is visible in task feed
+        let attempt_num = retry_count + 1;
+        let failure_reason = recovery
+            .events
+            .last()
+            .map(|e| format!("{:?}", e.reason_code))
+            .unwrap_or_else(|| "Unknown".to_string());
+        let activity_message = format!(
+            "Auto-retrying execution (attempt {}/{}) — previous failure: {}",
+            attempt_num, max_retries, failure_reason
+        );
+        let activity_event = ActivityEvent::new_task_event(
+            task.id.clone(),
+            ActivityEventType::Text,
+            &activity_message,
+        );
+        if let Err(e) = self.activity_event_repo.save(activity_event).await {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to emit auto-retry activity event (H10)"
+            );
+        }
+
+        // (6) Record AutoRetryTriggered in execution recovery metadata (uses update_metadata() path — H7)
+        let failure_source = recovery
+            .events
+            .last()
+            .and_then(|e| e.failure_source)
+            .unwrap_or(ExecutionFailureSource::Unknown);
+        if let Err(e) = self
+            .record_execution_auto_retry_event(&task, attempt_num, failure_source, &activity_message)
+            .await
+        {
+            warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to record auto-retry event in execution recovery metadata"
+            );
+        }
+
+        // (7) Dispatch TaskEvent::Retry → Failed → Ready
+        info!(
+            task_id = task.id.as_str(),
+            attempt = attempt_num,
+            max_retries = max_retries,
+            "Auto-retrying failed execution task"
+        );
+        if let Err(e) = self
+            .transition_service
+            .transition_task(&task.id, InternalStatus::Ready)
+            .await
+        {
+            tracing::error!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "Failed to transition task from Failed to Ready during auto-retry"
+            );
+            return false;
+        }
+
+        true
     }
 
     pub(crate) async fn reconcile_reviewing_task(
@@ -1018,6 +1405,12 @@ impl<R: Runtime> ReconciliationRunner<R> {
         action: UserRecoveryAction,
     ) -> bool {
         let status = task.internal_status;
+
+        // GAP H2: Failed state has custom recovery logic — delegate to dedicated handler
+        if status == InternalStatus::Failed {
+            return self.apply_failed_user_recovery_action(task, action).await;
+        }
+
         let decision = match status {
             InternalStatus::Executing | InternalStatus::ReExecuting => match action {
                 UserRecoveryAction::Restart => RecoveryDecision {
@@ -1079,6 +1472,153 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         self.apply_recovery_decision(task, status, context, decision)
             .await
+    }
+
+    /// Handle user recovery actions for tasks in Failed state (GAP H2).
+    ///
+    /// - `Restart` → reset retry budget (H9) + full git cleanup + ManualRetry event → Ready
+    /// - `Cancel`  → `stop_retrying=true` → task stays Failed permanently
+    async fn apply_failed_user_recovery_action(
+        &self,
+        task: &crate::domain::entities::Task,
+        action: UserRecoveryAction,
+    ) -> bool {
+        match action {
+            UserRecoveryAction::Cancel => {
+                // User explicitly cancelled auto-retry — task remains Failed permanently
+                if let Err(e) = self.stop_execution_retrying_by_user(task).await {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to set stop_retrying for user Cancel on Failed task"
+                    );
+                }
+                true
+            }
+            UserRecoveryAction::Restart => {
+                // Full git cleanup — same sequence as reconcile_failed_execution_task() (B5, B8, H8)
+                match self.project_repo.get_by_id(&task.project_id).await {
+                    Ok(Some(project)) => {
+                        let repo_path = std::path::Path::new(&project.working_directory);
+
+                        // (1) Delete worktree FIRST — must happen before branch deletion (GAP H8)
+                        if let Some(worktree_path_str) = task.worktree_path.as_deref() {
+                            let worktree_path = std::path::Path::new(worktree_path_str);
+                            if worktree_path.exists() {
+                                if let Err(e) =
+                                    GitService::delete_worktree(repo_path, worktree_path).await
+                                {
+                                    warn!(
+                                        task_id = task.id.as_str(),
+                                        worktree = worktree_path_str,
+                                        error = %e,
+                                        "Failed to delete worktree during manual restart git cleanup"
+                                    );
+                                }
+                            }
+                        }
+
+                        // (2) Delete branch — log warn and continue if fails (GAP M9)
+                        if let Some(branch) = task.task_branch.as_deref() {
+                            if let Err(e) =
+                                GitService::delete_branch(repo_path, branch, true).await
+                            {
+                                warn!(
+                                    task_id = task.id.as_str(),
+                                    branch = branch,
+                                    error = %e,
+                                    "Failed to delete task branch during manual restart git cleanup"
+                                );
+                            }
+                        }
+                    }
+                    Ok(None) => {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            "Project not found for task — skipping git cleanup in manual restart"
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "Failed to get project for manual restart git cleanup"
+                        );
+                    }
+                }
+
+                // (3) Clear task_branch + worktree_path in DB
+                let mut updated_task = task.clone();
+                updated_task.task_branch = None;
+                updated_task.worktree_path = None;
+                updated_task.touch();
+                if let Err(e) = self.task_repo.update(&updated_task).await {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to clear task_branch/worktree_path in DB during manual restart"
+                    );
+                }
+
+                // (GAP H9) Reset recovery metadata AFTER task_repo.update() so it wins —
+                // update() carries the stale task.metadata (with events + flat keys) and would
+                // overwrite any earlier metadata write. Resetting last ensures a clean slate.
+                // reset_execution_recovery_metadata() also removes is_timeout/failure_error (GAP B7).
+                if let Err(e) = self.reset_execution_recovery_metadata(task).await {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to reset execution recovery metadata for manual restart"
+                    );
+                }
+
+                // Re-fetch task with clean metadata before recording ManualRetry event
+                let task = match self.task_repo.get_by_id(&task.id).await {
+                    Ok(Some(t)) => t,
+                    Ok(None) => {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            "Task not found after metadata cleanup in manual restart"
+                        );
+                        return false;
+                    }
+                    Err(e) => {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            error = %e,
+                            "Failed to re-fetch task after metadata cleanup in manual restart"
+                        );
+                        task.clone()
+                    }
+                };
+
+                // Record ManualRetry event in execution recovery metadata
+                if let Err(e) = self.record_execution_manual_retry_event(&task).await {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to record ManualRetry event for manual restart"
+                    );
+                }
+
+                // Transition Failed → Ready
+                info!(task_id = task.id.as_str(), "User manually restarting failed execution task");
+                if let Err(e) = self
+                    .transition_service
+                    .transition_task(&task.id, InternalStatus::Ready)
+                    .await
+                {
+                    tracing::error!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to transition task from Failed to Ready during manual restart"
+                    );
+                    return false;
+                }
+
+                true
+            }
+        }
     }
 
     pub(crate) async fn apply_recovery_decision(

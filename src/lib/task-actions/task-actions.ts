@@ -6,6 +6,7 @@
  * Rendering is handled by each surface's context menu component.
  */
 
+import { resolveRecoveryPrompt } from "@/api/recovery";
 import {
   Play,
   Ban,
@@ -22,6 +23,14 @@ import {
 import type { InternalStatus } from "@/types/status";
 import type { TaskAction, ActionSurface } from "./types";
 import { CONFIRMATION_CONFIGS } from "./constants";
+
+/**
+ * Stop the auto-retry loop for a failed task by setting stop_retrying flag.
+ * Calls the user recovery Cancel action — task stays Failed permanently.
+ */
+export async function stopExecutionRetry(taskId: string): Promise<boolean> {
+  return resolveRecoveryPrompt(taskId, "cancel");
+}
 
 /**
  * Get task actions for a given status and surface context.

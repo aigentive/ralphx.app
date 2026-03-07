@@ -15,13 +15,14 @@ import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
-import { Loader2, Play, RotateCcw, Clock, User, Users, AlertTriangle, ShieldAlert } from "lucide-react";
+import { Loader2, Play, RotateCcw, Clock, User, Users, AlertTriangle, ShieldAlert, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ResumeValidationDialog,
   type ValidationWarning,
 } from "@/components/ui/ResumeValidationDialog";
 import { parseStopMetadata, type Task, type StopMetadata } from "@/types/task";
+import { stopExecutionRetry } from "@/lib/task-actions/task-actions";
 
 // ============================================================================
 // Helper Functions
@@ -131,6 +132,63 @@ function StopHistorySection({ stopMetadata }: { stopMetadata: StopMetadata }) {
             </span>
           </div>
         </div>
+      </DetailCard>
+    </section>
+  );
+}
+
+/**
+ * AutoRetryingSection - Shown for failed tasks that are being auto-retried.
+ * Displays attempt count and provides a "Stop Retrying" button.
+ */
+function AutoRetryingSection({ task, attemptCount }: { task: Task; attemptCount: number }) {
+  const queryClient = useQueryClient();
+
+  const stopRetryMutation = useMutation({
+    mutationFn: () => stopExecutionRetry(task.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+
+  return (
+    <section data-testid="auto-retrying-section" className="space-y-2">
+      <SectionTitle>Execution Recovery</SectionTitle>
+      <DetailCard>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Loader2 className="w-4 h-4 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
+            <span
+              data-testid="auto-retry-badge"
+              className="text-[13px] font-medium"
+              style={{ color: "hsl(14 100% 70%)" }}
+            >
+              Auto-retrying{attemptCount > 0 ? ` (attempt ${attemptCount})` : ""}
+            </span>
+          </div>
+          <Button
+            data-testid="stop-retrying-button"
+            onClick={() => stopRetryMutation.mutate()}
+            disabled={stopRetryMutation.isPending}
+            className="h-8 px-3 gap-1.5 rounded-lg font-medium text-[12px] transition-colors"
+            style={{
+              backgroundColor: "hsla(0 70% 55% / 0.15)",
+              color: "hsl(0 70% 70%)",
+            }}
+          >
+            {stopRetryMutation.isPending ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <X className="w-3.5 h-3.5" />
+            )}
+            Stop Retrying
+          </Button>
+        </div>
+        {stopRetryMutation.error && (
+          <p className="mt-2 text-[12px]" style={{ color: "#ff453a" }}>
+            {stopRetryMutation.error.message}
+          </p>
+        )}
       </DetailCard>
     </section>
   );
@@ -574,6 +632,42 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
     }
   }
 
+  // Parse execution_recovery metadata for failed tasks (Wave 4 auto-retry UI)
+  // Three sub-states: auto-retrying (last_state=retrying), permanently failed, legacy (no metadata)
+  let executionRecovery: {
+    last_state: "retrying" | "failed" | "succeeded";
+    stop_retrying: boolean;
+    attempt_count: number;
+  } | null = null;
+
+  if (task.internalStatus === "failed") {
+    if (task.metadata) {
+      try {
+        const metadata = JSON.parse(task.metadata);
+        if (metadata.execution_recovery) {
+          const er = metadata.execution_recovery as {
+            last_state?: string;
+            stop_retrying?: boolean;
+            events?: Array<{ kind: string }>;
+          };
+          const events = er.events ?? [];
+          const autoRetryCount = events.filter((e) => e.kind === "auto_retry_triggered").length;
+          executionRecovery = {
+            last_state: (er.last_state ?? "failed") as "retrying" | "failed" | "succeeded",
+            stop_retrying: er.stop_retrying ?? false,
+            attempt_count: autoRetryCount,
+          };
+        }
+      } catch {
+        // JSON parse failed — treat as no metadata
+      }
+    }
+  }
+
+  // Auto-retrying: system is managing retries, show badge + Stop Retrying button
+  const isAutoRetrying =
+    executionRecovery?.last_state === "retrying" && !executionRecovery.stop_retrying;
+
   // Detect if a blocked task has a failed dependency as its blocker.
   // The backend sets blocked_reason to "Dependency [task title] failed." when a blocker fails.
   const DEPENDENCY_FAILED_PREFIX = "Dependency ";
@@ -633,6 +727,14 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
             variant="warning"
           />
         </section>
+      )}
+
+      {/* Auto-Retrying Banner (shown when system is managing retries) */}
+      {isAutoRetrying && (
+        <AutoRetryingSection
+          task={task}
+          attemptCount={executionRecovery?.attempt_count ?? 0}
+        />
       )}
 
       {/* Failure Reason Banner */}

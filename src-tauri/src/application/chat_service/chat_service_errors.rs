@@ -402,6 +402,22 @@ impl StreamError {
             _ => None,
         }
     }
+
+    /// Map this stream error to an [`ExecutionFailureSource`] for recovery classification.
+    ///
+    /// Used by `handle_stream_error()` to populate `ExecutionRecoveryMetadata` alongside
+    /// the existing flat metadata writes.
+    pub fn to_execution_failure_source(
+        &self,
+    ) -> crate::domain::entities::ExecutionFailureSource {
+        use crate::domain::entities::ExecutionFailureSource;
+        match self {
+            Self::Timeout { .. } => ExecutionFailureSource::TransientTimeout,
+            Self::ParseStall { .. } => ExecutionFailureSource::ParseStall,
+            Self::AgentExit { .. } => ExecutionFailureSource::AgentCrash,
+            _ => ExecutionFailureSource::Unknown,
+        }
+    }
 }
 
 /// Classify an error string from agent stderr/result as a provider error if applicable.

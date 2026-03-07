@@ -5,8 +5,8 @@ use crate::application::interactive_process_registry::{
 use crate::application::{AppState, TaskTransitionService};
 use crate::commands::execution_commands::ExecutionState;
 use crate::domain::entities::{
-    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversationId, InternalStatus,
-    MergeFailureSource, Project, Task, TaskId,
+    AgentRun, AgentRunId, AgentRunStatus, ChatContextType, ChatConversationId, ExecutionRecoveryMetadata,
+    InternalStatus, MergeFailureSource, Project, Task, TaskId,
 };
 use crate::domain::services::{MemoryRunningAgentRegistry, RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::reconciliation_config;
@@ -5043,4 +5043,1286 @@ async fn reconcile_re_executing_stale_ipr_and_no_run_triggers_recovery() {
     );
 
     drop(child);
+}
+
+// ── Execution Recovery Metadata Helpers ─────────────────────────────────────
+
+#[test]
+fn execution_failed_auto_retry_count_returns_zero_with_no_metadata() {
+    use crate::domain::entities::Task;
+    let task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::execution_failed_auto_retry_count(&task),
+        0
+    );
+}
+
+#[test]
+fn execution_failed_auto_retry_count_counts_triggered_events() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
+    };
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    for i in 0..3u32 {
+        let event = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::AutoRetryTriggered,
+            ExecutionRecoverySource::Auto,
+            ExecutionRecoveryReasonCode::Timeout,
+            format!("retry {i}"),
+        );
+        recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
+    }
+    // Add a non-AutoRetryTriggered event — should not be counted
+    let other = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::Failed,
+        ExecutionRecoverySource::System,
+        ExecutionRecoveryReasonCode::Timeout,
+        "failed",
+    );
+    recovery.append_event(other);
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    task.metadata = Some(
+        recovery
+            .update_task_metadata(None)
+            .expect("serialize recovery"),
+    );
+
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::execution_failed_auto_retry_count(&task),
+        3
+    );
+}
+
+#[test]
+fn execution_failed_retry_delay_increases_with_retry_count() {
+    // Delay at retry 1 should be <= delay at retry 2 (excluding jitter variance).
+    // We check base values without jitter: base * 2^count.
+    // With default base=30s: retry0 → 30s, retry1 → 60s, retry2 → 120s, ...
+    // Since jitter adds 0–25%, the lower bound at retry N+1 is always > base at retry N.
+    let delay0 = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(0).num_seconds();
+    let delay3 = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(3).num_seconds();
+    assert!(
+        delay3 > delay0,
+        "delay at retry 3 ({delay3}s) should exceed delay at retry 0 ({delay0}s)"
+    );
+}
+
+#[test]
+fn execution_failed_retry_delay_is_capped_at_max() {
+    // Delay at a very high retry count should be <= max_secs + 25% jitter.
+    let max_secs = reconciliation_config().execution_failed_retry_max_secs as i64;
+    let delay = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(20).num_seconds();
+    assert!(
+        delay <= max_secs + max_secs / 4 + 1,
+        "delay at retry 20 ({delay}s) should not far exceed max ({max_secs}s)"
+    );
+}
+
+#[test]
+fn has_execution_stop_retrying_false_without_metadata() {
+    use crate::domain::entities::Task;
+    let task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_execution_stop_retrying(&task),
+        "should return false when no metadata"
+    );
+}
+
+#[test]
+fn has_execution_stop_retrying_true_when_set() {
+    use crate::domain::entities::{ExecutionRecoveryMetadata, ExecutionRecoveryState, Task};
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    recovery.stop_retrying = true;
+    recovery.last_state = ExecutionRecoveryState::Failed;
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::has_execution_stop_retrying(&task),
+        "should return true when stop_retrying is set"
+    );
+}
+
+#[test]
+fn execution_next_retry_at_returns_none_without_events() {
+    use crate::domain::entities::Task;
+    let task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::execution_next_retry_at(&task).is_none(),
+        "should return None when no AutoRetryTriggered events"
+    );
+}
+
+#[test]
+fn execution_next_retry_at_returns_future_timestamp() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
+    };
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Auto,
+        ExecutionRecoveryReasonCode::Timeout,
+        "retry 1",
+    );
+    recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+
+    let next_at = ReconciliationRunner::<tauri::Wry>::execution_next_retry_at(&task);
+    assert!(next_at.is_some(), "should return Some when AutoRetryTriggered event exists");
+    assert!(
+        next_at.unwrap() > chrono::Utc::now(),
+        "next_retry_at should be in the future"
+    );
+}
+
+#[tokio::test]
+async fn record_execution_auto_retry_event_persists_event_via_update_metadata() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, Project,
+        Task,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/test".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let task = Task::new(project.id.clone(), "Failing Task".into());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler
+        .record_execution_auto_retry_event(
+            &task,
+            1,
+            ExecutionFailureSource::TransientTimeout,
+            "Auto-retrying execution (attempt 1/3)",
+        )
+        .await
+        .expect("record event should succeed");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery key should exist");
+
+    assert_eq!(
+        recovery
+            .events
+            .iter()
+            .filter(|e| matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered))
+            .count(),
+        1,
+        "one AutoRetryTriggered event should be recorded"
+    );
+    assert_eq!(recovery.events[0].attempt, Some(1));
+}
+
+#[tokio::test]
+async fn set_execution_stop_retrying_sets_flag_in_db() {
+    use crate::domain::entities::{ExecutionRecoveryMetadata, ExecutionRecoveryState, Project, Task};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/test".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let task = Task::new(project.id.clone(), "Failing Task".into());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler
+        .set_execution_stop_retrying(&task)
+        .await
+        .expect("set stop retrying should succeed");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery key should exist");
+
+    assert!(recovery.stop_retrying, "stop_retrying should be true");
+    assert_eq!(
+        recovery.last_state,
+        ExecutionRecoveryState::Failed,
+        "last_state should be Failed"
+    );
+}
+
+#[tokio::test]
+async fn clear_execution_flat_metadata_removes_is_timeout_and_failure_error() {
+    use crate::domain::entities::{Project, Task};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/test".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Failing Task".into());
+    task.metadata = Some(
+        serde_json::json!({
+            "is_timeout": true,
+            "failure_error": "Agent timed out after 600s",
+            "trigger_origin": "scheduler"
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler
+        .clear_execution_flat_metadata(&task)
+        .await
+        .expect("clear flat metadata should succeed");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let json: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().unwrap()).unwrap();
+
+    assert!(
+        json.get("is_timeout").is_none(),
+        "is_timeout should be removed"
+    );
+    assert!(
+        json.get("failure_error").is_none(),
+        "failure_error should be removed"
+    );
+    assert_eq!(
+        json.get("trigger_origin").and_then(|v| v.as_str()),
+        Some("scheduler"),
+        "trigger_origin should be preserved"
+    );
+}
+
+#[tokio::test]
+async fn reset_execution_recovery_metadata_clears_events_and_resets_state() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project, Task,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/test".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Set up task with existing recovery metadata (2 events, stop_retrying=true, last_state=Failed)
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    recovery.stop_retrying = true;
+    recovery.last_state = ExecutionRecoveryState::Failed;
+    for _ in 0..2u32 {
+        let event = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::AutoRetryTriggered,
+            ExecutionRecoverySource::Auto,
+            ExecutionRecoveryReasonCode::Timeout,
+            "old retry",
+        );
+        recovery.append_event(event);
+    }
+
+    let mut task = Task::new(project.id.clone(), "Failing Task".into());
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler
+        .reset_execution_recovery_metadata(&task)
+        .await
+        .expect("reset should succeed");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let reset_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery key should exist");
+
+    assert!(reset_recovery.events.is_empty(), "events should be cleared");
+    assert!(
+        !reset_recovery.stop_retrying,
+        "stop_retrying should be false"
+    );
+    assert_eq!(
+        reset_recovery.last_state,
+        ExecutionRecoveryState::Retrying,
+        "last_state should be Retrying after reset"
+    );
+}
+
+#[tokio::test]
+async fn stop_execution_retrying_by_user_persists_user_source_and_user_stopped_reason() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode,
+        ExecutionRecoverySource, ExecutionRecoveryState, Project, Task,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/test".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let task = Task::new(project.id.clone(), "Failing Task".into());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler
+        .stop_execution_retrying_by_user(&task)
+        .await
+        .expect("stop_execution_retrying_by_user should succeed");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery key should exist");
+
+    assert!(recovery.stop_retrying, "stop_retrying should be true");
+    assert_eq!(
+        recovery.last_state,
+        ExecutionRecoveryState::Failed,
+        "last_state should be Failed"
+    );
+    assert_eq!(recovery.events.len(), 1, "one event should be recorded");
+    let event = &recovery.events[0];
+    assert!(
+        matches!(event.kind, ExecutionRecoveryEventKind::StopRetrying),
+        "event kind should be StopRetrying"
+    );
+    assert_eq!(
+        event.source,
+        ExecutionRecoverySource::User,
+        "source should be User (not System)"
+    );
+    assert_eq!(
+        event.reason_code,
+        ExecutionRecoveryReasonCode::UserStopped,
+        "reason_code should be UserStopped"
+    );
+}
+
+#[tokio::test]
+async fn record_execution_manual_retry_event_persists_manual_retry_kind_with_user_source() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, ExecutionRecoverySource,
+        ExecutionRecoveryState, Project, Task,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/test".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let task = Task::new(project.id.clone(), "Failing Task".into());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler
+        .record_execution_manual_retry_event(&task)
+        .await
+        .expect("record_execution_manual_retry_event should succeed");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery key should exist");
+
+    assert_eq!(recovery.events.len(), 1, "one event should be recorded");
+    let event = &recovery.events[0];
+    assert!(
+        matches!(event.kind, ExecutionRecoveryEventKind::ManualRetry),
+        "event kind should be ManualRetry"
+    );
+    assert_eq!(
+        event.source,
+        ExecutionRecoverySource::User,
+        "source should be User"
+    );
+    assert_eq!(
+        recovery.last_state,
+        ExecutionRecoveryState::Retrying,
+        "last_state should be Retrying after manual retry event"
+    );
+}
+
+#[tokio::test]
+async fn apply_failed_user_recovery_cancel_sets_stop_retrying_and_returns_true() {
+    use crate::domain::entities::{ExecutionRecoveryMetadata, InternalStatus, Project, Task};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/test".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Failed Task".into());
+    task.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler
+        .apply_user_recovery_action(&task, UserRecoveryAction::Cancel)
+        .await;
+
+    assert!(result, "Cancel action should return true");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    // Task remains Failed — Cancel does not transition
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "task should remain Failed after Cancel"
+    );
+    let recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery key should exist");
+    assert!(
+        recovery.stop_retrying,
+        "stop_retrying should be true after Cancel"
+    );
+}
+
+#[tokio::test]
+async fn apply_failed_user_recovery_restart_transitions_to_ready_and_records_manual_retry_event() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, InternalStatus, Project, Task,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/test".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Create task in Failed state with stale flat metadata
+    let mut task = Task::new(project.id.clone(), "Failed Task".into());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(
+        serde_json::json!({
+            "is_timeout": true,
+            "failure_error": "Agent timed out after 600s"
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler
+        .apply_user_recovery_action(&task, UserRecoveryAction::Restart)
+        .await;
+
+    assert!(result, "Restart action should return true");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    // Task should now be Ready
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "task should transition to Ready after Restart"
+    );
+    // task_branch and worktree_path should be cleared
+    assert!(
+        updated.task_branch.is_none(),
+        "task_branch should be cleared"
+    );
+    assert!(
+        updated.worktree_path.is_none(),
+        "worktree_path should be cleared"
+    );
+    // Flat metadata keys should be removed
+    if let Some(meta_str) = updated.metadata.as_deref() {
+        let json: serde_json::Value = serde_json::from_str(meta_str).unwrap();
+        assert!(
+            json.get("is_timeout").is_none(),
+            "is_timeout should be cleared"
+        );
+        assert!(
+            json.get("failure_error").is_none(),
+            "failure_error should be cleared"
+        );
+    }
+    // ManualRetry event should be recorded
+    let recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery key should exist");
+    assert!(
+        recovery.events.iter().any(|e| matches!(e.kind, ExecutionRecoveryEventKind::ManualRetry)),
+        "ManualRetry event should be recorded after Restart"
+    );
+}
+
+// ── reconcile_failed_execution_task() Tests ───────────────────────────────────
+//
+// These test the early-exit conditions and the happy path of the reconciler handler
+// that auto-retries Failed tasks with transient execution failures.
+
+fn make_execution_recovery(stop: bool, state: crate::domain::entities::ExecutionRecoveryState) -> ExecutionRecoveryMetadata {
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    recovery.last_state = state;
+    recovery.stop_retrying = stop;
+    recovery
+}
+
+fn make_task_with_recovery(project_id: &crate::domain::entities::ProjectId, recovery: ExecutionRecoveryMetadata) -> Task {
+    let mut task = Task::new(project_id.clone(), "Failed Task".into());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize recovery"));
+    task
+}
+
+/// Legacy task with no execution_recovery metadata → reconciler skips it.
+#[tokio::test]
+async fn reconcile_failed_legacy_task_skip_no_metadata() {
+    use crate::domain::entities::Project;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Legacy Task".into());
+    task.internal_status = InternalStatus::Failed;
+    // No execution_recovery metadata — legacy task
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+
+    assert!(!result, "legacy task without metadata should be skipped");
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Failed, "status unchanged");
+}
+
+/// stop_retrying = true → reconciler skips.
+#[tokio::test]
+async fn reconcile_failed_stop_retrying_flag_skips() {
+    use crate::domain::entities::Project;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let recovery = make_execution_recovery(true, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+
+    assert!(!result, "stop_retrying=true should be skipped");
+}
+
+/// last_state = Failed (permanent) → reconciler skips.
+#[tokio::test]
+async fn reconcile_failed_permanent_failure_state_skips() {
+    use crate::domain::entities::Project;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Failed);
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+
+    assert!(!result, "permanent failure (last_state=Failed) should be skipped");
+}
+
+/// GAP H1: WallClockTimeout failure source → reconciler skips (would cause infinite C5 loop).
+#[tokio::test]
+async fn reconcile_failed_wall_clock_timeout_skip() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    recovery.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::Failed,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::WallClockExceeded,
+            "C5 wall-clock timeout",
+        )
+        .with_failure_source(ExecutionFailureSource::WallClockTimeout),
+        ExecutionRecoveryState::Retrying,
+    );
+
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+
+    assert!(!result, "GAP H1: wall-clock timeout must not be retried");
+}
+
+/// Max retries exceeded → reconciler records permanent failure and returns false.
+#[tokio::test]
+async fn reconcile_failed_max_retries_exceeded_marks_permanent_failure() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let max = reconciliation_config().execution_failed_max_retries as u32;
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    // Append exactly max_retries AutoRetryTriggered events (budget exhausted)
+    for i in 0..max {
+        recovery.append_event(
+            ExecutionRecoveryEvent::new(
+                ExecutionRecoveryEventKind::AutoRetryTriggered,
+                ExecutionRecoverySource::Auto,
+                ExecutionRecoveryReasonCode::Timeout,
+                format!("Retry {}", i + 1),
+            )
+            .with_attempt(i + 1)
+            .with_failure_source(ExecutionFailureSource::TransientTimeout),
+        );
+    }
+    recovery.last_state = ExecutionRecoveryState::Retrying;
+
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+
+    assert!(!result, "max retries exceeded: should return false");
+
+    // Verify stop_retrying = true set in metadata
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let updated_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery should exist");
+    assert!(
+        updated_recovery.stop_retrying,
+        "max retries exceeded: stop_retrying must be set to true"
+    );
+    assert_eq!(
+        updated_recovery.last_state,
+        ExecutionRecoveryState::Failed,
+        "max retries exceeded: last_state must be Failed (permanent)"
+    );
+}
+
+/// GAP M6: backoff not elapsed → reconciler skips.
+#[tokio::test]
+async fn reconcile_failed_backoff_not_elapsed_skip() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    // Add an AutoRetryTriggered event with at = now → next_retry_at is in the future
+    recovery.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::AutoRetryTriggered,
+            ExecutionRecoverySource::Auto,
+            ExecutionRecoveryReasonCode::Timeout,
+            "Auto retry 1",
+        )
+        .with_attempt(1)
+        .with_failure_source(ExecutionFailureSource::TransientTimeout),
+        ExecutionRecoveryState::Retrying,
+    );
+    // The backoff delay for retry_count=1 is min(2^1 * base, max) + jitter ≥ 60s
+    // Since at = now, next_retry_at is far in the future
+
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+
+    assert!(!result, "backoff not elapsed: should skip");
+}
+
+/// GAP B6: concurrency guard — at max_concurrent, reconciler skips this cycle.
+#[tokio::test]
+async fn reconcile_failed_concurrency_guard_skip_at_max_concurrent() {
+    use crate::domain::entities::Project;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Fill up max_concurrent slots (default = 2)
+    execution_state.increment_running();
+    execution_state.increment_running();
+    assert!(!execution_state.can_start_task(), "pre-condition: at max capacity");
+
+    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+
+    assert!(!result, "GAP B6: at max_concurrent, should skip");
+}
+
+/// Happy path: eligible Failed task transitions to Ready.
+#[tokio::test]
+async fn reconcile_failed_eligible_task_transitions_to_ready() {
+    use crate::domain::entities::Project;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task in Retrying state — no prior retries, backoff not an issue (first attempt)
+    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let task = make_task_with_recovery(&project.id, recovery);
+    // No task_branch / worktree_path → git cleanup is no-op
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+
+    assert!(result, "eligible task should return true");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "eligible task should transition to Ready"
+    );
+}
+
+/// GAP B7: stale flat metadata (is_timeout, failure_error) cleared before retry.
+#[tokio::test]
+async fn reconcile_failed_flat_metadata_cleared_before_retry() {
+    use crate::domain::entities::Project;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let base_metadata = recovery.update_task_metadata(None).expect("serialize");
+    // Inject stale flat keys alongside structured recovery
+    let mut json: serde_json::Value = serde_json::from_str(&base_metadata).unwrap();
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("is_timeout".to_string(), serde_json::json!(true));
+        obj.insert("failure_error".to_string(), serde_json::json!("Agent timed out after 600s"));
+    }
+
+    let mut task = Task::new(project.id.clone(), "Task with stale flat metadata".into());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(json.to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+
+    assert!(result, "eligible task should return true");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    if let Some(meta_str) = updated.metadata.as_deref() {
+        let parsed: serde_json::Value = serde_json::from_str(meta_str).unwrap();
+        assert!(
+            parsed.get("is_timeout").is_none(),
+            "GAP B7: is_timeout should be removed before retry"
+        );
+        assert!(
+            parsed.get("failure_error").is_none(),
+            "GAP B7: failure_error should be removed before retry"
+        );
+        // Structured recovery metadata must still be present
+        assert!(
+            parsed.get("execution_recovery").is_some(),
+            "execution_recovery structured metadata must be preserved"
+        );
+    }
+}
+
+/// GAP H10: ActivityEvent emitted when auto-retry fires.
+#[tokio::test]
+async fn reconcile_failed_activity_event_emitted_on_auto_retry() {
+    use crate::domain::entities::Project;
+    use crate::domain::repositories::ActivityEventFilter;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler.reconcile_failed_execution_task(&task, InternalStatus::Failed).await;
+    assert!(result, "eligible task should return true");
+
+    // Verify at least one activity event was recorded for this task
+    let page = app_state
+        .activity_event_repo
+        .list_by_task_id(&task.id, None, 10, None::<&ActivityEventFilter>)
+        .await
+        .expect("list activity events");
+    assert!(
+        !page.events.is_empty(),
+        "GAP H10: at least one activity event should be emitted on auto-retry"
+    );
+}
+
+/// GAP H7: targeted metadata write — record_execution_auto_retry_event uses
+/// update_metadata() path and preserves other metadata keys.
+#[tokio::test]
+async fn targeted_metadata_write_preserves_other_keys() {
+    use crate::domain::entities::{ExecutionFailureSource, Project};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task has other metadata keys alongside execution_recovery
+    let recovery = make_execution_recovery(false, crate::domain::entities::ExecutionRecoveryState::Retrying);
+    let base = recovery.update_task_metadata(None).expect("serialize");
+    let mut json: serde_json::Value = serde_json::from_str(&base).unwrap();
+    if let Some(obj) = json.as_object_mut() {
+        obj.insert("trigger_origin".to_string(), serde_json::json!("scheduler"));
+        obj.insert("some_other_key".to_string(), serde_json::json!("preserved"));
+    }
+
+    let mut task = Task::new(project.id.clone(), "Task with extra keys".into());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(json.to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler
+        .record_execution_auto_retry_event(&task, 1, ExecutionFailureSource::TransientTimeout, "test")
+        .await
+        .expect("record should succeed");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let meta_str = updated.metadata.as_deref().expect("metadata should exist");
+    let parsed: serde_json::Value = serde_json::from_str(meta_str).unwrap();
+
+    assert_eq!(
+        parsed["some_other_key"], "preserved",
+        "GAP H7: targeted write must preserve non-recovery metadata keys"
+    );
+    assert!(
+        parsed.get("execution_recovery").is_some(),
+        "execution_recovery must still be present"
+    );
+}
+
+// ── GAP H9: reset_execution_recovery_metadata — already tested in earlier section,
+//    but verifying it gives a fresh retry budget for the apply_user_recovery_action Restart.
+
+/// Restart on Failed task resets execution recovery metadata (fresh retry budget, GAP H9).
+#[tokio::test]
+async fn apply_failed_restart_resets_execution_recovery_metadata_fresh_budget() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task has used up 2 of 3 retries — manual restart should give fresh budget
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    for i in 0..2 {
+        recovery.append_event(
+            ExecutionRecoveryEvent::new(
+                ExecutionRecoveryEventKind::AutoRetryTriggered,
+                ExecutionRecoverySource::Auto,
+                ExecutionRecoveryReasonCode::Timeout,
+                format!("Auto retry {}", i + 1),
+            )
+            .with_attempt(i + 1)
+            .with_failure_source(ExecutionFailureSource::TransientTimeout),
+        );
+    }
+    recovery.last_state = ExecutionRecoveryState::Retrying;
+
+    let mut task = Task::new(project.id.clone(), "Partially retried task".into());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler
+        .apply_user_recovery_action(&task, UserRecoveryAction::Restart)
+        .await;
+
+    assert!(result, "Restart should return true");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Ready, "task should be Ready");
+
+    // Metadata should have been reset — events cleared, fresh retry budget
+    let updated_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery should exist");
+    assert!(
+        !updated_recovery.stop_retrying,
+        "GAP H9: stop_retrying must be false after manual restart"
+    );
+    assert_eq!(
+        updated_recovery.last_state,
+        ExecutionRecoveryState::Retrying,
+        "GAP H9: last_state must be Retrying after reset"
+    );
+    // Events cleared — only ManualRetry event should remain (recorded after reset)
+    let auto_retry_count = updated_recovery
+        .events
+        .iter()
+        .filter(|e| matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered))
+        .count();
+    assert_eq!(
+        auto_retry_count, 0,
+        "GAP H9: AutoRetryTriggered events should be cleared after manual restart (fresh budget)"
+    );
+}
+
+/// Cancel on Failed sets stop_retrying permanently.
+#[tokio::test]
+async fn apply_failed_cancel_sets_stop_retrying_permanently() {
+    use crate::domain::entities::{ExecutionRecoveryMetadata, ExecutionRecoveryState, Project};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let recovery = make_execution_recovery(false, ExecutionRecoveryState::Retrying);
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler
+        .apply_user_recovery_action(&task, UserRecoveryAction::Cancel)
+        .await;
+
+    assert!(result, "Cancel should return true");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Failed, "task remains Failed");
+
+    let updated_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery should exist");
+    assert!(
+        updated_recovery.stop_retrying,
+        "Cancel: stop_retrying must be true"
+    );
+    assert_eq!(
+        updated_recovery.last_state,
+        ExecutionRecoveryState::Failed,
+        "Cancel: last_state must be Failed (permanent)"
+    );
+}
+
+// ============================================================================
+// GAP M2 — recover_timeout_failures() dual-format checking
+// ============================================================================
+
+/// (GAP M2) Legacy format: is_timeout:true → recovered and migrated to new format.
+#[tokio::test]
+async fn recover_timeout_failures_processes_legacy_is_timeout_tasks() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, ExecutionRecoverySource, Project,
+        Task,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Legacy task: Failed with is_timeout:true, no execution_recovery metadata
+    let mut task = Task::new(project.id.clone(), "Legacy Timeout Task".to_string());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(r#"{"is_timeout":true,"failure_error":"Agent timed out"}"#.to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "Legacy is_timeout task must be transitioned to Ready"
+    );
+
+    // Verify ExecutionRecoveryMetadata was created (migration to new format)
+    let recovery = ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+        .expect("parse metadata")
+        .expect("execution_recovery should be created for legacy task");
+
+    // Must have an AutoRetryTriggered event with Startup source (GAP M5 sentinel)
+    let has_startup_event = recovery.events.iter().any(|e| {
+        matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered)
+            && matches!(e.source, ExecutionRecoverySource::Startup)
+    });
+    assert!(
+        has_startup_event,
+        "Legacy task must have an AutoRetryTriggered/Startup event after migration"
+    );
+}
+
+/// (GAP M2) New format: execution_recovery.last_state==Retrying → recovered without needing is_timeout.
+#[tokio::test]
+async fn recover_timeout_failures_processes_new_format_retrying_tasks() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
+        Task,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // New-format task: has execution_recovery metadata with last_state=Retrying, no is_timeout
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    let failed_event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::Failed,
+        ExecutionRecoverySource::System,
+        ExecutionRecoveryReasonCode::Timeout,
+        "Agent timed out",
+    );
+    recovery.append_event_with_state(failed_event, ExecutionRecoveryState::Retrying);
+    let metadata_json = recovery.update_task_metadata(None).expect("serialize");
+
+    let mut task = Task::new(project.id.clone(), "New Format Timeout Task".to_string());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(metadata_json);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "New-format retrying task must be transitioned to Ready"
+    );
+}
+
+/// (GAP M2) Task with neither is_timeout nor execution_recovery → not recovered.
+#[tokio::test]
+async fn recover_timeout_failures_skips_tasks_with_no_timeout_metadata() {
+    use crate::domain::entities::{Project, Task};
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Task with no relevant metadata (e.g., cancelled or provider-error failure)
+    let mut task = Task::new(project.id.clone(), "Non-Timeout Failed Task".to_string());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(r#"{"failure_error":"Some other error"}"#.to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "Non-timeout task must NOT be transitioned — should remain Failed"
+    );
+}
+
+// ============================================================================
+// GAP M5 — Startup sentinel (has_recent_startup_recovery)
+// ============================================================================
+
+/// (GAP M5) Returns true when a Startup-sourced AutoRetryTriggered event is recent (< 60s).
+#[test]
+fn has_recent_startup_recovery_true_for_recent_startup_event() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
+    };
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Startup,
+        ExecutionRecoveryReasonCode::Timeout,
+        "Startup recovery",
+    );
+    recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::has_recent_startup_recovery(&task),
+        "should return true for recent Startup-sourced event"
+    );
+}
+
+/// (GAP M5) Returns false when Startup-sourced event is older than 60s.
+#[test]
+fn has_recent_startup_recovery_false_for_old_startup_event() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
+    };
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    let mut event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Startup,
+        ExecutionRecoveryReasonCode::Timeout,
+        "Startup recovery (old)",
+    );
+    // Backdate the event by 90 seconds — outside the 60s sentinel window
+    event.at = chrono::Utc::now() - chrono::Duration::seconds(90);
+    recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_recent_startup_recovery(&task),
+        "should return false for Startup event older than 60s"
+    );
+}
+
+/// (GAP M5) Returns false when only Auto-sourced events exist (not Startup).
+#[test]
+fn has_recent_startup_recovery_false_for_auto_source() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Task,
+    };
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Auto,
+        ExecutionRecoveryReasonCode::Timeout,
+        "Auto reconciler retry",
+    );
+    recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_recent_startup_recovery(&task),
+        "should return false for Auto-sourced events — not a startup sentinel"
+    );
+}
+
+/// (GAP M5) Returns false when no execution_recovery metadata exists.
+#[test]
+fn has_recent_startup_recovery_false_without_metadata() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "no metadata".into(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::has_recent_startup_recovery(&task),
+        "should return false when no metadata"
+    );
 }

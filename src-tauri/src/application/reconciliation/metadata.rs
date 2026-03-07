@@ -5,8 +5,10 @@ use tracing::warn;
 
 use crate::application::GitService;
 use crate::domain::entities::{
-    InternalStatus, MergeFailureSource, MergeRecoveryEventKind, MergeRecoveryMetadata,
-    MergeRecoveryState, Task,
+    ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+    ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
+    ExecutionRecoveryState, InternalStatus, MergeFailureSource, MergeRecoveryEventKind,
+    MergeRecoveryMetadata, MergeRecoveryState, Task,
 };
 use crate::infrastructure::agents::claude::reconciliation_config;
 
@@ -350,6 +352,337 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 old_sha: last_sha,
                 new_sha: current_sha,
             }
+        }
+    }
+
+}
+
+// ── Execution Recovery Helpers ────────────────────────────────────────────────
+// Called by reconcile_failed_execution_task() (Wave 3 handler in execution.rs).
+impl<R: Runtime> ReconciliationRunner<R> {
+    /// Count `AutoRetryTriggered` events in execution recovery metadata.
+    pub(crate) fn execution_failed_auto_retry_count(task: &Task) -> u32 {
+        ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .map(|meta| {
+                meta.events
+                    .iter()
+                    .filter(|e| matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered))
+                    .count() as u32
+            })
+            .unwrap_or(0)
+    }
+
+    /// Exponential backoff with jitter for failed execution retries.
+    /// Formula: `min(2^retry_count * base_secs, max_secs) + random jitter (0–25%)`.
+    /// Mirrors `merge_incomplete_retry_delay()`.
+    pub(crate) fn execution_failed_retry_delay(retry_count: u32) -> chrono::Duration {
+        use rand::Rng;
+        let exponent = retry_count.min(6);
+        let scaled = (reconciliation_config().execution_failed_retry_base_secs as i64)
+            .saturating_mul(1_i64 << exponent);
+        let base_delay =
+            scaled.min(reconciliation_config().execution_failed_retry_max_secs as i64);
+        let jitter = rand::thread_rng().gen_range(0..=base_delay / 4);
+        chrono::Duration::seconds(base_delay + jitter)
+    }
+
+    /// Returns true if the task's execution recovery has `stop_retrying` set.
+    #[allow(dead_code)]
+    pub(crate) fn has_execution_stop_retrying(task: &Task) -> bool {
+        ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .map(|meta| meta.stop_retrying)
+            .unwrap_or(false)
+    }
+
+    /// Append an `AutoRetryTriggered` event to the task's execution recovery metadata.
+    /// Uses targeted `update_metadata()` SQL path to prevent metadata write races (GAP H7).
+    pub(crate) async fn record_execution_auto_retry_event(
+        &self,
+        task: &Task,
+        attempt: u32,
+        failure_source: ExecutionFailureSource,
+        message: impl Into<String>,
+    ) -> Result<(), String> {
+        let mut recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                .unwrap_or(None)
+                .unwrap_or_default();
+
+        let reason_code = Self::failure_source_to_reason_code(failure_source);
+        let event = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::AutoRetryTriggered,
+            ExecutionRecoverySource::Auto,
+            reason_code,
+            message,
+        )
+        .with_attempt(attempt)
+        .with_failure_source(failure_source);
+
+        recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
+
+        let updated_metadata = recovery
+            .update_task_metadata(task.metadata.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        self.task_repo
+            .update_metadata(&task.id, Some(updated_metadata))
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Set `stop_retrying = true` in the task's execution recovery metadata.
+    /// Appends a `StopRetrying` event and transitions state to `Failed`.
+    /// Uses targeted `update_metadata()` SQL path (GAP H7).
+    pub(crate) async fn set_execution_stop_retrying(&self, task: &Task) -> Result<(), String> {
+        let mut recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                .unwrap_or(None)
+                .unwrap_or_default();
+
+        let event = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::StopRetrying,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::MaxRetriesExceeded,
+            "Max retries exceeded — stopping auto-retry",
+        );
+
+        recovery.stop_retrying = true;
+        recovery.append_event_with_state(event, ExecutionRecoveryState::Failed);
+
+        let updated_metadata = recovery
+            .update_task_metadata(task.metadata.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        self.task_repo
+            .update_metadata(&task.id, Some(updated_metadata))
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Compute the earliest time the next retry should be attempted.
+    /// Returns the timestamp of the last `AutoRetryTriggered` event plus the
+    /// backoff delay for the current retry count. Returns `None` if no retry
+    /// events exist yet (GAPs M6, M8).
+    pub(crate) fn execution_next_retry_at(
+        task: &Task,
+    ) -> Option<chrono::DateTime<chrono::Utc>> {
+        let recovery = ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()?;
+
+        let last_retry_event = recovery
+            .events
+            .iter()
+            .rev()
+            .find(|e| matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered))?;
+
+        let retry_count = recovery
+            .events
+            .iter()
+            .filter(|e| matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered))
+            .count() as u32;
+
+        let delay = Self::execution_failed_retry_delay(retry_count);
+        Some(last_retry_event.at + delay)
+    }
+
+    /// Remove stale flat failure metadata keys (`is_timeout`, `failure_error`) from task metadata.
+    /// Preserves structured `execution_recovery` metadata intact.
+    /// Uses targeted `update_metadata()` SQL path (GAPs B7, H7).
+    pub(crate) async fn clear_execution_flat_metadata(&self, task: &Task) -> Result<(), String> {
+        let mut json: serde_json::Value = task
+            .metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str(m).ok())
+            .unwrap_or_else(|| serde_json::json!({}));
+
+        if let Some(obj) = json.as_object_mut() {
+            obj.remove("is_timeout");
+            obj.remove("failure_error");
+        }
+
+        self.task_repo
+            .update_metadata(&task.id, Some(json.to_string()))
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Reset execution recovery metadata for a manual restart.
+    /// Clears event log, sets `last_state: Retrying`, sets `stop_retrying: false`.
+    /// Gives the user a fresh retry budget after manual intervention (GAP H9).
+    /// Uses targeted `update_metadata()` SQL path (GAP H7).
+    /// Used by Wave 4 (apply_user_recovery_action).
+    pub(crate) async fn reset_execution_recovery_metadata(
+        &self,
+        task: &Task,
+    ) -> Result<(), String> {
+        let mut recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                .unwrap_or(None)
+                .unwrap_or_default();
+
+        recovery.events.clear();
+        recovery.last_state = ExecutionRecoveryState::Retrying;
+        recovery.stop_retrying = false;
+
+        let updated_metadata = recovery
+            .update_task_metadata(task.metadata.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        // Also clear stale flat keys (is_timeout, failure_error) — prevents
+        // a subsequent clear_execution_flat_metadata call from re-reading the
+        // stale task object and overwriting this write (GAP B7).
+        let mut json: serde_json::Value = serde_json::from_str(&updated_metadata)
+            .unwrap_or_else(|_| serde_json::json!({}));
+        if let Some(obj) = json.as_object_mut() {
+            obj.remove("is_timeout");
+            obj.remove("failure_error");
+        }
+
+        self.task_repo
+            .update_metadata(&task.id, Some(json.to_string()))
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Set `stop_retrying = true` with User source — user explicitly cancelled auto-retry.
+    /// Task remains Failed permanently (GAP H2, Cancel action).
+    /// Uses targeted `update_metadata()` SQL path (GAP H7).
+    pub(crate) async fn stop_execution_retrying_by_user(&self, task: &Task) -> Result<(), String> {
+        let mut recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                .unwrap_or(None)
+                .unwrap_or_default();
+
+        let event = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::StopRetrying,
+            ExecutionRecoverySource::User,
+            ExecutionRecoveryReasonCode::UserStopped,
+            "User cancelled auto-retry — task will remain Failed",
+        );
+
+        recovery.stop_retrying = true;
+        recovery.append_event_with_state(event, ExecutionRecoveryState::Failed);
+
+        let updated_metadata = recovery
+            .update_task_metadata(task.metadata.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        self.task_repo
+            .update_metadata(&task.id, Some(updated_metadata))
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Record a `ManualRetry` event in execution recovery metadata.
+    /// Used when the user manually restarts a Failed task (GAP H2, Restart action).
+    /// Uses targeted `update_metadata()` SQL path (GAP H7).
+    pub(crate) async fn record_execution_manual_retry_event(
+        &self,
+        task: &Task,
+    ) -> Result<(), String> {
+        let mut recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                .unwrap_or(None)
+                .unwrap_or_default();
+
+        let event = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::ManualRetry,
+            ExecutionRecoverySource::User,
+            ExecutionRecoveryReasonCode::Unknown,
+            "User manually restarted task execution",
+        );
+
+        recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
+
+        let updated_metadata = recovery
+            .update_task_metadata(task.metadata.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        self.task_repo
+            .update_metadata(&task.id, Some(updated_metadata))
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Returns true if `recover_timeout_failures()` processed this task within the last 60s.
+    /// Used by the reconciler loop to skip tasks already handled at startup (GAP M5 sentinel).
+    pub(crate) fn has_recent_startup_recovery(task: &Task) -> bool {
+        let recovery =
+            match ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref()) {
+                Ok(Some(r)) => r,
+                _ => return false,
+            };
+        let threshold = chrono::Utc::now() - chrono::Duration::seconds(60);
+        recovery.events.iter().any(|e| {
+            matches!(e.source, ExecutionRecoverySource::Startup) && e.at >= threshold
+        })
+    }
+
+    /// Append an `AutoRetryTriggered` event with `Startup` source to the task's execution recovery metadata.
+    /// Also creates an initial `Failed` event if no recovery metadata exists yet (legacy migration — GAP M2).
+    /// Uses targeted `update_metadata()` SQL path to prevent metadata write races (GAP H7).
+    pub(crate) async fn record_execution_startup_retry_event(
+        &self,
+        task: &Task,
+        attempt: u32,
+    ) -> Result<(), String> {
+        let mut recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                .unwrap_or(None)
+                .unwrap_or_default();
+
+        // For legacy tasks (no prior execution_recovery), create an initial Failed event
+        // to record the historical failure before migrating to the new format.
+        if recovery.events.is_empty() {
+            let failed_event = ExecutionRecoveryEvent::new(
+                ExecutionRecoveryEventKind::Failed,
+                ExecutionRecoverySource::System,
+                ExecutionRecoveryReasonCode::Timeout,
+                "Legacy timeout failure — migrated to structured recovery metadata",
+            )
+            .with_failure_source(ExecutionFailureSource::TransientTimeout);
+            recovery.append_event(failed_event);
+        }
+
+        let retry_event = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::AutoRetryTriggered,
+            ExecutionRecoverySource::Startup,
+            ExecutionRecoveryReasonCode::Timeout,
+            format!("Startup recovery: re-queuing timeout-failed task (attempt {attempt})"),
+        )
+        .with_attempt(attempt)
+        .with_failure_source(ExecutionFailureSource::TransientTimeout);
+
+        recovery.append_event_with_state(retry_event, ExecutionRecoveryState::Retrying);
+
+        let updated_metadata = recovery
+            .update_task_metadata(task.metadata.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        self.task_repo
+            .update_metadata(&task.id, Some(updated_metadata))
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Map `ExecutionFailureSource` to the corresponding `ExecutionRecoveryReasonCode`.
+    fn failure_source_to_reason_code(
+        source: ExecutionFailureSource,
+    ) -> ExecutionRecoveryReasonCode {
+        match source {
+            ExecutionFailureSource::TransientTimeout => ExecutionRecoveryReasonCode::Timeout,
+            ExecutionFailureSource::ParseStall => ExecutionRecoveryReasonCode::ParseStall,
+            ExecutionFailureSource::AgentCrash => ExecutionRecoveryReasonCode::AgentExit,
+            ExecutionFailureSource::ProviderError => ExecutionRecoveryReasonCode::ProviderError,
+            ExecutionFailureSource::WallClockTimeout => {
+                ExecutionRecoveryReasonCode::WallClockExceeded
+            }
+            ExecutionFailureSource::Unknown => ExecutionRecoveryReasonCode::Unknown,
         }
     }
 }

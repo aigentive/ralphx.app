@@ -231,3 +231,147 @@ fn test_branch_freshness_timeout_env_override() {
     // Other reconciliation fields should remain unchanged
     assert_eq!(cfg.reconciliation.attempt_merge_deadline_secs, 60);
 }
+
+// ── Execution recovery config defaults + validation (GAP M7) ──────────────────
+
+#[test]
+fn test_execution_failed_config_defaults_are_sensible() {
+    let recon = ReconciliationConfig::default();
+
+    assert_eq!(recon.execution_failed_max_retries, 3, "default max retries: 3");
+    assert_eq!(recon.execution_failed_retry_base_secs, 30, "default base: 30s");
+    assert_eq!(recon.execution_failed_retry_max_secs, 600, "default max: 600s");
+}
+
+/// GAP M7: base_secs must be ≤ max_secs in default config.
+#[test]
+fn test_execution_failed_retry_base_le_max_in_defaults() {
+    let recon = ReconciliationConfig::default();
+    assert!(
+        recon.execution_failed_retry_base_secs <= recon.execution_failed_retry_max_secs,
+        "base ({}) must be ≤ max ({})",
+        recon.execution_failed_retry_base_secs,
+        recon.execution_failed_retry_max_secs
+    );
+}
+
+#[test]
+fn test_execution_failed_max_retries_is_positive() {
+    let recon = ReconciliationConfig::default();
+    assert!(
+        recon.execution_failed_max_retries > 0,
+        "execution_failed_max_retries must be > 0"
+    );
+}
+
+#[test]
+fn test_execution_failed_max_retries_env_override() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_RECONCILIATION_EXECUTION_FAILED_MAX_RETRIES" => Some("5".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(cfg.reconciliation.execution_failed_max_retries, 5);
+    // Other fields remain unchanged
+    assert_eq!(cfg.reconciliation.execution_failed_retry_base_secs, 30);
+}
+
+#[test]
+fn test_execution_failed_retry_base_secs_env_override() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_BASE_SECS" => Some("60".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(cfg.reconciliation.execution_failed_retry_base_secs, 60);
+}
+
+#[test]
+fn test_execution_failed_retry_max_secs_env_override() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_MAX_SECS" => Some("1200".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(cfg.reconciliation.execution_failed_retry_max_secs, 1200);
+    // Base unchanged
+    assert_eq!(cfg.reconciliation.execution_failed_retry_base_secs, 30);
+}
+
+#[test]
+fn test_execution_failed_all_three_env_overrides_applied_together() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_RECONCILIATION_EXECUTION_FAILED_MAX_RETRIES" => Some("5".to_string()),
+        "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_BASE_SECS" => Some("45".to_string()),
+        "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_MAX_SECS" => Some("900".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(cfg.reconciliation.execution_failed_max_retries, 5);
+    assert_eq!(cfg.reconciliation.execution_failed_retry_base_secs, 45);
+    assert_eq!(cfg.reconciliation.execution_failed_retry_max_secs, 900);
+
+    // GAP M7 validation: base still ≤ max after overrides
+    assert!(
+        cfg.reconciliation.execution_failed_retry_base_secs
+            <= cfg.reconciliation.execution_failed_retry_max_secs
+    );
+}
+
+#[test]
+fn test_execution_failed_invalid_env_values_keep_defaults() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_RECONCILIATION_EXECUTION_FAILED_MAX_RETRIES" => Some("not_a_number".to_string()),
+        "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_BASE_SECS" => Some("abc".to_string()),
+        _ => None,
+    });
+
+    // Invalid values ignored — defaults preserved
+    assert_eq!(cfg.reconciliation.execution_failed_max_retries, 3);
+    assert_eq!(cfg.reconciliation.execution_failed_retry_base_secs, 30);
+}

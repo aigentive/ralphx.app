@@ -660,3 +660,444 @@ fn rate_limit_cleared_after_expiry() {
     assert_eq!(restored.rate_limit_retry_after, None);
     assert_eq!(restored.last_state, MergeRecoveryState::Retrying);
 }
+
+// --- ExecutionRecoveryMetadata tests ---
+
+#[test]
+fn execution_recovery_metadata_new_creates_empty() {
+    let meta = ExecutionRecoveryMetadata::new();
+    assert_eq!(meta.version, 1);
+    assert!(meta.events.is_empty());
+    assert_eq!(meta.last_state, ExecutionRecoveryState::Retrying);
+    assert!(!meta.stop_retrying);
+}
+
+#[test]
+fn execution_recovery_metadata_default_works() {
+    let meta = ExecutionRecoveryMetadata::default();
+    assert_eq!(meta.version, 1);
+    assert!(meta.events.is_empty());
+    assert!(!meta.stop_retrying);
+}
+
+#[test]
+fn execution_recovery_metadata_max_events_constant() {
+    assert_eq!(ExecutionRecoveryMetadata::MAX_EVENTS, 50);
+}
+
+#[test]
+fn execution_recovery_event_new_sets_defaults() {
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::Failed,
+        ExecutionRecoverySource::System,
+        ExecutionRecoveryReasonCode::Timeout,
+        "Timed out",
+    );
+
+    assert_eq!(event.kind, ExecutionRecoveryEventKind::Failed);
+    assert_eq!(event.source, ExecutionRecoverySource::System);
+    assert_eq!(event.reason_code, ExecutionRecoveryReasonCode::Timeout);
+    assert_eq!(event.message, "Timed out");
+    assert!(event.attempt.is_none());
+    assert!(event.failure_source.is_none());
+}
+
+#[test]
+fn execution_recovery_event_builder_methods() {
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Auto,
+        ExecutionRecoveryReasonCode::Timeout,
+        "Auto retry",
+    )
+    .with_attempt(2)
+    .with_failure_source(ExecutionFailureSource::TransientTimeout);
+
+    assert_eq!(event.attempt, Some(2));
+    assert_eq!(event.failure_source, Some(ExecutionFailureSource::TransientTimeout));
+}
+
+#[test]
+fn execution_recovery_event_serializes_to_json() {
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Auto,
+        ExecutionRecoveryReasonCode::Timeout,
+        "Auto retry",
+    )
+    .with_attempt(1)
+    .with_failure_source(ExecutionFailureSource::TransientTimeout);
+
+    let json = serde_json::to_string(&event).unwrap();
+    assert!(json.contains("\"kind\":\"auto_retry_triggered\""));
+    assert!(json.contains("\"source\":\"auto\""));
+    assert!(json.contains("\"reason_code\":\"timeout\""));
+    assert!(json.contains("\"attempt\":1"));
+    assert!(json.contains("\"failure_source\":\"transient_timeout\""));
+}
+
+#[test]
+fn execution_recovery_event_skips_serializing_none_fields() {
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::Failed,
+        ExecutionRecoverySource::System,
+        ExecutionRecoveryReasonCode::Timeout,
+        "Failed",
+    );
+
+    let json = serde_json::to_string(&event).unwrap();
+    assert!(!json.contains("\"attempt\""));
+    assert!(!json.contains("\"failure_source\""));
+}
+
+#[test]
+fn execution_recovery_event_kind_serialization() {
+    let kinds = [
+        (ExecutionRecoveryEventKind::Failed, "failed"),
+        (ExecutionRecoveryEventKind::AutoRetryTriggered, "auto_retry_triggered"),
+        (ExecutionRecoveryEventKind::AttemptStarted, "attempt_started"),
+        (ExecutionRecoveryEventKind::AttemptSucceeded, "attempt_succeeded"),
+        (ExecutionRecoveryEventKind::ManualRetry, "manual_retry"),
+        (ExecutionRecoveryEventKind::StopRetrying, "stop_retrying"),
+    ];
+
+    for (kind, expected) in &kinds {
+        let json = serde_json::to_string(kind).unwrap();
+        assert_eq!(json, format!("\"{}\"", expected));
+    }
+}
+
+#[test]
+fn execution_recovery_source_serialization() {
+    let sources = [
+        (ExecutionRecoverySource::System, "system"),
+        (ExecutionRecoverySource::Auto, "auto"),
+        (ExecutionRecoverySource::User, "user"),
+    ];
+
+    for (source, expected) in &sources {
+        let json = serde_json::to_string(source).unwrap();
+        assert_eq!(json, format!("\"{}\"", expected));
+    }
+}
+
+#[test]
+fn execution_recovery_reason_code_serialization() {
+    let codes = [
+        (ExecutionRecoveryReasonCode::Timeout, "timeout"),
+        (ExecutionRecoveryReasonCode::ParseStall, "parse_stall"),
+        (ExecutionRecoveryReasonCode::AgentExit, "agent_exit"),
+        (ExecutionRecoveryReasonCode::ProviderError, "provider_error"),
+        (ExecutionRecoveryReasonCode::WallClockExceeded, "wall_clock_exceeded"),
+        (ExecutionRecoveryReasonCode::MaxRetriesExceeded, "max_retries_exceeded"),
+        (ExecutionRecoveryReasonCode::UserStopped, "user_stopped"),
+        (ExecutionRecoveryReasonCode::Unknown, "unknown"),
+    ];
+
+    for (code, expected) in &codes {
+        let json = serde_json::to_string(code).unwrap();
+        assert_eq!(json, format!("\"{}\"", expected));
+    }
+}
+
+#[test]
+fn execution_recovery_state_serialization() {
+    let states = [
+        (ExecutionRecoveryState::Retrying, "retrying"),
+        (ExecutionRecoveryState::Failed, "failed"),
+        (ExecutionRecoveryState::Succeeded, "succeeded"),
+    ];
+
+    for (state, expected) in &states {
+        let json = serde_json::to_string(state).unwrap();
+        assert_eq!(json, format!("\"{}\"", expected));
+    }
+}
+
+#[test]
+fn execution_failure_source_serialization() {
+    let sources = [
+        (ExecutionFailureSource::TransientTimeout, "transient_timeout"),
+        (ExecutionFailureSource::ParseStall, "parse_stall"),
+        (ExecutionFailureSource::AgentCrash, "agent_crash"),
+        (ExecutionFailureSource::ProviderError, "provider_error"),
+        (ExecutionFailureSource::WallClockTimeout, "wall_clock_timeout"),
+        (ExecutionFailureSource::Unknown, "unknown"),
+    ];
+
+    for (source, expected) in &sources {
+        let json = serde_json::to_string(source).unwrap();
+        assert_eq!(json, format!("\"{}\"", expected));
+    }
+}
+
+#[test]
+fn execution_failure_source_is_transient_for_retryable_variants() {
+    assert!(ExecutionFailureSource::TransientTimeout.is_transient());
+    assert!(ExecutionFailureSource::ParseStall.is_transient());
+    assert!(ExecutionFailureSource::AgentCrash.is_transient());
+}
+
+#[test]
+fn execution_failure_source_not_transient_for_non_retryable_variants() {
+    assert!(!ExecutionFailureSource::ProviderError.is_transient());
+    assert!(!ExecutionFailureSource::WallClockTimeout.is_transient());
+    assert!(!ExecutionFailureSource::Unknown.is_transient());
+}
+
+#[test]
+fn execution_recovery_metadata_append_event_trims_when_exceeds_max() {
+    let mut meta = ExecutionRecoveryMetadata::new();
+
+    for i in 0..(ExecutionRecoveryMetadata::MAX_EVENTS + 5) {
+        let event = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::Failed,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::Timeout,
+            format!("Event {}", i),
+        );
+        meta.append_event(event);
+    }
+
+    assert_eq!(meta.events.len(), ExecutionRecoveryMetadata::MAX_EVENTS);
+    // Oldest events trimmed — first remaining is event #5
+    assert_eq!(meta.events[0].message, "Event 5");
+    assert_eq!(
+        meta.events[ExecutionRecoveryMetadata::MAX_EVENTS - 1].message,
+        format!("Event {}", ExecutionRecoveryMetadata::MAX_EVENTS + 4)
+    );
+}
+
+#[test]
+fn execution_recovery_metadata_append_event_with_state_updates_both() {
+    let mut meta = ExecutionRecoveryMetadata::new();
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Auto,
+        ExecutionRecoveryReasonCode::Timeout,
+        "Retry",
+    );
+
+    meta.append_event_with_state(event, ExecutionRecoveryState::Retrying);
+
+    assert_eq!(meta.events.len(), 1);
+    assert_eq!(meta.last_state, ExecutionRecoveryState::Retrying);
+}
+
+#[test]
+fn execution_recovery_metadata_from_task_metadata_with_no_metadata() {
+    let result = ExecutionRecoveryMetadata::from_task_metadata(None).unwrap();
+    assert!(result.is_none());
+}
+
+#[test]
+fn execution_recovery_metadata_from_task_metadata_with_empty_json() {
+    let result = ExecutionRecoveryMetadata::from_task_metadata(Some("{}")).unwrap();
+    assert!(result.is_none());
+}
+
+#[test]
+fn execution_recovery_metadata_from_task_metadata_with_other_keys_only() {
+    let json = r#"{"is_timeout": true, "failure_error": "Agent timed out"}"#;
+    let result = ExecutionRecoveryMetadata::from_task_metadata(Some(json)).unwrap();
+    assert!(result.is_none());
+}
+
+#[test]
+fn execution_recovery_metadata_from_task_metadata_with_valid_data() {
+    let json = r#"{
+        "is_timeout": true,
+        "execution_recovery": {
+            "version": 1,
+            "events": [
+                {
+                    "at": "2026-03-06T10:00:00Z",
+                    "kind": "failed",
+                    "source": "system",
+                    "reason_code": "timeout",
+                    "message": "Timed out",
+                    "failure_source": "transient_timeout"
+                }
+            ],
+            "last_state": "retrying",
+            "stop_retrying": false
+        }
+    }"#;
+
+    let result = ExecutionRecoveryMetadata::from_task_metadata(Some(json)).unwrap();
+    assert!(result.is_some());
+
+    let meta = result.unwrap();
+    assert_eq!(meta.version, 1);
+    assert_eq!(meta.events.len(), 1);
+    assert_eq!(meta.last_state, ExecutionRecoveryState::Retrying);
+    assert!(!meta.stop_retrying);
+    assert_eq!(
+        meta.events[0].failure_source,
+        Some(ExecutionFailureSource::TransientTimeout)
+    );
+}
+
+#[test]
+fn execution_recovery_metadata_from_task_metadata_with_invalid_json() {
+    let result = ExecutionRecoveryMetadata::from_task_metadata(Some("not json"));
+    assert!(result.is_err());
+}
+
+#[test]
+fn execution_recovery_metadata_update_task_metadata_creates_new_object() {
+    let mut meta = ExecutionRecoveryMetadata::new();
+    meta.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::Failed,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::Timeout,
+            "Timed out",
+        ),
+        ExecutionRecoveryState::Retrying,
+    );
+
+    let result = meta.update_task_metadata(None).unwrap();
+
+    let value: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert!(value.get("execution_recovery").is_some());
+    assert_eq!(value["execution_recovery"]["version"], 1);
+    assert_eq!(
+        value["execution_recovery"]["events"].as_array().unwrap().len(),
+        1
+    );
+    assert_eq!(value["execution_recovery"]["last_state"], "retrying");
+}
+
+#[test]
+fn execution_recovery_metadata_update_task_metadata_preserves_existing_keys() {
+    let meta = ExecutionRecoveryMetadata::new();
+    let existing = r#"{"is_timeout": true, "failure_error": "Agent timed out"}"#;
+    let result = meta.update_task_metadata(Some(existing)).unwrap();
+
+    let value: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(value["is_timeout"], true);
+    assert_eq!(value["failure_error"], "Agent timed out");
+    assert!(value.get("execution_recovery").is_some());
+}
+
+#[test]
+fn execution_recovery_metadata_update_task_metadata_overwrites_existing_recovery() {
+    let mut meta = ExecutionRecoveryMetadata::new();
+    meta.stop_retrying = true;
+    meta.last_state = ExecutionRecoveryState::Failed;
+
+    let existing = r#"{
+        "execution_recovery": {
+            "version": 1,
+            "events": [],
+            "last_state": "retrying",
+            "stop_retrying": false
+        }
+    }"#;
+
+    let result = meta.update_task_metadata(Some(existing)).unwrap();
+    let value: serde_json::Value = serde_json::from_str(&result).unwrap();
+    assert_eq!(value["execution_recovery"]["last_state"], "failed");
+    assert_eq!(value["execution_recovery"]["stop_retrying"], true);
+}
+
+#[test]
+fn roundtrip_from_and_update_execution_task_metadata() {
+    let mut original = ExecutionRecoveryMetadata::new();
+    original.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::AutoRetryTriggered,
+            ExecutionRecoverySource::Auto,
+            ExecutionRecoveryReasonCode::Timeout,
+            "Auto retry attempt 1",
+        )
+        .with_attempt(1)
+        .with_failure_source(ExecutionFailureSource::AgentCrash),
+        ExecutionRecoveryState::Retrying,
+    );
+
+    let json_str = original.update_task_metadata(None).unwrap();
+    let parsed = ExecutionRecoveryMetadata::from_task_metadata(Some(&json_str))
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(parsed.version, original.version);
+    assert_eq!(parsed.events.len(), 1);
+    assert_eq!(parsed.last_state, ExecutionRecoveryState::Retrying);
+    assert_eq!(parsed.events[0].message, "Auto retry attempt 1");
+    assert_eq!(parsed.events[0].attempt, Some(1));
+    assert_eq!(
+        parsed.events[0].failure_source,
+        Some(ExecutionFailureSource::AgentCrash)
+    );
+}
+
+fn make_failed_event(source: ExecutionFailureSource) -> ExecutionRecoveryEvent {
+    ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::Failed,
+        ExecutionRecoverySource::System,
+        ExecutionRecoveryReasonCode::Timeout,
+        "failed",
+    )
+    .with_failure_source(source)
+}
+
+fn make_succeeded_event() -> ExecutionRecoveryEvent {
+    ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AttemptSucceeded,
+        ExecutionRecoverySource::System,
+        ExecutionRecoveryReasonCode::Unknown,
+        "succeeded",
+    )
+}
+
+#[test]
+fn last_failure_is_transient_empty_returns_false() {
+    let meta = ExecutionRecoveryMetadata::new();
+    assert!(!meta.last_failure_is_transient());
+}
+
+#[test]
+fn last_failure_is_transient_only_checks_last_event() {
+    // Old event was transient; last event has no failure_source (succeeded)
+    // The guard must return false so auto-commit is NOT skipped after a successful retry
+    let mut meta = ExecutionRecoveryMetadata::new();
+    meta.append_event(make_failed_event(ExecutionFailureSource::TransientTimeout));
+    meta.append_event(make_succeeded_event()); // last event — no failure_source
+    assert!(
+        !meta.last_failure_is_transient(),
+        "must not return true when last event has no failure_source"
+    );
+}
+
+#[test]
+fn last_failure_is_transient_true_when_last_event_is_transient() {
+    let mut meta = ExecutionRecoveryMetadata::new();
+    meta.append_event(make_failed_event(ExecutionFailureSource::TransientTimeout));
+    assert!(meta.last_failure_is_transient());
+}
+
+#[test]
+fn last_failure_is_transient_false_when_last_event_is_non_transient() {
+    let mut meta = ExecutionRecoveryMetadata::new();
+    meta.append_event(make_failed_event(ExecutionFailureSource::TransientTimeout));
+    meta.append_event(make_failed_event(ExecutionFailureSource::Unknown)); // last event
+    assert!(!meta.last_failure_is_transient());
+}
+
+#[test]
+fn execution_recovery_metadata_roundtrip() {
+    let mut meta = ExecutionRecoveryMetadata::new();
+    meta.append_event_with_state(
+        make_failed_event(ExecutionFailureSource::AgentCrash),
+        ExecutionRecoveryState::Retrying,
+    );
+    let json = meta.update_task_metadata(None).unwrap();
+    let restored = ExecutionRecoveryMetadata::from_task_metadata(Some(&json))
+        .unwrap()
+        .unwrap();
+    assert_eq!(restored.last_state, ExecutionRecoveryState::Retrying);
+    assert_eq!(restored.events.len(), 1);
+    assert!(restored.last_failure_is_transient());
+}
