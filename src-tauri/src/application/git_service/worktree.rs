@@ -36,21 +36,50 @@ impl GitService {
             })?;
         }
 
-        let output = git_cmd::run(
-            &[
-                "worktree",
-                "add",
-                "-b",
-                branch,
-                worktree.to_str().unwrap_or_default(),
-                base,
-            ],
-            repo,
-        )
-        .await?;
+        let args = [
+            "worktree",
+            "add",
+            "-b",
+            branch,
+            worktree.to_str().unwrap_or_default(),
+            base,
+        ];
+        let output = git_cmd::run(&args, repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+
+            // Guard: stale locked entry blocks `git worktree add` with "missing but locked"
+            // error. Unlock + prune to clear stale metadata, then retry once.
+            //
+            // Note: git may create the branch before detecting the locked path, so we
+            // also delete any partially-created branch to allow a clean retry with -b.
+            if stderr.contains("locked") {
+                debug!(
+                    "create_worktree: locked stale entry detected at {:?}, attempting unlock + prune",
+                    worktree
+                );
+                let _ = git_cmd::run(
+                    &["worktree", "unlock", worktree.to_str().unwrap_or_default()],
+                    repo,
+                )
+                .await;
+                let _ = git_cmd::run(&["worktree", "prune"], repo).await;
+                // Clean up any partially-created branch from the failed first attempt
+                // (ignore errors — branch may not have been created yet).
+                let _ = git_cmd::run(&["branch", "-D", branch], repo).await;
+
+                let retry = git_cmd::run(&args, repo).await?;
+                if !retry.status.success() {
+                    let retry_stderr = String::from_utf8_lossy(&retry.stderr);
+                    return Err(AppError::GitOperation(format!(
+                        "Failed to create worktree at {:?} after unlock+prune retry: {}",
+                        worktree, retry_stderr
+                    )));
+                }
+                return Ok(());
+            }
+
             return Err(AppError::GitOperation(format!(
                 "Failed to create worktree at {:?}: {}",
                 worktree, stderr
@@ -68,11 +97,22 @@ impl GitService {
     pub async fn delete_worktree(repo: &Path, worktree: &Path) -> AppResult<()> {
         debug!("Deleting worktree at {:?} from {:?}", worktree, repo);
 
+        // Unlock first (ignore errors — worktree may not be locked, or path may be gone).
+        // This allows `git worktree prune` to clean up stale locked metadata entries.
+        let _ = git_cmd::run(
+            &["worktree", "unlock", worktree.to_str().unwrap_or_default()],
+            repo,
+        )
+        .await;
+
+        // Double-force (-f -f) overrides locks atomically (git 2.17+).
+        // Single --force only bypasses dirty-tree checks, NOT lock markers.
         let output = git_cmd::run(
             &[
                 "worktree",
                 "remove",
-                "--force",
+                "-f",
+                "-f",
                 worktree.to_str().unwrap_or_default(),
             ],
             repo,
@@ -132,19 +172,42 @@ impl GitService {
             })?;
         }
 
-        let output = git_cmd::run(
-            &[
-                "worktree",
-                "add",
-                worktree.to_str().unwrap_or_default(),
-                branch,
-            ],
-            repo,
-        )
-        .await?;
+        let args = [
+            "worktree",
+            "add",
+            worktree.to_str().unwrap_or_default(),
+            branch,
+        ];
+        let output = git_cmd::run(&args, repo).await?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
+
+            // Guard: stale locked entry blocks `git worktree add` with "missing but locked"
+            // error. Unlock + prune to clear stale metadata, then retry once.
+            if stderr.contains("locked") {
+                debug!(
+                    "checkout_existing_branch_worktree: locked stale entry at {:?}, attempting unlock + prune",
+                    worktree
+                );
+                let _ = git_cmd::run(
+                    &["worktree", "unlock", worktree.to_str().unwrap_or_default()],
+                    repo,
+                )
+                .await;
+                let _ = git_cmd::run(&["worktree", "prune"], repo).await;
+
+                let retry = git_cmd::run(&args, repo).await?;
+                if !retry.status.success() {
+                    let retry_stderr = String::from_utf8_lossy(&retry.stderr);
+                    return Err(AppError::GitOperation(format!(
+                        "Failed to create worktree at {:?} for branch '{}' after unlock+prune retry: {}",
+                        worktree, branch, retry_stderr
+                    )));
+                }
+                return Ok(());
+            }
+
             return Err(AppError::GitOperation(format!(
                 "Failed to create worktree at {:?} for branch '{}': {}",
                 worktree, branch, stderr
