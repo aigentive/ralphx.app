@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::domain::entities::{DependencyGraph, IdeationSession, TaskProposal};
+use crate::domain::entities::{DependencyGraph, IdeationSession, TaskProposal, VerificationMetadata};
 
 // Re-export shared ChatMessageResponse
 pub use crate::commands::chat_responses::ChatMessageResponse;
@@ -48,10 +48,18 @@ pub struct IdeationSessionResponse {
     pub converted_at: Option<String>,
     pub team_mode: Option<String>,
     pub team_config: Option<serde_json::Value>,
+    pub verification_status: String,
+    pub verification_in_progress: bool,
+    pub gap_score: Option<i32>,
 }
 
 impl From<IdeationSession> for IdeationSessionResponse {
     fn from(session: IdeationSession) -> Self {
+        let gap_score = session
+            .verification_metadata
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<VerificationMetadata>(s).ok())
+            .and_then(|m| m.rounds.last().map(|r| r.gap_score as i32));
         Self {
             id: session.id.as_str().to_string(),
             project_id: session.project_id.as_str().to_string(),
@@ -69,6 +77,9 @@ impl From<IdeationSession> for IdeationSessionResponse {
             team_config: session
                 .team_config_json
                 .and_then(|s| serde_json::from_str(&s).ok()),
+            verification_status: session.verification_status.to_string(),
+            verification_in_progress: session.verification_in_progress,
+            gap_score,
         }
     }
 }
