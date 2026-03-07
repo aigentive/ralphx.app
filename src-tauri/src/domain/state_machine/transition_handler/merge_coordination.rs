@@ -259,6 +259,17 @@ pub(super) async fn update_plan_from_main(
             .find(|w| w.branch.as_deref() == Some(target_branch))
         {
             let wt_path = PathBuf::from(&wt.path);
+            if !wt_path.exists() {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    path = %wt_path.display(),
+                    "Stale worktree entry — path deleted, pruning before fresh creation"
+                );
+                // Prune the stale entry so fresh worktree creation won't hit "already checked out"
+                let _ = GitService::delete_worktree(repo_path, &wt_path).await;
+                super::cleanup_helpers::git_worktree_prune(repo_path).await;
+                // Fall through to fresh worktree creation below
+            } else {
             tracing::info!(
                 task_id = task_id_str,
                 target_branch = %target_branch,
@@ -319,6 +330,7 @@ pub(super) async fn update_plan_from_main(
                     ));
                 }
             }
+            } // end else (wt_path.exists())
         }
     }
 
@@ -463,6 +475,17 @@ pub(super) async fn update_source_from_target(
     if let Ok(worktrees) = GitService::list_worktrees(repo_path).await {
         if let Some(wt) = worktrees.iter().find(|w| w.branch.as_deref() == Some(source_branch)) {
             let wt_path = PathBuf::from(&wt.path);
+            if !wt_path.exists() {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    path = %wt_path.display(),
+                    "Stale worktree entry — path deleted, pruning before fresh creation"
+                );
+                // Prune the stale entry so fresh worktree creation won't hit "already checked out"
+                let _ = GitService::delete_worktree(repo_path, &wt_path).await;
+                super::cleanup_helpers::git_worktree_prune(repo_path).await;
+                // Fall through to fresh worktree creation below
+            } else {
             tracing::info!(
                 task_id = task_id_str,
                 source_branch = %source_branch,
@@ -516,6 +539,7 @@ pub(super) async fn update_source_from_target(
                     ));
                 }
             }
+            } // end else (wt_path.exists())
         }
     }
 

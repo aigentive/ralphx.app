@@ -103,6 +103,7 @@ pub use task_metadata::{
     ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
     ExecutionRecoveryState, MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind,
     MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
+    RetryStrategy,
 };
 pub use task_qa::TaskQA;
 pub use task_step::{StepProgressSummary, TaskStep, TaskStepStatus};

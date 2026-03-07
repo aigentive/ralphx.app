@@ -13,8 +13,8 @@ use crate::application::GitService;
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
-        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-        MergeRecoverySource, MergeRecoveryState,
+        MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
+        MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     },
     InternalStatus, MergeValidationMode, Project, Task, TaskId,
 };
@@ -760,6 +760,14 @@ impl<'a> super::TransitionHandler<'a> {
 
         let mut recovery = get_or_create_recovery(task);
         let attempt = retry_attempt_count(&recovery);
+        let error_str = error.to_string().to_lowercase();
+        let failure_source = if error_str.contains(git_cmd::ENOENT_MARKER) {
+            MergeFailureSource::WorktreeMissing
+        } else if error_str.contains("index.lock") || error_str.contains(".lock") {
+            MergeFailureSource::LockContention
+        } else {
+            MergeFailureSource::TransientGit
+        };
         let failed_event = MergeRecoveryEvent::new(
             MergeRecoveryEventKind::AttemptFailed,
             MergeRecoverySource::System,
@@ -768,7 +776,8 @@ impl<'a> super::TransitionHandler<'a> {
         )
         .with_target_branch(target_branch)
         .with_source_branch(source_branch)
-        .with_attempt(attempt);
+        .with_attempt(attempt)
+        .with_failure_source(failure_source);
         recovery.append_event_with_state(failed_event, MergeRecoveryState::Failed);
 
         match recovery.update_task_metadata(task.metadata.as_deref()) {

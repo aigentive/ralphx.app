@@ -130,7 +130,7 @@ reconciliation:
   # reconciliation.rs — cap on MergeIncomplete exponential backoff
   merge_incomplete_retry_max_secs: 1800 # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_RETRY_MAX_SECS
   # reconciliation.rs — max auto-retry attempts for MergeIncomplete before surfacing to user
-  merge_incomplete_max_retries: 50 # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_MAX_RETRIES
+  merge_incomplete_max_retries: 15 # Env: RALPHX_RECONCILIATION_MERGE_INCOMPLETE_MAX_RETRIES
   # reconciliation.rs — max validation-revert cycles before stopping auto-retry (prevents infinite loops)
   validation_revert_max_count: 2 # Env: RALPHX_RECONCILIATION_VALIDATION_REVERT_MAX_COUNT
   # reconciliation.rs — initial backoff before retrying a MergeConflict task
@@ -171,6 +171,9 @@ reconciliation:
   merge_watcher_grace_secs: 30 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_GRACE_SECS
   # chat_service_merge.rs — poll interval for merge watcher git state checks
   merge_watcher_poll_secs: 15 # Env: RALPHX_RECONCILIATION_MERGE_WATCHER_POLL_SECS
+  # Circuit breaker: fires when threshold+ of last window failures share the same source
+  merge_circuit_breaker_threshold: 3 # Env: RALPHX_MERGE_CIRCUIT_BREAKER_THRESHOLD
+  merge_circuit_breaker_window: 5 # Env: RALPHX_MERGE_CIRCUIT_BREAKER_WINDOW
   # execution recovery — max auto-retry attempts for Failed tasks with transient failures (timeout/crash/stall)
   execution_failed_max_retries: 3 # Env: RALPHX_RECONCILIATION_EXECUTION_FAILED_MAX_RETRIES
   # execution recovery — initial backoff before retrying a Failed execution task (exponential base, seconds)

@@ -13,6 +13,7 @@ use super::merge_helpers::{
     compute_merge_worktree_path, expand_home, resolve_task_base_branch, slugify,
 };
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
+use crate::application::git_service::git_cmd::ENOENT_MARKER;
 use crate::application::{ChatServiceError, GitService};
 use crate::domain::entities::{
     MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
@@ -1215,13 +1216,21 @@ async fn record_merger_spawn_failure(
         .count() as u32
         + 1; // +1 for the event we're about to record
 
+    let error_lower = error.to_lowercase();
+    let spawn_failure_source = if error_lower.contains(ENOENT_MARKER)
+        || error_lower.contains("no such file")
+    {
+        MergeFailureSource::SpawnFailure
+    } else {
+        MergeFailureSource::TransientGit
+    };
     let event = MergeRecoveryEvent::new(
         MergeRecoveryEventKind::AttemptFailed,
         MergeRecoverySource::System,
         MergeRecoveryReasonCode::GitError,
         format!("Merger agent failed to spawn: {}", error),
     )
-    .with_failure_source(MergeFailureSource::TransientGit);
+    .with_failure_source(spawn_failure_source);
 
     recovery.append_event_with_state(event, MergeRecoveryState::Failed);
 

@@ -1101,3 +1101,112 @@ fn execution_recovery_metadata_roundtrip() {
     assert_eq!(restored.events.len(), 1);
     assert!(restored.last_failure_is_transient());
 }
+
+// ===== MergeFailureSource extended variants tests =====
+
+#[test]
+fn test_merge_failure_source_serde_roundtrip() {
+    let variants = [
+        MergeFailureSource::TransientGit,
+        MergeFailureSource::AgentReported,
+        MergeFailureSource::SystemDetected,
+        MergeFailureSource::ValidationFailed,
+        MergeFailureSource::WorktreeMissing,
+        MergeFailureSource::SpawnFailure,
+        MergeFailureSource::LockContention,
+        MergeFailureSource::RateLimited,
+    ];
+    for variant in &variants {
+        let json = serde_json::to_string(variant).unwrap();
+        let deserialized: MergeFailureSource = serde_json::from_str(&json).unwrap();
+        assert_eq!(*variant, deserialized);
+    }
+}
+
+#[test]
+fn test_merge_failure_source_unknown_fallback() {
+    // Old strings from side_effects.rs should deserialize as Unknown
+    let result: MergeFailureSource = serde_json::from_str("\"cleanup_timeout\"").unwrap();
+    assert_eq!(result, MergeFailureSource::Unknown);
+
+    let result: MergeFailureSource = serde_json::from_str("\"BranchFreshnessTimeout\"").unwrap();
+    assert_eq!(result, MergeFailureSource::Unknown);
+}
+
+#[test]
+fn test_merge_recovery_metadata_circuit_breaker_serde_compat() {
+    // Old metadata without circuit_breaker fields should deserialize correctly
+    let old_json = r#"{"version":1,"events":[],"last_state":"succeeded"}"#;
+    let meta: MergeRecoveryMetadata = serde_json::from_str(old_json).unwrap();
+    assert!(!meta.circuit_breaker_active);
+    assert!(meta.circuit_breaker_reason.is_none());
+}
+
+#[test]
+fn test_circuit_breaker_false_not_serialized() {
+    let meta = MergeRecoveryMetadata::new();
+    let json = serde_json::to_string(&meta).unwrap();
+    // circuit_breaker_active=false should be omitted from JSON
+    assert!(
+        !json.contains("circuit_breaker_active"),
+        "circuit_breaker_active=false should be skipped in serialization"
+    );
+    assert!(
+        !json.contains("circuit_breaker_reason"),
+        "circuit_breaker_reason=None should be skipped in serialization"
+    );
+}
+
+#[test]
+fn test_circuit_breaker_true_serialized() {
+    let mut meta = MergeRecoveryMetadata::new();
+    meta.circuit_breaker_active = true;
+    meta.circuit_breaker_reason = Some("too many failures".to_string());
+    let json = serde_json::to_string(&meta).unwrap();
+    assert!(json.contains("circuit_breaker_active"));
+    assert!(json.contains("circuit_breaker_reason"));
+
+    // Roundtrip
+    let restored: MergeRecoveryMetadata = serde_json::from_str(&json).unwrap();
+    assert!(restored.circuit_breaker_active);
+    assert_eq!(
+        restored.circuit_breaker_reason,
+        Some("too many failures".to_string())
+    );
+}
+
+#[test]
+fn test_retry_strategy() {
+    assert_eq!(
+        MergeFailureSource::AgentReported.retry_strategy(),
+        RetryStrategy::NoAutomaticRetry
+    );
+    assert_eq!(
+        MergeFailureSource::ValidationFailed.retry_strategy(),
+        RetryStrategy::NoAutomaticRetry
+    );
+    assert_eq!(
+        MergeFailureSource::TransientGit.retry_strategy(),
+        RetryStrategy::AutoRetry
+    );
+    assert_eq!(
+        MergeFailureSource::WorktreeMissing.retry_strategy(),
+        RetryStrategy::AutoRetry
+    );
+    assert_eq!(
+        MergeFailureSource::SpawnFailure.retry_strategy(),
+        RetryStrategy::AutoRetry
+    );
+    assert_eq!(
+        MergeFailureSource::LockContention.retry_strategy(),
+        RetryStrategy::AutoRetry
+    );
+    assert_eq!(
+        MergeFailureSource::RateLimited.retry_strategy(),
+        RetryStrategy::AutoRetry
+    );
+    assert_eq!(
+        MergeFailureSource::Unknown.retry_strategy(),
+        RetryStrategy::AutoRetry
+    );
+}

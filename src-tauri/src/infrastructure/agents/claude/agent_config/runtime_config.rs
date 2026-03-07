@@ -113,6 +113,19 @@ pub struct ReconciliationConfig {
     pub execution_failed_retry_base_secs: u64,
     /// Cap on execution retry exponential backoff (seconds).
     pub execution_failed_retry_max_secs: u64,
+    /// Number of same-source failures in the window before circuit breaker fires (default: 3)
+    #[serde(default = "default_merge_circuit_breaker_threshold")]
+    pub merge_circuit_breaker_threshold: u64,
+    /// Window size (number of recent failure events) for circuit breaker evaluation (default: 5)
+    #[serde(default = "default_merge_circuit_breaker_window")]
+    pub merge_circuit_breaker_window: u64,
+}
+
+fn default_merge_circuit_breaker_threshold() -> u64 {
+    3
+}
+fn default_merge_circuit_breaker_window() -> u64 {
+    5
 }
 
 impl Default for ReconciliationConfig {
@@ -148,6 +161,8 @@ impl Default for ReconciliationConfig {
             execution_failed_max_retries: 3,
             execution_failed_retry_base_secs: 30,
             execution_failed_retry_max_secs: 600,
+            merge_circuit_breaker_threshold: 3,
+            merge_circuit_breaker_window: 5,
         }
     }
 }
@@ -347,6 +362,8 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.execution_failed_max_retries, "RALPHX_RECONCILIATION_EXECUTION_FAILED_MAX_RETRIES");
     env_u64!(cfg.reconciliation.execution_failed_retry_base_secs, "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_BASE_SECS");
     env_u64!(cfg.reconciliation.execution_failed_retry_max_secs, "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_MAX_SECS");
+    env_u64!(cfg.reconciliation.merge_circuit_breaker_threshold, "RALPHX_MERGE_CIRCUIT_BREAKER_THRESHOLD");
+    env_u64!(cfg.reconciliation.merge_circuit_breaker_window, "RALPHX_MERGE_CIRCUIT_BREAKER_WINDOW");
 
     validate_reconciliation_config(&mut cfg.reconciliation);
 

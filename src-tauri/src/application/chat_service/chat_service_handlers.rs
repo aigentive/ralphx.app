@@ -17,9 +17,9 @@ use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
-    InternalStatus, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
-    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, ReviewNote, ReviewOutcome,
-    ReviewerType, TaskId, TaskStepStatus,
+    InternalStatus, MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind,
+    MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
+    ReviewNote, ReviewOutcome, ReviewerType, TaskId, TaskStepStatus,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
@@ -1109,7 +1109,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             MergeRecoverySource::System,
                             MergeRecoveryReasonCode::ProviderRateLimited,
                             format!("Merge agent hit provider rate limit: {}", error),
-                        ),
+                        )
+                        .with_failure_source(MergeFailureSource::RateLimited),
                         MergeRecoveryState::RateLimited,
                     );
 

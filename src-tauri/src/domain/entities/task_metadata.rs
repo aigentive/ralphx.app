@@ -19,6 +19,12 @@ pub struct MergeRecoveryMetadata {
     /// ISO 8601 timestamp: do not retry merge until this time (provider rate limit)
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub rate_limit_retry_after: Option<String>,
+    /// Whether the circuit breaker has fired (prevents auto-retry until manual reset)
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub circuit_breaker_active: bool,
+    /// Human-readable reason why the circuit breaker fired
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub circuit_breaker_reason: Option<String>,
 }
 
 impl MergeRecoveryMetadata {
@@ -29,6 +35,8 @@ impl MergeRecoveryMetadata {
             events: Vec::new(),
             last_state: MergeRecoveryState::Succeeded,
             rate_limit_retry_after: None,
+            circuit_breaker_active: false,
+            circuit_breaker_reason: None,
         }
     }
 
@@ -217,6 +225,36 @@ pub enum MergeFailureSource {
     SystemDetected,
     /// Post-merge validation reverted — do not auto-retry until code changes
     ValidationFailed,
+    /// Worktree path deleted but git entry still exists (TOCTOU race) — safe to auto-retry after prune
+    WorktreeMissing,
+    /// Git process spawn failed (ENOENT or permission denied) — may indicate worktree issue
+    SpawnFailure,
+    /// Git lock file contention — transient, safe to retry
+    LockContention,
+    /// Provider rate limit hit — respect retry_after timestamp
+    RateLimited,
+    /// Unrecognized failure source from stored metadata (backward compat)
+    #[serde(other)]
+    Unknown,
+}
+
+/// Whether the system will automatically retry a failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RetryStrategy {
+    /// System will auto-retry this failure
+    AutoRetry,
+    /// System will NOT auto-retry; user manual retry is always allowed
+    NoAutomaticRetry,
+}
+
+impl MergeFailureSource {
+    /// Returns the retry strategy for this failure source.
+    pub fn retry_strategy(&self) -> RetryStrategy {
+        match self {
+            Self::AgentReported | Self::ValidationFailed => RetryStrategy::NoAutomaticRetry,
+            _ => RetryStrategy::AutoRetry,
+        }
+    }
 }
 
 /// Type of merge recovery event

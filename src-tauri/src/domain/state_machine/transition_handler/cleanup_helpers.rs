@@ -123,7 +123,18 @@ pub(crate) async fn remove_worktree_fast(
     worktree_path: &Path,
     repo_path: &Path,
 ) -> Result<(), String> {
+    // Try scoped git worktree remove first (cleans git metadata atomically)
+    // Ignore errors — path may already be gone or locked
+    let _ = tokio::process::Command::new("git")
+        .args(["worktree", "remove", "--force", worktree_path.to_str().unwrap_or_default()])
+        .current_dir(repo_path)
+        .output()
+        .await;
+
+    // Also remove the directory (in case git worktree remove didn't delete it)
     remove_worktree_dir(worktree_path).await?;
+
+    // Final prune to clean any remaining stale entries
     git_worktree_prune(repo_path).await;
     Ok(())
 }

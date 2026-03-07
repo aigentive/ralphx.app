@@ -295,7 +295,7 @@ impl<'a> super::TransitionHandler<'a> {
                 // Set debris metadata so GUARD knows this is a retry on next attempt
                 // (prevents is_first_clean_attempt from skipping cleanup when stale worktree remains)
                 super::merge_helpers::merge_metadata_into(task, &serde_json::json!({
-                    "merge_failure_source": "cleanup_timeout",
+                    "merge_failure_source": serde_json::to_value(MergeFailureSource::TransientGit).unwrap_or_default(),
                 }));
                 if let Err(e) = task_repo.update(task).await {
                     tracing::warn!(
@@ -375,7 +375,7 @@ impl<'a> super::TransitionHandler<'a> {
                     ),
                     "source_branch": source_branch,
                     "target_branch": target_branch,
-                    "merge_failure_source": "BranchFreshnessTimeout",
+                    "merge_failure_source": serde_json::to_value(MergeFailureSource::TransientGit).unwrap_or_default(),
                 });
                 self.transition_to_merge_incomplete(
                     super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },
@@ -517,7 +517,7 @@ impl<'a> super::TransitionHandler<'a> {
                     ),
                     "source_branch": source_branch,
                     "target_branch": target_branch,
-                    "merge_failure_source": "BranchFreshnessTimeout",
+                    "merge_failure_source": serde_json::to_value(MergeFailureSource::TransientGit).unwrap_or_default(),
                 });
                 self.transition_to_merge_incomplete(
                     super::TaskCore { task: &mut *task, task_id: &task_id, task_id_str, task_repo },

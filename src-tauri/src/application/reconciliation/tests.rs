@@ -2886,11 +2886,11 @@ fn merge_conflict_retry_delay_caps_at_configured_max() {
 }
 
 #[test]
-fn merge_incomplete_max_retries_is_at_least_50() {
+fn merge_incomplete_max_retries_is_at_least_15() {
     let cfg = reconciliation_config();
     assert!(
-        cfg.merge_incomplete_max_retries >= 50,
-        "merge_incomplete_max_retries should be >= 50, got {}",
+        cfg.merge_incomplete_max_retries >= 15,
+        "merge_incomplete_max_retries should be >= 15, got {}",
         cfg.merge_incomplete_max_retries,
     );
 }
@@ -6324,5 +6324,280 @@ fn has_recent_startup_recovery_false_without_metadata() {
     assert!(
         !ReconciliationRunner::<tauri::Wry>::has_recent_startup_recovery(&task),
         "should return false when no metadata"
+    );
+}
+
+// ── Circuit Breaker Tests ─────────────────────────────────────────────────────
+
+/// threshold met: 3 AttemptFailed events all with the same failure_source → should_circuit_break returns Some.
+#[test]
+fn should_circuit_break_threshold_met() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Circuit Breaker Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "worktree missing 1",
+                        "failure_source": "worktree_missing"
+                    },
+                    {
+                        "at": "2026-02-10T00:05:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "worktree missing 2",
+                        "failure_source": "worktree_missing"
+                    },
+                    {
+                        "at": "2026-02-10T00:10:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "worktree missing 3",
+                        "failure_source": "worktree_missing"
+                    }
+                ],
+                "last_state": "failed"
+            }
+        })
+        .to_string(),
+    );
+
+    let result = ReconciliationRunner::<tauri::Wry>::should_circuit_break(&task, 3, 5);
+    assert!(
+        result.is_some(),
+        "Circuit breaker should fire when 3/3 events share same failure_source"
+    );
+    let reason = result.unwrap();
+    assert!(
+        reason.contains("Circuit breaker"),
+        "Reason should mention 'Circuit breaker', got: {}",
+        reason
+    );
+}
+
+/// threshold NOT met: 2 WorktreeMissing events and 1 TransientGit event → returns None.
+#[test]
+fn should_circuit_break_threshold_not_met_mixed_sources() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Mixed Failures Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "worktree missing 1",
+                        "failure_source": "worktree_missing"
+                    },
+                    {
+                        "at": "2026-02-10T00:05:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "transient git error",
+                        "failure_source": "transient_git"
+                    },
+                    {
+                        "at": "2026-02-10T00:10:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "worktree missing 2",
+                        "failure_source": "worktree_missing"
+                    }
+                ],
+                "last_state": "failed"
+            }
+        })
+        .to_string(),
+    );
+
+    let result = ReconciliationRunner::<tauri::Wry>::should_circuit_break(&task, 3, 5);
+    assert!(
+        result.is_none(),
+        "Circuit breaker should NOT fire when only 2/3 events share same source (threshold=3)"
+    );
+}
+
+/// Events without failure_source are ignored — should not count toward threshold.
+#[test]
+fn should_circuit_break_ignores_events_without_failure_source() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No Source Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "no source 1"
+                        // no failure_source field
+                    },
+                    {
+                        "at": "2026-02-10T00:05:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "no source 2"
+                        // no failure_source field
+                    },
+                    {
+                        "at": "2026-02-10T00:10:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "no source 3"
+                        // no failure_source field
+                    },
+                    {
+                        "at": "2026-02-10T00:15:00Z",
+                        "kind": "attempt_failed",
+                        "source": "system",
+                        "reason_code": "git_error",
+                        "message": "no source 4"
+                        // no failure_source field
+                    }
+                ],
+                "last_state": "failed"
+            }
+        })
+        .to_string(),
+    );
+
+    let result = ReconciliationRunner::<tauri::Wry>::should_circuit_break(&task, 3, 5);
+    assert!(
+        result.is_none(),
+        "Circuit breaker should NOT fire when events lack failure_source (they are excluded from count)"
+    );
+}
+
+/// is_circuit_breaker_active returns false when no metadata exists.
+#[test]
+fn is_circuit_breaker_active_false_without_metadata() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No Metadata".to_string(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::is_circuit_breaker_active(&task),
+        "circuit_breaker_active should be false when no metadata"
+    );
+}
+
+/// is_circuit_breaker_active returns true when flag is set.
+#[test]
+fn is_circuit_breaker_active_true_when_set() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "CB Active Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [],
+                "last_state": "failed",
+                "circuit_breaker_active": true,
+                "circuit_breaker_reason": "too many repeated failures"
+            }
+        })
+        .to_string(),
+    );
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::is_circuit_breaker_active(&task),
+        "circuit_breaker_active should be true when set in metadata"
+    );
+}
+
+/// circuit_breaker_active guard prevents reconcile_merge_incomplete_task from retrying.
+/// This is an integration test that calls the full reconciliation path with
+/// circuit_breaker_active=true in metadata and asserts that it returns false (no retry).
+#[tokio::test]
+async fn circuit_breaker_active_flag_prevents_reconcile_retry() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "CB Guard Integration Task".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    // Set circuit_breaker_active=true directly in merge_recovery metadata.
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [],
+                "last_state": "failed",
+                "circuit_breaker_active": true,
+                "circuit_breaker_reason": "3/5 recent failures share the same source"
+            }
+        })
+        .to_string(),
+    );
+    // Set updated_at in the past so no cooldown guard interferes.
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(300);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+
+    assert!(
+        !reconciled,
+        "circuit_breaker_active=true must prevent reconcile_merge_incomplete_task from retrying"
+    );
+
+    // Verify task remained in MergeIncomplete — the guard must not have triggered a transition.
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should still exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Task must stay MergeIncomplete when circuit breaker is active"
+    );
+}
+
+/// should_circuit_break returns None when no merge_recovery metadata exists.
+#[test]
+fn should_circuit_break_returns_none_without_metadata() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No Metadata".to_string(),
+    );
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::should_circuit_break(&task, 3, 5).is_none(),
+        "should_circuit_break should return None when no metadata"
     );
 }

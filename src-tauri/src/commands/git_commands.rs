@@ -364,10 +364,14 @@ pub async fn retry_merge(
     meta_obj.remove("merge_failure_source");
     // Reset merge recovery event log so auto-retry counters (which count
     // AutoRetryTriggered / AttemptFailed events) restart from zero.
+    // Also clear the circuit breaker on manual retry — user is explicitly requesting a retry.
     if let Some(recovery_val) = meta_obj.get_mut("merge_recovery") {
         if let Some(recovery_obj) = recovery_val.as_object_mut() {
             recovery_obj.insert("events".to_string(), serde_json::json!([]));
             recovery_obj.insert("last_state".to_string(), serde_json::json!("retrying"));
+            // Clear circuit breaker on manual retry
+            recovery_obj.insert("circuit_breaker_active".to_string(), serde_json::json!(false));
+            recovery_obj.remove("circuit_breaker_reason");
         }
     }
 
