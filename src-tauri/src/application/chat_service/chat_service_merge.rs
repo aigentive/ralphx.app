@@ -459,11 +459,29 @@ async fn handle_plan_update_resolution<R: Runtime>(
     };
 
     if plan_up_to_date {
+        // Retry limit: prevent infinite merge loops (max 2 retries)
+        let retry_count = meta
+            .as_ref()
+            .and_then(|v| v.get("plan_update_retry_count")?.as_u64())
+            .unwrap_or(0);
+        if retry_count >= 2 {
+            tracing::warn!(
+                task_id = ctx.task_id_str,
+                retry_count = retry_count,
+                "attempt_merge_auto_complete: plan_update_conflict max retries exceeded"
+            );
+            ctx.transition_incomplete("Plan update conflict: max retries exceeded")
+                .await;
+            return ControlFlow::Break(());
+        }
+
         tracing::info!(
             task_id = ctx.task_id_str,
             plan_branch = %plan_branch,
             base_branch = %base_branch,
-            "attempt_merge_auto_complete: plan branch now up-to-date with base — retrying task merge"
+            retry_count = retry_count,
+            "attempt_merge_auto_complete: plan branch now up-to-date with base — retrying task merge (attempt {})",
+            retry_count + 1
         );
         // RC#12: Clean up the merge-{id} worktree left over from Phase 1 (plan_update)
         // before retrying the task merge. Without this, Phase 2 fails with
@@ -482,13 +500,17 @@ async fn handle_plan_update_resolution<R: Runtime>(
                 }
             }
         }
-        // Clear plan_update_conflict flag so the PendingMerge retry proceeds normally
+        // Clear plan_update_conflict flag, increment retry counter
         {
             let mut m = meta.clone().unwrap_or_else(|| serde_json::json!({}));
             if let Some(obj) = m.as_object_mut() {
                 obj.remove("plan_update_conflict");
                 obj.remove("conflict_files");
                 obj.remove("error");
+                obj.insert(
+                    "plan_update_retry_count".to_string(),
+                    serde_json::json!(retry_count + 1),
+                );
             }
             task.metadata = Some(m.to_string());
             task.touch();
@@ -568,22 +590,44 @@ async fn handle_source_update_resolution<R: Runtime>(
     };
 
     if source_up_to_date {
+        // Retry limit: prevent infinite merge loops (max 2 retries)
+        let retry_count = meta
+            .as_ref()
+            .and_then(|v| v.get("source_update_retry_count")?.as_u64())
+            .unwrap_or(0);
+        if retry_count >= 2 {
+            tracing::warn!(
+                task_id = ctx.task_id_str,
+                retry_count = retry_count,
+                "attempt_merge_auto_complete: source_update_conflict max retries exceeded"
+            );
+            ctx.transition_incomplete("Source update conflict: max retries exceeded")
+                .await;
+            return ControlFlow::Break(());
+        }
+
         tracing::info!(
             task_id = ctx.task_id_str,
             source_branch = %source_branch,
             target_branch = %target_branch,
-            "attempt_merge_auto_complete: source branch now up-to-date with target — retrying task merge"
+            retry_count = retry_count,
+            "attempt_merge_auto_complete: source branch now up-to-date with target — retrying task merge (attempt {})",
+            retry_count + 1
         );
-        // Clear source_update_conflict flag and set source_conflict_resolved so the
-        // PendingMerge retry uses squash-only instead of rebase. Rebasing would drop the
-        // agent's merge commit (target merged INTO source) and replay individual commits,
-        // re-encountering the same conflicts.
+        // Clear source_update_conflict flag, increment retry counter, and set
+        // source_conflict_resolved so the PendingMerge retry uses squash-only instead of
+        // rebase. Rebasing would drop the agent's merge commit (target merged INTO source)
+        // and replay individual commits, re-encountering the same conflicts.
         {
             let mut m = meta.clone().unwrap_or_else(|| serde_json::json!({}));
             if let Some(obj) = m.as_object_mut() {
                 obj.remove("source_update_conflict");
                 obj.remove("conflict_files");
                 obj.remove("error");
+                obj.insert(
+                    "source_update_retry_count".to_string(),
+                    serde_json::json!(retry_count + 1),
+                );
             }
             task.metadata = Some(m.to_string());
             set_source_conflict_resolved(task);
@@ -933,6 +977,16 @@ async fn complete_merge_and_schedule<R: Runtime>(
     main_repo_path: &Path,
     worktree: &Path,
 ) {
+    // Idempotency guard: prevent duplicate merge completion
+    if task.merge_commit_sha.is_some() {
+        tracing::info!(
+            task_id = ctx.task_id_str,
+            existing_sha = ?task.merge_commit_sha,
+            "Merge already completed with existing commit SHA — skipping duplicate completion"
+        );
+        return;
+    }
+
     tracing::info!(
         task_id = ctx.task_id_str,
         commit_sha = %commit_sha,
@@ -1045,6 +1099,16 @@ pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
         Some(t) => t,
         None => return,
     };
+
+    // Early-exit if task already has a merge commit SHA (another path completed it)
+    if task.merge_commit_sha.is_some() {
+        tracing::info!(
+            task_id = ctx.task_id_str,
+            existing_sha = ?task.merge_commit_sha,
+            "attempt_merge_auto_complete: task already has merge_commit_sha — skipping redundant auto-complete"
+        );
+        return;
+    }
 
     // 2. Resolve project and worktree path
     let (project, worktree_path) = match resolve_environment(ctx, &task).await {

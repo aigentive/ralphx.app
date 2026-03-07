@@ -44,13 +44,56 @@ impl GitService {
             path, message
         );
 
-        let add_output = git_cmd::run(&["add", "-A"], path).await?;
-        if !add_output.status.success() {
-            let stderr = String::from_utf8_lossy(&add_output.stderr);
+        // Use git status --porcelain -z for safe, .gitignore-respecting staging
+        // (instead of `git add -A` which can stage build artifacts)
+        let status_output = git_cmd::run(&["status", "--porcelain", "-z"], path).await?;
+        if !status_output.status.success() {
+            let stderr = String::from_utf8_lossy(&status_output.stderr);
             return Err(AppError::GitOperation(format!(
-                "Failed to stage changes: {}",
+                "Failed to get git status: {}",
                 stderr
             )));
+        }
+
+        let stdout = String::from_utf8_lossy(&status_output.stdout);
+        let mut files_to_stage: Vec<String> = Vec::new();
+
+        // Format: "XY filename\0" — renames have two entries: "R  newname\0oldname\0"
+        let entries: Vec<&str> = stdout.split('\0').collect();
+        let mut i = 0;
+        while i < entries.len() {
+            let entry = entries[i];
+            if entry.is_empty() {
+                i += 1;
+                continue;
+            }
+
+            let status_code = entry.get(..2).unwrap_or("");
+            let filename = entry.get(3..).unwrap_or("");
+
+            // Renames (R) and copies (C) have a second NUL-separated entry (old name)
+            if status_code.starts_with('R') || status_code.starts_with('C') {
+                files_to_stage.push(filename.to_string());
+                i += 2; // skip the old-name entry
+                continue;
+            }
+
+            files_to_stage.push(filename.to_string());
+            i += 1;
+        }
+
+        // Batch git add in chunks of 100
+        for chunk in files_to_stage.chunks(100) {
+            let mut args: Vec<&str> = vec!["add", "--"];
+            args.extend(chunk.iter().map(|s| s.as_str()));
+            let add_output = git_cmd::run(&args, path).await?;
+            if !add_output.status.success() {
+                let stderr = String::from_utf8_lossy(&add_output.stderr);
+                return Err(AppError::GitOperation(format!(
+                    "Failed to stage batch: {}",
+                    stderr
+                )));
+            }
         }
 
         Self::commit_staged(path, message).await
