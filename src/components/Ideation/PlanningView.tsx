@@ -9,6 +9,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   MessageSquare,
   Archive,
@@ -56,9 +57,10 @@ import { useFileDrop } from "@/hooks/useFileDrop";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { DropZoneOverlay } from "./DropZoneOverlay";
 import { ideationApi } from "@/api/ideation";
+import { chatApi } from "@/api/chat";
 import { ReopenSessionDialog } from "./ReopenSessionDialog";
 import type { ReopenMode } from "./ReopenSessionDialog";
-import { useReopenSession, useResetAndReaccept } from "@/hooks/useIdeation";
+import { useReopenSession, useResetAndReaccept, ideationKeys } from "@/hooks/useIdeation";
 import { useVerificationEvents } from "@/hooks/useVerificationEvents";
 
 // ============================================================================
@@ -154,7 +156,17 @@ export function PlanningView({
   // Subscribe to backend verification state changes → invalidates TanStack Query caches
   useVerificationEvents();
 
+  const queryClient = useQueryClient();
+
   const planArtifact = useIdeationStore((state) => state.planArtifact);
+
+  // Fetch full verification data (currentRound, maxRounds, convergenceReason) beyond what session carries
+  const { data: verificationData } = useQuery({
+    queryKey: ["verification", session?.id],
+    queryFn: () => ideationApi.verification.getStatus(session!.id),
+    enabled: !!session?.id && !!planArtifact,
+    staleTime: 30_000,
+  });
   const ideationSettings = useIdeationStore((state) => state.ideationSettings);
   const fetchPlanArtifact = useIdeationStore((state) => state.fetchPlanArtifact);
   const showSyncNotification = useIdeationStore((state) => state.showSyncNotification);
@@ -660,6 +672,39 @@ export function PlanningView({
     setIsPlanExpanded(expanded);
   }, [setIsPlanExpanded]);
 
+  // ── Verification action handlers ─────────────────────────────────────────
+
+  // Trigger verification by sending 'verify' message to the ideation orchestrator
+  const handleTriggerVerification = useCallback(async () => {
+    if (!session) return;
+    try {
+      await chatApi.sendAgentMessage("ideation", session.id, "verify");
+    } catch (err) {
+      console.error("Failed to trigger verification:", err);
+      toast.error("Failed to start verification");
+    }
+  }, [session]);
+
+  const handleSkipVerification = useCallback(async () => {
+    if (!session) return;
+    try {
+      await ideationApi.verification.skip(session.id);
+      queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
+      queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(session.id) });
+      queryClient.invalidateQueries({ queryKey: ["verification", session.id] });
+    } catch (err) {
+      console.error("Failed to skip verification:", err);
+      toast.error("Failed to skip verification");
+    }
+  }, [session, queryClient]);
+
+  // planVersionBeforeVerification is not yet surfaced by the API — button stays hidden until available
+  const handleRevertAndSkip = useCallback(() => {
+    // no-op: rendered only when planVersionBeforeVerification is defined (not yet available)
+  }, []);
+
+  // ── End verification handlers ─────────────────────────────────────────────
+
   // Historical plan version state - set when user clicks "View plan as of proposal creation (vX)"
   const [historicalPlanVersion, setHistoricalPlanVersion] = useState<number | null>(null);
 
@@ -1090,6 +1135,16 @@ export function PlanningView({
                               requestedVersion: historicalPlanVersion,
                               onVersionViewed: () => setHistoricalPlanVersion(null),
                             })}
+                            verificationStatus={session?.verificationStatus ?? "unverified"}
+                            verificationInProgress={session?.verificationInProgress ?? false}
+                            {...(session?.gapScore != null && { gapScore: session.gapScore })}
+                            {...(verificationData?.currentRound !== undefined && { currentRound: verificationData.currentRound })}
+                            {...(verificationData?.maxRounds !== undefined && { maxRounds: verificationData.maxRounds })}
+                            {...(verificationData?.convergenceReason !== undefined && { convergenceReason: verificationData.convergenceReason })}
+                            onVerifyFirst={handleTriggerVerification}
+                            onSkipVerification={handleSkipVerification}
+                            onRevertAndSkip={handleRevertAndSkip}
+                            onRetryVerification={handleTriggerVerification}
                           />
                         </div>
                       )}
