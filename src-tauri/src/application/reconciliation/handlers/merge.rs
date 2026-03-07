@@ -355,6 +355,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // Circuit breaker active guard — fires before all other checks.
+        // Prevents auto-retry when the circuit breaker has been triggered.
+        // Cleared on user-initiated manual retry.
+        if Self::is_circuit_breaker_active(task) {
+            tracing::info!(
+                task_id = task.id.as_str(),
+                "Circuit breaker active — skipping auto-retry until manual retry"
+            );
+            return false;
+        }
+
         // Validation-in-progress guard: same as PendingMerge guard — validation may
         // still be running when the task transitions to MergeIncomplete (e.g., revert
         // completes but subprocess lingers). Skip until validation flag expires.
@@ -498,6 +509,26 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 );
                 return false;
             }
+        }
+
+        // Circuit breaker — detect repeated identical failures before proceeding.
+        // Fires when threshold+ of the last window failure events share the same source.
+        let threshold = reconciliation_config().merge_circuit_breaker_threshold as usize;
+        let window = reconciliation_config().merge_circuit_breaker_window as usize;
+        if let Some(reason) = Self::should_circuit_break(task, threshold, window) {
+            warn!(
+                task_id = task.id.as_str(),
+                reason = %reason,
+                "Circuit breaker triggered — stopping auto-retry due to repeated identical failures"
+            );
+            if let Err(e) = self.update_circuit_breaker_metadata(task, &reason).await {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to persist circuit breaker metadata"
+                );
+            }
+            return false;
         }
 
         let retry_count = Self::merge_incomplete_auto_retry_count(task);

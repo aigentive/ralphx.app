@@ -5,10 +5,10 @@ use tracing::warn;
 
 use crate::application::GitService;
 use crate::domain::entities::{
-    ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
-    ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
-    ExecutionRecoveryState, InternalStatus, MergeFailureSource, MergeRecoveryEventKind,
-    MergeRecoveryMetadata, MergeRecoveryState, Task,
+    task_metadata::RetryStrategy, ExecutionFailureSource, ExecutionRecoveryEvent,
+    ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode,
+    ExecutionRecoverySource, ExecutionRecoveryState, InternalStatus, MergeFailureSource,
+    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryState, Task,
 };
 use crate::infrastructure::agents::claude::reconciliation_config;
 
@@ -269,6 +269,107 @@ impl<R: Runtime> ReconciliationRunner<R> {
         updated.touch();
         self.task_repo
             .update(&updated)
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Returns true if the circuit breaker has been triggered, preventing auto-retry.
+    /// The circuit breaker is cleared when the user manually retries.
+    pub(crate) fn is_circuit_breaker_active(task: &Task) -> bool {
+        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .map(|meta| meta.circuit_breaker_active)
+            .unwrap_or(false)
+    }
+
+    /// Check if the circuit breaker should fire based on recent failure patterns.
+    /// Returns Some(reason) if threshold+ of the last window failure events share the same source.
+    /// Returns None if the circuit breaker should not fire.
+    pub(crate) fn should_circuit_break(
+        task: &Task,
+        threshold: usize,
+        window: usize,
+    ) -> Option<String> {
+        let metadata = MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()?;
+
+        // Filter to failure-type events with classified failure_source that would be auto-retried.
+        // Only auto-retryable sources (e.g. WorktreeMissing, TransientGit) can cause infinite loops;
+        // NoAutomaticRetry sources (AgentReported, ValidationFailed) already stop themselves.
+        let failure_events: Vec<_> = metadata
+            .events
+            .iter()
+            .filter(|e| {
+                matches!(
+                    e.kind,
+                    MergeRecoveryEventKind::AttemptFailed
+                        | MergeRecoveryEventKind::AutoRetryTriggered
+                        | MergeRecoveryEventKind::Deferred
+                ) && e
+                    .failure_source
+                    .as_ref()
+                    .map(|s| s.retry_strategy() == RetryStrategy::AutoRetry)
+                    .unwrap_or(false)
+            })
+            .collect();
+
+        // Take the last `window` failure events
+        let recent = if failure_events.len() > window {
+            &failure_events[failure_events.len() - window..]
+        } else {
+            &failure_events[..]
+        };
+
+        if recent.len() < threshold {
+            return None; // Not enough classified events
+        }
+
+        // Count occurrences of each failure_source variant
+        use std::collections::HashMap;
+        let mut counts: HashMap<String, usize> = HashMap::new();
+        for event in recent {
+            if let Some(source) = &event.failure_source {
+                let key =
+                    serde_json::to_string(source).unwrap_or_else(|_| "unknown".to_string());
+                *counts.entry(key).or_insert(0) += 1;
+            }
+        }
+
+        // Check if any variant hits the threshold
+        for (source_key, count) in &counts {
+            if *count >= threshold {
+                return Some(format!(
+                    "Circuit breaker: {}/{} recent failures share the same source ({})",
+                    count, window, source_key
+                ));
+            }
+        }
+
+        None
+    }
+
+    /// Update task metadata to set circuit_breaker_active=true and reason.
+    /// Uses the MergeRecoveryMetadata structured update path.
+    pub(crate) async fn update_circuit_breaker_metadata(
+        &self,
+        task: &Task,
+        reason: &str,
+    ) -> Result<(), String> {
+        let mut recovery = MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .unwrap_or(None)
+            .unwrap_or_default();
+
+        recovery.circuit_breaker_active = true;
+        recovery.circuit_breaker_reason = Some(reason.to_string());
+
+        let updated_metadata = recovery
+            .update_task_metadata(task.metadata.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        self.task_repo
+            .update_metadata(&task.id, Some(updated_metadata))
             .await
             .map_err(|e| e.to_string())
     }

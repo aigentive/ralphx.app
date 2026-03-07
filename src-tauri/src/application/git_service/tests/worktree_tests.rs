@@ -996,3 +996,71 @@ async fn test_delete_worktree_succeeds_when_dir_already_gone() {
         result.err()
     );
 }
+
+/// RC9 fix: delete_worktree runs `git worktree prune` even when the path doesn't exist.
+///
+/// Previously, prune only ran inside `if worktree.exists()`, so a stale git metadata
+/// entry would remain if the directory was already deleted. This test creates a real
+/// worktree, manually deletes the directory (simulating external deletion), then calls
+/// delete_worktree and verifies the stale git metadata was cleaned up by prune.
+#[tokio::test]
+async fn test_delete_worktree_prunes_even_when_path_missing() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    // Create a feature branch and worktree
+    Command::new("git")
+        .args(["branch", "prune-test-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    let wt_path = temp_dir.path().join("worktrees").join("prune-test-wt");
+    std::fs::create_dir_all(wt_path.parent().unwrap()).unwrap();
+
+    let create_result =
+        GitService::checkout_existing_branch_worktree(repo, &wt_path, "prune-test-branch").await;
+    assert!(
+        create_result.is_ok(),
+        "Worktree creation should succeed: {:?}",
+        create_result.err()
+    );
+    assert!(wt_path.exists(), "Worktree should exist after creation");
+
+    // Verify the worktree shows up in git's list before deletion
+    let worktrees_before = GitService::list_worktrees(repo).await.unwrap();
+    let has_wt_before = worktrees_before
+        .iter()
+        .any(|w| w.branch.as_deref() == Some("prune-test-branch"));
+    assert!(
+        has_wt_before,
+        "Worktree should be listed before deletion"
+    );
+
+    // Manually delete the directory (simulating external deletion, leaving stale git metadata)
+    std::fs::remove_dir_all(&wt_path).unwrap();
+    assert!(
+        !wt_path.exists(),
+        "Directory should be gone after manual deletion"
+    );
+
+    // delete_worktree should succeed and run git worktree prune (RC9 fix)
+    let result = GitService::delete_worktree(repo, &wt_path).await;
+    assert!(
+        result.is_ok(),
+        "delete_worktree should succeed even when path is already gone: {:?}",
+        result.err()
+    );
+
+    // Verify the stale git metadata was cleaned up by prune
+    let worktrees_after = GitService::list_worktrees(repo).await.unwrap();
+    let has_wt_after = worktrees_after
+        .iter()
+        .any(|w| w.branch.as_deref() == Some("prune-test-branch"));
+    assert!(
+        !has_wt_after,
+        "After delete_worktree, stale git metadata should be pruned \
+         (RC9 fix: prune now runs outside if-path-exists block)"
+    );
+}

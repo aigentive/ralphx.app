@@ -23,8 +23,8 @@ use crate::infrastructure::agents::claude::scheduler_config;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     task_metadata::{
-        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-        MergeRecoverySource, MergeRecoveryState,
+        MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
+        MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     },
     InternalStatus, ProjectId, Task, TaskCategory,
 };
@@ -647,7 +647,8 @@ impl<R: Runtime> TaskScheduler for TaskSchedulerService<R> {
                 ),
             )
             .with_target_branch(&target_branch)
-            .with_attempt(attempt_count);
+            .with_attempt(attempt_count)
+            .with_failure_source(MergeFailureSource::TransientGit);
 
             // Append event and update state to Retrying
             recovery.append_event_with_state(auto_retry_event, MergeRecoveryState::Retrying);

@@ -17,6 +17,11 @@ use tokio::time::timeout;
 // Source: git stderr output on Linux/macOS. These are transient errors caused by
 // lock contention, concurrent operations, or temporary I/O issues.
 
+/// Lowercase marker fragment present in errors when a git spawn fails with ENOENT.
+/// Classification sites matching against lowercased error strings should use this constant.
+/// See: `exec_git_async` for the injection site.
+pub(crate) const ENOENT_MARKER: &str = "working directory not found (enoent)";
+
 /// git reports a stale or held index.lock file preventing operations.
 const ERR_INDEX_LOCK: &str = "index.lock";
 
@@ -57,7 +62,17 @@ async fn exec_git_async(args: &[String], cwd: &Path) -> AppResult<Output> {
         .kill_on_drop(true)
         .output()
         .await
-        .map_err(|e| AppError::GitOperation(format!("git {}: {}", args.join(" "), e)))
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                AppError::GitOperation(format!(
+                    "git {}: working directory not found (ENOENT): {}",
+                    args.join(" "),
+                    e
+                ))
+            } else {
+                AppError::GitOperation(format!("git {}: {}", args.join(" "), e))
+            }
+        })
 }
 
 /// Execute a single git command asynchronously with env vars and `kill_on_drop(true)`.

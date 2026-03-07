@@ -93,8 +93,9 @@ impl GitService {
                         e
                     )));
                 }
-                let _ = git_cmd::run(&["worktree", "prune"], repo).await;
             }
+            // Always prune stale git metadata regardless of path existence
+            let _ = git_cmd::run(&["worktree", "prune"], repo).await;
         }
 
         Ok(())

@@ -355,6 +355,34 @@ fn test_execution_failed_all_three_env_overrides_applied_together() {
 }
 
 #[test]
+fn test_circuit_breaker_config_defaults() {
+    let config = ReconciliationConfig::default();
+    assert_eq!(config.merge_circuit_breaker_threshold, 3);
+    assert_eq!(config.merge_circuit_breaker_window, 5);
+}
+
+#[test]
+fn test_circuit_breaker_env_overrides() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_MERGE_CIRCUIT_BREAKER_THRESHOLD" => Some("5".to_string()),
+        "RALPHX_MERGE_CIRCUIT_BREAKER_WINDOW" => Some("10".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(cfg.reconciliation.merge_circuit_breaker_threshold, 5);
+    assert_eq!(cfg.reconciliation.merge_circuit_breaker_window, 10);
+}
+
+#[test]
 fn test_execution_failed_invalid_env_values_keep_defaults() {
     let mut cfg = AllRuntimeConfig {
         stream: StreamTimeoutsConfig::default(),
