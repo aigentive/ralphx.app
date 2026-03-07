@@ -547,3 +547,167 @@ async fn test_branches_have_same_content_diverged() {
         "Branches with different content should not be identical"
     );
 }
+
+// =========================================================================
+// commit_all_including_deletions: Safe Batched Staging (replaces git add -A)
+// =========================================================================
+
+#[tokio::test]
+async fn test_commit_all_including_deletions_respects_gitignore() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    // Create .gitignore FIRST, then initial commit
+    std::fs::write(repo.join(".gitignore"), "build/\n*.log\n").unwrap();
+    std::fs::write(repo.join("tracked.txt"), "initial").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Create ignored files
+    std::fs::create_dir_all(repo.join("build")).unwrap();
+    std::fs::write(repo.join("build/output.js"), "compiled").unwrap();
+    std::fs::write(repo.join("build/output.d.ts"), "types").unwrap();
+    std::fs::write(repo.join("app.log"), "log data").unwrap();
+
+    // Also modify tracked file
+    std::fs::write(repo.join("tracked.txt"), "modified").unwrap();
+
+    let sha = GitService::commit_all_including_deletions(repo, "should not include ignored")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    // Verify ignored files are NOT in the commit
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    assert!(
+        !tree_output.contains("build/output.js"),
+        "commit_all_including_deletions must respect .gitignore (build/output.js)"
+    );
+    assert!(
+        !tree_output.contains("build/output.d.ts"),
+        "commit_all_including_deletions must respect .gitignore (build/output.d.ts)"
+    );
+    assert!(
+        !tree_output.contains("app.log"),
+        "commit_all_including_deletions must respect .gitignore (*.log)"
+    );
+    assert!(
+        tree_output.contains("tracked.txt"),
+        "Tracked file should still be committed"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_all_including_deletions_handles_renames() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    std::fs::write(repo.join("original.txt"), "content for rename test").unwrap();
+    std::fs::write(repo.join("other.txt"), "other content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Rename via git mv so git detects it as a rename (R status)
+    Command::new("git")
+        .args(["mv", "original.txt", "renamed.txt"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Also modify other.txt to have mixed changes
+    std::fs::write(repo.join("other.txt"), "modified other").unwrap();
+
+    let sha = GitService::commit_all_including_deletions(repo, "rename + modify")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    assert!(
+        tree_output.contains("renamed.txt"),
+        "Renamed file must appear with new name"
+    );
+    assert!(
+        !tree_output.contains("original.txt"),
+        "Original name should no longer exist after rename"
+    );
+    assert!(
+        tree_output.contains("other.txt"),
+        "Other modified files should still be present"
+    );
+}
+
+#[tokio::test]
+async fn test_commit_all_including_deletions_batches_large_file_count() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_test_repo(repo);
+
+    // Create initial commit
+    std::fs::write(repo.join("base.txt"), "base").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Create 150 files (exceeds batch size of 100) to verify batching works
+    for i in 0..150 {
+        std::fs::write(repo.join(format!("file_{:03}.txt", i)), format!("content {}", i)).unwrap();
+    }
+
+    let sha = GitService::commit_all_including_deletions(repo, "batch test")
+        .await
+        .unwrap()
+        .expect("commit should be created");
+    assert!(!sha.is_empty());
+
+    // Verify all 150 files are committed
+    let tree = Command::new("git")
+        .args(["ls-tree", "-r", "--name-only", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let tree_output = String::from_utf8_lossy(&tree.stdout);
+    for i in 0..150 {
+        assert!(
+            tree_output.contains(&format!("file_{:03}.txt", i)),
+            "File file_{:03}.txt should be committed (batch staging)", i
+        );
+    }
+}
