@@ -48,6 +48,9 @@ function ensureMockData(): void {
     updatedAt: new Date().toISOString(),
     archivedAt: null,
     convertedAt: null,
+    verificationStatus: "unverified",
+    verificationInProgress: false,
+    gapScore: null,
   };
   mockSessions.set(session.id, session);
 
@@ -91,7 +94,7 @@ export const mockIdeationApi = {
         id: generateTestUuid(),
         projectId,
         title: title ?? null,
-    titleSource: null,
+        titleSource: null,
         status: "active",
         planArtifactId: null,
         seedTaskId: seedTaskId ?? null,
@@ -102,6 +105,9 @@ export const mockIdeationApi = {
         updatedAt: new Date().toISOString(),
         archivedAt: null,
         convertedAt: null,
+        verificationStatus: "unverified",
+        verificationInProgress: false,
+        gapScore: null,
       };
       mockSessions.set(session.id, session);
       return session;
@@ -176,7 +182,7 @@ export const mockIdeationApi = {
         projectId: mockSessions.get(input.parentSessionId)?.projectId ?? "project-mock-1",
         title: input.title ?? null,
         status: "active",
-    titleSource: null,
+        titleSource: null,
         planArtifactId: null,
         seedTaskId: null,
         parentSessionId: input.parentSessionId,
@@ -186,6 +192,9 @@ export const mockIdeationApi = {
         updatedAt: new Date().toISOString(),
         archivedAt: null,
         convertedAt: null,
+        verificationStatus: "unverified",
+        verificationInProgress: false,
+        gapScore: null,
       };
       mockSessions.set(childSession.id, childSession);
 

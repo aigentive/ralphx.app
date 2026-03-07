@@ -227,6 +227,72 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
 
 **Debate synthesis:** Compare all TeamAnalysis artifacts; justify winning approach with evidence; document rejected approaches.
 
+### Phase 4.5: VERIFY (user-triggered)
+
+**Trigger:** User says "verify", "check the plan", "run the critic", or similar.
+
+**Round Loop:**
+1. `get_plan_verification(session_id)` → get current round, gap history, best version state
+2. Read current plan: `get_session_plan(session_id)` → extract plan content (≤3000 tokens; truncate at 3000 if longer — prepend "TRUNCATED TO 3000 TOKENS:" and keep first 3000 tokens)
+3. Spawn `Task(general-purpose)` (NOT `Task(ralphx:ideation-critic)` — Task only accepts built-in types) with this prompt template:
+   ```
+   You are an adversarial plan critic for RalphX. Review the following plan for gaps, risks, and missing details.
+
+   OUTPUT FORMAT: You MUST respond with ONLY a JSON object in this exact format, no prose before or after:
+   {
+     "gaps": [
+       {
+         "severity": "critical|high|medium|low",
+         "category": "architecture|security|testing|performance|scalability|maintainability|completeness",
+         "description": "Concise description of the gap",
+         "why_it_matters": "Concrete impact if not addressed"
+       }
+     ],
+     "summary": "One-sentence synthesis of the plan's main risk"
+   }
+
+   Severity guide:
+   - critical: Blocks implementation or causes data loss/security breach
+   - high: Significant rework required if not addressed
+   - medium: Adds risk but workable with care
+   - low: Nice-to-have improvement
+
+   PLAN CONTENT:
+   {plan_content}
+   ```
+4. Parse JSON from critic response. On parse failure: record via `update_plan_verification(session_id, status: "needs_revision", round: N, gaps: [])`. If ≥3 parse failures in last 5 rounds → convergence via "critic_parse_failure".
+5. Compute gap score: `critical * 10 + high * 3 + medium * 1`
+6. Call `update_plan_verification(session_id, status: "reviewing", in_progress: true, round: N, gaps: [...])`
+7. Output round progress:
+   ```
+   📋 Verification Round {N}/{max_rounds}
+   Gap score: {score} (critical: {c}, high: {h}, medium: {m}, low: {l})
+   {↓ Improving / ↑ Regressing / → Stable}
+
+   Critical gaps: {list or "None ✓"}
+   High gaps: {list or "None ✓"}
+
+   {if converged: "✅ Converged: {reason}" else "Continue? (y/n or describe what to fix)"}
+   ```
+8. Check convergence:
+
+   | Condition | convergence_reason | Action |
+   |-----------|-------------------|--------|
+   | 0 critical AND high_count ≤ previous round | `zero_critical` | Status → verified |
+   | Jaccard(round_N, round_N+1 fingerprints) ≥ 0.8 for 2 consecutive rounds | `jaccard_converged` | Status → verified |
+   | current_round ≥ max_rounds (default 5) | `max_rounds` | Status → verified; check best version |
+   | ≥3 parse failures in last 5 rounds | `critic_parse_failure` | Status → verified; warn user |
+
+   On convergence: `update_plan_verification(session_id, status: "verified", in_progress: false, convergence_reason: "...")` → proceed to CONFIRM.
+
+9. Present gaps to user. Ask: "Shall I update the plan to address these gaps and run another round?"
+10. User approves → `update_plan_artifact` → repeat from step 1.
+11. User skips → `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
+
+**Best-version tracking:** At hard-cap exit, if `final_gap_score > original_gap_score` → output "⚠️ The current plan (gap score: {final}) is worse than the original (gap score: {original}). Consider **Revert & Skip** to restore the original plan."
+
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → ask user: "A verification round was in progress. Resume from round {N}? (y/n)"
+
 ### Phase 5: CONFIRM
 Present plan to user → wait for approval. Include: team research summary, architecture overview, key decisions, affected files, implementation phases.
 

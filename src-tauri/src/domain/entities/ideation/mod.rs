@@ -66,6 +66,15 @@ pub struct IdeationSession {
     pub team_config_json: Option<String>,
     /// Title source: "auto" (session-namer) | "user" (manual rename). None treated as "auto".
     pub title_source: Option<String>,
+    /// Verification status of this session's plan
+    #[serde(default)]
+    pub verification_status: VerificationStatus,
+    /// Whether a verification loop is currently active
+    #[serde(default)]
+    pub verification_in_progress: bool,
+    /// JSON-serialized VerificationMetadata (round history, gaps, convergence reason)
+    #[serde(default)]
+    pub verification_metadata: Option<String>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -86,6 +95,9 @@ pub struct IdeationSessionBuilder {
     team_mode: Option<String>,
     team_config_json: Option<String>,
     title_source: Option<String>,
+    verification_status: Option<VerificationStatus>,
+    verification_in_progress: Option<bool>,
+    verification_metadata: Option<String>,
 }
 
 impl IdeationSessionBuilder {
@@ -204,6 +216,9 @@ impl IdeationSessionBuilder {
             team_mode: self.team_mode,
             team_config_json: self.team_config_json,
             title_source: self.title_source,
+            verification_status: self.verification_status.unwrap_or_default(),
+            verification_in_progress: self.verification_in_progress.unwrap_or(false),
+            verification_metadata: self.verification_metadata,
         }
     }
 }
@@ -315,6 +330,20 @@ impl IdeationSession {
                 .get::<_, Option<String>>("team_config_json")
                 .unwrap_or(None),
             title_source: row.get::<_, Option<String>>("title_source").unwrap_or(None),
+            verification_status: row
+                .get::<_, Option<String>>("verification_status")
+                .unwrap_or(None)
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
+            verification_in_progress: row
+                .get::<_, Option<i64>>("verification_in_progress")
+                .unwrap_or(None)
+                .map(|v| v != 0)
+                .unwrap_or(false),
+            verification_metadata: row
+                .get::<_, Option<String>>("verification_metadata")
+                .unwrap_or(None),
         })
     }
 

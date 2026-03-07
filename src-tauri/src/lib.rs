@@ -575,6 +575,26 @@ pub fn run() {
                         .await;
                 });
 
+                // Spawn verification reconciliation service: resets stuck in_progress sessions.
+                // Startup scan runs immediately; periodic scan runs every reconciliation_interval_secs.
+                {
+                    use application::reconciliation::verification_reconciliation::{
+                        VerificationReconciliationConfig, VerificationReconciliationService,
+                    };
+                    let vcfg = infrastructure::agents::claude::verification_config();
+                    let verification_config = VerificationReconciliationConfig {
+                        stale_after_secs: vcfg.reconciliation_stale_after_secs,
+                        interval_secs: vcfg.reconciliation_interval_secs,
+                    };
+                    let verification_session_repo = Arc::clone(&startup_ideation_session_repo);
+                    let svc = Arc::new(VerificationReconciliationService::new(
+                        verification_session_repo,
+                        verification_config,
+                    ));
+                    svc.startup_scan().await;
+                    tauri::async_runtime::spawn(async move { svc.run_periodic().await });
+                }
+
                 // Spawn memory archive job background processing loop
                 // Clone required repositories for the archive job processor
                 let archive_job_memory_archive_repo = Arc::clone(&startup_memory_archive_repo);

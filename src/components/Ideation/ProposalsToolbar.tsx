@@ -18,10 +18,13 @@ import {
   Loader2,
   Check,
   AlertCircle,
+  ShieldAlert,
 } from "lucide-react";
 import { useDependencyGraphValidation } from "@/hooks/useDependencyGraphComplete";
+import { useVerificationGate } from "@/hooks/useVerificationGate";
 import type { TaskProposal } from "@/types/ideation";
 import type { DependencyGraphResponse } from "@/api/ideation.types";
+import type { IdeationSessionResponse } from "@/api/ideation";
 
 // ============================================================================
 // Types
@@ -39,6 +42,8 @@ interface ProposalsToolbarProps {
    *  When true, the accept button label changes to "Accept without dependencies" to
    *  signal that the plan can be accepted despite incomplete dependency analysis. */
   analysisTimedOut?: boolean;
+  /** Session for verification gate — blocks accept when verification is required */
+  session?: Pick<IdeationSessionResponse, "verificationStatus" | "verificationInProgress"> | null;
 }
 
 // ============================================================================
@@ -54,12 +59,20 @@ export function ProposalsToolbar({
   onAnalyzeDependencies,
   isAnalyzingDependencies = false,
   analysisTimedOut = false,
+  session = null,
 }: ProposalsToolbarProps) {
   const totalCount = proposals.length;
   const validation = useDependencyGraphValidation(proposals, graph);
-  const canAccept = totalCount > 0 && !isReadOnly && validation.isComplete && !isAnalyzingDependencies;
+  const verificationGate = useVerificationGate(session);
+  const canAccept =
+    totalCount > 0 &&
+    !isReadOnly &&
+    validation.isComplete &&
+    !isAnalyzingDependencies &&
+    verificationGate.canAccept;
   const showAnalyzeButton = totalCount >= 2 && onAnalyzeDependencies && !isReadOnly;
   const acceptLabel = analysisTimedOut ? "Accept without dependencies" : `Accept Plan (${totalCount})`;
+  const verificationBlocked = !isReadOnly && !verificationGate.canAccept && totalCount > 0;
 
   return (
     <div
@@ -171,6 +184,23 @@ export function ProposalsToolbar({
               </TooltipTrigger>
               <TooltipContent className="max-w-xs">
                 {validation.message}
+              </TooltipContent>
+            </Tooltip>
+          )}
+
+          {/* Verification gate warning */}
+          {verificationBlocked && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-center px-1">
+                  <ShieldAlert
+                    className="w-4 h-4"
+                    style={{ color: "hsl(0 70% 65%)" }}
+                  />
+                </div>
+              </TooltipTrigger>
+              <TooltipContent className="max-w-xs">
+                {verificationGate.reason}
               </TooltipContent>
             </Tooltip>
           )}

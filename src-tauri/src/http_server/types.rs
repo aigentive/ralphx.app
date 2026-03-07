@@ -1302,6 +1302,65 @@ pub struct RotateApiKeyResponse {
     pub old_key_grace_expires_at: String,
 }
 
+// ============================================================================
+// Request/Response Types - Plan Verification
+// ============================================================================
+
+/// A gap identified by the critic
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationGapRequest {
+    pub severity: String,
+    pub category: String,
+    pub description: String,
+    #[serde(default)]
+    pub why_it_matters: Option<String>,
+}
+
+/// Request to update verification state (from MCP orchestrator)
+#[derive(Debug, Deserialize)]
+pub struct UpdateVerificationRequest {
+    pub session_id: String,
+    pub status: String, // "reviewing" | "needs_revision" | "verified" | "skipped"
+    #[serde(default)]
+    pub in_progress: bool,
+    #[serde(default)]
+    pub round: Option<u32>,
+    #[serde(default)]
+    pub gaps: Option<Vec<VerificationGapRequest>>,
+    #[serde(default)]
+    pub convergence_reason: Option<String>,
+    #[serde(default)]
+    pub max_rounds: Option<u32>,
+    /// True if the critic output could not be parsed this round (parse failure tracking)
+    #[serde(default)]
+    pub parse_failed: Option<bool>,
+}
+
+/// Response for GET/POST verification status
+#[derive(Debug, Serialize)]
+pub struct VerificationResponse {
+    pub session_id: String,
+    pub status: String,
+    pub in_progress: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_round: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max_rounds: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gap_score: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub convergence_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub best_round_index: Option<u32>,
+}
+
+/// Request to atomically revert plan + skip verification
+#[derive(Debug, Deserialize)]
+pub struct RevertAndSkipRequest {
+    /// The plan artifact version (artifact_id) to restore content from
+    pub plan_version_to_restore: String,
+}
+
 #[cfg(test)]
 mod http_error_tests {
     use super::*;

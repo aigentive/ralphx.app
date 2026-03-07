@@ -5,11 +5,11 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationStatus,
 };
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::error::{AppError, AppResult};
@@ -73,7 +73,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata
                      FROM ideation_sessions WHERE id = ?1",
                     [&id],
                     |row| IdeationSession::from_row(row),
@@ -87,7 +87,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata
                      FROM ideation_sessions WHERE project_id = ?1 ORDER BY updated_at DESC",
                 )?;
                 let sessions = stmt
@@ -205,7 +205,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata
                      FROM ideation_sessions
                      WHERE project_id = ?1 AND status = 'active'
                      ORDER BY updated_at DESC",
@@ -245,7 +245,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata
                      FROM ideation_sessions WHERE plan_artifact_id = ?1",
                 )?;
                 let sessions = stmt
@@ -264,7 +264,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata
                      FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1",
                 )?;
                 let sessions = stmt
@@ -280,7 +280,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata
                      FROM ideation_sessions WHERE parent_session_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let sessions = stmt
@@ -304,7 +304,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                 // Walk up the parent chain iteratively
                 loop {
                     let result = conn.query_row(
-                        "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                        "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata
                          FROM ideation_sessions WHERE id = ?1",
                         [&current_id],
                         |row| IdeationSession::from_row(row),
@@ -316,7 +316,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                                 let parent_id_str = parent_id.as_str().to_string();
                                 current_id = parent_id_str.clone();
                                 match conn.query_row(
-                                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json
+                                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata
                                      FROM ideation_sessions WHERE id = ?1",
                                     [&parent_id_str],
                                     |row| IdeationSession::from_row(row),
@@ -365,6 +365,200 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     rusqlite::params![id, parent_id, now.to_rfc3339()],
                 )?;
                 Ok(())
+            })
+            .await
+    }
+
+    async fn update_verification_state(
+        &self,
+        id: &IdeationSessionId,
+        status: VerificationStatus,
+        in_progress: bool,
+        metadata_json: Option<String>,
+    ) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        let status_str = status.to_string();
+        let in_progress_int: i64 = if in_progress { 1 } else { 0 };
+        let now = Utc::now();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET verification_status = ?2, verification_in_progress = ?3, verification_metadata = ?4, updated_at = ?5 WHERE id = ?1",
+                    rusqlite::params![id, status_str, in_progress_int, metadata_json, now.to_rfc3339()],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn reset_verification(&self, id: &IdeationSessionId) -> AppResult<bool> {
+        let id = id.as_str().to_string();
+        let now = Utc::now();
+
+        self.db
+            .run(move |conn| {
+                let rows = conn.execute(
+                    "UPDATE ideation_sessions SET verification_status = 'unverified', verification_in_progress = 0, verification_metadata = NULL, updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0",
+                    rusqlite::params![id, now.to_rfc3339()],
+                )?;
+                Ok(rows > 0)
+            })
+            .await
+    }
+
+    async fn get_verification_status(
+        &self,
+        id: &IdeationSessionId,
+    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
+        let id = id.as_str().to_string();
+        self.db
+            .query_optional(move |conn| {
+                conn.query_row(
+                    "SELECT verification_status, verification_in_progress, verification_metadata FROM ideation_sessions WHERE id = ?1",
+                    [&id],
+                    |row| {
+                        let status_str: Option<String> = row.get(0).unwrap_or(None);
+                        let in_progress: Option<i64> = row.get(1).unwrap_or(None);
+                        let metadata: Option<String> = row.get(2).unwrap_or(None);
+                        let status = status_str
+                            .as_deref()
+                            .and_then(|s| s.parse().ok())
+                            .unwrap_or_default();
+                        let in_prog = in_progress.map(|v| v != 0).unwrap_or(false);
+                        Ok((status, in_prog, metadata))
+                    },
+                )
+            })
+            .await
+    }
+
+    async fn revert_plan_and_skip_verification(
+        &self,
+        id: &IdeationSessionId,
+        new_plan_artifact_id: String,
+        convergence_reason: String,
+    ) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        let now = Utc::now();
+        let metadata_json = serde_json::json!({
+            "v": 1,
+            "current_round": 0,
+            "max_rounds": 0,
+            "rounds": [],
+            "current_gaps": [],
+            "convergence_reason": convergence_reason,
+            "best_round_index": null,
+            "parse_failures": []
+        })
+        .to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET plan_artifact_id = ?2, verification_status = 'skipped', verification_in_progress = 0, verification_metadata = ?3, updated_at = ?4 WHERE id = ?1",
+                    rusqlite::params![id, new_plan_artifact_id, metadata_json, now.to_rfc3339()],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn revert_plan_and_skip_with_artifact(
+        &self,
+        session_id: &IdeationSessionId,
+        new_artifact_id: String,
+        artifact_type_str: String,
+        artifact_name: String,
+        content_text: String,
+        version: u32,
+        previous_version_id: String,
+        convergence_reason: String,
+    ) -> AppResult<()> {
+        let session_id = session_id.as_str().to_string();
+        let now = Utc::now();
+        let now_str = now.to_rfc3339();
+
+        let artifact_metadata_json = serde_json::json!({
+            "created_at": now_str,
+            "created_by": "system",
+            "version": version,
+        })
+        .to_string();
+
+        let session_metadata_json = serde_json::json!({
+            "v": 1,
+            "current_round": 0,
+            "max_rounds": 0,
+            "rounds": [],
+            "current_gaps": [],
+            "convergence_reason": convergence_reason,
+            "best_round_index": null,
+            "parse_failures": []
+        })
+        .to_string();
+
+        let artifact_id_clone = new_artifact_id.clone();
+
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "INSERT INTO artifacts \
+                     (id, type, name, content_type, content_text, content_path, \
+                      bucket_id, task_id, process_id, created_by, version, \
+                      previous_version_id, created_at, metadata_json) \
+                     VALUES (?1, ?2, ?3, 'inline', ?4, NULL, \
+                             NULL, NULL, NULL, 'system', ?5, \
+                             ?6, ?7, ?8)",
+                    rusqlite::params![
+                        new_artifact_id,
+                        artifact_type_str,
+                        artifact_name,
+                        content_text,
+                        version,
+                        previous_version_id,
+                        now_str,
+                        artifact_metadata_json,
+                    ],
+                )?;
+
+                conn.execute(
+                    "UPDATE ideation_sessions \
+                     SET plan_artifact_id = ?2, \
+                         verification_status = 'skipped', \
+                         verification_in_progress = 0, \
+                         verification_metadata = ?3, \
+                         updated_at = ?4 \
+                     WHERE id = ?1",
+                    rusqlite::params![
+                        session_id,
+                        artifact_id_clone,
+                        session_metadata_json,
+                        now.to_rfc3339(),
+                    ],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn get_stale_in_progress_sessions(
+        &self,
+        stale_before: DateTime<Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let stale_before_str = stale_before.to_rfc3339();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, \
+                     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
+                     updated_at, archived_at, converted_at, team_mode, team_config_json, \
+                     verification_status, verification_in_progress, verification_metadata \
+                     FROM ideation_sessions \
+                     WHERE verification_in_progress = 1 AND updated_at < ?1",
+                )?;
+                let sessions = stmt
+                    .query_map([&stale_before_str], IdeationSession::from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(sessions)
             })
             .await
     }

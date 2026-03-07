@@ -77,6 +77,7 @@ mod v53_merge_pipeline_active_column;
 mod v54_inherited_plan_artifact_id;
 mod v55_drop_spawn_orchestrator_jobs;
 mod v56_api_keys;
+mod v57_plan_verification;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
@@ -163,9 +164,11 @@ mod v49_backfill_execution_plans_tests;
 mod v51_repair_plan_branches_tests;
 #[cfg(test)]
 mod v56_api_keys_tests;
+#[cfg(test)]
+mod v57_plan_verification_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 56;
+pub const SCHEMA_VERSION: i32 = 57;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -459,6 +462,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 56,
         name: "api_keys",
         migrate: v56_api_keys::migrate,
+    },
+    Migration {
+        version: 57,
+        name: "plan_verification",
+        migrate: v57_plan_verification::migrate,
     },
 ];
 

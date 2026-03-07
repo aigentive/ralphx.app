@@ -12,6 +12,48 @@ pub struct AllRuntimeConfig {
     pub scheduler: SchedulerConfig,
     pub supervisor: SupervisorRuntimeConfig,
     pub limits: LimitsConfig,
+    pub verification: VerificationConfig,
+}
+
+/// Configuration for the plan verification feature.
+///
+/// All fields required in ralphx.yaml under `ideation.verification:`.
+/// `Default` impl retained only for fallback/test use.
+#[derive(Debug, Clone, Deserialize)]
+pub struct VerificationConfig {
+    /// Maximum number of adversarial review rounds [1, 10]. Hard cap — always terminates.
+    pub max_rounds: u32,
+    /// If true, verification starts automatically when a plan is created.
+    pub auto_verify: bool,
+    /// If true, `apply_proposals` is blocked unless the plan is verified or skipped.
+    pub require_verification_for_accept: bool,
+    /// Minimum number of proposal tasks before auto-verification triggers (if `auto_verify=true`).
+    pub complexity_threshold: u32,
+    /// Sessions stuck in `verification_in_progress=1` for longer than this are reset by
+    /// the reconciliation service (seconds). Default: 5400 (90 min).
+    pub reconciliation_stale_after_secs: u64,
+    /// How often the verification reconciliation service scans for stuck sessions (seconds).
+    pub reconciliation_interval_secs: u64,
+}
+
+impl Default for VerificationConfig {
+    fn default() -> Self {
+        Self {
+            max_rounds: 5,
+            auto_verify: false,
+            require_verification_for_accept: true,
+            complexity_threshold: 3,
+            reconciliation_stale_after_secs: 5400, // 90 minutes
+            reconciliation_interval_secs: 300,     // 5 minutes
+        }
+    }
+}
+
+/// YAML wrapper for nested `ideation:` key.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub(crate) struct IdeationConfigWrapper {
+    #[serde(default)]
+    pub verification: VerificationConfig,
 }
 
 // ── YAML wrapper for nested `timeouts:` key ──────────────────────────────
@@ -463,6 +505,28 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
         cfg.limits.max_resume_attempts,
         "RALPHX_LIMITS_MAX_RESUME_ATTEMPTS"
     );
+
+    // Verification
+    env_u64!(
+        cfg.verification.reconciliation_stale_after_secs,
+        "RALPHX_VERIFICATION_RECONCILIATION_STALE_AFTER_SECS"
+    );
+    env_u64!(
+        cfg.verification.reconciliation_interval_secs,
+        "RALPHX_VERIFICATION_RECONCILIATION_INTERVAL_SECS"
+    );
+    if let Some(v) = lookup("RALPHX_VERIFICATION_MAX_ROUNDS") {
+        if let Ok(n) = v.parse::<u32>() {
+            cfg.verification.max_rounds = n;
+        }
+    }
+    if let Some(v) = lookup("RALPHX_VERIFICATION_COMPLEXITY_THRESHOLD") {
+        if let Ok(n) = v.parse::<u32>() {
+            cfg.verification.complexity_threshold = n;
+        }
+    }
+
+    validate_verification_config(&mut cfg.verification);
 }
 
 /// Validate ReconciliationConfig fields and clamp to safe defaults on invalid values (GAP M7).
@@ -491,6 +555,34 @@ pub fn validate_reconciliation_config(cfg: &mut ReconciliationConfig) {
         );
         cfg.execution_failed_retry_base_secs = DEFAULT_BASE;
         cfg.execution_failed_retry_max_secs = DEFAULT_MAX;
+    }
+}
+
+/// Validate VerificationConfig fields and clamp to safe defaults on invalid values.
+pub fn validate_verification_config(cfg: &mut VerificationConfig) {
+    const MIN_ROUNDS: u32 = 1;
+    const MAX_ROUNDS: u32 = 10;
+    const MIN_INTERVAL_SECS: u64 = 60;
+
+    if cfg.max_rounds < MIN_ROUNDS || cfg.max_rounds > MAX_ROUNDS {
+        warn!(
+            "verification.max_rounds must be [{}, {}], got {}; clamping",
+            MIN_ROUNDS, MAX_ROUNDS, cfg.max_rounds
+        );
+        cfg.max_rounds = cfg.max_rounds.clamp(MIN_ROUNDS, MAX_ROUNDS);
+    }
+
+    if cfg.reconciliation_interval_secs < MIN_INTERVAL_SECS {
+        warn!(
+            "verification.reconciliation_interval_secs must be >= {}s, got {}; clamping",
+            MIN_INTERVAL_SECS, cfg.reconciliation_interval_secs
+        );
+        cfg.reconciliation_interval_secs = MIN_INTERVAL_SECS;
+    }
+
+    if cfg.reconciliation_stale_after_secs == 0 {
+        warn!("verification.reconciliation_stale_after_secs must be > 0; clamping to 5400");
+        cfg.reconciliation_stale_after_secs = 5400;
     }
 }
 

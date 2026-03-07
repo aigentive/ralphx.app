@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::entities::VerificationStatus;
 
 #[tokio::test]
 async fn test_create_and_get() {
@@ -171,4 +172,100 @@ async fn test_set_parent_with_null() {
 
     let updated_child = repo.get_by_id(&child.id).await.unwrap().unwrap();
     assert!(updated_child.parent_session_id.is_none());
+}
+
+// ==================== VERIFICATION STATE TESTS ====================
+
+#[tokio::test]
+async fn test_update_verification_state_roundtrip() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    // Default
+    let (status, in_progress, _) = repo
+        .get_verification_status(&session.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(status, VerificationStatus::Unverified);
+    assert!(!in_progress);
+
+    // Update
+    let metadata = Some(r#"{"v":1,"current_round":2}"#.to_string());
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::Reviewing,
+        true,
+        metadata.clone(),
+    )
+    .await
+    .unwrap();
+
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(found.verification_status, VerificationStatus::Reviewing);
+    assert!(found.verification_in_progress);
+    assert_eq!(found.verification_metadata, metadata);
+}
+
+#[tokio::test]
+async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    // Set to needs_revision, not in progress
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::NeedsRevision,
+        false,
+        Some(r#"{"v":1}"#.to_string()),
+    )
+    .await
+    .unwrap();
+
+    repo.reset_verification(&session.id).await.unwrap();
+
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(found.verification_status, VerificationStatus::Unverified);
+    assert!(!found.verification_in_progress);
+    assert!(found.verification_metadata.is_none());
+}
+
+#[tokio::test]
+async fn test_reset_verification_is_noop_when_in_progress() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    let metadata = Some(r#"{"v":1,"current_round":3}"#.to_string());
+
+    // Set to reviewing with in_progress = true
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::Reviewing,
+        true,
+        metadata.clone(),
+    )
+    .await
+    .unwrap();
+
+    // Reset should be a no-op because in_progress = true
+    repo.reset_verification(&session.id).await.unwrap();
+
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(found.verification_status, VerificationStatus::Reviewing);
+    assert!(found.verification_in_progress);
+    assert_eq!(found.verification_metadata, metadata);
+}
+
+#[tokio::test]
+async fn test_get_verification_status_returns_none_for_nonexistent() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let id = IdeationSessionId::new();
+    let result = repo.get_verification_status(&id).await.unwrap();
+    assert!(result.is_none());
 }

@@ -19,12 +19,14 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
+use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput};
 use crate::domain::entities::{
     ideation::IdeationSession, types::ProjectId, IdeationSessionId, InternalStatus, TaskId,
 };
+use crate::domain::services::check_verification_gate;
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 
-use super::HttpServerState;
+use super::{HttpError, HttpServerState};
 
 // ============================================================================
 // Response types
@@ -1444,4 +1446,128 @@ pub async fn stream_events_http(
 #[derive(Debug, Deserialize)]
 pub struct StreamEventsQuery {
     pub project_id: Option<String>,
+}
+
+// ============================================================================
+// External apply_proposals endpoint (D5 — closes external MCP bypass gap)
+// ============================================================================
+
+/// Request body for `POST /api/external/apply_proposals`.
+///
+/// Maps to [`ApplyProposalsInput`] used by the Tauri IPC path. The `target_column`
+/// defaults to `"auto"` so task status is determined from dependency graph automatically.
+#[derive(Debug, Deserialize)]
+pub struct ExternalApplyProposalsRequest {
+    pub session_id: String,
+    pub proposal_ids: Vec<String>,
+    /// Controls initial task placement. Use `"auto"` (default) to derive status from
+    /// the dependency graph: tasks with no blockers → Ready, with blockers → Blocked.
+    #[serde(default = "external_apply_default_column")]
+    pub target_column: String,
+    /// Whether to preserve inter-proposal dependencies as task dependencies.
+    #[serde(default = "external_apply_default_preserve_deps")]
+    pub preserve_dependencies: bool,
+    /// Per-plan override for feature branch usage. `None` uses the project default.
+    #[serde(default)]
+    pub use_feature_branch: Option<bool>,
+}
+
+fn external_apply_default_column() -> String {
+    "auto".to_string()
+}
+
+fn external_apply_default_preserve_deps() -> bool {
+    true
+}
+
+impl From<ExternalApplyProposalsRequest> for ApplyProposalsInput {
+    fn from(req: ExternalApplyProposalsRequest) -> Self {
+        Self {
+            session_id: req.session_id,
+            proposal_ids: req.proposal_ids,
+            target_column: req.target_column,
+            preserve_dependencies: req.preserve_dependencies,
+            use_feature_branch: req.use_feature_branch,
+        }
+    }
+}
+
+/// Response body for `POST /api/external/apply_proposals`.
+#[derive(Debug, Serialize)]
+pub struct ExternalApplyProposalsResponse {
+    pub created_task_ids: Vec<String>,
+    pub dependencies_created: usize,
+    pub warnings: Vec<String>,
+    pub session_converted: bool,
+    pub execution_plan_id: Option<String>,
+}
+
+/// POST /api/external/apply_proposals
+///
+/// Apply accepted proposals to the Kanban board from the external MCP path.
+///
+/// Enforces:
+/// 1. **Project scope** — the caller's API key must have access to the session's project.
+/// 2. **Verification gate** — the plan must pass `check_verification_gate` before
+///    proposals are accepted. Full enforcement requires Wave 1 schema migration.
+///
+/// Unlike the Tauri IPC path (`apply_proposals_to_kanban`), this endpoint does **not**
+/// trigger the task scheduler. External agents poll
+/// `GET /api/external/pipeline/:project_id` to monitor when tasks become Ready.
+pub async fn external_apply_proposals(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Json(req): Json<ExternalApplyProposalsRequest>,
+) -> Result<Json<ExternalApplyProposalsResponse>, HttpError> {
+    let session_id = IdeationSessionId::from_string(req.session_id.clone());
+
+    // Fetch session to verify project scope and verification gate
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get session {}: {}", req.session_id, e);
+            HttpError::from(StatusCode::INTERNAL_SERVER_ERROR)
+        })?
+        .ok_or_else(|| HttpError::from(StatusCode::NOT_FOUND))?;
+
+    // Enforce project scope: API key must have access to session's project
+    session.assert_project_scope(&scope)?;
+
+    // Enforce verification gate: plan must be verified before external acceptance
+    let ideation_settings = state
+        .app_state
+        .ideation_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| {
+            error!("Failed to get ideation settings: {}", e);
+            HttpError::from(StatusCode::INTERNAL_SERVER_ERROR)
+        })?;
+    check_verification_gate(&session, &ideation_settings)
+        .map_err(|e| HttpError::validation(e.to_string()))?;
+
+    // Apply proposals — no scheduler trigger (external agents poll get_pipeline_overview)
+    let result = apply_proposals_core(&state.app_state, req.into())
+        .await
+        .map_err(|e| {
+            error!("apply_proposals_core failed: {}", e);
+            HttpError::validation(e.to_string())
+        })?;
+
+    tracing::info!(
+        session_id = %session_id.as_str(),
+        created = result.created_task_ids.len(),
+        "External apply_proposals completed"
+    );
+
+    Ok(Json(ExternalApplyProposalsResponse {
+        created_task_ids: result.created_task_ids,
+        dependencies_created: result.dependencies_created,
+        warnings: result.warnings,
+        session_converted: result.session_converted,
+        execution_plan_id: result.execution_plan_id,
+    }))
 }

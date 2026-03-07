@@ -18,6 +18,9 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         team_mode: team_mode.map(|s| s.to_string()),
         team_config_json: None,
         title_source: None,
+        verification_status: Default::default(),
+        verification_in_progress: false,
+        verification_metadata: None,
     }
 }
 

@@ -189,6 +189,57 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<()> {
         Ok(())
     }
+
+    async fn update_verification_state(
+        &self,
+        _id: &IdeationSessionId,
+        _status: crate::domain::entities::VerificationStatus,
+        _in_progress: bool,
+        _metadata_json: Option<String>,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn reset_verification(&self, _id: &IdeationSessionId) -> AppResult<bool> {
+        Ok(false)
+    }
+
+    async fn get_verification_status(
+        &self,
+        _id: &IdeationSessionId,
+    ) -> AppResult<Option<(crate::domain::entities::VerificationStatus, bool, Option<String>)>> {
+        Ok(None)
+    }
+
+    async fn revert_plan_and_skip_verification(
+        &self,
+        _id: &IdeationSessionId,
+        _new_plan_artifact_id: String,
+        _convergence_reason: String,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn revert_plan_and_skip_with_artifact(
+        &self,
+        _session_id: &IdeationSessionId,
+        _new_artifact_id: String,
+        _artifact_type_str: String,
+        _artifact_name: String,
+        _content_text: String,
+        _version: u32,
+        _previous_version_id: String,
+        _convergence_reason: String,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn get_stale_in_progress_sessions(
+        &self,
+        _stale_before: chrono::DateTime<chrono::Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(Vec::new())
+    }
 }
 
 struct MockProposalRepository {

@@ -12,7 +12,7 @@ use tracing::error;
 use crate::application::chat_service::{ChatService, ClaudeChatService};
 use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink,
-    SessionRelationship,
+    SessionRelationship, VerificationStatus,
 };
 use crate::infrastructure::agents::claude::{
     get_team_constraints, team_constraints_config, validate_child_team_config, TeamConstraints,
@@ -194,6 +194,9 @@ pub async fn create_child_session(
         team_mode,
         team_config_json,
         title_source: None,
+        verification_status: VerificationStatus::default(),
+        verification_in_progress: false,
+        verification_metadata: None,
     };
 
     let child_id = child_session.id.clone();

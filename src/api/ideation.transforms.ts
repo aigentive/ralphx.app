@@ -56,6 +56,9 @@ export function transformSession(raw: z.infer<typeof IdeationSessionResponseSche
     updatedAt: raw.updated_at,
     archivedAt: raw.archived_at,
     convertedAt: raw.converted_at,
+    verificationStatus: (raw.verification_status ?? "unverified") as import("../types/ideation").VerificationStatus,
+    verificationInProgress: raw.verification_in_progress ?? false,
+    gapScore: raw.gap_score ?? null,
   };
 }
 

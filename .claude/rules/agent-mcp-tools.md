@@ -56,6 +56,18 @@ All of the above, plus:
 | Subagent can't use tool | Missing from Layer 3 (frontmatter `allowedTools`) | Only affects subagent spawning |
 | Tool allowed but 404 | Handler missing or wrong route | Check `index.ts` dispatch + `mod.rs` route |
 
+## Verification Tools (`update_plan_verification` + `get_plan_verification`)
+
+Both tools are in the allowlist for `orchestrator-ideation` and `ideation-team-lead`:
+
+| Layer | File | Entry |
+|-------|------|-------|
+| 1 (Rust) | `agent_config/mod.rs` | `"update_plan_verification"`, `"get_plan_verification"` in both agents |
+| 2 (MCP) | `tools.ts` | Added to `TOOL_ALLOWLIST["orchestrator-ideation"]` + `TOOL_ALLOWLIST["ideation-team-lead"]` |
+| 3 (Frontmatter) | `orchestrator-ideation.md`, `ideation-team-lead.md` | `mcp__ralphx__update_plan_verification`, `mcp__ralphx__get_plan_verification` |
+
+`update_plan_verification` mutates verification state (POST). `get_plan_verification` reads current state (GET). Both have `session_id` as required param — NOT task-scoped.
+
 ## Example: Adding `get_merge_target` to `ralphx-merger`
 
 ```rust

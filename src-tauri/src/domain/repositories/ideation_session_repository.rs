@@ -4,9 +4,10 @@
 // Implementations can use SQLite, PostgreSQL, in-memory, etc.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationStatus,
 };
 use crate::error::AppResult;
 
@@ -91,6 +92,56 @@ pub trait IdeationSessionRepository: Send + Sync {
         id: &IdeationSessionId,
         parent_id: Option<&IdeationSessionId>,
     ) -> AppResult<()>;
+
+    /// Update verification state atomically (status + in_progress flag + metadata)
+    async fn update_verification_state(
+        &self,
+        id: &IdeationSessionId,
+        status: VerificationStatus,
+        in_progress: bool,
+        metadata_json: Option<String>,
+    ) -> AppResult<()>;
+
+    /// Conditionally reset verification status to `unverified` — ONLY when `verification_in_progress = 0`.
+    /// This prevents the loop-reset paradox where auto-corrections would reset verification mid-loop.
+    ///
+    /// Returns `true` if the reset occurred (rows_affected > 0), `false` if skipped (in_progress=1).
+    async fn reset_verification(&self, id: &IdeationSessionId) -> AppResult<bool>;
+
+    /// Get a session's verification status + metadata (lightweight read)
+    async fn get_verification_status(
+        &self,
+        id: &IdeationSessionId,
+    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>>;
+
+    /// Atomic revert-and-skip: update plan_artifact_id + set verification status=skipped
+    async fn revert_plan_and_skip_verification(
+        &self,
+        id: &IdeationSessionId,
+        new_plan_artifact_id: String,
+        convergence_reason: String,
+    ) -> AppResult<()>;
+
+    /// Fully atomic revert-and-skip: inserts a new artifact version AND updates the session
+    /// in a single `db.run(|conn| { ... })` transaction.
+    #[allow(clippy::too_many_arguments)]
+    async fn revert_plan_and_skip_with_artifact(
+        &self,
+        session_id: &IdeationSessionId,
+        new_artifact_id: String,
+        artifact_type_str: String,
+        artifact_name: String,
+        content_text: String,
+        version: u32,
+        previous_version_id: String,
+        convergence_reason: String,
+    ) -> AppResult<()>;
+
+    /// Find sessions where `verification_in_progress = 1` and `updated_at < stale_before`.
+    async fn get_stale_in_progress_sessions(
+        &self,
+        stale_before: DateTime<Utc>,
+    ) -> AppResult<Vec<IdeationSession>>;
 }
 
 #[cfg(test)]

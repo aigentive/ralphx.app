@@ -1,4 +1,5 @@
 use super::*;
+use crate::domain::entities::VerificationStatus;
 use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
 
 fn setup_test_db() -> Connection {
@@ -884,4 +885,162 @@ async fn test_get_by_plan_artifact_id_returns_empty_when_no_match() {
         .await
         .unwrap();
     assert!(results.is_empty());
+}
+
+// ==================== VERIFICATION STATE TESTS ====================
+
+#[tokio::test]
+async fn test_update_verification_state_roundtrip() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let session = create_test_session(&project_id, Some("Verify Session"));
+    repo.create(session.clone()).await.unwrap();
+
+    // Default state
+    let (status, in_progress, _) = repo
+        .get_verification_status(&session.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(status, VerificationStatus::Unverified);
+    assert!(!in_progress);
+
+    // Update to reviewing + in_progress
+    let metadata = Some(r#"{"v":1,"current_round":1,"max_rounds":5}"#.to_string());
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::Reviewing,
+        true,
+        metadata.clone(),
+    )
+    .await
+    .unwrap();
+
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(found.verification_status, VerificationStatus::Reviewing);
+    assert!(found.verification_in_progress);
+    assert_eq!(found.verification_metadata, metadata);
+
+    let (status2, in_progress2, _) = repo
+        .get_verification_status(&session.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(status2, VerificationStatus::Reviewing);
+    assert!(in_progress2);
+}
+
+#[tokio::test]
+async fn test_update_verification_state_all_status_variants() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let session = create_test_session(&project_id, Some("All Statuses"));
+    repo.create(session.clone()).await.unwrap();
+
+    for status in [
+        VerificationStatus::Reviewing,
+        VerificationStatus::NeedsRevision,
+        VerificationStatus::Verified,
+        VerificationStatus::Skipped,
+        VerificationStatus::Unverified,
+    ] {
+        repo.update_verification_state(&session.id, status, false, None)
+            .await
+            .unwrap();
+        let (s, _, _) = repo
+            .get_verification_status(&session.id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(s, status);
+    }
+}
+
+#[tokio::test]
+async fn test_reset_verification_clears_all_3_columns_when_not_in_progress() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let session = create_test_session(&project_id, Some("Reset Session"));
+    repo.create(session.clone()).await.unwrap();
+
+    // Set to needs_revision, not in progress
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::NeedsRevision,
+        false,
+        Some(r#"{"v":1}"#.to_string()),
+    )
+    .await
+    .unwrap();
+
+    // Reset should clear all 3 columns and return true
+    let reset = repo.reset_verification(&session.id).await.unwrap();
+    assert!(reset, "reset_verification must return true when in_progress=0");
+
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(found.verification_status, VerificationStatus::Unverified);
+    assert!(!found.verification_in_progress);
+    assert!(found.verification_metadata.is_none());
+}
+
+#[tokio::test]
+async fn test_reset_verification_is_noop_when_in_progress() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let session = create_test_session(&project_id, Some("In Progress Session"));
+    repo.create(session.clone()).await.unwrap();
+
+    let metadata = Some(r#"{"v":1,"current_round":3}"#.to_string());
+
+    // Set to reviewing with in_progress = true
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::Reviewing,
+        true,
+        metadata.clone(),
+    )
+    .await
+    .unwrap();
+
+    // Reset should be a no-op because in_progress = 1 and return false
+    let reset = repo.reset_verification(&session.id).await.unwrap();
+    assert!(!reset, "reset_verification must return false when in_progress=1");
+
+    // All 3 columns should remain unchanged
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(found.verification_status, VerificationStatus::Reviewing);
+    assert!(found.verification_in_progress);
+    assert_eq!(found.verification_metadata, metadata);
+}
+
+#[tokio::test]
+async fn test_reset_verification_returns_false_for_nonexistent_session() {
+    let conn = setup_test_db();
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let fake_id = IdeationSessionId::new();
+
+    let reset = repo.reset_verification(&fake_id).await.unwrap();
+    assert!(!reset, "reset_verification must return false for nonexistent session");
+}
+
+#[tokio::test]
+async fn test_get_verification_status_returns_none_for_nonexistent_session() {
+    let conn = setup_test_db();
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let id = IdeationSessionId::new();
+
+    let result = repo.get_verification_status(&id).await.unwrap();
+    assert!(result.is_none());
 }

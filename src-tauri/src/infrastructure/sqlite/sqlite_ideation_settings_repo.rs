@@ -52,6 +52,7 @@ impl IdeationSettingsRepository for SqliteIdeationSettingsRepository {
                             require_plan_approval: require_plan_approval != 0,
                             suggest_plans_for_complex: suggest_plans_for_complex != 0,
                             auto_link_proposals: auto_link_proposals != 0,
+                            require_verification_for_accept: false,
                         })
                     },
                 );

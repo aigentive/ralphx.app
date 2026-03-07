@@ -2499,3 +2499,142 @@ fn dependency_graph_roundtrip_serialization() {
     assert_eq!(original.edge_count(), restored.edge_count());
     assert_eq!(original.critical_path, restored.critical_path);
 }
+
+// ===== VerificationStatus Tests =====
+
+#[test]
+fn verification_status_default_is_unverified() {
+    assert_eq!(VerificationStatus::default(), VerificationStatus::Unverified);
+}
+
+#[test]
+fn verification_status_display_roundtrip() {
+    let cases = [
+        (VerificationStatus::Unverified, "unverified"),
+        (VerificationStatus::Reviewing, "reviewing"),
+        (VerificationStatus::Verified, "verified"),
+        (VerificationStatus::NeedsRevision, "needs_revision"),
+        (VerificationStatus::Skipped, "skipped"),
+    ];
+    for (status, expected) in cases {
+        assert_eq!(format!("{}", status), expected);
+        let parsed: VerificationStatus = expected.parse().expect("should parse");
+        assert_eq!(parsed, status);
+    }
+}
+
+#[test]
+fn verification_status_fromstr_unknown_errors() {
+    let result = "unknown_status".parse::<VerificationStatus>();
+    assert!(result.is_err());
+    let err = result.unwrap_err();
+    assert!(err.to_string().contains("unknown verification status"));
+}
+
+#[test]
+fn verification_status_serde_snake_case() {
+    let json = serde_json::to_string(&VerificationStatus::NeedsRevision).unwrap();
+    assert_eq!(json, "\"needs_revision\"");
+    let back: VerificationStatus = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, VerificationStatus::NeedsRevision);
+}
+
+// ===== VerificationMetadata Tests =====
+
+#[test]
+fn verification_metadata_default_schema_version_is_1() {
+    let meta = VerificationMetadata::default();
+    assert_eq!(meta.v, 1);
+}
+
+#[test]
+fn verification_metadata_serde_with_all_defaults() {
+    let json = r#"{"v":1}"#;
+    let meta: VerificationMetadata = serde_json::from_str(json).unwrap();
+    assert_eq!(meta.v, 1);
+    assert_eq!(meta.current_round, 0);
+    assert_eq!(meta.max_rounds, 0);
+    assert!(meta.rounds.is_empty());
+    assert!(meta.current_gaps.is_empty());
+    assert!(meta.convergence_reason.is_none());
+    assert!(meta.best_round_index.is_none());
+    assert!(meta.parse_failures.is_empty());
+}
+
+#[test]
+fn verification_metadata_serde_roundtrip() {
+    let meta = VerificationMetadata {
+        v: 1,
+        current_round: 3,
+        max_rounds: 5,
+        rounds: vec![VerificationRound {
+            fingerprints: vec!["abc123".to_string()],
+            gap_score: 13,
+        }],
+        current_gaps: vec![VerificationGap {
+            severity: "critical".to_string(),
+            category: "security".to_string(),
+            description: "Missing auth check".to_string(),
+            why_it_matters: Some("Allows unauthorized access".to_string()),
+        }],
+        convergence_reason: Some("zero_critical".to_string()),
+        best_round_index: Some(2),
+        parse_failures: vec![1],
+    };
+    let json = serde_json::to_string(&meta).unwrap();
+    let restored: VerificationMetadata = serde_json::from_str(&json).unwrap();
+    assert_eq!(restored.v, 1);
+    assert_eq!(restored.current_round, 3);
+    assert_eq!(restored.rounds.len(), 1);
+    assert_eq!(restored.rounds[0].gap_score, 13);
+    assert_eq!(restored.current_gaps[0].severity, "critical");
+    assert_eq!(restored.convergence_reason, Some("zero_critical".to_string()));
+}
+
+// ===== VerificationError Tests =====
+
+#[test]
+fn verification_error_display_not_verified() {
+    let err = VerificationError::NotVerified;
+    assert_eq!(err.to_string(), "Plan must be verified before accepting");
+}
+
+#[test]
+fn verification_error_display_in_progress() {
+    let err = VerificationError::InProgress { round: 2, max_rounds: 5 };
+    assert_eq!(err.to_string(), "Plan verification is in progress (round 2/5)");
+}
+
+#[test]
+fn verification_error_display_has_unresolved_gaps() {
+    let err = VerificationError::HasUnresolvedGaps { count: 3 };
+    assert_eq!(err.to_string(), "Plan has 3 unresolved gaps");
+}
+
+#[test]
+fn verification_error_display_skipped_cannot_update() {
+    let err = VerificationError::SkippedCannotUpdate;
+    assert_eq!(err.to_string(), "Verification was skipped — cannot update from critic");
+}
+
+#[test]
+fn verification_error_display_invalid_transition() {
+    let err = VerificationError::InvalidTransition {
+        from: "unverified".to_string(),
+        to: "verified".to_string(),
+    };
+    assert!(err.to_string().contains("unverified"));
+    assert!(err.to_string().contains("verified"));
+}
+
+#[test]
+fn verification_error_display_round_exceeds_max() {
+    let err = VerificationError::RoundExceedsMax { round: 6, max: 5 };
+    assert_eq!(err.to_string(), "Round 6 exceeds max_rounds (5)");
+}
+
+#[test]
+fn verification_error_display_agent_crashed() {
+    let err = VerificationError::AgentCrashed { round: 3 };
+    assert_eq!(err.to_string(), "Verification agent crashed during round 3");
+}

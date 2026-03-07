@@ -9,6 +9,7 @@ fn test_all_defaults_are_sensible() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
     assert_eq!(cfg.stream.merge_line_read_secs, 600);
     assert_eq!(cfg.reconciliation.merger_timeout_secs, 1200);
@@ -48,6 +49,7 @@ fn test_merge_speed_env_overrides() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -77,6 +79,7 @@ fn test_env_overrides_apply() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -110,6 +113,7 @@ fn test_backward_compat_merger_timeout_env() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     // Old key only
@@ -129,6 +133,7 @@ fn test_new_key_takes_precedence_over_old() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     // Both keys set — new one should win (applied second)
@@ -149,6 +154,7 @@ fn test_invalid_env_values_ignored() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -171,6 +177,7 @@ fn test_validation_deadline_env_override() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -220,6 +227,7 @@ fn test_branch_freshness_timeout_env_override() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -273,6 +281,7 @@ fn test_execution_failed_max_retries_env_override() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -294,6 +303,7 @@ fn test_execution_failed_retry_base_secs_env_override() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -313,6 +323,7 @@ fn test_execution_failed_retry_max_secs_env_override() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -334,6 +345,7 @@ fn test_execution_failed_all_three_env_overrides_applied_together() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -370,6 +382,7 @@ fn test_circuit_breaker_env_overrides() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -391,6 +404,7 @@ fn test_execution_failed_invalid_env_values_keep_defaults() {
         scheduler: SchedulerConfig::default(),
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {

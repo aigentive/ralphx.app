@@ -14,7 +14,7 @@ pub use team_config::{
 
 pub use runtime_config::{
     AllRuntimeConfig, GitRuntimeConfig, LimitsConfig, ReconciliationConfig, SchedulerConfig,
-    StreamTimeoutsConfig, SupervisorRuntimeConfig,
+    StreamTimeoutsConfig, SupervisorRuntimeConfig, VerificationConfig,
 };
 
 const MEMORY_SKILLS: &[&str] = &[
@@ -154,6 +154,8 @@ struct RalphxConfig {
     supervisor: SupervisorRuntimeConfig,
     #[serde(default)]
     limits: LimitsConfig,
+    #[serde(default)]
+    ideation: runtime_config::IdeationConfigWrapper,
 }
 
 const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
@@ -429,6 +431,7 @@ fn parse_config_with_lookup(
         scheduler: parsed.scheduler,
         supervisor: parsed.supervisor,
         limits: parsed.limits,
+        verification: parsed.ideation.verification,
     };
     runtime_config::apply_env_overrides(&mut runtime);
 
@@ -672,6 +675,7 @@ fn load_config() -> LoadedConfig {
             scheduler: SchedulerConfig::default(),
             supervisor: SupervisorRuntimeConfig::default(),
             limits: LimitsConfig::default(),
+            verification: VerificationConfig::default(),
         };
         runtime_config::apply_env_overrides(&mut runtime);
         LoadedConfig {
@@ -782,6 +786,13 @@ pub fn supervisor_runtime_config() -> &'static SupervisorRuntimeConfig {
 
 pub fn limits_config() -> &'static LimitsConfig {
     &LOADED_CONFIG_CELL.get_or_init(load_config).runtime.limits
+}
+
+pub fn verification_config() -> &'static VerificationConfig {
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .runtime
+        .verification
 }
 
 pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {

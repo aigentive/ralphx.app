@@ -55,6 +55,9 @@ async fn create_accepted_session(
         team_config_json: None,
         title_source: None,
         inherited_plan_artifact_id: None,
+        verification_status: Default::default(),
+        verification_in_progress: false,
+        verification_metadata: None,
     };
 
     state

@@ -259,6 +259,29 @@ pub struct ApplyProposalsInput {
     pub use_feature_branch: Option<bool>,
 }
 
+/// Core result of apply proposals — transport-agnostic, usable from Tauri IPC and HTTP contexts.
+///
+/// Contains all information produced by [`apply_proposals_core`], plus context fields required
+/// by Tauri-specific side effects (scheduler trigger, session namer).
+#[derive(Debug)]
+pub struct ApplyProposalsResult {
+    pub created_task_ids: Vec<String>,
+    pub dependencies_created: usize,
+    pub warnings: Vec<String>,
+    pub session_converted: bool,
+    pub execution_plan_id: Option<String>,
+    /// Project ID — for Tauri `emit_queue_changed` and HTTP scope validation.
+    pub project_id: String,
+    /// Session ID — for Tauri session namer re-trigger.
+    pub session_id: String,
+    /// Whether any tasks were set to Ready status — triggers Tauri scheduler.
+    pub any_ready_tasks: bool,
+    /// Whether the session title was set by the user — suppresses session namer.
+    pub is_user_title: bool,
+    /// Applied proposal titles — context for session namer prompt.
+    pub proposal_titles: Vec<String>,
+}
+
 /// Response for apply proposals
 #[derive(Debug, Serialize)]
 pub struct ApplyProposalsResultResponse {
@@ -267,6 +290,18 @@ pub struct ApplyProposalsResultResponse {
     pub warnings: Vec<String>,
     pub session_converted: bool,
     pub execution_plan_id: Option<String>,
+}
+
+impl From<ApplyProposalsResult> for ApplyProposalsResultResponse {
+    fn from(r: ApplyProposalsResult) -> Self {
+        Self {
+            created_task_ids: r.created_task_ids,
+            dependencies_created: r.dependencies_created,
+            warnings: r.warnings,
+            session_converted: r.session_converted,
+            execution_plan_id: r.execution_plan_id,
+        }
+    }
 }
 
 // ============================================================================
