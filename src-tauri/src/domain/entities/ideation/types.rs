@@ -350,6 +350,169 @@ pub struct PriorityFactors {
     pub user_demand: i32,
 }
 
+// ---------------------------------------------------------------------------
+// Verification types
+// ---------------------------------------------------------------------------
+
+/// Verification status of an ideation session's plan
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum VerificationStatus {
+    /// Plan has not been verified yet
+    Unverified,
+    /// Verification loop is currently running
+    Reviewing,
+    /// Plan passed all verification rounds (0 critical gaps)
+    Verified,
+    /// Critic found gaps; plan needs revision
+    NeedsRevision,
+    /// User explicitly skipped verification
+    Skipped,
+}
+
+impl Default for VerificationStatus {
+    fn default() -> Self {
+        Self::Unverified
+    }
+}
+
+impl std::fmt::Display for VerificationStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VerificationStatus::Unverified => write!(f, "unverified"),
+            VerificationStatus::Reviewing => write!(f, "reviewing"),
+            VerificationStatus::Verified => write!(f, "verified"),
+            VerificationStatus::NeedsRevision => write!(f, "needs_revision"),
+            VerificationStatus::Skipped => write!(f, "skipped"),
+        }
+    }
+}
+
+/// Error type for parsing VerificationStatus from a string
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParseVerificationStatusError {
+    pub value: String,
+}
+
+impl std::fmt::Display for ParseVerificationStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "unknown verification status: '{}'", self.value)
+    }
+}
+
+impl std::error::Error for ParseVerificationStatusError {}
+
+impl FromStr for VerificationStatus {
+    type Err = ParseVerificationStatusError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "unverified" => Ok(VerificationStatus::Unverified),
+            "reviewing" => Ok(VerificationStatus::Reviewing),
+            "verified" => Ok(VerificationStatus::Verified),
+            "needs_revision" => Ok(VerificationStatus::NeedsRevision),
+            "skipped" => Ok(VerificationStatus::Skipped),
+            _ => Err(ParseVerificationStatusError {
+                value: s.to_string(),
+            }),
+        }
+    }
+}
+
+/// A single gap identified by the critic during a verification round
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationGap {
+    /// Severity: "critical" | "high" | "medium" | "low"
+    pub severity: String,
+    /// Category for display grouping (e.g., "security", "architecture")
+    pub category: String,
+    /// Human-readable description of the gap
+    pub description: String,
+    /// Why this gap matters for the plan's success
+    #[serde(default)]
+    pub why_it_matters: Option<String>,
+}
+
+/// Summary of a single verification round
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationRound {
+    /// Normalized gap fingerprints (one per gap) from the 4-layer pipeline
+    #[serde(default)]
+    pub fingerprints: Vec<String>,
+    /// Aggregate gap score: critical*10 + high*3 + medium*1
+    #[serde(default)]
+    pub gap_score: u32,
+}
+
+/// Persisted metadata for the verification loop stored as JSON in the DB
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct VerificationMetadata {
+    /// Schema version — always 1
+    #[serde(default = "verification_metadata_schema_version")]
+    pub v: u32,
+    /// Current round number (1-based; 0 = not started)
+    #[serde(default)]
+    pub current_round: u32,
+    /// Maximum allowed rounds before hard-cap exit
+    #[serde(default)]
+    pub max_rounds: u32,
+    /// Per-round summaries (most recent appended last)
+    #[serde(default)]
+    pub rounds: Vec<VerificationRound>,
+    /// Gaps from the most recent critic round
+    #[serde(default)]
+    pub current_gaps: Vec<VerificationGap>,
+    /// Why verification converged (set on terminal status)
+    #[serde(default)]
+    pub convergence_reason: Option<String>,
+    /// Round index with the lowest gap_score (for best-version tracking)
+    #[serde(default)]
+    pub best_round_index: Option<u32>,
+    /// Parse failure count in the sliding window (last 5 rounds)
+    #[serde(default)]
+    pub parse_failures: Vec<u32>,
+}
+
+fn verification_metadata_schema_version() -> u32 {
+    1
+}
+
+impl Default for VerificationMetadata {
+    fn default() -> Self {
+        Self {
+            v: verification_metadata_schema_version(),
+            current_round: 0,
+            max_rounds: 0,
+            rounds: Vec::new(),
+            current_gaps: Vec::new(),
+            convergence_reason: None,
+            best_round_index: None,
+            parse_failures: Vec::new(),
+        }
+    }
+}
+
+/// Typed errors for verification state machine violations (D17)
+#[derive(Debug, thiserror::Error)]
+pub enum VerificationError {
+    #[error("Plan must be verified before accepting")]
+    NotVerified,
+    #[error("Plan verification is in progress (round {round}/{max_rounds})")]
+    InProgress { round: u32, max_rounds: u32 },
+    #[error("Plan has {count} unresolved gaps")]
+    HasUnresolvedGaps { count: u32 },
+    #[error("Verification was skipped — cannot update from critic")]
+    SkippedCannotUpdate,
+    #[error("Invalid verification transition: {from} → {to}")]
+    InvalidTransition { from: String, to: String },
+    #[error("Round {round} exceeds max_rounds ({max})")]
+    RoundExceedsMax { round: u32, max: u32 },
+    #[error("Verification agent crashed during round {round}")]
+    AgentCrashed { round: u32 },
+}
+
+// ---------------------------------------------------------------------------
+
 /// Helper function to parse datetime strings from SQLite
 pub fn parse_datetime_helper(s: String) -> DateTime<Utc> {
     // Try RFC3339 first (our preferred format)

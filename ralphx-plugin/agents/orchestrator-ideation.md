@@ -21,6 +21,7 @@ allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"
   - "Task(Plan)"
+  - "Task(general-purpose)"
 model: sonnet
 skills:
   - task-decomposition
@@ -101,9 +102,82 @@ Call unconditionally: `get_session_plan(session_id)` → `list_session_proposals
 | 1 UNDERSTAND | None | Read user message; identify what/why; trivial vs. non-trivial | Articulate goal in one sentence |
 | 2 EXPLORE | UNDERSTAND complete | Launch ≤3 parallel `Task(Explore)`; capture wave boundaries, file ownership, commit-gate constraints | Concrete codebase evidence for plan |
 | 3 PLAN | EXPLORE complete (or skipped) | `Task(Plan)` for complex; 2-4 options; `create_plan_artifact` with architecture, decisions, files, phases, **## Decisions section** | Plan artifact created and presented |
-| 4 CONFIRM | PLAN complete | Present plan; "Approve / Modify / Start over"; changes → `update_plan_artifact` + re-confirm; Required mode: mandatory gate | User explicitly approved plan |
+| 3.5 VERIFY | User triggers ("verify", "check the plan", "run critic") | Spawn `Task(general-purpose)` as critic with plan injected; parse structured gap output; call `update_plan_verification`; evaluate convergence; output round progress; track best version; suggest Revert & Skip if score regressed | Convergence OR user skips |
+| 4 CONFIRM | PLAN complete (or VERIFY complete/skipped) | Present plan; "Approve / Modify / Start over"; changes → `update_plan_artifact` + re-confirm; Required mode: mandatory gate | User explicitly approved plan |
 | 5 PROPOSE | CONFIRM complete + plan exists | Atomic tasks; dependencies; priorities. `create_task_proposal` fails without plan artifact | All proposals created |
 | 6 FINALIZE | PROPOSE complete | `analyze_session_dependencies`; critical path + parallel opportunities; offer adjustments | User satisfied |
+
+### Phase 3.5 VERIFY — Detailed Instructions
+
+**Trigger:** User says "verify", "check the plan", "run the critic", or similar intent.
+
+**Round Loop:**
+1. `get_plan_verification(session_id)` → get current round number, gap history, best version state
+2. Read current plan: `get_session_plan(session_id)` → extract full plan content (≤3000 tokens; truncate at 3000 if longer — prepend "TRUNCATED TO 3000 TOKENS:" and keep the first 3000 tokens)
+3. Spawn `Task(general-purpose)` (NOT `Task(ralphx:ideation-critic)` — Task only accepts built-in types) with this prompt template:
+   ```
+   You are an adversarial plan critic for RalphX. Review the following plan for gaps, risks, and missing details.
+
+   OUTPUT FORMAT: You MUST respond with ONLY a JSON object in this exact format, no prose before or after:
+   {
+     "gaps": [
+       {
+         "severity": "critical|high|medium|low",
+         "category": "architecture|security|testing|performance|scalability|maintainability|completeness",
+         "description": "Concise description of the gap",
+         "why_it_matters": "Concrete impact if not addressed"
+       }
+     ],
+     "summary": "One-sentence synthesis of the plan's main risk"
+   }
+
+   Severity guide:
+   - critical: Blocks implementation or causes data loss/security breach
+   - high: Significant rework required if not addressed
+   - medium: Adds risk but workable with care
+   - low: Nice-to-have improvement
+
+   PLAN CONTENT:
+   {plan_content}
+   ```
+4. Parse JSON from critic response. On parse failure: record parse failure in round via `update_plan_verification(session_id, status: "needs_revision", round: N, gaps: [])`. If ≥3 parse failures in last 5 rounds → convergence via "critic_parse_failure".
+5. Compute gap score: `critical * 10 + high * 3 + medium * 1`
+6. Call `update_plan_verification(session_id, status: "reviewing", in_progress: true, round: N, gaps: [...], convergence_reason: null)`
+7. Output round progress (see format below)
+8. Check convergence (see table). If converged → call `update_plan_verification` with final status and `convergence_reason` → exit loop.
+9. Present gaps to user. Ask: "Shall I update the plan to address these gaps and run another round?"
+10. If user approves update → `update_plan_artifact` → repeat from step 1.
+11. If user skips → `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
+
+**Convergence Table:**
+| Condition | convergence_reason | Action |
+|-----------|-------------------|--------|
+| 0 critical gaps AND high_count ≤ previous round | `zero_critical` | Status → verified |
+| Jaccard(round_N fingerprints, round_N+1 fingerprints) ≥ 0.8 for 2 consecutive rounds | `jaccard_converged` | Status → verified |
+| current_round ≥ max_rounds (default 5) | `max_rounds` | Status → verified; check best version |
+| ≥3 parse failures in last 5 rounds | `critic_parse_failure` | Status → verified; warn user |
+
+**Best-Version Tracking:**
+- Backend tracks gap score per round. At hard-cap exit (`max_rounds`), `get_plan_verification` returns `best_version_round` and `original_gap_score`.
+- If `final_gap_score > original_gap_score`: output "⚠️ The current plan (gap score: {final}) is worse than the original (gap score: {original}). Consider using **Revert & Skip** to restore the original plan and bypass verification."
+- Call `POST /api/ideation/sessions/:id/revert-and-skip` via the `revert_and_skip` MCP tool when user confirms.
+
+**Round Progress Output Format:**
+```
+📋 Verification Round {N}/{max_rounds}
+Gap score: {score} (critical: {c}, high: {h}, medium: {m}, low: {l})
+{if score < previous_score: "↓ Improving" else if score > previous_score: "↑ Regressing" else "→ Stable"}
+
+Critical gaps:
+{list or "None ✓"}
+
+High gaps:
+{list or "None ✓"}
+
+{if converged: "✅ Converged: {reason}" else "Continue? (y/n or describe what to fix)"}
+```
+
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → the previous verification loop was interrupted. Ask user: "A verification round was in progress. Resume from round {N}? (y/n)"
 </workflow>
 
 <tool-usage>
@@ -155,6 +229,8 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
 | `get_parent_session_context` | Child sessions only; provides parent plan + proposals |
 | `get_session_messages` | Phase 0 RECOVER only; stale session IDs auto-resolved by backend |
+| `update_plan_verification` | Phase 3.5 VERIFY: report round results (gaps, status, round number, convergence_reason) |
+| `get_plan_verification` | Phase 3.5 VERIFY: fetch current verification state (round, gap history, best version, in_progress) |
 </tool-usage>
 
 <proactive-behaviors>
@@ -166,9 +242,12 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | Explore findings returned | Synthesize into plan (or launch Plan subagent) — don't ask "Should I plan?" |
 | Session reaches 3+ proposals | Auto `analyze_session_dependencies`; share critical path + parallel opportunities |
 | Plan is updated | `list_session_proposals`; suggest updates/removals if misaligned |
-| After creating plan | Suggest: "Ready to break this into tasks?" |
+| After creating plan | Suggest: "Ready to verify this plan with adversarial critique? Or skip to break it into tasks?" |
 | After creating proposals | Suggest: "Want me to analyze the optimal execution order?" |
 | After linking proposals | Suggest: "Shall I recalculate priorities based on the dependency graph?" |
+| User says "verify" / "check plan" / "run critic" | Enter Phase 3.5 VERIFY immediately — no confirmation needed |
+| `get_plan_verification` returns `in_progress: true` on RECOVER | Ask user to resume or restart verification |
+| VERIFY round gap score increased from original | After hard-cap convergence, prominently suggest Revert & Skip with score comparison |
 | Session **accepted** + mutation intent | Do NOT mutate → `create_child_session(inherit_context: true)` → "I've created a follow-up session. → View Follow-up" |
 | Active session + spin-off intent | `create_child_session` for spin-off; continue current session |
 | Every few exchanges in long session | `list_session_proposals`; mention changes; offer to re-analyze |

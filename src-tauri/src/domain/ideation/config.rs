@@ -28,6 +28,9 @@ pub struct IdeationSettings {
     pub suggest_plans_for_complex: bool,
     /// Auto-link proposals to session plan when created
     pub auto_link_proposals: bool,
+    /// If true, plans must be verified (or skipped) before accepting proposals
+    #[serde(default)]
+    pub require_verification_for_accept: bool,
 }
 
 impl Default for IdeationSettings {
@@ -37,6 +40,7 @@ impl Default for IdeationSettings {
             require_plan_approval: false, // Plan existence is sufficient by default
             suggest_plans_for_complex: true,
             auto_link_proposals: true,
+            require_verification_for_accept: false, // Opt-in feature
         }
     }
 }

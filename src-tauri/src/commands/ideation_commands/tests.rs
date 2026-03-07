@@ -1224,6 +1224,7 @@ async fn test_update_ideation_settings() {
         require_plan_approval: true,
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
+        require_verification_for_accept: false,
     };
 
     // Update settings
@@ -1252,6 +1253,7 @@ async fn test_ideation_settings_persist_across_reads() {
         require_plan_approval: false,
         suggest_plans_for_complex: true,
         auto_link_proposals: false,
+        require_verification_for_accept: false,
     };
 
     state
@@ -1716,4 +1718,385 @@ async fn test_get_by_execution_plan_id_returns_none_when_absent() {
         .expect("get_by_execution_plan_id should not error");
 
     assert!(result.is_none());
+}
+
+// ============================================================================
+// apply_proposals_core regression tests
+// ============================================================================
+
+/// Helper: create a project and session with N proposals, return (project_id, session, proposal_ids)
+async fn setup_session_with_proposals(
+    state: &AppState,
+    proposal_count: usize,
+) -> (
+    ProjectId,
+    crate::domain::entities::IdeationSession,
+    Vec<String>,
+) {
+    use crate::domain::entities::{Project, ProposalCategory, Priority};
+
+    let project = Project::new("Test Project".to_string(), "/tmp/test".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    let mut ids = Vec::new();
+    for i in 0..proposal_count {
+        let proposal = TaskProposal::new(
+            session.id.clone(),
+            format!("Proposal {}", i + 1),
+            ProposalCategory::Feature,
+            Priority::Medium,
+        );
+        let p = state
+            .task_proposal_repo
+            .create(proposal)
+            .await
+            .expect("Failed to create proposal");
+        ids.push(p.id.as_str().to_string());
+    }
+
+    (project.id, session, ids)
+}
+
+#[tokio::test]
+async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
+    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
+    use crate::commands::ideation_commands::ApplyProposalsInput;
+    use crate::domain::entities::InternalStatus;
+
+    let state = setup_test_state();
+    let (project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: proposal_ids.clone(),
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed");
+
+    assert_eq!(result.created_task_ids.len(), 2, "Should create 2 tasks");
+    assert_eq!(result.dependencies_created, 0);
+    assert!(result.warnings.is_empty());
+    assert_eq!(result.project_id, project_id.as_str());
+    assert_eq!(result.session_id, session.id.as_str());
+    assert!(result.any_ready_tasks, "Tasks with no blockers should be Ready");
+
+    // Verify tasks are actually Ready in the repo
+    for task_id_str in &result.created_task_ids {
+        let task_id = crate::domain::entities::TaskId::from_string(task_id_str.clone());
+        let task = state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .expect("repo error")
+            .expect("task should exist");
+        assert_eq!(
+            task.internal_status,
+            InternalStatus::Ready,
+            "Task without blockers should be Ready"
+        );
+        assert_eq!(task.ideation_session_id, Some(session.id.clone()));
+    }
+}
+
+#[tokio::test]
+async fn test_apply_proposals_core_session_converts_to_accepted() {
+    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
+    use crate::commands::ideation_commands::ApplyProposalsInput;
+
+    let state = setup_test_state();
+    let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 1).await;
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids,
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed");
+
+    assert!(result.session_converted, "All proposals applied — session should convert");
+
+    // Verify session status is Accepted in repo
+    let updated_session = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .expect("repo error")
+        .expect("session should exist");
+    assert_eq!(updated_session.status, IdeationSessionStatus::Accepted);
+}
+
+#[tokio::test]
+async fn test_apply_proposals_core_partial_apply_does_not_convert_session() {
+    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
+    use crate::commands::ideation_commands::ApplyProposalsInput;
+
+    let state = setup_test_state();
+    let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
+
+    // Only apply 1 of 2 proposals
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec![proposal_ids[0].clone()],
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed");
+
+    assert!(!result.session_converted, "Partial apply should not convert session");
+
+    // Session should still be Active
+    let updated_session = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .expect("repo error")
+        .expect("session should exist");
+    assert_eq!(updated_session.status, IdeationSessionStatus::Active);
+}
+
+#[tokio::test]
+async fn test_apply_proposals_core_idempotency_guard() {
+    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
+    use crate::commands::ideation_commands::ApplyProposalsInput;
+    use crate::domain::entities::ExecutionPlan;
+
+    let state = setup_test_state();
+    let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
+
+    // Pre-seed an active ExecutionPlan for this session to simulate a race condition
+    // (two simultaneous accepts before either updates the session status).
+    let existing_plan = ExecutionPlan::new(session.id.clone());
+    state
+        .execution_plan_repo
+        .create(existing_plan)
+        .await
+        .expect("Failed to create pre-existing execution plan");
+
+    // Apply should hit the idempotency guard and return early
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids,
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("Idempotency guard should return Ok, not error");
+
+    assert_eq!(
+        result.created_task_ids.len(),
+        0,
+        "Idempotency guard: no tasks created when plan already exists"
+    );
+    assert!(
+        !result.warnings.is_empty(),
+        "Idempotency guard: should emit a warning"
+    );
+    assert!(
+        result.warnings[0].contains("already active"),
+        "Warning should mention existing plan"
+    );
+}
+
+#[tokio::test]
+async fn test_apply_proposals_core_rejects_inactive_session() {
+    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
+    use crate::commands::ideation_commands::ApplyProposalsInput;
+    use crate::error::AppError;
+
+    let state = setup_test_state();
+    let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 1).await;
+
+    // Archive the session so it is no longer Active
+    state
+        .ideation_session_repo
+        .update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .expect("Failed to archive session");
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids,
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let err = apply_proposals_core(&state, input)
+        .await
+        .expect_err("Should fail for inactive session");
+
+    assert!(
+        matches!(err, AppError::Validation(_)),
+        "Expected Validation error, got: {:?}",
+        err
+    );
+}
+
+#[tokio::test]
+async fn test_apply_proposals_core_rejects_unknown_proposals() {
+    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
+    use crate::commands::ideation_commands::ApplyProposalsInput;
+    use crate::error::AppError;
+
+    let state = setup_test_state();
+    let (_project_id, session, _) = setup_session_with_proposals(&state, 1).await;
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec!["nonexistent-proposal-id".to_string()],
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let err = apply_proposals_core(&state, input)
+        .await
+        .expect_err("Should fail when proposals not found");
+
+    assert!(
+        matches!(err, AppError::Validation(_)),
+        "Expected Validation error, got: {:?}",
+        err
+    );
+}
+
+#[tokio::test]
+async fn test_apply_proposals_core_result_contains_context_fields() {
+    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
+    use crate::commands::ideation_commands::ApplyProposalsInput;
+
+    let state = setup_test_state();
+    let (project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids,
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed");
+
+    // Verify context fields for Tauri side effects
+    assert_eq!(result.project_id, project_id.as_str(), "project_id must match");
+    assert_eq!(result.session_id, session.id.as_str(), "session_id must match");
+    assert_eq!(result.proposal_titles.len(), 2, "proposal_titles should contain all applied titles");
+    assert!(!result.is_user_title, "New session has no user title");
+    assert!(result.execution_plan_id.is_some(), "execution_plan_id must be set");
+}
+
+#[tokio::test]
+async fn test_apply_proposals_core_preserves_dependencies() {
+    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
+    use crate::commands::ideation_commands::ApplyProposalsInput;
+    use crate::domain::entities::{InternalStatus, Priority, ProposalCategory, Project};
+
+    let state = setup_test_state();
+
+    let project = Project::new("Dep Test".to_string(), "/tmp/dep".to_string());
+    let project = state
+        .project_repo
+        .create(project)
+        .await
+        .expect("Failed to create project");
+
+    let session = IdeationSession::new(project.id.clone());
+    let session = state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .expect("Failed to create session");
+
+    // Create p1 (blocker) and p2 (depends on p1)
+    let p1 = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Blocker Task",
+            ProposalCategory::Feature,
+            Priority::High,
+        ))
+        .await
+        .expect("Failed to create p1");
+
+    let p2 = state
+        .task_proposal_repo
+        .create(TaskProposal::new(
+            session.id.clone(),
+            "Dependent Task",
+            ProposalCategory::Feature,
+            Priority::Medium,
+        ))
+        .await
+        .expect("Failed to create p2");
+
+    // p2 depends on p1
+    state
+        .proposal_dependency_repo
+        .add_dependency(&p2.id, &p1.id, None, Some("manual"))
+        .await
+        .expect("Failed to add proposal dependency");
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids: vec![
+            p1.id.as_str().to_string(),
+            p2.id.as_str().to_string(),
+        ],
+        target_column: "auto".to_string(),
+        preserve_dependencies: true,
+        use_feature_branch: Some(false),
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("apply_proposals_core should succeed");
+
+    assert_eq!(result.created_task_ids.len(), 2);
+    assert_eq!(result.dependencies_created, 1, "One dependency should be created");
+
+    // Verify statuses: p1 task → Ready, p2 task → Blocked
+    let tasks = state
+        .task_repo
+        .get_by_project(&project.id)
+        .await
+        .expect("Failed to get tasks");
+
+    let blocker_task = tasks.iter().find(|t| t.title == "Blocker Task").expect("Blocker task not found");
+    let dependent_task = tasks.iter().find(|t| t.title == "Dependent Task").expect("Dependent task not found");
+
+    assert_eq!(blocker_task.internal_status, InternalStatus::Ready, "Blocker task has no blockers → Ready");
+    assert_eq!(dependent_task.internal_status, InternalStatus::Blocked, "Dependent task has blocker → Blocked");
+    assert!(dependent_task.blocked_reason.is_some(), "Blocked task should have a reason");
 }

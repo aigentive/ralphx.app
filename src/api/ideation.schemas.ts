@@ -25,6 +25,23 @@ export const IdeationSessionResponseSchema = z.object({
   updated_at: z.string(),
   archived_at: z.string().nullable(),
   converted_at: z.string().nullable(),
+  verification_status: z.string().optional(),
+  verification_in_progress: z.boolean().optional(),
+  gap_score: z.number().int().nullable().optional(),
+});
+
+/**
+ * Verification status response schema (snake_case from HTTP server)
+ */
+export const VerificationResponseSchema = z.object({
+  session_id: z.string(),
+  status: z.string(),
+  in_progress: z.boolean(),
+  current_round: z.number().int().optional(),
+  max_rounds: z.number().int().optional(),
+  gap_score: z.number().int().optional(),
+  convergence_reason: z.string().optional(),
+  best_round_index: z.number().int().optional(),
 });
 
 /**

@@ -134,6 +134,7 @@ style={{ boxShadow: "none", outline: "none" }}
 ## Key Features
 - **Active Plan** — Project-scoped plan filtering for Graph/Kanban. Docs: `docs/features/active-plan.md` | `docs/architecture/active-plan-api.md`
 - **Session Recovery** — Expired Claude session recovery with history preservation. Docs: `docs/features/session-recovery.md`
+- **Plan Verification** — Automated adversarial review loop for ideation plans. Docs: `docs/features/plan-verification.md`
 
 ## Team Mode Rules
 When delegate mode is active (TeamCreate tool available):

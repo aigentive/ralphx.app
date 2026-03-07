@@ -7,9 +7,11 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, ShieldAlert } from "lucide-react";
+import { useVerificationGate } from "@/hooks/useVerificationGate";
 import type { TaskProposal } from "@/types/ideation";
 import type { ApplyProposalsInput, DependencyGraphResponse } from "@/api/ideation.types";
+import type { IdeationSessionResponse } from "@/api/ideation";
 
 interface AcceptModalProps {
   isOpen: boolean;
@@ -24,6 +26,8 @@ interface AcceptModalProps {
   defaultUseFeatureBranch?: boolean;
   /** True while dependency analysis agent is running — shows info banner and disables accept */
   isAnalyzingDependencies?: boolean;
+  /** Session for verification gate — shows warning and blocks accept when unverified */
+  session?: Pick<IdeationSessionResponse, "verificationStatus" | "verificationInProgress"> | null;
 }
 
 export function AcceptModal({
@@ -37,7 +41,9 @@ export function AcceptModal({
   warnings = [],
   defaultUseFeatureBranch = false,
   isAnalyzingDependencies = false,
+  session = null,
 }: AcceptModalProps) {
+  const verificationGate = useVerificationGate(session);
   const [preserveDependencies, setPreserveDependencies] = useState(true);
   const [useFeatureBranch, setUseFeatureBranch] = useState(defaultUseFeatureBranch);
 
@@ -85,7 +91,12 @@ export function AcceptModal({
   const dependencyCount = dependencyGraph.edges.length;
   const hasCycles = dependencyGraph.hasCycles;
   const hasCriticalPath = dependencyGraph.criticalPath.length > 0;
-  const canAccept = proposalCount > 0 && !isAccepting && !isAnalyzingDependencies;
+  const verificationBlocked = !verificationGate.canAccept;
+  const canAccept =
+    proposalCount > 0 &&
+    !isAccepting &&
+    !isAnalyzingDependencies &&
+    !verificationBlocked;
 
   return (
     <div
@@ -313,6 +324,22 @@ export function AcceptModal({
             </div>
           </label>
         </div>
+
+        {/* Verification blocked warning */}
+        {verificationBlocked && verificationGate.reason && (
+          <div
+            data-testid="verification-blocked-warning"
+            className="mb-4 flex items-start gap-2 p-3 rounded text-sm"
+            style={{
+              backgroundColor: "hsla(0 70% 50% / 0.06)",
+              border: "1px solid hsla(0 70% 50% / 0.2)",
+              color: "hsl(0 70% 65%)",
+            }}
+          >
+            <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+            <span>{verificationGate.reason}</span>
+          </div>
+        )}
 
         {/* Analysis in progress info */}
         {isAnalyzingDependencies && (

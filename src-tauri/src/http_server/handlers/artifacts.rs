@@ -299,6 +299,38 @@ pub async fn update_plan_artifact(
             })?;
     }
 
+    // Conditionally reset verification status — only when verification_in_progress = 0.
+    // Prevents the loop-reset paradox (C2) where auto-corrections would reset verification mid-loop.
+    // Uses sessions.first() because UpdatePlanArtifactRequest has no session_id (R3-C4 fix).
+    if let Some(session) = sessions.first() {
+        let reset = state
+            .app_state
+            .ideation_session_repo
+            .reset_verification(&session.id)
+            .await
+            .map_err(|e| {
+                error!(
+                    "Failed to reset verification for session {}: {}",
+                    session.id.as_str(),
+                    e
+                );
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+
+        if reset {
+            if let Some(app_handle) = &state.app_state.app_handle {
+                let _ = app_handle.emit(
+                    "plan_verification:status_changed",
+                    serde_json::json!({
+                        "session_id": session.id.as_str(),
+                        "status": "unverified",
+                        "in_progress": false,
+                    }),
+                );
+            }
+        }
+    }
+
     // Emit event for real-time UI update
     if let Some(app_handle) = &state.app_state.app_handle {
         let content_text = match &created.content {

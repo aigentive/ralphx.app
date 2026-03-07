@@ -21,9 +21,9 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 
 | Agent Name | Context | Model | Role |
 |---|---|---|---|
-| `orchestrator-ideation` | ideation | opus | Lead for ideation sessions (proposals, plans) |
+| `orchestrator-ideation` | ideation | opus | Lead for ideation sessions (proposals, plans). MCP: `update_plan_verification`, `get_plan_verification` |
 | `orchestrator-ideation-readonly` | ideation | sonnet | Read-only ideation fallback |
-| `ideation-team-lead` | ideation | opus | Team mode lead for ideation |
+| `ideation-team-lead` | ideation | opus | Team mode lead for ideation. MCP: `update_plan_verification`, `get_plan_verification` |
 | `session-namer` | ideation | haiku | Names ideation sessions |
 | `dependency-suggester` | ideation | haiku | Suggests task dependencies |
 | `chat-task` | task | sonnet | Task-level Q&A |

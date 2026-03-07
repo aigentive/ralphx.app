@@ -110,6 +110,19 @@ pub async fn start_http_server(
         )
         .route("/api/link_proposals_to_plan", post(link_proposals_to_plan))
         .route("/api/get_session_plan/:session_id", get(get_session_plan))
+        // Plan verification tools (orchestrator-ideation + worker agents)
+        .route(
+            "/api/ideation/sessions/:id/verification",
+            post(update_plan_verification),
+        )
+        .route(
+            "/api/ideation/sessions/:id/verification",
+            get(get_plan_verification),
+        )
+        .route(
+            "/api/ideation/sessions/:id/revert-and-skip",
+            post(revert_and_skip),
+        )
         // Task tools (chat-task agent)
         .route("/api/update_task", post(update_task))
         .route("/api/add_task_note", post(add_task_note))
@@ -246,6 +259,10 @@ pub async fn start_http_server(
             get(get_merge_pipeline_http),
         )
         .route("/api/external/review_action", post(review_action_http))
+        .route(
+            "/api/external/apply_proposals",
+            post(external_apply_proposals),
+        )
         // Team endpoints (agent teams) — two-phase plan flow
         .route("/api/team/plan/request", post(request_team_plan_register))
         .route("/api/team/plan/await/:plan_id", get(await_team_plan))

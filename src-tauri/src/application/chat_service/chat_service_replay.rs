@@ -28,6 +28,12 @@ pub struct IdeationRecoveryMetadata {
     pub team_mode: Option<String>,
     /// Human-readable session title
     pub session_title: Option<String>,
+    /// Verification status before recovery (e.g., "unverified", "reviewing", "verified")
+    pub verification_status: String,
+    /// Whether verification was in-progress when the session crashed
+    pub verification_in_progress: bool,
+    /// Current verification round number (0 if not started)
+    pub current_round: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -176,10 +182,24 @@ pub fn build_rehydration_prompt(
             .map(|t| format!("\n  <session_title>{}</session_title>", t))
             .unwrap_or_default();
 
+        // If verification was in-progress when session crashed, note that it was reset.
+        let verification_note = if meta.verification_in_progress {
+            format!(
+                "\n  <verification_status>unverified</verification_status>\
+                 \n  <verification_note>Verification was in-progress (round {}) when session crashed. State has been reset to unverified — start a fresh verification cycle if needed.</verification_note>",
+                meta.current_round
+            )
+        } else {
+            format!(
+                "\n  <verification_status>{}</verification_status>",
+                meta.verification_status
+            )
+        };
+
         format!(
             "<ideation_state>\n\
              <session_status>{}</session_status>\n\
-             <proposal_count>{}</proposal_count>{}{}{}{}\n\
+             <proposal_count>{}</proposal_count>{}{}{}{}{}\n\
              </ideation_state>\n\
              <recovery_note>Session recovered from local storage. Phase 0 may call get_session_messages for additional context if needed.</recovery_note>\n",
             meta.session_status,
@@ -187,7 +207,8 @@ pub fn build_rehydration_prompt(
             plan_artifact,
             parent_session,
             team_mode,
-            session_title
+            session_title,
+            verification_note
         )
     } else {
         String::new()

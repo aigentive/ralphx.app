@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft } from "lucide-react";
+import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ShieldCheck, SkipForward, RotateCcw } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -27,6 +27,9 @@ import { cn } from "@/lib/utils";
 import type { TeamFinding } from "./TeamFindingsSection";
 import { DebateSummary } from "./DebateSummary";
 import type { DebateSummaryData } from "./DebateSummary";
+import { VerificationBadge } from "./VerificationBadge";
+import { VerificationGapList } from "./VerificationGapList";
+import type { VerificationGap, VerificationRound, VerificationStatus } from "@/types/ideation";
 
 // ============================================================================
 // Types
@@ -60,6 +63,21 @@ export interface PlanDisplayProps {
   requestedVersion?: number;
   /** Called after requestedVersion has been applied, to clear the parent's state */
   onVersionViewed?: () => void;
+  // ---- Verification ----
+  verificationStatus?: VerificationStatus;
+  verificationInProgress?: boolean;
+  currentRound?: number;
+  maxRounds?: number;
+  convergenceReason?: string;
+  verificationGaps?: VerificationGap[];
+  verificationRounds?: VerificationRound[];
+  gapScore?: number;
+  /** Artifact ID of the plan version to revert to (set when best version differs from current) */
+  planVersionBeforeVerification?: string;
+  onVerifyFirst?: () => void;
+  onSkipVerification?: () => void;
+  onRevertAndSkip?: () => void;
+  onRetryVerification?: () => void;
 }
 
 // ============================================================================
@@ -216,11 +234,43 @@ export function PlanDisplay({
   teamMetadata,
   requestedVersion,
   onVersionViewed,
+  verificationStatus,
+  verificationInProgress = false,
+  currentRound,
+  maxRounds,
+  convergenceReason,
+  verificationGaps,
+  verificationRounds,
+  gapScore,
+  planVersionBeforeVerification,
+  onVerifyFirst,
+  onSkipVerification,
+  onRevertAndSkip,
+  onRetryVerification,
 }: PlanDisplayProps) {
   const [isHovered, setIsHovered] = useState(false);
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
   const [internalIsOpen, setInternalIsOpen] = useState(false);
+
+  // Verification-derived state
+  const hasVerification = verificationStatus !== undefined;
+  const verificationBlocked =
+    hasVerification &&
+    verificationStatus !== "verified" &&
+    verificationStatus !== "skipped";
+  const hasGaps = verificationGaps !== undefined && verificationGaps.length > 0;
+  const showVerifyFirst = hasVerification && verificationStatus === "unverified" && onVerifyFirst;
+  const showRevertAndSkip =
+    hasVerification &&
+    verificationStatus === "needs_revision" &&
+    planVersionBeforeVerification !== undefined &&
+    onRevertAndSkip;
+  const showSkipVerification =
+    hasVerification &&
+    verificationStatus !== "verified" &&
+    verificationStatus !== "skipped" &&
+    onSkipVerification;
   const isOpen = isExpanded !== undefined ? isExpanded : internalIsOpen;
   const setIsOpen = onExpandedChange ?? setInternalIsOpen;
 
@@ -389,6 +439,17 @@ export function PlanDisplay({
                         {teamMetadata.teamMode === "research" ? "Research Team" : "Debate Team"}
                       </span>
                     )}
+
+                    {hasVerification && (
+                      <VerificationBadge
+                        status={verificationStatus!}
+                        inProgress={verificationInProgress}
+                        {...(currentRound !== undefined && { currentRound })}
+                        {...(maxRounds !== undefined && { maxRounds })}
+                        {...(convergenceReason !== undefined && { convergenceReason })}
+                        {...(onRetryVerification !== undefined && { onRetry: onRetryVerification })}
+                      />
+                    )}
                   </div>
 
                   {linkedProposalsCount > 0 && (
@@ -417,26 +478,115 @@ export function PlanDisplay({
               isVersionDropdownOpen || isHovered ? "opacity-100" : "opacity-0"
             )}>
               {showApprove && !isApproved && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onApprove}
-                  className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
-                  style={{
-                    color: "hsl(14 100% 60%)",
-                    background: "hsla(14 100% 60% / 0.1)",
-                    border: "1px solid hsla(14 100% 60% / 0.2)",
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
-                  }}
-                >
-                  <Sparkles className="w-3 h-3" />
-                  Approve
-                </Button>
+                <>
+                  {/* Verify First — shown when unverified */}
+                  {showVerifyFirst && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onVerifyFirst}
+                      className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
+                      style={{
+                        color: "hsl(14 100% 60%)",
+                        background: "hsla(14 100% 60% / 0.1)",
+                        border: "1px solid hsla(14 100% 60% / 0.2)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                      }}
+                    >
+                      <ShieldCheck className="w-3 h-3" />
+                      Verify First
+                    </Button>
+                  )}
+
+                  {/* Revert & Skip — single atomic action when needs_revision */}
+                  {showRevertAndSkip && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onRevertAndSkip}
+                      className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
+                      style={{
+                        color: "hsl(45 93% 60%)",
+                        background: "hsla(45 93% 50% / 0.1)",
+                        border: "1px solid hsla(45 93% 50% / 0.2)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "hsla(45 93% 50% / 0.15)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "hsla(45 93% 50% / 0.1)";
+                      }}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Revert &amp; Skip
+                    </Button>
+                  )}
+
+                  {/* Skip Verification */}
+                  {showSkipVerification && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onSkipVerification}
+                      className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
+                      style={{
+                        color: "hsl(220 10% 55%)",
+                        background: "transparent",
+                        border: "1px solid hsla(220 10% 100% / 0.08)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                        e.currentTarget.style.color = "hsl(220 10% 75%)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.color = "hsl(220 10% 55%)";
+                      }}
+                    >
+                      <SkipForward className="w-3 h-3" />
+                      Skip
+                    </Button>
+                  )}
+
+                  {/* Approve — disabled when verification blocks */}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={verificationBlocked ? undefined : onApprove}
+                    disabled={verificationBlocked}
+                    title={
+                      verificationBlocked
+                        ? "Complete or skip verification before approving"
+                        : undefined
+                    }
+                    className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+                    style={{
+                      color: verificationBlocked ? "hsl(220 10% 50%)" : "hsl(14 100% 60%)",
+                      background: verificationBlocked ? "transparent" : "hsla(14 100% 60% / 0.1)",
+                      border: verificationBlocked
+                        ? "1px solid hsla(220 10% 100% / 0.08)"
+                        : "1px solid hsla(14 100% 60% / 0.2)",
+                    }}
+                    onMouseEnter={(e) => {
+                      if (!verificationBlocked) {
+                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!verificationBlocked) {
+                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                      }
+                    }}
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    Approve
+                  </Button>
+                </>
               )}
 
               {isApproved && (
@@ -572,6 +722,29 @@ export function PlanDisplay({
             {teamMetadata?.teamIdeated && teamMetadata.teamMode === "debate" && teamMetadata.debateSummary && (
               <div className="mb-4">
                 <DebateSummary data={teamMetadata.debateSummary} />
+              </div>
+            )}
+
+            {/* Verification gap list — shown when there are gaps to display */}
+            {hasGaps && (
+              <div
+                className="mb-4 rounded-lg p-3"
+                style={{
+                  background: "hsla(220 10% 100% / 0.02)",
+                  border: "1px solid hsla(220 10% 100% / 0.06)",
+                }}
+              >
+                <div
+                  className="text-[11px] font-semibold uppercase tracking-wider mb-3"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                >
+                  Verification Gaps
+                </div>
+                <VerificationGapList
+                  gaps={verificationGaps!}
+                  {...(verificationRounds !== undefined && { rounds: verificationRounds })}
+                  {...(gapScore !== undefined && { gapScore })}
+                />
               </div>
             )}
 

@@ -259,6 +259,45 @@ async fn build_ideation_recovery_metadata(
         }
     };
 
+    // Extract verification state before (potentially) resetting it
+    let verification_was_in_progress = session.verification_in_progress;
+    let verification_status_str = session.verification_status.to_string();
+    let current_round = session
+        .verification_metadata
+        .as_deref()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(raw).ok())
+        .and_then(|v| v.get("current_round").and_then(|r| r.as_u64()))
+        .map(|r| r as u32)
+        .unwrap_or(0);
+
+    // If verification was in-progress when the session crashed, force-reset it.
+    // A stuck `verification_in_progress=1` would block reconciliation and confuse the recovered agent.
+    // Use update_verification_state (unconditional) because reset_verification() guards on
+    // in_progress=false (it is only for conditional resets on plan artifact updates).
+    if verification_was_in_progress {
+        if let Err(e) = session_repo
+            .update_verification_state(
+                &session_id,
+                crate::domain::entities::VerificationStatus::Unverified,
+                false,
+                None,
+            )
+            .await
+        {
+            tracing::warn!(
+                session_id = session_id.as_str(),
+                error = %e,
+                "Failed to reset verification state during session recovery"
+            );
+        } else {
+            tracing::info!(
+                session_id = session_id.as_str(),
+                round = current_round,
+                "Verification in-progress reset during session recovery"
+            );
+        }
+    }
+
     Some(IdeationRecoveryMetadata {
         session_status: session.status.to_string(),
         plan_artifact_id: session.plan_artifact_id.map(|id| id.to_string()),
@@ -266,5 +305,12 @@ async fn build_ideation_recovery_metadata(
         parent_session_id: session.parent_session_id.map(|id| id.to_string()),
         team_mode: session.team_mode,
         session_title: session.title,
+        verification_status: verification_status_str,
+        verification_in_progress: verification_was_in_progress,
+        current_round,
     })
 }
+
+#[cfg(test)]
+#[path = "chat_service_recovery_tests.rs"]
+mod tests;

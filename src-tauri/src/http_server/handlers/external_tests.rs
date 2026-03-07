@@ -1071,3 +1071,175 @@ async fn test_get_execution_capacity_scope_violation() {
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
 }
+
+// ============================================================================
+// external_apply_proposals (POST /api/external/apply_proposals)
+// ============================================================================
+
+use crate::domain::entities::{IdeationSessionId, Priority, ProposalCategory, TaskProposal};
+
+fn make_proposal(session_id: IdeationSessionId, title: &str) -> TaskProposal {
+    TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium)
+}
+
+/// Creates a project + active ideation session. Returns (project_id_str, session_id_str).
+async fn setup_session(
+    state: &HttpServerState,
+    project_id: &str,
+    project_name: &str,
+) -> (String, String) {
+    let project = make_project(project_id, project_name);
+    state.app_state.project_repo.create(project).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+    let session = IdeationSession::new(pid);
+    let created = state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    (project_id.to_string(), created.id.as_str().to_string())
+}
+
+#[tokio::test]
+async fn test_external_apply_proposals_session_not_found() {
+    let state = setup_test_state().await;
+
+    let req = ExternalApplyProposalsRequest {
+        session_id: "nonexistent-session".to_string(),
+        proposal_ids: vec![],
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let result = external_apply_proposals(State(state), unrestricted_scope(), Json(req)).await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_external_apply_proposals_project_scope_enforced() {
+    // External agent scoped to "proj-other" cannot apply proposals to session in "proj-apply"
+    let state = setup_test_state().await;
+    let (_, session_id) = setup_session(&state, "proj-apply", "Apply Test").await;
+
+    let req = ExternalApplyProposalsRequest {
+        session_id,
+        proposal_ids: vec![],
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let result = external_apply_proposals(
+        State(state),
+        scoped(&["proj-other"]), // wrong project
+        Json(req),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err().status,
+        axum::http::StatusCode::FORBIDDEN
+    );
+}
+
+#[tokio::test]
+async fn test_external_apply_proposals_unrestricted_scope_allowed() {
+    // Unrestricted scope (no X-RalphX-Project-Scope header) allows all projects
+    let state = setup_test_state().await;
+    let (_, session_id) = setup_session(&state, "proj-unrestricted", "Unrestricted").await;
+
+    let req = ExternalApplyProposalsRequest {
+        session_id,
+        proposal_ids: vec![],
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let result = external_apply_proposals(State(state), unrestricted_scope(), Json(req)).await;
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_external_apply_proposals_correct_scope_allowed() {
+    // Scoped key can apply proposals when it has access to the session's project
+    let state = setup_test_state().await;
+    let (project_id, session_id) = setup_session(&state, "proj-scoped-ok", "Scoped OK").await;
+
+    let req = ExternalApplyProposalsRequest {
+        session_id,
+        proposal_ids: vec![],
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false),
+    };
+
+    let result = external_apply_proposals(
+        State(state),
+        scoped(&[&project_id]), // correct project scope
+        Json(req),
+    )
+    .await;
+
+    assert!(result.is_ok());
+}
+
+#[tokio::test]
+async fn test_external_apply_proposals_creates_tasks_from_proposals() {
+    // Full apply: session with proposals → tasks created, session_converted = true
+    let state = setup_test_state().await;
+    let (_, session_id) = setup_session(&state, "proj-full-apply", "Full Apply").await;
+
+    let session_id_typed = IdeationSessionId::from_string(session_id.clone());
+
+    let p1 = make_proposal(session_id_typed.clone(), "Task Alpha");
+    let p2 = make_proposal(session_id_typed.clone(), "Task Beta");
+    let created_p1 = state
+        .app_state
+        .task_proposal_repo
+        .create(p1)
+        .await
+        .unwrap();
+    let created_p2 = state
+        .app_state
+        .task_proposal_repo
+        .create(p2)
+        .await
+        .unwrap();
+
+    let req = ExternalApplyProposalsRequest {
+        session_id,
+        proposal_ids: vec![
+            created_p1.id.as_str().to_string(),
+            created_p2.id.as_str().to_string(),
+        ],
+        target_column: "auto".to_string(),
+        preserve_dependencies: false,
+        use_feature_branch: Some(false), // no feature branch for test simplicity
+    };
+
+    let result = external_apply_proposals(State(state), unrestricted_scope(), Json(req)).await;
+
+    assert!(
+        result.is_ok(),
+        "apply should succeed: {:?}",
+        result.err().map(|e| e.status)
+    );
+    let response = result.unwrap().0;
+    assert_eq!(response.created_task_ids.len(), 2);
+    assert!(response.session_converted, "all proposals applied");
+    assert!(response.execution_plan_id.is_some());
+    assert!(response.warnings.is_empty());
+}
+
+// Note: Tests for "blocked when unverified", "allowed when verified", "allowed when skipped"
+// require Wave 1 schema migration (`v57_plan_verification.rs`) to add verification_status
+// to ideation_sessions. check_verification_gate() is currently a stub (allows all sessions).
+// See: src-tauri/src/domain/services/verification_gate.rs

@@ -13,6 +13,7 @@ import {
   ApplyProposalsResultResponseSchema,
   CreateChildSessionResponseSchema,
   ParentSessionContextResponseSchema,
+  VerificationResponseSchema,
 } from "./ideation.schemas";
 import {
   transformSession,
@@ -39,6 +40,7 @@ import type {
   CreateChildSessionResponse,
   ParentSessionContextResponse,
   CreateChildSessionInput,
+  VerificationStatusResponse,
 } from "./ideation.types";
 
 // Re-export types for convenience
@@ -58,6 +60,7 @@ export type {
   CreateChildSessionResponse,
   ParentSessionContextResponse,
   CreateChildSessionInput,
+  VerificationStatusResponse,
 } from "./ideation.types";
 
 
@@ -575,6 +578,98 @@ export const ideationApi = {
         IdeationSettingsResponseSchema
       );
       return transformIdeationSettings(raw);
+    },
+  },
+
+  /**
+   * Plan verification operations (HTTP endpoints at :3847)
+   */
+  verification: {
+    /**
+     * Get current verification status for a session's plan
+     * @param sessionId The session ID
+     * @returns Verification status response
+     */
+    getStatus: async (sessionId: string): Promise<VerificationStatusResponse> => {
+      const res = await fetch(
+        `http://localhost:3847/api/ideation/sessions/${sessionId}/verification`
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to get verification status: ${res.status}`);
+      }
+      const raw = VerificationResponseSchema.parse(await res.json());
+      return {
+        sessionId: raw.session_id,
+        status: raw.status as VerificationStatusResponse["status"],
+        inProgress: raw.in_progress,
+        ...(raw.current_round !== undefined && { currentRound: raw.current_round }),
+        ...(raw.max_rounds !== undefined && { maxRounds: raw.max_rounds }),
+        ...(raw.gap_score !== undefined && { gapScore: raw.gap_score }),
+        ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
+        ...(raw.best_round_index !== undefined && { bestRoundIndex: raw.best_round_index }),
+      };
+    },
+
+    /**
+     * Skip verification for a session's plan (user-initiated)
+     * @param sessionId The session ID
+     * @returns Updated verification status
+     */
+    skip: async (sessionId: string): Promise<VerificationStatusResponse> => {
+      const res = await fetch(
+        `http://localhost:3847/api/ideation/sessions/${sessionId}/verification`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            session_id: sessionId,
+            status: "skipped",
+            in_progress: false,
+            convergence_reason: "user_skipped",
+          }),
+        }
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to skip verification: ${res.status}`);
+      }
+      const raw = VerificationResponseSchema.parse(await res.json());
+      return {
+        sessionId: raw.session_id,
+        status: raw.status as VerificationStatusResponse["status"],
+        inProgress: raw.in_progress,
+        ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
+      };
+    },
+
+    /**
+     * Atomically revert plan to a prior version and skip verification.
+     * Single-transaction endpoint — no partial failure risk (D7).
+     * @param sessionId The session ID
+     * @param planVersionToRestore The plan artifact version ID to restore content from
+     * @returns Updated verification status
+     */
+    revertAndSkip: async (
+      sessionId: string,
+      planVersionToRestore: string
+    ): Promise<VerificationStatusResponse> => {
+      const res = await fetch(
+        `http://localhost:3847/api/ideation/sessions/${sessionId}/revert-and-skip`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ plan_version_to_restore: planVersionToRestore }),
+        }
+      );
+      if (!res.ok) {
+        throw new Error(`Failed to revert and skip: ${res.status}`);
+      }
+      const raw = VerificationResponseSchema.parse(await res.json());
+      return {
+        sessionId: raw.session_id,
+        status: raw.status as VerificationStatusResponse["status"],
+        inProgress: raw.in_progress,
+        ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
+      };
     },
   },
 } as const;

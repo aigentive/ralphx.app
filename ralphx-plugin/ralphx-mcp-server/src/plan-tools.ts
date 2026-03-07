@@ -110,4 +110,77 @@ export const PLAN_TOOLS: Tool[] = [
       required: ["session_id"],
     },
   },
+  {
+    name: "update_plan_verification",
+    description:
+      "Update verification state for an ideation session. Reports round results from critic analysis. Call after each adversarial review round to record gaps found, and when verification converges (status=verified or skipped).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "Ideation session ID",
+        },
+        status: {
+          type: "string",
+          enum: ["reviewing", "needs_revision", "verified", "skipped"],
+          description: "New verification status",
+        },
+        in_progress: {
+          type: "boolean",
+          description: "Whether verification loop is active",
+        },
+        round: {
+          type: "integer",
+          description: "Current round number (1-based)",
+        },
+        gaps: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              severity: {
+                type: "string",
+                enum: ["critical", "high", "medium", "low"],
+              },
+              category: { type: "string" },
+              description: { type: "string" },
+              why_it_matters: { type: "string" },
+            },
+            required: ["severity", "category", "description"],
+          },
+          description: "Gaps identified in this round",
+        },
+        convergence_reason: {
+          type: "string",
+          enum: [
+            "zero_critical",
+            "jaccard_converged",
+            "max_rounds",
+            "critic_parse_failure",
+            "user_skipped",
+            "user_reverted",
+          ],
+          description:
+            "Why verification converged (only when status=verified or skipped)",
+        },
+      },
+      required: ["session_id", "status"],
+    },
+  },
+  {
+    name: "get_plan_verification",
+    description:
+      "Get the current verification status for an ideation session. Returns status, round number, gap list, and convergence reason if applicable.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID",
+        },
+      },
+      required: ["session_id"],
+    },
+  },
 ];

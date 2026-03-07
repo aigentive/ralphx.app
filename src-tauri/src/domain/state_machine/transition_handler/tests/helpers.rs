@@ -105,6 +105,9 @@ pub fn make_session_no_title(session_id: &str) -> IdeationSession {
         team_mode: None,
         team_config_json: None,
         title_source: None,
+        verification_status: Default::default(),
+        verification_in_progress: false,
+        verification_metadata: None,
     }
 }
 
@@ -126,6 +129,9 @@ pub fn make_session_with_title_for_test(session_id: &str, title: &str) -> Ideati
         team_mode: None,
         team_config_json: None,
         title_source: None,
+        verification_status: Default::default(),
+        verification_in_progress: false,
+        verification_metadata: None,
     }
 }
 

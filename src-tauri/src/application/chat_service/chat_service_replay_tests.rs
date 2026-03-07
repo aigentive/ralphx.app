@@ -99,6 +99,9 @@ fn test_build_rehydration_prompt_with_ideation_metadata() {
         parent_session_id: Some("parent-xyz".to_string()),
         team_mode: Some("solo".to_string()),
         session_title: Some("Feature Plan".to_string()),
+        verification_status: "unverified".to_string(),
+        verification_in_progress: false,
+        current_round: 0,
     };
 
     let prompt = build_rehydration_prompt(
@@ -140,6 +143,9 @@ fn test_build_rehydration_prompt_with_minimal_ideation_metadata() {
         parent_session_id: None,
         team_mode: None,
         session_title: None,
+        verification_status: "unverified".to_string(),
+        verification_in_progress: false,
+        current_round: 0,
     };
 
     let prompt = build_rehydration_prompt(
@@ -175,6 +181,9 @@ fn test_ideation_state_xml_placed_after_instructions() {
         parent_session_id: None,
         team_mode: None,
         session_title: None,
+        verification_status: "unverified".to_string(),
+        verification_in_progress: false,
+        current_round: 0,
     };
 
     let prompt = build_rehydration_prompt(

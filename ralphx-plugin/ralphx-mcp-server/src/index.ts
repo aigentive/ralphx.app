@@ -356,6 +356,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Also handle get_session_plan as GET
       const { session_id } = args as { session_id: string };
       result = await callTauriGet(`get_session_plan/${session_id}`);
+    } else if (name === "get_plan_verification") {
+      // GET /api/ideation/sessions/:id/verification
+      const { session_id } = args as { session_id: string };
+      result = await callTauriGet(`ideation/sessions/${session_id}/verification`);
+    } else if (name === "update_plan_verification") {
+      // POST /api/ideation/sessions/:id/verification
+      const { session_id, ...body } = args as {
+        session_id: string;
+        status: string;
+        in_progress?: boolean;
+        round?: number;
+        gaps?: unknown[];
+        convergence_reason?: string;
+      };
+      result = await callTauri(`ideation/sessions/${session_id}/verification`, body);
     } else if (name === "get_task_steps") {
       // GET /api/task_steps/:task_id
       const { task_id } = args as { task_id: string };

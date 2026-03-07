@@ -188,7 +188,7 @@ async fn test_format_attachments_file_read_error() {
 }
 
 // Tests for get_entity_status_for_resume
-use crate::domain::entities::{IdeationSession, IdeationSessionStatus, ProjectId};
+use crate::domain::entities::{IdeationSession, IdeationSessionStatus, ProjectId, VerificationStatus};
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::error::AppResult;
 use async_trait::async_trait;
@@ -287,6 +287,57 @@ impl IdeationSessionRepository for MockIdeationRepo {
         _session_id: &IdeationSessionId,
         _parent_id: Option<&IdeationSessionId>,
     ) -> AppResult<()> {
+        unimplemented!()
+    }
+
+    async fn update_verification_state(
+        &self,
+        _id: &IdeationSessionId,
+        _status: VerificationStatus,
+        _in_progress: bool,
+        _metadata_json: Option<String>,
+    ) -> AppResult<()> {
+        unimplemented!()
+    }
+
+    async fn reset_verification(&self, _id: &IdeationSessionId) -> AppResult<bool> {
+        unimplemented!()
+    }
+
+    async fn get_verification_status(
+        &self,
+        _id: &IdeationSessionId,
+    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
+        unimplemented!()
+    }
+
+    async fn revert_plan_and_skip_verification(
+        &self,
+        _id: &IdeationSessionId,
+        _new_plan_artifact_id: String,
+        _convergence_reason: String,
+    ) -> AppResult<()> {
+        unimplemented!()
+    }
+
+    async fn revert_plan_and_skip_with_artifact(
+        &self,
+        _session_id: &IdeationSessionId,
+        _new_artifact_id: String,
+        _artifact_type_str: String,
+        _artifact_name: String,
+        _content_text: String,
+        _version: u32,
+        _previous_version_id: String,
+        _convergence_reason: String,
+    ) -> AppResult<()> {
+        unimplemented!()
+    }
+
+    async fn get_stale_in_progress_sessions(
+        &self,
+        _stale_before: chrono::DateTime<chrono::Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
         unimplemented!()
     }
 }

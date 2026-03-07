@@ -5,10 +5,10 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 
 use async_trait::async_trait;
-use chrono::Utc;
+use chrono::{DateTime, Utc};
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationStatus,
 };
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::error::AppResult;
@@ -234,6 +234,126 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             session.updated_at = Utc::now();
         }
         Ok(())
+    }
+
+    async fn update_verification_state(
+        &self,
+        id: &IdeationSessionId,
+        status: VerificationStatus,
+        in_progress: bool,
+        metadata_json: Option<String>,
+    ) -> AppResult<()> {
+        if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
+            session.verification_status = status;
+            session.verification_in_progress = in_progress;
+            session.verification_metadata = metadata_json;
+            session.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn reset_verification(&self, id: &IdeationSessionId) -> AppResult<bool> {
+        if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
+            if session.verification_in_progress {
+                return Ok(false);
+            }
+            session.verification_status = VerificationStatus::Unverified;
+            session.verification_in_progress = false;
+            session.verification_metadata = None;
+            session.updated_at = Utc::now();
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    async fn get_verification_status(
+        &self,
+        id: &IdeationSessionId,
+    ) -> AppResult<Option<(VerificationStatus, bool, Option<String>)>> {
+        Ok(self
+            .sessions
+            .read()
+            .unwrap()
+            .get(&id.to_string())
+            .map(|s| (s.verification_status, s.verification_in_progress, s.verification_metadata.clone())))
+    }
+
+    async fn revert_plan_and_skip_verification(
+        &self,
+        id: &IdeationSessionId,
+        new_plan_artifact_id: String,
+        convergence_reason: String,
+    ) -> AppResult<()> {
+        if let Some(session) = self.sessions.write().unwrap().get_mut(&id.to_string()) {
+            session.plan_artifact_id =
+                Some(crate::domain::entities::ArtifactId::from_string(new_plan_artifact_id));
+            session.verification_status = VerificationStatus::Skipped;
+            session.verification_in_progress = false;
+            session.verification_metadata = Some(
+                serde_json::json!({
+                    "v": 1,
+                    "current_round": 0,
+                    "max_rounds": 0,
+                    "rounds": [],
+                    "current_gaps": [],
+                    "convergence_reason": convergence_reason,
+                    "best_round_index": null,
+                    "parse_failures": []
+                })
+                .to_string(),
+            );
+            session.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn revert_plan_and_skip_with_artifact(
+        &self,
+        session_id: &IdeationSessionId,
+        new_artifact_id: String,
+        _artifact_type_str: String,
+        _artifact_name: String,
+        _content_text: String,
+        _version: u32,
+        _previous_version_id: String,
+        convergence_reason: String,
+    ) -> AppResult<()> {
+        if let Some(session) = self.sessions.write().unwrap().get_mut(&session_id.to_string()) {
+            session.plan_artifact_id =
+                Some(crate::domain::entities::ArtifactId::from_string(new_artifact_id));
+            session.verification_status = VerificationStatus::Skipped;
+            session.verification_in_progress = false;
+            session.verification_metadata = Some(
+                serde_json::json!({
+                    "v": 1,
+                    "current_round": 0,
+                    "max_rounds": 0,
+                    "rounds": [],
+                    "current_gaps": [],
+                    "convergence_reason": convergence_reason,
+                    "best_round_index": null,
+                    "parse_failures": []
+                })
+                .to_string(),
+            );
+            session.updated_at = Utc::now();
+        }
+        Ok(())
+    }
+
+    async fn get_stale_in_progress_sessions(
+        &self,
+        stale_before: DateTime<Utc>,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(self
+            .sessions
+            .read()
+            .unwrap()
+            .values()
+            .filter(|s| s.verification_in_progress && s.updated_at < stale_before)
+            .cloned()
+            .collect())
     }
 }
 

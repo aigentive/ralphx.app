@@ -2,7 +2,7 @@ use super::*;
 use crate::application::AppState;
 use crate::domain::entities::{
     IdeationSession, IdeationSessionStatus, Priority, ProjectId, ProposalCategory, Task,
-    TaskProposal,
+    TaskProposal, VerificationStatus,
 };
 
 fn build_service(state: &AppState) -> SessionReopenService {
@@ -287,4 +287,49 @@ async fn test_reopen_without_execution_plan_succeeds() {
         .unwrap()
         .unwrap();
     assert_eq!(reopened.status, IdeationSessionStatus::Active);
+}
+
+#[tokio::test]
+async fn test_reopen_resets_verification_state() {
+    let state = AppState::new_test();
+    let project_id = ProjectId::new();
+
+    // Create a session that was mid-verification when it was accepted
+    let mut session = IdeationSession::new(project_id.clone());
+    session.verification_status = VerificationStatus::Reviewing;
+    session.verification_in_progress = true;
+    session.verification_metadata =
+        Some(r#"{"schema_version":1,"current_round":3,"rounds":[]}"#.to_string());
+
+    let created = state.ideation_session_repo.create(session).await.unwrap();
+    state
+        .ideation_session_repo
+        .update_status(&created.id, IdeationSessionStatus::Accepted)
+        .await
+        .unwrap();
+
+    let service = build_service(&state);
+    service.reopen(&created.id).await.unwrap();
+
+    let reopened = state
+        .ideation_session_repo
+        .get_by_id(&created.id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    assert_eq!(reopened.status, IdeationSessionStatus::Active);
+    assert_eq!(
+        reopened.verification_status,
+        VerificationStatus::Unverified,
+        "verification_status must be reset to Unverified on reopen"
+    );
+    assert!(
+        !reopened.verification_in_progress,
+        "verification_in_progress must be cleared on reopen"
+    );
+    assert!(
+        reopened.verification_metadata.is_none(),
+        "verification_metadata must be cleared on reopen"
+    );
 }

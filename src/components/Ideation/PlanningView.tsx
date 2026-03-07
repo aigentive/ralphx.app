@@ -929,6 +929,7 @@ export function PlanningView({
                         onAnalyzeDependencies={handleReanalyzeDependencies}
                         isAnalyzingDependencies={isAnalyzingDependencies}
                         analysisTimedOut={analysisTimedOut}
+                        session={session}
                       />
                     )}
 
@@ -1207,6 +1208,7 @@ export function PlanningView({
           onCancel={handleAcceptCancel}
           isAnalyzingDependencies={isAnalyzingDependencies}
           defaultUseFeatureBranch={activeProject?.useFeatureBranches ?? false}
+          session={session}
         />
       )}
     </>

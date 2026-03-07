@@ -62,9 +62,10 @@ pub use ideation::{
     DependencyFactor, DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSession,
     IdeationSessionBuilder, IdeationSessionStatus, MessageRole, ParseComplexityError,
     ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
-    ParseProposalCategoryError, ParseProposalStatusError, Priority, PriorityAssessment,
-    PriorityAssessmentFactors, PriorityFactors, ProposalCategory, ProposalStatus, SessionLink,
-    SessionRelationship, TaskProposal, UserHintFactor,
+    ParseProposalCategoryError, ParseProposalStatusError, ParseVerificationStatusError, Priority,
+    PriorityAssessment, PriorityAssessmentFactors, PriorityFactors, ProposalCategory,
+    ProposalStatus, SessionLink, SessionRelationship, TaskProposal, UserHintFactor,
+    VerificationError, VerificationGap, VerificationMetadata, VerificationRound, VerificationStatus,
 };
 pub use memory_archive::{
     ArchiveJobPayload, ArchiveJobStatus, ArchiveJobType, FullRebuildPayload, MemoryArchiveJob,

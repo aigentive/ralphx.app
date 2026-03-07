@@ -28,8 +28,9 @@ use super::super::types::{
     AddDependencyRequest, ApplyDependenciesResponse, ApplyDependencySuggestionsRequest,
     CreateProposalRequest, DeleteProposalRequest, GetSessionMessagesRequest,
     GetSessionMessagesResponse, HttpServerState, ListProposalsResponse, ProposalDetailResponse,
-    ProposalResponse, ProposalSummary, SessionMessageResponse, SuccessResponse,
-    UpdateProposalRequest, UpdateSessionTitleRequest,
+    ProposalResponse, ProposalSummary, RevertAndSkipRequest, SessionMessageResponse,
+    SuccessResponse, UpdateProposalRequest, UpdateSessionTitleRequest,
+    UpdateVerificationRequest, VerificationResponse,
 };
 
 pub async fn create_task_proposal(
@@ -1010,6 +1011,482 @@ pub async fn get_session_messages(
         count,
         truncated,
         total_available,
+    }))
+}
+
+/// POST /api/ideation/sessions/:id/verification
+///
+/// Update verification state for a session's plan (from MCP orchestrator).
+/// Validates the state machine transition and persists gap metadata.
+pub async fn update_plan_verification(
+    State(state): State<HttpServerState>,
+    Path(session_id): Path<String>,
+    Json(req): Json<UpdateVerificationRequest>,
+) -> Result<Json<VerificationResponse>, JsonError> {
+    use std::collections::HashSet;
+    use crate::domain::entities::ideation::{
+        VerificationGap, VerificationMetadata, VerificationRound, VerificationStatus,
+    };
+    use crate::domain::services::{gap_fingerprint, gap_score, jaccard_similarity};
+
+    let session_id_obj = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+
+    // Fetch session
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .map_err(|e| {
+            error!("Failed to get session {}: {}", session_id, e);
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("Failed to get session: {}", e),
+            )
+        })?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+
+    // Parse new status (mut — server-side convergence conditions may override)
+    let mut new_status: VerificationStatus = req.status.parse().map_err(|_| {
+        json_error(
+            StatusCode::BAD_REQUEST,
+            format!("Invalid status: {}", req.status),
+        )
+    })?;
+
+    // Transition validation matrix
+    let current = session.verification_status;
+    let is_valid = match (current, new_status) {
+        (_, VerificationStatus::Skipped) => true,
+        (VerificationStatus::Skipped, _) => false,
+        (VerificationStatus::Unverified, VerificationStatus::Reviewing) => true,
+        (VerificationStatus::Reviewing, VerificationStatus::NeedsRevision) => true,
+        (VerificationStatus::Reviewing, VerificationStatus::Verified) => true,
+        (VerificationStatus::NeedsRevision, VerificationStatus::Reviewing) => true,
+        _ => false,
+    };
+
+    if !is_valid {
+        if matches!(current, VerificationStatus::Skipped) {
+            return Err(json_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Verification was skipped — cannot update from critic",
+            ));
+        }
+        return Err(json_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!(
+                "Invalid verification transition: {} → {}",
+                current, new_status
+            ),
+        ));
+    }
+
+    // Build/update metadata
+    let mut metadata: VerificationMetadata = session
+        .verification_metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_default();
+
+    if let Some(max_r) = req.max_rounds {
+        metadata.max_rounds = max_r;
+    }
+
+    // Process gaps if provided
+    if let Some(ref gaps_req) = req.gaps {
+        let gaps: Vec<VerificationGap> = gaps_req
+            .iter()
+            .map(|g| VerificationGap {
+                severity: g.severity.clone(),
+                category: g.category.clone(),
+                description: g.description.clone(),
+                why_it_matters: g.why_it_matters.clone(),
+            })
+            .collect();
+
+        let fingerprints: Vec<String> = gaps
+            .iter()
+            .map(|g| gap_fingerprint(&g.description))
+            .collect();
+        let score = gap_score(&gaps);
+
+        if let Some(round) = req.round {
+            metadata.current_round = round;
+        }
+
+        // ── Server-side convergence evaluation (D3) ──
+        // Evaluate before pushing new round — metadata.current_gaps = previous round's gaps.
+
+        // Condition 1: 0 critical AND high ≤ previous round's high count (R4-H3)
+        let critical_count = gaps_req.iter().filter(|g| g.severity == "critical").count() as u32;
+        let high_count = gaps_req.iter().filter(|g| g.severity == "high").count() as u32;
+        let prev_high_count = metadata
+            .current_gaps
+            .iter()
+            .filter(|g| g.severity == "high")
+            .count() as u32;
+        let zero_critical_converged = critical_count == 0 && high_count <= prev_high_count;
+
+        // Condition 2: Jaccard ≥ 0.8 for 2 consecutive rounds (R4-C2)
+        let jaccard_converged = if metadata.rounds.len() >= 2 {
+            let prev_round = metadata.rounds.last().unwrap();
+            let prev_prev_round = &metadata.rounds[metadata.rounds.len() - 2];
+            let new_fp_set: HashSet<String> = fingerprints.iter().cloned().collect();
+            let prev_fp_set: HashSet<String> = prev_round.fingerprints.iter().cloned().collect();
+            let prev_prev_fp_set: HashSet<String> =
+                prev_prev_round.fingerprints.iter().cloned().collect();
+            let jaccard_curr = jaccard_similarity(&new_fp_set, &prev_fp_set);
+            let jaccard_prev = jaccard_similarity(&prev_fp_set, &prev_prev_fp_set);
+            tracing::info!(
+                session_id = %session_id,
+                round = metadata.current_round,
+                jaccard_curr = jaccard_curr,
+                jaccard_prev = jaccard_prev,
+                "Verification Jaccard similarity (2-round check)"
+            );
+            jaccard_curr >= 0.8 && jaccard_prev >= 0.8
+        } else if metadata.rounds.len() == 1 {
+            let prev_round = metadata.rounds.last().unwrap();
+            let new_fp_set: HashSet<String> = fingerprints.iter().cloned().collect();
+            let prev_fp_set: HashSet<String> = prev_round.fingerprints.iter().cloned().collect();
+            let jaccard = jaccard_similarity(&new_fp_set, &prev_fp_set);
+            tracing::info!(
+                session_id = %session_id,
+                round = metadata.current_round,
+                jaccard = jaccard,
+                "Verification Jaccard similarity (need 2 consecutive rounds for convergence)"
+            );
+            false // need at least 2 consecutive rounds
+        } else {
+            false
+        };
+
+        // Track best version (lowest gap_score)
+        let round_idx = metadata.rounds.len() as u32;
+        let is_better = metadata.best_round_index.is_none() || {
+            let best_idx = metadata.best_round_index.unwrap() as usize;
+            metadata
+                .rounds
+                .get(best_idx)
+                .map(|r| r.gap_score)
+                .unwrap_or(u32::MAX)
+                > score
+        };
+        if is_better {
+            metadata.best_round_index = Some(round_idx);
+        }
+
+        metadata
+            .rounds
+            .push(VerificationRound { fingerprints, gap_score: score });
+        metadata.current_gaps = gaps;
+
+        // Auto-converge: override NeedsRevision → Verified when conditions are met
+        if new_status == VerificationStatus::NeedsRevision {
+            if zero_critical_converged {
+                new_status = VerificationStatus::Verified;
+                if metadata.convergence_reason.is_none() {
+                    metadata.convergence_reason = Some("zero_critical".to_string());
+                }
+                tracing::info!(
+                    session_id = %session_id,
+                    "Server-side convergence: 0 critical + high ≤ prev → Verified"
+                );
+            } else if jaccard_converged {
+                new_status = VerificationStatus::Verified;
+                if metadata.convergence_reason.is_none() {
+                    metadata.convergence_reason = Some("jaccard_converged".to_string());
+                }
+                tracing::info!(
+                    session_id = %session_id,
+                    "Server-side convergence: Jaccard ≥ 0.8 × 2 rounds → Verified"
+                );
+            }
+        }
+    }
+
+    // Condition 3: max_rounds hard cap (R4-H3)
+    if !matches!(new_status, VerificationStatus::Verified | VerificationStatus::Skipped) {
+        let current_round = req.round.unwrap_or(metadata.current_round);
+        if metadata.max_rounds > 0 && current_round >= metadata.max_rounds {
+            new_status = VerificationStatus::Verified;
+            if metadata.convergence_reason.is_none() {
+                metadata.convergence_reason = Some("max_rounds".to_string());
+            }
+            tracing::info!(
+                session_id = %session_id,
+                round = current_round,
+                max_rounds = metadata.max_rounds,
+                "Server-side convergence: max_rounds reached → Verified"
+            );
+        }
+    }
+
+    // Condition 4: parse failure tracking — sliding window ≥ 3 of last 5 rounds (R4-M3)
+    if req.parse_failed == Some(true) {
+        if let Some(round) = req.round {
+            metadata.parse_failures.push(round);
+        }
+        let last_5_failures = metadata.parse_failures.iter().rev().take(5).count();
+        if last_5_failures >= 3
+            && !matches!(new_status, VerificationStatus::Verified | VerificationStatus::Skipped)
+        {
+            new_status = VerificationStatus::Verified;
+            if metadata.convergence_reason.is_none() {
+                metadata.convergence_reason = Some("critic_parse_failure".to_string());
+            }
+            tracing::warn!(
+                session_id = %session_id,
+                failures = last_5_failures,
+                "Server-side convergence: critic parse failures ≥ 3/5 → Verified"
+            );
+        }
+    }
+
+    if let Some(ref reason) = req.convergence_reason {
+        // Orchestrator-provided reason takes precedence only if not already set server-side
+        if metadata.convergence_reason.is_none() {
+            metadata.convergence_reason = Some(reason.clone());
+        }
+    }
+
+    let current_gap_score = gap_score(&metadata.current_gaps);
+    let metadata_json = serde_json::to_string(&metadata).ok();
+
+    // Persist state
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id_obj, new_status, req.in_progress, metadata_json)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to update verification state for {}: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to update verification state",
+            )
+        })?;
+
+    tracing::info!(
+        session_id = %session_id,
+        status = %new_status,
+        round = ?req.round,
+        "Verification state updated"
+    );
+
+    // Emit plan_verification:status_changed event
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "plan_verification:status_changed",
+            serde_json::json!({
+                "session_id": session_id,
+                "status": new_status.to_string(),
+                "in_progress": req.in_progress,
+                "round": req.round,
+                "max_rounds": metadata.max_rounds,
+                "gap_score": current_gap_score,
+                "convergence_reason": metadata.convergence_reason,
+            }),
+        );
+    }
+
+    Ok(Json(VerificationResponse {
+        session_id,
+        status: new_status.to_string(),
+        in_progress: req.in_progress,
+        current_round: if metadata.current_round > 0 {
+            Some(metadata.current_round)
+        } else {
+            None
+        },
+        max_rounds: if metadata.max_rounds > 0 {
+            Some(metadata.max_rounds)
+        } else {
+            None
+        },
+        gap_score: Some(current_gap_score),
+        convergence_reason: metadata.convergence_reason,
+        best_round_index: metadata.best_round_index,
+    }))
+}
+
+/// GET /api/ideation/sessions/:id/verification
+///
+/// Get current verification status for a session's plan (lightweight read).
+pub async fn get_plan_verification(
+    State(state): State<HttpServerState>,
+    Path(session_id): Path<String>,
+) -> Result<Json<VerificationResponse>, JsonError> {
+    use crate::domain::entities::ideation::VerificationMetadata;
+    use crate::domain::services::gap_score;
+
+    let session_id_obj = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+
+    let (status, in_progress, metadata_json) = state
+        .app_state
+        .ideation_session_repo
+        .get_verification_status(&session_id_obj)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to get verification status for {}: {}",
+                session_id, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to get verification status",
+            )
+        })?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+
+    let metadata: Option<VerificationMetadata> = metadata_json
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
+
+    let current_round = metadata
+        .as_ref()
+        .and_then(|m| if m.current_round > 0 { Some(m.current_round) } else { None });
+    let max_rounds = metadata
+        .as_ref()
+        .and_then(|m| if m.max_rounds > 0 { Some(m.max_rounds) } else { None });
+    let gap_sc = metadata.as_ref().map(|m| gap_score(&m.current_gaps));
+    let convergence_reason = metadata.as_ref().and_then(|m| m.convergence_reason.clone());
+    let best_round_index = metadata.as_ref().and_then(|m| m.best_round_index);
+
+    Ok(Json(VerificationResponse {
+        session_id,
+        status: status.to_string(),
+        in_progress,
+        current_round,
+        max_rounds,
+        gap_score: gap_sc,
+        convergence_reason,
+        best_round_index,
+    }))
+}
+
+/// POST /api/ideation/sessions/:id/revert-and-skip
+///
+/// Atomically revert plan content to a previous version and skip verification.
+/// Both the artifact INSERT and session UPDATE happen in a single `db.run(|conn| { ... })`
+/// transaction — no partial failure where artifact is created but session update fails.
+pub async fn revert_and_skip(
+    State(state): State<HttpServerState>,
+    Path(session_id): Path<String>,
+    Json(req): Json<RevertAndSkipRequest>,
+) -> Result<Json<SuccessResponse>, JsonError> {
+    use crate::domain::entities::ideation::VerificationStatus;
+    use crate::domain::entities::{ArtifactContent, ArtifactId};
+
+    let session_id_obj =
+        crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+
+    // Read session
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .map_err(|e| {
+            error!("Failed to get session {}: {}", session_id, e);
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get session")
+        })?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+
+    // Session must be active
+    if !session.is_active() {
+        return Err(json_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Session is not active",
+        ));
+    }
+
+    // Read the plan artifact version to restore
+    let restore_artifact_id = ArtifactId::from_string(req.plan_version_to_restore.clone());
+    let artifact = state
+        .app_state
+        .artifact_repo
+        .get_by_id(&restore_artifact_id)
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to get artifact {}: {}",
+                req.plan_version_to_restore, e
+            );
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to get plan artifact",
+            )
+        })?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Plan artifact not found"))?;
+
+    // Extract inline text content (plan artifacts must be inline)
+    let content_text = match &artifact.content {
+        ArtifactContent::Inline { text } => text.clone(),
+        ArtifactContent::File { .. } => {
+            return Err(json_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Plan artifact must be inline text content",
+            ));
+        }
+    };
+
+    // Pre-generate artifact ID for logging before the atomic operation
+    let new_artifact_id = ArtifactId::new();
+    let new_artifact_id_str = new_artifact_id.as_str().to_string();
+    let new_version = artifact.metadata.version + 1;
+
+    // Single atomic operation: INSERT artifact + UPDATE session in one db.run() transaction.
+    // Prevents the race where artifact is created but session update fails.
+    state
+        .app_state
+        .ideation_session_repo
+        .revert_plan_and_skip_with_artifact(
+            &session_id_obj,
+            new_artifact_id_str.clone(),
+            artifact.artifact_type.to_string(),
+            artifact.name.clone(),
+            content_text,
+            new_version,
+            restore_artifact_id.as_str().to_string(),
+            "user_reverted".to_string(),
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed revert-and-skip for session {}: {}", session_id, e);
+            json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to atomically revert plan and skip verification",
+            )
+        })?;
+
+    tracing::info!(
+        session_id = %session_id,
+        plan_version = %req.plan_version_to_restore,
+        new_artifact_id = %new_artifact_id_str,
+        "Revert-and-skip completed atomically"
+    );
+
+    // Emit event
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let _ = app_handle.emit(
+            "plan_verification:status_changed",
+            serde_json::json!({
+                "session_id": session_id,
+                "status": VerificationStatus::Skipped.to_string(),
+                "in_progress": false,
+                "convergence_reason": "user_reverted",
+            }),
+        );
+    }
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Plan reverted and verification skipped".to_string(),
     }))
 }
 

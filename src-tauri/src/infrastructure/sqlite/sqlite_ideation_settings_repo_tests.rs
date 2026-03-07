@@ -25,6 +25,7 @@ async fn test_update_settings() {
         require_plan_approval: true,
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
+        require_verification_for_accept: false,
     };
 
     let updated = repo.update_settings(&new_settings).await.unwrap();
@@ -120,6 +121,7 @@ async fn test_update_overrides_previous_update() {
         require_plan_approval: true,
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
+        require_verification_for_accept: false,
     })
     .await
     .unwrap();
@@ -129,6 +131,7 @@ async fn test_update_overrides_previous_update() {
         require_plan_approval: false,
         suggest_plans_for_complex: true,
         auto_link_proposals: true,
+        require_verification_for_accept: false,
     })
     .await
     .unwrap();
@@ -154,6 +157,7 @@ async fn test_boolean_fields_toggle_independently() {
         require_plan_approval: true,
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
+        require_verification_for_accept: false,
     })
     .await
     .unwrap();
@@ -169,6 +173,7 @@ async fn test_boolean_fields_toggle_independently() {
         require_plan_approval: false,
         suggest_plans_for_complex: true,
         auto_link_proposals: true,
+        require_verification_for_accept: false,
     })
     .await
     .unwrap();

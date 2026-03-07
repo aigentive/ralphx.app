@@ -36,6 +36,7 @@ fn test_ideation_settings_serialization() {
         require_plan_approval: true,
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
+        require_verification_for_accept: false,
     };
 
     let json = serde_json::to_string(&settings).unwrap();

@@ -4,6 +4,50 @@
 import { z } from "zod";
 
 // ============================================================================
+// Verification
+// ============================================================================
+
+export const VERIFICATION_STATUS_VALUES = [
+  "unverified",
+  "reviewing",
+  "verified",
+  "needs_revision",
+  "skipped",
+] as const;
+
+export const VerificationStatusSchema = z.enum(VERIFICATION_STATUS_VALUES);
+export type VerificationStatus = z.infer<typeof VerificationStatusSchema>;
+
+export const VerificationGapSchema = z.object({
+  severity: z.enum(["critical", "high", "medium", "low"]),
+  category: z.string(),
+  description: z.string(),
+  whyItMatters: z.string().optional(),
+});
+
+export type VerificationGap = z.infer<typeof VerificationGapSchema>;
+
+export const VerificationRoundSchema = z.object({
+  round: z.number().int(),
+  gapScore: z.number().int(),
+  gaps: z.array(VerificationGapSchema),
+  fingerprints: z.array(z.string()),
+  parseFailed: z.boolean().optional(),
+});
+
+export type VerificationRound = z.infer<typeof VerificationRoundSchema>;
+
+export const VerificationMetadataSchema = z.object({
+  rounds: z.array(VerificationRoundSchema).optional(),
+  currentRound: z.number().int().optional(),
+  maxRounds: z.number().int().optional(),
+  convergenceReason: z.string().optional(),
+  bestRoundIndex: z.number().int().optional(),
+});
+
+export type VerificationMetadata = z.infer<typeof VerificationMetadataSchema>;
+
+// ============================================================================
 // Ideation Session
 // ============================================================================
 
@@ -42,6 +86,9 @@ export const IdeationSessionSchema = z.object({
     budgetLimit: z.number().nullable().optional(),
     compositionMode: z.enum(["dynamic", "constrained"]),
   }).nullable().optional(),
+  verificationStatus: VerificationStatusSchema.optional().default("unverified"),
+  verificationInProgress: z.boolean().optional().default(false),
+  gapScore: z.number().int().nullable().optional(),
 });
 
 export type IdeationSession = z.infer<typeof IdeationSessionSchema>;

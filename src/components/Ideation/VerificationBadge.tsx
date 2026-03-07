@@ -1,0 +1,160 @@
+/**
+ * VerificationBadge — color-coded status badge for plan verification state.
+ *
+ * Design: macOS Tahoe style, warm orange accent (#ff6b35), SF Pro, no purple/blue.
+ */
+
+import { RefreshCw } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import type { VerificationStatus } from "@/types/ideation";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface VerificationBadgeProps {
+  status: VerificationStatus;
+  inProgress: boolean;
+  currentRound?: number;
+  maxRounds?: number;
+  convergenceReason?: string;
+  /** Called when user clicks Retry on a stuck session */
+  onRetry?: () => void;
+}
+
+// ============================================================================
+// Config
+// ============================================================================
+
+const STATUS_CONFIG: Record<
+  VerificationStatus,
+  { label: string; bg: string; border: string; color: string }
+> = {
+  unverified: {
+    label: "Unverified",
+    bg: "hsla(220 10% 100% / 0.05)",
+    border: "hsla(220 10% 100% / 0.1)",
+    color: "hsl(220 10% 55%)",
+  },
+  reviewing: {
+    label: "Reviewing",
+    bg: "hsla(14 100% 60% / 0.1)",
+    border: "hsla(14 100% 60% / 0.25)",
+    color: "hsl(14 100% 65%)",
+  },
+  verified: {
+    label: "Verified",
+    bg: "hsla(145 70% 45% / 0.1)",
+    border: "hsla(145 70% 45% / 0.25)",
+    color: "hsl(145 70% 50%)",
+  },
+  needs_revision: {
+    label: "Needs Revision",
+    bg: "hsla(0 70% 50% / 0.1)",
+    border: "hsla(0 70% 50% / 0.25)",
+    color: "hsl(0 70% 65%)",
+  },
+  skipped: {
+    label: "Skipped",
+    bg: "hsla(45 93% 50% / 0.1)",
+    border: "hsla(45 93% 50% / 0.25)",
+    color: "hsl(45 93% 60%)",
+  },
+};
+
+const CONVERGENCE_REASON_LABELS: Record<string, string> = {
+  zero_critical: "No critical gaps remain",
+  jaccard_converged: "Gap list stabilized across rounds",
+  max_rounds: "Maximum verification rounds reached",
+  critic_parse_failure: "Critic output could not be parsed",
+  user_skipped: "Manually skipped by user",
+  user_reverted: "Plan reverted to original version",
+};
+
+// ============================================================================
+// Component
+// ============================================================================
+
+export function VerificationBadge({
+  status,
+  inProgress,
+  currentRound,
+  maxRounds,
+  convergenceReason,
+  onRetry,
+}: VerificationBadgeProps) {
+  const config = STATUS_CONFIG[status];
+  const showProgress = inProgress && currentRound !== undefined && maxRounds !== undefined;
+  // A session is "stuck" when it is reviewing+inProgress but there's a retry callback
+  const isStuck = status === "reviewing" && inProgress && onRetry !== undefined;
+  const tooltipText = convergenceReason
+    ? (CONVERGENCE_REASON_LABELS[convergenceReason] ?? convergenceReason)
+    : undefined;
+
+  const badge = (
+    <span
+      className="inline-flex items-center gap-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-md flex-shrink-0 select-none"
+      style={{
+        background: config.bg,
+        border: `1px solid ${config.border}`,
+        color: config.color,
+      }}
+    >
+      {/* Pulsing dot when actively reviewing */}
+      {inProgress && (
+        <span
+          className="w-1.5 h-1.5 rounded-full animate-pulse flex-shrink-0"
+          style={{ background: config.color }}
+        />
+      )}
+
+      {config.label}
+
+      {/* Round progress indicator */}
+      {showProgress && (
+        <span
+          className="opacity-70"
+          style={{ color: config.color }}
+        >
+          {currentRound}/{maxRounds}
+        </span>
+      )}
+
+      {/* Retry button for stuck sessions */}
+      {isStuck && onRetry && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onRetry();
+          }}
+          className="ml-0.5 rounded transition-opacity hover:opacity-80 flex items-center"
+          title="Retry verification"
+          style={{ color: config.color }}
+        >
+          <RefreshCw className="w-2.5 h-2.5" />
+        </button>
+      )}
+    </span>
+  );
+
+  if (!tooltipText) {
+    return badge;
+  }
+
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>{badge}</TooltipTrigger>
+        <TooltipContent className="max-w-xs text-[11px]">
+          {tooltipText}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}

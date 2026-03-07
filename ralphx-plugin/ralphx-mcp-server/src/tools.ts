@@ -1344,6 +1344,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_session_messages",
     // team artifact tools (for local Task agent fallback)
     "get_team_artifacts",
+    // verification tools
+    "update_plan_verification",
+    "get_plan_verification",
     // memory read tools
     "search_memories",
     "get_memory",
@@ -1589,6 +1592,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_parent_session_context",
     // Session context recovery
     "get_session_messages",
+    // Verification tools
+    "update_plan_verification",
+    "get_plan_verification",
     // Memory read tools
     "search_memories",
     "get_memory",

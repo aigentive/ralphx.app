@@ -8,26 +8,34 @@ use crate::application::{AppState, TaskSchedulerService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ArtifactId, ExecutionPlan, IdeationSessionId, IdeationSessionStatus, InternalStatus,
-    PlanBranch, PlanBranchId, Task, TaskCategory, TaskId, TaskProposal, TaskProposalId,
+    PlanBranch, PlanBranchId, ProjectId, Task, TaskCategory, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::error::{AppError, AppResult};
 
-use super::ideation_commands_types::{ApplyProposalsInput, ApplyProposalsResultResponse};
+use super::ideation_commands_types::{
+    ApplyProposalsInput, ApplyProposalsResult, ApplyProposalsResultResponse,
+};
 use crate::commands::plan_branch_commands::slug_from_name;
 
 // ============================================================================
-// Apply and Task Dependency Commands
+// Core Result Type
 // ============================================================================
 
-/// Apply selected proposals to the Kanban board as tasks
-#[tauri::command]
-pub async fn apply_proposals_to_kanban(
+/// Core apply-proposals logic — no Tauri types.
+///
+/// Contains all proposal-to-task creation logic, dependency setup, and session
+/// status transition to Accepted. Returns transport-agnostic [`ApplyProposalsResult`]
+/// that can be used from both the Tauri IPC command and the HTTP endpoint (Wave 2).
+///
+/// # Errors
+///
+/// Returns [`AppError::Validation`] for business rule violations, [`AppError::NotFound`]
+/// for missing entities, and [`AppError::Database`] for persistence failures.
+pub async fn apply_proposals_core(
+    app_state: &AppState,
     input: ApplyProposalsInput,
-    state: State<'_, AppState>,
-    app: tauri::AppHandle,
-) -> Result<ApplyProposalsResultResponse, String> {
-    use crate::commands::emit_queue_changed;
-
+) -> AppResult<ApplyProposalsResult> {
     let session_id = IdeationSessionId::from_string(input.session_id);
 
     // Status will be determined automatically based on dependencies:
@@ -37,15 +45,29 @@ pub async fn apply_proposals_to_kanban(
     let use_auto_status = input.target_column.to_lowercase() == "auto";
 
     // Get the session to know the project_id
-    let session = state
+    let session = app_state
         .ideation_session_repo
         .get_by_id(&session_id)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Session {} not found", session_id))?;
+        .map_err(|e| AppError::Database(e.to_string()))?
+        .ok_or_else(|| AppError::NotFound(format!("Session {} not found", session_id)))?;
 
     if session.status != IdeationSessionStatus::Active {
-        return Err("Cannot apply proposals from an inactive session".to_string());
+        return Err(AppError::Validation(
+            "Cannot apply proposals from an inactive session".to_string(),
+        ));
+    }
+
+    // Verification gate: block acceptance if plan is not verified (when enforcement is enabled)
+    let ideation_settings = app_state
+        .ideation_settings_repo
+        .get_settings()
+        .await
+        .map_err(|e| AppError::Database(format!("Failed to get ideation settings: {}", e)))?;
+    if let Err(e) =
+        crate::domain::services::check_verification_gate(&session, &ideation_settings)
+    {
+        return Err(AppError::Validation(e.to_string()));
     }
 
     let proposal_ids: HashSet<TaskProposalId> = input
@@ -55,11 +77,11 @@ pub async fn apply_proposals_to_kanban(
         .collect();
 
     // Validate that all proposals exist and belong to this session
-    let all_proposals = state
+    let all_proposals = app_state
         .task_proposal_repo
         .get_by_session(&session_id)
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| AppError::Database(e.to_string()))?;
 
     let proposals_to_apply: Vec<TaskProposal> = all_proposals
         .into_iter()
@@ -67,24 +89,28 @@ pub async fn apply_proposals_to_kanban(
         .collect();
 
     if proposals_to_apply.len() != proposal_ids.len() {
-        return Err("Some proposals not found in session".to_string());
+        return Err(AppError::Validation(
+            "Some proposals not found in session".to_string(),
+        ));
     }
 
     // Idempotency guard: if an active ExecutionPlan already exists for this session,
     // return early instead of creating duplicates. This handles rapid double-clicks
     // on "Accept Plan" before the first apply completes and updates session status.
-    if let Some(existing_plan) = state
+    if let Some(existing_plan) = app_state
         .execution_plan_repo
         .get_active_for_session(&session_id)
         .await
-        .map_err(|e| format!("Failed to check existing execution plan: {}", e))?
+        .map_err(|e| {
+            AppError::Database(format!("Failed to check existing execution plan: {}", e))
+        })?
     {
         tracing::warn!(
-            "apply_proposals_to_kanban: active ExecutionPlan {} already exists for session {} — skipping duplicate",
+            "apply_proposals_core: active ExecutionPlan {} already exists for session {} — skipping duplicate",
             existing_plan.id,
             session_id
         );
-        return Ok(ApplyProposalsResultResponse {
+        return Ok(ApplyProposalsResult {
             created_task_ids: vec![],
             dependencies_created: 0,
             warnings: vec![format!(
@@ -93,17 +119,29 @@ pub async fn apply_proposals_to_kanban(
             )],
             session_converted: false,
             execution_plan_id: Some(existing_plan.id.as_str().to_string()),
+            project_id: session.project_id.as_str().to_string(),
+            session_id: session_id.as_str().to_string(),
+            any_ready_tasks: false,
+            is_user_title: session
+                .title_source
+                .as_deref()
+                .map(|s| s == "user")
+                .unwrap_or(false),
+            proposal_titles: proposals_to_apply
+                .iter()
+                .map(|p| p.title.clone())
+                .collect(),
         });
     }
 
     // Create ExecutionPlan for this apply attempt
     // Each re-accept creates a fresh ExecutionPlan with a unique ID, enabling unique branch naming
     let execution_plan = ExecutionPlan::new(session_id.clone());
-    let execution_plan = state
+    let execution_plan = app_state
         .execution_plan_repo
         .create(execution_plan)
         .await
-        .map_err(|e| format!("Failed to create execution plan: {}", e))?;
+        .map_err(|e| AppError::Database(format!("Failed to create execution plan: {}", e)))?;
     let execution_plan_id = execution_plan.id.clone();
 
     // ========================================================================
@@ -112,12 +150,17 @@ pub async fn apply_proposals_to_kanban(
     // Moved before task creation so a branch failure doesn't leave orphaned tasks.
     let plan_artifact_id: Option<ArtifactId> = session.plan_artifact_id.clone();
 
-    let project = state
+    let project = app_state
         .project_repo
         .get_by_id(&session.project_id)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Project not found: {}", session.project_id.as_str()))?;
+        .map_err(|e| AppError::Database(e.to_string()))?
+        .ok_or_else(|| {
+            AppError::NotFound(format!(
+                "Project not found: {}",
+                session.project_id.as_str()
+            ))
+        })?;
 
     let use_feature_branch =
         should_create_feature_branch(input.use_feature_branch, project.use_feature_branches);
@@ -127,11 +170,11 @@ pub async fn apply_proposals_to_kanban(
     if use_feature_branch {
         // Check if a feature branch already exists for this execution plan
         // Each re-accept creates a new ExecutionPlan, so this will always be None on first apply
-        let existing = state
+        let existing = app_state
             .plan_branch_repo
             .get_by_execution_plan_id(&execution_plan_id)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         if existing.is_none() {
             // Compute effective_plan_id for plan_branches.plan_artifact_id only (no FK constraint).
@@ -142,11 +185,13 @@ pub async fn apply_proposals_to_kanban(
 
             // Abandon any existing active plan branches for this artifact (re-accept flow).
             // Each re-accept creates a fresh PlanBranch; old ones must be marked abandoned.
-            let abandoned = state
+            let abandoned = app_state
                 .plan_branch_repo
                 .abandon_active_for_artifact(&effective_plan_id)
                 .await
-                .map_err(|e| format!("Failed to abandon old plan branches: {}", e))?;
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to abandon old plan branches: {}", e))
+                })?;
             if abandoned > 0 {
                 tracing::info!(
                     "Re-accept: abandoned {} stale active plan branch(es) for artifact={}",
@@ -172,11 +217,13 @@ pub async fn apply_proposals_to_kanban(
                 base_branch.clone(),
             );
             plan_branch.execution_plan_id = Some(execution_plan_id.clone());
-            let created_branch = state
+            let created_branch = app_state
                 .plan_branch_repo
                 .create(plan_branch)
                 .await
-                .map_err(|e| format!("Failed to create plan branch record: {}", e))?;
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to create plan branch record: {}", e))
+                })?;
 
             pending_merge = Some((created_branch.id, base_branch));
         }
@@ -199,19 +246,13 @@ pub async fn apply_proposals_to_kanban(
         task.internal_status = InternalStatus::Backlog;
         task.ideation_session_id = Some(session_id.clone());
         task.execution_plan_id = Some(execution_plan_id.clone());
+        task.priority = proposal.priority_score;
 
-        // Set priority based on user override or suggested (use priority score as i32)
-        if proposal.user_priority.is_some() {
-            task.priority = proposal.priority_score; // Use calculated score
-        } else {
-            task.priority = proposal.priority_score;
-        }
-
-        let created_task = state
+        let created_task = app_state
             .task_repo
             .create(task)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
         // Import steps from proposal if they exist
         if let Some(steps_json) = &proposal.steps {
@@ -231,11 +272,11 @@ pub async fn apply_proposals_to_kanban(
                         .collect();
 
                     // Use bulk_create to insert all steps
-                    let _ = state
+                    let _ = app_state
                         .task_step_repo
                         .bulk_create(task_steps)
                         .await
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| AppError::Database(e.to_string()))?;
                 }
             }
         }
@@ -248,22 +289,22 @@ pub async fn apply_proposals_to_kanban(
     let mut dependencies_created = 0;
     if input.preserve_dependencies {
         for proposal in &proposals_to_apply {
-            let deps = state
+            let deps = app_state
                 .proposal_dependency_repo
                 .get_dependencies(&proposal.id)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| AppError::Database(e.to_string()))?;
 
             for dep_proposal_id in deps {
                 if let (Some(task_id), Some(dep_task_id)) = (
                     proposal_to_task.get(&proposal.id),
                     proposal_to_task.get(&dep_proposal_id),
                 ) {
-                    state
+                    app_state
                         .task_dependency_repo
                         .add_dependency(task_id, dep_task_id)
                         .await
-                        .map_err(|e| e.to_string())?;
+                        .map_err(|e| AppError::Database(e.to_string()))?;
                     dependencies_created += 1;
                 } else {
                     warnings.push(format!(
@@ -281,12 +322,14 @@ pub async fn apply_proposals_to_kanban(
     // Set plan_artifact_id on all created tasks (propagate from proposal or session)
     if let Some(ref artifact_id) = plan_artifact_id {
         for task in &created_tasks {
-            let mut task_to_update = state
+            let mut task_to_update = app_state
                 .task_repo
                 .get_by_id(&task.id)
                 .await
-                .map_err(|e| e.to_string())?
-                .ok_or_else(|| format!("Task {} not found after creation", task.id))?;
+                .map_err(|e| AppError::Database(e.to_string()))?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("Task {} not found after creation", task.id))
+                })?;
             // Use proposal's plan_artifact_id if set, else session's
             let proposal_opt = proposals_to_apply
                 .iter()
@@ -295,11 +338,11 @@ pub async fn apply_proposals_to_kanban(
                 .and_then(|p| p.plan_artifact_id.clone())
                 .unwrap_or_else(|| artifact_id.clone());
             task_to_update.plan_artifact_id = Some(task_artifact_id);
-            state
+            app_state
                 .task_repo
                 .update(&task_to_update)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| AppError::Database(e.to_string()))?;
         }
     }
 
@@ -322,28 +365,30 @@ pub async fn apply_proposals_to_kanban(
         merge_task.internal_status = InternalStatus::Blocked;
         merge_task.blocked_reason = Some("Waiting for all plan tasks to complete".to_string());
 
-        let created_merge_task = state
+        let created_merge_task = app_state
             .task_repo
             .create(merge_task)
             .await
-            .map_err(|e| format!("Failed to create merge task: {}", e))?;
+            .map_err(|e| AppError::Database(format!("Failed to create merge task: {}", e)))?;
 
         // Add blockedBy dependencies: merge task blocked by all created plan tasks
         for task in &created_tasks {
-            state
+            app_state
                 .task_dependency_repo
                 .add_dependency(&created_merge_task.id, &task.id)
                 .await
-                .map_err(|e| format!("Failed to add dependency: {}", e))?;
+                .map_err(|e| AppError::Database(format!("Failed to add dependency: {}", e)))?;
             dependencies_created += 1;
         }
 
         // Set merge_task_id on the plan branch record
-        state
+        app_state
             .plan_branch_repo
             .set_merge_task_id(&branch_id, &created_merge_task.id)
             .await
-            .map_err(|e| format!("Failed to set merge task ID: {}", e))?;
+            .map_err(|e| {
+                AppError::Database(format!("Failed to set merge task ID: {}", e))
+            })?;
     }
 
     // ========================================================================
@@ -352,11 +397,11 @@ pub async fn apply_proposals_to_kanban(
     // Update proposal statuses and link to created tasks
     for proposal in &proposals_to_apply {
         if let Some(task_id) = proposal_to_task.get(&proposal.id) {
-            state
+            app_state
                 .task_proposal_repo
                 .set_created_task_id(&proposal.id, task_id)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| AppError::Database(e.to_string()))?;
         }
     }
 
@@ -372,19 +417,21 @@ pub async fn apply_proposals_to_kanban(
             .collect();
 
         for task in &created_tasks {
-            let blockers = state
+            let blockers = app_state
                 .task_dependency_repo
                 .get_blockers(&task.id)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| AppError::Database(e.to_string()))?;
 
             // Fetch the task to update it
-            let mut task_to_update = state
+            let mut task_to_update = app_state
                 .task_repo
                 .get_by_id(&task.id)
                 .await
-                .map_err(|e| e.to_string())?
-                .ok_or_else(|| format!("Task {} not found after creation", task.id))?;
+                .map_err(|e| AppError::Database(e.to_string()))?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("Task {} not found after creation", task.id))
+                })?;
 
             if blockers.is_empty() {
                 // No blockers - set to Ready
@@ -404,49 +451,88 @@ pub async fn apply_proposals_to_kanban(
                 task_to_update.blocked_reason = Some(blocked_reason);
             }
 
-            state
+            app_state
                 .task_repo
                 .update(&task_to_update)
                 .await
-                .map_err(|e| e.to_string())?;
+                .map_err(|e| AppError::Database(e.to_string()))?;
         }
     }
 
     // Check if all proposals in session are now applied
-    let remaining = state
+    let remaining = app_state
         .task_proposal_repo
         .get_by_session(&session_id)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| AppError::Database(e.to_string()))?
         .into_iter()
         .filter(|p| p.created_task_id.is_none())
         .count();
 
     let session_converted = remaining == 0;
     if session_converted {
-        state
+        app_state
             .ideation_session_repo
             .update_status(&session_id, IdeationSessionStatus::Accepted)
             .await
-            .map_err(|e| e.to_string())?;
+            .map_err(|e| AppError::Database(e.to_string()))?;
     }
 
-    // Re-trigger session-namer if title was not manually set by user.
-    // At acceptance, proposals are finalized — namer generates a commit-ready title
-    // reflecting the actual work (not just the initial user message).
-    // Skip if user has set a custom title (title_source == "user").
     let is_user_title = session
         .title_source
         .as_deref()
         .map(|s| s == "user")
         .unwrap_or(false);
 
-    if !is_user_title {
-        // Build context from applied proposals for the namer
-        let proposal_titles: Vec<String> =
-            proposals_to_apply.iter().map(|p| p.title.clone()).collect();
-        let proposals_context = proposal_titles.join("; ");
-        let session_id_str = session_id.as_str().to_string();
+    let proposal_titles: Vec<String> = proposals_to_apply.iter().map(|p| p.title.clone()).collect();
+
+    Ok(ApplyProposalsResult {
+        created_task_ids: created_tasks
+            .into_iter()
+            .map(|t| t.id.as_str().to_string())
+            .collect(),
+        dependencies_created,
+        warnings,
+        session_converted,
+        execution_plan_id: Some(execution_plan_id.as_str().to_string()),
+        project_id: session.project_id.as_str().to_string(),
+        session_id: session_id.as_str().to_string(),
+        any_ready_tasks,
+        is_user_title,
+        proposal_titles,
+    })
+}
+
+// ============================================================================
+// Apply and Task Dependency Commands
+// ============================================================================
+
+/// Apply selected proposals to the Kanban board as tasks (Tauri IPC command).
+///
+/// Delegates to [`apply_proposals_core`] and adds Tauri-specific side effects:
+/// queue-change events, task scheduler trigger for newly Ready tasks, and
+/// session-namer re-trigger at acceptance.
+/// External HTTP callers use [`crate::http_server::handlers::external_apply_proposals`]
+/// instead, which skips the scheduler (external agents poll `get_pipeline_overview`).
+#[tauri::command]
+pub async fn apply_proposals_to_kanban(
+    input: ApplyProposalsInput,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<ApplyProposalsResultResponse, String> {
+    use crate::commands::emit_queue_changed;
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // Re-trigger session-namer if title was not manually set by user.
+    // At acceptance, proposals are finalized — namer generates a commit-ready title
+    // reflecting the actual work (not just the initial user message).
+    // Skip if user has set a custom title (title_source == "user").
+    if !result.is_user_title {
+        let proposals_context = result.proposal_titles.join("; ");
+        let session_id_str = result.session_id.clone();
 
         let agent_client = Arc::clone(&state.agent_client);
         let working_directory = std::env::current_dir()
@@ -509,8 +595,9 @@ pub async fn apply_proposals_to_kanban(
     }
 
     // Emit queue_changed if any tasks were set to Ready status
-    if any_ready_tasks {
-        emit_queue_changed(&state, &session.project_id, &app).await;
+    if result.any_ready_tasks {
+        let project_id = ProjectId::from_string(result.project_id.clone());
+        emit_queue_changed(&state, &project_id, &app).await;
 
         // Trigger scheduler to pick up newly Ready tasks (600ms delay for UI settlement)
         // This is necessary because we set status via direct repo update, bypassing TransitionHandler
@@ -539,16 +626,7 @@ pub async fn apply_proposals_to_kanban(
         });
     }
 
-    Ok(ApplyProposalsResultResponse {
-        created_task_ids: created_tasks
-            .into_iter()
-            .map(|t| t.id.as_str().to_string())
-            .collect(),
-        dependencies_created,
-        warnings,
-        session_converted,
-        execution_plan_id: Some(execution_plan_id.as_str().to_string()),
-    })
+    Ok(result.into())
 }
 
 /// Determine whether a feature branch should be created for this plan apply.
