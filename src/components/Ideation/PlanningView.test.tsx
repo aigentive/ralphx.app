@@ -16,6 +16,7 @@ vi.mock("@/providers/EventProvider", () => ({
 // Mock for plan store
 const mockClearActivePlan = vi.fn();
 const mockSetActivePlan = vi.fn().mockResolvedValue(undefined);
+const mockSetIsPlanExpanded = vi.fn();
 const mockActivePlanByProject: Record<string, string | null> = {};
 
 vi.mock("@/hooks/useDependencyGraph", () => ({
@@ -45,7 +46,7 @@ vi.mock("./useIdeationHandlers", () => ({
   ) => ({
     highlightedProposalIds: new Set<string>(),
     isPlanExpanded: false,
-    setIsPlanExpanded: vi.fn(),
+    setIsPlanExpanded: mockSetIsPlanExpanded,
     importStatus: null,
     setImportStatus: vi.fn(),
     fileInputRef: { current: null },
@@ -277,6 +278,7 @@ describe("PlanningView", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSetIsPlanExpanded.mockClear();
   });
 
   it("renders the main view and active-session layout", () => {
@@ -543,5 +545,16 @@ describe("PlanningView", () => {
     // Verify the view still renders normally
     expect(screen.getByTestId("ideation-view")).toBeInTheDocument();
     expect(screen.getByTestId("proposals-panel")).toBeInTheDocument();
+  });
+
+  it("auto-expands plan when navigating to existing session with a planArtifactId", () => {
+    const sessionWithPlan = { ...mockSession, planArtifactId: "plan-artifact-123" };
+    render(<PlanningView {...defaultProps} session={sessionWithPlan} proposals={mockProposals} />);
+    expect(mockSetIsPlanExpanded).toHaveBeenCalledWith(true);
+  });
+
+  it("does not auto-expand plan when session has no planArtifactId", () => {
+    render(<PlanningView {...defaultProps} session={mockSession} proposals={[]} />);
+    expect(mockSetIsPlanExpanded).not.toHaveBeenCalledWith(true);
   });
 });
