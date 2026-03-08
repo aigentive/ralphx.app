@@ -9,98 +9,85 @@ use tracing::error;
 use super::*;
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType,
-    IdeationSessionId, TaskProposalId,
+    IdeationSessionId,
 };
+use crate::error::AppError;
+use crate::infrastructure::sqlite::{
+    SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
+    SqliteTaskProposalRepository as ProposalRepo,
+};
+
+/// Map an AppError to an HttpError for handler responses.
+fn map_app_err(e: AppError) -> HttpError {
+    match e {
+        AppError::Validation(msg) => HttpError::validation(msg),
+        AppError::NotFound(_) => StatusCode::NOT_FOUND.into(),
+        _ => StatusCode::INTERNAL_SERVER_ERROR.into(),
+    }
+}
 
 pub async fn create_plan_artifact(
     State(state): State<HttpServerState>,
     Json(req): Json<CreatePlanArtifactRequest>,
 ) -> Result<Json<ArtifactResponse>, HttpError> {
-    let session_id = IdeationSessionId::from_string(req.session_id);
+    let session_id_str = req.session_id.clone();
+    let title = req.title.clone();
+    let content = req.content.clone();
 
-    // Get session and check for existing plan
-    let session = state
+    // Single lock acquisition: all DB work in one transaction.
+    // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
+    let (session_id, created) = state
         .app_state
-        .ideation_session_repo
-        .get_by_id(&session_id)
+        .db
+        .run_transaction(move |conn| {
+            let sid = IdeationSessionId::from_string(session_id_str);
+
+            // Get session and check for existing plan
+            let session = SessionRepo::get_by_id_sync(conn, sid.as_str())?
+                .ok_or_else(|| AppError::NotFound(format!("Session {} not found", sid)))?;
+
+            // Guard: reject mutations on Archived/Accepted sessions
+            crate::http_server::helpers::assert_session_mutable(&session)?;
+
+            // Create the specification artifact
+            let bucket_id = ArtifactBucketId::from_string("prd-library");
+            let artifact = Artifact {
+                id: ArtifactId::new(),
+                artifact_type: ArtifactType::Specification,
+                name: title,
+                content: ArtifactContent::inline(&content),
+                metadata: ArtifactMetadata::new("orchestrator").with_version(1),
+                derived_from: vec![],
+                bucket_id: Some(bucket_id),
+            };
+
+            // Chain only to the session's OWN plan (plan_artifact_id), never to an inherited one.
+            // Child sessions with inherit_context=true have plan_artifact_id=None and
+            // inherited_plan_artifact_id=Some(parent_id). The else branch creates a fresh,
+            // independent artifact for them — not chained to the parent's plan.
+            let created = if let Some(existing_plan_id) = &session.plan_artifact_id {
+                let prev_id = existing_plan_id.as_str().to_string();
+                ArtifactRepo::create_with_previous_version_sync(conn, artifact, &prev_id)?
+            } else {
+                ArtifactRepo::create_sync(conn, artifact)?
+            };
+
+            // Link artifact to session
+            SessionRepo::update_plan_artifact_id_sync(
+                conn,
+                sid.as_str(),
+                Some(created.id.as_str()),
+            )?;
+
+            Ok((sid, created))
+        })
         .await
         .map_err(|e| {
-            error!(
-                "Failed to get session {} for plan artifact creation: {}",
-                session_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    // Guard: reject mutations on Archived/Accepted sessions
-    assert_session_mutable(&session).map_err(|e| HttpError::validation(e.to_string()))?;
-
-    // Create the specification artifact
-    let bucket_id = ArtifactBucketId::from_string("prd-library");
-    let artifact = Artifact {
-        id: ArtifactId::new(),
-        artifact_type: ArtifactType::Specification,
-        name: req.title.clone(),
-        content: ArtifactContent::inline(&req.content),
-        metadata: ArtifactMetadata::new("orchestrator").with_version(1),
-        derived_from: vec![],
-        bucket_id: Some(bucket_id),
-    };
-
-    // Chain only to the session's OWN plan (plan_artifact_id), never to an inherited one.
-    // Child sessions with inherit_context=true have plan_artifact_id=None and
-    // inherited_plan_artifact_id=Some(parent_id). The else branch below creates a fresh,
-    // independent artifact for them — not chained to the parent's plan.
-    let created = if let Some(existing_plan_id) = &session.plan_artifact_id {
-        let existing_artifact_id = existing_plan_id.clone();
-        state
-            .app_state
-            .artifact_repo
-            .create_with_previous_version(artifact, existing_artifact_id)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to create plan artifact with version chain for session {}: {}",
-                    session_id.as_str(),
-                    e
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-    } else {
-        state
-            .app_state
-            .artifact_repo
-            .create(artifact)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to create plan artifact for session {}: {}",
-                    session_id.as_str(),
-                    e
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-    };
-
-    // Link artifact to session
-    state
-        .app_state
-        .ideation_session_repo
-        .update_plan_artifact_id(&session_id, Some(created.id.to_string()))
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to link artifact {} to session {}: {}",
-                created.id.as_str(),
-                session_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
+            error!("create_plan_artifact transaction failed: {}", e);
+            map_app_err(e)
         })?;
 
-    // Emit event for real-time UI update
+    // Emit event for real-time UI update (outside lock — acceptable crash gap)
     if let Some(app_handle) = &state.app_state.app_handle {
         let content_text = match &created.content {
             ArtifactContent::Inline { text } => text.clone(),
@@ -127,198 +114,95 @@ pub async fn update_plan_artifact(
     State(state): State<HttpServerState>,
     Json(req): Json<UpdatePlanArtifactRequest>,
 ) -> Result<Json<ArtifactResponse>, HttpError> {
-    let input_artifact_id = ArtifactId::from_string(req.artifact_id);
+    let input_artifact_id = req.artifact_id.clone();
+    let content = req.content;
 
-    // Resolve stale IDs: walk the version chain forward to find the latest version.
-    // This makes the endpoint idempotent — agents can pass any version ID and it works.
-    let old_artifact_id = state
+    // Single lock acquisition: all DB work in one transaction.
+    // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
+    let (created, old_artifact_id_str, sessions, linked_proposal_ids, verification_reset) = state
         .app_state
-        .artifact_repo
-        .resolve_latest_artifact_id(&input_artifact_id)
+        .db
+        .run_transaction(move |conn| {
+            // 1. Resolve stale IDs: walk the version chain forward to find the latest version.
+            //    Makes the endpoint idempotent — agents can pass any version ID and it works.
+            let old_id = ArtifactRepo::resolve_latest_sync(conn, &input_artifact_id)?;
+
+            // 2. Get existing artifact (using resolved ID)
+            let old_artifact = ArtifactRepo::get_by_id_sync(conn, &old_id)?
+                .ok_or_else(|| AppError::NotFound(format!("Artifact {} not found", old_id)))?;
+
+            // 3. Guard: reject mutations on Archived/Accepted sessions
+            let owning_sessions = SessionRepo::get_by_plan_artifact_id_sync(conn, &old_id)?;
+            if let Some(session) = owning_sessions.first() {
+                crate::http_server::helpers::assert_session_mutable(session)?;
+            }
+
+            // 4. Guard: reject update if this artifact is only referenced as an inherited plan
+            if owning_sessions.is_empty() {
+                let inherited =
+                    SessionRepo::get_by_inherited_plan_artifact_id_sync(conn, &old_id)?;
+                if !inherited.is_empty() {
+                    return Err(AppError::Validation(
+                        "Cannot update inherited plan. Use create_plan_artifact to create a session-specific plan.".to_string(),
+                    ));
+                }
+            }
+
+            // 5. Create NEW artifact with incremented version (version chain, not in-place update)
+            let new_artifact = Artifact {
+                id: ArtifactId::new(),
+                artifact_type: old_artifact.artifact_type.clone(),
+                name: old_artifact.name.clone(),
+                content: ArtifactContent::Inline { text: content },
+                metadata: ArtifactMetadata::new(&old_artifact.metadata.created_by)
+                    .with_version(old_artifact.metadata.version + 1),
+                derived_from: vec![],
+                bucket_id: old_artifact.bucket_id.clone(),
+            };
+            let created =
+                ArtifactRepo::create_with_previous_version_sync(conn, new_artifact, &old_id)?;
+
+            // 6. Batch-update all sessions pointing to old artifact to point to new one
+            let session_ids: Vec<String> = owning_sessions
+                .iter()
+                .map(|s| s.id.as_str().to_string())
+                .collect();
+            SessionRepo::batch_update_artifact_id_sync(conn, &session_ids, created.id.as_str())?;
+
+            // 7. Fetch proposals linked to old artifact (before batch-updating them)
+            let linked_proposals = ProposalRepo::get_by_plan_artifact_id_sync(conn, &old_id)?;
+            let linked_proposal_ids: Vec<String> =
+                linked_proposals.iter().map(|p| p.id.to_string()).collect();
+
+            // 8. Batch-update all linked proposals to point to the new artifact version.
+            //    plan_version_at_creation is intentionally NOT changed (preserves original birth version).
+            ProposalRepo::batch_update_artifact_id_sync(conn, &old_id, created.id.as_str())?;
+
+            // 9. Conditionally reset verification — only when verification_in_progress = 0.
+            //    Prevents the loop-reset paradox where auto-corrections reset verification mid-loop.
+            let reset = if let Some(session) = owning_sessions.first() {
+                SessionRepo::reset_verification_sync(conn, session.id.as_str())?
+            } else {
+                false
+            };
+
+            Ok((created, old_id, owning_sessions, linked_proposal_ids, reset))
+        })
         .await
         .map_err(|e| {
-            error!(
-                "Failed to resolve latest artifact ID for {}: {}",
-                input_artifact_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
+            error!("update_plan_artifact transaction failed: {}", e);
+            map_app_err(e)
         })?;
 
-    // Get existing artifact (using resolved ID)
-    let old_artifact = state
-        .app_state
-        .artifact_repo
-        .get_by_id(&old_artifact_id)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to get artifact {} for update: {}",
-                old_artifact_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+    // Emit events outside the lock (acceptable crash-consistency gap)
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let content_text = match &created.content {
+            ArtifactContent::Inline { text } => text.clone(),
+            ArtifactContent::File { path } => format!("[File: {}]", path),
+        };
 
-    // Guard: reject mutations on Archived/Accepted sessions
-    // Look up the owning session via the artifact ID
-    let owning_sessions = state
-        .app_state
-        .ideation_session_repo
-        .get_by_plan_artifact_id(old_artifact_id.as_str())
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to find sessions for artifact {}: {}",
-                old_artifact_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    if let Some(session) = owning_sessions.first() {
-        assert_session_mutable(session).map_err(|e| HttpError::validation(e.to_string()))?;
-    }
-
-    // Guard: reject update if this artifact is only referenced as an inherited plan
-    // (no session owns it via plan_artifact_id, but some session has it as inherited_plan_artifact_id)
-    if owning_sessions.is_empty() {
-        let inherited_sessions = state
-            .app_state
-            .ideation_session_repo
-            .get_by_inherited_plan_artifact_id(old_artifact_id.as_str())
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to find sessions with inherited artifact {}: {}",
-                    old_artifact_id.as_str(),
-                    e
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-        if !inherited_sessions.is_empty() {
-            return Err(HttpError::validation(
-                "Cannot update inherited plan. Use create_plan_artifact to create a session-specific plan.".to_string(),
-            ));
-        }
-    }
-
-    // Create NEW artifact with incremented version (version chain, not in-place update)
-    let new_artifact = Artifact {
-        id: ArtifactId::new(),
-        artifact_type: old_artifact.artifact_type.clone(),
-        name: old_artifact.name.clone(),
-        content: ArtifactContent::Inline { text: req.content },
-        metadata: ArtifactMetadata::new(&old_artifact.metadata.created_by)
-            .with_version(old_artifact.metadata.version + 1),
-        derived_from: vec![],
-        bucket_id: old_artifact.bucket_id.clone(),
-    };
-
-    // Create the new artifact with previous_version_id link
-    let created = state
-        .app_state
-        .artifact_repo
-        .create_with_previous_version(new_artifact, old_artifact_id.clone())
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to create new version of artifact {}: {}",
-                old_artifact_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    // Find all sessions that link to the old artifact and update them to point to the new one
-    let sessions = state
-        .app_state
-        .ideation_session_repo
-        .get_by_plan_artifact_id(old_artifact_id.as_str())
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to find sessions for artifact {}: {}",
-                old_artifact_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    for session in &sessions {
-        state
-            .app_state
-            .ideation_session_repo
-            .update_plan_artifact_id(&session.id, Some(created.id.to_string()))
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to update session {} plan artifact link: {}",
-                    session.id.as_str(),
-                    e
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-    }
-
-    // Get proposals linked to the old artifact and re-link them to the new version
-    let linked_proposals = state
-        .app_state
-        .task_proposal_repo
-        .get_by_plan_artifact_id(&old_artifact_id)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to get proposals linked to artifact {}: {}",
-                old_artifact_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    // Auto-cascade: update each proposal's plan_artifact_id to the new version,
-    // preserving plan_version_at_creation (the version when the proposal was born)
-    for proposal in &linked_proposals {
-        let mut updated_proposal = proposal.clone();
-        updated_proposal.plan_artifact_id = Some(created.id.clone());
-        // plan_version_at_creation is intentionally NOT changed
-
-        state
-            .app_state
-            .task_proposal_repo
-            .update(&updated_proposal)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to re-link proposal {} to new artifact {}: {}",
-                    proposal.id.as_str(),
-                    created.id.as_str(),
-                    e
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-    }
-
-    // Conditionally reset verification status — only when verification_in_progress = 0.
-    // Prevents the loop-reset paradox (C2) where auto-corrections would reset verification mid-loop.
-    // Uses sessions.first() because UpdatePlanArtifactRequest has no session_id (R3-C4 fix).
-    if let Some(session) = sessions.first() {
-        let reset = state
-            .app_state
-            .ideation_session_repo
-            .reset_verification(&session.id)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to reset verification for session {}: {}",
-                    session.id.as_str(),
-                    e
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-
-        if reset {
-            if let Some(app_handle) = &state.app_state.app_handle {
+        if verification_reset {
+            if let Some(session) = sessions.first() {
                 let _ = app_handle.emit(
                     "plan_verification:status_changed",
                     serde_json::json!({
@@ -329,21 +213,13 @@ pub async fn update_plan_artifact(
                 );
             }
         }
-    }
-
-    // Emit event for real-time UI update
-    if let Some(app_handle) = &state.app_state.app_handle {
-        let content_text = match &created.content {
-            ArtifactContent::Inline { text } => text.clone(),
-            ArtifactContent::File { path } => format!("[File: {}]", path),
-        };
 
         // Emit plan_artifact:updated event with the NEW artifact info
         let _ = app_handle.emit(
             "plan_artifact:updated",
             serde_json::json!({
                 "artifactId": created.id.as_str(),
-                "previousArtifactId": old_artifact_id.as_str(),
+                "previousArtifactId": old_artifact_id_str,
                 "sessionId": sessions.first().map(|s| s.id.as_str()),
                 "artifact": {
                     "id": created.id.as_str(),
@@ -355,11 +231,11 @@ pub async fn update_plan_artifact(
         );
 
         // If there are linked proposals, emit sync notification
-        if !linked_proposals.is_empty() {
+        if !linked_proposal_ids.is_empty() {
             let payload = PlanProposalsSyncPayload {
                 artifact_id: created.id.to_string(),
-                previous_artifact_id: old_artifact_id.to_string(),
-                proposal_ids: linked_proposals.iter().map(|p| p.id.to_string()).collect(),
+                previous_artifact_id: old_artifact_id_str.clone(),
+                proposal_ids: linked_proposal_ids,
                 new_version: created.metadata.version,
                 session_id: sessions.first().map(|s| s.id.to_string()),
                 proposals_relinked: true,
@@ -369,7 +245,7 @@ pub async fn update_plan_artifact(
     }
 
     let mut response = ArtifactResponse::from(created);
-    response.previous_artifact_id = Some(old_artifact_id.to_string());
+    response.previous_artifact_id = Some(old_artifact_id_str);
     response.session_id = sessions.first().map(|s| s.id.to_string());
 
     Ok(Json(response))
@@ -399,93 +275,45 @@ pub async fn link_proposals_to_plan(
     State(state): State<HttpServerState>,
     Json(req): Json<LinkProposalsToPlanRequest>,
 ) -> Result<Json<SuccessResponse>, HttpError> {
-    let input_artifact_id = ArtifactId::from_string(req.artifact_id);
+    let input_artifact_id = req.artifact_id.clone();
+    let proposal_id_strs = req.proposal_ids;
 
-    // Resolve stale artifact ID to latest version in the chain
-    let artifact_id = state
+    // Single lock acquisition: all DB work in one transaction.
+    state
         .app_state
-        .artifact_repo
-        .resolve_latest_artifact_id(&input_artifact_id)
+        .db
+        .run_transaction(move |conn| {
+            // 1. Resolve stale artifact ID to latest version in the chain
+            let artifact_id_str = ArtifactRepo::resolve_latest_sync(conn, &input_artifact_id)?;
+
+            // 2. Verify resolved artifact exists (and get version for plan_version_at_creation)
+            let artifact = ArtifactRepo::get_by_id_sync(conn, &artifact_id_str)?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("Artifact {} not found", artifact_id_str))
+                })?;
+
+            // 3. Guard: reject mutations on Archived/Accepted sessions
+            let owning_sessions =
+                SessionRepo::get_by_plan_artifact_id_sync(conn, &artifact_id_str)?;
+            if let Some(session) = owning_sessions.first() {
+                crate::http_server::helpers::assert_session_mutable(session)?;
+            }
+
+            // 4. Batch-link all proposals: set plan_artifact_id + plan_version_at_creation
+            ProposalRepo::batch_link_proposals_sync(
+                conn,
+                &proposal_id_strs,
+                &artifact_id_str,
+                artifact.metadata.version,
+            )?;
+
+            Ok(())
+        })
         .await
         .map_err(|e| {
-            error!(
-                "Failed to resolve latest artifact ID for {}: {}",
-                input_artifact_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
+            error!("link_proposals_to_plan transaction failed: {}", e);
+            map_app_err(e)
         })?;
-
-    // Verify resolved artifact exists
-    let artifact = state
-        .app_state
-        .artifact_repo
-        .get_by_id(&artifact_id)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to get artifact {} for linking proposals: {}",
-                artifact_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    // Guard: reject mutations on Archived/Accepted sessions
-    let owning_sessions = state
-        .app_state
-        .ideation_session_repo
-        .get_by_plan_artifact_id(artifact_id.as_str())
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to find sessions for artifact {}: {}",
-                artifact_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-    if let Some(session) = owning_sessions.first() {
-        assert_session_mutable(session).map_err(|e| HttpError::validation(e.to_string()))?;
-    }
-
-    // Update each proposal
-    for proposal_id_str in req.proposal_ids {
-        let proposal_id = TaskProposalId::from_string(proposal_id_str);
-
-        let mut proposal = state
-            .app_state
-            .task_proposal_repo
-            .get_by_id(&proposal_id)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to get proposal {} for linking: {}",
-                    proposal_id.as_str(),
-                    e
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?
-            .ok_or(StatusCode::NOT_FOUND)?;
-
-        proposal.plan_artifact_id = Some(artifact_id.clone());
-        proposal.plan_version_at_creation = Some(artifact.metadata.version);
-
-        state
-            .app_state
-            .task_proposal_repo
-            .update(&proposal)
-            .await
-            .map_err(|e| {
-                error!(
-                    "Failed to update proposal {} with plan link: {}",
-                    proposal_id.as_str(),
-                    e
-                );
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-    }
 
     Ok(Json(SuccessResponse {
         success: true,

@@ -35,6 +35,112 @@ impl SqliteIdeationSessionRepository {
             db: DbConnection::from_shared(conn),
         }
     }
+
+    // ============================================================================
+    // Sync helpers — pub(crate) methods containing SQL logic.
+    // Part of the sync-helper pattern: batch callers (e.g., artifact HTTP handlers)
+    // call these directly with &Connection inside a db.run_transaction() closure.
+    // Async trait methods wrap these in db.run() for single-operation use.
+    // ============================================================================
+
+    /// Fetch a single session by ID; returns None if not found.
+    pub(crate) fn get_by_id_sync(
+        conn: &Connection,
+        id: &str,
+    ) -> AppResult<Option<IdeationSession>> {
+        match conn.query_row(
+            "SELECT id, project_id, title, title_source, status, plan_artifact_id, \
+             inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
+             updated_at, archived_at, converted_at, team_mode, team_config_json, \
+             verification_status, verification_in_progress, verification_metadata \
+             FROM ideation_sessions WHERE id = ?1",
+            [id],
+            |row| IdeationSession::from_row(row),
+        ) {
+            Ok(session) => Ok(Some(session)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(AppError::Database(e.to_string())),
+        }
+    }
+
+    /// Fetch sessions by their own plan_artifact_id (not inherited).
+    pub(crate) fn get_by_plan_artifact_id_sync(
+        conn: &Connection,
+        plan_artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, title, title_source, status, plan_artifact_id, \
+             inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
+             updated_at, archived_at, converted_at, team_mode, team_config_json, \
+             verification_status, verification_in_progress, verification_metadata \
+             FROM ideation_sessions WHERE plan_artifact_id = ?1",
+        )?;
+        let sessions = stmt
+            .query_map([plan_artifact_id], IdeationSession::from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(sessions)
+    }
+
+    /// Fetch sessions by their inherited_plan_artifact_id.
+    pub(crate) fn get_by_inherited_plan_artifact_id_sync(
+        conn: &Connection,
+        artifact_id: &str,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, title, title_source, status, plan_artifact_id, \
+             inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
+             updated_at, archived_at, converted_at, team_mode, team_config_json, \
+             verification_status, verification_in_progress, verification_metadata \
+             FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1",
+        )?;
+        let sessions = stmt
+            .query_map([artifact_id], IdeationSession::from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(sessions)
+    }
+
+    /// Update the plan_artifact_id for a single session.
+    pub(crate) fn update_plan_artifact_id_sync(
+        conn: &Connection,
+        id: &str,
+        plan_artifact_id: Option<&str>,
+    ) -> AppResult<()> {
+        let now = Utc::now();
+        conn.execute(
+            "UPDATE ideation_sessions SET plan_artifact_id = ?2, updated_at = ?3 WHERE id = ?1",
+            rusqlite::params![id, plan_artifact_id, now.to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    /// Update plan_artifact_id for a batch of sessions in one pass (no per-row lock).
+    pub(crate) fn batch_update_artifact_id_sync(
+        conn: &Connection,
+        session_ids: &[String],
+        new_artifact_id: &str,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        for session_id in session_ids {
+            conn.execute(
+                "UPDATE ideation_sessions SET plan_artifact_id = ?2, updated_at = ?3 WHERE id = ?1",
+                rusqlite::params![session_id, new_artifact_id, now],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Reset verification status to 'unverified' if verification is not in progress.
+    /// Returns true if the row was updated (verification was reset).
+    pub(crate) fn reset_verification_sync(conn: &Connection, id: &str) -> AppResult<bool> {
+        let now = Utc::now();
+        let rows = conn.execute(
+            "UPDATE ideation_sessions SET verification_status = 'unverified', \
+             verification_in_progress = 0, verification_metadata = NULL, \
+             updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0",
+            rusqlite::params![id, now.to_rfc3339()],
+        )?;
+        Ok(rows > 0)
+    }
 }
 
 #[async_trait]

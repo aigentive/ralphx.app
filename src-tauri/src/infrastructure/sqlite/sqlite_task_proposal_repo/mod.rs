@@ -38,6 +38,68 @@ impl SqliteTaskProposalRepository {
             db: DbConnection::from_shared(conn),
         }
     }
+
+    // ============================================================================
+    // Sync helpers — pub(crate) methods containing SQL logic.
+    // Part of the sync-helper pattern: batch callers (e.g., artifact HTTP handlers)
+    // call these directly with &Connection inside a db.run_transaction() closure.
+    // Async trait methods wrap these in db.run() for single-operation use.
+    // ============================================================================
+
+    /// Fetch proposals linked to a specific plan artifact ID.
+    pub(crate) fn get_by_plan_artifact_id_sync(
+        conn: &Connection,
+        artifact_id: &str,
+    ) -> AppResult<Vec<TaskProposal>> {
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
+                    suggested_priority, priority_score, priority_reason, priority_factors,
+                    estimated_complexity, user_priority, user_modified, status, selected,
+                    created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
+             FROM task_proposals
+             WHERE plan_artifact_id = ?1
+             ORDER BY sort_order ASC",
+        )?;
+        let proposals = stmt
+            .query_map([artifact_id], TaskProposal::from_row)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(proposals)
+    }
+
+    /// Batch-update all proposals from old_artifact_id to new_artifact_id in a single UPDATE.
+    /// Handles the zero-row case without error (returns Ok(()) when no rows match).
+    pub(crate) fn batch_update_artifact_id_sync(
+        conn: &Connection,
+        old_artifact_id: &str,
+        new_artifact_id: &str,
+    ) -> AppResult<()> {
+        let now = Utc::now();
+        conn.execute(
+            "UPDATE task_proposals SET plan_artifact_id = ?2, updated_at = ?3
+             WHERE plan_artifact_id = ?1",
+            rusqlite::params![old_artifact_id, new_artifact_id, now.to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    /// Update a proposal's plan_artifact_id and plan_version_at_creation for a batch of proposal IDs.
+    pub(crate) fn batch_link_proposals_sync(
+        conn: &Connection,
+        proposal_ids: &[String],
+        artifact_id: &str,
+        version: u32,
+    ) -> AppResult<()> {
+        let now = Utc::now().to_rfc3339();
+        for proposal_id in proposal_ids {
+            conn.execute(
+                "UPDATE task_proposals SET plan_artifact_id = ?2, plan_version_at_creation = ?3, \
+                 updated_at = ?4 WHERE id = ?1",
+                rusqlite::params![proposal_id, artifact_id, version, now],
+            )?;
+        }
+        Ok(())
+    }
+
 }
 
 #[async_trait]
