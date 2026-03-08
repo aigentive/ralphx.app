@@ -142,7 +142,9 @@ Session history is auto-injected in the bootstrap prompt as `<session_history>` 
    ```
 4. Parse JSON from critic response. On parse failure: record parse failure in round via `update_plan_verification(session_id, status: "needs_revision", round: N, gaps: [])`. If ≥3 parse failures in last 5 rounds → convergence via "critic_parse_failure".
 5. Compute gap score: `critical * 10 + high * 3 + medium * 1`
-6. Call `update_plan_verification(session_id, status: "reviewing", in_progress: true, round: N, gaps: [...], convergence_reason: null)`
+6. Call `update_plan_verification(session_id, status: "reviewing", in_progress: true, round: N, gaps: [...], convergence_reason: null)`.
+   **Backend auto-transition:** The backend automatically transitions `reviewing → needs_revision` when gaps are present. Always send `status: "reviewing"` — the backend corrects to `needs_revision` when appropriate. Never send `needs_revision` directly.
+6.5. Check the API response status field. If it returns `needs_revision` (backend auto-transitioned), skip to step 9 immediately — present gaps and wait for user. Do NOT retry the call with `reviewing` or loop back.
 7. Output round progress (see format below)
 8. Check convergence (see table). If converged → call `update_plan_verification` with final status and `convergence_reason` → exit loop.
 9. Present gaps to user. Ask: "Shall I update the plan to address these gaps and run another round?"

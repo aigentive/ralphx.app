@@ -81,10 +81,13 @@ export function useVerificationEvents() {
         } = parsed.data;
 
         // Partial store update so components re-render immediately
+        // Increment verificationUpdateSeq so resolvedSession merge prefers store over stale React Query data
+        const currentSeq = useIdeationStore.getState().sessions[sessionId]?.verificationUpdateSeq ?? 0;
         updateSession(sessionId, {
           verificationStatus: status as VerificationStatus,
           verificationInProgress: inProgress,
           ...(gapScore !== undefined && { gapScore }),
+          verificationUpdateSeq: currentSeq + 1,
         });
 
         // B1 fast path: if event carries full gap/round data, populate cache directly

@@ -97,6 +97,7 @@ export const IdeationSessionSchema = z.object({
   verificationStatus: VerificationStatusSchema.optional().default("unverified"),
   verificationInProgress: z.boolean().optional().default(false),
   gapScore: z.number().int().nullable().optional(),
+  verificationUpdateSeq: z.number().int().optional(),
 });
 
 export type IdeationSession = z.infer<typeof IdeationSessionSchema>;

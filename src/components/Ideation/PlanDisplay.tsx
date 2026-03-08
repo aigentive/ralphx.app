@@ -284,6 +284,11 @@ export function PlanDisplay({
     verificationStatus !== "verified" &&
     verificationStatus !== "skipped" &&
     onSkipVerification;
+  const showCreateProposals =
+    onCreateProposals &&
+    (verificationStatus === "verified" || verificationStatus === "skipped") &&
+    !verificationInProgress &&
+    (linkedProposalsCount === undefined || linkedProposalsCount === 0);
   const isOpen = isExpanded !== undefined ? isExpanded : internalIsOpen;
   const setIsOpen = onExpandedChange ?? setInternalIsOpen;
 
@@ -612,42 +617,40 @@ export function PlanDisplay({
               )}
 
               {isApproved && (
-                <>
-                  <span
-                    className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg"
-                    style={{
-                      background: "hsla(145 70% 45% / 0.1)",
-                      border: "1px solid hsla(145 70% 45% / 0.2)",
-                      color: "hsl(145 70% 45%)",
-                    }}
-                  >
-                    <CheckCircle2 className="w-3 h-3" />
-                    Approved
-                  </span>
+                <span
+                  className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg"
+                  style={{
+                    background: "hsla(145 70% 45% / 0.1)",
+                    border: "1px solid hsla(145 70% 45% / 0.2)",
+                    color: "hsl(145 70% 45%)",
+                  }}
+                >
+                  <CheckCircle2 className="w-3 h-3" />
+                  Approved
+                </span>
+              )}
 
-                  {onCreateProposals && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={onCreateProposals}
-                      className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
-                      style={{
-                        color: "hsl(14 100% 60%)",
-                        background: "hsla(14 100% 60% / 0.1)",
-                        border: "1px solid hsla(14 100% 60% / 0.2)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
-                      }}
-                    >
-                      <ListPlus className="w-3 h-3" />
-                      Create Proposals
-                    </Button>
-                  )}
-                </>
+              {showCreateProposals && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onCreateProposals}
+                  className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
+                  style={{
+                    color: "hsl(14 100% 60%)",
+                    background: "hsla(14 100% 60% / 0.1)",
+                    border: "1px solid hsla(14 100% 60% / 0.2)",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                  }}
+                >
+                  <ListPlus className="w-3 h-3" />
+                  Create Proposals
+                </Button>
               )}
 
               {plan.metadata.version > 1 && (
