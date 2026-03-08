@@ -12,7 +12,7 @@
 import React from "react";
 import { Plus, Pencil, Trash2 } from "lucide-react";
 import { InlineIndicator, Badge, WidgetRow } from "./shared";
-import { colors, getString } from "./shared.constants";
+import { colors, getString, parseMcpToolResult } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
 
 // ============================================================================
@@ -31,7 +31,7 @@ function getAction(toolName: string): ProposalAction {
 /** Extract proposal title from args or result */
 function extractTitle(toolCall: ToolCallWidgetProps["toolCall"]): string {
   // Try result first (has the canonical title after create/update)
-  const fromResult = getString(toolCall.result, "title");
+  const fromResult = getString(parseMcpToolResult(toolCall.result), "title");
   if (fromResult) return fromResult;
 
   // Args for create/update
@@ -43,10 +43,10 @@ function extractTitle(toolCall: ToolCallWidgetProps["toolCall"]): string {
 
 /** Extract category from args or result */
 function extractCategory(toolCall: ToolCallWidgetProps["toolCall"]): string | undefined {
-  return getString(toolCall.result, "category") ?? getString(toolCall.arguments, "category");
+  return getString(parseMcpToolResult(toolCall.result), "category") ?? getString(toolCall.arguments, "category");
 }
 
-/** For update: build summary of which fields changed */
+/** For update: build summary of which fields changed with richer display */
 function extractChangedFields(toolCall: ToolCallWidgetProps["toolCall"]): string[] {
   const args = toolCall.arguments;
   if (args == null || typeof args !== "object") return [];
@@ -55,10 +55,16 @@ function extractChangedFields(toolCall: ToolCallWidgetProps["toolCall"]): string
   const a = args as Record<string, unknown>;
   if (a.title != null) fields.push("title");
   if (a.description != null) fields.push("description");
-  if (a.category != null) fields.push("category");
-  if (a.user_priority != null) fields.push("priority");
-  if (a.steps != null) fields.push("steps");
-  if (a.acceptance_criteria != null) fields.push("criteria");
+  if (a.category != null) fields.push(`category → ${String(a.category)}`);
+  if (a.user_priority != null) fields.push(`priority → ${String(a.user_priority)}`);
+  if (a.steps != null) {
+    const count = Array.isArray(a.steps) ? a.steps.length : 0;
+    fields.push(`steps (${count})`);
+  }
+  if (a.acceptance_criteria != null) {
+    const count = Array.isArray(a.acceptance_criteria) ? a.acceptance_criteria.length : 0;
+    fields.push(`criteria (${count})`);
+  }
   return fields;
 }
 

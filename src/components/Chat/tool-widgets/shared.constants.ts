@@ -78,6 +78,40 @@ export const badgeStyles: Record<BadgeVariant, { bg: string; color: string }> = 
 };
 
 // ============================================================================
+// MCP Tool Result Parser
+// ============================================================================
+
+/** Return type for parsed MCP tool results */
+export interface ParsedMcpResult {
+  [key: string]: unknown;
+}
+
+/**
+ * Unwrap MCP content array to parsed JSON object.
+ * Handles: [{type:"text", text:"{...}"}] → parsed object
+ * Passthrough: already-plain objects returned as-is
+ * Fallback: returns empty object on parse errors
+ */
+export function parseMcpToolResult(result: unknown): ParsedMcpResult {
+  // Already a plain object (non-array)
+  if (result != null && typeof result === "object" && !Array.isArray(result)) {
+    return result as ParsedMcpResult;
+  }
+  // MCP content array: [{type:"text", text:"..."}]
+  if (Array.isArray(result) && result.length > 0) {
+    const first = result[0];
+    if (first?.type === "text" && typeof first.text === "string") {
+      try {
+        return JSON.parse(first.text) as ParsedMcpResult;
+      } catch {
+        return {};
+      }
+    }
+  }
+  return {};
+}
+
+// ============================================================================
 // Safe extraction helpers (used by all widgets to pull typed fields from unknown args/results)
 // ============================================================================
 

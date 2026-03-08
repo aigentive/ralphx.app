@@ -22,7 +22,7 @@ import {
   GitBranch,
 } from "lucide-react";
 import { InlineIndicator, Badge, WidgetRow } from "./shared";
-import { colors, getString, getNumber, getArray } from "./shared.constants";
+import { colors, getString, getNumber, getArray, parseMcpToolResult } from "./shared.constants";
 import type { ToolCallWidgetProps } from "./shared.constants";
 
 // ============================================================================
@@ -57,7 +57,7 @@ function getToolType(toolName: string): IdeationTool | null {
 // ============================================================================
 
 function PlanCreated({ toolCall, compact }: ToolCallWidgetProps) {
-  const title = getString(toolCall.result, "name")
+  const title = getString(parseMcpToolResult(toolCall.result), "name")
     ?? getString(toolCall.arguments, "title")
     ?? "Plan";
 
@@ -175,8 +175,9 @@ function ListProposals({ toolCall, compact }: ToolCallWidgetProps) {
 }
 
 function GetProposal({ toolCall, compact }: ToolCallWidgetProps) {
-  const title = getString(toolCall.result, "title");
-  const category = getString(toolCall.result, "category");
+  const parsed = parseMcpToolResult(toolCall.result);
+  const title = getString(parsed, "title");
+  const category = getString(parsed, "category");
 
   if (!title) {
     return <InlineIndicator icon={<Search size={11} style={{ color: colors.textMuted }} />} text="Loading proposal..." />;
@@ -205,8 +206,9 @@ function GetProposal({ toolCall, compact }: ToolCallWidgetProps) {
 
 function GetSessionPlan({ toolCall, compact }: ToolCallWidgetProps) {
   // Result is the artifact or null
-  const name = getString(toolCall.result, "name");
-  const version = getNumber(toolCall.result, "version");
+  const parsed = parseMcpToolResult(toolCall.result);
+  const name = getString(parsed, "name");
+  const version = getNumber(parsed, "version");
 
   if (!name) {
     return <InlineIndicator icon={<FileText size={11} style={{ color: colors.textMuted }} />} text="No plan artifact" />;
