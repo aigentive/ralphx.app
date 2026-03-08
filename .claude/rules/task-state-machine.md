@@ -54,17 +54,17 @@ paths:
 | `backlog` | `ready`, `cancelled` |
 | `ready` | `executing`, `blocked`, `cancelled` |
 | `blocked` | `ready`, `cancelled` |
-| `executing` | `qa_refining`, `pending_review`, `failed`, `blocked`, `stopped`, `paused` |
+| `executing` | `qa_refining`, `pending_review`, `failed`, `blocked`, `merging`, `stopped`, `paused` |
 | `qa_refining` | `qa_testing`, `stopped`, `paused` |
 | `qa_testing` | `qa_passed`, `qa_failed`, `stopped`, `paused` |
 | `qa_passed` | `pending_review` |
 | `qa_failed` | `revision_needed` |
 | `pending_review` | `reviewing` |
-| `reviewing` | `review_passed`, `revision_needed`, `escalated`, `stopped`, `paused` |
+| `reviewing` | `review_passed`, `revision_needed`, `escalated`, `merging`, `stopped`, `paused` |
 | `review_passed` | `approved`, `revision_needed` |
 | `escalated` | `approved`, `revision_needed` |
 | `revision_needed` | `re_executing`, `cancelled` |
-| `re_executing` | `pending_review`, `failed`, `blocked`, `stopped`, `paused` |
+| `re_executing` | `pending_review`, `failed`, `blocked`, `merging`, `stopped`, `paused` |
 | `approved` | `pending_merge`, `ready` |
 | `pending_merge` | `merged`, `merging` |
 | `merging` | `merged`, `merge_conflict`, `merge_incomplete`, `stopped`, `paused` |
@@ -189,6 +189,7 @@ Reviewing → RevisionNeeded → (auto) ReExecuting → PendingReview
 | `ConflictResolved` | `merge_conflict`/`merge_incomplete` → `merged` |
 | `BlockersResolved` | `blocked` → `ready` |
 | `BlockerDetected` | `ready`/`re_executing` → `blocked` |
+| `BranchFreshnessConflict` | `executing`/`re_executing`/`reviewing` → `merging` |
 
 ---
 
@@ -201,6 +202,27 @@ Reviewing → RevisionNeeded → (auto) ReExecuting → PendingReview
 | `task.task_branch.is_none()` | `on_enter(Executing)` | Only creates branch on first execution (skip on re-entry) |
 | Running task (Local mode) | `task_scheduler_service` | Blocks scheduling if another task is in a running state |
 | Self-transition | `can_transition_to()` | No state can transition to itself |
+
+---
+
+## Branch Freshness Conflict Routing
+
+When `ensure_branches_fresh()` detects stale branches at execution/review entry:
+
+| Source State | Event | Target | Return Path (via MergeComplete) |
+|---|---|---|---|
+| `executing` | `BranchFreshnessConflict` | `merging` | → `ready` (re-queued for execution) |
+| `re_executing` | `BranchFreshnessConflict` | `merging` | → `ready` (re-queued for execution) |
+| `reviewing` | `BranchFreshnessConflict` | `merging` | → `pending_review` (re-queued for review) |
+
+**Metadata:** `FreshnessMetadata` struct (`transition_handler/freshness.rs`) tracks:
+- `branch_freshness_conflict: bool` — MergeComplete detects freshness-triggered merges
+- `freshness_origin_state: Option<String>` — return-path routing ("executing"|"re_executing"|"reviewing")
+- `freshness_conflict_count: u32` — incremented once per `ensure_branches_fresh()` call; reset on clean check; cap: 3
+
+**Retry cap:** 4th freshness conflict → `ExecutionBlocked` → task transitions to `failed`.
+
+**No new events for return path** — MergeComplete checks `freshness_origin_state` metadata directly.
 
 ---
 

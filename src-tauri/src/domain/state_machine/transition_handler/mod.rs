@@ -35,6 +35,7 @@ mod checkout_free_strategy;
 pub(crate) mod cleanup_helpers;
 mod commit_messages;
 mod exit_actions;
+pub mod freshness;
 mod merge_completion;
 mod merge_coordination;
 mod merge_helpers;
@@ -153,6 +154,21 @@ impl<'a> TransitionHandler<'a> {
                                 tracing::error!(error = %e, "on_enter failed for recovery state {:?}", failed_state);
                             }
                             return TransitionResult::Success(failed_state);
+                        }
+                    } else if matches!(e, crate::error::AppError::BranchFreshnessConflict) {
+                        tracing::warn!(
+                            task_id = %self.machine.context.task_id,
+                            state = ?new_state,
+                            "BranchFreshnessConflict detected, routing to Merging via BranchFreshnessConflict event"
+                        );
+                        let freshness_event = crate::domain::state_machine::events::TaskEvent::BranchFreshnessConflict;
+                        let freshness_response = self.machine.dispatch(&new_state, &freshness_event);
+                        if let Response::Transition(merging_state) = freshness_response {
+                            self.on_exit(&new_state, &merging_state).await;
+                            if let Err(e) = self.on_enter(&merging_state).await {
+                                tracing::error!(error = %e, "on_enter failed for Merging state after freshness conflict");
+                            }
+                            return TransitionResult::Success(merging_state);
                         }
                     }
                 }

@@ -161,6 +161,15 @@ pub struct ReconciliationConfig {
     /// Window size (number of recent failure events) for circuit breaker evaluation (default: 5)
     #[serde(default = "default_merge_circuit_breaker_window")]
     pub merge_circuit_breaker_window: u64,
+    /// Enable branch freshness checks before execution/review agent spawn. Default: true.
+    #[serde(default = "default_true")]
+    pub execution_freshness_enabled: bool,
+    /// Skip freshness check if it was run within this many seconds. Default: 30.
+    #[serde(default = "default_freshness_skip_window_secs")]
+    pub freshness_skip_window_secs: u64,
+    /// Max number of freshness conflict retries before blocking execution. Default: 3.
+    #[serde(default = "default_freshness_max_conflict_retries")]
+    pub freshness_max_conflict_retries: u32,
 }
 
 fn default_merge_circuit_breaker_threshold() -> u64 {
@@ -168,6 +177,15 @@ fn default_merge_circuit_breaker_threshold() -> u64 {
 }
 fn default_merge_circuit_breaker_window() -> u64 {
     5
+}
+fn default_true() -> bool {
+    true
+}
+fn default_freshness_skip_window_secs() -> u64 {
+    30
+}
+fn default_freshness_max_conflict_retries() -> u32 {
+    3
 }
 
 impl Default for ReconciliationConfig {
@@ -205,6 +223,9 @@ impl Default for ReconciliationConfig {
             execution_failed_retry_max_secs: 600,
             merge_circuit_breaker_threshold: 3,
             merge_circuit_breaker_window: 5,
+            execution_freshness_enabled: true,
+            freshness_skip_window_secs: 30,
+            freshness_max_conflict_retries: 3,
         }
     }
 }

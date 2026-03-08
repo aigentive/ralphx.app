@@ -43,6 +43,9 @@ pub enum AppError {
 
     #[error("Execution blocked: {0}")]
     ExecutionBlocked(String),
+
+    #[error("Branch freshness conflict: branches need updating before execution can proceed")]
+    BranchFreshnessConflict,
 }
 
 impl From<AgentError> for AppError {
