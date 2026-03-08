@@ -61,7 +61,7 @@ import { chatApi } from "@/api/chat";
 import { ReopenSessionDialog } from "./ReopenSessionDialog";
 import type { ReopenMode } from "./ReopenSessionDialog";
 import { useReopenSession, useResetAndReaccept, ideationKeys } from "@/hooks/useIdeation";
-import { useVerificationEvents } from "@/hooks/useVerificationEvents";
+
 
 // ============================================================================
 // Types
@@ -153,9 +153,6 @@ export function PlanningView({
   const containerRef = useRef<HTMLDivElement>(null);
   const proposalsScrollRef = useRef<HTMLDivElement>(null);
 
-  // Subscribe to backend verification state changes → invalidates TanStack Query caches
-  useVerificationEvents();
-
   const queryClient = useQueryClient();
 
   const planArtifact = useIdeationStore((state) => state.planArtifact);
@@ -206,9 +203,6 @@ export function PlanningView({
   const [reopenDialogMode, setReopenDialogMode] = useState<ReopenMode>("reopen");
   const reopenMutation = useReopenSession();
   const resetMutation = useResetAndReaccept();
-
-  // Mount once near the root of the ideation feature tree to handle plan_verification:status_changed events
-  useVerificationEvents();
 
   // Count tasks created from this session's proposals
   const sessionTaskCount = useMemo(
