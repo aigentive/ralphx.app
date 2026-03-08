@@ -41,12 +41,34 @@ fn make_task_with_branch(task_branch: &str, conflict_count: u32) -> Task {
     t
 }
 
+fn make_task_with_branch_and_auto_reset(
+    task_branch: &str,
+    conflict_count: u32,
+    auto_reset_count: u8,
+) -> Task {
+    let mut t = Task::new(
+        ProjectId::from_string("proj-1".to_string()),
+        "Test task".into(),
+    );
+    t.task_branch = Some(task_branch.to_string());
+    t.metadata = Some(
+        serde_json::json!({
+            "freshness_conflict_count": conflict_count,
+            "freshness_auto_reset_count": auto_reset_count,
+        })
+        .to_string(),
+    );
+    t
+}
+
 fn concurrent_test_config() -> ReconciliationConfig {
     ReconciliationConfig {
         branch_freshness_timeout_secs: 30,
         freshness_skip_window_secs: 0, // always check
         freshness_max_conflict_retries: 3,
         execution_freshness_enabled: true,
+        // Disable backoff so sequential calls are not skipped by the backoff window
+        freshness_backoff_base_secs: 0,
         ..Default::default()
     }
 }
@@ -238,8 +260,11 @@ async fn concurrent_freshness_same_plan_branch_no_deadlock() {
 ///
 /// Acceptance criteria:
 /// - Calls 1-3 (count 0→1, 1→2, 2→3) return `RouteToMerging` with increasing counts.
-/// - Call 4 (count 3→4, exceeds max_retries=3) returns `ExecutionBlocked`.
-/// - No infinite loop: the function never routes past the cap.
+/// - Call 4 (count 3→4, exceeds max_retries=3, auto_reset_count already=1) returns `ExecutionBlocked`.
+/// - No infinite loop: the function terminates at the second cap.
+///
+/// Note: Tests start with auto_reset_count=1 to bypass the auto-reset phase,
+/// directly testing that ExecutionBlocked fires after the second cap.
 #[tokio::test]
 async fn stress_rapid_conflict_cycles_blocked_at_cap() {
     let repo = setup_real_git_repo();
@@ -253,19 +278,23 @@ async fn stress_rapid_conflict_cycles_blocked_at_cap() {
         freshness_skip_window_secs: 0,
         freshness_max_conflict_retries: 3,
         execution_freshness_enabled: true,
+        // Disable backoff so sequential calls are not skipped by the backoff window
+        freshness_backoff_base_secs: 0,
         ..Default::default()
     };
 
+    // Start with auto_reset_count=1 to simulate: auto-reset already occurred once.
+    // This means the NEXT time count exceeds cap, ExecutionBlocked fires (second cap).
     let mut current_count: u32 = 0;
-    let max_iterations = 10; // Safety ceiling — test must terminate well before this
+    let max_iterations = 10; // Safety ceiling: max_retries + 2 iterations needed
     let mut got_blocked = false;
     let mut route_counts: Vec<u32> = Vec::new();
 
-    for attempt in 0..max_iterations {
+    for _attempt in 0..max_iterations {
         // Abort any pending merge from the previous iteration so git is clean.
         abort_pending_merge(path);
 
-        let task = make_task_with_branch(&repo.task_branch, current_count);
+        let task = make_task_with_branch_and_auto_reset(&repo.task_branch, current_count, 1);
 
         let result = ensure_branches_fresh(
             path,
@@ -293,14 +322,13 @@ async fn stress_rapid_conflict_cycles_blocked_at_cap() {
                 assert_eq!(
                     freshness_metadata.freshness_conflict_count,
                     current_count + 1,
-                    "Conflict count must increment by 1 per call (attempt {attempt})"
+                    "Conflict count must increment by 1 per call"
                 );
                 current_count = freshness_metadata.freshness_conflict_count;
                 route_counts.push(current_count);
             }
             Err(FreshnessAction::ExecutionBlocked { reason }) => {
                 got_blocked = true;
-                // Must block when count exceeds max_retries (3)
                 assert!(
                     current_count >= cfg.freshness_max_conflict_retries,
                     "ExecutionBlocked must only fire when count ({current_count}) >= max_retries ({}). Reason: {reason}",
@@ -309,10 +337,7 @@ async fn stress_rapid_conflict_cycles_blocked_at_cap() {
                 break;
             }
             Ok(_) => {
-                // This can happen if git error (transient) causes plan check to be skipped
-                // and source check also passes. Not a failure — increment count as no routing happened.
-                // But in a stress test with a fresh-start branch, we expect conflicts every time.
-                // Allow this outcome with a note; abort the merge and continue.
+                // Transient git error — no metadata update, carry current_count unchanged
             }
         }
     }

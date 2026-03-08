@@ -27,7 +27,9 @@ use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
-use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
+use crate::domain::state_machine::transition_handler::freshness::{
+    FreshnessCleanupScope, FreshnessMetadata,
+};
 use crate::infrastructure::agents::claude::scheduler_config;
 use crate::infrastructure::agents::claude::reconciliation_config;
 use crate::domain::state_machine::transition_handler::{
@@ -1082,7 +1084,6 @@ async fn complete_merge_and_schedule<R: Runtime>(
 /// - Unknown or absent origin → warn + Ready (safe fallback)
 async fn handle_freshness_return_routing<R: Runtime>(
     ctx: &MergeAutoCompleteContext<'_, R>,
-    task: &mut Task,
     freshness: FreshnessMetadata,
 ) {
     let target_status = match freshness.freshness_origin_state.as_deref() {
@@ -1118,17 +1119,71 @@ async fn handle_freshness_return_routing<R: Runtime>(
         }
     };
 
-    // Clear freshness metadata before updating DB
+    // Re-read task from DB for atomic read-modify-write, so we capture any
+    // metadata changes the merger agent may have written during its run.
+    let mut task = match ctx.task_repo.get_by_id(&ctx.task_id).await {
+        Ok(Some(t)) => t,
+        Ok(None) => {
+            tracing::warn!(
+                task_id = ctx.task_id_str,
+                "handle_freshness_return_routing: task not found during metadata refresh"
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::warn!(
+                task_id = ctx.task_id_str,
+                error = %e,
+                "handle_freshness_return_routing: failed to re-read task for metadata refresh (non-fatal)"
+            );
+            return;
+        }
+    };
+
+    // Apply RoutingOnly cleanup: clears routing flags (branch_freshness_conflict,
+    // freshness_origin_state, plan/source_update_conflict, conflict_files, branches)
+    // while preserving freshness_conflict_count, freshness_backoff_until, auto_reset_count.
     let mut meta_val: serde_json::Value = task
         .metadata
         .as_deref()
         .and_then(|s| serde_json::from_str(s).ok())
         .unwrap_or_else(|| serde_json::json!({}));
-    FreshnessMetadata::clear_from(&mut meta_val);
+
+    // Check whether the merger resolved the conflict before we clear routing flags.
+    // If branch_freshness_conflict is still set after the merger ran, the conflict
+    // was not resolved — refresh the backoff so the task does not spin immediately.
+    let post_merge_freshness = FreshnessMetadata::from_task_metadata(&meta_val);
+    if post_merge_freshness.branch_freshness_conflict {
+        // Conflict persists — refresh backoff using the current conflict count so the
+        // next freshness check is delayed appropriately. The next clean pass will call
+        // reset_conflict_state() and clear the backoff via ensure_branches_fresh().
+        let cfg = reconciliation_config();
+        if let Some(duration) = FreshnessMetadata::compute_backoff(
+            post_merge_freshness.freshness_conflict_count,
+            cfg.freshness_backoff_base_secs,
+            cfg.freshness_backoff_max_secs,
+        ) {
+            let backoff_until = chrono::Utc::now() + duration;
+            tracing::info!(
+                task_id = ctx.task_id_str,
+                conflict_count = post_merge_freshness.freshness_conflict_count,
+                backoff_until = %backoff_until.to_rfc3339(),
+                "handle_freshness_return_routing: conflict unresolved — refreshing backoff"
+            );
+            if let Some(obj) = meta_val.as_object_mut() {
+                obj.insert(
+                    "freshness_backoff_until".to_owned(),
+                    serde_json::Value::String(backoff_until.to_rfc3339()),
+                );
+            }
+        }
+    }
+
+    FreshnessMetadata::cleanup(FreshnessCleanupScope::RoutingOnly, &mut meta_val);
     task.metadata = Some(meta_val.to_string());
     task.touch();
 
-    if let Err(e) = ctx.task_repo.update(task).await {
+    if let Err(e) = ctx.task_repo.update(&task).await {
         tracing::warn!(
             task_id = ctx.task_id_str,
             error = %e,
@@ -1223,7 +1278,7 @@ pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
     if let Some(ref meta_val) = meta {
         let freshness = FreshnessMetadata::from_task_metadata(meta_val);
         if freshness.branch_freshness_conflict {
-            handle_freshness_return_routing(ctx, &mut task, freshness).await;
+            handle_freshness_return_routing(ctx, freshness).await;
             return;
         }
     }

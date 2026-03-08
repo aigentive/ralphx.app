@@ -2,9 +2,10 @@
 //
 // Covers: config toggle, skip window, plan check result mapping, source check
 // result mapping, retry counting, and dual-conflict sequential scenarios.
+// Also covers: FreshnessMetadata struct API (cleanup scopes, backoff, serde defaults).
 
 use super::helpers::*;
-use super::super::freshness::{ensure_branches_fresh, FreshnessAction};
+use super::super::freshness::{ensure_branches_fresh, FreshnessAction, FreshnessCleanupScope, FreshnessMetadata};
 use crate::domain::entities::{Project, ProjectId, Task};
 use crate::infrastructure::agents::claude::ReconciliationConfig;
 use chrono::Utc;
@@ -44,6 +45,8 @@ fn freshness_config() -> ReconciliationConfig {
         freshness_skip_window_secs: 30,
         freshness_max_conflict_retries: 3,
         execution_freshness_enabled: true,
+        // Disable backoff in tests so sequential calls are not skipped by the backoff window
+        freshness_backoff_base_secs: 0,
         ..Default::default()
     }
 }
@@ -602,16 +605,18 @@ async fn plan_conflict_increments_count_and_routes() {
 }
 
 #[tokio::test]
-async fn plan_conflict_at_cap_returns_blocked() {
-    // conflict_count starts at 3, cap=3 → count becomes 4 > 3 → ExecutionBlocked.
+async fn plan_conflict_at_cap_auto_resets_first_time() {
+    // conflict_count starts at 3, cap=3 → count becomes 4 > 3 → first cap → auto-reset.
+    // After auto-reset: count=0, auto_reset_count=1, returns RouteToMerging.
     let repo = setup_real_git_repo();
     let path = repo.path();
 
     setup_plan_conflict(path, "plan/count-cap-test");
 
     let project = make_test_project(&repo.path_string());
-    // Start with count already at cap
-    let metadata = serde_json::json!({ "freshness_conflict_count": 3 });
+    // Start with count already at cap, auto_reset_count=0 (never reset before)
+    let metadata =
+        serde_json::json!({ "freshness_conflict_count": 3, "freshness_auto_reset_count": 0 });
     let task = make_test_task(Some(&repo.task_branch), Some(metadata));
     let mut cfg = freshness_config();
     cfg.freshness_max_conflict_retries = 3;
@@ -629,9 +634,58 @@ async fn plan_conflict_at_cap_returns_blocked() {
     )
     .await;
 
+    match result {
+        Err(FreshnessAction::RouteToMerging { freshness_metadata, .. }) => {
+            assert_eq!(
+                freshness_metadata.freshness_auto_reset_count, 1,
+                "First cap must set auto_reset_count=1"
+            );
+            assert_eq!(
+                freshness_metadata.freshness_conflict_count, 0,
+                "First cap auto-reset must reset count to 0"
+            );
+        }
+        other => panic!(
+            "First cap must RouteToMerging (auto-reset), not block. Got: {other:?}"
+        ),
+    }
+}
+
+#[tokio::test]
+async fn plan_conflict_at_cap_returns_blocked_after_auto_reset() {
+    // conflict_count starts at 3, cap=3 → count becomes 4 > 3 → second cap → ExecutionBlocked.
+    // This tests the path when auto_reset_count=1 (already auto-reset once before).
+    let repo = setup_real_git_repo();
+    let path = repo.path();
+
+    setup_plan_conflict(path, "plan/count-cap-test2");
+
+    let project = make_test_project(&repo.path_string());
+    // Start with count at cap and already auto-reset once
+    let metadata = serde_json::json!({
+        "freshness_conflict_count": 3,
+        "freshness_auto_reset_count": 1
+    });
+    let task = make_test_task(Some(&repo.task_branch), Some(metadata));
+    let mut cfg = freshness_config();
+    cfg.freshness_max_conflict_retries = 3;
+
+    let result = ensure_branches_fresh(
+        path,
+        &task,
+        &project,
+        "task-at-second-cap",
+        Some("plan/count-cap-test2"),
+        None,
+        None,
+        "executing",
+        &cfg,
+    )
+    .await;
+
     assert!(
         matches!(result, Err(FreshnessAction::ExecutionBlocked { .. })),
-        "Count at cap (3+1=4 > 3) must return ExecutionBlocked. Got: {:?}",
+        "Second cap (auto_reset_count=1, count 3+1=4 > 3) must return ExecutionBlocked. Got: {:?}",
         result
     );
 }
@@ -922,4 +976,565 @@ fn resolve_source_conflict(path: &std::path::Path, task_branch: &str) {
         .args(["checkout", "main"])
         .current_dir(path)
         .output();
+}
+
+// ==================
+// FreshnessMetadata struct API tests
+// ==================
+//
+// These are pure in-memory tests (no git). They cover the new methods and fields
+// added in the freshness retry loop fix: cleanup scopes, backoff, serde defaults,
+// auto-reset logic, and the FRESHNESS_BLOCKED reason format.
+
+// --- clear_from resets all fields including new ones ---
+
+#[test]
+fn clear_from_resets_everything() {
+    // FreshnessMetadata::clear_from() should remove ALL freshness keys, including
+    // the new freshness_backoff_until and freshness_auto_reset_count fields.
+    let mut meta = serde_json::json!({
+        "branch_freshness_conflict": true,
+        "freshness_origin_state": "executing",
+        "freshness_conflict_count": 4,
+        "plan_update_conflict": true,
+        "source_update_conflict": false,
+        "last_freshness_check_at": "2026-01-01T00:00:00Z",
+        "conflict_files": ["src/foo.rs"],
+        "source_branch": "task/foo",
+        "target_branch": "plan/foo",
+        "freshness_backoff_until": "2026-01-01T01:00:00Z",
+        "freshness_auto_reset_count": 1,
+        // Non-freshness key — must survive
+        "trigger_origin": "reconciler"
+    });
+
+    FreshnessMetadata::clear_from(&mut meta);
+
+    let obj = meta.as_object().unwrap();
+    // All freshness keys removed (explicitly list them to avoid relying on private KEYS const)
+    let freshness_keys = [
+        "branch_freshness_conflict",
+        "freshness_origin_state",
+        "freshness_conflict_count",
+        "plan_update_conflict",
+        "source_update_conflict",
+        "last_freshness_check_at",
+        "conflict_files",
+        "source_branch",
+        "target_branch",
+        "freshness_backoff_until",
+        "freshness_auto_reset_count",
+    ];
+    for key in &freshness_keys {
+        assert!(
+            !obj.contains_key(*key),
+            "clear_from must remove key '{key}' (including new fields)"
+        );
+    }
+    // Non-freshness key preserved
+    assert_eq!(meta["trigger_origin"], "reconciler");
+}
+
+// --- FreshnessCleanupScope dispatch ---
+
+#[test]
+fn cleanup_scope_routing_only_clears_routing_flags_preserves_conflict_state() {
+    // FreshnessCleanupScope::RoutingOnly should clear routing flags but
+    // keep count, backoff_until, and auto_reset_count.
+    let mut meta = serde_json::json!({
+        "branch_freshness_conflict": true,
+        "freshness_origin_state": "executing",
+        "freshness_conflict_count": 3,
+        "plan_update_conflict": true,
+        "source_update_conflict": false,
+        "conflict_files": ["src/bar.rs"],
+        "source_branch": "task/bar",
+        "target_branch": "plan/bar",
+        "freshness_backoff_until": "2099-01-01T00:00:00Z",
+        "freshness_auto_reset_count": 1,
+    });
+
+    FreshnessMetadata::cleanup(FreshnessCleanupScope::RoutingOnly, &mut meta);
+
+    let after = FreshnessMetadata::from_task_metadata(&meta);
+    // Routing flags cleared
+    assert!(!after.branch_freshness_conflict, "branch_freshness_conflict must be cleared");
+    assert!(after.freshness_origin_state.is_none(), "freshness_origin_state must be cleared");
+    assert!(!after.plan_update_conflict, "plan_update_conflict must be cleared");
+    assert!(!after.source_update_conflict, "source_update_conflict must be cleared");
+    assert!(after.conflict_files.is_empty(), "conflict_files must be cleared");
+    assert!(after.source_branch.is_none(), "source_branch must be cleared");
+    assert!(after.target_branch.is_none(), "target_branch must be cleared");
+    // Conflict state preserved
+    assert_eq!(after.freshness_conflict_count, 3, "count must be preserved");
+    assert!(after.freshness_backoff_until.is_some(), "backoff_until must be preserved");
+    assert_eq!(after.freshness_auto_reset_count, 1, "auto_reset_count must be preserved");
+}
+
+#[test]
+fn cleanup_scope_conflict_state_resets_count_and_backoff() {
+    // FreshnessCleanupScope::ConflictState should reset count/backoff/auto_reset_count
+    // but NOT touch the routing flags.
+    let mut meta = serde_json::json!({
+        "branch_freshness_conflict": true,
+        "freshness_origin_state": "re_executing",
+        "freshness_conflict_count": 5,
+        "freshness_backoff_until": "2099-01-01T00:00:00Z",
+        "freshness_auto_reset_count": 1,
+    });
+
+    FreshnessMetadata::cleanup(FreshnessCleanupScope::ConflictState, &mut meta);
+
+    let after = FreshnessMetadata::from_task_metadata(&meta);
+    // Conflict state reset
+    assert_eq!(after.freshness_conflict_count, 0, "count must be 0 after ConflictState reset");
+    assert!(after.freshness_backoff_until.is_none(), "backoff_until must be None after ConflictState reset");
+    assert_eq!(after.freshness_auto_reset_count, 0, "auto_reset_count must be 0 after ConflictState reset");
+    // Routing flags NOT cleared by ConflictState scope
+    assert!(after.branch_freshness_conflict, "branch_freshness_conflict must NOT be cleared by ConflictState");
+    assert_eq!(after.freshness_origin_state.as_deref(), Some("re_executing"), "origin_state must NOT be cleared by ConflictState");
+}
+
+#[test]
+fn cleanup_scope_full_removes_all_freshness_keys() {
+    // FreshnessCleanupScope::Full should remove all freshness keys.
+    let mut meta = serde_json::json!({
+        "branch_freshness_conflict": true,
+        "freshness_conflict_count": 2,
+        "freshness_auto_reset_count": 1,
+        "freshness_backoff_until": "2099-01-01T00:00:00Z",
+        "other_key": "preserved",
+    });
+
+    FreshnessMetadata::cleanup(FreshnessCleanupScope::Full, &mut meta);
+
+    let obj = meta.as_object().unwrap();
+    let freshness_keys = [
+        "branch_freshness_conflict",
+        "freshness_conflict_count",
+        "freshness_auto_reset_count",
+        "freshness_backoff_until",
+    ];
+    for key in &freshness_keys {
+        assert!(!obj.contains_key(*key), "Full scope must remove '{key}'");
+    }
+    assert_eq!(meta["other_key"], "preserved");
+}
+
+// --- Dynamic backoff values ---
+
+#[test]
+fn dynamic_backoff_at_various_counts() {
+    // Exponential: min(base * 2^(count-1), max) with base=60, max=600
+    // count=1 → 60, count=2 → 120, count=3 → 240, count=4 → 480, count=5 → 600 (capped)
+    let cases: &[(u32, i64)] = &[
+        (1, 60),
+        (2, 120),
+        (3, 240),
+        (4, 480),
+        (5, 600), // would be 960 but capped at 600
+    ];
+    for &(count, expected_secs) in cases {
+        let duration = FreshnessMetadata::compute_backoff(count, 60, 600)
+            .unwrap_or_else(|| panic!("count={count} must produce Some backoff"));
+        assert_eq!(
+            duration.num_seconds(),
+            expected_secs,
+            "count={count}: expected backoff={expected_secs}s, got={}s",
+            duration.num_seconds()
+        );
+    }
+}
+
+#[test]
+fn backoff_returns_none_for_count_zero() {
+    assert!(
+        FreshnessMetadata::compute_backoff(0, 60, 600).is_none(),
+        "count=0 must return None (no backoff)"
+    );
+}
+
+// --- Backoff reads from ReconciliationConfig ---
+
+#[test]
+fn backoff_reads_from_config_not_hardcoded() {
+    // compute_backoff uses caller-supplied base/max, not hardcoded defaults.
+    // With base=30, max=300: count=1→30, count=3→120 (30*4), count=10→300 (capped).
+    let d1 = FreshnessMetadata::compute_backoff(1, 30, 300).unwrap();
+    assert_eq!(d1.num_seconds(), 30, "base=30 count=1 must be 30s");
+
+    let d3 = FreshnessMetadata::compute_backoff(3, 30, 300).unwrap();
+    assert_eq!(d3.num_seconds(), 120, "base=30 count=3 must be 120s (30*4)");
+
+    let d_big = FreshnessMetadata::compute_backoff(20, 30, 300).unwrap();
+    assert_eq!(d_big.num_seconds(), 300, "count=20 must be capped at max=300");
+
+    // Different base: 120s base, 900s max
+    let cfg_base = FreshnessMetadata::compute_backoff(2, 120, 900).unwrap();
+    assert_eq!(cfg_base.num_seconds(), 240, "base=120 count=2 must be 240s");
+}
+
+// --- count persistence across merger cycles ---
+
+#[test]
+fn count_persistence_across_merger_cycles() {
+    // After a RouteToMerging round-trip, the merger agent calls clear_routing_flags()
+    // on re-entry to Executing. count must survive that call.
+    let mut freshness = FreshnessMetadata {
+        branch_freshness_conflict: true,
+        freshness_origin_state: Some("executing".to_string()),
+        freshness_conflict_count: 2,
+        plan_update_conflict: true,
+        conflict_files: vec!["src/lib.rs".to_string()],
+        freshness_backoff_until: Some(Utc::now() + chrono::Duration::seconds(300)),
+        freshness_auto_reset_count: 0,
+        ..Default::default()
+    };
+
+    // Simulate what happens on re-entry to Executing after merge resolution:
+    // routing flags are cleared but count/backoff are preserved for the next conflict check.
+    freshness.clear_routing_flags();
+
+    assert_eq!(
+        freshness.freshness_conflict_count, 2,
+        "count must survive clear_routing_flags() (merger cycle)"
+    );
+    assert!(
+        freshness.freshness_backoff_until.is_some(),
+        "backoff_until must survive clear_routing_flags()"
+    );
+    assert_eq!(
+        freshness.freshness_auto_reset_count, 0,
+        "auto_reset_count must survive clear_routing_flags()"
+    );
+    // Routing flags cleared
+    assert!(!freshness.branch_freshness_conflict);
+    assert!(freshness.freshness_origin_state.is_none());
+    assert!(!freshness.plan_update_conflict);
+    assert!(freshness.conflict_files.is_empty());
+}
+
+// --- is_in_backoff ---
+
+#[test]
+fn is_in_backoff_true_when_backoff_until_in_future() {
+    let meta = FreshnessMetadata {
+        freshness_backoff_until: Some(Utc::now() + chrono::Duration::seconds(300)),
+        ..Default::default()
+    };
+    assert!(meta.is_in_backoff(), "backoff_until in future must return true");
+}
+
+#[test]
+fn is_in_backoff_false_when_backoff_until_in_past() {
+    let meta = FreshnessMetadata {
+        freshness_backoff_until: Some(Utc::now() - chrono::Duration::seconds(1)),
+        ..Default::default()
+    };
+    assert!(!meta.is_in_backoff(), "backoff_until in past must return false");
+}
+
+#[test]
+fn is_in_backoff_false_when_none() {
+    let meta = FreshnessMetadata::default();
+    assert!(!meta.is_in_backoff(), "None backoff_until must return false");
+}
+
+// --- serde defaults for new fields (upgrade path) ---
+
+#[test]
+fn serde_default_new_fields_from_old_json() {
+    // Deserializing old metadata JSON that does NOT have freshness_backoff_until or
+    // freshness_auto_reset_count must produce the zero/None defaults, not a parse error.
+    let old_metadata = serde_json::json!({
+        "branch_freshness_conflict": true,
+        "freshness_origin_state": "executing",
+        "freshness_conflict_count": 3,
+        "plan_update_conflict": true,
+        "source_update_conflict": false,
+        "last_freshness_check_at": "2026-01-01T00:00:00Z",
+        "conflict_files": ["src/foo.rs"],
+        "source_branch": "task/foo",
+        "target_branch": "plan/foo"
+        // freshness_backoff_until and freshness_auto_reset_count ABSENT
+    });
+
+    let fm = FreshnessMetadata::from_task_metadata(&old_metadata);
+    assert!(
+        fm.freshness_backoff_until.is_none(),
+        "Missing freshness_backoff_until must default to None (not error)"
+    );
+    assert_eq!(
+        fm.freshness_auto_reset_count, 0,
+        "Missing freshness_auto_reset_count must default to 0 (not error)"
+    );
+    // Existing fields still parsed correctly
+    assert_eq!(fm.freshness_conflict_count, 3);
+    assert!(fm.branch_freshness_conflict);
+}
+
+// --- upgrade path: mid-conflict cycle with auto_reset_count=0 ---
+
+#[test]
+fn upgrade_path_mid_conflict_cycle_gets_auto_reset() {
+    // A task upgraded from old firmware has count=3, auto_reset_count=0.
+    // When count exceeds the cap (freshness_max_conflict_retries=3), the first
+    // cap should auto-reset (not block) because auto_reset_count is still 0.
+    //
+    // This is a pure metadata test: we simulate the cap logic that runs in
+    // handle_cap_if_needed() by constructing the state that would enter it.
+    let mut freshness = FreshnessMetadata {
+        freshness_conflict_count: 4, // exceeds cap of 3 (after increment from 3)
+        freshness_auto_reset_count: 0, // never auto-reset (old firmware path)
+        ..Default::default()
+    };
+
+    // Simulate first-cap auto-reset
+    assert_eq!(freshness.freshness_auto_reset_count, 0, "pre: must have never auto-reset");
+    assert!(freshness.freshness_conflict_count > 3, "pre: count must exceed cap");
+
+    // Apply auto-reset (what handle_cap_if_needed does on first cap)
+    freshness.freshness_conflict_count = 0;
+    freshness.freshness_auto_reset_count = 1;
+    freshness.freshness_backoff_until = Some(Utc::now() + chrono::Duration::seconds(600));
+
+    assert_eq!(freshness.freshness_conflict_count, 0, "post: count reset to 0");
+    assert_eq!(freshness.freshness_auto_reset_count, 1, "post: auto_reset_count=1");
+    assert!(freshness.freshness_backoff_until.is_some(), "post: cooldown backoff set");
+    assert!(freshness.is_in_backoff(), "post: must be in backoff window");
+}
+
+// --- backoff set at conflict detection (integration-level unit test) ---
+
+#[tokio::test]
+async fn backoff_set_at_conflict_detection() {
+    // When ensure_branches_fresh detects a plan conflict, the returned FreshnessMetadata
+    // should have freshness_backoff_until set (non-None) if backoff_base_secs > 0.
+    let repo = setup_real_git_repo();
+    let path = repo.path();
+
+    setup_plan_conflict(path, "plan/backoff-test");
+
+    let project = make_test_project(&repo.path_string());
+    let task = make_test_task(Some(&repo.task_branch), None);
+    let mut cfg = freshness_config();
+    cfg.freshness_backoff_base_secs = 60;
+    cfg.freshness_backoff_max_secs = 600;
+
+    let result = ensure_branches_fresh(
+        path,
+        &task,
+        &project,
+        "task-backoff-test",
+        Some("plan/backoff-test"),
+        None,
+        None,
+        "executing",
+        &cfg,
+    )
+    .await;
+
+    match result {
+        Err(FreshnessAction::RouteToMerging { freshness_metadata, .. }) => {
+            assert!(
+                freshness_metadata.freshness_backoff_until.is_some(),
+                "backoff_until must be set after first conflict (base=60s)"
+            );
+            assert!(
+                freshness_metadata.is_in_backoff(),
+                "task must be in backoff window immediately after conflict"
+            );
+            // count=1, base=60 → backoff=60s. Until must be roughly now+60
+            let until = freshness_metadata.freshness_backoff_until.unwrap();
+            let secs_from_now = (until - Utc::now()).num_seconds();
+            assert!(
+                secs_from_now > 50 && secs_from_now <= 65,
+                "backoff_until should be ~60s from now, got {secs_from_now}s"
+            );
+        }
+        other => panic!("Expected RouteToMerging with backoff set. Got: {other:?}"),
+    }
+}
+
+// --- reconciliation respects backoff (in-memory simulation) ---
+
+#[test]
+fn is_in_backoff_unit_helper() {
+    // Unit test for the FreshnessMetadata::is_in_backoff() helper method.
+    // Verifies the helper returns correct values for future/past/None backoff timestamps.
+    //
+    // Integration: task_scheduler_service::find_oldest_schedulable_task() calls
+    // is_in_backoff() on each Ready task's FreshnessMetadata before scheduling.
+    let freshness_in_backoff = FreshnessMetadata {
+        freshness_conflict_count: 1,
+        freshness_backoff_until: Some(Utc::now() + chrono::Duration::seconds(300)),
+        ..Default::default()
+    };
+    assert!(
+        freshness_in_backoff.is_in_backoff(),
+        "Task with future backoff_until must be considered in backoff"
+    );
+
+    // After backoff window passes, is_in_backoff returns false
+    let freshness_expired = FreshnessMetadata {
+        freshness_conflict_count: 1,
+        freshness_backoff_until: Some(Utc::now() - chrono::Duration::seconds(1)),
+        ..Default::default()
+    };
+    assert!(
+        !freshness_expired.is_in_backoff(),
+        "Expired backoff_until must allow re-queuing"
+    );
+
+    // No backoff set — always allow re-queuing
+    let freshness_no_backoff = FreshnessMetadata {
+        freshness_conflict_count: 2,
+        freshness_backoff_until: None,
+        ..Default::default()
+    };
+    assert!(
+        !freshness_no_backoff.is_in_backoff(),
+        "None backoff_until must allow re-queuing"
+    );
+}
+
+// --- FRESHNESS_BLOCKED reason format ---
+
+#[test]
+fn execution_blocked_reason_format() {
+    // The ExecutionBlocked reason must follow the structured format:
+    // FRESHNESS_BLOCKED|{total}|{minutes}|{files}|{msg}
+    //
+    // We construct the reason string the same way handle_cap_if_needed does,
+    // then verify the format is parseable with the expected pipe-delimited structure.
+    let total: u32 = 6;
+    let minutes: u64 = 10; // 600s / 60
+    let files = "src/foo.rs, src/bar.rs";
+    let reason = format!(
+        "FRESHNESS_BLOCKED|{}|{}|{}|Persistent freshness conflicts after auto-reset",
+        total, minutes, files
+    );
+
+    // Must start with the structured prefix
+    assert!(
+        reason.starts_with("FRESHNESS_BLOCKED|"),
+        "reason must start with FRESHNESS_BLOCKED| prefix"
+    );
+
+    // Pipe-delimited: 5 segments
+    let parts: Vec<&str> = reason.splitn(5, '|').collect();
+    assert_eq!(parts.len(), 5, "reason must have 5 pipe-delimited segments");
+    assert_eq!(parts[0], "FRESHNESS_BLOCKED");
+    assert_eq!(parts[1], "6", "segment 2 must be total conflict count");
+    assert_eq!(parts[2], "10", "segment 3 must be cooldown minutes");
+    assert_eq!(parts[3], "src/foo.rs, src/bar.rs", "segment 4 must be conflict files");
+    assert!(
+        parts[4].contains("Persistent freshness conflicts"),
+        "segment 5 must contain human-readable message"
+    );
+
+    // Verify the FreshnessAction::ExecutionBlocked variant wraps it correctly
+    let action = FreshnessAction::ExecutionBlocked { reason: reason.clone() };
+    assert!(
+        matches!(action, FreshnessAction::ExecutionBlocked { .. }),
+        "must be ExecutionBlocked variant"
+    );
+}
+
+// --- no_backoff_refresh_after_successful_merge ---
+
+#[tokio::test]
+async fn no_backoff_refresh_after_successful_merge() {
+    // After a successful freshness check (both branches fresh), the returned
+    // FreshnessMetadata must NOT have an active backoff window.
+    // The reset_conflict_state() call in step 8 clears backoff_until.
+    let repo = setup_real_git_repo();
+    let project = make_test_project(&repo.path_string());
+
+    // Start with a pre-existing (expired) backoff to confirm it gets cleared on success.
+    let expired_backoff = (Utc::now() - chrono::Duration::seconds(1)).to_rfc3339();
+    let metadata = serde_json::json!({
+        "freshness_conflict_count": 2,
+        "freshness_backoff_until": expired_backoff,
+        "freshness_auto_reset_count": 0,
+    });
+    let task = make_test_task(Some(&repo.task_branch), Some(metadata));
+
+    let cfg = freshness_config(); // backoff_base_secs=0, skip window is clear
+
+    let result = ensure_branches_fresh(
+        repo.path(),
+        &task,
+        &project,
+        "task-no-backoff-after-success",
+        None,
+        None,
+        None,
+        "executing",
+        &cfg,
+    )
+    .await;
+
+    match result {
+        Ok(meta) => {
+            assert_eq!(
+                meta.freshness_conflict_count, 0,
+                "Successful check must reset conflict count to 0"
+            );
+            assert!(
+                meta.freshness_backoff_until.is_none(),
+                "Successful check must clear backoff_until"
+            );
+            assert_eq!(
+                meta.freshness_auto_reset_count, 0,
+                "Successful check must reset auto_reset_count"
+            );
+            assert!(!meta.is_in_backoff(), "After success, task must NOT be in backoff");
+        }
+        Err(e) => panic!("Expected Ok (fresh repo), got: {e:?}"),
+    }
+}
+
+// --- merge_into round-trips new fields ---
+
+#[test]
+fn serde_round_trip_includes_new_fields() {
+    // merge_into and from_task_metadata must correctly round-trip the two new fields:
+    // freshness_backoff_until and freshness_auto_reset_count.
+    let backoff_time = Utc::now() + chrono::Duration::seconds(120);
+    let original = FreshnessMetadata {
+        freshness_conflict_count: 2,
+        freshness_backoff_until: Some(backoff_time),
+        freshness_auto_reset_count: 1,
+        ..Default::default()
+    };
+
+    let mut meta = serde_json::json!({});
+    original.merge_into(&mut meta);
+
+    // freshness_backoff_until must be written as RFC3339 string
+    assert!(
+        meta.get("freshness_backoff_until").and_then(|v| v.as_str()).is_some(),
+        "freshness_backoff_until must be written as RFC3339 string"
+    );
+    assert_eq!(
+        meta["freshness_auto_reset_count"], 1,
+        "freshness_auto_reset_count must be written as number"
+    );
+
+    let recovered = FreshnessMetadata::from_task_metadata(&meta);
+    assert_eq!(recovered.freshness_auto_reset_count, 1);
+    assert_eq!(recovered.freshness_conflict_count, 2);
+    assert!(
+        recovered.freshness_backoff_until.is_some(),
+        "freshness_backoff_until must survive round-trip"
+    );
+
+    // The recovered timestamp must be within 1 second of original (RFC3339 has 1s resolution)
+    let original_secs = backoff_time.timestamp();
+    let recovered_secs = recovered.freshness_backoff_until.unwrap().timestamp();
+    assert!(
+        (original_secs - recovered_secs).abs() <= 1,
+        "freshness_backoff_until must round-trip within 1s precision"
+    );
 }

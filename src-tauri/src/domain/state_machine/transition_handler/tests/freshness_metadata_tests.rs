@@ -105,6 +105,8 @@ fn test_merge_into_writes_all_fields() {
         conflict_files: vec!["src/main.rs".to_owned()],
         source_branch: Some("task/branch".to_owned()),
         target_branch: Some("plan/branch".to_owned()),
+        freshness_backoff_until: None,
+        freshness_auto_reset_count: 0,
     };
 
     let mut metadata = json!({});
@@ -261,6 +263,8 @@ fn test_serde_round_trip_full_struct() {
         conflict_files: vec!["src/a.rs".to_owned(), "src/b.rs".to_owned()],
         source_branch: Some("task/t1".to_owned()),
         target_branch: Some("plan/p1".to_owned()),
+        freshness_backoff_until: None,
+        freshness_auto_reset_count: 0,
     };
 
     let mut metadata = json!({});

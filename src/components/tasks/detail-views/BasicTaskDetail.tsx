@@ -15,7 +15,7 @@ import { useTaskSteps } from "@/hooks/useTaskSteps";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { taskKeys } from "@/hooks/useTasks";
 import { api } from "@/lib/tauri";
-import { Loader2, Play, RotateCcw, Clock, User, Users, AlertTriangle, ShieldAlert, X } from "lucide-react";
+import { Loader2, Play, RotateCcw, Clock, User, Users, AlertTriangle, ShieldAlert, X, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   ResumeValidationDialog,
@@ -23,6 +23,11 @@ import {
 } from "@/components/ui/ResumeValidationDialog";
 import { parseStopMetadata, type Task, type StopMetadata } from "@/types/task";
 import { stopExecutionRetry } from "@/lib/task-actions/task-actions";
+import {
+  FRESHNESS_BLOCKED_PREFIX,
+  parseFreshnessBlockedReason,
+  type FreshnessBlockedInfo,
+} from "@/lib/freshness-blocked";
 
 // ============================================================================
 // Helper Functions
@@ -575,6 +580,128 @@ function UnblockWarningCard({
   );
 }
 
+/**
+ * FreshnessBlockedCard - Shown when a task is blocked due to persistent branch freshness conflicts.
+ * Displays conflict files, attempt/elapsed info, and a one-click "Reset & Retry" recovery action.
+ */
+function FreshnessBlockedCard({
+  task,
+  info,
+}: {
+  task: Task;
+  info: FreshnessBlockedInfo;
+}) {
+  const queryClient = useQueryClient();
+
+  const resetMutation = useMutation({
+    mutationFn: () => api.tasks.move(task.id, "ready"),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.all });
+    },
+  });
+
+  const elapsedLabel =
+    info.elapsedMinutes > 0 ? `${info.elapsedMinutes} min` : "unknown duration";
+
+  return (
+    <section data-testid="freshness-blocked-section" className="space-y-2">
+      <SectionTitle>Branch Freshness Blocked</SectionTitle>
+
+      {/* Summary banner */}
+      <div
+        className="rounded-xl p-4 space-y-3"
+        style={{ backgroundColor: "hsla(38 92% 50% / 0.08)" }}
+      >
+        <div className="flex items-start gap-2.5">
+          <GitBranch
+            className="w-4 h-4 mt-0.5 shrink-0"
+            style={{ color: "hsl(38 92% 60%)" }}
+          />
+          <div className="flex-1 min-w-0">
+            <p
+              data-testid="freshness-blocked-summary"
+              className="text-[13px] font-medium"
+              style={{ color: "hsl(38 92% 75%)" }}
+            >
+              Branch conflicts could not be resolved automatically after{" "}
+              {info.totalAttempts} {info.totalAttempts === 1 ? "attempt" : "attempts"} over{" "}
+              {elapsedLabel}.
+            </p>
+
+            {/* Conflict file list */}
+            {info.conflictFiles.length > 0 && (
+              <div className="mt-2.5 space-y-1">
+                <span
+                  className="text-[11px] font-semibold uppercase tracking-wider block"
+                  style={{ color: "hsl(38 92% 50%)" }}
+                >
+                  Conflict files
+                </span>
+                <ul className="space-y-0.5">
+                  {info.conflictFiles.map((file) => (
+                    <li
+                      key={file}
+                      data-testid="freshness-conflict-file"
+                      className="text-[12px] font-mono truncate"
+                      style={{ color: "hsl(38 92% 65% / 0.85)" }}
+                    >
+                      {file}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <DetailCard>
+        <div className="flex items-center justify-between gap-3">
+          {/* Secondary: task branch label */}
+          {task.taskBranch && (
+            <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+              <GitBranch className="w-3 h-3 shrink-0" style={{ color: "hsl(220 10% 40%)" }} />
+              <span
+                className="text-[11px] font-mono truncate"
+                style={{ color: "hsl(220 10% 50%)" }}
+                title={task.taskBranch}
+              >
+                {task.taskBranch}
+              </span>
+            </div>
+          )}
+
+          {/* Primary: Reset & Retry */}
+          <Button
+            data-testid="freshness-reset-retry-button"
+            onClick={() => resetMutation.mutate()}
+            disabled={resetMutation.isPending}
+            className="h-9 px-4 gap-2 rounded-lg font-medium text-[13px] shrink-0 transition-colors"
+            style={{
+              backgroundColor: "hsl(38 92% 50%)",
+              color: "hsl(220 10% 10%)",
+            }}
+          >
+            {resetMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RotateCcw className="w-4 h-4" />
+            )}
+            Reset & Retry
+          </Button>
+        </div>
+
+        {resetMutation.error && (
+          <p className="mt-3 text-[12px]" style={{ color: "#ff453a" }}>
+            {resetMutation.error.message}
+          </p>
+        )}
+      </DetailCard>
+    </section>
+  );
+}
+
 export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailProps) {
   const { data: steps, isLoading: stepsLoading } = useTaskSteps(task.id);
   const hasSteps = (steps?.length ?? 0) > 0;
@@ -685,6 +812,16 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
       )
     : null;
 
+  // Detect freshness-blocked tasks: blocked status with FRESHNESS_BLOCKED| structured reason
+  const isFreshnessBlocked =
+    task.internalStatus === "blocked" &&
+    task.blockedReason !== null &&
+    task.blockedReason !== undefined &&
+    task.blockedReason.startsWith(FRESHNESS_BLOCKED_PREFIX);
+  const freshnessBlockedInfo = isFreshnessBlocked
+    ? parseFreshnessBlockedReason(task.blockedReason!)
+    : null;
+
   // Parse last_agent_error from metadata for any status
   const agentError = useMemo(() => {
     if (!task.metadata) return null;
@@ -727,6 +864,11 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
             variant="warning"
           />
         </section>
+      )}
+
+      {/* Freshness Blocked recovery UI */}
+      {!isHistorical && isFreshnessBlocked && freshnessBlockedInfo && (
+        <FreshnessBlockedCard task={task} info={freshnessBlockedInfo} />
       )}
 
       {/* Auto-Retrying Banner (shown when system is managing retries) */}
