@@ -163,6 +163,10 @@ export function PlanningView({
     queryFn: () => ideationApi.verification.getStatus(session!.id),
     enabled: !!session?.id && !!planArtifact,
     staleTime: 30_000,
+    // B5: retry on transient failures to avoid permanent spinner
+    retry: 2,
+    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
+    // B7: omitting placeholderData (default) — no stale data carried over on session switch
   });
   const ideationSettings = useIdeationStore((state) => state.ideationSettings);
   const fetchPlanArtifact = useIdeationStore((state) => state.fetchPlanArtifact);
@@ -679,6 +683,33 @@ export function PlanningView({
     }
   }, [session]);
 
+  // Create proposals by sending message to the ideation orchestrator
+  const handleCreateProposals = useCallback(async () => {
+    if (!session) return;
+    try {
+      await chatApi.sendAgentMessage("ideation", session.id, "create task proposals from the approved plan");
+    } catch (err) {
+      console.error("Failed to create proposals:", err);
+      toast.error("Failed to request proposal creation");
+    }
+  }, [session]);
+
+  // Address gaps by sending a targeted message to the ideation orchestrator
+  const handleAddressGaps = useCallback(async (gapDescriptions: string[]) => {
+    if (!session) return;
+    const allGapCount = verificationData?.gaps?.length ?? 0;
+    const isAll = gapDescriptions.length === allGapCount || allGapCount === 0;
+    const message = isAll
+      ? "update the plan to address all verification gaps"
+      : `update the plan to address these specific verification gaps:\n${gapDescriptions.map((d, i) => `${i + 1}. ${d}`).join("\n")}`;
+    try {
+      await chatApi.sendAgentMessage("ideation", session.id, message);
+    } catch (err) {
+      console.error("Failed to address gaps:", err);
+      toast.error("Failed to request gap resolution");
+    }
+  }, [session, verificationData?.gaps]);
+
   const handleSkipVerification = useCallback(async () => {
     if (!session) return;
     // Optimistic update: immediately set verificationStatus to 'skipped' for instant accept button enablement
@@ -1160,6 +1191,8 @@ export function PlanningView({
                             onSkipVerification={handleSkipVerification}
                             onRevertAndSkip={handleRevertAndSkip}
                             onRetryVerification={handleTriggerVerification}
+                            onAddressGaps={handleAddressGaps}
+                            onCreateProposals={handleCreateProposals}
                           />
                         </div>
                       )}

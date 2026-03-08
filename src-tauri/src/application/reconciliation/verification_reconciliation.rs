@@ -18,6 +18,7 @@ use chrono::Utc;
 
 use crate::domain::entities::VerificationStatus;
 use crate::domain::repositories::IdeationSessionRepository;
+use crate::domain::services::emit_verification_status_changed;
 
 /// Configuration for the verification reconciliation service.
 #[derive(Debug, Clone, Copy)]
@@ -41,6 +42,9 @@ impl Default for VerificationReconciliationConfig {
 pub struct VerificationReconciliationService {
     ideation_session_repo: Arc<dyn IdeationSessionRepository>,
     config: VerificationReconciliationConfig,
+    /// AppHandle for emitting UI events after reconciliation resets.
+    /// `None` in tests (no Tauri runtime available).
+    app_handle: Option<tauri::AppHandle>,
 }
 
 impl VerificationReconciliationService {
@@ -51,7 +55,14 @@ impl VerificationReconciliationService {
         Self {
             ideation_session_repo,
             config,
+            app_handle: None,
         }
+    }
+
+    /// Attach an AppHandle so the service can emit UI events after resetting stuck sessions.
+    pub fn with_app_handle(mut self, app_handle: tauri::AppHandle) -> Self {
+        self.app_handle = Some(app_handle);
+        self
     }
 
     /// Scan for stuck sessions and reset them. Called on startup and periodically.
@@ -97,6 +108,17 @@ impl VerificationReconciliationService {
                         stale_after_secs = self.config.stale_after_secs,
                         "Reconciliation reset stuck verification"
                     );
+                    // Emit UI event so the frontend reflects the reset immediately
+                    if let Some(ref handle) = self.app_handle {
+                        emit_verification_status_changed(
+                            handle,
+                            session.id.as_str(),
+                            VerificationStatus::Unverified,
+                            false,
+                            None,
+                            None,
+                        );
+                    }
                     reset_count += 1;
                 }
                 Err(e) => {

@@ -1,4 +1,6 @@
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import {
   TaskEventSchema,
   type TaskEvent,
@@ -11,6 +13,7 @@ import {
   ProgressEventSchema,
   QAPrepEventSchema,
   QATestEventSchema,
+  PlanVerificationStatusChangedSchema,
 } from "./events";
 
 describe("TaskEventSchema", () => {
@@ -529,5 +532,61 @@ describe("QATestEventSchema", () => {
 
     const result = QATestEventSchema.safeParse(event);
     expect(result.success).toBe(false);
+  });
+});
+
+// ============================================================================
+// Contract test: PlanVerificationStatusChangedSchema vs Rust fixture
+// ============================================================================
+
+describe("PlanVerificationStatusChangedSchema — contract test", () => {
+  const fixturePath = resolve(
+    __dirname,
+    "../../src-tauri/tests/fixtures/verification_event.json"
+  );
+
+  it("parses the Rust-generated verification_event.json fixture", () => {
+    const raw: unknown = JSON.parse(readFileSync(fixturePath, "utf-8"));
+    const result = PlanVerificationStatusChangedSchema.safeParse(raw);
+    expect(result.success, result.success ? "" : JSON.stringify((result as { error: unknown }).error)).toBe(true);
+  });
+
+  it("accepts fixture and exposes current_gaps array", () => {
+    const raw: unknown = JSON.parse(readFileSync(fixturePath, "utf-8"));
+    const result = PlanVerificationStatusChangedSchema.parse(raw);
+    expect(result.current_gaps).toBeDefined();
+    expect(Array.isArray(result.current_gaps)).toBe(true);
+    expect(result.current_gaps!.length).toBeGreaterThan(0);
+    expect(result.current_gaps![0]).toMatchObject({
+      severity: expect.stringMatching(/^(critical|high|medium|low)$/),
+      category: expect.any(String),
+      description: expect.any(String),
+    });
+  });
+
+  it("accepts fixture and exposes rounds array", () => {
+    const raw: unknown = JSON.parse(readFileSync(fixturePath, "utf-8"));
+    const result = PlanVerificationStatusChangedSchema.parse(raw);
+    expect(result.rounds).toBeDefined();
+    expect(Array.isArray(result.rounds)).toBe(true);
+    expect(result.rounds!.length).toBeGreaterThan(0);
+    expect(result.rounds![0]).toMatchObject({
+      fingerprints: expect.any(Array),
+      gap_score: expect.any(Number),
+    });
+  });
+
+  it("is backward compatible — parses event without current_gaps and rounds", () => {
+    const minimal = {
+      session_id: "sess-001",
+      status: "reviewing",
+      in_progress: true,
+    };
+    const result = PlanVerificationStatusChangedSchema.safeParse(minimal);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.current_gaps).toBeUndefined();
+      expect(result.data.rounds).toBeUndefined();
+    }
   });
 });

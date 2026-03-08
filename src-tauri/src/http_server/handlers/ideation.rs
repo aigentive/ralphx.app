@@ -19,6 +19,7 @@ fn json_error(status: StatusCode, error: impl Into<String>) -> JsonError {
 use crate::application::{CreateProposalOptions, UpdateProposalOptions};
 use crate::commands::ideation_commands::TaskProposalResponse;
 use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
+use crate::domain::services::emit_verification_status_changed;
 
 use super::super::helpers::{
     create_proposal_impl, maybe_trigger_dependency_analysis, parse_category, parse_priority,
@@ -1279,19 +1280,15 @@ pub async fn update_plan_verification(
         "Verification state updated"
     );
 
-    // Emit plan_verification:status_changed event
+    // Emit plan_verification:status_changed event (B1: includes current_gaps + last 5 rounds)
     if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit(
-            "plan_verification:status_changed",
-            serde_json::json!({
-                "session_id": session_id,
-                "status": new_status.to_string(),
-                "in_progress": req.in_progress,
-                "round": req.round,
-                "max_rounds": metadata.max_rounds,
-                "gap_score": current_gap_score,
-                "convergence_reason": metadata.convergence_reason,
-            }),
+        emit_verification_status_changed(
+            app_handle,
+            &session_id,
+            new_status,
+            req.in_progress,
+            Some(&metadata),
+            None,
         );
     }
 
@@ -1544,16 +1541,15 @@ pub async fn revert_and_skip(
         "Revert-and-skip completed atomically"
     );
 
-    // Emit event
+    // Emit event with canonical payload (B3: was missing round/gaps/rounds fields)
     if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit(
-            "plan_verification:status_changed",
-            serde_json::json!({
-                "session_id": session_id,
-                "status": VerificationStatus::Skipped.to_string(),
-                "in_progress": false,
-                "convergence_reason": "user_reverted",
-            }),
+        emit_verification_status_changed(
+            app_handle,
+            &session_id,
+            VerificationStatus::Skipped,
+            false,
+            None,
+            Some("user_reverted"),
         );
     }
 

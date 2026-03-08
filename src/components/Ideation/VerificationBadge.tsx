@@ -4,7 +4,8 @@
  * Design: macOS Tahoe style, warm orange accent (#ff6b35), SF Pro, no purple/blue.
  */
 
-import { RefreshCw } from "lucide-react";
+import { Loader2, RefreshCw } from "lucide-react";
+import { useRef, useState } from "react";
 import {
   Tooltip,
   TooltipContent,
@@ -24,7 +25,7 @@ export interface VerificationBadgeProps {
   maxRounds?: number;
   convergenceReason?: string;
   /** Called when user clicks Retry on a stuck session */
-  onRetry?: () => void;
+  onRetry?: () => void | Promise<void>;
 }
 
 // ============================================================================
@@ -88,6 +89,8 @@ export function VerificationBadge({
   convergenceReason,
   onRetry,
 }: VerificationBadgeProps) {
+  const isRetryingRef = useRef(false);
+  const [isRetrying, setIsRetrying] = useState(false);
   const config = STATUS_CONFIG[status];
   const showProgress = inProgress && currentRound !== undefined && maxRounds !== undefined;
   // A session is "stuck" when it is reviewing+inProgress but there's a retry callback
@@ -129,15 +132,28 @@ export function VerificationBadge({
       {isStuck && onRetry && (
         <button
           type="button"
-          onClick={(e) => {
+          disabled={isRetrying}
+          onClick={async (e) => {
             e.stopPropagation();
-            onRetry();
+            if (isRetryingRef.current) return;
+            isRetryingRef.current = true;
+            setIsRetrying(true);
+            try {
+              await onRetry?.();
+            } finally {
+              isRetryingRef.current = false;
+              setIsRetrying(false);
+            }
           }}
-          className="ml-0.5 rounded transition-opacity hover:opacity-80 flex items-center"
+          className="ml-0.5 rounded transition-opacity hover:opacity-80 flex items-center disabled:opacity-50 disabled:cursor-not-allowed"
           title="Retry verification"
           style={{ color: config.color }}
         >
-          <RefreshCw className="w-2.5 h-2.5" />
+          {isRetrying ? (
+            <Loader2 className="w-2.5 h-2.5 animate-spin" />
+          ) : (
+            <RefreshCw className="w-2.5 h-2.5" />
+          )}
         </button>
       )}
     </span>
