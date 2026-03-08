@@ -15,7 +15,16 @@ import { buildStoreKey } from "@/lib/chat-context-registry";
 import { taskKeys } from "@/hooks/useTasks";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import { stateTransitionKeys } from "@/hooks/useTaskStateTransitions";
+import { reviewKeys } from "@/hooks/useReviews";
 import { transformTask, type Task } from "@/types/task";
+
+const REVIEW_STATUSES = new Set([
+  "pending_review",
+  "reviewing",
+  "review_passed",
+  "escalated",
+  "revision_needed",
+]);
 
 /**
  * Hook to listen for task events from the backend
@@ -41,7 +50,11 @@ export function useTaskEvents() {
   const queryClient = useQueryClient();
 
   useEffect(() => {
-    const handleStatusChange = (taskId: string, to: Task["internalStatus"]) => {
+    const handleStatusChange = (
+      taskId: string,
+      from: Task["internalStatus"] | undefined,
+      to: Task["internalStatus"],
+    ) => {
       updateTask(taskId, { internalStatus: to });
 
       // Clear stale team data when task enters a terminal/paused state.
@@ -59,6 +72,10 @@ export function useTaskEvents() {
       queryClient.invalidateQueries({ queryKey: stateTransitionKeys.task(taskId) });
       // Refetch full task data on every status change so detail view updates in real-time
       queryClient.invalidateQueries({ queryKey: taskKeys.detail(taskId) });
+      // Invalidate review queries when transitioning to/from review stages
+      if ((from !== undefined && REVIEW_STATUSES.has(from)) || REVIEW_STATUSES.has(to)) {
+        queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+      }
       // Bridge to graph hooks that listen for task:updated
       bus.emit("task:updated", { taskId });
     };
@@ -104,6 +121,10 @@ export function useTaskEvents() {
           // Invalidate both regular and infinite task queries
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+          // Invalidate review queries when internal_status changes (may be review-related)
+          if (changes.internal_status !== undefined) {
+            queryClient.invalidateQueries({ queryKey: reviewKeys.all });
+          }
           // Bridge to graph hooks that listen for task:updated
           bus.emit("task:updated", { taskId: taskEvent.taskId });
           break;
@@ -113,9 +134,11 @@ export function useTaskEvents() {
           // Invalidate both regular and infinite task queries
           queryClient.invalidateQueries({ queryKey: taskKeys.lists() });
           queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+          // Invalidate review queries — deleted task may have been in a review stage
+          queryClient.invalidateQueries({ queryKey: reviewKeys.all });
           break;
         case "status_changed":
-          handleStatusChange(taskEvent.taskId, taskEvent.to);
+          handleStatusChange(taskEvent.taskId, taskEvent.from, taskEvent.to);
           break;
       }
     });
@@ -125,7 +148,7 @@ export function useTaskEvents() {
       if (!parsed.success) {
         return;
       }
-      handleStatusChange(parsed.data.task_id, parsed.data.new_status);
+      handleStatusChange(parsed.data.task_id, parsed.data.old_status, parsed.data.new_status);
     });
 
     return () => {
