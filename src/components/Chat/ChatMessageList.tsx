@@ -8,7 +8,7 @@
  * - Streaming tool calls / typing indicator footer
  */
 
-import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useImperativeHandle } from "react";
+import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useState, useImperativeHandle } from "react";
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { HookEventMessage } from "./HookEventMessage";
@@ -39,6 +39,14 @@ import { TeamMessageBubble } from "./TeamMessageBubble";
 
 /** Delay for markdown content to render and expand before scroll correction */
 const MARKDOWN_RENDER_DELAY_MS = 300;
+
+/** Shared bottom-detection threshold — used by both Virtuoso atBottomThreshold prop and rAF DOM reconciliation.
+ *  Must match exactly so both agree on what "at bottom" means. */
+export const AT_BOTTOM_THRESHOLD = 150;
+
+/** Bucket size for text length change detection during streaming.
+ *  ~2 visible lines per trigger (average line ~80 chars at standard chat width → 2 lines × 80 = 160, rounded to 150). */
+export const TEXT_LENGTH_BUCKET_SIZE = 150;
 
 /** Shared styles for content containers to handle long text */
 const contentContainerStyle: React.CSSProperties = {
@@ -133,6 +141,9 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const hasScrolledRef = useRef<string | null>(null);
     // Track previous shouldFilterLastAssistant to detect false→true→false transition
     const prevShouldFilterRef = useRef(false);
+    // rAF reconciliation refs — used to keep isAtBottom accurate when footer grows
+    const scrollerElRef = useRef<HTMLElement | null>(null);
+    const reconcileRafRef = useRef<number | null>(null);
     const isTestEnv = import.meta.env.VITEST;
 
     // Forward the ref to parent
@@ -160,12 +171,32 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       return count;
     }, [streamingTasks]);
 
+    // Tracks running max of text length across all streaming blocks.
+    // State (not a ref) so changes propagate to footerContentHash and trigger autoscroll.
+    // Math.max(prev, total) ensures the bucket never decreases mid-stream — prevents
+    // bucket regression when tool_use blocks are inserted between text blocks.
+    const [cumulativeTextLength, setCumulativeTextLength] = useState(0);
+
+    // Recompute cumulative text length whenever streaming blocks change.
+    // Resets to 0 when streaming ends (no blocks) so the next stream starts fresh.
+    useEffect(() => {
+      if (!streamingContentBlocks?.length) {
+        setCumulativeTextLength(0);
+        return;
+      }
+      const total = streamingContentBlocks.reduce(
+        (sum, block) => block.type === "text" ? sum + block.text.length : sum, 0
+      );
+      setCumulativeTextLength(prev => Math.max(prev, total));
+    }, [streamingContentBlocks]);
+
     const footerContentHash = useMemo(() => ({
       toolCallCount: streamingToolCalls.length,
       childCallCount: totalChildCalls,
       taskCount: streamingTasks?.size ?? 0,
       contentBlockCount: streamingContentBlocks?.length ?? 0,
-    }), [streamingToolCalls.length, totalChildCalls, streamingTasks?.size, streamingContentBlocks?.length]);
+      textLengthBucket: Math.floor(cumulativeTextLength / TEXT_LENGTH_BUCKET_SIZE),
+    }), [streamingToolCalls.length, totalChildCalls, streamingTasks?.size, streamingContentBlocks?.length, cumulativeTextLength]);
 
     // Streaming auto-scroll — followOutput only fires on totalCount changes,
     // NOT on Footer height growth. Call autoscrollToBottom() imperatively when
@@ -180,6 +211,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const {
       messagesEndRef,
       isAtBottom,
+      isAtBottomRef,
       scrollToBottom,
       handleAtBottomStateChange,
       handleFollowOutput,
@@ -189,6 +221,48 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       virtuosoRef, // Route scrollToBottom through Virtuoso scrollToIndex
       conversationId, // Reset isAtBottom when conversation changes
     });
+
+    // rAF-throttled DOM reconciliation — keeps isAtBottom accurate when Virtuoso doesn't detect footer growth.
+    // Runs outside React render cycle (DOM event handler, not useEffect) — no render loop risk.
+    // rAF fires post-paint, so scrollHeight reads don't force layout recalc during React commit phase.
+    const handleScrollReconcile = useCallback(() => {
+      if (reconcileRafRef.current) return; // Already scheduled — skip
+      reconcileRafRef.current = requestAnimationFrame(() => {
+        reconcileRafRef.current = null;
+        const el = scrollerElRef.current;
+        if (!el) return;
+        const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight < AT_BOTTOM_THRESHOLD;
+        // Only reconcile if state disagrees — avoids unnecessary setState
+        if (atBottom !== isAtBottomRef.current) {
+          handleAtBottomStateChange(atBottom);
+        }
+      });
+    }, [handleAtBottomStateChange, isAtBottomRef]);
+
+    // Attach passive scroll listener to Virtuoso's scroller element.
+    // Passed to Virtuoso's scrollerRef prop so we capture the actual scroll container.
+    const handleScrollerRef = useCallback((el: Window | HTMLElement | null) => {
+      if (!(el instanceof HTMLElement)) {
+        if (scrollerElRef.current) {
+          scrollerElRef.current.removeEventListener("scroll", handleScrollReconcile);
+          scrollerElRef.current = null;
+        }
+        return;
+      }
+      if (scrollerElRef.current && scrollerElRef.current !== el) {
+        scrollerElRef.current.removeEventListener("scroll", handleScrollReconcile);
+      }
+      scrollerElRef.current = el;
+      el.addEventListener("scroll", handleScrollReconcile, { passive: true });
+    }, [handleScrollReconcile]);
+
+    // Cleanup rAF and scroll listener on unmount
+    useEffect(() => {
+      return () => {
+        if (reconcileRafRef.current) cancelAnimationFrame(reconcileRafRef.current);
+        scrollerElRef.current?.removeEventListener("scroll", handleScrollReconcile);
+      };
+    }, [handleScrollReconcile]);
 
     // Scroll to specific timestamp for history mode (time-travel feature)
     // Finds the first message at or after the given timestamp and scrolls to it
@@ -332,27 +406,51 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       return items;
     }, [messages, hookEvents, activeHooks, hasHookEvents, shouldFilterLastAssistant, attachmentsMap, teamFilter, teamMessages]);
 
-    // Explicit initial scroll — fires when conversation changes to ensure
-    // the last message is visible after layout settles.
-    // Virtuoso's initialTopMostItemIndex races with layout calculation on mount,
-    // so we use a delayed scrollToIndex to guarantee scroll position is correct.
-    // Uses hasScrolledRef to scroll exactly once per conversation (when timeline
-    // transitions from empty to populated after async data load).
+    // Initial load scroll — fires when conversation changes and timeline populates.
+    // Uses one-shot ResizeObserver on the scroller element to detect when virtual
+    // content has actually rendered, rather than a fixed-duration setTimeout guess.
+    // Falls back to MARKDOWN_RENDER_DELAY_MS if scrollerElRef not yet available.
     useEffect(() => {
-      if (timeline.length === 0 || !conversationId || isTestEnv) return;
-      if (hasScrolledRef.current === conversationId) return;
+      if (!conversationId || timeline.length === 0 || hasScrolledRef.current === conversationId) return;
 
-      const timeoutId = setTimeout(() => {
-        hasScrolledRef.current = conversationId;
-        virtuosoRef.current?.scrollToIndex({
-          index: timeline.length - 1,
-          align: "end",
-          behavior: "auto", // 'auto' = instant jump (no animation)
-        });
-      }, MARKDOWN_RENDER_DELAY_MS);
+      const targetConversationId = conversationId;
 
-      return () => clearTimeout(timeoutId);
-    }, [conversationId, timeline.length, isTestEnv]);
+      const doScroll = () => {
+        if (hasScrolledRef.current === targetConversationId) return;
+        virtuosoRef.current?.scrollToIndex({ index: timeline.length - 1, align: "end", behavior: "auto" });
+        hasScrolledRef.current = targetConversationId;
+      };
+
+      const scroller = scrollerElRef.current;
+      if (!scroller) {
+        // Fallback: scroller not yet mounted, use fixed delay
+        const timer = setTimeout(doScroll, MARKDOWN_RENDER_DELAY_MS);
+        return () => clearTimeout(timer);
+      }
+
+      let debounceTimer: ReturnType<typeof setTimeout>;
+      const observer = new ResizeObserver(() => {
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          doScroll();
+          observer.disconnect();
+        }, 200);
+      });
+
+      observer.observe(scroller);
+
+      // Safety timeout: 3s max — disconnect + force scroll if debounce never settles
+      const safetyTimer = setTimeout(() => {
+        observer.disconnect();
+        doScroll();
+      }, 3000);
+
+      return () => {
+        observer.disconnect();
+        clearTimeout(debounceTimer);
+        clearTimeout(safetyTimer);
+      };
+    }, [conversationId, timeline.length]);
 
     // Memoize Virtuoso components to prevent infinite re-render loop.
     // Inline object literals create new references every render, causing Virtuoso
@@ -639,13 +737,14 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           // Key forces complete remount when conversation changes - prevents scroll animation conflicts
           key={conversationId ?? "empty"}
           ref={virtuosoRef}
+          scrollerRef={handleScrollerRef}
           data={timeline}
           context={footerContentHash}
           // Start at the last item on mount
           initialTopMostItemIndex={timeline.length > 0 ? timeline.length - 1 : 0}
           followOutput={handleFollowOutput}
           atBottomStateChange={handleAtBottomStateChange}
-          atBottomThreshold={150}
+          atBottomThreshold={AT_BOTTOM_THRESHOLD}
           alignToBottom
           className="h-full"
           components={virtuosoComponents}
