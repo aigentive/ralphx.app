@@ -27,6 +27,14 @@ export const VerificationGapSchema = z.object({
 
 export type VerificationGap = z.infer<typeof VerificationGapSchema>;
 
+export const RoundSummarySchema = z.object({
+  round: z.number(),
+  gapScore: z.number(),
+  gapCount: z.number(),
+});
+
+export type RoundSummary = z.infer<typeof RoundSummarySchema>;
+
 export const VerificationRoundSchema = z.object({
   round: z.number().int(),
   gapScore: z.number().int(),

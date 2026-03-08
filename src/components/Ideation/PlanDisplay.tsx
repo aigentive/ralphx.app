@@ -29,7 +29,7 @@ import { DebateSummary } from "./DebateSummary";
 import type { DebateSummaryData } from "./DebateSummary";
 import { VerificationBadge } from "./VerificationBadge";
 import { VerificationGapList } from "./VerificationGapList";
-import type { VerificationGap, VerificationRound, VerificationStatus } from "@/types/ideation";
+import type { RoundSummary, VerificationGap, VerificationStatus } from "@/types/ideation";
 
 // ============================================================================
 // Types
@@ -70,7 +70,7 @@ export interface PlanDisplayProps {
   maxRounds?: number;
   convergenceReason?: string;
   verificationGaps?: VerificationGap[];
-  verificationRounds?: VerificationRound[];
+  verificationRounds?: RoundSummary[];
   gapScore?: number;
   /** Artifact ID of the plan version to revert to (set when best version differs from current) */
   planVersionBeforeVerification?: string;

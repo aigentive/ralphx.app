@@ -1160,6 +1160,8 @@ export function PlanningView({
                             {...(verificationData?.currentRound !== undefined && { currentRound: verificationData.currentRound })}
                             {...(verificationData?.maxRounds !== undefined && { maxRounds: verificationData.maxRounds })}
                             {...(verificationData?.convergenceReason !== undefined && { convergenceReason: verificationData.convergenceReason })}
+                            {...(verificationData?.gaps !== undefined && { verificationGaps: verificationData.gaps })}
+                            {...(verificationData?.rounds !== undefined && { verificationRounds: verificationData.rounds })}
                             onVerifyFirst={handleTriggerVerification}
                             onSkipVerification={handleSkipVerification}
                             onRevertAndSkip={handleRevertAndSkip}
