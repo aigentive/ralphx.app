@@ -82,6 +82,10 @@ export interface PlanDisplayProps {
   onAddressGaps?: (selectedGapDescriptions: string[]) => void;
   /** Called when user clicks "Create Proposals" — triggers orchestrator to decompose plan into tasks */
   onCreateProposals?: () => void;
+  /** Current plan artifact version — used with verificationPlanVersion to detect stale gaps */
+  planVersion?: number;
+  /** Plan artifact version at time of verification — used to detect stale gaps */
+  verificationPlanVersion?: number;
 }
 
 // ============================================================================
@@ -253,6 +257,8 @@ export function PlanDisplay({
   onRetryVerification,
   onAddressGaps,
   onCreateProposals,
+  planVersion,
+  verificationPlanVersion,
 }: PlanDisplayProps) {
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
@@ -273,6 +279,13 @@ export function PlanDisplay({
     verificationStatus !== "verified" &&
     verificationStatus !== "skipped";
   const hasGaps = verificationGaps !== undefined && verificationGaps.length > 0;
+  // Gaps are stale when the plan was updated after verification ran.
+  // Defaults to false (not stale) when either version is unavailable.
+  const gapsStale =
+    hasGaps &&
+    planVersion !== undefined &&
+    verificationPlanVersion !== undefined &&
+    planVersion > verificationPlanVersion;
   const showVerifyFirst = hasVerification && verificationStatus === "unverified" && onVerifyFirst;
   const showRevertAndSkip =
     hasVerification &&
@@ -783,7 +796,11 @@ export function PlanDisplay({
                   style={{
                     background: "hsla(220 10% 100% / 0.02)",
                     border: "1px solid hsla(220 10% 100% / 0.06)",
+                    ...(gapsStale && { opacity: 0.5 }),
                   }}
+                  {...(gapsStale && {
+                    "aria-label": "Verification gaps — plan has been updated since these were identified",
+                  })}
                 >
                   <div
                     className="text-[11px] font-semibold uppercase tracking-wider mb-3"
@@ -791,11 +808,25 @@ export function PlanDisplay({
                   >
                     Verification Gaps
                   </div>
+                  {gapsStale && (
+                    <div className="text-[11px] mb-2" style={{ color: "hsl(45 93% 55%)" }}>
+                      Plan updated — these gaps may be resolved. Re-verify to confirm.
+                    </div>
+                  )}
+                  {verificationStatus === "verified" && (
+                    <div
+                      className="text-[11px] mb-2"
+                      style={{ color: "hsl(220 10% 55%)" }}
+                    >
+                      Verified with acceptable gaps — no critical issues remain.
+                    </div>
+                  )}
                   <VerificationGapList
                     gaps={verificationGaps!}
                     {...(verificationRounds !== undefined && { rounds: verificationRounds })}
                     {...(gapScore !== undefined && { gapScore })}
                     selectable={
+                      !gapsStale &&
                       verificationStatus === "needs_revision" &&
                       !verificationInProgress &&
                       !!onAddressGaps
@@ -805,9 +836,10 @@ export function PlanDisplay({
                   />
                 </div>
 
-                {/* Address Gaps button — only in needs_revision state, not while in progress */}
+                {/* Address Gaps button — only in needs_revision state, not while in progress, and not when stale */}
                 {verificationStatus === "needs_revision" &&
                   !verificationInProgress &&
+                  !gapsStale &&
                   onAddressGaps && (
                     <div className="mb-4">
                       <Button
@@ -834,6 +866,34 @@ export function PlanDisplay({
                       </Button>
                     </div>
                   )}
+
+                {/* Re-verify Plan button — shown when gaps are stale */}
+                {gapsStale && onRetryVerification && (
+                  <div className="mb-4">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onRetryVerification}
+                      className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
+                      style={{
+                        color: "hsl(220 10% 55%)",
+                        background: "transparent",
+                        border: "1px solid hsla(220 10% 100% / 0.08)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                        e.currentTarget.style.color = "hsl(220 10% 75%)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.color = "hsl(220 10% 55%)";
+                      }}
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      Re-verify Plan
+                    </Button>
+                  </div>
+                )}
               </>
             )}
 

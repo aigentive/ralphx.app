@@ -1322,3 +1322,88 @@ async fn test_condition6_reviewing_in_progress_false_with_gaps_overrides_to_need
     );
     assert!(!resp.in_progress, "in_progress remains false");
 }
+
+// ── needs_revision → verified transition tests ──
+
+/// needs_revision → verified succeeds when convergence_reason is provided.
+///
+/// The orchestrator calls this path when adversarial convergence is met
+/// (e.g., 0 critical gaps after N rounds) and directly requests verified status.
+#[tokio::test]
+async fn test_needs_revision_to_verified_with_convergence_reason() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id_obj = session.id.clone();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // Put session in NeedsRevision state (simulating prior reviewing→needs_revision cycle)
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id_obj, VerificationStatus::NeedsRevision, false, None)
+        .await
+        .unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "verified".to_string(),
+            in_progress: false,
+            round: None,
+            gaps: None,
+            convergence_reason: Some("No critical gaps after 5 rounds of adversarial review".to_string()),
+            max_rounds: None,
+            parse_failed: None,
+        }),
+    )
+    .await
+    .expect("needs_revision → verified with convergence_reason must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "verified", "convergence_reason present → verified");
+    assert!(!resp.in_progress, "in_progress must be false after verification");
+}
+
+/// needs_revision → verified is rejected (422) when convergence_reason is absent.
+///
+/// Without a convergence_reason, the orchestrator cannot skip further review rounds.
+#[tokio::test]
+async fn test_needs_revision_to_verified_without_convergence_reason() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id_obj = session.id.clone();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id_obj, VerificationStatus::NeedsRevision, false, None)
+        .await
+        .unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "verified".to_string(),
+            in_progress: false,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "needs_revision → verified without convergence_reason must fail");
+    let (status, _body) = result.unwrap_err();
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "must return 422 when convergence_reason is absent"
+    );
+}
