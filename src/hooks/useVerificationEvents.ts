@@ -18,7 +18,6 @@
  */
 
 import { useEffect } from "react";
-import { z } from "zod";
 import { useQueryClient } from "@tanstack/react-query";
 import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
@@ -26,35 +25,8 @@ import { ideationKeys } from "./useIdeation";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
 import type { VerificationStatus } from "@/types/ideation";
-
-// ============================================================================
-// D20 payload schema (snake_case — backend emits via serde_json::json!({}) without key transform)
-// ============================================================================
-
-const PlanVerificationStatusChangedSchema = z.object({
-  session_id: z.string(),
-  status: z.enum(["unverified", "reviewing", "verified", "needs_revision", "skipped"]),
-  in_progress: z.boolean(),
-  round: z.number().int().optional(),
-  max_rounds: z.number().int().optional(),
-  gap_score: z.number().int().optional(),
-  convergence_reason: z.string().optional(),
-});
-
-export type PlanVerificationStatusChangedPayload = z.infer<
-  typeof PlanVerificationStatusChangedSchema
->;
-
-// Mapped camelCase view of the payload for consumers
-export type PlanVerificationStatusChangedEvent = {
-  sessionId: string;
-  status: PlanVerificationStatusChangedPayload["status"];
-  inProgress: boolean;
-  round?: number;
-  maxRounds?: number;
-  gapScore?: number;
-  convergenceReason?: string;
-};
+import { PlanVerificationStatusChangedSchema } from "@/types/events";
+export type { PlanVerificationStatusChangedEvent, PlanVerificationStatusChangedPayload } from "@/types/events";
 
 // ============================================================================
 // Hook
