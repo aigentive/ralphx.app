@@ -1319,7 +1319,6 @@ pub struct VerificationGapRequest {
 /// Request to update verification state (from MCP orchestrator)
 #[derive(Debug, Deserialize)]
 pub struct UpdateVerificationRequest {
-    pub session_id: String,
     pub status: String, // "reviewing" | "needs_revision" | "verified" | "skipped"
     #[serde(default)]
     pub in_progress: bool,
