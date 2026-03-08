@@ -9,6 +9,7 @@ use std::sync::Arc;
 use chrono::Utc;
 
 use super::super::machine::State;
+use super::freshness::{self, FreshnessAction};
 use super::merge_helpers::{
     compute_merge_worktree_path, expand_home, resolve_task_base_branch, slugify,
 };
@@ -20,8 +21,77 @@ use crate::domain::entities::{
     MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, ProjectId, TaskId,
     TaskStepStatus,
 };
+use crate::domain::repositories::TaskRepository;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::{reconciliation_config, scheduler_config};
+
+/// Get the plan branch name for a task by looking up via plan_branch_repo.
+/// Returns None if task has no execution_plan_id or plan_branch can't be found,
+/// or if the resolved branch equals the project base branch.
+async fn get_task_plan_branch(
+    task: &crate::domain::entities::Task,
+    project: &crate::domain::entities::Project,
+    plan_branch_repo: &Option<Arc<dyn crate::domain::repositories::PlanBranchRepository>>,
+    task_repo: &Option<Arc<dyn TaskRepository>>,
+) -> Option<String> {
+    let resolved = resolve_task_base_branch(task, project, plan_branch_repo, task_repo).await;
+    // resolve_task_base_branch returns the plan branch for plan tasks, or project base otherwise.
+    // We only want the plan branch — check if it's different from project base.
+    let project_base = project.base_branch.as_deref().unwrap_or("main");
+    if resolved != project_base {
+        Some(resolved)
+    } else {
+        None
+    }
+}
+
+/// Handle the result of ensure_branches_fresh() for an entry point.
+/// Returns Ok(()) if fresh or skipped, Err if needs routing or blocking.
+async fn apply_freshness_result(
+    result: Result<freshness::FreshnessMetadata, FreshnessAction>,
+    task: &crate::domain::entities::Task,
+    task_id_str: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+) -> AppResult<()> {
+    let task_id = TaskId::from_string(task_id_str.to_string());
+    match result {
+        Ok(updated_meta) => {
+            // Persist updated freshness metadata (last_freshness_check_at, etc.)
+            let mut task_metadata: serde_json::Value = task
+                .metadata
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+            updated_meta.merge_into(&mut task_metadata);
+            if let Err(e) = task_repo
+                .update_metadata(&task_id, Some(task_metadata.to_string()))
+                .await
+            {
+                tracing::warn!(task_id = task_id_str, error = %e, "Failed to persist freshness metadata");
+            }
+            Ok(())
+        }
+        Err(FreshnessAction::RouteToMerging { freshness_metadata, .. }) => {
+            // Store freshness metadata on task for merger agent context
+            let mut task_metadata: serde_json::Value = task
+                .metadata
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+            freshness_metadata.merge_into(&mut task_metadata);
+            if let Err(e) = task_repo
+                .update_metadata(&task_id, Some(task_metadata.to_string()))
+                .await
+            {
+                tracing::warn!(task_id = task_id_str, error = %e, "Failed to persist freshness conflict metadata");
+            }
+            Err(AppError::BranchFreshnessConflict)
+        }
+        Err(FreshnessAction::ExecutionBlocked { reason }) => {
+            Err(AppError::ExecutionBlocked(reason))
+        }
+    }
+}
 
 impl<'a> super::TransitionHandler<'a> {
     /// Check that the task's plan branch is still Active.
@@ -354,6 +424,47 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
 
+                // Freshness check: ensure branches are up-to-date before spawning agent
+                // Runs AFTER worktree setup but BEFORE pre-execution setup and agent spawn.
+                if let (Some(ref task_repo), Some(ref project_repo)) = (
+                    &self.machine.context.services.task_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    let task_id_typed = TaskId::from_string(task_id_str.clone());
+                    let project_id_typed = ProjectId::from_string(project_id_str.clone());
+                    if let (Ok(Some(task)), Ok(Some(project))) = (
+                        task_repo.get_by_id(&task_id_typed).await,
+                        project_repo.get_by_id(&project_id_typed).await,
+                    ) {
+                        let repo_path = Path::new(&project.working_directory);
+                        let plan_branch = get_task_plan_branch(
+                            &task,
+                            &project,
+                            &self.machine.context.services.plan_branch_repo,
+                            &self.machine.context.services.task_repo,
+                        )
+                        .await;
+                        let config = reconciliation_config();
+                        let app_handle = self.machine.context.services.app_handle.as_ref();
+                        let activity_event_repo =
+                            self.machine.context.services.activity_event_repo.as_ref();
+                        let freshness_result = freshness::ensure_branches_fresh(
+                            repo_path,
+                            &task,
+                            &project,
+                            task_id_str,
+                            plan_branch.as_deref(),
+                            app_handle,
+                            activity_event_repo,
+                            "executing",
+                            config,
+                        )
+                        .await;
+                        apply_freshness_result(freshness_result, &task, task_id_str, task_repo)
+                            .await?;
+                    }
+                }
+
                 // Run pre-execution setup (worktree_setup + install) before spawning agent
                 self.run_and_store_pre_execution_setup(
                     task_id_str,
@@ -605,8 +716,50 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             State::Reviewing => {
-                // Run pre-execution setup before reviewing
+                // Freshness check: ensure branches are up-to-date before spawning reviewer
+                // Runs BEFORE pre-execution setup and reviewer agent spawn.
+                let task_id_str = &self.machine.context.task_id;
                 let project_id_str = &self.machine.context.project_id;
+                if let (Some(ref task_repo), Some(ref project_repo)) = (
+                    &self.machine.context.services.task_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    let task_id_typed = TaskId::from_string(task_id_str.clone());
+                    let project_id_typed = ProjectId::from_string(project_id_str.clone());
+                    if let (Ok(Some(task)), Ok(Some(project))) = (
+                        task_repo.get_by_id(&task_id_typed).await,
+                        project_repo.get_by_id(&project_id_typed).await,
+                    ) {
+                        let repo_path = Path::new(&project.working_directory);
+                        let plan_branch = get_task_plan_branch(
+                            &task,
+                            &project,
+                            &self.machine.context.services.plan_branch_repo,
+                            &self.machine.context.services.task_repo,
+                        )
+                        .await;
+                        let config = reconciliation_config();
+                        let app_handle = self.machine.context.services.app_handle.as_ref();
+                        let activity_event_repo =
+                            self.machine.context.services.activity_event_repo.as_ref();
+                        let freshness_result = freshness::ensure_branches_fresh(
+                            repo_path,
+                            &task,
+                            &project,
+                            task_id_str,
+                            plan_branch.as_deref(),
+                            app_handle,
+                            activity_event_repo,
+                            "reviewing",
+                            config,
+                        )
+                        .await;
+                        apply_freshness_result(freshness_result, &task, task_id_str, task_repo)
+                            .await?;
+                    }
+                }
+
+                // Run pre-execution setup before reviewing
                 let task_id = &self.machine.context.task_id;
                 self.run_and_store_pre_execution_setup(
                     task_id,
@@ -700,6 +853,47 @@ impl<'a> super::TransitionHandler<'a> {
                 // Plan branch guard: block re-execution on merged/abandoned branches
                 let task_id_str = &self.machine.context.task_id;
                 self.check_plan_branch_active(task_id_str).await?;
+
+                // Freshness check: ensure branches are up-to-date before re-executing
+                // Runs AFTER plan branch guard but BEFORE pre-execution setup and agent spawn.
+                if let (Some(ref task_repo), Some(ref project_repo)) = (
+                    &self.machine.context.services.task_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    let task_id_typed = TaskId::from_string(task_id_str.clone());
+                    let project_id_typed = ProjectId::from_string(self.machine.context.project_id.clone());
+                    if let (Ok(Some(task)), Ok(Some(project))) = (
+                        task_repo.get_by_id(&task_id_typed).await,
+                        project_repo.get_by_id(&project_id_typed).await,
+                    ) {
+                        let repo_path = Path::new(&project.working_directory);
+                        let plan_branch = get_task_plan_branch(
+                            &task,
+                            &project,
+                            &self.machine.context.services.plan_branch_repo,
+                            &self.machine.context.services.task_repo,
+                        )
+                        .await;
+                        let config = reconciliation_config();
+                        let app_handle = self.machine.context.services.app_handle.as_ref();
+                        let activity_event_repo =
+                            self.machine.context.services.activity_event_repo.as_ref();
+                        let freshness_result = freshness::ensure_branches_fresh(
+                            repo_path,
+                            &task,
+                            &project,
+                            task_id_str,
+                            plan_branch.as_deref(),
+                            app_handle,
+                            activity_event_repo,
+                            "re_executing",
+                            config,
+                        )
+                        .await;
+                        apply_freshness_result(freshness_result, &task, task_id_str, task_repo)
+                            .await?;
+                    }
+                }
 
                 // Run pre-execution setup before re-executing
                 let project_id_str = &self.machine.context.project_id;
@@ -967,33 +1161,41 @@ impl<'a> super::TransitionHandler<'a> {
                 }
 
                 // Check task metadata for merger prompt context flags
-                let (is_validation_recovery, is_plan_update_conflict, is_source_update_conflict) =
-                    if let Some(ref task_repo) = self.machine.context.services.task_repo {
-                        let tid = TaskId::from_string(task_id.clone());
-                        if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
-                            let meta = task
-                                .metadata
-                                .as_ref()
-                                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
-                            let validation = meta
-                                .as_ref()
-                                .and_then(|v| v.get("validation_recovery")?.as_bool())
-                                .unwrap_or(false);
-                            let plan_conflict = meta
-                                .as_ref()
-                                .and_then(|v| v.get("plan_update_conflict")?.as_bool())
-                                .unwrap_or(false);
-                            let source_conflict = meta
-                                .as_ref()
-                                .and_then(|v| v.get("source_update_conflict")?.as_bool())
-                                .unwrap_or(false);
-                            (validation, plan_conflict, source_conflict)
-                        } else {
-                            (false, false, false)
-                        }
+                let (
+                    is_validation_recovery,
+                    is_plan_update_conflict,
+                    is_source_update_conflict,
+                    freshness_conflict_count,
+                ) = if let Some(ref task_repo) = self.machine.context.services.task_repo {
+                    let tid = TaskId::from_string(task_id.clone());
+                    if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
+                        let meta = task
+                            .metadata
+                            .as_ref()
+                            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
+                        let validation = meta
+                            .as_ref()
+                            .and_then(|v| v.get("validation_recovery")?.as_bool())
+                            .unwrap_or(false);
+                        let plan_conflict = meta
+                            .as_ref()
+                            .and_then(|v| v.get("plan_update_conflict")?.as_bool())
+                            .unwrap_or(false);
+                        let source_conflict = meta
+                            .as_ref()
+                            .and_then(|v| v.get("source_update_conflict")?.as_bool())
+                            .unwrap_or(false);
+                        let freshness_count = meta
+                            .as_ref()
+                            .and_then(|v| v.get("freshness_conflict_count")?.as_u64())
+                            .unwrap_or(0) as u32;
+                        (validation, plan_conflict, source_conflict, freshness_count)
                     } else {
-                        (false, false, false)
-                    };
+                        (false, false, false, 0)
+                    }
+                } else {
+                    (false, false, false, 0)
+                };
 
                 let prompt = if is_validation_recovery {
                     format!(
@@ -1095,11 +1297,32 @@ impl<'a> super::TransitionHandler<'a> {
                     format!("Resolve merge conflicts for task: {}", task_id)
                 };
 
+                // Append retry context when this is a freshness conflict retry (count > 1).
+                // Only applies to freshness conflicts (plan_update or source_update).
+                let prompt =
+                    if freshness_conflict_count > 1
+                        && (is_plan_update_conflict || is_source_update_conflict)
+                    {
+                        let config = reconciliation_config();
+                        format!(
+                            "{}\n\nIMPORTANT: This is retry {} of {}. Previous resolution \
+                             attempts did not fully resolve the staleness. Take extra care to \
+                             resolve ALL conflicts completely. If you cannot resolve cleanly, \
+                             call report_incomplete rather than committing a partial resolution.",
+                            prompt,
+                            freshness_conflict_count,
+                            config.freshness_max_conflict_retries
+                        )
+                    } else {
+                        prompt
+                    };
+
                 tracing::info!(
                     task_id = task_id,
                     is_validation_recovery = is_validation_recovery,
                     is_plan_update_conflict = is_plan_update_conflict,
                     is_source_update_conflict = is_source_update_conflict,
+                    freshness_conflict_count = freshness_conflict_count,
                     "on_enter(Merging): Spawning merger agent via ChatService"
                 );
 

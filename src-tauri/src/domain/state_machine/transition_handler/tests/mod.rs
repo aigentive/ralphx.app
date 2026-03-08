@@ -106,6 +106,14 @@ mod merge_target_resolution;
 // Branch freshness timeout tests: config, env override, YAML deserialization
 mod branch_freshness_timeout;
 
+// Unit tests for ensure_branches_fresh(): config toggle, skip window, plan/source
+// result mapping, retry counting, dual-conflict sequential scenario
+mod freshness_tests;
+
+// Real git integration tests for ensure_branches_fresh(): fresh branch passes,
+// stale branch routes to Merging, disabled config skips
+mod freshness_integration_tests;
+
 // Merge pipeline timeout integration tests: real git + memory repos + mock agents
 // Covers: lsof timeout, pre-merge cleanup, stale index.lock, stale worktree, full E2E
 mod merge_pipeline_timeout_tests;
@@ -157,8 +165,24 @@ mod fast_cleanup_tests;
 // is_transient_merge_error classification, deferred vs MergeIncomplete, branch re-check
 mod merge_outcome_transient_retry_tests;
 
+// BranchFreshnessConflict transition tests: all 3 paths (Executing/ReExecuting/Reviewing → Merging)
+// and event classification validation
+mod transitions_freshness;
+
+// FreshnessMetadata unit tests: from_task_metadata, merge_into, clear_from, serde round-trips
+mod freshness_metadata_tests;
+
+// Freshness return routing unit tests: routing decision for each origin state,
+// metadata clearing on return, flag detection for early-return trigger
+mod merge_freshness_return_tests;
+
 // Phase 1 GUARD tests: first-attempt skip, parallel worktree deletion, deferred orphan scan
 mod phase1_guard_tests;
+
+// Integration tests for freshness return-path routing:
+//   test 1: executing origin (plan_update_conflict) → Ready after merge resolution
+//   test 2: reviewing origin (source_update_conflict) → PendingReview after merge resolution
+mod freshness_return_path_integration_tests;
 
 // Phase 2 MERGE + Phase 3 CLEANUP tests: immediate Merged status, deferred cleanup,
 // pending_cleanup metadata, startup resumption
@@ -167,3 +191,7 @@ mod phase2_phase3_merge_tests;
 // Locked worktree tests: empirical verification of unlock + double-force behavior
 // RC1: single --force fails on locked worktrees; -f -f and unlock+prune succeed
 mod locked_worktree_tests;
+
+// Concurrent plan branch freshness tests: multi-task concurrency, stress scenarios,
+// dirty worktree edge cases, git lock contention handling
+mod concurrent_freshness_tests;

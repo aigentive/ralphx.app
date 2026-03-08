@@ -27,6 +27,7 @@ use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 use crate::domain::state_machine::resolve_merge_branches;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::complete_merge_internal;
+use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
 use crate::infrastructure::agents::claude::scheduler_config;
 use crate::infrastructure::agents::claude::reconciliation_config;
 use crate::domain::state_machine::transition_handler::{
@@ -1065,6 +1066,92 @@ async fn complete_merge_and_schedule<R: Runtime>(
 }
 
 // ---------------------------------------------------------------------------
+// Freshness return routing
+// ---------------------------------------------------------------------------
+
+/// Route task back to Ready or PendingReview after a freshness conflict was resolved.
+///
+/// Called when `attempt_merge_auto_complete` detects `branch_freshness_conflict=true`
+/// in task metadata. The merger agent resolved a branch staleness conflict (plan←main
+/// or task←feature), NOT the actual task merge. The task must return to its origin state
+/// so execution/review can resume.
+///
+/// Routing:
+/// - `freshness_origin_state = "executing" | "re_executing"` → Ready
+/// - `freshness_origin_state = "reviewing"` → PendingReview
+/// - Unknown or absent origin → warn + Ready (safe fallback)
+async fn handle_freshness_return_routing<R: Runtime>(
+    ctx: &MergeAutoCompleteContext<'_, R>,
+    task: &mut Task,
+    freshness: FreshnessMetadata,
+) {
+    let target_status = match freshness.freshness_origin_state.as_deref() {
+        Some("executing") | Some("re_executing") => {
+            tracing::info!(
+                task_id = ctx.task_id_str,
+                origin = ?freshness.freshness_origin_state,
+                "handle_freshness_return_routing: routing to Ready (execution origin)"
+            );
+            InternalStatus::Ready
+        }
+        Some("reviewing") => {
+            tracing::info!(
+                task_id = ctx.task_id_str,
+                "handle_freshness_return_routing: routing to PendingReview (review origin)"
+            );
+            InternalStatus::PendingReview
+        }
+        Some(unknown) => {
+            tracing::warn!(
+                task_id = ctx.task_id_str,
+                origin = unknown,
+                "handle_freshness_return_routing: unknown freshness_origin_state — defaulting to Ready"
+            );
+            InternalStatus::Ready
+        }
+        None => {
+            tracing::warn!(
+                task_id = ctx.task_id_str,
+                "handle_freshness_return_routing: freshness_origin_state absent (corrupted metadata) — defaulting to Ready"
+            );
+            InternalStatus::Ready
+        }
+    };
+
+    // Clear freshness metadata before updating DB
+    let mut meta_val: serde_json::Value = task
+        .metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    FreshnessMetadata::clear_from(&mut meta_val);
+    task.metadata = Some(meta_val.to_string());
+    task.touch();
+
+    if let Err(e) = ctx.task_repo.update(task).await {
+        tracing::warn!(
+            task_id = ctx.task_id_str,
+            error = %e,
+            "handle_freshness_return_routing: failed to clear freshness metadata (non-fatal)"
+        );
+    }
+
+    // Transition via TaskTransitionService (state machine rules apply)
+    if let Err(e) = ctx
+        .build_transition_service()
+        .transition_task(&ctx.task_id, target_status)
+        .await
+    {
+        tracing::error!(
+            task_id = ctx.task_id_str,
+            error = %e,
+            target = ?target_status,
+            "handle_freshness_return_routing: failed to transition task"
+        );
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Main orchestrator
 // ---------------------------------------------------------------------------
 
@@ -1130,17 +1217,28 @@ pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
             None => return,
         };
 
-    // 5. Handle plan_update_conflict resolution
+    // 5. Handle freshness conflict return routing.
+    // When the merger agent resolved a branch staleness conflict (not the actual task merge),
+    // route back to Ready/PendingReview instead of proceeding with the normal merge pipeline.
+    if let Some(ref meta_val) = meta {
+        let freshness = FreshnessMetadata::from_task_metadata(meta_val);
+        if freshness.branch_freshness_conflict {
+            handle_freshness_return_routing(ctx, &mut task, freshness).await;
+            return;
+        }
+    }
+
+    // 6. Handle plan_update_conflict resolution
     if handle_plan_update_resolution(ctx, &mut task, &meta, &main_repo_path, &target_branch, &project).await.is_break() {
         return;
     }
 
-    // 6. Handle source_update_conflict resolution
+    // 7. Handle source_update_conflict resolution
     if handle_source_update_resolution(ctx, &mut task, &meta, &source_branch, &target_branch, &main_repo_path).await.is_break() {
         return;
     }
 
-    // 7. Handle validation recovery
+    // 8. Handle validation recovery
     let is_validation_recovery = meta
         .as_ref()
         .and_then(|v| v.get("validation_recovery")?.as_bool())
@@ -1149,13 +1247,13 @@ pub(crate) async fn attempt_merge_auto_complete<R: Runtime>(
         return;
     }
 
-    // 8. Resolve the merge commit SHA (fast-forward + verify)
+    // 9. Resolve the merge commit SHA (fast-forward + verify)
     let commit_sha = match resolve_merge_commit(ctx, &task, &main_repo_path, &source_branch, &target_branch, is_validation_recovery).await {
         Some(sha) => sha,
         None => return,
     };
 
-    // 9. Complete merge, unblock dependents, schedule ready tasks
+    // 10. Complete merge, unblock dependents, schedule ready tasks
     complete_merge_and_schedule(ctx, &mut task, &project, &commit_sha, &target_branch, &worktree_path, &main_repo_path, worktree).await;
 }
 

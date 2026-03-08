@@ -71,6 +71,7 @@ impl TaskStateMachine {
                     .add_blocker(Blocker::human_input(reason.clone()));
                 Response::Transition(State::Blocked)
             }
+            TaskEvent::BranchFreshnessConflict => Response::Transition(State::Merging),
             TaskEvent::Pause => Response::Transition(State::Paused),
             TaskEvent::Stop => Response::Transition(State::Stopped),
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
@@ -93,6 +94,7 @@ impl TaskStateMachine {
                 Response::Transition(State::Failed(FailedData::new(error.clone())))
             }
             TaskEvent::BlockerDetected { blocker_id: _ } => Response::Transition(State::Blocked),
+            TaskEvent::BranchFreshnessConflict => Response::Transition(State::Merging),
             TaskEvent::Pause => Response::Transition(State::Paused),
             TaskEvent::Stop => Response::Transition(State::Stopped),
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
@@ -185,6 +187,7 @@ impl TaskStateMachine {
                 }
                 Response::Transition(State::RevisionNeeded)
             }
+            TaskEvent::BranchFreshnessConflict => Response::Transition(State::Merging),
             TaskEvent::Pause => Response::Transition(State::Paused),
             TaskEvent::Stop => Response::Transition(State::Stopped),
             TaskEvent::Cancel => Response::Transition(State::Cancelled),
