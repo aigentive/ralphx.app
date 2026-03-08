@@ -61,7 +61,7 @@ This is a **large codebase** (~100k+ lines across Rust backend + React frontend)
 | **Lead reviews coverage** | Review test gaps before approving commits. Every code change = tests. |
 | **Audit ALL code paths** | When fixing a guard, search ALL paths to same destination. ❌ Fix one, miss another. |
 | **Shared safety helpers** | Extract guard logic to shared fn — ❌ duplicate across paths. |
-| **Debate before implementing** | Non-trivial fixes → spawn Alpha (minimal) vs Beta (comprehensive). |
+| **Adversarial plan convergence (NON-NEGOTIABLE)** | See "Adversarial Plan Convergence" section below. Non-trivial plans MUST pass multi-round adversarial debate before implementation. |
 | **Verify end-to-end** | After fix, verify user-visible behavior changed. Stale logs/UI can make working fixes look broken. |
 | **Dual-spawn architecture** | Agent teams need BOTH in-process Task subagents (do actual work, write to sidechain JSONL) AND external CLI processes (registry workers, `approve_team_plan`). ❌ Remove either — both are required by design. See `src-tauri/manual_agent_teams_process.txt`. |
 | **Sidechain output capture** | In-process Task subagents write to `~/.claude/projects/<slug>/<session>/subagents/agent-*.jsonl`, NOT to parent stdout. The lead's stream reader only sees parent stdout. If lead timeout (`team_line_read_secs`) kills the team, subagent work is lost even though the JSONL shows full conversations. |
@@ -122,6 +122,26 @@ Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool
 | 15 | New `.claude/rules/*.md` \| `**/CLAUDE.md` → include this maintainer note at top |
 | 16 | **DbConnection (NON-NEGOTIABLE):** All SQLite repo methods MUST use `db.run(\|conn\| { ... })` via `DbConnection` for non-blocking access. ❌ Direct `conn.lock().await` / `conn.query_row()` in async methods. See `db_connection.rs`. |
 
+## Adversarial Plan Convergence (NON-NEGOTIABLE)
+
+> Applies to: team leads, ideation team leads (`ideation-team-lead`), solo ideation orchestrators (`orchestrator-ideation`), and any agent planning non-trivial changes.
+
+Agent limitations mean no single plan can be trusted in full. Plans proposing code changes MUST pass adversarial debate as part of the VERIFY phase before implementation begins.
+
+**How it works:** The existing VERIFY phase (Phase 3.5/4.5) now has two layers — plan completeness (single critic) AND implementation feasibility (Alpha vs Beta adversarial debate). The agent decides which layers apply: plans proposing specific code changes, file modifications, or architectural modifications → both layers. High-level plans without implementation specifics → completeness only.
+
+| Step | What |
+|------|------|
+| **Alpha vs Beta** | Two parallel agents — Alpha (minimal/surgical fix) vs Beta (comprehensive/defense-in-depth). Each reads actual code, finds functional gaps, rates CRITICAL/HIGH/MEDIUM/LOW |
+| **Synthesize** | Merge findings into revised plan addressing all CRITICAL and HIGH gaps |
+| **Repeat** | New adversarial agents attack revised plan each round until convergence |
+| **Converge** | ALL CRITICAL, HIGH, and MEDIUM implementation gaps must be resolved. LOW may be deferred |
+| **User confirmation gate** | ❌ Implement before user confirms converged plan |
+
+**Adversarial agent rules:** Read actual code (not summaries). Concrete scenarios only ("if X then Y breaks at line Z"). ❌ Style/preference debates. Each gap: scenario + severity + blocks implementation?
+
+Full process details: `ralphx-plugin/agents/ideation-team-lead.md` (Phase 4.5) | `ralphx-plugin/agents/orchestrator-ideation.md` (Phase 3.5)
+
 ## Design System
 `specs/DESIGN.md` | Accent: `#ff6b35` (warm orange) ❌ purple/blue | Font: SF Pro ❌ Inter | **INVOKE `/tailwind-v4-shadcn` before UI work**
 
@@ -148,7 +168,7 @@ When delegate mode is active (TeamCreate tool available):
 | **Every change = tests** | Code changes without corresponding test coverage are incomplete. |
 | **Audit ALL code paths** | When fixing a bypass/guard, search for ALL code paths that reach the same destination. Fixing one path while missing another is a common regression (e.g., check_already_merged vs recover_deleted_source_branch). |
 | **Shared safety helpers** | Never duplicate safety/guard logic across code paths. Extract to a shared function so all paths use the same check. |
-| **Debate before implementing** | For non-trivial fixes, spawn Alpha (minimal) vs Beta (comprehensive) debate agents. This catches edge cases that single-agent implementation misses. |
+| **Adversarial plan convergence** | See "Adversarial Plan Convergence" section below. |
 | **Verify end-to-end** | After a fix, verify the user-visible behavior changed, not just the code. Stale logs/UI can make a working fix appear broken. |
 
 ## Git Conventions
