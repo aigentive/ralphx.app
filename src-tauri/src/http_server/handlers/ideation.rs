@@ -1055,6 +1055,8 @@ pub async fn update_plan_verification(
             format!("Invalid status: {}", req.status),
         )
     })?;
+    // in_progress may be overridden by condition 6 (reviewing+gaps → needs_revision)
+    let mut effective_in_progress = req.in_progress;
 
     // Transition validation matrix
     let current = session.verification_status;
@@ -1253,6 +1255,19 @@ pub async fn update_plan_verification(
         }
     }
 
+    // Condition 6: reviewing with gaps → needs_revision (auto-override, placed after convergence
+    // checks so convergence always takes priority). Triggers on ANY gap severity.
+    // TODO: Extract auto-transition logic to domain service state machine
+    if new_status == VerificationStatus::Reviewing && !metadata.current_gaps.is_empty() {
+        new_status = VerificationStatus::NeedsRevision;
+        effective_in_progress = false;
+        tracing::info!(
+            session_id = %session_id,
+            gap_count = metadata.current_gaps.len(),
+            "Server-side auto-transition: reviewing with gaps → NeedsRevision"
+        );
+    }
+
     let current_gap_score = gap_score(&metadata.current_gaps);
     let metadata_json = serde_json::to_string(&metadata).ok();
 
@@ -1260,7 +1275,7 @@ pub async fn update_plan_verification(
     state
         .app_state
         .ideation_session_repo
-        .update_verification_state(&session_id_obj, new_status, req.in_progress, metadata_json)
+        .update_verification_state(&session_id_obj, new_status, effective_in_progress, metadata_json)
         .await
         .map_err(|e| {
             error!(
@@ -1286,7 +1301,7 @@ pub async fn update_plan_verification(
             app_handle,
             &session_id,
             new_status,
-            req.in_progress,
+            effective_in_progress,
             Some(&metadata),
             None,
         );
@@ -1324,7 +1339,7 @@ pub async fn update_plan_verification(
     Ok(Json(VerificationResponse {
         session_id,
         status: new_status.to_string(),
-        in_progress: req.in_progress,
+        in_progress: effective_in_progress,
         current_round: if metadata.current_round > 0 {
             Some(metadata.current_round)
         } else {

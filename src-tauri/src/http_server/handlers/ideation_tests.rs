@@ -1152,3 +1152,173 @@ async fn test_get_plan_verification_round_trip_post_then_get() {
     assert_eq!(response.rounds[0].round, 1);
     assert_eq!(response.rounds[0].gap_count, 2); // 2 fingerprints (one per gap)
 }
+
+// ── Condition 6 tests: reviewing with gaps → needs_revision auto-transition ──
+
+/// Condition 6 test 1: reviewing + critical gaps → overridden to needs_revision
+#[tokio::test]
+async fn test_condition6_reviewing_critical_gaps_overrides_to_needs_revision() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "critical".to_string(),
+                category: "security".to_string(),
+                description: "Missing auth entirely".to_string(),
+                why_it_matters: None,
+            }]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "needs_revision", "critical gaps → needs_revision");
+    assert!(!resp.in_progress, "in_progress must be false after condition 6 override");
+}
+
+/// Condition 6 test 2: reviewing + medium-only gaps → overridden to needs_revision (any severity)
+#[tokio::test]
+async fn test_condition6_reviewing_medium_gaps_overrides_to_needs_revision() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "medium".to_string(),
+                category: "performance".to_string(),
+                description: "No caching layer defined".to_string(),
+                why_it_matters: None,
+            }]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "needs_revision", "medium gaps → needs_revision (any severity)");
+    assert!(!resp.in_progress, "in_progress must be false");
+}
+
+/// Condition 6 test 3: reviewing + gaps + max_rounds convergence → verified (convergence wins)
+#[tokio::test]
+async fn test_condition6_convergence_takes_priority_over_reviewing_with_gaps() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // max_rounds=1, round=1 → condition 3 fires first (max_rounds) → Verified
+    // condition 6 then sees Verified (not Reviewing) and does not fire
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "high".to_string(),
+                category: "scalability".to_string(),
+                description: "No horizontal scaling plan".to_string(),
+                why_it_matters: None,
+            }]),
+            convergence_reason: None,
+            max_rounds: Some(1),
+            parse_failed: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "verified", "convergence (max_rounds) takes priority over condition 6");
+}
+
+/// Condition 6 test 4: reviewing + no gaps → status stays reviewing (condition 6 does not fire)
+#[tokio::test]
+async fn test_condition6_reviewing_no_gaps_stays_reviewing() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![]), // explicitly empty — no gaps
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "reviewing", "no gaps → status stays reviewing");
+}
+
+/// Condition 6 test 5: reviewing + in_progress=false already + gaps → still overridden to needs_revision
+#[tokio::test]
+async fn test_condition6_reviewing_in_progress_false_with_gaps_overrides_to_needs_revision() {
+    let state = setup_test_state().await;
+    let session = IdeationSession::new(ProjectId::new());
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: false, // already false — condition 6 still fires on status
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "low".to_string(),
+                category: "documentation".to_string(),
+                description: "API docs incomplete".to_string(),
+                why_it_matters: None,
+            }]),
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+        }),
+    )
+    .await
+    .expect("handler must succeed");
+
+    let resp = result.0;
+    assert_eq!(
+        resp.status, "needs_revision",
+        "condition 6 fires regardless of requested in_progress value"
+    );
+    assert!(!resp.in_progress, "in_progress remains false");
+}

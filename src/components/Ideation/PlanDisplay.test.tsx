@@ -179,4 +179,66 @@ describe("PlanDisplay", () => {
       expect(screen.queryByText("Research Team")).not.toBeInTheDocument();
     });
   });
+
+  describe("Create Proposals button visibility", () => {
+    const onCreateProposals = vi.fn();
+
+    it("shows Create Proposals button when verified and linkedProposalsCount is 0", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          verificationStatus="verified"
+          linkedProposalsCount={0}
+          onCreateProposals={onCreateProposals}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /create proposals/i })).toBeInTheDocument();
+    });
+
+    it("shows Create Proposals button when skipped and linkedProposalsCount is 0", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          verificationStatus="skipped"
+          linkedProposalsCount={0}
+          onCreateProposals={onCreateProposals}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /create proposals/i })).toBeInTheDocument();
+    });
+
+    it("hides Create Proposals button when verified but linkedProposalsCount > 0", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          verificationStatus="verified"
+          linkedProposalsCount={2}
+          onCreateProposals={onCreateProposals}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: /create proposals/i })).not.toBeInTheDocument();
+    });
+
+    it("hides Create Proposals button after proposals are created (0 → N transition)", () => {
+      const { rerender } = render(
+        <PlanDisplay
+          plan={mockPlan}
+          verificationStatus="verified"
+          linkedProposalsCount={0}
+          onCreateProposals={onCreateProposals}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /create proposals/i })).toBeInTheDocument();
+
+      rerender(
+        <PlanDisplay
+          plan={mockPlan}
+          verificationStatus="verified"
+          linkedProposalsCount={3}
+          onCreateProposals={onCreateProposals}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: /create proposals/i })).not.toBeInTheDocument();
+    });
+  });
 });

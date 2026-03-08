@@ -268,12 +268,22 @@ function AppContent() {
     const fetchedSession = sessionData?.session;
     const isFetchedSessionCurrent = fetchedSession?.id === activeSession?.id;
 
-    if (isFetchedSessionCurrent && fetchedSession) {
-      // Fetched data matches the active session - use it (has full data)
-      return fetchedSession;
+    // Base: prefer fetched data when current, fallback to store session
+    const base = (isFetchedSessionCurrent && fetchedSession) ? fetchedSession : activeSession;
+
+    // Merge store verification fields when events have fired (seq > 0).
+    // This ensures real-time Tauri events take precedence over stale React Query data.
+    // Seq resets to 0 on session switch (new session has no events yet).
+    if (base && activeSession && activeSession.id === base.id && (activeSession.verificationUpdateSeq ?? 0) > 0) {
+      return {
+        ...base,
+        verificationStatus: activeSession.verificationStatus ?? base.verificationStatus,
+        verificationInProgress: activeSession.verificationInProgress ?? base.verificationInProgress,
+        gapScore: activeSession.gapScore !== undefined ? activeSession.gapScore : base.gapScore,
+      };
     }
-    // Fetched data is stale or missing - use store's activeSession as placeholder
-    return activeSession;
+
+    return base;
   }, [sessionData?.session, activeSession]);
 
   // Mirror PlanningView's isReadOnly: sessions that are not "active" are read-only

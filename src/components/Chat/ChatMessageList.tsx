@@ -329,7 +329,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         });
       });
       footerObserverRef.current.observe(el);
-    }, []); // Empty deps — observer is stable for component lifetime
+    }, [isAtBottomRef]); // isAtBottomRef is a stable ref — included to satisfy exhaustive-deps without changing behavior
 
     // Cleanup Footer ResizeObserver and rAF on unmount
     useEffect(() => {
@@ -616,7 +616,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       },
     }), [
       failedRun, onDismissFailedRun,
-      streamingToolCalls.length, streamingTasks, streamingContentBlocks,
+      streamingToolCalls, streamingTasks, streamingContentBlocks,
       isSending, isAgentRunning, handleFooterRef,
     ]);
 
