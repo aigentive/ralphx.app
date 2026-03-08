@@ -167,9 +167,18 @@ pub struct ReconciliationConfig {
     /// Skip freshness check if it was run within this many seconds. Default: 30.
     #[serde(default = "default_freshness_skip_window_secs")]
     pub freshness_skip_window_secs: u64,
-    /// Max number of freshness conflict retries before blocking execution. Default: 3.
+    /// Max number of freshness conflict retries before blocking execution. Default: 5.
     #[serde(default = "default_freshness_max_conflict_retries")]
     pub freshness_max_conflict_retries: u32,
+    /// Base backoff (seconds) between freshness conflict retries (exponential). Default: 60.
+    #[serde(default = "default_freshness_backoff_base_secs")]
+    pub freshness_backoff_base_secs: u64,
+    /// Maximum backoff cap (seconds) for freshness conflict retries. Default: 600.
+    #[serde(default = "default_freshness_backoff_max_secs")]
+    pub freshness_backoff_max_secs: u64,
+    /// Cooldown (seconds) before auto-resetting a freshness-blocked task. Default: 600.
+    #[serde(default = "default_freshness_auto_reset_cooldown_secs")]
+    pub freshness_auto_reset_cooldown_secs: u64,
 }
 
 fn default_merge_circuit_breaker_threshold() -> u64 {
@@ -185,7 +194,16 @@ fn default_freshness_skip_window_secs() -> u64 {
     30
 }
 fn default_freshness_max_conflict_retries() -> u32 {
-    3
+    5
+}
+fn default_freshness_backoff_base_secs() -> u64 {
+    60
+}
+fn default_freshness_backoff_max_secs() -> u64 {
+    600
+}
+fn default_freshness_auto_reset_cooldown_secs() -> u64 {
+    600
 }
 
 impl Default for ReconciliationConfig {
@@ -225,7 +243,10 @@ impl Default for ReconciliationConfig {
             merge_circuit_breaker_window: 5,
             execution_freshness_enabled: true,
             freshness_skip_window_secs: 30,
-            freshness_max_conflict_retries: 3,
+            freshness_max_conflict_retries: 5,
+            freshness_backoff_base_secs: 60,
+            freshness_backoff_max_secs: 600,
+            freshness_auto_reset_cooldown_secs: 600,
         }
     }
 }
@@ -427,6 +448,14 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.execution_failed_retry_max_secs, "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_MAX_SECS");
     env_u64!(cfg.reconciliation.merge_circuit_breaker_threshold, "RALPHX_MERGE_CIRCUIT_BREAKER_THRESHOLD");
     env_u64!(cfg.reconciliation.merge_circuit_breaker_window, "RALPHX_MERGE_CIRCUIT_BREAKER_WINDOW");
+    env_u64!(cfg.reconciliation.freshness_backoff_base_secs, "RALPHX_RECONCILIATION_FRESHNESS_BACKOFF_BASE_SECS");
+    env_u64!(cfg.reconciliation.freshness_backoff_max_secs, "RALPHX_RECONCILIATION_FRESHNESS_BACKOFF_MAX_SECS");
+    env_u64!(cfg.reconciliation.freshness_auto_reset_cooldown_secs, "RALPHX_RECONCILIATION_FRESHNESS_AUTO_RESET_COOLDOWN_SECS");
+    if let Some(v) = lookup("RALPHX_RECONCILIATION_FRESHNESS_MAX_CONFLICT_RETRIES") {
+        if let Ok(n) = v.parse::<u32>() {
+            cfg.reconciliation.freshness_max_conflict_retries = n;
+        }
+    }
 
     validate_reconciliation_config(&mut cfg.reconciliation);
 

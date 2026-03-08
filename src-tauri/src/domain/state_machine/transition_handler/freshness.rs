@@ -33,8 +33,8 @@ use super::merge_coordination::{
 /// Lifecycle:
 /// - Initialized: defaults (absent from metadata)
 /// - Incremented: once per `ensure_branches_fresh()` call that routes to Merging
-/// - Reset: when freshness check passes without conflicts
-/// - Cap: 3 (fourth attempt → ExecutionBlocked → task goes to Failed)
+/// - Reset: when freshness check passes without conflicts (via `reset_conflict_state()`)
+/// - Cap: 5 (auto-reset once with extended cooldown; second cap → ExecutionBlocked)
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
 pub struct FreshnessMetadata {
     /// True when task was routed to Merging due to stale branches.
@@ -48,7 +48,7 @@ pub struct FreshnessMetadata {
 
     /// Number of times freshness routing has occurred for this task.
     /// Incremented once per `ensure_branches_fresh()` call (not per conflict within a call).
-    /// Reset to 0 when freshness check passes without conflicts.
+    /// Reset to 0 when freshness check passes without conflicts (via `reset_conflict_state()`).
     #[serde(default)]
     pub freshness_conflict_count: u32,
 
@@ -76,6 +76,30 @@ pub struct FreshnessMetadata {
     /// The plan/target branch that was the merge target (task←feature direction).
     #[serde(default)]
     pub target_branch: Option<String>,
+
+    /// Timestamp until which the reconciler should not re-queue this task.
+    /// Set after a freshness conflict to implement exponential backoff.
+    #[serde(default)]
+    pub freshness_backoff_until: Option<DateTime<Utc>>,
+
+    /// Number of times the auto-reset has been triggered after hitting the cap.
+    /// 0 = never auto-reset; 1 = auto-reset once (second cap → ExecutionBlocked).
+    #[serde(default)]
+    pub freshness_auto_reset_count: u8,
+}
+
+/// Scope of cleanup to perform on freshness metadata.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FreshnessCleanupScope {
+    /// Clear only routing flags (branch_freshness_conflict, freshness_origin_state,
+    /// plan_update_conflict, source_update_conflict, conflict_files, source_branch,
+    /// target_branch). Preserves conflict count, backoff_until, and auto_reset_count.
+    RoutingOnly,
+    /// Clear conflict state (freshness_conflict_count=0, backoff_until=None,
+    /// auto_reset_count=0). Does NOT clear routing flags.
+    ConflictState,
+    /// Full clear: all freshness keys removed from metadata JSON.
+    Full,
 }
 
 impl FreshnessMetadata {
@@ -90,7 +114,57 @@ impl FreshnessMetadata {
         "conflict_files",
         "source_branch",
         "target_branch",
+        "freshness_backoff_until",
+        "freshness_auto_reset_count",
     ];
+
+    /// Dispatch cleanup by scope.
+    ///
+    /// - `RoutingOnly` → clears routing flags, preserves conflict count/backoff/auto_reset_count
+    /// - `ConflictState` → resets conflict state (count=0, backoff_until=None, auto_reset_count=0)
+    /// - `Full` → removes all freshness keys from JSON
+    pub fn cleanup(scope: FreshnessCleanupScope, meta: &mut Value) {
+        match scope {
+            FreshnessCleanupScope::RoutingOnly => {
+                let mut freshness = Self::from_task_metadata(meta);
+                freshness.clear_routing_flags();
+                freshness.merge_into(meta);
+            }
+            FreshnessCleanupScope::ConflictState => {
+                let mut freshness = Self::from_task_metadata(meta);
+                freshness.reset_conflict_state();
+                freshness.merge_into(meta);
+            }
+            FreshnessCleanupScope::Full => {
+                Self::clear_from(meta);
+            }
+        }
+    }
+
+    /// Clear routing flags only.
+    ///
+    /// Clears: branch_freshness_conflict, freshness_origin_state, plan_update_conflict,
+    /// source_update_conflict, conflict_files, source_branch, target_branch.
+    ///
+    /// Preserves: freshness_conflict_count, freshness_backoff_until, freshness_auto_reset_count.
+    pub fn clear_routing_flags(&mut self) {
+        self.branch_freshness_conflict = false;
+        self.freshness_origin_state = None;
+        self.plan_update_conflict = false;
+        self.source_update_conflict = false;
+        self.conflict_files = Vec::new();
+        self.source_branch = None;
+        self.target_branch = None;
+    }
+
+    /// Reset conflict state (count=0, backoff_until=None, auto_reset_count=0).
+    ///
+    /// Does NOT clear routing flags — use `clear_routing_flags()` for that.
+    pub fn reset_conflict_state(&mut self) {
+        self.freshness_conflict_count = 0;
+        self.freshness_backoff_until = None;
+        self.freshness_auto_reset_count = 0;
+    }
 
     /// Extract FreshnessMetadata from task metadata JSON.
     /// Returns struct with defaults for any missing fields.
@@ -153,14 +227,47 @@ impl FreshnessMetadata {
             Some(s) => obj.insert("target_branch".to_owned(), Value::String(s.clone())),
             None => obj.remove("target_branch"),
         };
+        match &self.freshness_backoff_until {
+            Some(dt) => obj.insert(
+                "freshness_backoff_until".to_owned(),
+                Value::String(dt.to_rfc3339()),
+            ),
+            None => obj.remove("freshness_backoff_until"),
+        };
+        obj.insert(
+            "freshness_auto_reset_count".to_owned(),
+            Value::Number(self.freshness_auto_reset_count.into()),
+        );
     }
 
     /// Remove all freshness keys from task metadata JSON.
+    ///
+    /// Use when task completes or is fully cleaned up. For partial cleanup, use `cleanup(scope)`.
     pub fn clear_from(metadata: &mut Value) {
         if let Some(obj) = metadata.as_object_mut() {
             for key in Self::KEYS {
                 obj.remove(*key);
             }
+        }
+    }
+
+    /// Compute exponential backoff duration: min(base * 2^(count-1), max).
+    /// Returns None if count is 0.
+    pub fn compute_backoff(count: u32, base_secs: u64, max_secs: u64) -> Option<chrono::Duration> {
+        if count == 0 {
+            return None;
+        }
+        let exponent = count.saturating_sub(1);
+        let multiplier = 1u64.checked_shl(exponent).unwrap_or(u64::MAX);
+        let secs = base_secs.saturating_mul(multiplier).min(max_secs);
+        Some(chrono::Duration::seconds(secs as i64))
+    }
+
+    /// Returns true if the task is currently in backoff (backoff_until is in the future).
+    pub fn is_in_backoff(&self) -> bool {
+        match self.freshness_backoff_until {
+            Some(until) => Utc::now() < until,
+            None => false,
         }
     }
 }
@@ -217,7 +324,32 @@ pub async fn ensure_branches_fresh(
         .unwrap_or_else(|| serde_json::json!({}));
     let mut freshness = FreshnessMetadata::from_task_metadata(&task_metadata_val);
 
-    // 3. Skip-if-recently-checked
+    // 3. Backoff check — skip re-queuing if still in cooldown window
+    if freshness.is_in_backoff() {
+        let until = freshness.freshness_backoff_until.expect("checked above");
+        let remaining = (until - Utc::now()).num_seconds().max(0);
+        warn!(
+            task_id = task_id_str,
+            backoff_until = %until.to_rfc3339(),
+            remaining_secs = remaining,
+            conflict_count = freshness.freshness_conflict_count,
+            "Skipping freshness check — task in backoff window"
+        );
+        emit_freshness_activity(
+            activity_event_repo,
+            task_id_str,
+            "branch_freshness_skipped",
+            serde_json::json!({
+                "reason": "backoff",
+                "backoff_until": until.to_rfc3339(),
+                "remaining_secs": remaining,
+            }),
+        )
+        .await;
+        return Ok(freshness);
+    }
+
+    // 4. Skip-if-recently-checked
     if let Some(ref last_check_str) = freshness.last_freshness_check_at.clone() {
         if let Ok(last_check) = last_check_str.parse::<DateTime<Utc>>() {
             let elapsed = Utc::now() - last_check;
@@ -244,7 +376,7 @@ pub async fn ensure_branches_fresh(
         }
     }
 
-    // 4. Dirty worktree guard
+    // 5. Dirty worktree guard
     if is_worktree_dirty(repo_path).await {
         warn!(
             task_id = task_id_str,
@@ -285,7 +417,7 @@ pub async fn ensure_branches_fresh(
 
     let base_branch = project.base_branch.as_deref().unwrap_or("main");
 
-    // 5. Plan freshness check (plan←main)
+    // 6. Plan freshness check (plan←main)
     if let Some(plan_branch_name) = plan_branch {
         let plan_result = tokio::time::timeout(
             freshness_timeout,
@@ -323,31 +455,27 @@ pub async fn ensure_branches_fresh(
             Ok(PlanUpdateResult::Conflicts { conflict_files }) => {
                 // Single-increment per ensure_branches_fresh() call
                 freshness.freshness_conflict_count += 1;
-                if freshness.freshness_conflict_count > config.freshness_max_conflict_retries {
-                    emit_freshness_activity(
-                        activity_event_repo,
-                        task_id_str,
-                        "branch_freshness_blocked",
-                        serde_json::json!({
-                            "reason": "retry_cap_exceeded",
-                            "conflict_count": freshness.freshness_conflict_count,
-                            "max_retries": config.freshness_max_conflict_retries,
-                        }),
-                    )
-                    .await;
-                    return Err(FreshnessAction::ExecutionBlocked {
-                        reason: format!(
-                            "Freshness conflict retry cap exceeded ({}/{})",
-                            freshness.freshness_conflict_count,
-                            config.freshness_max_conflict_retries
-                        ),
-                    });
-                }
 
                 let conflict_files_str: Vec<String> = conflict_files
                     .iter()
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect();
+
+                // Auto-recovery at cap (or block on second cap)
+                if let Some(action) = handle_cap_if_needed(
+                    &mut freshness,
+                    &conflict_files_str,
+                    task_id_str,
+                    activity_event_repo,
+                    config,
+                )
+                .await
+                {
+                    return Err(action);
+                }
+
+                // Set exponential backoff for next attempt
+                set_backoff(&mut freshness, config);
 
                 freshness.branch_freshness_conflict = true;
                 freshness.freshness_origin_state = Some(origin_state.to_string());
@@ -393,7 +521,7 @@ pub async fn ensure_branches_fresh(
         }
     }
 
-    // 6. Source freshness check (task←plan)
+    // 7. Source freshness check (task←plan)
     let source_branch = task.task_branch.as_deref().unwrap_or("");
     let target_branch = plan_branch.unwrap_or(base_branch);
 
@@ -440,31 +568,27 @@ pub async fn ensure_branches_fresh(
             Ok(SourceUpdateResult::Conflicts { conflict_files }) => {
                 // Single-increment per ensure_branches_fresh() call
                 freshness.freshness_conflict_count += 1;
-                if freshness.freshness_conflict_count > config.freshness_max_conflict_retries {
-                    emit_freshness_activity(
-                        activity_event_repo,
-                        task_id_str,
-                        "branch_freshness_blocked",
-                        serde_json::json!({
-                            "reason": "retry_cap_exceeded",
-                            "conflict_count": freshness.freshness_conflict_count,
-                            "max_retries": config.freshness_max_conflict_retries,
-                        }),
-                    )
-                    .await;
-                    return Err(FreshnessAction::ExecutionBlocked {
-                        reason: format!(
-                            "Freshness conflict retry cap exceeded ({}/{})",
-                            freshness.freshness_conflict_count,
-                            config.freshness_max_conflict_retries
-                        ),
-                    });
-                }
 
                 let conflict_files_str: Vec<String> = conflict_files
                     .iter()
                     .map(|p| p.to_string_lossy().into_owned())
                     .collect();
+
+                // Auto-recovery at cap (or block on second cap)
+                if let Some(action) = handle_cap_if_needed(
+                    &mut freshness,
+                    &conflict_files_str,
+                    task_id_str,
+                    activity_event_repo,
+                    config,
+                )
+                .await
+                {
+                    return Err(action);
+                }
+
+                // Set exponential backoff for next attempt
+                set_backoff(&mut freshness, config);
 
                 freshness.branch_freshness_conflict = true;
                 freshness.freshness_origin_state = Some(origin_state.to_string());
@@ -506,10 +630,10 @@ pub async fn ensure_branches_fresh(
         }
     }
 
-    // 7. Both checks passed — update timestamp and reset conflict count
+    // 8. Both checks passed — update timestamp and reset conflict state
     freshness.last_freshness_check_at = Some(Utc::now().to_rfc3339());
     freshness.branch_freshness_conflict = false;
-    freshness.freshness_conflict_count = 0;
+    freshness.reset_conflict_state();
 
     emit_freshness_activity(
         activity_event_repo,
@@ -520,6 +644,101 @@ pub async fn ensure_branches_fresh(
     .await;
 
     Ok(freshness)
+}
+
+/// Set exponential backoff on the freshness metadata after a conflict.
+/// backoff = min(base * 2^(count-1), max)
+fn set_backoff(freshness: &mut FreshnessMetadata, config: &ReconciliationConfig) {
+    if let Some(duration) = FreshnessMetadata::compute_backoff(
+        freshness.freshness_conflict_count,
+        config.freshness_backoff_base_secs,
+        config.freshness_backoff_max_secs,
+    ) {
+        freshness.freshness_backoff_until = Some(Utc::now() + duration);
+    }
+}
+
+/// Handle auto-recovery or block when retry cap is exceeded.
+///
+/// Returns `Some(FreshnessAction::ExecutionBlocked)` if the task should be blocked,
+/// or `None` if the call should continue (auto-reset occurred or cap not reached).
+async fn handle_cap_if_needed(
+    freshness: &mut FreshnessMetadata,
+    conflict_files: &[String],
+    task_id_str: &str,
+    activity_event_repo: Option<&Arc<dyn ActivityEventRepository>>,
+    config: &ReconciliationConfig,
+) -> Option<FreshnessAction> {
+    if freshness.freshness_conflict_count <= config.freshness_max_conflict_retries {
+        return None;
+    }
+
+    let total = freshness.freshness_conflict_count;
+    let files = conflict_files.join(", ");
+
+    if freshness.freshness_auto_reset_count == 0 {
+        // First cap: auto-reset with extended cooldown
+        let cooldown_secs = config.freshness_auto_reset_cooldown_secs;
+        let cooldown_minutes = cooldown_secs / 60;
+        freshness.freshness_conflict_count = 0;
+        freshness.freshness_backoff_until =
+            Some(Utc::now() + chrono::Duration::seconds(cooldown_secs as i64));
+        freshness.freshness_auto_reset_count = 1;
+
+        warn!(
+            task_id = task_id_str,
+            total_conflicts = total,
+            cooldown_minutes = cooldown_minutes,
+            conflict_files = %files,
+            "Freshness conflict cap reached — auto-resetting with extended cooldown"
+        );
+
+        emit_freshness_activity(
+            activity_event_repo,
+            task_id_str,
+            "branch_freshness_auto_reset",
+            serde_json::json!({
+                "total_conflicts": total,
+                "cooldown_minutes": cooldown_minutes,
+                "conflict_files": conflict_files,
+                "auto_reset_count": 1,
+            }),
+        )
+        .await;
+
+        // Return None: after auto-reset, caller proceeds to RouteToMerging with reset state
+        // The backoff_until we set above will prevent immediate re-queuing
+        None
+    } else {
+        // Second cap: ExecutionBlocked
+        let minutes = config.freshness_auto_reset_cooldown_secs / 60;
+        let msg = format!(
+            "FRESHNESS_BLOCKED|{}|{}|{}|Persistent freshness conflicts after auto-reset",
+            total, minutes, files
+        );
+
+        warn!(
+            task_id = task_id_str,
+            total_conflicts = total,
+            conflict_files = %files,
+            "Freshness conflict cap exceeded after auto-reset — blocking execution"
+        );
+
+        emit_freshness_activity(
+            activity_event_repo,
+            task_id_str,
+            "branch_freshness_blocked",
+            serde_json::json!({
+                "reason": "retry_cap_exceeded_after_auto_reset",
+                "conflict_count": total,
+                "max_retries": config.freshness_max_conflict_retries,
+                "conflict_files": conflict_files,
+            }),
+        )
+        .await;
+
+        Some(FreshnessAction::ExecutionBlocked { reason: msg })
+    }
 }
 
 /// Returns true if the git worktree has uncommitted changes.
@@ -563,6 +782,7 @@ async fn emit_freshness_activity(
                 .and_then(|v| v.as_str())
                 .unwrap_or("unknown")
         ),
+        "branch_freshness_auto_reset" => "Branch freshness auto-reset after cap".to_string(),
         _ => event_kind.to_string(),
     };
     let metadata_str = serde_json::json!({
@@ -580,5 +800,118 @@ async fn emit_freshness_activity(
             error = %e,
             "Failed to save freshness activity event (non-fatal)"
         );
+    }
+}
+
+#[cfg(test)]
+mod field_sync_tests {
+    use super::*;
+
+    /// Verify that KEYS contains exactly the fields in FreshnessMetadata.
+    /// If this test fails, KEYS is out of sync with the struct fields.
+    #[test]
+    fn keys_matches_struct_fields() {
+        // Use a fully-populated instance (all Options set to Some) to ensure all keys appear.
+        let meta = FreshnessMetadata {
+            branch_freshness_conflict: true,
+            freshness_origin_state: Some("executing".to_string()),
+            freshness_conflict_count: 1,
+            plan_update_conflict: true,
+            source_update_conflict: false,
+            last_freshness_check_at: Some("2026-01-01T00:00:00Z".to_string()),
+            conflict_files: vec!["foo.rs".to_string()],
+            source_branch: Some("task/foo".to_string()),
+            target_branch: Some("plan/foo".to_string()),
+            freshness_backoff_until: Some(Utc::now()),
+            freshness_auto_reset_count: 0,
+        };
+        let mut json = serde_json::json!({});
+        meta.merge_into(&mut json);
+        let obj = json.as_object().unwrap();
+
+        // Every KEYS entry should appear in merge_into() output (with Some values)
+        for key in FreshnessMetadata::KEYS {
+            assert!(
+                obj.contains_key(*key),
+                "KEYS entry '{key}' not found in merge_into() output — KEYS is out of sync"
+            );
+        }
+
+        // Field count: update this when adding fields to FreshnessMetadata
+        assert_eq!(
+            FreshnessMetadata::KEYS.len(),
+            11,
+            "KEYS length mismatch — update this assertion when adding fields"
+        );
+    }
+
+    #[test]
+    fn compute_backoff_exponential() {
+        // count=1: base * 2^0 = base = 60
+        let d = FreshnessMetadata::compute_backoff(1, 60, 600).unwrap();
+        assert_eq!(d.num_seconds(), 60);
+
+        // count=2: base * 2^1 = 120
+        let d = FreshnessMetadata::compute_backoff(2, 60, 600).unwrap();
+        assert_eq!(d.num_seconds(), 120);
+
+        // count=4: base * 2^3 = 480
+        let d = FreshnessMetadata::compute_backoff(4, 60, 600).unwrap();
+        assert_eq!(d.num_seconds(), 480);
+
+        // count=5: base * 2^4 = 960 → capped at 600
+        let d = FreshnessMetadata::compute_backoff(5, 60, 600).unwrap();
+        assert_eq!(d.num_seconds(), 600);
+
+        // count=0: None
+        assert!(FreshnessMetadata::compute_backoff(0, 60, 600).is_none());
+    }
+
+    #[test]
+    fn clear_routing_flags_preserves_conflict_state() {
+        let mut meta = FreshnessMetadata {
+            branch_freshness_conflict: true,
+            freshness_origin_state: Some("executing".to_string()),
+            freshness_conflict_count: 3,
+            plan_update_conflict: true,
+            source_update_conflict: false,
+            conflict_files: vec!["foo.rs".to_string()],
+            source_branch: Some("task/foo".to_string()),
+            target_branch: Some("plan/foo".to_string()),
+            freshness_backoff_until: Some(Utc::now() + chrono::Duration::seconds(60)),
+            freshness_auto_reset_count: 1,
+            last_freshness_check_at: None,
+        };
+        meta.clear_routing_flags();
+
+        assert!(!meta.branch_freshness_conflict);
+        assert!(meta.freshness_origin_state.is_none());
+        assert!(!meta.plan_update_conflict);
+        assert!(!meta.source_update_conflict);
+        assert!(meta.conflict_files.is_empty());
+        assert!(meta.source_branch.is_none());
+        assert!(meta.target_branch.is_none());
+        // Preserved:
+        assert_eq!(meta.freshness_conflict_count, 3);
+        assert!(meta.freshness_backoff_until.is_some());
+        assert_eq!(meta.freshness_auto_reset_count, 1);
+    }
+
+    #[test]
+    fn reset_conflict_state_clears_count_and_backoff() {
+        let mut meta = FreshnessMetadata {
+            freshness_conflict_count: 5,
+            freshness_backoff_until: Some(Utc::now() + chrono::Duration::seconds(60)),
+            freshness_auto_reset_count: 1,
+            branch_freshness_conflict: true,
+            ..Default::default()
+        };
+        meta.reset_conflict_state();
+
+        assert_eq!(meta.freshness_conflict_count, 0);
+        assert!(meta.freshness_backoff_until.is_none());
+        assert_eq!(meta.freshness_auto_reset_count, 0);
+        // Routing flags NOT cleared:
+        assert!(meta.branch_freshness_conflict);
     }
 }

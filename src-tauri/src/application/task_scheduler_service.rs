@@ -39,6 +39,7 @@ use crate::domain::state_machine::services::TaskScheduler;
 
 use super::{InteractiveProcessRegistry, TaskTransitionService};
 use crate::domain::state_machine::transition_handler::{get_trigger_origin, set_trigger_origin};
+use crate::domain::state_machine::transition_handler::freshness::FreshnessMetadata;
 
 /// Production implementation of TaskScheduler for auto-scheduling Ready tasks.
 ///
@@ -233,6 +234,22 @@ impl<R: Runtime> TaskSchedulerService<R> {
                     "Skipping task: plan branch is no longer active (merged or abandoned)"
                 );
                 continue;
+            }
+
+            // Freshness backoff guard: skip tasks that are within a freshness conflict
+            // backoff window. This prevents tasks from consuming execution slots while
+            // waiting for branch conflicts to resolve.
+            if let Some(ref metadata_str) = task.metadata {
+                if let Ok(freshness) = serde_json::from_str::<FreshnessMetadata>(metadata_str) {
+                    if freshness.is_in_backoff() {
+                        tracing::debug!(
+                            task_id = task.id.as_str(),
+                            backoff_until = ?freshness.freshness_backoff_until,
+                            "Skipping task: in freshness backoff window"
+                        );
+                        continue;
+                    }
+                }
             }
 
             // This task is schedulable

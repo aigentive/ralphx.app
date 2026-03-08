@@ -29,6 +29,7 @@ import {
 import { useIdeationEvents } from "@/hooks/useIdeationEvents";
 import { usePlanArtifactEvents } from "@/hooks/useEvents.planArtifact";
 import { useVerificationEvents } from "@/hooks/useVerificationEvents";
+import { useFreshnessBlockedNotification } from "@/hooks/useFreshnessBlockedNotification";
 import { createEventBus, type EventBus } from "@/lib/event-bus";
 
 /**
@@ -83,6 +84,7 @@ function GlobalEventListeners({ children }: { children: ReactNode }) {
   useIdeationEvents(); // Listen to ideation events (session title updates)
   usePlanArtifactEvents(); // Listen to plan artifact events for real-time updates
   useVerificationEvents(); // Listen to plan verification status changes globally
+  useFreshnessBlockedNotification(); // Show toast when task is freshness-blocked
 
   return <>{children}</>;
 }
