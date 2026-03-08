@@ -195,11 +195,6 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
         g.statuses.includes(task.internalStatus as InternalStatus)
       );
       if (matchingGroup) {
-        // The awaiting_merge group only shows plan_merge tasks — prevents regular
-        // blocked tasks from leaking into Done even if the backend returns them.
-        if (matchingGroup.id === "awaiting_merge" && task.category !== "plan_merge") {
-          return;
-        }
         const existing = grouped.get(matchingGroup.id) || [];
         grouped.set(matchingGroup.id, [...existing, task]);
       }
