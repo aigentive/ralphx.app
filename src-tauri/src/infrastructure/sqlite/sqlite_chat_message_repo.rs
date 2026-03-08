@@ -174,7 +174,7 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
         let session_id_str = session_id.as_str().to_string();
         self.db.run(move |conn| {
             let count: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM chat_messages WHERE session_id = ?1",
+                "SELECT COUNT(*) FROM chat_messages WHERE session_id = ?1 AND role IN ('user', 'orchestrator')",
                 [session_id_str],
                 |row| row.get(0),
             )?;
@@ -189,13 +189,36 @@ impl ChatMessageRepository for SqliteChatMessageRepository {
     ) -> AppResult<Vec<ChatMessage>> {
         let session_id_str = session_id.as_str().to_string();
         self.db.run(move |conn| {
-            // Get the most recent messages, but return them in ascending order
+            // Get the most recent user/orchestrator messages, but return them in ascending order
             let mut stmt = conn.prepare(
                 "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, created_at
-                 FROM chat_messages WHERE session_id = ?1 ORDER BY created_at DESC, rowid DESC LIMIT ?2",
+                 FROM chat_messages WHERE session_id = ?1 AND role IN ('user', 'orchestrator') ORDER BY created_at DESC, rowid DESC LIMIT ?2",
             )?;
             let mut messages: Vec<ChatMessage> = stmt
                 .query_map(rusqlite::params![session_id_str, limit], |row| {
+                    ChatMessage::from_row(row)
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            // Reverse to return in ascending order (oldest to newest)
+            messages.reverse();
+            Ok(messages)
+        }).await
+    }
+
+    async fn get_recent_by_session_paginated(
+        &self,
+        session_id: &IdeationSessionId,
+        limit: u32,
+        offset: u32,
+    ) -> AppResult<Vec<ChatMessage>> {
+        let session_id_str = session_id.as_str().to_string();
+        self.db.run(move |conn| {
+            let mut stmt = conn.prepare(
+                "SELECT id, session_id, project_id, task_id, conversation_id, role, content, metadata, parent_message_id, tool_calls, content_blocks, created_at
+                 FROM chat_messages WHERE session_id = ?1 AND role IN ('user', 'orchestrator') ORDER BY created_at DESC, rowid DESC LIMIT ?2 OFFSET ?3",
+            )?;
+            let mut messages: Vec<ChatMessage> = stmt
+                .query_map(rusqlite::params![session_id_str, limit, offset], |row| {
                     ChatMessage::from_row(row)
                 })?
                 .collect::<Result<Vec<_>, _>>()?;

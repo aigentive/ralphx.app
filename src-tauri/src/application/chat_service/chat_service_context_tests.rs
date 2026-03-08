@@ -642,6 +642,8 @@ async fn test_build_command_with_team_mode_true() {
         None,
         true, // team_mode=true
         chat_attachment_repo,
+        &[],
+        0,
     )
     .await;
 
@@ -671,6 +673,8 @@ async fn test_build_command_with_team_mode_false() {
         None,
         false, // team_mode=false
         chat_attachment_repo,
+        &[],
+        0,
     )
     .await;
 
@@ -680,13 +684,16 @@ async fn test_build_command_with_team_mode_false() {
 // Tests for build_resume_initial_prompt
 
 #[test]
-fn test_build_resume_initial_prompt_ideation_includes_context_id_and_recovery_note() {
+fn test_build_resume_initial_prompt_ideation_includes_context_id_no_recovery_note() {
+    // After the session_history injection refactor, the <recovery_note> has been removed.
+    // build_resume_initial_prompt now delegates to build_initial_prompt.
     let context_id = "test-session-123";
     let user_message = "hello";
-    let result = build_resume_initial_prompt(ChatContextType::Ideation, context_id, user_message);
+    let result =
+        build_resume_initial_prompt(ChatContextType::Ideation, context_id, user_message, &[], 0);
     assert!(result.contains(&format!("<context_id>{}</context_id>", context_id)));
-    assert!(result.contains("<recovery_note>"));
-    assert!(result.contains("get_session_messages"));
+    assert!(!result.contains("<recovery_note>"));
+    assert!(!result.contains("get_session_messages"));
     assert!(result.contains(&format!("<user_message>{}</user_message>", user_message)));
 }
 
@@ -694,7 +701,8 @@ fn test_build_resume_initial_prompt_ideation_includes_context_id_and_recovery_no
 fn test_build_resume_initial_prompt_task_includes_context_id_no_recovery_note() {
     let context_id = "task-abc";
     let user_message = "hello";
-    let result = build_resume_initial_prompt(ChatContextType::Task, context_id, user_message);
+    let result =
+        build_resume_initial_prompt(ChatContextType::Task, context_id, user_message, &[], 0);
     assert!(result.contains(&format!("<task_id>{}</task_id>", context_id)));
     assert!(!result.contains("<recovery_note>"));
     assert!(result.contains(&format!("<user_message>{}</user_message>", user_message)));
@@ -704,7 +712,8 @@ fn test_build_resume_initial_prompt_task_includes_context_id_no_recovery_note() 
 fn test_build_resume_initial_prompt_project_includes_context_id_no_recovery_note() {
     let context_id = "project-xyz";
     let user_message = "hello";
-    let result = build_resume_initial_prompt(ChatContextType::Project, context_id, user_message);
+    let result =
+        build_resume_initial_prompt(ChatContextType::Project, context_id, user_message, &[], 0);
     assert!(result.contains(&format!("<project_id>{}</project_id>", context_id)));
     assert!(!result.contains("<recovery_note>"));
 }
@@ -714,8 +723,9 @@ fn test_build_resume_initial_prompt_task_execution_delegates_to_initial_prompt()
     let context_id = "task-exec-123";
     let user_message = "execute";
     let resume =
-        build_resume_initial_prompt(ChatContextType::TaskExecution, context_id, user_message);
-    let initial = build_initial_prompt(ChatContextType::TaskExecution, context_id, user_message);
+        build_resume_initial_prompt(ChatContextType::TaskExecution, context_id, user_message, &[], 0);
+    let initial =
+        build_initial_prompt(ChatContextType::TaskExecution, context_id, user_message, &[], 0);
     assert_eq!(resume, initial);
 }
 
@@ -744,6 +754,8 @@ async fn test_build_resume_command_with_team_mode() {
         chat_attachment_repo.clone(),
         ideation_repo.clone(),
         task_repo.clone(),
+        &[],
+        0,
     )
     .await;
 
@@ -761,10 +773,423 @@ async fn test_build_resume_command_with_team_mode() {
         chat_attachment_repo,
         ideation_repo,
         task_repo,
+        &[],
+        0,
     )
     .await;
 
     // Test passes if no panics occurred
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests for format_session_history
+// ──────────────────────────────────────────────────────────────────────────────
+
+fn make_user_msg(session_id: &IdeationSessionId, content: &str) -> ChatMessage {
+    ChatMessage::user_in_session(session_id.clone(), content)
+}
+
+fn make_orchestrator_msg(session_id: &IdeationSessionId, content: &str) -> ChatMessage {
+    ChatMessage::orchestrator_in_session(session_id.clone(), content)
+}
+
+fn make_system_msg(session_id: &IdeationSessionId, content: &str) -> ChatMessage {
+    ChatMessage::system_in_session(session_id.clone(), content)
+}
+
+#[test]
+fn format_session_history_empty_slice_returns_empty_string() {
+    let result = format_session_history(&[], 0);
+    assert_eq!(result, "");
+}
+
+#[test]
+fn format_session_history_only_system_messages_returns_empty_string() {
+    let sid = IdeationSessionId::new();
+    let msgs = vec![make_system_msg(&sid, "system init")];
+    let result = format_session_history(&msgs, 1);
+    assert_eq!(result, "");
+}
+
+#[test]
+fn format_session_history_basic_user_and_orchestrator() {
+    let sid = IdeationSessionId::new();
+    let user_msg = make_user_msg(&sid, "hello");
+    let orch_msg = make_orchestrator_msg(&sid, "hi back");
+    let msgs = vec![user_msg, orch_msg];
+    let result = format_session_history(&msgs, 2);
+    assert!(result.contains("<session_history"));
+    assert!(result.contains("count=\"2\""));
+    assert!(result.contains("total_available=\"2\""));
+    assert!(result.contains("truncated=\"false\""));
+    assert!(result.contains(r#"role="user""#));
+    assert!(result.contains("hello"));
+    assert!(result.contains(r#"role="orchestrator""#));
+    assert!(result.contains("hi back"));
+    assert!(result.contains("</session_history>"));
+}
+
+#[test]
+fn format_session_history_xml_escaping() {
+    let sid = IdeationSessionId::new();
+    let msg = make_user_msg(&sid, r#"5 < 10 & "hello" > world"#);
+    let result = format_session_history(&[msg], 1);
+    assert!(result.contains("5 &lt; 10 &amp; &quot;hello&quot; &gt; world"));
+    // Raw chars must not appear unescaped inside tag content
+    assert!(!result.contains("5 < 10"));
+}
+
+#[test]
+fn format_session_history_recovery_context_filtered_out() {
+    let sid = IdeationSessionId::new();
+    let mut recovery_msg = make_user_msg(&sid, "this is recovery");
+    recovery_msg.metadata = Some(r#"{"recovery_context": true}"#.to_string());
+    let normal_msg = make_user_msg(&sid, "normal message");
+    let msgs = vec![recovery_msg, normal_msg];
+    let result = format_session_history(&msgs, 2);
+    assert!(!result.contains("this is recovery"));
+    assert!(result.contains("normal message"));
+}
+
+#[test]
+fn format_session_history_all_recovery_context_returns_empty_string() {
+    let sid = IdeationSessionId::new();
+    let mut msg = make_user_msg(&sid, "recovery only");
+    msg.metadata = Some(r#"{"recovery_context": true}"#.to_string());
+    let result = format_session_history(&[msg], 1);
+    assert_eq!(result, "");
+}
+
+#[test]
+fn format_session_history_subagent_roles_filtered_out() {
+    let sid = IdeationSessionId::new();
+    // Worker, Reviewer, Merger roles should be excluded (not User or Orchestrator)
+    let mut worker_msg = ChatMessage::user_in_session(sid.clone(), "worker output");
+    worker_msg.role = crate::domain::entities::MessageRole::Worker;
+    let mut reviewer_msg = ChatMessage::user_in_session(sid.clone(), "reviewer output");
+    reviewer_msg.role = crate::domain::entities::MessageRole::Reviewer;
+    let mut merger_msg = ChatMessage::user_in_session(sid.clone(), "merger output");
+    merger_msg.role = crate::domain::entities::MessageRole::Merger;
+    let user_msg = make_user_msg(&sid, "user message");
+
+    let msgs = vec![worker_msg, reviewer_msg, merger_msg, user_msg];
+    let result = format_session_history(&msgs, 4);
+    assert!(!result.contains("worker output"));
+    assert!(!result.contains("reviewer output"));
+    assert!(!result.contains("merger output"));
+    assert!(result.contains("user message"));
+}
+
+#[test]
+fn format_session_history_per_message_2000_char_truncation() {
+    let sid = IdeationSessionId::new();
+    let long_content = "x".repeat(3000);
+    let msg = make_user_msg(&sid, &long_content);
+    let result = format_session_history(&[msg], 1);
+    // The 2000 x's should be there, but not 2001+
+    assert!(result.contains(&"x".repeat(2000)));
+    assert!(!result.contains(&"x".repeat(2001)));
+    assert!(result.contains("[truncated]"));
+}
+
+#[test]
+fn format_session_history_8000_char_cap() {
+    let sid = IdeationSessionId::new();
+    // Create messages that together exceed 8000 chars after escaping
+    let mut msgs = Vec::new();
+    // Each message ~1500 chars, so 6 messages = 9000 chars; cap at 8000 should stop at ~5
+    for i in 0..6 {
+        msgs.push(make_user_msg(&sid, &format!("{}: {}", i, "y".repeat(1490))));
+    }
+    let result = format_session_history(&msgs, 6);
+    // Should be truncated
+    assert!(result.contains("truncated=\"true\""));
+    // Should NOT contain all 6 messages' count
+    let count_attr_start = result.find("count=\"").unwrap();
+    let count_start = count_attr_start + 7;
+    let count_end = result[count_start..].find('"').unwrap() + count_start;
+    let count: usize = result[count_start..count_end].parse().unwrap();
+    assert!(count < 6, "Expected fewer than 6 messages due to 8000-char cap, got {}", count);
+}
+
+#[test]
+fn format_session_history_tool_summary_aggregation() {
+    let sid = IdeationSessionId::new();
+    let mut orch_msg = make_orchestrator_msg(&sid, "");
+    orch_msg.tool_calls = Some(
+        r#"[{"name":"create_task_proposal","arguments":"{}","result":{"content":"ok","is_error":false}},{"name":"create_task_proposal","arguments":"{}","result":{"content":"ok","is_error":false}},{"name":"update_plan_artifact","arguments":"{}","result":{"content":"ok","is_error":false}}]"#
+            .to_string(),
+    );
+    let result = format_session_history(&[orch_msg], 1);
+    assert!(result.contains("[Used: create_task_proposal x2, update_plan_artifact]"));
+    assert!(result.contains(r#"role="tool_summary""#));
+}
+
+#[test]
+fn format_session_history_tool_summary_with_failed_call() {
+    let sid = IdeationSessionId::new();
+    let mut orch_msg = make_orchestrator_msg(&sid, "thinking");
+    orch_msg.tool_calls = Some(
+        r#"[{"name":"create_plan_artifact","arguments":"{}","result":{"content":"ok","is_error":false}},{"name":"get_proposal","arguments":"{}","result":{"content":"err","is_error":true}}]"#
+            .to_string(),
+    );
+    let result = format_session_history(&[orch_msg], 1);
+    assert!(result.contains("get_proposal (failed)"));
+    assert!(result.contains("create_plan_artifact"));
+}
+
+#[test]
+fn format_session_history_empty_tool_calls_no_summary() {
+    let sid = IdeationSessionId::new();
+    let mut orch_msg = make_orchestrator_msg(&sid, "just text");
+    orch_msg.tool_calls = Some("[]".to_string());
+    let result = format_session_history(&[orch_msg], 1);
+    assert!(!result.contains("tool_summary"));
+    assert!(result.contains("just text"));
+}
+
+#[test]
+fn format_session_history_truncated_true_when_total_available_larger() {
+    let sid = IdeationSessionId::new();
+    let msg = make_user_msg(&sid, "hello");
+    // Only 1 message provided but total_available=100 → truncated=true
+    let result = format_session_history(&[msg], 100);
+    assert!(result.contains("truncated=\"true\""));
+    assert!(result.contains("total_available=\"100\""));
+}
+
+#[test]
+fn format_session_history_truncated_false_when_all_included() {
+    let sid = IdeationSessionId::new();
+    let msgs = vec![make_user_msg(&sid, "msg1"), make_user_msg(&sid, "msg2")];
+    let result = format_session_history(&msgs, 2);
+    assert!(result.contains("truncated=\"false\""));
+}
+
+#[test]
+fn format_session_history_orchestrator_with_text_and_tools() {
+    let sid = IdeationSessionId::new();
+    let mut orch_msg = make_orchestrator_msg(&sid, "Here is my analysis");
+    orch_msg.tool_calls = Some(
+        r#"[{"name":"search","arguments":"{}","result":{"content":"results","is_error":false}}]"#
+            .to_string(),
+    );
+    let result = format_session_history(&[orch_msg], 1);
+    // Both text AND tool_summary should appear
+    assert!(result.contains("Here is my analysis"));
+    assert!(result.contains("[Used: search]"));
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests for build_initial_prompt with session_history injection
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn build_initial_prompt_ideation_with_messages_injects_session_history() {
+    let sid = IdeationSessionId::new();
+    let msg = make_user_msg(&sid, "prior message");
+    let result = build_initial_prompt(
+        ChatContextType::Ideation,
+        sid.as_str(),
+        "new message",
+        &[msg],
+        1,
+    );
+    assert!(result.contains("<session_history"));
+    assert!(result.contains("prior message"));
+    assert!(result.contains("<user_message>new message</user_message>"));
+    // session_history should come before user_message
+    let hist_pos = result.find("<session_history").unwrap();
+    let user_pos = result.find("<user_message>").unwrap();
+    assert!(hist_pos < user_pos);
+}
+
+#[test]
+fn build_initial_prompt_ideation_empty_messages_no_session_history_block() {
+    let result = build_initial_prompt(
+        ChatContextType::Ideation,
+        "session-123",
+        "hello",
+        &[],
+        0,
+    );
+    assert!(!result.contains("<session_history"));
+    assert!(result.contains("<user_message>hello</user_message>"));
+}
+
+#[test]
+fn build_initial_prompt_non_ideation_ignores_messages() {
+    let sid = IdeationSessionId::new();
+    let msg = make_user_msg(&sid, "some prior message");
+    // Task context should NOT inject session_history even if messages provided
+    let result = build_initial_prompt(
+        ChatContextType::TaskExecution,
+        "task-abc",
+        "execute",
+        &[msg],
+        0,
+    );
+    assert!(!result.contains("<session_history"));
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Integration tests: send_message → prompt pipeline (Wave 3 wiring)
+//
+// These tests verify the full pipeline: repo-fetched messages → build_initial_prompt
+// → <session_history> XML in the resulting prompt. They simulate what send_message()
+// does when spawning a new Ideation process: fetch messages, pass to prompt builder.
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn integration_ideation_spawn_prompt_pipeline_injects_session_history() {
+    // Simulate what send_message() does for Ideation context on new process spawn:
+    //   1. get_recent_by_session() returns prior messages
+    //   2. build_initial_prompt() receives them and injects <session_history>
+    let sid = IdeationSessionId::new();
+
+    // Simulate repo-fetched messages (user + orchestrator with tool usage)
+    let user_msg1 = make_user_msg(&sid, "I want to add dark mode");
+    let mut orch_msg = make_orchestrator_msg(&sid, "Let me explore the codebase");
+    orch_msg.tool_calls = Some(
+        r#"[{"name":"create_task_proposal","arguments":"{}","result":{"content":"ok","is_error":false}}]"#
+            .to_string(),
+    );
+    let user_msg2 = make_user_msg(&sid, "Also add a light mode toggle");
+    let repo_messages = vec![user_msg1, orch_msg, user_msg2];
+    let total_available = repo_messages.len();
+
+    // This mirrors what happens in send_message() → build_interactive_command() → build_initial_prompt()
+    // total_available comes from count_by_session; here we simulate it as the actual DB count.
+    let prompt = build_initial_prompt(
+        ChatContextType::Ideation,
+        sid.as_str(),
+        "What is the current progress?",
+        &repo_messages,
+        total_available,
+    );
+
+    // Verify session_history is present and contains prior messages
+    assert!(prompt.contains("<session_history"), "prompt must contain <session_history> block");
+    assert!(
+        prompt.contains("I want to add dark mode"),
+        "prior user message must appear in history"
+    );
+    assert!(
+        prompt.contains("Let me explore the codebase"),
+        "prior orchestrator message must appear in history"
+    );
+    assert!(
+        prompt.contains("[Used: create_task_proposal]"),
+        "tool usage must be summarised in history"
+    );
+    assert!(
+        prompt.contains("Also add a light mode toggle"),
+        "second prior user message must appear in history"
+    );
+    assert!(
+        prompt.contains("What is the current progress?"),
+        "current user message must appear in prompt"
+    );
+    assert!(
+        prompt.contains(&format!("total_available=\"{}\"", total_available)),
+        "total_available attribute must match message count"
+    );
+
+    // session_history block must appear before <user_message>
+    let hist_pos = prompt.find("<session_history").unwrap();
+    let user_pos = prompt.find("<user_message>").unwrap();
+    assert!(
+        hist_pos < user_pos,
+        "<session_history> must appear before <user_message>"
+    );
+}
+
+#[test]
+fn integration_ideation_spawn_first_message_no_session_history_block() {
+    // When send_message() fetches 0 messages (first ever message in session),
+    // the prompt must NOT contain a <session_history> block.
+    let sid = IdeationSessionId::new();
+
+    let prompt = build_initial_prompt(
+        ChatContextType::Ideation,
+        sid.as_str(),
+        "Hello, start a new plan",
+        &[], // empty — simulates count_by_session() == 0
+        0,
+    );
+
+    assert!(
+        !prompt.contains("<session_history"),
+        "first message in session must not have <session_history> block"
+    );
+    assert!(
+        prompt.contains("Hello, start a new plan"),
+        "current user message must be present"
+    );
+}
+
+#[test]
+fn integration_non_ideation_spawn_no_session_history_even_with_messages() {
+    // send_message() passes empty slice for non-Ideation contexts.
+    // Even if messages were somehow provided, non-Ideation build_initial_prompt ignores them.
+    let sid = IdeationSessionId::new();
+    let msg = make_user_msg(&sid, "prior work message");
+
+    let prompt = build_initial_prompt(
+        ChatContextType::TaskExecution,
+        "task-abc-123",
+        "execute task",
+        &[msg], // non-ideation: this must be ignored
+        0,
+    );
+
+    assert!(
+        !prompt.contains("<session_history"),
+        "non-Ideation context must never inject <session_history>"
+    );
+    assert!(
+        prompt.contains("execute task"),
+        "current user message must be present"
+    );
+}
+
+#[test]
+fn integration_ideation_spawn_truncated_history_uses_db_count_not_slice_len() {
+    // Regression test: when a session has >SESSION_HISTORY_LIMIT messages,
+    // total_available must come from count_by_session (the real DB count),
+    // not from session_messages.len() (which is capped at the limit).
+    // Bug: format_session_history(session_messages, session_messages.len()) would emit
+    //   total_available="50" truncated="false" even when DB has 200 messages.
+    // Fix: thread total_available through build_initial_prompt from send_message().
+    let sid = IdeationSessionId::new();
+
+    // Simulate fetching the last 2 messages from a session with 200 total.
+    let msg1 = make_user_msg(&sid, "recent message 1");
+    let msg2 = make_user_msg(&sid, "recent message 2");
+    let session_messages = vec![msg1, msg2];
+    let db_count: usize = 200; // real count from count_by_session
+
+    let prompt = build_initial_prompt(
+        ChatContextType::Ideation,
+        sid.as_str(),
+        "continue",
+        &session_messages,
+        db_count,
+    );
+
+    // Must use DB count, not slice length
+    assert!(
+        prompt.contains(&format!("total_available=\"{}\"", db_count)),
+        "total_available must be the DB count ({}), not the slice length ({})",
+        db_count,
+        session_messages.len()
+    );
+    assert!(
+        prompt.contains("truncated=\"true\""),
+        "truncated must be true when DB count ({}) > slice len ({})",
+        db_count,
+        session_messages.len()
+    );
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

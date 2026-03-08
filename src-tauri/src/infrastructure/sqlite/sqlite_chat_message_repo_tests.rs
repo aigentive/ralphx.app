@@ -911,6 +911,154 @@ async fn test_get_by_conversation_excludes_other_conversations() {
     assert_eq!(messages_a[0].content, "For A");
 }
 
+// ==================== ROLE FILTERING TESTS (count_by_session / get_recent_by_session) ====================
+
+#[tokio::test]
+async fn test_count_by_session_excludes_system_messages() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&conn, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let user_msg = ChatMessage::user_in_session(session_id.clone(), "User");
+    let orch_msg = ChatMessage::orchestrator_in_session(session_id.clone(), "Orchestrator");
+    let sys_msg = ChatMessage::system_in_session(session_id.clone(), "System");
+
+    repo.create(user_msg).await.unwrap();
+    repo.create(orch_msg).await.unwrap();
+    repo.create(sys_msg).await.unwrap();
+
+    // Should count only user + orchestrator, not system
+    let count = repo.count_by_session(&session_id).await.unwrap();
+    assert_eq!(count, 2);
+}
+
+#[tokio::test]
+async fn test_count_by_session_empty_session_returns_zero() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&conn, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let count = repo.count_by_session(&session_id).await.unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn test_count_by_session_only_system_messages_returns_zero() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&conn, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let sys_msg = ChatMessage::system_in_session(session_id.clone(), "System only");
+    repo.create(sys_msg).await.unwrap();
+
+    // System messages are excluded — count should be 0
+    let count = repo.count_by_session(&session_id).await.unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn test_get_recent_by_session_excludes_system_messages() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&conn, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let user_msg = ChatMessage::user_in_session(session_id.clone(), "User message");
+    repo.create(user_msg).await.unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    let sys_msg = ChatMessage::system_in_session(session_id.clone(), "System message");
+    repo.create(sys_msg).await.unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    let orch_msg = ChatMessage::orchestrator_in_session(session_id.clone(), "Orchestrator message");
+    repo.create(orch_msg).await.unwrap();
+
+    // Should return only user + orchestrator, in chronological order
+    let messages = repo.get_recent_by_session(&session_id, 10).await.unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].content, "User message");
+    assert_eq!(messages[1].content, "Orchestrator message");
+    assert!(messages.iter().all(|m| m.is_user() || m.is_orchestrator()));
+}
+
+#[tokio::test]
+async fn test_get_recent_by_session_empty_session_returns_empty() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&conn, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let messages = repo.get_recent_by_session(&session_id, 10).await.unwrap();
+    assert!(messages.is_empty());
+}
+
+#[tokio::test]
+async fn test_get_recent_by_session_limit_enforced_after_role_filter() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&conn, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    // Create 4 user/orchestrator messages + 2 system messages
+    for i in 1..=4 {
+        let msg = ChatMessage::user_in_session(session_id.clone(), format!("User {}", i));
+        repo.create(msg).await.unwrap();
+        tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+        let sys = ChatMessage::system_in_session(session_id.clone(), format!("System {}", i));
+        repo.create(sys).await.unwrap();
+    }
+
+    // Limit 2 should return the 2 most recent user messages
+    let messages = repo.get_recent_by_session(&session_id, 2).await.unwrap();
+    assert_eq!(messages.len(), 2);
+    assert_eq!(messages[0].content, "User 3");
+    assert_eq!(messages[1].content, "User 4");
+}
+
+#[tokio::test]
+async fn test_get_recent_by_session_chronological_order() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let session_id = create_test_session(&conn, &project_id);
+
+    let repo = SqliteChatMessageRepository::new(conn);
+
+    let msg1 = ChatMessage::user_in_session(session_id.clone(), "First");
+    repo.create(msg1).await.unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    let msg2 = ChatMessage::orchestrator_in_session(session_id.clone(), "Second");
+    repo.create(msg2).await.unwrap();
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+
+    let msg3 = ChatMessage::user_in_session(session_id.clone(), "Third");
+    repo.create(msg3).await.unwrap();
+
+    let messages = repo.get_recent_by_session(&session_id, 10).await.unwrap();
+
+    assert_eq!(messages.len(), 3);
+    assert_eq!(messages[0].content, "First");
+    assert_eq!(messages[1].content, "Second");
+    assert_eq!(messages[2].content, "Third");
+}
+
 // ==================== UPDATE_CONTENT TESTS ====================
 
 #[tokio::test]

@@ -104,10 +104,14 @@ impl ChatMessageRepository for MockChatMessageRepository {
     }
 
     async fn count_by_session(&self, session_id: &IdeationSessionId) -> AppResult<u32> {
+        use crate::domain::entities::MessageRole;
         Ok(self
             .messages
             .iter()
-            .filter(|m| m.session_id.as_ref() == Some(session_id))
+            .filter(|m| {
+                m.session_id.as_ref() == Some(session_id)
+                    && matches!(m.role, MessageRole::User | MessageRole::Orchestrator)
+            })
             .count() as u32)
     }
 
@@ -116,15 +120,45 @@ impl ChatMessageRepository for MockChatMessageRepository {
         session_id: &IdeationSessionId,
         limit: u32,
     ) -> AppResult<Vec<ChatMessage>> {
+        use crate::domain::entities::MessageRole;
         let mut filtered: Vec<_> = self
             .messages
             .iter()
-            .filter(|m| m.session_id.as_ref() == Some(session_id))
+            .filter(|m| {
+                m.session_id.as_ref() == Some(session_id)
+                    && matches!(m.role, MessageRole::User | MessageRole::Orchestrator)
+            })
             .cloned()
             .collect();
         filtered.sort_by_key(|m| std::cmp::Reverse(m.created_at));
         filtered.truncate(limit as usize);
         filtered.reverse(); // Return in ascending order
+        Ok(filtered)
+    }
+
+    async fn get_recent_by_session_paginated(
+        &self,
+        session_id: &IdeationSessionId,
+        limit: u32,
+        offset: u32,
+    ) -> AppResult<Vec<ChatMessage>> {
+        use crate::domain::entities::MessageRole;
+        let mut filtered: Vec<_> = self
+            .messages
+            .iter()
+            .filter(|m| {
+                m.session_id.as_ref() == Some(session_id)
+                    && matches!(m.role, MessageRole::User | MessageRole::Orchestrator)
+            })
+            .cloned()
+            .collect();
+        filtered.sort_by_key(|m| std::cmp::Reverse(m.created_at));
+        let mut filtered: Vec<_> = filtered
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect();
+        filtered.reverse();
         Ok(filtered)
     }
 

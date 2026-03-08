@@ -889,6 +889,8 @@ pub struct GetSessionMessagesRequest {
     #[serde(default = "default_session_messages_limit")]
     pub limit: usize,
     #[serde(default)]
+    pub offset: usize,
+    #[serde(default)]
     pub include_tool_calls: bool,
 }
 

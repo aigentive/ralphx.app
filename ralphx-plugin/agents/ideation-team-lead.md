@@ -103,6 +103,8 @@ Every ideation session follows these phases:
 ### Phase 0: RECOVER
 **Gate:** None (always runs first)
 
+Session history is auto-injected in the bootstrap prompt as `<session_history>` — use it directly for prior conversation context. When `truncated="true"`, call `get_session_messages(offset, limit)` for paginated retrieval of older history.
+
 Before processing user message:
 1. Read `ralphx-plugin/agents/system-cards/agent-teams-orchestration.md` (mandatory — see Critical Gates)
 2. `get_session_plan(session_id)` — check if plan exists
