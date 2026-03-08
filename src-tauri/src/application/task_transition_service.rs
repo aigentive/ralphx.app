@@ -1162,6 +1162,81 @@ impl<R: Runtime> TaskTransitionService<R> {
             // Execute on_enter for the auto-transition target state
             if let Err(e) = handler.on_enter(&auto_state).await {
                 tracing::error!(error = %e, "on_enter failed for auto-transition state {:?}", auto_state);
+
+                // BranchFreshnessConflict during auto-transition (e.g., PendingReview → Reviewing)
+                // means conflict markers are present. Route task to Merging so the merger agent
+                // can resolve them, instead of leaving it stuck in Reviewing with no agent.
+                if matches!(&e, AppError::BranchFreshnessConflict) {
+                    use crate::domain::state_machine::machine::State;
+
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        from = auto_status.as_str(),
+                        "BranchFreshnessConflict during auto-transition on_enter — routing to Merging"
+                    );
+
+                    // Clean up the auto-transition target state
+                    handler.on_exit(&auto_state, &State::Merging).await;
+
+                    // Re-fetch task and update to Merging with TOCTOU safety
+                    if let Ok(Some(mut merging_task)) = self.task_repo.get_by_id(task_id).await {
+                        merging_task.internal_status = InternalStatus::Merging;
+                        merging_task.touch();
+
+                        match self
+                            .task_repo
+                            .update_with_expected_status(&merging_task, auto_status)
+                            .await
+                        {
+                            Ok(false) => {
+                                tracing::info!(
+                                    task_id = task_id.as_str(),
+                                    expected = auto_status.as_str(),
+                                    "Task already transitioned by another caller, skipping Merging overwrite"
+                                );
+                            }
+                            Err(update_err) => {
+                                tracing::error!(error = %update_err, "Failed to persist Merging status after BranchFreshnessConflict");
+                            }
+                            Ok(true) => {
+                                // Record corrective transition in history
+                                let _ = self
+                                    .task_repo
+                                    .persist_status_change(
+                                        task_id,
+                                        auto_status,
+                                        InternalStatus::Merging,
+                                        "system",
+                                    )
+                                    .await;
+
+                                // Emit corrective event for UI
+                                if let Some(ref handle) = self._app_handle {
+                                    let _ = handle.emit(
+                                        "task:event",
+                                        serde_json::json!({
+                                            "type": "status_changed",
+                                            "taskId": task_id.as_str(),
+                                            "from": auto_status.as_str(),
+                                            "to": "merging",
+                                            "changedBy": "system",
+                                            "reason": "BranchFreshnessConflict during auto-transition",
+                                        }),
+                                    );
+                                }
+
+                                // Spawn merger agent
+                                let merging_state = State::Merging;
+                                if let Err(merge_err) = handler.on_enter(&merging_state).await {
+                                    tracing::error!(
+                                        error = %merge_err,
+                                        "on_enter(Merging) failed after BranchFreshnessConflict correction"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
             }
             tracing::debug!(?auto_state, "Auto-transition on_enter complete");
         }

@@ -759,6 +759,54 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
 
+                // Defense-in-depth: scan worktree for conflict markers before spawning reviewer.
+                // Catches markers left by failed merges, backoff-skipped freshness checks, or race conditions.
+                if let (Some(ref task_repo), Some(ref _project_repo)) = (
+                    &self.machine.context.services.task_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    let task_id_typed = TaskId::from_string(task_id_str.clone());
+                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id_typed).await {
+                        if let Some(ref wt_path_str) = task.worktree_path {
+                            let wt_path = std::path::Path::new(wt_path_str);
+                            if wt_path.exists() {
+                                match crate::application::git_service::GitService::has_conflict_markers(wt_path).await {
+                                    Ok(true) => {
+                                        tracing::warn!(
+                                            task_id = task_id_str,
+                                            worktree = %wt_path.display(),
+                                            "Conflict markers detected in worktree before reviewer spawn — routing to merge pipeline"
+                                        );
+                                        // Set metadata so merger agent knows this is a conflict marker issue
+                                        let mut task_metadata: serde_json::Value = task
+                                            .metadata
+                                            .as_deref()
+                                            .and_then(|s| serde_json::from_str(s).ok())
+                                            .unwrap_or_else(|| serde_json::json!({}));
+                                        task_metadata["conflict_markers_detected"] = serde_json::json!(true);
+                                        task_metadata["branch_freshness_conflict"] = serde_json::json!(true);
+                                        if let Err(e) = task_repo
+                                            .update_metadata(&task_id_typed, Some(task_metadata.to_string()))
+                                            .await
+                                        {
+                                            tracing::warn!(task_id = task_id_str, error = %e, "Failed to persist conflict marker metadata");
+                                        }
+                                        return Err(AppError::BranchFreshnessConflict);
+                                    }
+                                    Ok(false) => { /* No markers — proceed normally */ }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            task_id = task_id_str,
+                                            error = %e,
+                                            "Conflict marker scan failed — proceeding with review anyway"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Run pre-execution setup before reviewing
                 let task_id = &self.machine.context.task_id;
                 self.run_and_store_pre_execution_setup(
