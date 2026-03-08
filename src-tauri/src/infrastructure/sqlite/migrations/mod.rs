@@ -78,6 +78,8 @@ mod v54_inherited_plan_artifact_id;
 mod v55_drop_spawn_orchestrator_jobs;
 mod v56_api_keys;
 mod v57_plan_verification;
+mod v58_metrics_index;
+mod v59_project_metrics_config;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
@@ -166,9 +168,13 @@ mod v51_repair_plan_branches_tests;
 mod v56_api_keys_tests;
 #[cfg(test)]
 mod v57_plan_verification_tests;
+#[cfg(test)]
+mod v58_metrics_index_tests;
+#[cfg(test)]
+mod v59_project_metrics_config_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 57;
+pub const SCHEMA_VERSION: i32 = 59;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -467,6 +473,16 @@ const MIGRATIONS: &[Migration] = &[
         version: 57,
         name: "plan_verification",
         migrate: v57_plan_verification::migrate,
+    },
+    Migration {
+        version: 58,
+        name: "metrics_index",
+        migrate: v58_metrics_index::migrate,
+    },
+    Migration {
+        version: 59,
+        name: "project_metrics_config",
+        migrate: v59_project_metrics_config::migrate,
     },
 ];
 

@@ -775,6 +775,13 @@ pub fn run() {
             commands::merge_pipeline_commands::get_merge_pipeline,
             commands::merge_pipeline_commands::get_merge_progress,
             commands::merge_pipeline_commands::get_merge_phase_list,
+            // Metrics commands
+            commands::metrics_commands::get_project_stats,
+            commands::metrics_commands::get_project_trends,
+            commands::metrics_commands::get_metrics_config,
+            commands::metrics_commands::save_metrics_config,
+            commands::metrics_commands::get_column_metrics,
+            commands::metrics_commands::get_task_metrics,
             // Ideation session commands
             commands::ideation_commands::create_ideation_session,
             commands::ideation_commands::get_ideation_session,

@@ -13,3 +13,4 @@ export { StatusPill } from "./StatusPill";
 export { ProgressIndicator } from "./ProgressIndicator";
 export { DescriptionBlock } from "./DescriptionBlock";
 export { TwoColumnLayout } from "./TwoColumnLayout";
+export { TaskMetricsCard } from "./TaskMetricsCard";

@@ -12,6 +12,10 @@ pub mod git_commands;
 pub mod health;
 pub mod ideation_commands;
 pub mod merge_pipeline_commands;
+pub mod metrics_commands;
+pub(crate) mod metrics_queries;
+pub(crate) mod metrics_trends;
+pub mod metrics_types;
 pub mod methodology_commands;
 pub mod permission_commands;
 pub mod plan_branch_commands;
@@ -86,6 +90,10 @@ pub use ideation_commands::{
 };
 pub use merge_pipeline_commands::{
     get_merge_phase_list, get_merge_pipeline, get_merge_progress, MergePipelineResponse,
+};
+pub use metrics_commands::{
+    compute_project_stats, get_column_metrics, get_metrics_config, get_project_stats,
+    get_project_trends, get_task_metrics, save_metrics_config, MetricsConfig,
 };
 pub use methodology_commands::{
     activate_methodology, deactivate_methodology, get_active_methodology, get_methodologies,

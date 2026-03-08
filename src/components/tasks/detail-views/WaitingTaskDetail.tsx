@@ -14,6 +14,7 @@ import {
   StatusBanner,
   StatusPill,
   TwoColumnLayout,
+  TaskMetricsCard,
 } from "./shared";
 import { useTaskSteps, useStepProgress } from "@/hooks/useTaskSteps";
 import { reviewIssuesApi } from "@/api/review-issues";
@@ -173,6 +174,12 @@ export function WaitingTaskDetail({ task }: WaitingTaskDetailProps) {
           totalSteps={totalSteps}
           isLoading={stepsLoading}
         />
+      </section>
+
+      {/* Task Metrics */}
+      <section data-testid="task-metrics-section">
+        <SectionTitle>Metrics</SectionTitle>
+        <TaskMetricsCard taskId={task.id} />
       </section>
 
       {/* Issue Resolution Progress */}

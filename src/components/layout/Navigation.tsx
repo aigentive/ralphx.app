@@ -15,10 +15,13 @@ import {
   Puzzle,
   Activity,
   SlidersHorizontal,
+  TrendingUp,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useTeamStore, selectHasAnyActiveTeam, selectTotalTeammateCount } from "@/stores/teamStore";
+import { useProjectStore } from "@/stores/projectStore";
+import { useProjectStats } from "@/hooks/useProjectStats";
 import type { ViewType } from "@/types/chat";
 
 // Navigation items configuration
@@ -34,17 +37,86 @@ const NAV_ITEMS: {
   { view: "kanban", label: "Kanban", icon: LayoutGrid, shortcut: "⌘3" },
   { view: "extensibility", label: "Extensibility", icon: Puzzle, shortcut: "⌘4" },
   { view: "activity", label: "Activity", icon: Activity, shortcut: "⌘5" },
-  { view: "settings", label: "Settings", icon: SlidersHorizontal, shortcut: "⌘6" },
 ];
+
+const INSIGHTS_NAV_ITEM = {
+  view: "insights" as ViewType,
+  label: "Insights",
+  icon: TrendingUp,
+  shortcut: "⌘6",
+};
+
+const SETTINGS_NAV_ITEM = {
+  view: "settings" as ViewType,
+  label: "Settings",
+  icon: SlidersHorizontal,
+  shortcut: "⌘7",
+};
 
 interface NavigationProps {
   currentView: ViewType;
   onViewChange: (view: ViewType) => void;
 }
 
+function NavItem({
+  view,
+  label,
+  icon: Icon,
+  shortcut,
+  currentView,
+  onViewChange,
+}: {
+  view: ViewType;
+  label: string;
+  icon: React.ElementType;
+  shortcut: string;
+  currentView: ViewType;
+  onViewChange: (view: ViewType) => void;
+}) {
+  const isActive = currentView === view;
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => onViewChange(view)}
+          className={cn(
+            "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
+            isActive ? "px-3" : "px-2 xl:px-3"
+          )}
+          style={{
+            background: isActive
+              ? "hsla(14 100% 60% / 0.1)"
+              : "transparent",
+            border: isActive ? "1px solid hsla(14 100% 60% / 0.15)" : "1px solid transparent",
+            color: isActive ? "hsl(14 100% 60%)" : "hsl(220 10% 55%)",
+          }}
+          data-testid={`nav-${view}`}
+          aria-current={isActive ? "page" : undefined}
+        >
+          <Icon className="w-[18px] h-[18px] flex-shrink-0" />
+          <span className={cn(
+            "text-sm font-medium whitespace-nowrap",
+            isActive ? "inline" : "hidden xl:inline"
+          )}>
+            {label}
+          </span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="text-xs">
+        {label} <kbd className="ml-1 opacity-70">{shortcut}</kbd>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 export function Navigation({ currentView, onViewChange }: NavigationProps) {
   const hasActiveTeam = useTeamStore(selectHasAnyActiveTeam);
   const teammateCount = useTeamStore(selectTotalTeammateCount);
+  const activeProjectId = useProjectStore((s) => s.activeProjectId);
+  const { data: stats } = useProjectStats(activeProjectId ?? undefined);
+  const showInsights = (stats?.taskCount ?? 0) >= 10;
 
   return (
     <nav
@@ -53,44 +125,37 @@ export function Navigation({ currentView, onViewChange }: NavigationProps) {
       aria-label="Main views"
       style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
     >
-      {NAV_ITEMS.map(({ view, label, icon: Icon, shortcut }) => {
-        const isActive = currentView === view;
-        return (
-          <Tooltip key={view}>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onViewChange(view)}
-                className={cn(
-                  "gap-2 h-8 transition-all duration-150 active:scale-[0.98]",
-                  isActive ? "px-3" : "px-2 xl:px-3"
-                )}
-                style={{
-                  background: isActive
-                    ? "hsla(14 100% 60% / 0.1)"
-                    : "transparent",
-                  border: isActive ? "1px solid hsla(14 100% 60% / 0.15)" : "1px solid transparent",
-                  color: isActive ? "hsl(14 100% 60%)" : "hsl(220 10% 55%)",
-                }}
-                data-testid={`nav-${view}`}
-                aria-current={isActive ? "page" : undefined}
-              >
-                <Icon className="w-[18px] h-[18px] flex-shrink-0" />
-                <span className={cn(
-                  "text-sm font-medium whitespace-nowrap",
-                  isActive ? "inline" : "hidden xl:inline"
-                )}>
-                  {label}
-                </span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom" className="text-xs">
-              {label} <kbd className="ml-1 opacity-70">{shortcut}</kbd>
-            </TooltipContent>
-          </Tooltip>
-        );
-      })}
+      {NAV_ITEMS.map(({ view, label, icon, shortcut }) => (
+        <NavItem
+          key={view}
+          view={view}
+          label={label}
+          icon={icon}
+          shortcut={shortcut}
+          currentView={currentView}
+          onViewChange={onViewChange}
+        />
+      ))}
+      {showInsights && (
+        <NavItem
+          key={INSIGHTS_NAV_ITEM.view}
+          view={INSIGHTS_NAV_ITEM.view}
+          label={INSIGHTS_NAV_ITEM.label}
+          icon={INSIGHTS_NAV_ITEM.icon}
+          shortcut={INSIGHTS_NAV_ITEM.shortcut}
+          currentView={currentView}
+          onViewChange={onViewChange}
+        />
+      )}
+      <NavItem
+        key={SETTINGS_NAV_ITEM.view}
+        view={SETTINGS_NAV_ITEM.view}
+        label={SETTINGS_NAV_ITEM.label}
+        icon={SETTINGS_NAV_ITEM.icon}
+        shortcut={SETTINGS_NAV_ITEM.shortcut}
+        currentView={currentView}
+        onViewChange={onViewChange}
+      />
 
       {/* Team active indicator */}
       {hasActiveTeam && (

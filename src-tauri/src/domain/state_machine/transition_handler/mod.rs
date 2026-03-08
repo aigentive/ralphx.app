@@ -242,6 +242,11 @@ impl<'a> TransitionHandler<'a> {
     /// Public so `TaskTransitionService` can trigger exit actions for direct status
     /// changes (e.g., stop command) without the full event-based transition flow.
     pub async fn on_exit(&self, from: &State, to: &State) {
+        // Evict stale project stats cache whenever a task changes state.
+        crate::commands::metrics_commands::invalidate_project_stats_cache(
+            &self.machine.context.project_id,
+        );
+
         // Decrement running count for agent-active states
         match from {
             State::Executing
