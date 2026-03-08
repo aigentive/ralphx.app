@@ -1721,4 +1721,98 @@ describe("ChatMessageList - Scroll Behavior", () => {
       expect(screen.getByText(/Short response/)).toBeInTheDocument();
     });
   });
+
+  describe("pending tool call fallback indicator", () => {
+    // Covers the fix: when streamingToolCalls has items but streamingContentBlocks is empty,
+    // the footer shows ToolCallIndicator (not blank) so users see immediate activity feedback.
+    // Uses "webfetch" as a generic tool name — no widget in registry, no diff handling,
+    // falls through to the default ToolCallIndicator with data-testid="tool-call-indicator".
+    const GENERIC = "webfetch";
+
+    it("(1) agent running + no data → shows TypingIndicator", () => {
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isAgentRunning={true}
+          streamingToolCalls={[]}
+          streamingContentBlocks={undefined}
+        />
+      );
+
+      expect(screen.getByTestId("chat-typing-indicator")).toBeInTheDocument();
+      expect(screen.queryByTestId("tool-call-indicator")).not.toBeInTheDocument();
+    });
+
+    it("(2) agent running + tool calls + no content blocks → shows ToolCallIndicator fallback", () => {
+      const toolCalls: ToolCall[] = [
+        { id: "tc-1", name: GENERIC, arguments: { url: "https://example.com" } },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isAgentRunning={true}
+          streamingToolCalls={toolCalls}
+          streamingContentBlocks={undefined}
+        />
+      );
+
+      expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
+      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+    });
+
+    it("(2b) shows multiple ToolCallIndicators when multiple pending tool calls and no content blocks", () => {
+      const toolCalls: ToolCall[] = [
+        { id: "tc-1", name: GENERIC, arguments: { url: "https://a.com" } },
+        { id: "tc-2", name: GENERIC, arguments: { url: "https://b.com" } },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isAgentRunning={true}
+          streamingToolCalls={toolCalls}
+          streamingContentBlocks={undefined}
+        />
+      );
+
+      const indicators = screen.getAllByTestId("tool-call-indicator");
+      expect(indicators).toHaveLength(2);
+      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+    });
+
+    it("(3) agent running + content blocks → neither fallback shown (content blocks render loop handles display)", () => {
+      const blocks: StreamingContentBlock[] = [
+        { type: "text", text: "I am working on it..." },
+      ];
+
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isAgentRunning={true}
+          streamingToolCalls={[{ id: "tc-1", name: GENERIC, arguments: { url: "https://example.com" } }]}
+          streamingContentBlocks={blocks}
+        />
+      );
+
+      // Content blocks are rendered; the fallback section is skipped entirely
+      expect(screen.getByText(/I am working on it/)).toBeInTheDocument();
+      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+    });
+
+    it("shows ToolCallIndicator fallback when tool calls exist but content blocks is empty array", () => {
+      // streamingContentBlocks=[] (empty array, not undefined) also triggers fallback
+      render(
+        <ChatMessageList
+          {...defaultProps}
+          isAgentRunning={true}
+          streamingToolCalls={[{ id: "tc-1", name: GENERIC, arguments: { url: "https://example.com" } }]}
+          streamingContentBlocks={[]}
+        />
+      );
+
+      expect(screen.getByTestId("tool-call-indicator")).toBeInTheDocument();
+      expect(screen.queryByTestId("chat-typing-indicator")).not.toBeInTheDocument();
+    });
+  });
 });

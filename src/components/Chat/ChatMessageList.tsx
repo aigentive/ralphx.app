@@ -516,9 +516,20 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               );
             })}
 
-            {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet */}
-            {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
-              <TypingIndicator />
+            {/* Fallback when agent is running but no content blocks yet:
+                - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
+                - No tool calls either → show TypingIndicator (agent thinking) */}
+            {(isSending || isAgentRunning) && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+              streamingToolCalls.length > 0
+                ? streamingToolCalls.map((tc, idx) => (
+                    <ToolCallIndicator
+                      key={`pending-tool-${idx}`}
+                      toolCall={tc}
+                      isStreaming={tc.result == null && !tc.error}
+                      className="mb-2"
+                    />
+                  ))
+                : <TypingIndicator />
             )}
 
           </div>
@@ -526,7 +537,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       },
     }), [
       failedRun, onDismissFailedRun,
-      streamingToolCalls.length, streamingTasks, streamingContentBlocks,
+      streamingToolCalls, streamingTasks, streamingContentBlocks,
       isSending, isAgentRunning,
     ]);
 
@@ -700,9 +711,20 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               );
             })}
 
-            {/* Typing indicator — shows when thinking but no content blocks or tool calls are active yet */}
-            {(isSending || isAgentRunning) && streamingToolCalls.length === 0 && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
-              <TypingIndicator />
+            {/* Fallback when agent is running but no content blocks yet:
+                - Tool calls pending → show ToolCallIndicator for each (immediate visibility into what agent is doing)
+                - No tool calls either → show TypingIndicator (agent thinking) */}
+            {(isSending || isAgentRunning) && (!streamingContentBlocks || streamingContentBlocks.length === 0) && (
+              streamingToolCalls.length > 0
+                ? streamingToolCalls.map((tc, idx) => (
+                    <ToolCallIndicator
+                      key={`pending-tool-${idx}`}
+                      toolCall={tc}
+                      isStreaming={tc.result == null && !tc.error}
+                      className="mb-2"
+                    />
+                  ))
+                : <TypingIndicator />
             )}
             <div ref={messagesEndRef} />
           </div>
