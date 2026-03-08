@@ -25,6 +25,7 @@ import {
   getFilteredTools,
   isToolAllowed,
   getAllowedToolNames,
+  parseAllowedToolsFromArgs,
   logAllTools,
   getToolsByAgent,
   setAgentType,
@@ -197,15 +198,20 @@ const server = new Server(
  * Note: permission_request tool is always included (not scoped by agent type)
  */
 server.setRequestHandler(ListToolsRequestSchema, async () => {
+  // Parse once — reuse for logging and to avoid a redundant argv scan inside getAllowedToolNames()
+  const cliToolsArg = parseAllowedToolsFromArgs();
   const tools = getFilteredTools();
 
   // Always include permission_request tool (not scoped by agent type)
   const allTools = [...tools, permissionRequestTool];
 
   // Log tool scoping for debugging
-  const allowedNames = getAllowedToolNames();
+  if (cliToolsArg !== undefined) {
+    console.error(`[RalphX MCP] Tools from --allowed-tools: ${cliToolsArg.length > 0 ? cliToolsArg.join(", ") : "none (explicit __NONE__)"}`);
+  }
+  const toolNames = tools.map((t) => t.name);
   console.error(
-    `[RalphX MCP] Agent type: ${AGENT_TYPE}, Tools: ${allowedNames.length > 0 ? allowedNames.join(", ") : "none"} + permission_request`
+    `[RalphX MCP] Agent type: ${AGENT_TYPE}, Tools: ${toolNames.length > 0 ? toolNames.join(", ") : "none"} + permission_request`
   );
 
   return { tools: allTools };

@@ -7,8 +7,7 @@ tools:
   - Bash
   - Grep
 allowedTools:
-  - mcp__ralphx__save_project_analysis
-  - mcp__ralphx__get_project_analysis
+  - "mcp__ralphx__*"
   - Read
   - Glob
   - Bash

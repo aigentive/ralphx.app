@@ -1721,18 +1721,61 @@ export function getAgentType(): string {
   return currentAgentType || process.env.RALPHX_AGENT_TYPE || "";
 }
 
+const TOOL_NAME_PATTERN = /^[a-z][a-z0-9_]*$/;
+
+/**
+ * Parse --allowed-tools= CLI arg from process.argv.
+ * Returns the parsed tool list, [] for __NONE__ sentinel, or undefined to fall through.
+ */
+export function parseAllowedToolsFromArgs(): string[] | undefined {
+  for (const arg of process.argv) {
+    if (arg.startsWith("--allowed-tools=")) {
+      const value = arg.substring("--allowed-tools=".length);
+      if (!value) return undefined; // empty = fall through
+      if (value === "__NONE__") return []; // explicit empty sentinel
+      const tools = value.split(',').map(t => t.trim()).filter(t => t.length > 0);
+      // Validate names — skip invalid, warn
+      const validated = tools.filter(t => {
+        if (!TOOL_NAME_PATTERN.test(t)) {
+          console.error(`[RalphX MCP] WARN: Invalid tool name in --allowed-tools: "${t}" (skipped)`);
+          return false;
+        }
+        return true;
+      });
+      // Warn on unknown tools — include them (don't drop)
+      const knownTools = new Set(ALL_TOOLS.map(t => t.name));
+      for (const t of validated) {
+        if (!knownTools.has(t)) {
+          console.error(`[RalphX MCP] WARN: --allowed-tools contains unknown tool "${t}" (not in ALL_TOOLS registry)`);
+        }
+      }
+      return validated;
+    }
+  }
+  return undefined; // not found = fall through
+}
+
 /**
  * Get allowed tool names for the current agent type
+ * Priority: env var > --allowed-tools CLI arg > TOOL_ALLOWLIST fallback
  * @returns Array of tool names this agent is allowed to use
  */
 export function getAllowedToolNames(): string[] {
-  // Check for env var override (used for dynamic teammate tool scoping)
+  // 1. Env var override — standalone testing only.
+  //    In production, Claude CLI does not propagate env vars to MCP servers — use --allowed-tools instead.
   const envAllowedTools = process.env.RALPHX_ALLOWED_MCP_TOOLS;
   if (envAllowedTools) {
     return envAllowedTools.split(',').map(t => t.trim()).filter(t => t.length > 0);
   }
 
-  // Default: use agent type from TOOL_ALLOWLIST
+  // 2. --allowed-tools CLI arg — production path from Rust spawner via MCP config JSON
+  const cliTools = parseAllowedToolsFromArgs();
+  if (cliTools !== undefined) {
+    return cliTools;
+  }
+
+  // 3. Fallback to TOOL_ALLOWLIST — emit deprecation warning so developers know they're in fallback mode
+  console.error(`[RalphX MCP] WARN: --allowed-tools not provided, using fallback TOOL_ALLOWLIST (may be stale)`);
   const agentType = getAgentType();
   return TOOL_ALLOWLIST[agentType] || [];
 }

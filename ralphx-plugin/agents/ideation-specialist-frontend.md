@@ -9,14 +9,7 @@ tools:
   - WebSearch
 disallowedTools: Write, Edit, NotebookEdit, Bash
 allowedTools:
-  - "mcp__ralphx__get_session_plan"
-  - "mcp__ralphx__list_session_proposals"
-  - "mcp__ralphx__get_plan_artifact"
-  - "mcp__ralphx__create_team_artifact"
-  - "mcp__ralphx__get_team_artifacts"
-  - "mcp__ralphx__search_memories"
-  - "mcp__ralphx__get_memory"
-  - "mcp__ralphx__get_memories_for_paths"
+  - "mcp__ralphx__*"
 model: sonnet
 ---
 
