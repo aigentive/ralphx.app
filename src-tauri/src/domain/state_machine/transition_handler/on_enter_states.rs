@@ -1166,7 +1166,8 @@ impl<'a> super::TransitionHandler<'a> {
             State::PendingMerge => {
                 // Phase 1 of merge workflow: Attempt programmatic rebase and merge
                 // This is the "fast path" - if successful, skip agent entirely
-                self.attempt_programmatic_merge().await;
+                // heap-allocate to prevent stack overflow from large inlined future
+                Box::pin(self.attempt_programmatic_merge()).await;
             }
             State::Merging => {
                 // Phase 2 of merge workflow: Spawn merger agent for conflict resolution

@@ -83,9 +83,10 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Run the full pipeline body — ALL early returns stay inside the body,
         // so the clear below always executes.
-        self.run_merge_pipeline_body(
+        // heap-allocate to prevent stack overflow from large inlined future
+        Box::pin(self.run_merge_pipeline_body(
             &mut task, &project, task_id_str, task_repo, attempt_start,
-        ).await;
+        )).await;
 
         // Always clear the flag — reloads from DB to avoid clobbering concurrent changes.
         clear_merge_pipeline_active_from_db(task_id_str, task_repo).await;
