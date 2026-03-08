@@ -652,6 +652,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                     Some(Arc::clone(ideation_session_repo)),
                     task_proposal_repo.clone(),
                     &session_id,
+                    app_handle.as_ref(),
                 )
                 .await
                 {

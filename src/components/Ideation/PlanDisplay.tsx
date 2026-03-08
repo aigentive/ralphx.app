@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ShieldCheck, SkipForward, RotateCcw } from "lucide-react";
+import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ShieldCheck, SkipForward, RotateCcw, Wand2, ListPlus } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -78,6 +78,10 @@ export interface PlanDisplayProps {
   onSkipVerification?: () => void;
   onRevertAndSkip?: () => void;
   onRetryVerification?: () => void;
+  /** Called when user clicks "Address Gaps" — receives descriptions of selected (or all) gaps */
+  onAddressGaps?: (selectedGapDescriptions: string[]) => void;
+  /** Called when user clicks "Create Proposals" — triggers orchestrator to decompose plan into tasks */
+  onCreateProposals?: () => void;
 }
 
 // ============================================================================
@@ -247,10 +251,20 @@ export function PlanDisplay({
   onSkipVerification,
   onRevertAndSkip,
   onRetryVerification,
+  onAddressGaps,
+  onCreateProposals,
 }: PlanDisplayProps) {
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
   const [internalIsOpen, setInternalIsOpen] = useState(false);
+
+  // Gap selection state for "Address Gaps" feature
+  const [selectedGaps, setSelectedGaps] = useState<Set<number>>(new Set());
+
+  // Reset selection when gaps change (new verification round)
+  useEffect(() => {
+    setSelectedGaps(new Set());
+  }, [verificationGaps]);
 
   // Verification-derived state
   const hasVerification = verificationStatus !== undefined;
@@ -343,6 +357,16 @@ export function PlanDisplay({
     onVersionViewed?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedVersion]);
+
+  const handleAddressGapsClick = useCallback(() => {
+    if (!onAddressGaps || !verificationGaps) return;
+    const selected = [...selectedGaps];
+    const descriptions =
+      selected.length === 0
+        ? verificationGaps.map((g) => g.description)
+        : selected.map((i) => verificationGaps[i]!.description);
+    onAddressGaps(descriptions);
+  }, [selectedGaps, verificationGaps, onAddressGaps]);
 
   const handleExport = useCallback(() => {
     if (onExport) {
@@ -588,17 +612,42 @@ export function PlanDisplay({
               )}
 
               {isApproved && (
-                <span
-                  className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg"
-                  style={{
-                    background: "hsla(145 70% 45% / 0.1)",
-                    border: "1px solid hsla(145 70% 45% / 0.2)",
-                    color: "hsl(145 70% 45%)",
-                  }}
-                >
-                  <CheckCircle2 className="w-3 h-3" />
-                  Approved
-                </span>
+                <>
+                  <span
+                    className="flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-lg"
+                    style={{
+                      background: "hsla(145 70% 45% / 0.1)",
+                      border: "1px solid hsla(145 70% 45% / 0.2)",
+                      color: "hsl(145 70% 45%)",
+                    }}
+                  >
+                    <CheckCircle2 className="w-3 h-3" />
+                    Approved
+                  </span>
+
+                  {onCreateProposals && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={onCreateProposals}
+                      className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
+                      style={{
+                        color: "hsl(14 100% 60%)",
+                        background: "hsla(14 100% 60% / 0.1)",
+                        border: "1px solid hsla(14 100% 60% / 0.2)",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                      }}
+                    >
+                      <ListPlus className="w-3 h-3" />
+                      Create Proposals
+                    </Button>
+                  )}
+                </>
               )}
 
               {plan.metadata.version > 1 && (
@@ -725,25 +774,64 @@ export function PlanDisplay({
 
             {/* Verification gap list — shown when there are gaps to display */}
             {hasGaps && (
-              <div
-                className="mb-4 rounded-lg p-3"
-                style={{
-                  background: "hsla(220 10% 100% / 0.02)",
-                  border: "1px solid hsla(220 10% 100% / 0.06)",
-                }}
-              >
+              <>
                 <div
-                  className="text-[11px] font-semibold uppercase tracking-wider mb-3"
-                  style={{ color: "hsl(220 10% 50%)" }}
+                  className="mb-2 rounded-lg p-3"
+                  style={{
+                    background: "hsla(220 10% 100% / 0.02)",
+                    border: "1px solid hsla(220 10% 100% / 0.06)",
+                  }}
                 >
-                  Verification Gaps
+                  <div
+                    className="text-[11px] font-semibold uppercase tracking-wider mb-3"
+                    style={{ color: "hsl(220 10% 50%)" }}
+                  >
+                    Verification Gaps
+                  </div>
+                  <VerificationGapList
+                    gaps={verificationGaps!}
+                    {...(verificationRounds !== undefined && { rounds: verificationRounds })}
+                    {...(gapScore !== undefined && { gapScore })}
+                    selectable={
+                      verificationStatus === "needs_revision" &&
+                      !verificationInProgress &&
+                      !!onAddressGaps
+                    }
+                    selectedGaps={selectedGaps}
+                    onSelectionChange={setSelectedGaps}
+                  />
                 </div>
-                <VerificationGapList
-                  gaps={verificationGaps!}
-                  {...(verificationRounds !== undefined && { rounds: verificationRounds })}
-                  {...(gapScore !== undefined && { gapScore })}
-                />
-              </div>
+
+                {/* Address Gaps button — only in needs_revision state, not while in progress */}
+                {verificationStatus === "needs_revision" &&
+                  !verificationInProgress &&
+                  onAddressGaps && (
+                    <div className="mb-4">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleAddressGapsClick}
+                        className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
+                        style={{
+                          color: "hsl(14 100% 60%)",
+                          background: "hsla(14 100% 60% / 0.1)",
+                          border: "1px solid hsla(14 100% 60% / 0.2)",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
+                        }}
+                      >
+                        <Wand2 className="w-3 h-3" />
+                        {selectedGaps.size === 0
+                          ? "Address All Gaps"
+                          : `Address ${selectedGaps.size} Gap${selectedGaps.size !== 1 ? "s" : ""}`}
+                      </Button>
+                    </div>
+                  )}
+              </>
             )}
 
             {/* Version banner when viewing historical */}

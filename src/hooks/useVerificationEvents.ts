@@ -5,7 +5,7 @@
  * state changes (POST /verification, revert-and-skip, reconciliation reset, etc.)
  * and invalidates TanStack Query caches so UI reflects the latest state.
  *
- * D20 payload schema:
+ * Extended payload schema (B1):
  * {
  *   session_id: string,
  *   status: VerificationStatus,
@@ -13,7 +13,9 @@
  *   round?: number,
  *   max_rounds?: number,
  *   gap_score?: number,
- *   convergence_reason?: string
+ *   convergence_reason?: string,
+ *   current_gaps?: EventVerificationGap[],
+ *   rounds?: EventRoundSummary[]
  * }
  */
 
@@ -24,7 +26,8 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { ideationKeys } from "./useIdeation";
 import type { Unsubscribe } from "@/lib/event-bus";
 import { logger } from "@/lib/logger";
-import type { VerificationStatus } from "@/types/ideation";
+import type { VerificationStatus, VerificationGap } from "@/types/ideation";
+import type { VerificationStatusResponse } from "@/api/ideation.types";
 import { PlanVerificationStatusChangedSchema } from "@/types/events";
 export type { PlanVerificationStatusChangedEvent, PlanVerificationStatusChangedPayload } from "@/types/events";
 
@@ -70,6 +73,11 @@ export function useVerificationEvents() {
           status,
           in_progress: inProgress,
           gap_score: gapScore,
+          round,
+          max_rounds: maxRounds,
+          convergence_reason: convergenceReason,
+          current_gaps: currentGaps,
+          rounds,
         } = parsed.data;
 
         // Partial store update so components re-render immediately
@@ -79,7 +87,31 @@ export function useVerificationEvents() {
           ...(gapScore !== undefined && { gapScore }),
         });
 
-        // Full refetch to pick up any other fields that may have changed
+        // B1 fast path: if event carries full gap/round data, populate cache directly
+        // so UI updates instantly without waiting for a refetch round-trip.
+        if (currentGaps !== undefined && rounds !== undefined) {
+          const transformedGaps: VerificationGap[] = currentGaps.map((g) => ({
+            severity: g.severity,
+            category: g.category,
+            description: g.description,
+            ...(g.why_it_matters != null && { whyItMatters: g.why_it_matters }),
+          }));
+          const cacheData: VerificationStatusResponse = {
+            sessionId,
+            status: status as VerificationStatusResponse["status"],
+            inProgress,
+            ...(round !== undefined && { currentRound: round }),
+            ...(maxRounds !== undefined && { maxRounds }),
+            ...(gapScore !== undefined && { gapScore }),
+            ...(convergenceReason != null && { convergenceReason }),
+            gaps: transformedGaps,
+            rounds: [],  // Event rounds have different shape (fingerprints); safety net refetch fills this
+          };
+          queryClient.setQueryData(["verification", sessionId], cacheData);
+          logger.debug("[VerificationEvents] setQueryData fast path for", sessionId);
+        }
+
+        // Safety net: always invalidate so a background refetch picks up authoritative server state
         queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
         queryClient.invalidateQueries({
           queryKey: ideationKeys.sessionWithData(sessionId),

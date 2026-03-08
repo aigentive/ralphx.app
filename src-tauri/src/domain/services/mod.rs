@@ -14,6 +14,7 @@ pub mod research_service;
 pub mod rule_ingestion_service;
 pub mod rule_parser;
 pub mod running_agent_registry;
+pub mod verification_events;
 pub mod verification_gate;
 pub mod workflow_service;
 pub mod worktree_guard;
@@ -22,6 +23,7 @@ pub use artifact_flow_service::{ArtifactFlowService, FlowExecutionResult, StepEx
 pub use artifact_service::ArtifactService;
 pub use bucket_classifier::BucketClassifier;
 pub use gap_fingerprint::{gap_fingerprint, gap_score, jaccard_similarity};
+pub use verification_events::{build_verification_payload, emit_verification_status_changed};
 pub use verification_gate::check_verification_gate;
 pub use index_rewriter::{IndexRewriter, RewriteResult};
 // Unified message queue - keyed by (context_type, context_id)

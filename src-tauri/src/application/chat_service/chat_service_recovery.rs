@@ -17,7 +17,10 @@ use crate::domain::repositories::{
     ChatAttachmentRepository, ChatConversationRepository, ChatMessageRepository,
     IdeationSessionRepository, TaskProposalRepository,
 };
+use crate::domain::entities::VerificationStatus;
+use crate::domain::services::emit_verification_status_changed;
 use crate::error::{AppError, AppResult};
+use tauri::Runtime;
 
 /// Attempt to recover from a stale Claude session by rebuilding conversation history
 /// and spawning a fresh session.
@@ -41,7 +44,7 @@ use crate::error::{AppError, AppResult};
 /// - `Ok(new_session_id)`: Recovery succeeded, new session ID
 /// - `Err(AppError)`: Recovery failed
 #[allow(clippy::too_many_arguments)]
-pub(super) async fn attempt_session_recovery(
+pub(super) async fn attempt_session_recovery<R: Runtime>(
     conversation_id: &ChatConversationId,
     conversation: &ChatConversation,
     context_type: ChatContextType,
@@ -58,6 +61,7 @@ pub(super) async fn attempt_session_recovery(
     ideation_session_repo: Option<Arc<dyn IdeationSessionRepository>>,
     task_proposal_repo: Option<Arc<dyn TaskProposalRepository>>,
     old_session_id: &str,
+    app_handle: Option<&tauri::AppHandle<R>>,
 ) -> AppResult<String> {
     let recovery_start = std::time::Instant::now();
 
@@ -99,6 +103,7 @@ pub(super) async fn attempt_session_recovery(
             context_id,
             ideation_session_repo.as_ref(),
             task_proposal_repo.as_ref(),
+            app_handle,
         )
         .await
     } else {
@@ -216,10 +221,11 @@ pub(super) async fn attempt_session_recovery(
 ///
 /// Fetches the ideation session and counts proposals to populate metadata
 /// for enriching the recovery prompt with ideation-specific context.
-async fn build_ideation_recovery_metadata(
+async fn build_ideation_recovery_metadata<R: Runtime>(
     context_id: &str,
     ideation_session_repo: Option<&Arc<dyn IdeationSessionRepository>>,
     task_proposal_repo: Option<&Arc<dyn TaskProposalRepository>>,
+    app_handle: Option<&tauri::AppHandle<R>>,
 ) -> Option<IdeationRecoveryMetadata> {
     // Both repositories are required for ideation metadata
     let (session_repo, proposal_repo) = (ideation_session_repo?, task_proposal_repo?);
@@ -280,7 +286,7 @@ async fn build_ideation_recovery_metadata(
         if let Err(e) = session_repo
             .update_verification_state(
                 &session_id,
-                crate::domain::entities::VerificationStatus::Unverified,
+                VerificationStatus::Unverified,
                 false,
                 None,
             )
@@ -297,6 +303,17 @@ async fn build_ideation_recovery_metadata(
                 round = current_round,
                 "Verification in-progress reset during session recovery"
             );
+            // Emit UI event so the frontend reflects the reset immediately (B2)
+            if let Some(handle) = app_handle {
+                emit_verification_status_changed(
+                    handle,
+                    session_id.as_str(),
+                    VerificationStatus::Unverified,
+                    false,
+                    None,
+                    None,
+                );
+            }
         }
     }
 

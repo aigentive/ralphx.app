@@ -318,6 +318,28 @@ export type PlanArtifactEvent = z.infer<typeof PlanArtifactEventSchema>;
 // ============================================================================
 
 /**
+ * Gap entry in plan_verification:status_changed event payload (snake_case from Rust serde)
+ */
+export const EventVerificationGapSchema = z.object({
+  severity: z.enum(["critical", "high", "medium", "low"]),
+  category: z.string(),
+  description: z.string(),
+  why_it_matters: z.string().nullable().optional(),
+});
+
+export type EventVerificationGap = z.infer<typeof EventVerificationGapSchema>;
+
+/**
+ * Round entry in plan_verification:status_changed event payload (snake_case from Rust serde)
+ */
+export const EventRoundSummarySchema = z.object({
+  fingerprints: z.array(z.string()),
+  gap_score: z.number(),
+});
+
+export type EventRoundSummary = z.infer<typeof EventRoundSummarySchema>;
+
+/**
  * Schema for plan_verification:status_changed events (snake_case — backend emits via serde_json)
  */
 export const PlanVerificationStatusChangedSchema = z.object({
@@ -327,7 +349,10 @@ export const PlanVerificationStatusChangedSchema = z.object({
   round: z.number().int().optional(),
   max_rounds: z.number().int().optional(),
   gap_score: z.number().int().optional(),
-  convergence_reason: z.string().optional(),
+  convergence_reason: z.string().nullable().optional(),
+  // Extended payload (B1): fast-path data for setQueryData cache update
+  current_gaps: z.array(EventVerificationGapSchema).optional(),
+  rounds: z.array(EventRoundSummarySchema).optional(),
 });
 
 export type PlanVerificationStatusChangedPayload = z.infer<typeof PlanVerificationStatusChangedSchema>;
@@ -341,6 +366,8 @@ export type PlanVerificationStatusChangedEvent = {
   maxRounds?: number;
   gapScore?: number;
   convergenceReason?: string;
+  currentGaps?: EventVerificationGap[];
+  rounds?: EventRoundSummary[];
 };
 
 // ============================================================================

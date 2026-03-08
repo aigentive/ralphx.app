@@ -395,6 +395,7 @@ pub fn run() {
                 let reconcile_memory_event_repo = Arc::clone(&startup_memory_event_repo);
                 let reconcile_review_repo = Arc::clone(&startup_review_repo);
                 let reconcile_app_handle = startup_app_handle.clone();
+                let verification_recon_app_handle = startup_app_handle.clone();
 
                 // Clone task_dependency_repo for StartupJobRunner (before TaskTransitionService consumes it)
                 let startup_runner_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
@@ -590,7 +591,7 @@ pub fn run() {
                     let svc = Arc::new(VerificationReconciliationService::new(
                         verification_session_repo,
                         verification_config,
-                    ));
+                    ).with_app_handle(verification_recon_app_handle));
                     svc.startup_scan().await;
                     tauri::async_runtime::spawn(async move { svc.run_periodic().await });
                 }

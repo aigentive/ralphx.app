@@ -9,8 +9,9 @@ use tracing::error;
 use super::*;
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType,
-    IdeationSessionId,
+    IdeationSessionId, VerificationStatus,
 };
+use crate::domain::services::emit_verification_status_changed;
 use crate::error::AppError;
 use crate::infrastructure::sqlite::{
     SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
@@ -203,13 +204,14 @@ pub async fn update_plan_artifact(
 
         if verification_reset {
             if let Some(session) = sessions.first() {
-                let _ = app_handle.emit(
-                    "plan_verification:status_changed",
-                    serde_json::json!({
-                        "session_id": session.id.as_str(),
-                        "status": "unverified",
-                        "in_progress": false,
-                    }),
+                // B4: use shared helper for canonical payload (was missing round/gaps/rounds fields)
+                emit_verification_status_changed(
+                    app_handle,
+                    session.id.as_str(),
+                    VerificationStatus::Unverified,
+                    false,
+                    None,
+                    None,
                 );
             }
         }

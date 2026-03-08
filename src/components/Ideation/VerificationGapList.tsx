@@ -18,6 +18,12 @@ export interface VerificationGapListProps {
   rounds?: RoundSummary[];
   /** Gap score for the latest round (critical*10 + high*3 + medium*1) */
   gapScore?: number;
+  /** When true, gaps show checkboxes and can be selected */
+  selectable?: boolean;
+  /** Set of selected gap indices into the flat `gaps` array (controlled) */
+  selectedGaps?: Set<number>;
+  /** Called when the selection changes */
+  onSelectionChange?: (selected: Set<number>) => void;
 }
 
 // ============================================================================
@@ -66,16 +72,16 @@ type Severity = keyof typeof SEVERITY_CONFIG;
 // ============================================================================
 
 function groupBySeverity(gaps: VerificationGap[]) {
-  const groups: Partial<Record<Severity, VerificationGap[]>> = {};
-  for (const gap of gaps) {
+  const groups: Partial<Record<Severity, Array<{ gap: VerificationGap; index: number }>>> = {};
+  for (let i = 0; i < gaps.length; i++) {
+    const gap = gaps[i]!;
     const sev = gap.severity as Severity;
     if (!groups[sev]) groups[sev] = [];
-    groups[sev]!.push(gap);
+    groups[sev]!.push({ gap, index: i });
   }
-  // Sort by severity order
-  return (Object.keys(groups) as Severity[]).sort(
-    (a, b) => SEVERITY_CONFIG[a].order - SEVERITY_CONFIG[b].order
-  ).map((sev) => ({ severity: sev, gaps: groups[sev]! }));
+  return (Object.keys(groups) as Severity[])
+    .sort((a, b) => SEVERITY_CONFIG[a].order - SEVERITY_CONFIG[b].order)
+    .map((sev) => ({ severity: sev, items: groups[sev]! }));
 }
 
 // ============================================================================
@@ -155,6 +161,33 @@ function GapScoreTrend({ rounds }: { rounds: RoundSummary[] }) {
   );
 }
 
+// Simple custom checkbox that matches the design system
+function GapCheckbox({ checked }: { checked: boolean }) {
+  return (
+    <span
+      className="w-3.5 h-3.5 rounded flex-shrink-0 flex items-center justify-center transition-colors"
+      style={{
+        background: checked ? "hsla(14 100% 60% / 0.15)" : "transparent",
+        border: checked
+          ? "1px solid hsl(14 100% 60%)"
+          : "1px solid hsla(220 10% 100% / 0.2)",
+      }}
+    >
+      {checked && (
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+          <path
+            d="M1.5 4L3 5.5L6.5 2"
+            stroke="hsl(14 100% 60%)"
+            strokeWidth="1.5"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </span>
+  );
+}
+
 // ============================================================================
 // Component
 // ============================================================================
@@ -163,6 +196,9 @@ export function VerificationGapList({
   gaps,
   rounds,
   gapScore,
+  selectable = false,
+  selectedGaps,
+  onSelectionChange,
 }: VerificationGapListProps) {
   if (gaps.length === 0) {
     return (
@@ -176,6 +212,29 @@ export function VerificationGapList({
   }
 
   const grouped = groupBySeverity(gaps);
+  const allIndices = gaps.map((_, i) => i);
+  const allSelected = allIndices.every((i) => selectedGaps?.has(i));
+
+  const handleToggle = (index: number) => {
+    if (!onSelectionChange) return;
+    const next = new Set(selectedGaps);
+    if (next.has(index)) {
+      next.delete(index);
+    } else {
+      next.add(index);
+    }
+    onSelectionChange(next);
+  };
+
+  const handleSelectAll = () => {
+    if (!onSelectionChange) return;
+    onSelectionChange(new Set(allIndices));
+  };
+
+  const handleDeselectAll = () => {
+    if (!onSelectionChange) return;
+    onSelectionChange(new Set());
+  };
 
   return (
     <div className="space-y-3">
@@ -196,7 +255,7 @@ export function VerificationGapList({
 
       {/* Severity summary row */}
       <div className="flex items-center gap-2 flex-wrap">
-        {grouped.map(({ severity, gaps: sGaps }) => {
+        {grouped.map(({ severity, items }) => {
           const cfg = SEVERITY_CONFIG[severity];
           return (
             <span
@@ -212,56 +271,94 @@ export function VerificationGapList({
                 className="w-1.5 h-1.5 rounded-full flex-shrink-0"
                 style={{ background: cfg.dotColor }}
               />
-              {sGaps.length} {cfg.label}
+              {items.length} {cfg.label}
             </span>
           );
         })}
+
+        {/* Select All / Deselect All */}
+        {selectable && onSelectionChange && (
+          <button
+            type="button"
+            className="ml-auto text-[10px] transition-colors"
+            style={{ color: "hsl(220 10% 50%)" }}
+            onClick={allSelected ? handleDeselectAll : handleSelectAll}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.color = "hsl(220 10% 80%)";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "hsl(220 10% 50%)";
+            }}
+          >
+            {allSelected ? "Deselect All" : "Select All"}
+          </button>
+        )}
       </div>
 
       {/* Gap items grouped by severity */}
-      <div className="space-y-2">
-        {grouped.map(({ severity, gaps: sGaps }) => {
+      <div>
+        {grouped.map(({ severity, items }) => {
           const cfg = SEVERITY_CONFIG[severity];
           return (
-            <div key={severity}>
+            <div key={severity} className="mb-2 last:mb-0">
               <div
-                className="text-[10px] font-semibold uppercase tracking-wider mb-1.5"
+                className="text-[10px] font-semibold uppercase tracking-wider mb-1"
                 style={{ color: cfg.color, opacity: 0.7 }}
               >
                 {cfg.label}
               </div>
-              <div className="space-y-1.5">
-                {sGaps.map((gap, idx) => (
-                  <div
-                    key={idx}
-                    className="rounded-md px-2.5 py-2"
-                    style={{
-                      background: cfg.bg,
-                      border: `1px solid ${cfg.border}`,
-                    }}
-                  >
+              <div>
+                {items.map(({ gap, index }, localIdx) => {
+                  const isSelected = selectedGaps?.has(index) ?? false;
+                  const isLast = localIdx === items.length - 1;
+
+                  return (
                     <div
-                      className="text-[12px] leading-snug"
-                      style={{ color: "hsl(220 10% 85%)" }}
+                      key={index}
+                      className="flex items-start gap-2.5 py-2"
+                      style={{
+                        borderBottom: isLast
+                          ? "none"
+                          : "1px solid hsla(220 10% 100% / 0.05)",
+                        cursor: selectable ? "pointer" : "default",
+                      }}
+                      onClick={selectable ? () => handleToggle(index) : undefined}
                     >
-                      {gap.description}
-                    </div>
-                    {gap.whyItMatters && (
-                      <div
-                        className="text-[11px] mt-1 leading-snug"
-                        style={{ color: "hsl(220 10% 55%)" }}
-                      >
-                        {gap.whyItMatters}
+                      {/* Checkbox (selectable mode only) */}
+                      {selectable && <GapCheckbox checked={isSelected} />}
+
+                      {/* 6px severity dot */}
+                      <span
+                        className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1"
+                        style={{ background: cfg.dotColor }}
+                      />
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div
+                          className="text-[12px] leading-snug"
+                          style={{ color: "hsl(220 10% 85%)" }}
+                        >
+                          {gap.description}
+                        </div>
+                        {gap.whyItMatters && (
+                          <div
+                            className="text-[11px] mt-0.5 leading-snug"
+                            style={{ color: "hsl(220 10% 55%)" }}
+                          >
+                            {gap.whyItMatters}
+                          </div>
+                        )}
+                        <div
+                          className="text-[10px] mt-0.5 opacity-60"
+                          style={{ color: cfg.color }}
+                        >
+                          {gap.category}
+                        </div>
                       </div>
-                    )}
-                    <div
-                      className="text-[10px] mt-1 opacity-60"
-                      style={{ color: cfg.color }}
-                    >
-                      {gap.category}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           );

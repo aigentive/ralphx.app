@@ -42,6 +42,7 @@ async fn test_recovery_metadata_includes_verification_fields_when_in_progress() 
         session_id.as_str(),
         Some(&session_repo_dyn),
         Some(&proposal_repo_dyn),
+        None::<&tauri::AppHandle>,
     )
     .await;
 
@@ -85,6 +86,7 @@ async fn test_recovery_metadata_no_reset_when_not_in_progress() {
         session_id.as_str(),
         Some(&session_repo_dyn),
         Some(&proposal_repo_dyn),
+        None::<&tauri::AppHandle>,
     )
     .await;
 
@@ -116,6 +118,7 @@ async fn test_recovery_metadata_returns_none_for_missing_session() {
         "nonexistent-session-id",
         Some(&session_repo_dyn),
         Some(&proposal_repo_dyn),
+        None::<&tauri::AppHandle>,
     )
     .await;
 
@@ -124,6 +127,6 @@ async fn test_recovery_metadata_returns_none_for_missing_session() {
 
 #[tokio::test]
 async fn test_recovery_metadata_returns_none_when_repos_absent() {
-    let metadata = build_ideation_recovery_metadata("any-id", None, None).await;
+    let metadata = build_ideation_recovery_metadata("any-id", None, None, None::<&tauri::AppHandle>).await;
     assert!(metadata.is_none(), "must return None when repos are not provided");
 }

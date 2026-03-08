@@ -1,0 +1,123 @@
+{
+  "session_id": "sess-contract-test-001",
+  "status": "needs_revision",
+  "in_progress": false,
+  "round": 3,
+  "max_rounds": 5,
+  "gap_score": 47,
+  "convergence_reason": null,
+  "current_gaps": [
+    {
+      "severity": "critical",
+      "category": "security",
+      "description": "No authentication on admin endpoints — any user can access privileged operations",
+      "why_it_matters": "Allows unauthorized data modification and privilege escalation"
+    },
+    {
+      "severity": "critical",
+      "category": "architecture",
+      "description": "Single point of failure in data pipeline — no retry or fallback mechanism",
+      "why_it_matters": "System becomes unavailable on any transient network failure"
+    },
+    {
+      "severity": "high",
+      "category": "security",
+      "description": "SQL queries constructed with string interpolation — vulnerable to injection",
+      "why_it_matters": null
+    },
+    {
+      "severity": "high",
+      "category": "testing",
+      "description": "No integration tests for critical payment flows",
+      "why_it_matters": "Silent regressions in revenue-critical paths"
+    },
+    {
+      "severity": "high",
+      "category": "architecture",
+      "description": "Unbounded queue growth — no backpressure or overflow handling",
+      "why_it_matters": null
+    },
+    {
+      "severity": "medium",
+      "category": "performance",
+      "description": "N+1 query pattern in user listing endpoint",
+      "why_it_matters": null
+    },
+    {
+      "severity": "medium",
+      "category": "testing",
+      "description": "Missing edge case tests for empty input handling",
+      "why_it_matters": null
+    },
+    {
+      "severity": "medium",
+      "category": "architecture",
+      "description": "Business logic mixed into HTTP handler layer",
+      "why_it_matters": null
+    },
+    {
+      "severity": "medium",
+      "category": "observability",
+      "description": "No structured logging for error paths — debugging in production is blind",
+      "why_it_matters": null
+    },
+    {
+      "severity": "medium",
+      "category": "performance",
+      "description": "No caching for frequently read configuration values",
+      "why_it_matters": null
+    },
+    {
+      "severity": "low",
+      "category": "documentation",
+      "description": "Public API endpoints lack OpenAPI spec",
+      "why_it_matters": null
+    },
+    {
+      "severity": "low",
+      "category": "testing",
+      "description": "No load testing for peak traffic scenarios",
+      "why_it_matters": null
+    },
+    {
+      "severity": "low",
+      "category": "architecture",
+      "description": "No feature flag system for safe rollouts",
+      "why_it_matters": null
+    },
+    {
+      "severity": "low",
+      "category": "observability",
+      "description": "Missing health check endpoint for load balancer probes",
+      "why_it_matters": null
+    },
+    {
+      "severity": "low",
+      "category": "performance",
+      "description": "Static assets served without cache headers",
+      "why_it_matters": null
+    }
+  ],
+  "rounds": [
+    {
+      "fingerprints": ["no-auth-admin", "sql-injection", "no-retry", "n+1-query", "unbounded-queue"],
+      "gap_score": 67
+    },
+    {
+      "fingerprints": ["no-auth-admin", "sql-injection", "no-retry", "n+1-query", "unbounded-queue", "no-integration-tests"],
+      "gap_score": 70
+    },
+    {
+      "fingerprints": ["no-auth-admin", "sql-injection", "no-retry", "no-integration-tests", "unbounded-queue", "missing-edge-cases", "business-logic-in-handler"],
+      "gap_score": 47
+    },
+    {
+      "fingerprints": [],
+      "gap_score": 0
+    },
+    {
+      "fingerprints": [],
+      "gap_score": 0
+    }
+  ]
+}
