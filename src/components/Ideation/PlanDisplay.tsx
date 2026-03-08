@@ -248,7 +248,6 @@ export function PlanDisplay({
   onRevertAndSkip,
   onRetryVerification,
 }: PlanDisplayProps) {
-  const [isHovered, setIsHovered] = useState(false);
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
   const [internalIsOpen, setInternalIsOpen] = useState(false);
@@ -365,8 +364,6 @@ export function PlanDisplay({
   return (
     <div
       className="group"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
     >
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         {/* Header - flat Tahoe style */}
@@ -376,9 +373,7 @@ export function PlanDisplay({
             padding: "12px 14px",
             background: isOpen
               ? "hsla(14 100% 60% / 0.08)"
-              : isHovered
-                ? "hsla(220 10% 100% / 0.03)"
-                : "hsla(220 10% 100% / 0.02)",
+              : "hsla(220 10% 100% / 0.02)",
             border: isOpen
               ? "1px solid hsla(14 100% 60% / 0.2)"
               : "1px solid hsla(220 10% 100% / 0.06)",
@@ -472,10 +467,10 @@ export function PlanDisplay({
               </button>
             </CollapsibleTrigger>
 
-            {/* Actions - appear on hover, stay visible when dropdown is open */}
+            {/* Actions - appear on hover (CSS group-hover), always visible when expanded or version dropdown is open */}
             <div className={cn(
               "flex items-center gap-1 transition-opacity duration-150",
-              isVersionDropdownOpen || isHovered ? "opacity-100" : "opacity-0"
+              isVersionDropdownOpen || isOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             )}>
               {/* Verification buttons — visible whenever plan has verification, regardless of approval settings */}
               {hasVerification && !isApproved && (
