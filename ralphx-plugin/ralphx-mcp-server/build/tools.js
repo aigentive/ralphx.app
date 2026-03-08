@@ -366,8 +366,9 @@ export const ALL_TOOLS = [
     {
         name: "get_session_messages",
         description: "Get chat messages for an ideation session. Used for context recovery when resuming an expired session. " +
-            "Returns messages newest-first (up to limit). The truncated flag indicates if older messages were dropped. " +
-            "Default limit: 50, max: 200. Set include_tool_calls=true to include tool_calls JSON (increases token usage).",
+            "Returns messages in chronological order (oldest to newest). The truncated flag indicates if older messages exist beyond the fetched window. " +
+            "Default limit: 50, max: 200. Use offset to page through older history (e.g. offset=50 skips the most recent 50 and returns the next 50 older messages). " +
+            "Set include_tool_calls=true to include tool_calls JSON (increases token usage).",
         inputSchema: {
             type: "object",
             properties: {
@@ -378,6 +379,10 @@ export const ALL_TOOLS = [
                 limit: {
                     type: "number",
                     description: "Maximum messages to return (default: 50, max: 200)",
+                },
+                offset: {
+                    type: "number",
+                    description: "Number of most-recent messages to skip (default: 0). Use for pagination: offset=50 returns the next 50 older messages after the most recent 50.",
                 },
                 include_tool_calls: {
                     type: "boolean",

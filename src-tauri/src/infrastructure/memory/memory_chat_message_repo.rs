@@ -160,6 +160,30 @@ impl ChatMessageRepository for MemoryChatMessageRepository {
         Ok(messages)
     }
 
+    async fn get_recent_by_session_paginated(
+        &self,
+        session_id: &IdeationSessionId,
+        limit: u32,
+        offset: u32,
+    ) -> AppResult<Vec<ChatMessage>> {
+        let mut messages: Vec<_> = self
+            .messages
+            .read()
+            .unwrap()
+            .values()
+            .filter(|m| m.session_id.as_ref() == Some(session_id))
+            .cloned()
+            .collect();
+        messages.sort_by_key(|m| Reverse(m.created_at));
+        let mut messages: Vec<_> = messages
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .collect();
+        messages.reverse();
+        Ok(messages)
+    }
+
     async fn update_content(
         &self,
         id: &ChatMessageId,

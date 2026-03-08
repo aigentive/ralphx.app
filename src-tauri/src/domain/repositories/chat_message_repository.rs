@@ -57,6 +57,14 @@ pub trait ChatMessageRepository: Send + Sync {
         limit: u32,
     ) -> AppResult<Vec<ChatMessage>>;
 
+    /// Get recent messages for a session with pagination (limit + offset for older history)
+    async fn get_recent_by_session_paginated(
+        &self,
+        session_id: &IdeationSessionId,
+        limit: u32,
+        offset: u32,
+    ) -> AppResult<Vec<ChatMessage>>;
+
     /// Update message content, tool_calls, and content_blocks (for incremental persistence)
     async fn update_content(
         &self,

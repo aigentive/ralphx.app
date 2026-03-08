@@ -125,6 +125,8 @@ pub(super) async fn attempt_session_recovery(
         _resolved_project_id.as_deref(),
         team_mode,
         chat_attachment_repo,
+        &[], // recovery path already builds its own bootstrap_prompt with history
+        0,   // total_available: not needed here — session_messages is empty
     )
     .await
     {

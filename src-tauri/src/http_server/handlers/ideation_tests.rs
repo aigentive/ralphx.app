@@ -32,6 +32,7 @@ async fn test_get_session_messages_empty_session() {
         Json(GetSessionMessagesRequest {
             session_id: session_id.as_str().to_string(),
             limit: 50,
+            offset: 0,
             include_tool_calls: false,
         }),
     )
@@ -72,6 +73,7 @@ async fn test_get_session_messages_returns_messages() {
         Json(GetSessionMessagesRequest {
             session_id: session_id.as_str().to_string(),
             limit: 50,
+            offset: 0,
             include_tool_calls: false,
         }),
     )
@@ -101,6 +103,7 @@ async fn test_get_session_messages_respects_limit() {
         Json(GetSessionMessagesRequest {
             session_id: session_id.as_str().to_string(),
             limit: 5,
+            offset: 0,
             include_tool_calls: false,
         }),
     )
@@ -125,6 +128,7 @@ async fn test_get_session_messages_caps_at_200() {
         Json(GetSessionMessagesRequest {
             session_id: session_id.as_str().to_string(),
             limit: 500, // Should be capped to 200
+            offset: 0,
             include_tool_calls: false,
         }),
     )
@@ -151,6 +155,7 @@ async fn test_get_session_messages_default_limit() {
         Json(GetSessionMessagesRequest {
             session_id: session_id.as_str().to_string(),
             limit: 50, // explicit default
+            offset: 0,
             include_tool_calls: false,
         }),
     )
@@ -200,6 +205,7 @@ async fn test_get_session_messages_returns_chronological_order() {
         Json(GetSessionMessagesRequest {
             session_id: session_id.as_str().to_string(),
             limit: 50,
+            offset: 0,
             include_tool_calls: false,
         }),
     )

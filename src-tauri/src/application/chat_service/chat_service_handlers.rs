@@ -689,6 +689,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             resolved_project_id.as_deref(),
                             team_mode,
                             Arc::clone(chat_attachment_repo),
+                            &[], // retry path — no session history injection needed
+                            0,   // total_available: not needed here — session_messages is empty
                         )
                         .await
                         {

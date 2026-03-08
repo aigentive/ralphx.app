@@ -951,6 +951,7 @@ pub async fn get_session_messages(
 
     // Cap limit at 200
     let limit = req.limit.clamp(1, 200);
+    let offset = req.offset;
 
     // Get total count first
     let total_available = state
@@ -970,11 +971,11 @@ pub async fn get_session_messages(
             )
         })? as usize;
 
-    // Get messages using existing repository method
+    // Get messages with offset for pagination support
     let messages = state
         .app_state
         .chat_message_repo
-        .get_recent_by_session(&session_id, limit as u32)
+        .get_recent_by_session_paginated(&session_id, limit as u32, offset as u32)
         .await
         .map_err(|e| {
             error!(
@@ -1004,7 +1005,7 @@ pub async fn get_session_messages(
         .collect();
 
     let count = response_messages.len();
-    let truncated = total_available > limit;
+    let truncated = total_available > limit + offset;
 
     Ok(Json(GetSessionMessagesResponse {
         messages: response_messages,

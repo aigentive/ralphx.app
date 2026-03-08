@@ -482,6 +482,8 @@ impl<R: Runtime> ClaudeChatService<R> {
         working_directory: &Path,
         entity_status: Option<&str>,
         project_id: Option<&str>,
+        session_messages: &[crate::domain::entities::ChatMessage],
+        total_available: usize,
     ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_command(
             &self.cli_path,
@@ -493,6 +495,8 @@ impl<R: Runtime> ClaudeChatService<R> {
             project_id,
             self.team_mode.load(Ordering::Relaxed),
             Arc::clone(&self.chat_attachment_repo),
+            session_messages,
+            total_available,
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -506,6 +510,8 @@ impl<R: Runtime> ClaudeChatService<R> {
         working_directory: &Path,
         entity_status: Option<&str>,
         project_id: Option<&str>,
+        session_messages: &[crate::domain::entities::ChatMessage],
+        total_available: usize,
     ) -> Result<crate::infrastructure::agents::claude::SpawnableCommand, ChatServiceError> {
         chat_service_context::build_interactive_command(
             &self.cli_path,
@@ -517,6 +523,8 @@ impl<R: Runtime> ClaudeChatService<R> {
             project_id,
             self.team_mode.load(Ordering::Relaxed),
             Arc::clone(&self.chat_attachment_repo),
+            session_messages,
+            total_available,
         )
         .await
         .map_err(ChatServiceError::SpawnFailed)
@@ -604,10 +612,14 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             // Build the prompt with context wrapping, then format as stream-json input.
             // The interactive process uses `-p - --input-format stream-json`, so each
             // message must be a single-line JSON object.
+            // Session history is NOT injected here — the agent is already running and
+            // has live context. History injection is only for new process spawns.
             let stdin_prompt = chat_service_context::build_initial_prompt(
                 context_type,
                 context_id,
                 message,
+                &[],
+                0,
             );
             let stream_json_msg =
                 crate::infrastructure::agents::claude::format_stream_json_input(&stdin_prompt);
@@ -985,6 +997,32 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             cli_path = %self.cli_path.display(),
             "chat_service.send_message building interactive command"
         );
+        // Fetch recent session messages for Ideation context ONLY when spawning a new process.
+        // The agent has no prior context at spawn time, so we inject the history into the prompt.
+        // For non-ideation contexts and already-running agents (IPR path above), we pass empty slice.
+        let (session_messages, session_total) = if context_type == ChatContextType::Ideation {
+            let session_id = IdeationSessionId::from_string(context_id.to_string());
+            let total = self
+                .chat_message_repo
+                .count_by_session(&session_id)
+                .await
+                .unwrap_or(0);
+            if total > 0 {
+                let msgs = self
+                    .chat_message_repo
+                    .get_recent_by_session(
+                        &session_id,
+                        chat_service_context::SESSION_HISTORY_LIMIT as u32,
+                    )
+                    .await
+                    .unwrap_or_default();
+                (msgs, total as usize)
+            } else {
+                (vec![], 0usize)
+            }
+        } else {
+            (vec![], 0usize)
+        };
         let spawnable = match self
             .build_interactive_command(
                 &conversation,
@@ -992,6 +1030,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 &working_directory,
                 entity_status.as_deref(),
                 project_id.as_deref(),
+                &session_messages,
+                session_total,
             )
             .await
         {
@@ -1144,10 +1184,13 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 "queue_message: interactive process found, sending immediately via stdin"
             );
 
+            // Agent is already running — no session history needed here.
             let stdin_prompt = chat_service_context::build_initial_prompt(
                 context_type,
                 context_id,
                 content,
+                &[],
+                0,
             );
             let stream_json_msg =
                 crate::infrastructure::agents::claude::format_stream_json_input(&stdin_prompt);
