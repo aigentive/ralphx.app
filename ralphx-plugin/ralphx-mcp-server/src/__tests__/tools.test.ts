@@ -3,7 +3,7 @@
  * Tests agent team coordination features
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   getAllowedToolNames,
   getFilteredTools,
@@ -11,6 +11,7 @@ import {
   setAgentType,
   getAllTools,
   TOOL_ALLOWLIST,
+  parseAllowedToolsFromArgs,
 } from '../tools.js';
 import {
   IDEATION_TEAM_LEAD,
@@ -408,5 +409,126 @@ describe('Tool allowlist for new agent types', () => {
     expect(allowlist).not.toContain('request_team_plan');
     expect(allowlist).not.toContain('request_teammate_spawn');
     expect(allowlist).not.toContain('save_team_session_state');
+  });
+});
+
+// ===========================================================================
+// TDD tests for --allowed-tools CLI arg parsing (Wave 1)
+// These tests FAIL until Wave 2 implementation is complete.
+// ===========================================================================
+
+describe('parseAllowedToolsFromArgs', () => {
+  let originalArgv: string[];
+
+  beforeEach(() => {
+    originalArgv = [...process.argv];
+    // Start clean — no --allowed-tools arg
+    process.argv = process.argv.filter((a) => !a.startsWith('--allowed-tools'));
+  });
+
+  afterEach(() => {
+    process.argv = originalArgv;
+  });
+
+  it('returns ["tool1", "tool2"] when --allowed-tools=tool1,tool2', () => {
+    process.argv = [...process.argv, '--allowed-tools=tool1,tool2'];
+    const result = parseAllowedToolsFromArgs();
+    expect(result).toEqual(['tool1', 'tool2']);
+  });
+
+  it('returns [] when --allowed-tools=__NONE__ (explicit empty sentinel)', () => {
+    process.argv = [...process.argv, '--allowed-tools=__NONE__'];
+    const result = parseAllowedToolsFromArgs();
+    expect(result).toEqual([]);
+  });
+
+  it('returns undefined when --allowed-tools= (empty value falls through)', () => {
+    process.argv = [...process.argv, '--allowed-tools='];
+    const result = parseAllowedToolsFromArgs();
+    expect(result).toBeUndefined();
+  });
+
+  it('returns undefined when --allowed-tools is absent', () => {
+    // argv already cleaned in beforeEach
+    const result = parseAllowedToolsFromArgs();
+    expect(result).toBeUndefined();
+  });
+
+  it('skips invalid tool names (uppercase, spaces) and emits warning', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    process.argv = [
+      ...process.argv,
+      '--allowed-tools=valid_tool,INVALID_UPPER,has space',
+    ];
+    const result = parseAllowedToolsFromArgs();
+    expect(result).toContain('valid_tool');
+    expect(result).not.toContain('INVALID_UPPER');
+    expect(result).not.toContain('has space');
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('INVALID_UPPER'),
+    );
+    consoleSpy.mockRestore();
+  });
+
+  it('includes unknown tool names (not in ALL_TOOLS) and emits warning', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    process.argv = [
+      ...process.argv,
+      '--allowed-tools=get_session_plan,xyz_not_in_registry',
+    ];
+    const result = parseAllowedToolsFromArgs();
+    expect(result).toContain('get_session_plan');
+    expect(result).toContain('xyz_not_in_registry'); // included, NOT dropped
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining('xyz_not_in_registry'),
+    );
+    consoleSpy.mockRestore();
+  });
+});
+
+describe('getAllowedToolNames - CLI arg priority chain', () => {
+  let originalArgv: string[];
+
+  beforeEach(() => {
+    originalArgv = [...process.argv];
+    delete process.env.RALPHX_ALLOWED_MCP_TOOLS;
+    process.argv = process.argv.filter((a) => !a.startsWith('--allowed-tools'));
+  });
+
+  afterEach(() => {
+    process.argv = originalArgv;
+    delete process.env.RALPHX_ALLOWED_MCP_TOOLS;
+  });
+
+  it('uses --allowed-tools CLI arg when RALPHX_ALLOWED_MCP_TOOLS env var is not set', () => {
+    process.argv = [...process.argv, '--allowed-tools=get_session_plan,create_team_artifact'];
+    const tools = getAllowedToolNames();
+    expect(tools).toEqual(['get_session_plan', 'create_team_artifact']);
+  });
+
+  it('env var takes priority over --allowed-tools CLI arg', () => {
+    process.env.RALPHX_ALLOWED_MCP_TOOLS = 'get_session_plan';
+    process.argv = [...process.argv, '--allowed-tools=create_team_artifact'];
+    const tools = getAllowedToolNames();
+    expect(tools).toEqual(['get_session_plan']); // env var wins
+    expect(tools).not.toContain('create_team_artifact');
+  });
+
+  it('--allowed-tools takes priority over TOOL_ALLOWLIST fallback', () => {
+    setAgentType(IDEATION_TEAM_LEAD);
+    process.argv = [...process.argv, '--allowed-tools=get_session_plan'];
+    const tools = getAllowedToolNames();
+    expect(tools).toEqual(['get_session_plan']);
+    expect(tools).not.toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+  });
+
+  it('fallback to TOOL_ALLOWLIST emits deprecation warning when --allowed-tools absent', () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    setAgentType(IDEATION_TEAM_LEAD);
+    // No env var, no --allowed-tools in argv
+    const tools = getAllowedToolNames();
+    expect(tools).toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('WARN'));
+    consoleSpy.mockRestore();
   });
 });

@@ -10,96 +10,109 @@ paths:
 
 > **Maintainer note:** This file optimizes for LLM context efficiency. Rules: (1) Tables > prose (2) One example max per concept (3) No redundant explanations (4) Use symbols: → = leads to, | = or, ❌/✅ = wrong/right (5) Before adding content, ask: "Can this be a single line?" If yes, make it one line.
 
-## Three-Layer Allowlist (ALL required)
+## Architecture (2-Layer — Single Source of Truth)
 
-Adding an MCP tool to an agent requires updates in **three places**. Missing any one → tool silently unavailable.
+Tool allowlists are now driven by **`ralphx.yaml` → `--allowed-tools` CLI arg injection**. No manual sync across 3 files.
 
-| # | Layer | File | What to Update | Controls |
-|---|-------|------|----------------|----------|
-| 1 | **Rust spawn config** | `src-tauri/src/infrastructure/agents/claude/agent_config/mod.rs` | `AGENT_CONFIGS` → agent's `allowed_mcp_tools` array | `--allowedTools` flag at spawn time |
-| 2 | **MCP server filter** | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST` → agent's array | Server-side tool filtering |
-| 3 | **Agent frontmatter** | `ralphx-plugin/agents/<name>.md` | `allowedTools:` YAML list (prefix: `mcp__ralphx__`) | Subagent spawning + documentation |
+| Layer | File | Controls | Tech |
+|-------|------|----------|------|
+| 1 | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | Tool handler registration (`ALL_TOOLS`) | TypeScript |
+| 2 | `ralphx.yaml` → `mcp_tools: [...]` per agent | Which tools each agent receives | YAML → Rust → CLI arg |
 
-## Adding a New Tool to an Existing Agent — Checklist
+**How it works:** Rust `create_mcp_config()` reads `mcp_tools` from `ralphx.yaml` and injects `--allowed-tools=tool1,tool2,...` into the MCP config JSON args. MCP server parses this at startup — no TOOL_ALLOWLIST lookup needed.
 
-- [ ] **Layer 1 (Rust):** Add tool name to `allowed_mcp_tools` in `AGENT_CONFIGS` (`agent_config/mod.rs`)
-- [ ] **Layer 1 (Rust):** Update corresponding test (`test_get_allowed_mcp_tools_<agent>`)
-- [ ] **Layer 2 (MCP):** Add tool name to `TOOL_ALLOWLIST[agent]` (`tools.ts`)
-- [ ] **Layer 2 (MCP):** Add handler in `CallToolRequestSchema` dispatch (`index.ts`)
-- [ ] **Layer 2 (MCP):** If tool has `task_id` param → add to `taskScopedTools` array (`index.ts`)
-- [ ] **Layer 3 (Agent):** Add `mcp__ralphx__<tool_name>` to frontmatter `allowedTools` (`agents/<name>.md`)
+**Agent `.md` frontmatter** → `mcp__ralphx__*` wildcard covers all MCP tools automatically (Layer 3 is no longer agent-specific).
 
-## Adding a Completely New Tool — Checklist
+## How to Add a New MCP Tool — Checklist
 
-All of the above, plus:
+**2 steps required (down from 6):**
+
+| Step | What | File | Required? |
+|------|------|------|-----------|
+| 1 | Register tool handler + add to `ALL_TOOLS` array | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | Yes |
+| 2 | Add tool name to agent's `mcp_tools` | `ralphx.yaml` — agent's `mcp_tools: [...]` array | Yes |
+| 3 | Rebuild MCP server | `cd ralphx-plugin/ralphx-mcp-server && npm run build` | Yes (after step 1) |
+
+**What you NO LONGER need to do:**
+- ~~Edit `TOOL_ALLOWLIST` in `tools.ts`~~ (bypassed by `--allowed-tools`)
+- ~~Edit Rust `AGENT_CONFIGS` `allowed_mcp_tools`~~ (removed — `ralphx.yaml` is now the single source of truth)
+- ~~Edit agent `.md` frontmatter `allowedTools`~~ (wildcard `mcp__ralphx__*` covers all MCP tools)
+
+## How to Add a Completely New Tool
+
+All checklist steps above, plus:
 
 - [ ] **Backend:** Add HTTP handler in `src-tauri/src/http_server/handlers/<domain>.rs`
 - [ ] **Backend:** Add route in `src-tauri/src/http_server/mod.rs`
 - [ ] **MCP:** Add tool definition to `ALL_TOOLS` array (`tools.ts`)
 - [ ] **MCP:** Add handler dispatch in `CallToolRequestSchema` (`index.ts`) — GET for queries, POST for mutations
+- [ ] **MCP:** If tool has `task_id` param → add to `taskScopedTools` array (`index.ts`)
+
+## Validation
+
+After adding a tool, verify MCP server stderr shows:
+- `[RalphX MCP] Tools from --allowed-tools: tool1, tool2, new_tool` — confirms CLI arg injection worked
+- No `WARN: unknown tool` for your new tool — confirms handler is registered in `ALL_TOOLS`
+- ❌ `WARN: --allowed-tools not provided, using fallback TOOL_ALLOWLIST` → means Rust injection is not working (check `ralphx.yaml` syntax and rebuild)
+
+## TOOL_ALLOWLIST — Deprecated Fallback
+
+> **`TOOL_ALLOWLIST` in `tools.ts` is kept as a last-resort fallback only. It is NOT the production source of truth.**
+
+| Scenario | Behavior |
+|----------|----------|
+| `--allowed-tools` injected (production) | TOOL_ALLOWLIST bypassed entirely |
+| `--allowed-tools` absent (standalone debug) | TOOL_ALLOWLIST used + stderr deprecation warning emitted |
+| `mcp_tools: []` explicit empty | `--allowed-tools=__NONE__` injected → zero tools, no fallback |
+| `mcp_tools` key absent from ralphx.yaml | `--allowed-tools` not injected → TOOL_ALLOWLIST fallback |
+
+**Do NOT edit `TOOL_ALLOWLIST` to grant tools to agents.** Changes there have no effect in production (they're only reached when `--allowed-tools` injection fails). Update `ralphx.yaml` `mcp_tools` instead.
+
+**Fallback chain in `getAllowedToolNames()`:**
+1. `RALPHX_ALLOWED_MCP_TOOLS` env var (standalone testing only — Claude CLI does not propagate env vars to MCP servers)
+2. `--allowed-tools` CLI arg (production path — injected by Rust `create_mcp_config()` from `ralphx.yaml`)
+3. `TOOL_ALLOWLIST[agentType]` (deprecated fallback — emits warning when reached)
 
 ## Tool Name Formats
 
 | Context | Format | Example |
 |---------|--------|---------|
-| Rust `allowed_mcp_tools` | bare name | `"get_merge_target"` |
-| TS `TOOL_ALLOWLIST` | bare name | `"get_merge_target"` |
-| Agent frontmatter `allowedTools` | prefixed | `mcp__ralphx__get_merge_target` |
+| `ralphx.yaml` `mcp_tools` | bare name | `get_merge_target` |
 | TS `ALL_TOOLS` definition | bare name | `name: "get_merge_target"` |
+| Agent frontmatter `allowedTools` | wildcard | `mcp__ralphx__*` |
 
 ## Common Failure Modes
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Agent can't see tool at all | Missing from Layer 1 (Rust `allowed_mcp_tools`) | Tool not in `--allowedTools` at spawn |
-| Tool listed but "not available" error | Missing from Layer 2 (`TOOL_ALLOWLIST`) | MCP server rejects at runtime |
-| Subagent can't use tool | Missing from Layer 3 (frontmatter `allowedTools`) | Only affects subagent spawning |
+| Agent can't see tool at all | Tool not in agent's `mcp_tools` in `ralphx.yaml` | Add tool name to `mcp_tools` |
+| Tool listed but "not available" | Handler missing from `ALL_TOOLS` or `index.ts` dispatch | Register handler + rebuild |
+| MCP server logs "using fallback TOOL_ALLOWLIST" | `--allowed-tools` not injected | Check `ralphx.yaml` syntax; rebuild Rust |
 | Tool allowed but 404 | Handler missing or wrong route | Check `index.ts` dispatch + `mod.rs` route |
-
-## Verification Tools (`update_plan_verification` + `get_plan_verification`)
-
-Both tools are in the allowlist for `orchestrator-ideation` and `ideation-team-lead`:
-
-| Layer | File | Entry |
-|-------|------|-------|
-| 1 (Rust) | `agent_config/mod.rs` | `"update_plan_verification"`, `"get_plan_verification"` in both agents |
-| 2 (MCP) | `tools.ts` | Added to `TOOL_ALLOWLIST["orchestrator-ideation"]` + `TOOL_ALLOWLIST["ideation-team-lead"]` |
-| 3 (Frontmatter) | `orchestrator-ideation.md`, `ideation-team-lead.md` | `mcp__ralphx__update_plan_verification`, `mcp__ralphx__get_plan_verification` |
-
-`update_plan_verification` mutates verification state (POST). `get_plan_verification` reads current state (GET). Both have `session_id` as required param — NOT task-scoped.
+| Subagent can't use tool | Agent `.md` doesn't have `mcp__ralphx__*` wildcard | Add wildcard to frontmatter `allowedTools` |
 
 ## Example: Adding `get_merge_target` to `ralphx-merger`
 
-```rust
-// Layer 1: agent_config/mod.rs
-AgentConfig {
-    name: "ralphx-merger",
-    allowed_mcp_tools: &[
-        "report_conflict",
-        "report_incomplete",
-        "get_merge_target",  // ← ADD
-        "get_task_context",
-    ],
-    ...
-}
+```yaml
+# ralphx.yaml — agent's mcp_tools list
+- name: ralphx-merger
+  mcp_tools:
+    - report_conflict
+    - report_incomplete
+    - get_merge_target  # ← ADD
+    - get_task_context
 ```
 
 ```typescript
-// Layer 2: tools.ts
-"ralphx-merger": [
-    "report_conflict",
-    "report_incomplete",
-    "complete_merge",
-    "get_merge_target",  // ← ADD
-    "get_task_context",
-],
+// tools.ts — ALL_TOOLS array (tool definition)
+{
+  name: "get_merge_target",
+  description: "...",
+  inputSchema: { ... }
+}
+// index.ts — CallToolRequestSchema dispatch
+case "get_merge_target":
+  // handler implementation
 ```
 
-```yaml
-# Layer 3: agents/merger.md frontmatter
-allowedTools:
-  - mcp__ralphx__report_conflict
-  - mcp__ralphx__report_incomplete
-  - mcp__ralphx__get_merge_target  # ← ADD
-  - mcp__ralphx__get_task_context
-```
+Then rebuild: `cd ralphx-plugin/ralphx-mcp-server && npm run build`

@@ -24,7 +24,13 @@ export declare function setAgentType(agentType: string): void;
  */
 export declare function getAgentType(): string;
 /**
+ * Parse --allowed-tools= CLI arg from process.argv.
+ * Returns the parsed tool list, [] for __NONE__ sentinel, or undefined to fall through.
+ */
+export declare function parseAllowedToolsFromArgs(): string[] | undefined;
+/**
  * Get allowed tool names for the current agent type
+ * Priority: env var > --allowed-tools CLI arg > TOOL_ALLOWLIST fallback
  * @returns Array of tool names this agent is allowed to use
  */
 export declare function getAllowedToolNames(): string[];

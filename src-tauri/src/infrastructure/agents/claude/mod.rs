@@ -441,6 +441,32 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
             args_vec.push(short_name.to_string());
         }
 
+        // Inject --allowed-tools from agent's mcp_tools config (Wave 3).
+        // - Agent not in config (None) → skip arg entirely (MCP server falls back to TOOL_ALLOWLIST)
+        // - Agent found, empty mcp_tools → inject __NONE__ sentinel (intentional zero tools)
+        // - Agent found, non-empty mcp_tools → validate names, join with commas, inject arg
+        let validated_tools: Option<Vec<String>> = get_agent_config(agent_type).map(|cfg| {
+            cfg.allowed_mcp_tools
+                .iter()
+                .filter(|name| {
+                    if validate_mcp_tool_name(name) {
+                        true
+                    } else {
+                        tracing::error!(
+                            "[RalphX] Invalid MCP tool name {:?} for agent {:?} (skipped from --allowed-tools)",
+                            name,
+                            agent_type
+                        );
+                        false
+                    }
+                })
+                .cloned()
+                .collect()
+        });
+        if let Some(arg_value) = format_allowed_tools_arg_value(validated_tools.as_deref()) {
+            args_vec.push(format!("--allowed-tools={}", arg_value));
+        }
+
         server_obj.insert(
             "args".to_string(),
             serde_json::Value::Array(
@@ -960,8 +986,44 @@ pub fn resolve_plugin_dir(working_dir: &Path) -> PathBuf {
 }
 
 // ============================================================================
+// Wave 3 stubs — allow mod_tests.rs to compile in TDD red state.
+// Tests call these functions and fail at runtime (todo!) until Wave 3 implements them.
+// ============================================================================
+
+/// Validate that an MCP tool name matches `^[a-z][a-z0-9_]*$`.
+/// Returns `false` for empty strings, names starting with a digit, names with uppercase,
+/// or names containing special characters (commas, spaces, hyphens, dots, etc.).
+pub fn validate_mcp_tool_name(name: &str) -> bool {
+    if name.is_empty() {
+        return false;
+    }
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_lowercase() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+}
+
+/// Format the `--allowed-tools` arg value from an optional tool list.
+/// - `None` → `None` (agent has no mcp_tools config → no arg injected)
+/// - `Some([])` → `Some("__NONE__")` sentinel (explicit empty, do not fall through to TOOL_ALLOWLIST)
+/// - `Some([t1, t2, ...])` → `Some("t1,t2,...")`
+pub fn format_allowed_tools_arg_value(tools: Option<&[String]>) -> Option<String> {
+    match tools {
+        None => None,
+        Some([]) => Some("__NONE__".to_string()),
+        Some(tools) => Some(tools.join(",")),
+    }
+}
+
+// ============================================================================
 // Tests
 // ============================================================================
+
+#[cfg(test)]
+#[path = "mod_tests.rs"]
+mod create_mcp_config_tests;
 
 #[cfg(test)]
 mod tests {

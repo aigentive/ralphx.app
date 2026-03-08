@@ -6,11 +6,7 @@ tools:
   - Grep
   - Glob
 allowedTools:
-  - mcp__ralphx__upsert_memories
-  - mcp__ralphx__search_memories
-  - mcp__ralphx__get_memory
-  - mcp__ralphx__get_memories_for_paths
-  - mcp__ralphx__get_conversation_transcript
+  - "mcp__ralphx__*"
 model: haiku
 ---
 

@@ -9,14 +9,7 @@ tools:
   - Glob
   - Bash
 allowedTools:
-  - mcp__ralphx__upsert_memories
-  - mcp__ralphx__mark_memory_obsolete
-  - mcp__ralphx__refresh_memory_rule_index
-  - mcp__ralphx__ingest_rule_file
-  - mcp__ralphx__rebuild_archive_snapshots
-  - mcp__ralphx__search_memories
-  - mcp__ralphx__get_memory
-  - mcp__ralphx__get_memories_for_paths
+  - "mcp__ralphx__*"
 model: haiku
 ---
 

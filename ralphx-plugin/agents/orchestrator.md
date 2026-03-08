@@ -3,9 +3,7 @@ name: ralphx-orchestrator
 description: Plans and coordinates complex multi-step tasks
 tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Task, TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, KillShell, MCPSearch
 allowedTools:
-  - mcp__ralphx__search_memories
-  - mcp__ralphx__get_memory
-  - mcp__ralphx__get_memories_for_paths
+  - "mcp__ralphx__*"
 model: opus
 ---
 

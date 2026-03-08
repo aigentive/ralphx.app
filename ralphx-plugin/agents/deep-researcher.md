@@ -3,9 +3,7 @@ name: ralphx-deep-researcher
 description: Conducts thorough research and analysis
 tools: Read, Write, Grep, Glob, Bash, WebFetch, WebSearch, Task, TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, KillShell, MCPSearch
 allowedTools:
-  - mcp__ralphx__search_memories
-  - mcp__ralphx__get_memory
-  - mcp__ralphx__get_memories_for_paths
+  - "mcp__ralphx__*"
   - "Task(Explore)"
   - "Task(Plan)"
 model: opus

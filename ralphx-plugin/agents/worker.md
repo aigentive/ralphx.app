@@ -20,29 +20,7 @@ tools:
   - MCPSearch
   - LSP
 allowedTools:
-  - mcp__ralphx__start_step
-  - mcp__ralphx__complete_step
-  - mcp__ralphx__skip_step
-  - mcp__ralphx__fail_step
-  - mcp__ralphx__add_step
-  - mcp__ralphx__get_step_progress
-  - mcp__ralphx__get_step_context
-  - mcp__ralphx__get_sub_steps
-  - mcp__ralphx__get_task_context
-  - mcp__ralphx__get_artifact
-  - mcp__ralphx__get_artifact_version
-  - mcp__ralphx__get_related_artifacts
-  - mcp__ralphx__search_project_artifacts
-  - mcp__ralphx__get_review_notes
-  - mcp__ralphx__get_task_steps
-  - mcp__ralphx__get_task_issues
-  - mcp__ralphx__mark_issue_in_progress
-  - mcp__ralphx__mark_issue_addressed
-  - mcp__ralphx__get_project_analysis
-  - mcp__ralphx__execution_complete
-  - mcp__ralphx__search_memories
-  - mcp__ralphx__get_memory
-  - mcp__ralphx__get_memories_for_paths
+  - "mcp__ralphx__*"
   - "Task(Explore)"
   - "Task(Plan)"
 model: sonnet
