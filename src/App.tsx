@@ -21,6 +21,7 @@ import type { ProposalDetailEnrichment } from "@/components/Ideation/ProposalDet
 import { ExtensibilityView } from "@/components/ExtensibilityView";
 import { ActivityView } from "@/components/activity";
 import { SettingsView } from "@/components/settings";
+import { InsightsView } from "@/components/views/InsightsView";
 import { TeamSplitView } from "@/components/Team";
 import { TaskGraphView } from "@/components/TaskGraph";
 import { WelcomeScreen } from "@/components/WelcomeScreen";
@@ -1097,6 +1098,7 @@ function AppContent() {
                   {...(activityFilter.sessionId && { sessionId: activityFilter.sessionId })}
                 />
               )}
+              {currentView === "insights" && <InsightsView />}
               {currentView === "settings" && (
                 <SettingsView
                   {...(executionSettings && { initialSettings: executionSettings })}

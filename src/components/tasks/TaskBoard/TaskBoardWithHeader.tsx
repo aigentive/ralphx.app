@@ -7,8 +7,11 @@
  */
 
 import { useState, useCallback } from "react";
+import { BarChart2 } from "lucide-react";
 import { useWorkflows } from "@/hooks/useWorkflows";
 import { WorkflowSelector } from "@/components/workflows/WorkflowSelector";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ProjectStatsCard } from "@/components/project/ProjectStatsCard";
 import { TaskBoard } from "./TaskBoard";
 import type { WorkflowSchema } from "@/types/workflow";
 
@@ -36,6 +39,9 @@ export function TaskBoardWithHeader({ projectId }: TaskBoardWithHeaderProps) {
   // Track selected workflow ID (default to first default workflow)
   const [selectedWorkflowId, setSelectedWorkflowId] = useState<string | null>(null);
 
+  // Stats popover open state
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
+
   // Resolved current workflow ID
   const currentWorkflowId = selectedWorkflowId ?? defaultWorkflow?.id ?? null;
 
@@ -59,6 +65,20 @@ export function TaskBoardWithHeader({ projectId }: TaskBoardWithHeaderProps) {
           onSelectWorkflow={handleSelectWorkflow}
           isLoading={isLoadingWorkflows}
         />
+
+        <Popover open={isStatsOpen} onOpenChange={setIsStatsOpen}>
+          <PopoverTrigger asChild>
+            <button
+              className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+              aria-label="Project stats"
+            >
+              <BarChart2 className="w-4 h-4" />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-96 p-0 border-white/10 bg-transparent shadow-xl">
+            <ProjectStatsCard projectId={projectId} />
+          </PopoverContent>
+        </Popover>
       </div>
 
       {/* Task Board */}

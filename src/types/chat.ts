@@ -16,6 +16,7 @@ export const VIEW_TYPE_VALUES = [
   "ideation",
   "extensibility",
   "activity",
+  "insights",
   "settings",
   "task_detail",
   "team",

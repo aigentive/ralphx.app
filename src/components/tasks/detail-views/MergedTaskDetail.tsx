@@ -19,6 +19,7 @@ import {
   StatusBanner,
   StatusPill,
   TwoColumnLayout,
+  TaskMetricsCard,
 } from "./shared";
 import { ReviewTimeline } from "./shared/ReviewTimeline";
 import { ValidationProgress } from "./shared/ValidationProgress";
@@ -220,6 +221,12 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
           />
         </div>
       )}
+
+      {/* Task Metrics */}
+      <section data-testid="task-metrics-section">
+        <SectionTitle>Metrics</SectionTitle>
+        <TaskMetricsCard taskId={task.id} />
+      </section>
 
       {/* Merge Info */}
       <section data-testid="merge-info-section">

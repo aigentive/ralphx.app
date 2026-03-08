@@ -30,7 +30,13 @@ vi.mock("@/hooks/useInfiniteTasksQuery", async (importOriginal) => {
   };
 });
 
+// Mock useProjectStats to avoid EventProvider dependency
+vi.mock("@/hooks/useProjectStats", () => ({
+  useProjectStats: vi.fn(() => ({ data: undefined })),
+}));
+
 import { useInfiniteTasksQuery } from "@/hooks/useInfiniteTasksQuery";
+import { useProjectStats } from "@/hooks/useProjectStats";
 
 function createTestQueryClient() {
   return new QueryClient({
@@ -241,6 +247,62 @@ describe("Column", () => {
       );
       // Expanded view has the drop zone with sentinel
       expect(screen.getByTestId("drop-zone-ready")).toBeInTheDocument();
+    });
+  });
+
+  describe("cycle time display", () => {
+    it("should not show cycle time badge when no project stats", () => {
+      vi.mocked(useProjectStats).mockReturnValue({ data: undefined } as ReturnType<typeof useProjectStats>);
+      const column = createMockColumn({ mapsTo: "executing" });
+      render(<Column column={column} projectId="p1" showArchived={false} />, { wrapper: DndWrapper });
+      // No cycle time badge should appear in the header
+      expect(screen.queryByTitle(/Avg time/)).not.toBeInTheDocument();
+    });
+
+    it("should not show cycle time badge when sampleSize is 0", () => {
+      vi.mocked(useProjectStats).mockReturnValue({
+        data: {
+          taskCount: 5,
+          tasksCompletedToday: 0,
+          tasksCompletedThisWeek: 0,
+          tasksCompletedThisMonth: 0,
+          agentSuccessRate: 1,
+          agentSuccessCount: 5,
+          agentTotalCount: 5,
+          reviewPassRate: 1,
+          reviewPassCount: 5,
+          reviewTotalCount: 5,
+          cycleTimeBreakdown: [{ phase: "executing", avgMinutes: 20, sampleSize: 0 }],
+          eme: null,
+        },
+      } as ReturnType<typeof useProjectStats>);
+      const column = createMockColumn({ mapsTo: "executing" });
+      render(<Column column={column} projectId="p1" showArchived={false} />, { wrapper: DndWrapper });
+      expect(screen.queryByTitle(/Avg time/)).not.toBeInTheDocument();
+    });
+
+    it("should show formatted cycle time when stats are available with sample data", () => {
+      vi.mocked(useProjectStats).mockReturnValue({
+        data: {
+          taskCount: 5,
+          tasksCompletedToday: 1,
+          tasksCompletedThisWeek: 3,
+          tasksCompletedThisMonth: 5,
+          agentSuccessRate: 1,
+          agentSuccessCount: 5,
+          agentTotalCount: 5,
+          reviewPassRate: 1,
+          reviewPassCount: 5,
+          reviewTotalCount: 5,
+          cycleTimeBreakdown: [{ phase: "executing", avgMinutes: 30, sampleSize: 3 }],
+          eme: null,
+        },
+      } as ReturnType<typeof useProjectStats>);
+      const column = createMockColumn({ mapsTo: "executing" });
+      render(<Column column={column} projectId="p1" showArchived={false} />, { wrapper: DndWrapper });
+      // 30 minutes = "30m" formatted
+      expect(screen.getByTitle(/Avg time in/)).toBeInTheDocument();
+      expect(screen.getByTitle(/30m/)).toBeInTheDocument();
     });
   });
 

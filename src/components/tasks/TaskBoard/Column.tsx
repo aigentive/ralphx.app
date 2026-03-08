@@ -38,6 +38,7 @@ import {
   getGroupIcon,
 } from "./Column.utils.tsx";
 import { CollapsedQuickAdd } from "./CollapsedQuickAdd";
+import { useProjectStats } from "@/hooks/useProjectStats";
 
 interface ColumnProps {
   column: WorkflowColumnResponse;
@@ -104,11 +105,40 @@ function isCompletedDoneGroup(group: StateGroup): boolean {
   );
 }
 
+/**
+ * Format average minutes into a compact human-readable string.
+ * Examples: "2m", "1.5h", "3d"
+ */
+function formatAvgCycleTime(avgMinutes: number): string {
+  if (avgMinutes < 60) {
+    return `${Math.round(avgMinutes)}m`;
+  }
+  const hours = avgMinutes / 60;
+  if (hours < 24) {
+    return `${hours.toFixed(1).replace(/\.0$/, "")}h`;
+  }
+  const days = hours / 24;
+  return `${days.toFixed(1).replace(/\.0$/, "")}d`;
+}
+
 export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false, ideationSessionId, executionPlanId, isCollapsed = false, onToggleCollapse }: ColumnProps) {
   const { setNodeRef } = useDroppable({ id: column.id });
   const sentinelRef = useRef<HTMLDivElement>(null);
   const { active } = useDndContext();
   const isDragging = active !== null;
+
+  // Fetch project stats to show avg cycle time per column phase
+  const { data: projectStats } = useProjectStats(projectId);
+
+  // Find avg cycle time for the phase matching this column's mapsTo status
+  const avgCycleTime = useMemo(() => {
+    if (!projectStats) return null;
+    const phase = projectStats.cycleTimeBreakdown.find(
+      (p) => p.phase === column.mapsTo
+    );
+    if (!phase || phase.sampleSize === 0) return null;
+    return phase.avgMinutes;
+  }, [projectStats, column.mapsTo]);
 
   // Track collapsed state for groups (persisted to localStorage)
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(() =>
@@ -444,6 +474,22 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
           {tasks.length}
           {matchCount !== undefined && ` / ${matchCount}`}
         </span>
+
+        {/* Avg cycle time badge - shown when backend has enough data */}
+        {avgCycleTime !== null && (
+          <span
+            title={`Avg time in ${column.name}: ${formatAvgCycleTime(avgCycleTime)}`}
+            style={{
+              fontSize: "10px",
+              fontWeight: 500,
+              color: "hsl(220 10% 35%)",
+              fontVariantNumeric: "tabular-nums",
+              letterSpacing: "0.01em",
+            }}
+          >
+            {formatAvgCycleTime(avgCycleTime)}
+          </span>
+        )}
 
         {/* Invalid drop indicator */}
         {isOver && isInvalid && <InvalidDropIcon />}

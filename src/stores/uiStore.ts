@@ -67,6 +67,7 @@ const DEFAULT_CHAT_VISIBILITY: Record<ViewType, boolean> = {
   ideation: true, // always visible (built-in chat)
   extensibility: false,
   activity: false,
+  insights: false,
   settings: false,
   task_detail: false,
   team: false, // team view has its own split layout
