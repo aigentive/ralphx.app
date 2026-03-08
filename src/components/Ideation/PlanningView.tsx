@@ -276,10 +276,10 @@ export function PlanningView({
     if (!sessionId) return;
 
     // Listen for analysis started — start 90s safety timeout
-    const unsubAnalysisStarted = eventBus.subscribe<{ session_id: string }>(
+    const unsubAnalysisStarted = eventBus.subscribe<{ sessionId: string }>(
       "dependencies:analysis_started",
       (payload) => {
-        if (payload.session_id === sessionId) {
+        if (payload.sessionId === sessionId) {
           setIsAnalyzingDependencies(true);
           setAnalysisTimedOut(false);
 
@@ -298,17 +298,17 @@ export function PlanningView({
     );
 
     // Listen for suggestions applied — analysis succeeded
-    const unsubSuggestionsApplied = eventBus.subscribe<{ session_id: string; applied_count: number }>(
+    const unsubSuggestionsApplied = eventBus.subscribe<{ sessionId: string; appliedCount: number }>(
       "dependencies:suggestions_applied",
       (payload) => {
-        if (payload.session_id === sessionId) {
+        if (payload.sessionId === sessionId) {
           if (analysisTimeoutRef.current) {
             clearTimeout(analysisTimeoutRef.current);
             analysisTimeoutRef.current = null;
           }
           setIsAnalyzingDependencies(false);
           setAnalysisTimedOut(false);
-          const count = payload.applied_count;
+          const count = payload.appliedCount;
           if (count > 0) {
             toast.success(`${count} ${count === 1 ? "dependency" : "dependencies"} added`);
           } else {
@@ -319,10 +319,10 @@ export function PlanningView({
     );
 
     // Listen for analysis failed — backend timeout fired or agent crashed
-    const unsubAnalysisFailed = eventBus.subscribe<{ session_id: string; error: string }>(
+    const unsubAnalysisFailed = eventBus.subscribe<{ sessionId: string; error: string }>(
       "dependencies:analysis_failed",
       (payload) => {
-        if (payload.session_id === sessionId) {
+        if (payload.sessionId === sessionId) {
           if (analysisTimeoutRef.current) {
             clearTimeout(analysisTimeoutRef.current);
             analysisTimeoutRef.current = null;
