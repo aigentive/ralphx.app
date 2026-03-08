@@ -631,6 +631,11 @@ pub async fn ensure_branches_fresh(
     }
 
     // 8. Both checks passed — update timestamp and reset conflict state
+    info!(
+        task_id = task_id_str,
+        origin_state = origin_state,
+        "Freshness checks passed — branches are up-to-date"
+    );
     freshness.last_freshness_check_at = Some(Utc::now().to_rfc3339());
     freshness.branch_freshness_conflict = false;
     freshness.reset_conflict_state();

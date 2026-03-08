@@ -793,7 +793,13 @@ impl<'a> super::TransitionHandler<'a> {
                                         }
                                         return Err(AppError::BranchFreshnessConflict);
                                     }
-                                    Ok(false) => { /* No markers — proceed normally */ }
+                                    Ok(false) => {
+                                        tracing::debug!(
+                                            task_id = task_id_str,
+                                            worktree = %wt_path.display(),
+                                            "Conflict marker scan passed — worktree is clean"
+                                        );
+                                    }
                                     Err(e) => {
                                         tracing::warn!(
                                             task_id = task_id_str,
