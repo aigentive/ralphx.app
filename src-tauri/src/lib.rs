@@ -945,6 +945,7 @@ pub fn run() {
                 let app_state = app_handle.state::<AppState>();
                 let registry = Arc::clone(&app_state.running_agent_registry);
                 let interactive = Arc::clone(&app_state.interactive_process_registry);
+                let db = app_state.db.clone();
                 tauri::async_runtime::block_on(async move {
                     interactive.clear().await;
                     let stopped = registry.stop_all().await;
@@ -954,6 +955,20 @@ pub fn run() {
                             count = stopped.len(),
                             "Killed running agents on app exit"
                         );
+                    }
+                    // Fold WAL back into main DB file on clean shutdown to prevent unbounded growth
+                    let checkpoint_result = db
+                        .run(|conn| {
+                            conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")
+                                .map_err(|e| {
+                                    crate::error::AppError::Database(format!(
+                                        "WAL checkpoint failed: {e}"
+                                    ))
+                                })
+                        })
+                        .await;
+                    if let Err(e) = checkpoint_result {
+                        tracing::warn!(error = %e, "WAL checkpoint on exit failed");
                     }
                 });
             }

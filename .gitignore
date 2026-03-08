@@ -1,6 +1,11 @@
 # DB backups
 backups/
 
+# SQLite WAL sidecar files (WAL mode creates these alongside the .db file)
+# When backing up, copy .db + .db-wal + .db-shm together, or run PRAGMA wal_checkpoint(TRUNCATE) first
+*.db-wal
+*.db-shm
+
 # Logs (keep activity.md and code-quality files)
 logs/*
 !logs/activity.md

@@ -107,6 +107,122 @@ impl SqliteArtifactRepository {
         })
     }
 
+    // ============================================================================
+    // Sync helpers — pub(crate) methods containing SQL logic.
+    // Part of the sync-helper pattern: batch callers (e.g., artifact HTTP handlers)
+    // call these directly with &Connection inside a db.run_transaction() closure.
+    // Async trait methods wrap these in db.run() for single-operation use.
+    // ============================================================================
+
+    /// Walk the version chain forward to find the latest artifact ID.
+    pub(crate) fn resolve_latest_sync(conn: &Connection, id: &str) -> AppResult<String> {
+        let mut current_id = id.to_string();
+        loop {
+            match conn.query_row(
+                "SELECT id FROM artifacts WHERE previous_version_id = ?1",
+                [current_id.as_str()],
+                |row| row.get::<_, String>(0),
+            ) {
+                Ok(next_id) => current_id = next_id,
+                Err(rusqlite::Error::QueryReturnedNoRows) => return Ok(current_id),
+                Err(e) => return Err(e.into()),
+            }
+        }
+    }
+
+    /// Fetch a single artifact by ID; returns None if not found.
+    pub(crate) fn get_by_id_sync(conn: &Connection, id: &str) -> AppResult<Option<Artifact>> {
+        match conn.query_row(
+            "SELECT id, type, name, content_type, content_text, content_path,
+                    bucket_id, task_id, process_id, created_by, version,
+                    previous_version_id, created_at, metadata_json
+             FROM artifacts WHERE id = ?1",
+            [id],
+            Self::artifact_from_row,
+        ) {
+            Ok(artifact) => Ok(Some(artifact)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    /// Insert a new artifact row (no previous_version_id).
+    pub(crate) fn create_sync(conn: &Connection, artifact: Artifact) -> AppResult<Artifact> {
+        let (content_type, content_text, content_path) = match &artifact.content {
+            ArtifactContent::Inline { text } => ("inline", Some(text.clone()), None),
+            ArtifactContent::File { path } => ("file", None, Some(path.clone())),
+        };
+        let created_at = artifact.metadata.created_at.to_rfc3339();
+        let metadata_json = artifact
+            .metadata
+            .team_metadata
+            .as_ref()
+            .and_then(|tm| serde_json::to_string(tm).ok());
+
+        conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, content_text, content_path,
+             bucket_id, task_id, process_id, created_by, version, created_at, metadata_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            rusqlite::params![
+                artifact.id.as_str(),
+                artifact.artifact_type.as_str(),
+                artifact.name,
+                content_type,
+                content_text,
+                content_path,
+                artifact.bucket_id.as_ref().map(|b| b.as_str()),
+                artifact.metadata.task_id.as_ref().map(|t| t.as_str()),
+                artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
+                artifact.metadata.created_by,
+                artifact.metadata.version as i32,
+                created_at,
+                metadata_json,
+            ],
+        )?;
+        Ok(artifact)
+    }
+
+    /// Insert a new artifact row with a previous_version_id link (version chain).
+    pub(crate) fn create_with_previous_version_sync(
+        conn: &Connection,
+        artifact: Artifact,
+        previous_version_id: &str,
+    ) -> AppResult<Artifact> {
+        let (content_type, content_text, content_path) = match &artifact.content {
+            ArtifactContent::Inline { text } => ("inline", Some(text.clone()), None),
+            ArtifactContent::File { path } => ("file", None, Some(path.clone())),
+        };
+        let created_at = artifact.metadata.created_at.to_rfc3339();
+        let metadata_json = artifact
+            .metadata
+            .team_metadata
+            .as_ref()
+            .and_then(|tm| serde_json::to_string(tm).ok());
+
+        conn.execute(
+            "INSERT INTO artifacts (id, type, name, content_type, content_text, content_path,
+             bucket_id, task_id, process_id, created_by, version, previous_version_id, created_at, metadata_json)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            rusqlite::params![
+                artifact.id.as_str(),
+                artifact.artifact_type.as_str(),
+                artifact.name,
+                content_type,
+                content_text,
+                content_path,
+                artifact.bucket_id.as_ref().map(|b| b.as_str()),
+                artifact.metadata.task_id.as_ref().map(|t| t.as_str()),
+                artifact.metadata.process_id.as_ref().map(|p| p.as_str()),
+                artifact.metadata.created_by,
+                artifact.metadata.version as i32,
+                previous_version_id,
+                created_at,
+                metadata_json,
+            ],
+        )?;
+        Ok(artifact)
+    }
+
     /// Parse an ArtifactRelation from a database row
     fn relation_from_row(row: &rusqlite::Row<'_>) -> Result<ArtifactRelation, rusqlite::Error> {
         let id: String = row.get(0)?;

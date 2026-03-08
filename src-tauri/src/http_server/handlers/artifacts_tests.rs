@@ -25,7 +25,7 @@ use std::sync::Arc;
 // ============================================================
 
 async fn setup_test_state() -> HttpServerState {
-    let app_state = Arc::new(AppState::new_test());
+    let app_state = Arc::new(AppState::new_sqlite_test());
     let execution_state = Arc::new(ExecutionState::new());
     let tracker = crate::application::TeamStateTracker::new();
     let team_service = Arc::new(crate::application::TeamService::new_without_events(
@@ -677,15 +677,21 @@ async fn test_update_plan_artifact_resets_verification_when_not_in_progress() {
 async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
     let state = setup_test_state().await;
 
-    // Create session with verified status, IN PROGRESS
-    let mut session = make_active_session();
-    session.verification_status = VerificationStatus::Verified;
-    session.verification_in_progress = true;
+    // Create session, then persist verification_in_progress=true via update_verification_state.
+    // SQLite's create() does not persist verification fields — they default to 0/'unverified'.
+    let session = make_active_session();
     let session_id = session.id.clone();
     state
         .app_state
         .ideation_session_repo
         .create(session)
+        .await
+        .unwrap();
+    // Persist in_progress=true so the guard in reset_verification activates
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id, VerificationStatus::Verified, true, None)
         .await
         .unwrap();
 
@@ -702,18 +708,7 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
     .expect("Plan creation should succeed");
     let artifact_id = create_result.0.id.clone();
 
-    // Manually set in_progress back to true on the session (create_plan_artifact doesn't touch it)
-    // We need to use the repo directly to simulate the verification loop having set in_progress=1
-    state
-        .app_state
-        .ideation_session_repo
-        .get_by_id(&session_id)
-        .await
-        .unwrap()
-        .unwrap();
     // Use reset_verification to verify it returns false when in_progress=true.
-    // The memory repo stores verification_in_progress=true (as set on the struct before create()),
-    // so the guard correctly prevents the reset.
     let reset_result = state
         .app_state
         .ideation_session_repo
@@ -725,17 +720,19 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
         "reset_verification should return false since verification_in_progress=true in the repo"
     );
 
-    // For the handler-level test: create a session that truly has in_progress=true persisted.
-    // We do this by calling reset_verification on a session where in_progress=true was persisted.
-    // Since MemoryIdeationSessionRepo is our test backend, let's verify the guard works:
-    let mut session2 = make_active_session();
-    session2.verification_status = VerificationStatus::NeedsRevision;
-    session2.verification_in_progress = true; // loop is active
+    // Create a second session with in_progress=true to further verify the guard
+    let session2 = make_active_session();
     let session2_id = session2.id.clone();
     state
         .app_state
         .ideation_session_repo
         .create(session2)
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session2_id, VerificationStatus::NeedsRevision, true, None)
         .await
         .unwrap();
 
@@ -782,5 +779,271 @@ async fn test_update_plan_artifact_skips_reset_when_verification_in_progress() {
     assert!(
         update_result.is_ok(),
         "update_plan_artifact should succeed even when a different session has in_progress=true"
+    );
+}
+
+// ============================================================
+// Batch proposal linking tests (step 7)
+// ============================================================
+
+/// link_proposals_to_plan with 25 proposals — all should be linked in one transaction.
+#[tokio::test]
+async fn test_link_proposals_to_plan_batch_25() {
+    use crate::domain::entities::{
+        Complexity, Priority, ProposalCategory, ProposalStatus, TaskProposal, TaskProposalId,
+    };
+
+    let state = setup_test_state().await;
+    let (_, artifact_id) = create_parent_with_plan(&state).await;
+
+    // Create 25 proposals via the repo (SQLite-backed in new_sqlite_test state)
+    let mut proposal_ids = Vec::new();
+    for i in 0..25usize {
+        let proposal = TaskProposal {
+            id: TaskProposalId::new(),
+            session_id: IdeationSessionId::new(),
+            title: format!("Proposal {i}"),
+            description: None,
+            category: ProposalCategory::Feature,
+            steps: None,
+            acceptance_criteria: None,
+            suggested_priority: Priority::Medium,
+            priority_score: 50,
+            priority_reason: None,
+            priority_factors: None,
+            estimated_complexity: Complexity::Moderate,
+            user_priority: None,
+            user_modified: false,
+            status: ProposalStatus::Pending,
+            selected: false,
+            created_task_id: None,
+            plan_artifact_id: None,
+            plan_version_at_creation: None,
+            sort_order: i as i32,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let saved = state
+            .app_state
+            .task_proposal_repo
+            .create(proposal)
+            .await
+            .unwrap();
+        proposal_ids.push(saved.id.as_str().to_string());
+    }
+
+    // Link all 25 in one call
+    let result = link_proposals_to_plan(
+        State(state.clone()),
+        Json(LinkProposalsToPlanRequest {
+            artifact_id: artifact_id.clone(),
+            proposal_ids: proposal_ids.clone(),
+        }),
+    )
+    .await;
+    assert!(result.is_ok(), "link_proposals_to_plan should succeed for 25 proposals");
+
+    // Verify all 25 now have plan_artifact_id set
+    let linked = state
+        .app_state
+        .task_proposal_repo
+        .get_by_plan_artifact_id(&ArtifactId::from_string(artifact_id.clone()))
+        .await
+        .unwrap();
+    assert_eq!(
+        linked.len(),
+        25,
+        "All 25 proposals should be linked to the artifact"
+    );
+    for p in &linked {
+        assert_eq!(
+            p.plan_artifact_id.as_ref().map(|id| id.as_str()),
+            Some(artifact_id.as_str()),
+            "Proposal {} should point to the artifact",
+            p.id
+        );
+        assert_eq!(
+            p.plan_version_at_creation,
+            Some(1),
+            "plan_version_at_creation should be set to artifact version 1"
+        );
+    }
+}
+
+/// link_proposals_to_plan with zero proposals — should succeed without errors.
+#[tokio::test]
+async fn test_link_proposals_zero_proposals_succeeds() {
+    let state = setup_test_state().await;
+    let (_, artifact_id) = create_parent_with_plan(&state).await;
+
+    let result = link_proposals_to_plan(
+        State(state.clone()),
+        Json(LinkProposalsToPlanRequest {
+            artifact_id: artifact_id.clone(),
+            proposal_ids: vec![],
+        }),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "link_proposals_to_plan with zero proposals should succeed"
+    );
+}
+
+/// create_plan_artifact returns 404 when the session does not exist.
+#[tokio::test]
+async fn test_create_plan_artifact_session_not_found() {
+    let state = setup_test_state().await;
+
+    let result = create_plan_artifact(
+        State(state.clone()),
+        Json(CreatePlanArtifactRequest {
+            session_id: "nonexistent-session-id".to_string(),
+            title: "Plan".to_string(),
+            content: "content".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "Should fail for nonexistent session");
+    let err = result.unwrap_err();
+    assert_eq!(
+        err.status,
+        StatusCode::NOT_FOUND,
+        "Should return 404 for nonexistent session"
+    );
+}
+
+/// update_plan_artifact resolves a stale (old-version) artifact ID to the latest.
+/// Passing v1's ID after a second update (v2 exists) should succeed and produce v3.
+#[tokio::test]
+async fn test_update_plan_artifact_stale_id_resolved_to_latest() {
+    let state = setup_test_state().await;
+    let (_, v1_id) = create_parent_with_plan(&state).await;
+
+    // Update → v2
+    let v2 = update_plan_artifact(
+        State(state.clone()),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: v1_id.clone(),
+            content: "v2 content".to_string(),
+        }),
+    )
+    .await
+    .expect("v1→v2 update should succeed");
+    let v2_id = v2.0.id.clone();
+    assert_eq!(v2.0.version, 2);
+
+    // Update again using the STALE v1 ID — should still succeed, resolving to v2 first
+    let v3 = update_plan_artifact(
+        State(state.clone()),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: v1_id.clone(), // stale
+            content: "v3 content".to_string(),
+        }),
+    )
+    .await
+    .expect("Stale v1 ID should be resolved to v2, then produce v3");
+    assert_eq!(v3.0.version, 3, "Should produce version 3");
+    assert_eq!(
+        v3.0.previous_artifact_id.as_deref(),
+        Some(v2_id.as_str()),
+        "v3's previous should be v2 (stale ID resolved to v2 before creating v3)"
+    );
+}
+
+/// update_plan_artifact: when proposals are linked to old artifact, they are batch-updated
+/// to the new artifact ID after update_plan_artifact runs.
+#[tokio::test]
+async fn test_update_plan_artifact_batch_updates_linked_proposals() {
+    use crate::domain::entities::{
+        Complexity, Priority, ProposalCategory, ProposalStatus, TaskProposal, TaskProposalId,
+    };
+
+    let state = setup_test_state().await;
+    let (_, artifact_id) = create_parent_with_plan(&state).await;
+
+    // Create and link 5 proposals to the initial artifact
+    let mut proposal_ids = Vec::new();
+    for i in 0..5usize {
+        let proposal = TaskProposal {
+            id: TaskProposalId::new(),
+            session_id: IdeationSessionId::new(),
+            title: format!("Linked Proposal {i}"),
+            description: None,
+            category: ProposalCategory::Feature,
+            steps: None,
+            acceptance_criteria: None,
+            suggested_priority: Priority::Medium,
+            priority_score: 50,
+            priority_reason: None,
+            priority_factors: None,
+            estimated_complexity: Complexity::Moderate,
+            user_priority: None,
+            user_modified: false,
+            status: ProposalStatus::Pending,
+            selected: false,
+            created_task_id: None,
+            plan_artifact_id: None,
+            plan_version_at_creation: None,
+            sort_order: i as i32,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let saved = state
+            .app_state
+            .task_proposal_repo
+            .create(proposal)
+            .await
+            .unwrap();
+        proposal_ids.push(saved.id.as_str().to_string());
+    }
+
+    let _ = link_proposals_to_plan(
+        State(state.clone()),
+        Json(LinkProposalsToPlanRequest {
+            artifact_id: artifact_id.clone(),
+            proposal_ids,
+        }),
+    )
+    .await
+    .expect("Initial link should succeed");
+
+    // Update the plan artifact — proposals must be re-linked to the new artifact
+    let updated = update_plan_artifact(
+        State(state.clone()),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            content: "new plan content".to_string(),
+        }),
+    )
+    .await
+    .expect("update_plan_artifact should succeed");
+    let new_artifact_id = updated.0.id.clone();
+
+    // Old artifact should have 0 proposals linked
+    let old_linked = state
+        .app_state
+        .task_proposal_repo
+        .get_by_plan_artifact_id(&ArtifactId::from_string(artifact_id.clone()))
+        .await
+        .unwrap();
+    assert_eq!(
+        old_linked.len(),
+        0,
+        "Old artifact should have no proposals after update"
+    );
+
+    // New artifact should have all 5 proposals linked
+    let new_linked = state
+        .app_state
+        .task_proposal_repo
+        .get_by_plan_artifact_id(&ArtifactId::from_string(new_artifact_id.clone()))
+        .await
+        .unwrap();
+    assert_eq!(
+        new_linked.len(),
+        5,
+        "All 5 proposals should be re-linked to the new artifact"
     );
 }

@@ -602,6 +602,98 @@ impl AppState {
         }
     }
 
+    /// Create AppState for handler tests that need SQLite-backed artifact/session/proposal repos.
+    ///
+    /// The artifact, ideation_session, and task_proposal repositories share one in-memory
+    /// SQLite connection with `db`, so handlers calling `db.run_transaction()` with sync helpers
+    /// see the same rows that the test inserts via the repo trait methods. All other repos use
+    /// in-memory implementations as in `new_test()`.
+    #[cfg(test)]
+    pub fn new_sqlite_test() -> Self {
+        let conn = open_connection(&std::path::PathBuf::from(":memory:"))
+            .expect("Failed to open in-memory SQLite for handler tests");
+        run_migrations(&conn).expect("Failed to run migrations on in-memory test DB");
+        // Migrations may leave foreign_keys = ON. Disable for tests: we test handler logic,
+        // not FK enforcement. Sessions reference projects that don't exist in the test DB.
+        conn.execute("PRAGMA foreign_keys = OFF", [])
+            .expect("Failed to disable foreign_keys for test DB");
+        let shared_conn = Arc::new(tokio::sync::Mutex::new(conn));
+
+        let chat_attachment_repo: Arc<dyn ChatAttachmentRepository> =
+            Arc::new(MemoryChatAttachmentRepository::new());
+        let attachment_storage_path = std::env::temp_dir();
+
+        Self {
+            task_repo: Arc::new(MemoryTaskRepository::new()),
+            task_step_repo: Arc::new(MemoryTaskStepRepository::new()),
+            project_repo: Arc::new(MemoryProjectRepository::new()),
+            api_key_repo: Arc::new(MemoryApiKeyRepository::new()),
+            agent_profile_repo: Arc::new(MemoryAgentProfileRepository::new()),
+            task_qa_repo: Arc::new(MemoryTaskQARepository::new()),
+            review_repo: Arc::new(MemoryReviewRepository::new()),
+            review_settings_repo: Arc::new(MemoryReviewSettingsRepository::new()),
+            review_issue_repo: Arc::new(MemoryReviewIssueRepository::new()),
+            agent_client: Arc::new(MockAgenticClient::new()),
+            qa_settings: Arc::new(tokio::sync::RwLock::new(QASettings::default())),
+            execution_settings_repo: Arc::new(MemoryExecutionSettingsRepository::new()),
+            global_execution_settings_repo: Arc::new(MemoryGlobalExecutionSettingsRepository::new()),
+            ideation_session_repo: Arc::new(SqliteIdeationSessionRepository::from_shared(
+                Arc::clone(&shared_conn),
+            )),
+            ideation_settings_repo: Arc::new(MemoryIdeationSettingsRepository::new()),
+            session_link_repo: Arc::new(MemorySessionLinkRepository::new()),
+            task_proposal_repo: Arc::new(SqliteTaskProposalRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            proposal_dependency_repo: Arc::new(MemoryProposalDependencyRepository::new()),
+            chat_message_repo: Arc::new(MemoryChatMessageRepository::new()),
+            chat_conversation_repo: Arc::new(MemoryChatConversationRepository::new()),
+            agent_run_repo: Arc::new(MemoryAgentRunRepository::new()),
+            activity_event_repo: Arc::new(MemoryActivityEventRepository::new()),
+            task_dependency_repo: Arc::new(MemoryTaskDependencyRepository::new()),
+            workflow_repo: Arc::new(MemoryWorkflowRepository::new()),
+            artifact_repo: Arc::new(SqliteArtifactRepository::from_shared(Arc::clone(
+                &shared_conn,
+            ))),
+            artifact_bucket_repo: Arc::new(MemoryArtifactBucketRepository::new()),
+            artifact_flow_repo: Arc::new(MemoryArtifactFlowRepository::new()),
+            process_repo: Arc::new(MemoryProcessRepository::new()),
+            methodology_repo: Arc::new(MemoryMethodologyRepository::new()),
+            plan_branch_repo: Arc::new(MemoryPlanBranchRepository::new()),
+            plan_selection_stats_repo: Arc::new(MemoryPlanSelectionStatsRepository::new()),
+            app_state_repo: Arc::new(MemoryAppStateRepository::new()),
+            active_plan_repo: Arc::new(MemoryActivePlanRepository::new()),
+            memory_entry_repo: Arc::new(InMemoryMemoryEntryRepository::new()),
+            memory_event_repo: Arc::new(InMemoryMemoryEventRepository::new()),
+            memory_archive_repo: Arc::new(SqliteMemoryArchiveRepository::new(
+                open_connection(&std::path::PathBuf::from(":memory:"))
+                    .expect("Failed to create in-memory connection for memory_archive"),
+            )),
+            team_session_repo: Arc::new(MemoryTeamSessionRepository::new()),
+            team_message_repo: Arc::new(MemoryTeamMessageRepository::new()),
+            execution_plan_repo: Arc::new(MemoryExecutionPlanRepository::new()),
+            chat_attachment_repo,
+            attachment_storage_path,
+            permission_state: Arc::new(PermissionState::with_repo(Arc::new(
+                MemoryPermissionRepository::new(),
+            ))),
+            question_state: Arc::new(QuestionState::with_repo(Arc::new(
+                MemoryQuestionRepository::new(),
+            ))),
+            message_queue: Arc::new(MessageQueue::new()),
+            db: crate::infrastructure::sqlite::DbConnection::from_shared(Arc::clone(&shared_conn)),
+            external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
+            running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
+            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
+            debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),
+            streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
+            interactive_process_registry: Arc::new(
+                crate::application::InteractiveProcessRegistry::new(),
+            ),
+            app_handle: None,
+        }
+    }
+
     /// Create AppState with custom repositories (for dependency injection)
     /// No AppHandle is provided - event emission is disabled
     pub fn with_repos(
