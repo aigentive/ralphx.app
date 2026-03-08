@@ -146,6 +146,13 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const reconcileRafRef = useRef<number | null>(null);
     const isTestEnv = import.meta.env.VITEST;
 
+    // Footer ResizeObserver refs — for height-driven auto-scroll (G2 fix)
+    const footerElRef = useRef<HTMLDivElement | null>(null);
+    const footerResizeRafRef = useRef<number | null>(null);
+    const footerObserverRef = useRef<ResizeObserver | null>(null);
+    const footerPrevHeightRef = useRef<number>(-1); // -1 = uninitialized sentinel
+    const footerMountedRef = useRef(false); // H2 fix: skip initial mount observation
+
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
 
@@ -192,11 +199,13 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
 
     const footerContentHash = useMemo(() => ({
       toolCallCount: streamingToolCalls.length,
+      // G1 fix: results update existing blocks (count unchanged) — track result arrivals separately
+      toolResultCount: streamingToolCalls.filter(tc => tc.result != null || tc.error != null).length,
       childCallCount: totalChildCalls,
       taskCount: streamingTasks?.size ?? 0,
       contentBlockCount: streamingContentBlocks?.length ?? 0,
       textLengthBucket: Math.floor(cumulativeTextLength / TEXT_LENGTH_BUCKET_SIZE),
-    }), [streamingToolCalls.length, totalChildCalls, streamingTasks?.size, streamingContentBlocks?.length, cumulativeTextLength]);
+    }), [streamingToolCalls, totalChildCalls, streamingTasks?.size, streamingContentBlocks?.length, cumulativeTextLength]);
 
     // Streaming auto-scroll — followOutput only fires on totalCount changes,
     // NOT on Footer height growth. Call autoscrollToBottom() imperatively when
@@ -221,6 +230,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       virtuosoRef, // Route scrollToBottom through Virtuoso scrollToIndex
       conversationId, // Reset isAtBottom when conversation changes
     });
+
+    // Keep scrollToTimestamp accessible via ref (avoids stale closure in ResizeObserver callback)
+    const scrollToTimestampRef = useRef(scrollToTimestamp);
+    useEffect(() => {
+      scrollToTimestampRef.current = scrollToTimestamp;
+    }, [scrollToTimestamp]);
 
     // rAF-throttled DOM reconciliation — keeps isAtBottom accurate when Virtuoso doesn't detect footer growth.
     // Runs outside React render cycle (DOM event handler, not useEffect) — no render loop risk.
@@ -263,6 +278,70 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         scrollerElRef.current?.removeEventListener("scroll", handleScrollReconcile);
       };
     }, [handleScrollReconcile]);
+
+    // Stable callback ref for Footer element — creates ResizeObserver that detects footer height
+    // changes (G2 fix: card expansion during streaming). Empty deps ensures observer is never
+    // torn down due to prop changes.
+    //
+    // H1 analysis: Late tool results (after turn_completed) update finalized messages in the
+    // timeline, not the footer. Virtuoso's followOutput handles timeline height changes natively.
+    // The footer ResizeObserver only needs to cover the active streaming window, not post-stream updates.
+    const handleFooterRef = useCallback((el: HTMLDivElement | null) => {
+      // Cleanup old observer
+      if (footerObserverRef.current) {
+        footerObserverRef.current.disconnect();
+        footerObserverRef.current = null;
+      }
+      footerElRef.current = el;
+      footerMountedRef.current = false; // Reset mount flag on new element
+      if (!el) return;
+
+      footerObserverRef.current = new ResizeObserver((entries) => {
+        const newHeight = entries[0]?.contentRect.height ?? 0;
+
+        // H2 fix: Skip the very first observation after mount.
+        // The first observation captures baseline height without triggering scroll.
+        // Prevents jarring scroll jump when switching chat tabs or loading history.
+        if (!footerMountedRef.current) {
+          footerMountedRef.current = true;
+          footerPrevHeightRef.current = newHeight;
+          return;
+        }
+
+        // Only react to height increases, not width changes or shrinking
+        if (newHeight <= footerPrevHeightRef.current) {
+          footerPrevHeightRef.current = newHeight;
+          return;
+        }
+        footerPrevHeightRef.current = newHeight;
+
+        // M1 fix: Cancel-reschedule rAF — don't skip if pending.
+        // Rapid sequential resizes each get a scroll attempt; the last one wins.
+        if (footerResizeRafRef.current) {
+          cancelAnimationFrame(footerResizeRafRef.current);
+        }
+        footerResizeRafRef.current = requestAnimationFrame(() => {
+          footerResizeRafRef.current = null;
+          // Read from refs — always current, no stale closure
+          if (isAtBottomRef.current && !scrollToTimestampRef.current) {
+            virtuosoRef.current?.autoscrollToBottom();
+          }
+        });
+      });
+      footerObserverRef.current.observe(el);
+    }, []); // Empty deps — observer is stable for component lifetime
+
+    // Cleanup Footer ResizeObserver and rAF on unmount
+    useEffect(() => {
+      return () => {
+        footerObserverRef.current?.disconnect();
+        footerObserverRef.current = null;
+        if (footerResizeRafRef.current) {
+          cancelAnimationFrame(footerResizeRafRef.current);
+          footerResizeRafRef.current = null;
+        }
+      };
+    }, []);
 
     // Scroll to specific timestamp for history mode (time-travel feature)
     // Finds the first message at or after the given timestamp and scrolls to it
@@ -469,7 +548,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       ),
       Footer: () => {
         return (
-          <div className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
+          <div ref={handleFooterRef} className="px-3 pb-3 w-full relative" style={contentContainerStyle}>
             {/* Render streaming content blocks in order — text, tool calls, and Task cards interleaved */}
             {streamingContentBlocks && streamingContentBlocks.map((block, idx) => {
               if (block.type === "text") {
@@ -537,8 +616,8 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       },
     }), [
       failedRun, onDismissFailedRun,
-      streamingToolCalls, streamingTasks, streamingContentBlocks,
-      isSending, isAgentRunning,
+      streamingToolCalls.length, streamingTasks, streamingContentBlocks,
+      isSending, isAgentRunning, handleFooterRef,
     ]);
 
     // Detect when a teammate tab filter produces zero timeline items but messages exist.
