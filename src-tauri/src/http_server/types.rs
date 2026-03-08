@@ -1337,6 +1337,26 @@ pub struct UpdateVerificationRequest {
     pub parse_failed: Option<bool>,
 }
 
+/// A single verification gap in the API response (mirrors domain VerificationGap)
+#[derive(Debug, Serialize)]
+pub struct VerificationGapResponse {
+    pub severity: String,
+    pub category: String,
+    pub description: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub why_it_matters: Option<String>,
+}
+
+/// Per-round summary in the API response (round number derived from array index + 1)
+#[derive(Debug, Serialize)]
+pub struct VerificationRoundSummary {
+    /// 1-based round number (derived from array index)
+    pub round: u32,
+    pub gap_score: u32,
+    /// Deduplicated unique gap count (fingerprints.len() for historical rounds)
+    pub gap_count: u32,
+}
+
 /// Response for GET/POST verification status
 #[derive(Debug, Serialize)]
 pub struct VerificationResponse {
@@ -1353,6 +1373,12 @@ pub struct VerificationResponse {
     pub convergence_reason: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub best_round_index: Option<u32>,
+    /// Full gap objects for the latest round (empty if no metadata)
+    #[serde(default)]
+    pub current_gaps: Vec<VerificationGapResponse>,
+    /// Round history summaries — last 10 rounds in chronological order (empty if no metadata)
+    #[serde(default)]
+    pub rounds: Vec<VerificationRoundSummary>,
 }
 
 /// Request to atomically revert plan + skip verification

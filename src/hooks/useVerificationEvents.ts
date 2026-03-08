@@ -112,6 +112,8 @@ export function useVerificationEvents() {
         queryClient.invalidateQueries({
           queryKey: ideationKeys.sessionWithData(sessionId),
         });
+        // Invalidate verification endpoint so gaps + rounds re-fetch with latest data
+        queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
       })
     );
 

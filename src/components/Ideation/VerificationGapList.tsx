@@ -5,7 +5,7 @@
  */
 
 import { TrendingDown, TrendingUp, Minus } from "lucide-react";
-import type { VerificationGap, VerificationRound } from "@/types/ideation";
+import type { RoundSummary, VerificationGap } from "@/types/ideation";
 
 // ============================================================================
 // Types
@@ -15,7 +15,7 @@ export interface VerificationGapListProps {
   /** Gaps from the latest/current round */
   gaps: VerificationGap[];
   /** All rounds — used for gap score trend visualization */
-  rounds?: VerificationRound[];
+  rounds?: RoundSummary[];
   /** Gap score for the latest round (critical*10 + high*3 + medium*1) */
   gapScore?: number;
 }
@@ -82,7 +82,7 @@ function groupBySeverity(gaps: VerificationGap[]) {
 // Sub-components
 // ============================================================================
 
-function GapScoreTrend({ rounds }: { rounds: VerificationRound[] }) {
+function GapScoreTrend({ rounds }: { rounds: RoundSummary[] }) {
   if (rounds.length < 2) return null;
 
   const last = rounds[rounds.length - 1]!;

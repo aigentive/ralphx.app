@@ -1,6 +1,7 @@
 // Zod schemas for ideation API responses (snake_case from Rust backend)
 
 import { z } from "zod";
+import { VerificationGapSchema } from "../types/ideation";
 
 /**
  * Ideation session response schema (snake_case from Rust)
@@ -31,6 +32,35 @@ export const IdeationSessionResponseSchema = z.object({
 });
 
 /**
+ * API gap schema (snake_case from HTTP server) — transforms to VerificationGap shape.
+ * Reuses VerificationGapSchema as the output type (single source of truth).
+ */
+export const ApiVerificationGapSchema = z.object({
+  severity: z.enum(["critical", "high", "medium", "low"]),
+  category: z.string(),
+  description: z.string(),
+  why_it_matters: z.string().optional(),
+}).transform((val): z.infer<typeof VerificationGapSchema> => ({
+  severity: val.severity,
+  category: val.category,
+  description: val.description,
+  ...(val.why_it_matters !== undefined && { whyItMatters: val.why_it_matters }),
+}));
+
+/**
+ * API round summary schema (snake_case from HTTP server) — transforms to RoundSummary shape.
+ */
+export const ApiRoundSummarySchema = z.object({
+  round: z.number(),
+  gap_score: z.number(),
+  gap_count: z.number(),
+}).transform((val) => ({
+  round: val.round,
+  gapScore: val.gap_score,
+  gapCount: val.gap_count,
+}));
+
+/**
  * Verification status response schema (snake_case from HTTP server)
  */
 export const VerificationResponseSchema = z.object({
@@ -42,6 +72,8 @@ export const VerificationResponseSchema = z.object({
   gap_score: z.number().int().optional(),
   convergence_reason: z.string().optional(),
   best_round_index: z.number().int().optional(),
+  current_gaps: z.array(ApiVerificationGapSchema).optional().default([]),
+  rounds: z.array(ApiRoundSummarySchema).optional().default([]),
 });
 
 /**

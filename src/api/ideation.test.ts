@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import { ideationApi } from "./ideation";
+import {
+  ApiVerificationGapSchema,
+  ApiRoundSummarySchema,
+  VerificationResponseSchema,
+} from "./ideation.schemas";
 
 // Cast invoke to a mock function for testing
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
@@ -719,6 +724,237 @@ describe("ideationApi.taskDependencies", () => {
         taskId: "task-1",
       });
       expect(result).toEqual(["task-4"]);
+    });
+  });
+});
+
+// ============================================================================
+// Schema unit tests (no network/invoke required)
+// ============================================================================
+
+describe("ApiVerificationGapSchema", () => {
+  it("transforms why_it_matters → whyItMatters when present", () => {
+    const raw = {
+      severity: "high" as const,
+      category: "security",
+      description: "Missing auth check",
+      why_it_matters: "Allows unauthorized access",
+    };
+    const result = ApiVerificationGapSchema.parse(raw);
+    expect(result).toEqual({
+      severity: "high",
+      category: "security",
+      description: "Missing auth check",
+      whyItMatters: "Allows unauthorized access",
+    });
+  });
+
+  it("omits whyItMatters when why_it_matters is absent", () => {
+    const raw = {
+      severity: "medium" as const,
+      category: "performance",
+      description: "Slow query",
+    };
+    const result = ApiVerificationGapSchema.parse(raw);
+    expect(result).toEqual({
+      severity: "medium",
+      category: "performance",
+      description: "Slow query",
+    });
+    expect("whyItMatters" in result).toBe(false);
+  });
+
+  it("accepts all severity levels", () => {
+    for (const severity of ["critical", "high", "medium", "low"] as const) {
+      const result = ApiVerificationGapSchema.parse({
+        severity,
+        category: "test",
+        description: "desc",
+      });
+      expect(result.severity).toBe(severity);
+    }
+  });
+});
+
+describe("ApiRoundSummarySchema", () => {
+  it("transforms gap_score → gapScore and gap_count → gapCount", () => {
+    const raw = { round: 2, gap_score: 75, gap_count: 3 };
+    const result = ApiRoundSummarySchema.parse(raw);
+    expect(result).toEqual({ round: 2, gapScore: 75, gapCount: 3 });
+  });
+
+  it("preserves round number", () => {
+    const result = ApiRoundSummarySchema.parse({ round: 5, gap_score: 0, gap_count: 0 });
+    expect(result.round).toBe(5);
+  });
+});
+
+describe("VerificationResponseSchema", () => {
+  it("parses response with current_gaps and rounds arrays", () => {
+    const raw = {
+      session_id: "session-1",
+      status: "reviewing",
+      in_progress: true,
+      current_round: 1,
+      max_rounds: 3,
+      gap_score: 60,
+      current_gaps: [
+        { severity: "high", category: "security", description: "Missing auth" },
+      ],
+      rounds: [
+        { round: 1, gap_score: 60, gap_count: 1 },
+      ],
+    };
+    const result = VerificationResponseSchema.parse(raw);
+    expect(result.current_gaps).toEqual([
+      { severity: "high", category: "security", description: "Missing auth" },
+    ]);
+    expect(result.rounds).toEqual([{ round: 1, gapScore: 60, gapCount: 1 }]);
+  });
+
+  it("defaults current_gaps and rounds to [] when omitted", () => {
+    const raw = {
+      session_id: "session-1",
+      status: "unverified",
+      in_progress: false,
+    };
+    const result = VerificationResponseSchema.parse(raw);
+    expect(result.current_gaps).toEqual([]);
+    expect(result.rounds).toEqual([]);
+  });
+
+  it("transforms why_it_matters in nested gaps", () => {
+    const raw = {
+      session_id: "session-1",
+      status: "needs_revision",
+      in_progress: false,
+      current_gaps: [
+        {
+          severity: "critical",
+          category: "arch",
+          description: "No error handling",
+          why_it_matters: "Will crash in prod",
+        },
+      ],
+      rounds: [],
+    };
+    const result = VerificationResponseSchema.parse(raw);
+    expect(result.current_gaps[0]).toEqual({
+      severity: "critical",
+      category: "arch",
+      description: "No error handling",
+      whyItMatters: "Will crash in prod",
+    });
+  });
+});
+
+// ============================================================================
+// ideationApi.verification — fetch-based HTTP endpoint tests
+// ============================================================================
+
+describe("ideationApi.verification", () => {
+  const mockFetch = vi.fn();
+
+  beforeEach(() => {
+    vi.stubGlobal("fetch", mockFetch);
+    mockFetch.mockReset();
+  });
+
+  const makeVerificationRaw = (overrides = {}) => ({
+    session_id: "session-1",
+    status: "reviewing",
+    in_progress: true,
+    current_round: 1,
+    max_rounds: 3,
+    gap_score: 80,
+    current_gaps: [
+      { severity: "high", category: "security", description: "Missing auth", why_it_matters: "Critical risk" },
+    ],
+    rounds: [
+      { round: 1, gap_score: 80, gap_count: 1 },
+    ],
+    ...overrides,
+  });
+
+  describe("getStatus", () => {
+    it("fetches GET and returns transformed VerificationStatusResponse", async () => {
+      mockFetch.mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(makeVerificationRaw()),
+      });
+
+      const result = await ideationApi.verification.getStatus("session-1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:3847/api/ideation/sessions/session-1/verification"
+      );
+      expect(result.sessionId).toBe("session-1");
+      expect(result.status).toBe("reviewing");
+      expect(result.inProgress).toBe(true);
+      expect(result.gapScore).toBe(80);
+      expect(result.gaps).toEqual([
+        { severity: "high", category: "security", description: "Missing auth", whyItMatters: "Critical risk" },
+      ]);
+      expect(result.rounds).toEqual([{ round: 1, gapScore: 80, gapCount: 1 }]);
+    });
+
+    it("throws when response is not ok", async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 404 });
+      await expect(ideationApi.verification.getStatus("session-1")).rejects.toThrow(
+        "Failed to get verification status: 404"
+      );
+    });
+  });
+
+  describe("skip", () => {
+    it("sends POST and returns transformed VerificationStatusResponse", async () => {
+      const raw = makeVerificationRaw({ status: "skipped", in_progress: false, convergence_reason: "user_skipped" });
+      mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(raw) });
+
+      const result = await ideationApi.verification.skip("session-1");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:3847/api/ideation/sessions/session-1/verification",
+        expect.objectContaining({ method: "POST" })
+      );
+      expect(result.status).toBe("skipped");
+      expect(result.convergenceReason).toBe("user_skipped");
+      expect(result.gaps).toHaveLength(1);
+      expect(result.rounds).toHaveLength(1);
+    });
+
+    it("throws when response is not ok", async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 500 });
+      await expect(ideationApi.verification.skip("session-1")).rejects.toThrow(
+        "Failed to skip verification: 500"
+      );
+    });
+  });
+
+  describe("revertAndSkip", () => {
+    it("sends POST to revert-and-skip endpoint and returns response", async () => {
+      const raw = makeVerificationRaw({ status: "skipped", in_progress: false });
+      mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(raw) });
+
+      const result = await ideationApi.verification.revertAndSkip("session-1", "v2");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "http://localhost:3847/api/ideation/sessions/session-1/revert-and-skip",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({ plan_version_to_restore: "v2" }),
+        })
+      );
+      expect(result.sessionId).toBe("session-1");
+      expect(result.gaps).toHaveLength(1);
+      expect(result.rounds).toHaveLength(1);
+    });
+
+    it("throws when response is not ok", async () => {
+      mockFetch.mockResolvedValue({ ok: false, status: 422 });
+      await expect(
+        ideationApi.verification.revertAndSkip("session-1", "v2")
+      ).rejects.toThrow("Failed to revert and skip: 422");
     });
   });
 });

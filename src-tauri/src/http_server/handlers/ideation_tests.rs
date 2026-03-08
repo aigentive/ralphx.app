@@ -1,8 +1,12 @@
 use super::*;
 use crate::application::AppState;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{ChatMessage, IdeationSessionId};
-use crate::http_server::types::{ApplyDependencySuggestionsRequest, DependencySuggestion};
+use crate::domain::entities::{ChatMessage, IdeationSession, IdeationSessionId, ProjectId};
+use crate::domain::entities::ideation::VerificationStatus;
+use crate::http_server::types::{
+    ApplyDependencySuggestionsRequest, DependencySuggestion, UpdateVerificationRequest,
+    VerificationGapRequest,
+};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -816,4 +820,335 @@ async fn test_debounce_independent_sessions() {
     };
     assert!(gen_a_after.is_none(), "session A gen should be removed");
     assert_eq!(gen_b_after, Some(2), "session B gen should be unaffected");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// get_plan_verification handler tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+fn make_metadata_json(
+    current_gaps: Vec<serde_json::Value>,
+    rounds: Vec<serde_json::Value>,
+    current_round: u32,
+    max_rounds: u32,
+) -> String {
+    serde_json::json!({
+        "v": 1,
+        "current_round": current_round,
+        "max_rounds": max_rounds,
+        "rounds": rounds,
+        "current_gaps": current_gaps,
+        "convergence_reason": null,
+        "best_round_index": null,
+        "parse_failures": []
+    })
+    .to_string()
+}
+
+fn make_gap(severity: &str, category: &str, description: &str) -> serde_json::Value {
+    serde_json::json!({
+        "severity": severity,
+        "category": category,
+        "description": description,
+        "why_it_matters": null
+    })
+}
+
+fn make_gap_with_why(
+    severity: &str,
+    category: &str,
+    description: &str,
+    why: &str,
+) -> serde_json::Value {
+    serde_json::json!({
+        "severity": severity,
+        "category": category,
+        "description": description,
+        "why_it_matters": why
+    })
+}
+
+fn make_round(fingerprints: Vec<&str>, gap_score: u32) -> serde_json::Value {
+    serde_json::json!({
+        "fingerprints": fingerprints,
+        "gap_score": gap_score
+    })
+}
+
+/// Happy path: session with 3 gaps and 2 rounds → response includes
+/// current_gaps (3 items) and rounds (2 items with correct scores/counts).
+#[tokio::test]
+async fn test_get_plan_verification_happy_path_gaps_and_rounds() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id);
+    let session_id = session.id.clone();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let gaps = vec![
+        make_gap_with_why("critical", "architecture", "Missing auth layer", "Security risk"),
+        make_gap("high", "performance", "No caching strategy"),
+        make_gap("medium", "testing", "No unit tests"),
+    ];
+    let rounds = vec![
+        make_round(vec!["fp-a", "fp-b"], 13), // round 1: 2 fingerprints, score 13
+        make_round(vec!["fp-a", "fp-b", "fp-c"], 10), // round 2: 3 fingerprints, score 10
+    ];
+    let metadata = make_metadata_json(gaps, rounds, 2, 5);
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id,
+            VerificationStatus::NeedsRevision,
+            false,
+            Some(metadata),
+        )
+        .await
+        .unwrap();
+
+    let result =
+        get_plan_verification(State(state), Path(session_id.as_str().to_string())).await;
+
+    assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
+    let response = result.unwrap().0;
+
+    // current_gaps: 3 items with correct fields
+    assert_eq!(response.current_gaps.len(), 3, "expected 3 current_gaps");
+    let critical = &response.current_gaps[0];
+    assert_eq!(critical.severity, "critical");
+    assert_eq!(critical.category, "architecture");
+    assert_eq!(critical.description, "Missing auth layer");
+    assert_eq!(critical.why_it_matters.as_deref(), Some("Security risk"));
+    let high = &response.current_gaps[1];
+    assert_eq!(high.severity, "high");
+    assert!(high.why_it_matters.is_none());
+
+    // rounds: 2 items with 1-based round numbers and correct gap_counts
+    assert_eq!(response.rounds.len(), 2, "expected 2 rounds");
+    let r1 = &response.rounds[0];
+    assert_eq!(r1.round, 1);
+    assert_eq!(r1.gap_score, 13);
+    assert_eq!(r1.gap_count, 2); // fingerprints.len()
+    let r2 = &response.rounds[1];
+    assert_eq!(r2.round, 2);
+    assert_eq!(r2.gap_score, 10);
+    assert_eq!(r2.gap_count, 3);
+}
+
+/// Empty metadata test: verification_metadata = NULL → current_gaps: [] and rounds: [].
+#[tokio::test]
+async fn test_get_plan_verification_null_metadata_returns_empty_vecs() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id);
+    let session_id = session.id.clone();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Explicitly set NULL metadata
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id,
+            VerificationStatus::Unverified,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result =
+        get_plan_verification(State(state), Path(session_id.as_str().to_string())).await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(response.current_gaps.is_empty(), "current_gaps must be empty for NULL metadata");
+    assert!(response.rounds.is_empty(), "rounds must be empty for NULL metadata");
+    assert!(response.gap_score.is_none());
+}
+
+/// Malformed metadata test: partial JSON → serde defaults produce empty vecs, no panic.
+#[tokio::test]
+async fn test_get_plan_verification_malformed_metadata_no_panic() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id);
+    let session_id = session.id.clone();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Partial JSON: only schema version present, all other fields absent
+    let partial_json = r#"{"v": 1}"#.to_string();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id,
+            VerificationStatus::Reviewing,
+            true,
+            Some(partial_json),
+        )
+        .await
+        .unwrap();
+
+    let result =
+        get_plan_verification(State(state), Path(session_id.as_str().to_string())).await;
+
+    assert!(result.is_ok(), "malformed metadata must not panic the handler");
+    let response = result.unwrap().0;
+    assert!(response.current_gaps.is_empty(), "serde defaults: current_gaps should be []");
+    assert!(response.rounds.is_empty(), "serde defaults: rounds should be []");
+}
+
+/// Rounds cap test: session with 15 rounds → last 10 returned in chronological order
+/// (rounds 6-15, i.e. 1-based indices 6..=15 from the original vec).
+#[tokio::test]
+async fn test_get_plan_verification_rounds_capped_at_10() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id);
+    let session_id = session.id.clone();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Build 15 rounds with distinct gap_scores (1..=15) so we can verify ordering
+    let rounds: Vec<serde_json::Value> = (1u32..=15)
+        .map(|i| make_round(vec!["fp-x"], i))
+        .collect();
+
+    let metadata = make_metadata_json(vec![], rounds, 15, 15);
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id,
+            VerificationStatus::NeedsRevision,
+            false,
+            Some(metadata),
+        )
+        .await
+        .unwrap();
+
+    let result =
+        get_plan_verification(State(state), Path(session_id.as_str().to_string())).await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+
+    // Only 10 rounds returned
+    assert_eq!(response.rounds.len(), 10, "cap must limit to 10 rounds");
+
+    // First returned round is round 6 (oldest of the last 10)
+    assert_eq!(response.rounds[0].round, 6, "first returned round should be round 6");
+    assert_eq!(response.rounds[0].gap_score, 6, "gap_score should match round index");
+
+    // Last returned round is round 15
+    assert_eq!(response.rounds[9].round, 15, "last returned round should be round 15");
+    assert_eq!(response.rounds[9].gap_score, 15);
+
+    // Verify chronological order throughout
+    for (i, r) in response.rounds.iter().enumerate() {
+        assert_eq!(r.round, (i + 6) as u32, "round at index {} should be {}", i, i + 6);
+    }
+}
+
+/// Round-trip integration test: write gaps via POST /verification (update_plan_verification),
+/// then read via GET /verification (get_plan_verification), and verify current_gaps contains
+/// the same data with correct field names.
+#[tokio::test]
+async fn test_get_plan_verification_round_trip_post_then_get() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id);
+    let session_id = session.id.clone();
+    let session_id_str = session_id.as_str().to_string();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // POST: write gaps via update_plan_verification handler
+    let post_result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id_str.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: false,
+            round: Some(1),
+            gaps: Some(vec![
+                VerificationGapRequest {
+                    severity: "critical".to_string(),
+                    category: "security".to_string(),
+                    description: "No authentication".to_string(),
+                    why_it_matters: Some("Users can access any data".to_string()),
+                },
+                VerificationGapRequest {
+                    severity: "high".to_string(),
+                    category: "scalability".to_string(),
+                    description: "No horizontal scaling plan".to_string(),
+                    why_it_matters: None,
+                },
+            ]),
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+        }),
+    )
+    .await;
+
+    assert!(post_result.is_ok(), "POST should succeed: {:?}", post_result.err());
+
+    // GET: read back via get_plan_verification handler
+    let get_result =
+        get_plan_verification(State(state), Path(session_id_str)).await;
+
+    assert!(get_result.is_ok(), "GET should succeed: {:?}", get_result.err());
+    let response = get_result.unwrap().0;
+
+    // current_gaps should contain the same 2 gaps written via POST
+    assert_eq!(response.current_gaps.len(), 2, "round-trip: expected 2 current_gaps");
+
+    let g0 = &response.current_gaps[0];
+    assert_eq!(g0.severity, "critical");
+    assert_eq!(g0.category, "security");
+    assert_eq!(g0.description, "No authentication");
+    assert_eq!(g0.why_it_matters.as_deref(), Some("Users can access any data"));
+
+    let g1 = &response.current_gaps[1];
+    assert_eq!(g1.severity, "high");
+    assert_eq!(g1.category, "scalability");
+    assert!(g1.why_it_matters.is_none());
+
+    // POST handler creates a round entry; GET should reflect it
+    assert_eq!(response.rounds.len(), 1, "round-trip: 1 round should be present");
+    assert_eq!(response.rounds[0].round, 1);
+    assert_eq!(response.rounds[0].gap_count, 2); // 2 fingerprints (one per gap)
 }

@@ -1295,6 +1295,35 @@ pub async fn update_plan_verification(
         );
     }
 
+    use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};
+
+    let post_current_gaps = metadata
+        .current_gaps
+        .iter()
+        .map(|g| VerificationGapResponse {
+            severity: g.severity.clone(),
+            category: g.category.clone(),
+            description: g.description.clone(),
+            why_it_matters: g.why_it_matters.clone(),
+        })
+        .collect::<Vec<_>>();
+
+    let post_rounds = metadata
+        .rounds
+        .iter()
+        .enumerate()
+        .rev()
+        .take(10)
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .map(|(i, r)| VerificationRoundSummary {
+            round: (i + 1) as u32,
+            gap_score: r.gap_score,
+            gap_count: r.fingerprints.len() as u32,
+        })
+        .collect::<Vec<_>>();
+
     Ok(Json(VerificationResponse {
         session_id,
         status: new_status.to_string(),
@@ -1312,6 +1341,8 @@ pub async fn update_plan_verification(
         gap_score: Some(current_gap_score),
         convergence_reason: metadata.convergence_reason,
         best_round_index: metadata.best_round_index,
+        current_gaps: post_current_gaps,
+        rounds: post_rounds,
     }))
 }
 
@@ -1324,6 +1355,7 @@ pub async fn get_plan_verification(
 ) -> Result<Json<VerificationResponse>, JsonError> {
     use crate::domain::entities::ideation::VerificationMetadata;
     use crate::domain::services::gap_score;
+    use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};
 
     let session_id_obj = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
 
@@ -1358,6 +1390,44 @@ pub async fn get_plan_verification(
     let convergence_reason = metadata.as_ref().and_then(|m| m.convergence_reason.clone());
     let best_round_index = metadata.as_ref().and_then(|m| m.best_round_index);
 
+    // Map current gaps to response structs
+    let current_gaps = metadata
+        .as_ref()
+        .map(|m| {
+            m.current_gaps
+                .iter()
+                .map(|g| VerificationGapResponse {
+                    severity: g.severity.clone(),
+                    category: g.category.clone(),
+                    description: g.description.clone(),
+                    why_it_matters: g.why_it_matters.clone(),
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    // Map round history — take last 10 in chronological order
+    // Rust vec is append-only (newest last); rev().take(10).rev() → last 10 oldest-first
+    let rounds = metadata
+        .as_ref()
+        .map(|m| {
+            m.rounds
+                .iter()
+                .enumerate()
+                .rev()
+                .take(10)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .map(|(i, r)| VerificationRoundSummary {
+                    round: (i + 1) as u32,
+                    gap_score: r.gap_score,
+                    gap_count: r.fingerprints.len() as u32,
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
     Ok(Json(VerificationResponse {
         session_id,
         status: status.to_string(),
@@ -1367,6 +1437,8 @@ pub async fn get_plan_verification(
         gap_score: gap_sc,
         convergence_reason,
         best_round_index,
+        current_gaps,
+        rounds,
     }))
 }
 

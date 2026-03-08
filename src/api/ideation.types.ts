@@ -1,6 +1,6 @@
 // Frontend types for ideation API responses (camelCase)
 
-import type { IdeationSessionStatus, TeamMode, TeamConfig, VerificationStatus } from "../types/ideation";
+import type { IdeationSessionStatus, TeamMode, TeamConfig, VerificationStatus, VerificationGap, RoundSummary } from "../types/ideation";
 
 export interface IdeationSessionResponse {
   id: string;
@@ -31,6 +31,8 @@ export interface VerificationStatusResponse {
   gapScore?: number;
   convergenceReason?: string;
   bestRoundIndex?: number;
+  gaps: VerificationGap[];
+  rounds: RoundSummary[];
 }
 
 export interface TaskProposalResponse {

@@ -607,6 +607,8 @@ export const ideationApi = {
         ...(raw.gap_score !== undefined && { gapScore: raw.gap_score }),
         ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
         ...(raw.best_round_index !== undefined && { bestRoundIndex: raw.best_round_index }),
+        gaps: raw.current_gaps,
+        rounds: raw.rounds,
       };
     },
 
@@ -638,6 +640,8 @@ export const ideationApi = {
         status: raw.status as VerificationStatusResponse["status"],
         inProgress: raw.in_progress,
         ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
+        gaps: raw.current_gaps,
+        rounds: raw.rounds,
       };
     },
 
@@ -669,6 +673,8 @@ export const ideationApi = {
         status: raw.status as VerificationStatusResponse["status"],
         inProgress: raw.in_progress,
         ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
+        gaps: raw.current_gaps,
+        rounds: raw.rounds,
       };
     },
   },
