@@ -1360,6 +1360,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_parent_session_context",
     // session linking tools
     "create_child_session",
+    // verification tools
+    "get_plan_verification",
     // memory read tools
     "search_memories",
     "get_memory",
