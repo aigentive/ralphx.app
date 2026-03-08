@@ -1060,6 +1060,7 @@ pub async fn update_plan_verification(
 
     // Transition validation matrix
     let current = session.verification_status;
+    let has_convergence_reason = req.convergence_reason.is_some();
     let is_valid = match (current, new_status) {
         (_, VerificationStatus::Skipped) => true,
         (VerificationStatus::Skipped, _) => false,
@@ -1067,6 +1068,8 @@ pub async fn update_plan_verification(
         (VerificationStatus::Reviewing, VerificationStatus::NeedsRevision) => true,
         (VerificationStatus::Reviewing, VerificationStatus::Verified) => true,
         (VerificationStatus::NeedsRevision, VerificationStatus::Reviewing) => true,
+        // Allow needs_revision → verified ONLY when convergence_reason is provided
+        (VerificationStatus::NeedsRevision, VerificationStatus::Verified) => has_convergence_reason,
         _ => false,
     };
 
@@ -1075,6 +1078,15 @@ pub async fn update_plan_verification(
             return Err(json_error(
                 StatusCode::UNPROCESSABLE_ENTITY,
                 "Verification was skipped — cannot update from critic",
+            ));
+        }
+        if matches!(
+            (current, new_status),
+            (VerificationStatus::NeedsRevision, VerificationStatus::Verified)
+        ) {
+            return Err(json_error(
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "Cannot transition needs_revision → verified without convergence_reason",
             ));
         }
         return Err(json_error(
@@ -1355,6 +1367,7 @@ pub async fn update_plan_verification(
         best_round_index: metadata.best_round_index,
         current_gaps: post_current_gaps,
         rounds: post_rounds,
+        plan_version: None,
     }))
 }
 
@@ -1440,6 +1453,33 @@ pub async fn get_plan_verification(
         })
         .unwrap_or_default();
 
+    // Resolve plan_version: get the session's plan_artifact_id, then fetch its current version
+    let plan_version = {
+        let session = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&session_id_obj)
+            .await
+            .ok()
+            .flatten();
+        if let Some(ref s) = session {
+            if let Some(ref artifact_id) = s.plan_artifact_id {
+                state
+                    .app_state
+                    .artifact_repo
+                    .get_by_id(artifact_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|a| a.metadata.version)
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    };
+
     Ok(Json(VerificationResponse {
         session_id,
         status: status.to_string(),
@@ -1451,6 +1491,7 @@ pub async fn get_plan_verification(
         best_round_index,
         current_gaps,
         rounds,
+        plan_version,
     }))
 }
 

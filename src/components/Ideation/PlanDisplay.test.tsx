@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { PlanDisplay } from "./PlanDisplay";
 import type { TeamMetadata } from "./PlanDisplay";
 import type { Artifact } from "@/types/artifact";
+import type { VerificationGap } from "@/api/ideation.types";
 
 vi.mock("./TeamFindingsSection", () => ({
   TeamFindingsSection: ({ findings, teamMode, teammateCount }: { findings: unknown[]; teamMode: string; teammateCount: number }) => (
@@ -239,6 +240,296 @@ describe("PlanDisplay", () => {
         />,
       );
       expect(screen.queryByRole("button", { name: /create proposals/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ============================================================================
+  // Derived gap staleness (Step 2)
+  // ============================================================================
+
+  describe("derived gap staleness", () => {
+    const mockGaps: VerificationGap[] = [
+      { severity: "high", category: "correctness", description: "Missing null check" },
+    ];
+
+    const baseStaleProps = {
+      verificationStatus: "needs_revision" as const,
+      verificationInProgress: false,
+      verificationGaps: mockGaps,
+      onAddressGaps: vi.fn(),
+      onRetryVerification: vi.fn(),
+    };
+
+    it("marks gaps stale when planVersion > verificationPlanVersion: CTA hidden, re-verify shown", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseStaleProps}
+          planVersion={2}
+          verificationPlanVersion={1}
+        />,
+      );
+
+      // Stale notice is shown
+      expect(screen.getByText(/plan updated — these gaps may be resolved/i)).toBeInTheDocument();
+      // aria-label on the dimmed container
+      expect(
+        screen.getByLabelText(/verification gaps — plan has been updated since these were identified/i),
+      ).toBeInTheDocument();
+      // Address Gaps CTA is hidden
+      expect(screen.queryByRole("button", { name: /address.*gaps/i })).not.toBeInTheDocument();
+      // Re-verify Plan button is shown
+      expect(screen.getByRole("button", { name: /re-verify plan/i })).toBeInTheDocument();
+    });
+
+    it("does not mark gaps stale when planVersion === verificationPlanVersion: CTA visible, re-verify hidden", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseStaleProps}
+          planVersion={2}
+          verificationPlanVersion={2}
+        />,
+      );
+
+      expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
+      // Address Gaps CTA is visible
+      expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
+      // Re-verify Plan button is hidden
+      expect(screen.queryByRole("button", { name: /re-verify plan/i })).not.toBeInTheDocument();
+    });
+
+    it("does not mark gaps stale when planVersion is undefined", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseStaleProps}
+          planVersion={undefined}
+          verificationPlanVersion={1}
+        />,
+      );
+
+      expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /re-verify plan/i })).not.toBeInTheDocument();
+    });
+
+    it("does not mark gaps stale when verificationPlanVersion is undefined", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseStaleProps}
+          planVersion={2}
+          verificationPlanVersion={undefined}
+        />,
+      );
+
+      expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /re-verify plan/i })).not.toBeInTheDocument();
+    });
+
+    it("does not mark gaps stale when both versions are undefined", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseStaleProps}
+        />,
+      );
+
+      expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
+    });
+  });
+
+  // ============================================================================
+  // Concurrent plan update + verification event ordering (Step 3)
+  // ============================================================================
+
+  describe("staleness — concurrent update ordering", () => {
+    const mockGaps: VerificationGap[] = [
+      { severity: "medium", category: "completeness", description: "Missing edge case" },
+    ];
+
+    const baseProps = {
+      verificationStatus: "needs_revision" as const,
+      verificationInProgress: false,
+      verificationGaps: mockGaps,
+      onAddressGaps: vi.fn(),
+      onRetryVerification: vi.fn(),
+    };
+
+    it("plan version arriving before verification: planVersion=2 then verificationPlanVersion=1 → stale", () => {
+      // Scenario: plan artifact updates first (version bumps to 2),
+      // but verification cache still has no planVersion yet.
+      const { rerender } = render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseProps}
+          planVersion={2}
+          verificationPlanVersion={undefined}
+        />,
+      );
+
+      // Not stale yet — verificationPlanVersion missing
+      expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
+
+      // Verification cache now has an older planVersion (verification ran at version 1)
+      rerender(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseProps}
+          planVersion={2}
+          verificationPlanVersion={1}
+        />,
+      );
+
+      // Now stale — plan is newer than when verification ran
+      expect(screen.getByText(/plan updated — these gaps may be resolved/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /address.*gaps/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /re-verify plan/i })).toBeInTheDocument();
+    });
+
+    it("verification arriving before plan update: verificationPlanVersion=1 then planVersion=2 → stale", () => {
+      // Scenario: verification event arrives first (stamps planVersion=1 in cache),
+      // then the plan artifact update bumps to version 2.
+      const { rerender } = render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseProps}
+          planVersion={undefined}
+          verificationPlanVersion={1}
+        />,
+      );
+
+      // Not stale yet — planVersion missing
+      expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
+
+      // Plan artifact update arrives — version bumps to 2
+      rerender(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseProps}
+          planVersion={2}
+          verificationPlanVersion={1}
+        />,
+      );
+
+      // Now stale — regardless of which update arrived first
+      expect(screen.getByText(/plan updated — these gaps may be resolved/i)).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /address.*gaps/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /re-verify plan/i })).toBeInTheDocument();
+    });
+
+    it("both arriving simultaneously at same version → not stale", () => {
+      // Scenario: verification event and plan artifact version are both at 2 — no staleness
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          {...baseProps}
+          planVersion={2}
+          verificationPlanVersion={2}
+        />,
+      );
+
+      expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /re-verify plan/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ============================================================================
+  // Full staleness flow — component-level integration test (Step 4)
+  // ============================================================================
+
+  describe("full staleness flow (integration)", () => {
+    it("verify→gaps→plan update→stale→re-verify→fresh completes correctly", () => {
+      const onRetryVerification = vi.fn();
+      const onAddressGaps = vi.fn();
+
+      const initialGaps: VerificationGap[] = [
+        { severity: "high", category: "correctness", description: "Null pointer risk" },
+      ];
+      const freshGaps: VerificationGap[] = [
+        { severity: "low", category: "style", description: "Minor naming issue" },
+      ];
+
+      // Phase 1: Verification completed, gaps visible, plan at version 1
+      const { rerender } = render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="needs_revision"
+          verificationInProgress={false}
+          verificationGaps={initialGaps}
+          planVersion={1}
+          verificationPlanVersion={1}
+          onAddressGaps={onAddressGaps}
+          onRetryVerification={onRetryVerification}
+        />,
+      );
+
+      // Gaps visible, CTA visible, no stale warning
+      expect(screen.getByText("Null pointer risk")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
+      expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /re-verify plan/i })).not.toBeInTheDocument();
+
+      // Phase 2: Plan updated (version bump from 1 → 2), verification cache still at planVersion=1
+      rerender(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="needs_revision"
+          verificationInProgress={false}
+          verificationGaps={initialGaps}
+          planVersion={2}
+          verificationPlanVersion={1}
+          onAddressGaps={onAddressGaps}
+          onRetryVerification={onRetryVerification}
+        />,
+      );
+
+      // Gaps dimmed + CTA hidden + re-verify shown
+      expect(screen.getByText(/plan updated — these gaps may be resolved/i)).toBeInTheDocument();
+      expect(
+        screen.getByLabelText(/verification gaps — plan has been updated since these were identified/i),
+      ).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /address.*gaps/i })).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /re-verify plan/i })).toBeInTheDocument();
+
+      // Phase 3: New verification event arrives with planVersion=2 (matching current plan)
+      rerender(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="needs_revision"
+          verificationInProgress={false}
+          verificationGaps={freshGaps}
+          planVersion={2}
+          verificationPlanVersion={2}
+          onAddressGaps={onAddressGaps}
+          onRetryVerification={onRetryVerification}
+        />,
+      );
+
+      // Fresh gaps — stale warning gone, CTA back, re-verify hidden
+      expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
+      expect(screen.getByText("Minor naming issue")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: /re-verify plan/i })).not.toBeInTheDocument();
     });
   });
 });

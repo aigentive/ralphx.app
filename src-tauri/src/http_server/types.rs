@@ -1379,6 +1379,9 @@ pub struct VerificationResponse {
     /// Round history summaries — last 10 rounds in chronological order (empty if no metadata)
     #[serde(default)]
     pub rounds: Vec<VerificationRoundSummary>,
+    /// Plan artifact version when verification ran — null if session has no linked plan
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub plan_version: Option<u32>,
 }
 
 /// Request to atomically revert plan + skip verification

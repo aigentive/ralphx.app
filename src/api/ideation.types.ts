@@ -33,6 +33,7 @@ export interface VerificationStatusResponse {
   bestRoundIndex?: number;
   gaps: VerificationGap[];
   rounds: RoundSummary[];
+  planVersion?: number;
 }
 
 export interface TaskProposalResponse {

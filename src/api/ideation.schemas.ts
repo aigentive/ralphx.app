@@ -74,6 +74,7 @@ export const VerificationResponseSchema = z.object({
   best_round_index: z.number().int().optional(),
   current_gaps: z.array(ApiVerificationGapSchema).optional().default([]),
   rounds: z.array(ApiRoundSummarySchema).optional().default([]),
+  plan_version: z.number().int().optional(),
 });
 
 /**

@@ -6,6 +6,16 @@
  * 2. seq > 0 → store overrides stale React Query data in resolvedSession merge logic
  * 3. seq === 0 → React Query data used as-is (no override)
  * 4. Session switch → seq resets (new session starts at 0)
+ *
+ * Tests for race condition fix (async IIFE, cancelQueries, round guard, conditional invalidation, planVersion):
+ * 5. cancelQueries called before setQueryData
+ * 6. Out-of-order event (round < cached) is rejected by round guard
+ * 7. Reset event (status=unverified) allowed even when round regresses
+ * 8. Undefined round always accepted (no guard applied)
+ * 9. Fallback path (no currentGaps/rounds) calls invalidateQueries for verification
+ * 10. Fast path skips verification invalidateQueries
+ * 11. planVersion stamped from store onto setQueryData call
+ * 12. planVersion omitted when store has no planArtifact
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -44,13 +54,17 @@ vi.mock("@/providers/EventProvider", () => ({
   }),
 }));
 
-const mockInvalidateQueries = vi.fn();
+const mockInvalidateQueries = vi.fn().mockResolvedValue(undefined);
 const mockSetQueryData = vi.fn();
+const mockCancelQueries = vi.fn().mockResolvedValue(undefined);
+let mockGetQueryData = vi.fn().mockReturnValue(undefined);
 
 vi.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({
     invalidateQueries: mockInvalidateQueries,
     setQueryData: mockSetQueryData,
+    cancelQueries: mockCancelQueries,
+    getQueryData: (...args: unknown[]) => mockGetQueryData(...args),
   }),
 }));
 
@@ -97,6 +111,25 @@ const makeVerificationEvent = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const makeFullVerificationEvent = (overrides: Record<string, unknown> = {}) => ({
+  session_id: SESSION_ID,
+  status: "needs_revision",
+  in_progress: false,
+  gap_score: 55,
+  round: 2,
+  max_rounds: 5,
+  current_gaps: [
+    {
+      severity: "high",
+      category: "correctness",
+      description: "Missing null check",
+      why_it_matters: "Will crash at runtime",
+    },
+  ],
+  rounds: [],
+  ...overrides,
+});
+
 /**
  * Mirrors the resolvedSession merge logic from App.tsx.
  * Used to test the merge semantics without rendering App.
@@ -126,7 +159,7 @@ function resolveSession(
 }
 
 // ============================================================================
-// Tests
+// Tests — verificationUpdateSeq (existing)
 // ============================================================================
 
 describe("useVerificationEvents — verificationUpdateSeq", () => {
@@ -134,11 +167,14 @@ describe("useVerificationEvents — verificationUpdateSeq", () => {
     subscriptions.clear();
     mockInvalidateQueries.mockClear();
     mockSetQueryData.mockClear();
+    mockCancelQueries.mockClear();
+    mockGetQueryData = vi.fn().mockReturnValue(undefined);
     useIdeationStore.setState({
       sessions: { [SESSION_ID]: createTestSession() },
       activeSessionId: SESSION_ID,
       isLoading: false,
       error: null,
+      planArtifact: null,
     });
   });
 
@@ -228,5 +264,137 @@ describe("resolvedSession merge logic — verificationUpdateSeq guard", () => {
     expect(resolved?.id).toBe(newSessionId);
     expect(resolved?.verificationStatus).toBe("verified");
     expect(resolved?.gapScore).toBe(5);
+  });
+});
+
+// ============================================================================
+// Tests — race condition fix (new)
+// ============================================================================
+
+describe("useVerificationEvents — race condition fix", () => {
+  beforeEach(() => {
+    subscriptions.clear();
+    mockInvalidateQueries.mockClear();
+    mockSetQueryData.mockClear();
+    mockCancelQueries.mockClear();
+    mockGetQueryData = vi.fn().mockReturnValue(undefined);
+    useIdeationStore.setState({
+      sessions: { [SESSION_ID]: createTestSession() },
+      activeSessionId: SESSION_ID,
+      isLoading: false,
+      error: null,
+      planArtifact: null,
+    });
+  });
+
+  it("(5) cancelQueries called before setQueryData on fast path event", async () => {
+    renderHook(() => useVerificationEvents());
+
+    const callOrder: string[] = [];
+    mockCancelQueries.mockImplementation(async () => { callOrder.push("cancel"); });
+    mockSetQueryData.mockImplementation(() => { callOrder.push("set"); });
+
+    await act(async () => {
+      fireEvent("plan_verification:status_changed", makeFullVerificationEvent());
+    });
+
+    expect(callOrder).toEqual(["cancel", "set"]);
+  });
+
+  it("(6) out-of-order event (round < cached.currentRound) is rejected by round guard", async () => {
+    // Cached has round=3
+    mockGetQueryData = vi.fn().mockReturnValue({ currentRound: 3, gaps: [], rounds: [] });
+    renderHook(() => useVerificationEvents());
+
+    await act(async () => {
+      // Event with round=2 (stale)
+      fireEvent("plan_verification:status_changed", makeFullVerificationEvent({ round: 2, status: "needs_revision" }));
+    });
+
+    expect(mockSetQueryData).not.toHaveBeenCalled();
+  });
+
+  it("(7) reset event (status=unverified) allowed even when round regresses below cached", async () => {
+    // Cached has round=3
+    mockGetQueryData = vi.fn().mockReturnValue({ currentRound: 3, gaps: [], rounds: [] });
+    renderHook(() => useVerificationEvents());
+
+    await act(async () => {
+      // Reset event — round undefined, status=unverified
+      fireEvent("plan_verification:status_changed", makeFullVerificationEvent({ round: undefined, status: "unverified" }));
+    });
+
+    expect(mockSetQueryData).toHaveBeenCalledTimes(1);
+  });
+
+  it("(8) undefined round in event always accepted (no guard applied)", async () => {
+    // Cached has a round
+    mockGetQueryData = vi.fn().mockReturnValue({ currentRound: 2, gaps: [], rounds: [] });
+    renderHook(() => useVerificationEvents());
+
+    await act(async () => {
+      // Event with no round field — should always pass guard
+      fireEvent("plan_verification:status_changed", makeFullVerificationEvent({ round: undefined, status: "needs_revision" }));
+    });
+
+    expect(mockSetQueryData).toHaveBeenCalledTimes(1);
+  });
+
+  it("(9) fallback path (no currentGaps/rounds) calls invalidateQueries for verification", async () => {
+    renderHook(() => useVerificationEvents());
+
+    await act(async () => {
+      // Event without current_gaps or rounds → fallback path
+      fireEvent("plan_verification:status_changed", makeVerificationEvent());
+    });
+
+    const verificationInvalidation = mockInvalidateQueries.mock.calls.find(
+      (call) => JSON.stringify(call[0]) === JSON.stringify({ queryKey: ["verification", SESSION_ID] })
+    );
+    expect(verificationInvalidation).toBeDefined();
+  });
+
+  it("(10) fast path skips verification invalidateQueries", async () => {
+    renderHook(() => useVerificationEvents());
+
+    await act(async () => {
+      fireEvent("plan_verification:status_changed", makeFullVerificationEvent());
+    });
+
+    const verificationInvalidation = mockInvalidateQueries.mock.calls.find(
+      (call) => JSON.stringify(call[0]) === JSON.stringify({ queryKey: ["verification", SESSION_ID] })
+    );
+    expect(verificationInvalidation).toBeUndefined();
+    // But session invalidations still fire
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["sessions"] });
+  });
+
+  it("(11) planVersion stamped from store onto setQueryData when planArtifact present", async () => {
+    // Set planArtifact with just the fields the hook reads (metadata.version)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    useIdeationStore.setState({ planArtifact: { id: "art-1", metadata: { version: 3 } } as any });
+
+    renderHook(() => useVerificationEvents());
+
+    await act(async () => {
+      fireEvent("plan_verification:status_changed", makeFullVerificationEvent());
+    });
+
+    expect(mockSetQueryData).toHaveBeenCalledTimes(1);
+    const [, cacheData] = mockSetQueryData.mock.calls[0] as [unknown, { planVersion?: number }];
+    expect(cacheData.planVersion).toBe(3);
+  });
+
+  it("(12) planVersion omitted from setQueryData when store has no planArtifact", async () => {
+    // planArtifact is null (default in beforeEach)
+    renderHook(() => useVerificationEvents());
+
+    await act(async () => {
+      fireEvent("plan_verification:status_changed", makeFullVerificationEvent());
+    });
+
+    expect(mockSetQueryData).toHaveBeenCalledTimes(1);
+    const [, cacheData] = mockSetQueryData.mock.calls[0] as [unknown, { planVersion?: number }];
+    expect(cacheData.planVersion).toBeUndefined();
   });
 });

@@ -609,6 +609,7 @@ export const ideationApi = {
         ...(raw.best_round_index !== undefined && { bestRoundIndex: raw.best_round_index }),
         gaps: raw.current_gaps,
         rounds: raw.rounds,
+        ...(raw.plan_version !== undefined && { planVersion: raw.plan_version }),
       };
     },
 
