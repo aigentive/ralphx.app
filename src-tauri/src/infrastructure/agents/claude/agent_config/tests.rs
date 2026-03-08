@@ -631,6 +631,26 @@ fn test_memory_capture_has_read_cli_tools() {
     }
 }
 
+// ── Verification tool allowlist tests ───────────────────────────
+
+#[test]
+fn test_readonly_agent_has_get_plan_verification_not_update() {
+    let config = get_agent_config("orchestrator-ideation-readonly")
+        .expect("orchestrator-ideation-readonly should exist");
+    assert!(
+        config
+            .allowed_mcp_tools
+            .contains(&"get_plan_verification".to_string()),
+        "readonly agent must include get_plan_verification"
+    );
+    assert!(
+        !config
+            .allowed_mcp_tools
+            .contains(&"update_plan_verification".to_string()),
+        "readonly agent must NOT include update_plan_verification"
+    );
+}
+
 // ── Agent extends inheritance tests ─────────────────────────────
 
 #[test]
