@@ -77,6 +77,17 @@ describe("useChatAutoScroll", () => {
       expect(result.current.handleFollowOutput).toBeInstanceOf(Function);
       expect(result.current.scrollToBottom).toBeInstanceOf(Function);
     });
+
+    it("should expose isAtBottomRef initialised to true", () => {
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 0,
+        })
+      );
+
+      expect(result.current.isAtBottomRef).toBeDefined();
+      expect(result.current.isAtBottomRef.current).toBe(true);
+    });
   });
 
   describe("bottom state tracking via handleAtBottomStateChange", () => {
@@ -100,6 +111,30 @@ describe("useChatAutoScroll", () => {
       });
 
       expect(result.current.isAtBottom).toBe(true);
+    });
+
+    it("isAtBottomRef stays in sync with isAtBottom state", () => {
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 0,
+        })
+      );
+
+      expect(result.current.isAtBottomRef.current).toBe(true);
+
+      act(() => {
+        result.current.handleAtBottomStateChange(false);
+      });
+
+      expect(result.current.isAtBottom).toBe(false);
+      expect(result.current.isAtBottomRef.current).toBe(false);
+
+      act(() => {
+        result.current.handleAtBottomStateChange(true);
+      });
+
+      expect(result.current.isAtBottom).toBe(true);
+      expect(result.current.isAtBottomRef.current).toBe(true);
     });
 
     it("should update shouldAutoScroll when isAtBottom changes", () => {

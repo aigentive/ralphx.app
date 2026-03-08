@@ -40,6 +40,8 @@ export interface UseChatAutoScrollReturn {
   messagesEndRef: React.RefObject<HTMLDivElement | null>;
   /** Is user at bottom of scroll area */
   isAtBottom: boolean;
+  /** Ref mirror of isAtBottom — readable without triggering re-renders */
+  isAtBottomRef: React.RefObject<boolean>;
   /** Should auto-scroll (computed: isAtBottom && !disabled) */
   shouldAutoScroll: boolean;
   /** Manual scroll-to-bottom function */
@@ -134,6 +136,7 @@ export function useChatAutoScroll({
     containerRef,
     messagesEndRef,
     isAtBottom,
+    isAtBottomRef,
     shouldAutoScroll,
     scrollToBottom,
     handleAtBottomStateChange,
