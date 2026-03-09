@@ -326,6 +326,48 @@ pub(crate) fn query_column_dwell_times(
     Ok(dwell_times)
 }
 
+/// True average pipeline time: sum all non-terminal phase durations PER TASK,
+/// then AVG across all tasks.  Returns `None` when no merged tasks exist.
+pub(crate) fn query_avg_pipeline_time(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> AppResult<Option<f64>> {
+    let sql = "
+        WITH merged_tasks AS (
+            SELECT id FROM tasks
+            WHERE project_id = ?1
+              AND internal_status = 'merged'
+              AND updated_at >= datetime('now', '-90 days')
+        ),
+        transitions AS (
+            SELECT
+                h.task_id,
+                h.to_status,
+                h.created_at,
+                LAG(h.created_at) OVER (PARTITION BY h.task_id ORDER BY h.created_at) AS prev_at,
+                LAG(h.to_status)  OVER (PARTITION BY h.task_id ORDER BY h.created_at) AS prev_status
+            FROM task_state_history h
+            WHERE h.task_id IN (SELECT id FROM merged_tasks)
+        ),
+        task_pipeline_minutes AS (
+            SELECT
+                tr.task_id,
+                SUM((julianday(tr.created_at) - julianday(tr.prev_at)) * 24.0 * 60.0) AS pipeline_minutes
+            FROM transitions tr
+            WHERE tr.prev_at IS NOT NULL
+              AND tr.prev_status NOT IN ('merged', 'cancelled', 'failed', 'stopped', 'paused', 'blocked')
+            GROUP BY tr.task_id
+        )
+        SELECT AVG(pipeline_minutes) FROM task_pipeline_minutes
+    ";
+
+    let result: Option<f64> = conn
+        .query_row(sql, params![project_id], |row| row.get(0))
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    Ok(result)
+}
+
 // ─── Orchestrators ─────────────────────────────────────────────────────────────
 
 /// Run all metric queries synchronously inside a single `db.run` closure.
@@ -339,6 +381,7 @@ pub fn compute_project_stats(
     let (pass_rate, pass_count, review_total) = query_review_pass_rate(conn, project_id)?;
     let cycle_time = query_cycle_time_breakdown(conn, project_id)?;
     let column_dwell = query_column_dwell_times(conn, project_id)?;
+    let avg_pipeline = query_avg_pipeline_time(conn, project_id)?;
     let config = load_metrics_config(conn, project_id)?;
     let eme = query_eme(conn, project_id, &config)?;
 
@@ -355,6 +398,7 @@ pub fn compute_project_stats(
         review_total_count: review_total,
         cycle_time_breakdown: cycle_time,
         column_dwell_times: column_dwell,
+        avg_pipeline_minutes: avg_pipeline,
         eme,
     })
 }

@@ -60,6 +60,11 @@ pub struct ProjectStats {
     /// Average time tasks spend in each Kanban column (last 90 days, merged tasks only)
     pub column_dwell_times: Vec<ColumnDwellTime>,
 
+    // ── Average pipeline time ────────────────────────────────────────────────
+    /// True per-task average pipeline time in minutes (sum phases per task, then avg).
+    /// `None` when no merged tasks in the last 90 days.
+    pub avg_pipeline_minutes: Option<f64>,
+
     // ── EME (Estimated Manual Effort) ────────────────────────────────────────
     /// None when < 5 merged tasks exist (insufficient sample)
     pub eme: Option<EmeEstimate>,

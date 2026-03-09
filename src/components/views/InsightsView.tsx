@@ -60,23 +60,9 @@ function exportCSV(trends: ProjectTrends): void {
   downloadFile(csv, `ralphx-insights-${date}.csv`, "text/csv");
 }
 
-/** Terminal/non-pipeline states excluded from cycle time sum */
-const TERMINAL_PHASES = new Set([
-  "merged",
-  "cancelled",
-  "failed",
-  "stopped",
-  "paused",
-  "blocked",
-]);
-
-function getAvgCycleTimeDisplay(stats: ProjectStats): string {
-  const pipelinePhases = stats.cycleTimeBreakdown.filter(
-    (p) => !TERMINAL_PHASES.has(p.phase),
-  );
-  if (pipelinePhases.length === 0) return "—";
-  const total = pipelinePhases.reduce((sum, p) => sum + p.avgMinutes, 0);
-  return formatMinutesHuman(total);
+function getAvgPipelineTimeDisplay(stats: ProjectStats): string {
+  if (stats.avgPipelineMinutes == null) return "—";
+  return formatMinutesHuman(stats.avgPipelineMinutes);
 }
 
 // ============================================================================
@@ -281,7 +267,7 @@ function InsightsContent({
               />
               <StatCard
                 label="Avg Pipeline Time"
-                value={getAvgCycleTimeDisplay(stats)}
+                value={getAvgPipelineTimeDisplay(stats)}
                 sub="start to merge"
                 tooltip="Average wall-clock time a task takes from entering the pipeline to merge completion. Includes queue time, AI execution, review, and merge stages. Lower is better — most time is typically spent waiting (queue/escalation), not in active execution."
               />
