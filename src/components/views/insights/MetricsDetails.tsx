@@ -80,17 +80,26 @@ const PHASE_TOOLTIPS: Record<string, string> = {
   revision_needed: "Time waiting for revision to begin",
 };
 
+/** Format snake_case phase name to Title Case (e.g. "merge_conflict" → "Merge Conflict") */
+function formatPhaseName(phase: string): string {
+  return phase
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
 function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes: number }) {
   const pct = maxMinutes > 0 ? Math.round((phase.avgMinutes / maxMinutes) * 100) : 0;
+  const displayName = formatPhaseName(phase.phase);
 
   return (
     <div className="flex items-center gap-2 text-[12px]">
       <span
-        className="w-28 shrink-0 flex items-center gap-1"
+        className="w-32 shrink-0 flex items-center gap-1"
         style={{ color: "rgba(255,255,255,0.5)" }}
       >
-        <span className="truncate" title={phase.phase}>
-          {phase.phase}
+        <span title={displayName}>
+          {displayName}
         </span>
         {PHASE_TOOLTIPS[phase.phase] && (
           <TooltipProvider delayDuration={200}>
