@@ -55,6 +55,7 @@ export const ProjectStatsSchema = z.object({
   reviewTotalCount: z.number(),
   cycleTimeBreakdown: z.array(CycleTimePhaseSchema),
   columnDwellTimes: z.array(ColumnDwellTimeSchema),
+  avgPipelineMinutes: z.number().nullable(),
   eme: EmeEstimateSchema.nullable(),
 });
 

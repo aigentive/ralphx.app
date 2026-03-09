@@ -615,6 +615,7 @@ fn test_invalidate_project_stats_cache_removes_entry() {
         review_total_count: 0,
         cycle_time_breakdown: vec![],
         column_dwell_times: vec![],
+        avg_pipeline_minutes: None,
         eme: None,
     };
     STATS_CACHE.insert(project_id.to_string(), (Instant::now(), fake_stats));

@@ -30,6 +30,7 @@ pub(crate) fn query_weekly_throughput(
           AND t.internal_status = 'merged'
           AND date(t.updated_at) >= w.week_start
           AND date(t.updated_at) < date(w.week_start, '+7 days')
+        WHERE w.week_start <= date('now')
         GROUP BY w.week_start
         ORDER BY w.week_start
     ";
@@ -92,6 +93,7 @@ pub(crate) fn query_weekly_cycle_time(
         FROM merged_tasks mt
         JOIN task_exec_hours te ON te.task_id = mt.id
         GROUP BY week_start
+        HAVING week_start <= date('now')
         ORDER BY week_start
     ";
 
@@ -156,6 +158,7 @@ pub(crate) fn query_weekly_pipeline_cycle_time(
         FROM merged_tasks mt
         JOIN task_pipeline_hours te ON te.task_id = mt.id
         GROUP BY week_start
+        HAVING week_start <= date('now')
         ORDER BY week_start
     ";
 
@@ -196,6 +199,7 @@ pub(crate) fn query_weekly_success_rate(
           AND t.internal_status IN ('merged', 'failed', 'cancelled', 'stopped')
           AND t.updated_at >= datetime('now', '-365 days')
         GROUP BY week_start
+        HAVING week_start <= date('now')
         ORDER BY week_start
     ";
 
