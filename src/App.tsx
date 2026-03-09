@@ -984,7 +984,7 @@ function AppContent() {
         <div className="flex-1 flex overflow-hidden">
           {/* Main view area */}
           <div className="flex-1 flex flex-col overflow-hidden">
-            <div className="flex-1 overflow-hidden h-full">
+            <div className="flex-1 overflow-auto h-full">
               {currentView === "kanban" && (
                 <KanbanSplitLayout
                   projectId={currentProjectId}

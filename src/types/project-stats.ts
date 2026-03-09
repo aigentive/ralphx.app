@@ -33,6 +33,13 @@ export const EmeEstimateSchema = z.object({
   taskCount: z.number(),
 });
 
+export const ColumnDwellTimeSchema = z.object({
+  columnId: z.string(),
+  columnName: z.string(),
+  avgMinutes: z.number(),
+  sampleSize: z.number(),
+});
+
 export const ProjectStatsSchema = z.object({
   taskCount: z.number(),
   tasksCompletedToday: z.number(),
@@ -45,6 +52,7 @@ export const ProjectStatsSchema = z.object({
   reviewPassCount: z.number(),
   reviewTotalCount: z.number(),
   cycleTimeBreakdown: z.array(CycleTimePhaseSchema),
+  columnDwellTimes: z.array(ColumnDwellTimeSchema),
   eme: EmeEstimateSchema.nullable(),
 });
 
@@ -65,6 +73,7 @@ export const ProjectTrendsSchema = z.object({
 // ============================================================================
 
 export type CycleTimePhase = z.infer<typeof CycleTimePhaseSchema>;
+export type ColumnDwellTime = z.infer<typeof ColumnDwellTimeSchema>;
 export type EmeEstimate = z.infer<typeof EmeEstimateSchema>;
 export type ProjectStats = z.infer<typeof ProjectStatsSchema>;
 export type WeeklyDataPoint = z.infer<typeof WeeklyDataPointSchema>;

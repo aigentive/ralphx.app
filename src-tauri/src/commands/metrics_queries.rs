@@ -5,7 +5,7 @@ use rusqlite::params;
 
 use crate::commands::metrics_commands::{load_metrics_config, MetricsConfig};
 use crate::commands::metrics_types::{
-    ColumnMetric, CycleTimePhase, EmeEstimate, ProjectStats, TaskMetrics,
+    ColumnDwellTime, ColumnMetric, CycleTimePhase, EmeEstimate, ProjectStats, TaskMetrics,
 };
 use crate::error::{AppError, AppResult};
 
@@ -207,9 +207,9 @@ pub(crate) fn query_eme(
     }
 
     let (low_total, high_total) = task_rows.iter().fold((0.0f64, 0.0f64), |acc, &(steps, reviews)| {
-        let (weight, base_hours) = complexity_tier(steps, reviews, config);
-        let low = weight * base_hours;
-        let high = low * config.calendar_factor;
+        let (_weight, base_hours) = complexity_tier(steps, reviews, config);
+        let low = base_hours;
+        let high = base_hours * config.calendar_factor;
         (acc.0 + low, acc.1 + high)
     });
 
@@ -232,6 +232,92 @@ fn complexity_tier(step_count: i64, review_cycles: i64, config: &MetricsConfig) 
     }
 }
 
+/// Average dwell time per Kanban column using LAG() window function.
+/// Maps internal statuses to Kanban columns and aggregates dwell time.
+/// Only considers tasks merged in the last 90 days.
+pub(crate) fn query_column_dwell_times(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> AppResult<Vec<ColumnDwellTime>> {
+    let sql = "
+        WITH merged_tasks AS (
+            SELECT id FROM tasks
+            WHERE project_id = ?1
+              AND internal_status = 'merged'
+              AND updated_at >= datetime('now', '-90 days')
+        ),
+        transitions AS (
+            SELECT
+                h.task_id,
+                h.to_status,
+                h.created_at,
+                LAG(h.created_at)  OVER (PARTITION BY h.task_id ORDER BY h.created_at) AS prev_at,
+                LAG(h.to_status)   OVER (PARTITION BY h.task_id ORDER BY h.created_at) AS prev_status
+            FROM task_state_history h
+            WHERE h.task_id IN (SELECT id FROM merged_tasks)
+        ),
+        column_mapped AS (
+            SELECT
+                CASE
+                    WHEN prev_status IN ('ready') THEN 'ready'
+                    WHEN prev_status IN ('executing', 're_executing') THEN 'in_progress'
+                    WHEN prev_status IN ('pending_review', 'reviewing', 'review_passed', 'escalated', 'revision_needed') THEN 'in_review'
+                    WHEN prev_status IN ('pending_merge', 'merging') THEN 'merge'
+                    WHEN prev_status IN ('approved', 'merged') THEN 'done'
+                    ELSE NULL
+                END AS column_id,
+                (julianday(created_at) - julianday(prev_at)) * 24.0 * 60.0 AS dwell_minutes
+            FROM transitions
+            WHERE prev_at IS NOT NULL
+              AND prev_status IS NOT NULL
+        )
+        SELECT
+            column_id,
+            AVG(dwell_minutes) AS avg_minutes,
+            COUNT(*)           AS sample_size
+        FROM column_mapped
+        WHERE column_id IS NOT NULL
+        GROUP BY column_id
+        ORDER BY avg_minutes DESC
+    ";
+
+    let mut stmt = conn
+        .prepare(sql)
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    let column_names: &[(&str, &str)] = &[
+        ("ready", "Ready"),
+        ("in_progress", "In Progress"),
+        ("in_review", "In Review"),
+        ("merge", "Merge"),
+        ("done", "Done"),
+    ];
+
+    let rows = stmt
+        .query_map(params![project_id], |row| {
+            let col_id: String = row.get(0)?;
+            Ok((col_id, row.get::<_, f64>(1)?, row.get::<_, i64>(2)?))
+        })
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    let mut dwell_times = Vec::new();
+    for row in rows {
+        let (col_id, avg_minutes, sample_size) = row.map_err(|e| AppError::Database(e.to_string()))?;
+        let col_name = column_names
+            .iter()
+            .find(|(id, _)| *id == col_id)
+            .map(|(_, name)| name.to_string())
+            .unwrap_or_else(|| col_id.clone());
+        dwell_times.push(ColumnDwellTime {
+            column_id: col_id,
+            column_name: col_name,
+            avg_minutes: (avg_minutes * 10.0).round() / 10.0,
+            sample_size,
+        });
+    }
+    Ok(dwell_times)
+}
+
 // ─── Orchestrators ─────────────────────────────────────────────────────────────
 
 /// Run all metric queries synchronously inside a single `db.run` closure.
@@ -244,6 +330,7 @@ pub fn compute_project_stats(
     let (success_rate, success_count, total_count) = query_agent_success_rate(conn, project_id)?;
     let (pass_rate, pass_count, review_total) = query_review_pass_rate(conn, project_id)?;
     let cycle_time = query_cycle_time_breakdown(conn, project_id)?;
+    let column_dwell = query_column_dwell_times(conn, project_id)?;
     let config = load_metrics_config(conn, project_id)?;
     let eme = query_eme(conn, project_id, &config)?;
 
@@ -259,6 +346,7 @@ pub fn compute_project_stats(
         review_pass_count: pass_count,
         review_total_count: review_total,
         cycle_time_breakdown: cycle_time,
+        column_dwell_times: column_dwell,
         eme,
     })
 }

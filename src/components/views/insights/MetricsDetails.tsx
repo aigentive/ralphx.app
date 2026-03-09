@@ -1,0 +1,310 @@
+/**
+ * Shared detail components for metrics display.
+ * Used by both InsightsView and ProjectStatsCard.
+ */
+
+import { useState } from "react";
+import { Copy, Check, Clock, Columns3, GitMerge } from "lucide-react";
+import { DetailCard } from "@/components/tasks/detail-views/shared/DetailCard";
+import type { ColumnDwellTime, CycleTimePhase, ProjectStats } from "@/types/project-stats";
+
+// ============================================================================
+// RateBar
+// ============================================================================
+
+interface RateBarProps {
+  label: string;
+  rate: number;
+  passCount: number;
+  totalCount: number;
+  color: string;
+}
+
+function RateBar({ label, rate, passCount, totalCount, color }: RateBarProps) {
+  const pct = Math.round(rate * 100);
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+          {label}
+        </span>
+        <span className="text-[12px] font-medium" style={{ color: "rgba(255,255,255,0.7)" }}>
+          {pct}%
+          <span className="ml-1" style={{ color: "rgba(255,255,255,0.4)" }}>
+            ({passCount}/{totalCount})
+          </span>
+        </span>
+      </div>
+      <div
+        className="h-1.5 w-full rounded-full"
+        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+      >
+        <div
+          className="h-full rounded-full transition-all duration-300"
+          style={{ width: `${pct}%`, backgroundColor: color }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// CycleTimeBar
+// ============================================================================
+
+function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes: number }) {
+  const pct = maxMinutes > 0 ? Math.round((phase.avgMinutes / maxMinutes) * 100) : 0;
+  const hours = (phase.avgMinutes / 60).toFixed(1);
+
+  return (
+    <div className="flex items-center gap-2 text-[12px]">
+      <span
+        className="w-24 shrink-0 truncate"
+        style={{ color: "rgba(255,255,255,0.5)" }}
+        title={phase.phase}
+      >
+        {phase.phase}
+      </span>
+      <div
+        className="flex-1 h-1.5 rounded-full"
+        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+      >
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${pct}%`, backgroundColor: "#ff6b35" }}
+        />
+      </div>
+      <span
+        className="w-12 text-right shrink-0 tabular-nums"
+        style={{ color: "rgba(255,255,255,0.7)" }}
+      >
+        {hours}h
+      </span>
+    </div>
+  );
+}
+
+// ============================================================================
+// Composite sections
+// ============================================================================
+
+interface QualityBreakdownProps {
+  stats: ProjectStats;
+}
+
+export function QualityBreakdown({ stats }: QualityBreakdownProps) {
+  const hasRates = stats.agentTotalCount > 0 || stats.reviewTotalCount > 0;
+  if (!hasRates) return null;
+
+  return (
+    <DetailCard>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-1.5">
+          <GitMerge size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <span
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+          >
+            Quality Breakdown
+          </span>
+        </div>
+        {stats.agentTotalCount > 0 && (
+          <RateBar
+            label="Agent success"
+            rate={stats.agentSuccessRate}
+            passCount={stats.agentSuccessCount}
+            totalCount={stats.agentTotalCount}
+            color="#ff6b35"
+          />
+        )}
+        {stats.reviewTotalCount > 0 && (
+          <RateBar
+            label="Review pass"
+            rate={stats.reviewPassRate}
+            passCount={stats.reviewPassCount}
+            totalCount={stats.reviewTotalCount}
+            color="hsl(145 60% 45%)"
+          />
+        )}
+      </div>
+    </DetailCard>
+  );
+}
+
+interface CycleTimeBreakdownProps {
+  phases: CycleTimePhase[];
+}
+
+export function CycleTimeBreakdown({ phases }: CycleTimeBreakdownProps) {
+  const nonZeroPhases = phases.filter((p) => p.avgMinutes > 0);
+  if (nonZeroPhases.length === 0) return null;
+  const maxMinutes = nonZeroPhases.reduce((acc, p) => Math.max(acc, p.avgMinutes), 0);
+
+  return (
+    <DetailCard>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-1.5">
+          <Clock size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <span
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+          >
+            Cycle Time Breakdown
+          </span>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          {nonZeroPhases.map((phase) => (
+            <CycleTimeBar key={phase.phase} phase={phase} maxMinutes={maxMinutes} />
+          ))}
+        </div>
+      </div>
+    </DetailCard>
+  );
+}
+
+// ============================================================================
+// Column Dwell Time Breakdown
+// ============================================================================
+
+function DwellTimeBar({ dwell, maxMinutes }: { dwell: ColumnDwellTime; maxMinutes: number }) {
+  const pct = maxMinutes > 0 ? Math.round((dwell.avgMinutes / maxMinutes) * 100) : 0;
+  const hours = (dwell.avgMinutes / 60).toFixed(1);
+
+  return (
+    <div className="flex items-center gap-2 text-[12px]">
+      <span
+        className="w-24 shrink-0 truncate"
+        style={{ color: "rgba(255,255,255,0.5)" }}
+        title={dwell.columnName}
+      >
+        {dwell.columnName}
+      </span>
+      <div
+        className="flex-1 h-1.5 rounded-full"
+        style={{ backgroundColor: "rgba(255,255,255,0.06)" }}
+      >
+        <div
+          className="h-full rounded-full"
+          style={{ width: `${pct}%`, backgroundColor: "#34d399" }}
+        />
+      </div>
+      <span
+        className="w-12 text-right shrink-0 tabular-nums"
+        style={{ color: "rgba(255,255,255,0.7)" }}
+      >
+        {hours}h
+      </span>
+    </div>
+  );
+}
+
+interface ColumnDwellTimeBreakdownProps {
+  dwellTimes: ColumnDwellTime[];
+}
+
+export function ColumnDwellTimeBreakdown({ dwellTimes }: ColumnDwellTimeBreakdownProps) {
+  const nonZero = dwellTimes.filter((d) => d.avgMinutes > 0);
+  if (nonZero.length === 0) return null;
+  const maxMinutes = nonZero.reduce((acc, d) => Math.max(acc, d.avgMinutes), 0);
+
+  return (
+    <DetailCard>
+      <div className="flex flex-col gap-3">
+        <div className="flex items-center gap-1.5">
+          <Columns3 size={14} style={{ color: "rgba(255,255,255,0.4)" }} />
+          <span
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
+          >
+            Kanban Column Time
+          </span>
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+          {nonZero.map((dwell) => (
+            <DwellTimeBar key={dwell.columnId} dwell={dwell} maxMinutes={maxMinutes} />
+          ))}
+        </div>
+      </div>
+    </DetailCard>
+  );
+}
+
+// ============================================================================
+// Markdown generation + copy button
+// ============================================================================
+
+function generateMarkdown(stats: ProjectStats): string {
+  const date = new Date().toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  const agentPct = Math.round(stats.agentSuccessRate * 100);
+  const reviewPct = Math.round(stats.reviewPassRate * 100);
+
+  const cycleTimeLine =
+    stats.cycleTimeBreakdown.length > 0
+      ? stats.cycleTimeBreakdown
+          .map((p) => `${p.phase}: ${(p.avgMinutes / 60).toFixed(1)}h`)
+          .join(", ")
+      : "No data yet";
+
+  const emeSection = stats.eme
+    ? `\n### Estimated Manual Effort\n- **Estimate:** ~${stats.eme.lowHours}–${stats.eme.highHours} hours\n- *Based on task complexity analysis.*\n`
+    : "";
+
+  return `## Project Stats — ${date}
+
+### Quality
+- **Agent Success Rate:** ${agentPct}% (${stats.agentSuccessCount}/${stats.agentTotalCount} tasks)
+- **Review Pass Rate:** ${reviewPct}% first-pass approval
+
+### Throughput
+- **Tasks Completed:** ${stats.tasksCompletedThisWeek} this week, ${stats.tasksCompletedThisMonth} this month
+- **Avg Cycle Time:** ${cycleTimeLine}
+${emeSection}
+---
+*Metrics computed locally from RalphX — your data never leaves your machine.*`;
+}
+
+interface CopyMarkdownButtonProps {
+  stats: ProjectStats;
+}
+
+export function CopyMarkdownButton({ stats }: CopyMarkdownButtonProps) {
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(generateMarkdown(stats));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard not available
+    }
+  }
+
+  return (
+    <button
+      onClick={handleCopy}
+      className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
+      style={{
+        backgroundColor: "hsl(220 10% 14%)",
+        color: "rgba(255,255,255,0.7)",
+      }}
+    >
+      {copied ? (
+        <>
+          <Check size={13} style={{ color: "hsl(145 60% 45%)" }} />
+          <span style={{ color: "hsl(145 60% 45%)" }}>Copied!</span>
+        </>
+      ) : (
+        <>
+          <Copy size={13} />
+          Copy as Markdown
+        </>
+      )}
+    </button>
+  );
+}

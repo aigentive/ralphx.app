@@ -23,13 +23,18 @@ import {
 import { StatCard } from "./insights/StatCard";
 import { TrendChart } from "./insights/TrendChart";
 import { EffortEstimationPanel } from "./insights/EffortEstimationPanel";
+import {
+  CycleTimeBreakdown,
+  ColumnDwellTimeBreakdown,
+  CopyMarkdownButton,
+} from "./insights/MetricsDetails";
 
 // ============================================================================
 // Helpers
 // ============================================================================
 
 function formatPercent(value: number): string {
-  return `${Math.round(value)}%`;
+  return `${Math.round(value * 100)}%`;
 }
 
 function formatHours(minutes: number): string {
@@ -128,7 +133,7 @@ export function InsightsView() {
       className="flex flex-col flex-1 overflow-auto"
       style={{ backgroundColor: "hsl(220 10% 8%)" }}
     >
-      <div className="flex flex-col gap-6 p-6 max-w-[900px] w-full mx-auto">
+      <div className="flex flex-col gap-6 p-6 max-w-[1400px] w-full mx-auto">
         {/* Header */}
         <div className="flex flex-col gap-1">
           <h1
@@ -152,21 +157,25 @@ export function InsightsView() {
               label="Agent Success Rate"
               value={formatPercent(stats.agentSuccessRate)}
               sub={`${stats.agentSuccessCount} / ${stats.agentTotalCount} tasks`}
+              tooltip="Percentage of tasks that completed successfully (merged) vs those that failed, were cancelled, or stopped. Higher = more reliable AI execution."
             />
             <StatCard
               label="Review Pass Rate"
               value={formatPercent(stats.reviewPassRate)}
               sub={`${stats.reviewPassCount} / ${stats.reviewTotalCount} reviews`}
+              tooltip="Percentage of AI code reviews that passed on first attempt without requesting changes. Higher = better first-draft quality."
             />
             <StatCard
-              label="Completed This Week"
+              label="Tasks This Week"
               value={String(stats.tasksCompletedThisWeek)}
-              sub={`${stats.tasksCompletedToday} today`}
+              sub={`${stats.tasksCompletedToday} tasks today`}
+              tooltip="Number of tasks that reached merged status in the last 7 days."
             />
             <StatCard
               label="Avg Cycle Time"
               value={getAvgCycleTimeDisplay(stats)}
               sub="end-to-end"
+              tooltip="Average time from task creation to merge, measured across pipeline stages (queue, execute, review, merge). Based on state transition history."
             />
           </div>
 
@@ -187,32 +196,40 @@ export function InsightsView() {
             </DetailCard>
           ) : (
             <div className="flex flex-col gap-3">
-              <DetailCard>
-                <TrendChart
-                  title="Weekly Throughput (tasks)"
-                  data={trends.weeklyThroughput}
-                />
-              </DetailCard>
-              <DetailCard>
-                <TrendChart
-                  title="Avg Cycle Time (hours)"
-                  data={trends.weeklyCycleTime.map((pt) => ({
-                    ...pt,
-                    value: +(pt.value / 60).toFixed(2),
-                  }))}
-                  valueFormatter={(v) => `${v}h`}
-                />
-              </DetailCard>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+                <DetailCard>
+                  <TrendChart
+                    title="Weekly Throughput (tasks)"
+                    data={trends.weeklyThroughput}
+                  />
+                </DetailCard>
+                <DetailCard>
+                  <TrendChart
+                    title="Avg Cycle Time (hours)"
+                    data={trends.weeklyCycleTime.map((pt) => ({
+                      ...pt,
+                      value: +(pt.value / 60).toFixed(2),
+                    }))}
+                    valueFormatter={(v) => `${v}h`}
+                  />
+                </DetailCard>
+              </div>
               <DetailCard>
                 <TrendChart
                   title="Agent Success Rate (%)"
                   data={trends.weeklySuccessRate}
-                  valueFormatter={(v) => `${Math.round(v)}%`}
+                  valueFormatter={(v) => `${Math.round(v * 100)}%`}
                   color="#34d399"
                 />
               </DetailCard>
             </div>
           )}
+
+          {/* Cycle time + column dwell time */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            <CycleTimeBreakdown phases={stats.cycleTimeBreakdown} />
+            <ColumnDwellTimeBreakdown dwellTimes={stats.columnDwellTimes} />
+          </div>
         </section>
 
         {/* Divider */}
@@ -242,6 +259,7 @@ export function InsightsView() {
               lowHours={stats.eme.lowHours}
               highHours={stats.eme.highHours}
               taskCount={stats.eme.taskCount}
+              projectId={projectId}
             />
           ) : (
             <DetailCard>
@@ -284,6 +302,7 @@ export function InsightsView() {
             <Download size={13} />
             Download CSV
           </button>
+          <CopyMarkdownButton stats={stats} />
         </div>
       </div>
     </div>
