@@ -368,7 +368,15 @@ function InsightsContent({
                     ? trends.weeklyThroughput[trends.weeklyThroughput.length - 1]!.value
                     : stats.tasksCompletedThisWeek
                 )}
-                sub={`${stats.tasksCompletedThisWeek} last 7 days · ${stats.tasksCompletedToday} today`}
+                sub={(() => {
+                  const calWeek = trends.weeklyThroughput.length > 0
+                    ? trends.weeklyThroughput[trends.weeklyThroughput.length - 1]!.value
+                    : stats.tasksCompletedThisWeek;
+                  const rolling = stats.tasksCompletedThisWeek;
+                  const parts = [`${stats.tasksCompletedToday} today`];
+                  if (rolling !== calWeek) parts.push(`${rolling} last 7 days`);
+                  return parts.join(" · ");
+                })()}
                 tooltip={isThisWeek
                   ? `Tasks merged this calendar week (${weekBoundary}, UTC). The 'last 7 days' count uses a rolling window and may differ.`
                   : "Tasks merged in the most recent week with data. No tasks merged in the current calendar week yet."}
