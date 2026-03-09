@@ -4,7 +4,13 @@
  */
 
 import { useState } from "react";
-import { Copy, Check, Clock, Columns3, GitMerge } from "lucide-react";
+import { Copy, Check, Clock, Columns3, GitMerge, HelpCircle } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { DetailCard } from "@/components/tasks/detail-views/shared/DetailCard";
 import { formatMinutesHuman } from "@/lib/formatters";
 import type { ColumnDwellTime, CycleTimePhase, ProjectStats } from "@/types/project-stats";
@@ -53,17 +59,51 @@ function RateBar({ label, rate, passCount, totalCount, color }: RateBarProps) {
 // CycleTimeBar
 // ============================================================================
 
+const PHASE_TOOLTIPS: Record<string, string> = {
+  merged: "Total time from first transition to merge completion",
+  blocked: "Time tasks spent waiting on dependencies",
+  cancelled: "Time before task was cancelled",
+  escalated: "Time before AI escalated to human review",
+  stopped: "Time before task was manually stopped",
+  failed: "Time before execution failure",
+  paused: "Time spent in paused state",
+  merge_conflict: "Time resolving merge conflicts",
+  executing: "Active AI execution time",
+  re_executing: "Re-execution time after revision",
+  merging: "Time in automated merge process",
+  merge_incomplete: "Time in incomplete merge state",
+  reviewing: "Active AI review time",
+  ready: "Time waiting in ready queue",
+  pending_merge: "Time waiting for merge to start",
+  approved: "Time between approval and next action",
+  pending_review: "Time waiting for review to start",
+  revision_needed: "Time waiting for revision to begin",
+};
+
 function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes: number }) {
   const pct = maxMinutes > 0 ? Math.round((phase.avgMinutes / maxMinutes) * 100) : 0;
 
   return (
     <div className="flex items-center gap-2 text-[12px]">
       <span
-        className="w-24 shrink-0 truncate"
+        className="w-28 shrink-0 flex items-center gap-1"
         style={{ color: "rgba(255,255,255,0.5)" }}
-        title={phase.phase}
       >
-        {phase.phase}
+        <span className="truncate" title={phase.phase}>
+          {phase.phase}
+        </span>
+        {PHASE_TOOLTIPS[phase.phase] && (
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <HelpCircle className="w-3 h-3 shrink-0 text-muted-foreground" />
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-[200px] text-xs">
+                {PHASE_TOOLTIPS[phase.phase]}
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        )}
       </span>
       <div
         className="flex-1 h-1.5 rounded-full"
@@ -136,7 +176,7 @@ interface CycleTimeBreakdownProps {
 }
 
 export function CycleTimeBreakdown({ phases }: CycleTimeBreakdownProps) {
-  const nonZeroPhases = phases.filter((p) => p.avgMinutes > 0);
+  const nonZeroPhases = phases.filter((p) => p.avgMinutes >= 1);
   if (nonZeroPhases.length === 0) return null;
   const maxMinutes = nonZeroPhases.reduce((acc, p) => Math.max(acc, p.avgMinutes), 0);
 
