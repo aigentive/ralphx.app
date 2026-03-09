@@ -21,6 +21,7 @@ import {
   Check,
 } from "lucide-react";
 import { useProjectStats } from "@/hooks/useProjectStats";
+import { formatMinutesHuman } from "@/lib/formatters";
 import { CollapsibleEstimates } from "./CollapsibleEstimates";
 import type { CycleTimePhase, ProjectStats } from "@/types/project-stats";
 
@@ -104,7 +105,6 @@ interface CycleTimeBarProps {
 
 function CycleTimeBar({ phase, maxMinutes }: CycleTimeBarProps) {
   const pct = maxMinutes > 0 ? Math.round((phase.avgMinutes / maxMinutes) * 100) : 0;
-  const hours = (phase.avgMinutes / 60).toFixed(1);
 
   return (
     <div className="flex items-center gap-2 text-xs" data-testid={`cycle-phase-${phase.phase}`}>
@@ -123,8 +123,8 @@ function CycleTimeBar({ phase, maxMinutes }: CycleTimeBarProps) {
           style={{ width: `${pct}%`, backgroundColor: "#ff6b35" }}
         />
       </div>
-      <span className="w-12 text-right text-[var(--text-secondary)] shrink-0 tabular-nums">
-        {hours}h
+      <span className="w-16 text-right text-[var(--text-secondary)] shrink-0 tabular-nums">
+        {formatMinutesHuman(phase.avgMinutes)}
       </span>
     </div>
   );
@@ -185,7 +185,7 @@ function generateMarkdown(stats: ProjectStats): string {
   const cycleTimeLine =
     stats.cycleTimeBreakdown.length > 0
       ? stats.cycleTimeBreakdown
-          .map((p) => `${p.phase}: ${(p.avgMinutes / 60).toFixed(1)}h`)
+          .map((p) => `${p.phase}: ${formatMinutesHuman(p.avgMinutes)}`)
           .join(", ")
       : "No data yet";
 
