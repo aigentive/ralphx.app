@@ -112,7 +112,7 @@ pub(crate) fn query_weekly_cycle_time(
             JOIN task_state_history h ON h.task_id = t.id AND h.to_status = 'merged'
             WHERE t.project_id = ?1
               AND t.internal_status = 'merged'
-              AND h.created_at >= datetime('now', '-365 days')
+              AND datetime(h.created_at) >= datetime('now', '-365 days')
         ),
         transitions AS (
             SELECT
@@ -186,7 +186,7 @@ pub(crate) fn query_weekly_pipeline_cycle_time(
             JOIN task_state_history h ON h.task_id = t.id AND h.to_status = 'merged'
             WHERE t.project_id = ?1
               AND t.internal_status = 'merged'
-              AND h.created_at >= datetime('now', '-365 days')
+              AND datetime(h.created_at) >= datetime('now', '-365 days')
         ),
         transitions AS (
             SELECT
@@ -259,7 +259,7 @@ pub(crate) fn query_weekly_success_rate(
               AND h.to_status = t.internal_status
             WHERE t.project_id = ?1
               AND t.internal_status IN ('merged', 'failed', 'cancelled', 'stopped')
-              AND h.created_at >= datetime('now', '-365 days')
+              AND datetime(h.created_at) >= datetime('now', '-365 days')
         )
         SELECT
           date(tt.terminal_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
