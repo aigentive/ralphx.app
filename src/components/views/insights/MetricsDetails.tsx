@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { Copy, Check, Clock, Columns3, GitMerge } from "lucide-react";
 import { DetailCard } from "@/components/tasks/detail-views/shared/DetailCard";
+import { formatMinutesHuman } from "@/lib/formatters";
 import type { ColumnDwellTime, CycleTimePhase, ProjectStats } from "@/types/project-stats";
 
 // ============================================================================
@@ -54,7 +55,6 @@ function RateBar({ label, rate, passCount, totalCount, color }: RateBarProps) {
 
 function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes: number }) {
   const pct = maxMinutes > 0 ? Math.round((phase.avgMinutes / maxMinutes) * 100) : 0;
-  const hours = (phase.avgMinutes / 60).toFixed(1);
 
   return (
     <div className="flex items-center gap-2 text-[12px]">
@@ -75,10 +75,10 @@ function CycleTimeBar({ phase, maxMinutes }: { phase: CycleTimePhase; maxMinutes
         />
       </div>
       <span
-        className="w-12 text-right shrink-0 tabular-nums"
+        className="w-16 text-right shrink-0 tabular-nums"
         style={{ color: "rgba(255,255,255,0.7)" }}
       >
-        {hours}h
+        {formatMinutesHuman(phase.avgMinutes)}
       </span>
     </div>
   );
@@ -168,7 +168,6 @@ export function CycleTimeBreakdown({ phases }: CycleTimeBreakdownProps) {
 
 function DwellTimeBar({ dwell, maxMinutes }: { dwell: ColumnDwellTime; maxMinutes: number }) {
   const pct = maxMinutes > 0 ? Math.round((dwell.avgMinutes / maxMinutes) * 100) : 0;
-  const hours = (dwell.avgMinutes / 60).toFixed(1);
 
   return (
     <div className="flex items-center gap-2 text-[12px]">
@@ -189,10 +188,10 @@ function DwellTimeBar({ dwell, maxMinutes }: { dwell: ColumnDwellTime; maxMinute
         />
       </div>
       <span
-        className="w-12 text-right shrink-0 tabular-nums"
+        className="w-16 text-right shrink-0 tabular-nums"
         style={{ color: "rgba(255,255,255,0.7)" }}
       >
-        {hours}h
+        {formatMinutesHuman(dwell.avgMinutes)}
       </span>
     </div>
   );
@@ -203,7 +202,9 @@ interface ColumnDwellTimeBreakdownProps {
 }
 
 export function ColumnDwellTimeBreakdown({ dwellTimes }: ColumnDwellTimeBreakdownProps) {
-  const nonZero = dwellTimes.filter((d) => d.avgMinutes > 0);
+  const nonZero = dwellTimes.filter(
+    (d) => d.avgMinutes > 0 && d.columnName.toLowerCase() !== "done"
+  );
   if (nonZero.length === 0) return null;
   const maxMinutes = nonZero.reduce((acc, d) => Math.max(acc, d.avgMinutes), 0);
 
@@ -246,7 +247,7 @@ function generateMarkdown(stats: ProjectStats): string {
   const cycleTimeLine =
     stats.cycleTimeBreakdown.length > 0
       ? stats.cycleTimeBreakdown
-          .map((p) => `${p.phase}: ${(p.avgMinutes / 60).toFixed(1)}h`)
+          .map((p) => `${p.phase}: ${formatMinutesHuman(p.avgMinutes)}`)
           .join(", ")
       : "No data yet";
 

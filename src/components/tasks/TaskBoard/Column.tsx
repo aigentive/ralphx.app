@@ -39,6 +39,7 @@ import {
 } from "./Column.utils.tsx";
 import { CollapsedQuickAdd } from "./CollapsedQuickAdd";
 import { useProjectStats } from "@/hooks/useProjectStats";
+import { formatMinutesHuman } from "@/lib/formatters";
 
 interface ColumnProps {
   column: WorkflowColumnResponse;
@@ -107,7 +108,7 @@ function isCompletedDoneGroup(group: StateGroup): boolean {
 
 /**
  * Format average minutes into a compact human-readable string.
- * Examples: "2m", "1.5h", "3d"
+ * Examples: "2m", "7h 30m", "3d"
  */
 function formatAvgCycleTime(avgMinutes: number): string {
   if (avgMinutes < 60) {
@@ -115,10 +116,13 @@ function formatAvgCycleTime(avgMinutes: number): string {
   }
   const hours = avgMinutes / 60;
   if (hours < 24) {
-    return `${hours.toFixed(1).replace(/\.0$/, "")}h`;
+    return formatMinutesHuman(avgMinutes);
   }
   const days = hours / 24;
-  return `${days.toFixed(1).replace(/\.0$/, "")}d`;
+  const wholeDays = Math.floor(days);
+  const remainingHours = Math.round((days - wholeDays) * 24);
+  if (remainingHours > 0) return `${wholeDays}d ${remainingHours}h`;
+  return `${wholeDays}d`;
 }
 
 export function Column({ column, projectId, showArchived, showMergeTasks, isOver, isInvalid, onTaskSelect, hiddenTaskId, searchTasks, matchCount, groups, isLast = false, ideationSessionId, executionPlanId, isCollapsed = false, onToggleCollapse }: ColumnProps) {

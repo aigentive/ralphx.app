@@ -8,6 +8,7 @@
  */
 
 import { Download } from "lucide-react";
+import { formatMinutesHuman } from "@/lib/formatters";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import { useProjectStats } from "@/hooks/useProjectStats";
 import { useProjectTrends } from "@/hooks/useProjectTrends";
@@ -37,12 +38,6 @@ function formatPercent(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
-function formatHours(minutes: number): string {
-  const hours = minutes / 60;
-  if (hours < 1) return `${Math.round(minutes)}m`;
-  return `${hours.toFixed(1)}h`;
-}
-
 function downloadFile(content: string, filename: string, mimeType: string): void {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
@@ -68,7 +63,7 @@ function exportCSV(trends: ProjectTrends): void {
 function getAvgCycleTimeDisplay(stats: ProjectStats): string {
   if (stats.cycleTimeBreakdown.length === 0) return "—";
   const total = stats.cycleTimeBreakdown.reduce((sum, p) => sum + p.avgMinutes, 0);
-  return formatHours(total);
+  return formatMinutesHuman(total);
 }
 
 // ============================================================================
@@ -210,7 +205,7 @@ export function InsightsView() {
                       ...pt,
                       value: +(pt.value / 60).toFixed(2),
                     }))}
-                    valueFormatter={(v) => `${v}h`}
+                    valueFormatter={(v) => formatMinutesHuman(v * 60)}
                   />
                 </DetailCard>
               </div>
