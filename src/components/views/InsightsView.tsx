@@ -1,19 +1,19 @@
 /**
- * InsightsView - Project analytics with trend charts and effort estimation
+ * InsightsView - Project analytics dashboard with effort estimation
  *
  * Design: macOS Tahoe - flat backgrounds, warm orange accent, SF Pro
  * - NO purple/blue accents
  * - NO borders or glows
- * - Two clearly separated sections: Observed Metrics + Estimates
+ * - Two-column dashboard: metrics left, EME sticky right (>=1200px)
  */
 
+import { useMemo } from "react";
 import { Download } from "lucide-react";
 import { formatMinutesHuman } from "@/lib/formatters";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import { useProjectStats } from "@/hooks/useProjectStats";
 import { useProjectTrends } from "@/hooks/useProjectTrends";
 import { DetailCard } from "@/components/tasks/detail-views/shared/DetailCard";
-import { SectionTitle } from "@/components/tasks/detail-views/shared/SectionTitle";
 import type { ProjectStats, ProjectTrends } from "@/types/project-stats";
 import {
   formatCSV,
@@ -80,6 +80,49 @@ function getAvgCycleTimeDisplay(stats: ProjectStats): string {
 }
 
 // ============================================================================
+// EME Panel (right column / inline depending on breakpoint)
+// ============================================================================
+
+function EmeSection({
+  stats,
+  showEme,
+  projectId,
+}: {
+  stats: ProjectStats;
+  showEme: boolean;
+  projectId: string;
+}) {
+  if (showEme && stats.eme) {
+    return (
+      <EffortEstimationPanel
+        lowHours={stats.eme.lowHours}
+        highHours={stats.eme.highHours}
+        taskCount={stats.eme.taskCount}
+        earliestTaskDate={stats.eme.earliestTaskDate}
+        latestTaskDate={stats.eme.latestTaskDate}
+        projectId={projectId}
+      />
+    );
+  }
+
+  return (
+    <DetailCard>
+      <div className="flex flex-col gap-1">
+        <p
+          className="text-[13px] font-medium"
+          style={{ color: "rgba(255,255,255,0.7)" }}
+        >
+          Effort estimation unlocks after 5 completed tasks
+        </p>
+        <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+          {stats.taskCount} of 5 tasks completed — keep going!
+        </p>
+      </div>
+    </DetailCard>
+  );
+}
+
+// ============================================================================
 // Main Component
 // ============================================================================
 
@@ -137,179 +180,180 @@ export function InsightsView() {
   const showEme = shouldShowEme(stats.taskCount, stats.eme !== null);
 
   return (
+    <InsightsContent
+      stats={stats}
+      trends={trends}
+      projectId={projectId}
+      hasEnoughForTrends={hasEnoughForTrends}
+      showEme={showEme}
+    />
+  );
+}
+
+function InsightsContent({
+  stats,
+  trends,
+  projectId,
+  hasEnoughForTrends,
+  showEme,
+}: {
+  stats: ProjectStats;
+  trends: ProjectTrends;
+  projectId: string;
+  hasEnoughForTrends: boolean;
+  showEme: boolean;
+}) {
+  const showSuccessRateTrend = useMemo(() => {
+    if (!hasEnoughForTrends) return false;
+    const rates = trends.weeklySuccessRate.map((d) => d.value);
+    if (rates.length === 0) return false;
+    const avg = rates.reduce((a, b) => a + b, 0) / rates.length;
+    if (avg < 0.95) return true;
+    const variance = rates.reduce((sum, r) => sum + (r - avg) ** 2, 0) / rates.length;
+    return Math.sqrt(variance) > 0.03;
+  }, [hasEnoughForTrends, trends.weeklySuccessRate]);
+
+  return (
     <div
       className="flex flex-col flex-1 overflow-auto"
       style={{ backgroundColor: "hsl(220 10% 8%)" }}
     >
       <div className="flex flex-col gap-6 p-6 max-w-[1400px] w-full mx-auto">
-        {/* Header */}
-        <div className="flex flex-col gap-1">
-          <h1
-            className="text-[22px] font-semibold"
-            style={{ color: "rgba(255,255,255,0.92)", fontFamily: "system-ui" }}
-          >
-            Insights
-          </h1>
-          <p className="text-[13px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-            Project analytics, trend analysis, and effort estimation
-          </p>
+        {/* Header with export buttons */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            <h1
+              className="text-[22px] font-semibold"
+              style={{ color: "rgba(255,255,255,0.92)", fontFamily: "system-ui" }}
+            >
+              Insights
+            </h1>
+            <p className="text-[13px]" style={{ color: "rgba(255,255,255,0.4)" }}>
+              Project analytics and effort estimation
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <CopyMarkdownButton stats={stats} />
+            <button
+              onClick={() => exportJSON(stats, trends)}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
+              style={{
+                backgroundColor: "hsl(220 10% 14%)",
+                color: "rgba(255,255,255,0.7)",
+              }}
+              title="Download JSON"
+            >
+              <Download size={13} />
+              <span className="hidden min-[800px]:inline">JSON</span>
+            </button>
+            <button
+              onClick={() => exportCSV(trends)}
+              className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
+              style={{
+                backgroundColor: "hsl(220 10% 14%)",
+                color: "rgba(255,255,255,0.7)",
+              }}
+              title="Download CSV"
+            >
+              <Download size={13} />
+              <span className="hidden min-[800px]:inline">CSV</span>
+            </button>
+          </div>
         </div>
 
-        {/* Section 1: Observed Metrics */}
-        <section className="flex flex-col gap-4">
-          <SectionTitle>Data — Observed Metrics</SectionTitle>
-
-          {/* Stats row */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatCard
-              label="Agent Success Rate"
-              value={formatPercent(stats.agentSuccessRate)}
-              sub={`${stats.agentSuccessCount} / ${stats.agentTotalCount} tasks`}
-              tooltip="Percentage of tasks that completed successfully (merged) vs those that failed, were cancelled, or stopped. Higher = more reliable AI execution."
-            />
-            <StatCard
-              label="Review Pass Rate"
-              value={formatPercent(stats.reviewPassRate)}
-              sub={`${stats.reviewPassCount} / ${stats.reviewTotalCount} reviews`}
-              tooltip="Percentage of AI code reviews that passed on first attempt without requesting changes. Higher = better first-draft quality."
-            />
-            <StatCard
-              label="Tasks This Week"
-              value={String(stats.tasksCompletedThisWeek)}
-              sub={`${stats.tasksCompletedToday} tasks today`}
-              tooltip="Number of tasks that reached merged status in the last 7 days."
-            />
-            <StatCard
-              label="Avg Task Duration"
-              value={getAvgCycleTimeDisplay(stats)}
-              sub="start to merge"
-              tooltip="Average wall-clock time a task takes from entering the pipeline to merge completion. Includes queue time, AI execution, review, and merge stages. Lower is better — most time is typically spent waiting (queue/escalation), not in active execution."
-            />
-          </div>
-
-          {/* Trend charts */}
-          {!hasEnoughForTrends ? (
-            <DetailCard>
-              <div className="flex flex-col gap-1">
-                <p
-                  className="text-[13px] font-medium"
-                  style={{ color: "rgba(255,255,255,0.7)" }}
-                >
-                  Trend charts unlock after 10 completed tasks
-                </p>
-                <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  {stats.taskCount} of 10 tasks completed
-                </p>
-              </div>
-            </DetailCard>
-          ) : (
-            <div className="flex flex-col gap-3">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-                <DetailCard>
-                  <TrendChart
-                    title="Weekly Throughput (tasks)"
-                    data={trends.weeklyThroughput}
-                  />
-                </DetailCard>
-                <DetailCard>
-                  <TrendChart
-                    title="Avg Cycle Time"
-                    data={trends.weeklyCycleTime}
-                    valueFormatter={(v) => formatMinutesHuman(v * 60)}
-                  />
-                </DetailCard>
-              </div>
-              <DetailCard>
-                <TrendChart
-                  title="Agent Success Rate (%)"
-                  data={trends.weeklySuccessRate}
-                  valueFormatter={(v) => `${Math.round(v * 100)}%`}
-                  color="#34d399"
-                />
-              </DetailCard>
+        {/* Two-column dashboard: metrics left, EME sticky right at >=1200px */}
+        <div className="grid grid-cols-1 min-[1200px]:grid-cols-[1fr_320px] gap-6">
+          {/* Left column: all metrics */}
+          <div className="flex flex-col gap-4">
+            {/* Stat cards — reordered: Tasks → Success → Cycle Time → Review */}
+            <div className="grid grid-cols-2 min-[800px]:grid-cols-4 gap-3">
+              <StatCard
+                label="Tasks This Week"
+                value={String(stats.tasksCompletedThisWeek)}
+                sub={`${stats.tasksCompletedToday} tasks today`}
+                tooltip="Number of tasks that reached merged status in the last 7 days."
+              />
+              <StatCard
+                label="Agent Success Rate"
+                value={formatPercent(stats.agentSuccessRate)}
+                sub={`${stats.agentSuccessCount} / ${stats.agentTotalCount} tasks`}
+                tooltip="Percentage of tasks that completed successfully (merged) vs those that failed, were cancelled, or stopped. Higher = more reliable AI execution."
+              />
+              <StatCard
+                label="Avg Cycle Time"
+                value={getAvgCycleTimeDisplay(stats)}
+                sub="start to merge"
+                tooltip="Average wall-clock time a task takes from entering the pipeline to merge completion. Includes queue time, AI execution, review, and merge stages. Lower is better — most time is typically spent waiting (queue/escalation), not in active execution."
+              />
+              <StatCard
+                label="Review Pass Rate"
+                value={formatPercent(stats.reviewPassRate)}
+                sub={`${stats.reviewPassCount} / ${stats.reviewTotalCount} reviews`}
+                tooltip="Percentage of AI code reviews that passed on first attempt without requesting changes. Higher = better first-draft quality."
+              />
             </div>
-          )}
 
-          {/* Cycle time + column dwell time */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            <CycleTimeBreakdown phases={stats.cycleTimeBreakdown} />
-            <ColumnDwellTimeBreakdown dwellTimes={stats.columnDwellTimes} />
-          </div>
-        </section>
+            {/* EME panel — medium breakpoint (800-1199px): inline between stats and charts */}
+            <div className="block min-[1200px]:hidden">
+              <EmeSection stats={stats} showEme={showEme} projectId={projectId} />
+            </div>
 
-        {/* Divider */}
-        <div className="flex items-center gap-3">
-          <div
-            className="h-px flex-1"
-            style={{ backgroundColor: "rgba(255,255,255,0.08)" }}
-          />
-          <span
-            className="text-[11px] font-semibold uppercase tracking-wider"
-            style={{ color: "rgba(255,255,255,0.25)", letterSpacing: "0.08em" }}
-          >
-            Estimates
-          </span>
-          <div
-            className="h-px flex-1"
-            style={{ backgroundColor: "rgba(255,255,255,0.08)" }}
-          />
-        </div>
-
-        {/* Section 2: Effort Estimation */}
-        <section className="flex flex-col gap-4">
-          <SectionTitle>Effort Estimation</SectionTitle>
-
-          {showEme && stats.eme ? (
-            <EffortEstimationPanel
-              lowHours={stats.eme.lowHours}
-              highHours={stats.eme.highHours}
-              taskCount={stats.eme.taskCount}
-              earliestTaskDate={stats.eme.earliestTaskDate}
-              latestTaskDate={stats.eme.latestTaskDate}
-              projectId={projectId}
-            />
-          ) : (
-            <DetailCard>
-              <div className="flex flex-col gap-1">
-                <p
-                  className="text-[13px] font-medium"
-                  style={{ color: "rgba(255,255,255,0.7)" }}
-                >
-                  Effort estimation unlocks after 5 completed tasks
-                </p>
-                <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.35)" }}>
-                  {stats.taskCount} of 5 tasks completed — keep going!
-                </p>
+            {/* Trend charts */}
+            {!hasEnoughForTrends ? (
+              <DetailCard>
+                <div className="flex flex-col gap-1">
+                  <p
+                    className="text-[13px] font-medium"
+                    style={{ color: "rgba(255,255,255,0.7)" }}
+                  >
+                    Trend charts unlock after 10 completed tasks
+                  </p>
+                  <p className="text-[12px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                    {stats.taskCount} of 10 tasks completed
+                  </p>
+                </div>
+              </DetailCard>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="grid grid-cols-1 min-[800px]:grid-cols-2 gap-3">
+                  <DetailCard>
+                    <TrendChart
+                      title="Weekly Throughput (tasks)"
+                      data={trends.weeklyThroughput}
+                    />
+                  </DetailCard>
+                  <DetailCard>
+                    <TrendChart
+                      title="Avg Cycle Time"
+                      data={trends.weeklyCycleTime}
+                      valueFormatter={(v) => formatMinutesHuman(v * 60)}
+                    />
+                  </DetailCard>
+                </div>
+                {showSuccessRateTrend && (
+                  <DetailCard>
+                    <TrendChart
+                      title="Agent Success Rate (%)"
+                      data={trends.weeklySuccessRate}
+                      valueFormatter={(v) => `${Math.round(v * 100)}%`}
+                      color="#34d399"
+                    />
+                  </DetailCard>
+                )}
               </div>
-            </DetailCard>
-          )}
-        </section>
+            )}
 
-        {/* Export row */}
-        <div className="flex items-center gap-3 pt-2">
-          <button
-            onClick={() => exportJSON(stats, trends)}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
-            style={{
-              backgroundColor: "hsl(220 10% 14%)",
-              color: "rgba(255,255,255,0.7)",
-            }}
-          >
-            <Download size={13} />
-            Download JSON
-          </button>
-          <button
-            onClick={() => exportCSV(trends)}
-            className="flex items-center gap-2 rounded-lg px-3 py-2 text-[12px] font-medium transition-colors"
-            style={{
-              backgroundColor: "hsl(220 10% 14%)",
-              color: "rgba(255,255,255,0.7)",
-            }}
-          >
-            <Download size={13} />
-            Download CSV
-          </button>
-          <CopyMarkdownButton stats={stats} />
+            {/* Breakdowns */}
+            <div className="grid grid-cols-1 min-[800px]:grid-cols-2 gap-3">
+              <CycleTimeBreakdown phases={stats.cycleTimeBreakdown} />
+              <ColumnDwellTimeBreakdown dwellTimes={stats.columnDwellTimes} />
+            </div>
+          </div>
+
+          {/* Right column: EME sticky (only visible at >=1200px) */}
+          <div className="hidden min-[1200px]:block min-[1200px]:sticky min-[1200px]:top-6 min-[1200px]:self-start min-[1200px]:max-h-[calc(100vh-48px)] min-[1200px]:overflow-y-auto">
+            <EmeSection stats={stats} showEme={showEme} projectId={projectId} />
+          </div>
         </div>
       </div>
     </div>
