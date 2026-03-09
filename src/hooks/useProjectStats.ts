@@ -22,8 +22,8 @@ import type { Unsubscribe } from "@/lib/event-bus";
 
 export const projectStatsKeys = {
   all: ["projectStats"] as const,
-  byProject: (projectId: string, weekStartDay?: number) =>
-    [...projectStatsKeys.all, projectId, ...(weekStartDay !== undefined ? [weekStartDay] : [])] as const,
+  byProject: (projectId: string, weekStartDay?: number, tzOffsetMinutes?: number) =>
+    [...projectStatsKeys.all, projectId, ...(weekStartDay !== undefined ? [weekStartDay] : []), ...(tzOffsetMinutes !== undefined ? [tzOffsetMinutes] : [])] as const,
 };
 
 // ============================================================================
@@ -39,7 +39,7 @@ export const projectStatsKeys = {
  * @param projectId - The project ID to fetch stats for (may be undefined)
  * @returns TanStack Query result with project stats
  */
-export function useProjectStats(projectId: string | undefined, weekStartDay?: number) {
+export function useProjectStats(projectId: string | undefined, weekStartDay?: number, tzOffsetMinutes?: number) {
   const queryClient = useQueryClient();
   const bus = useEventBus();
 
@@ -56,7 +56,7 @@ export function useProjectStats(projectId: string | undefined, weekStartDay?: nu
         // Only invalidate if the event is for this project (or if project_id is not provided)
         if (!payload.project_id || payload.project_id === projectId) {
           queryClient.invalidateQueries({
-            queryKey: projectStatsKeys.byProject(projectId, weekStartDay),
+            queryKey: projectStatsKeys.byProject(projectId, weekStartDay, tzOffsetMinutes),
           });
         }
       })
@@ -65,11 +65,11 @@ export function useProjectStats(projectId: string | undefined, weekStartDay?: nu
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, queryClient, projectId, weekStartDay]);
+  }, [bus, queryClient, projectId, weekStartDay, tzOffsetMinutes]);
 
   return useQuery<ProjectStats, Error>({
-    queryKey: projectStatsKeys.byProject(projectId ?? "", weekStartDay),
-    queryFn: () => getProjectStats(projectId!, weekStartDay),
+    queryKey: projectStatsKeys.byProject(projectId ?? "", weekStartDay, tzOffsetMinutes),
+    queryFn: () => getProjectStats(projectId!, weekStartDay, tzOffsetMinutes),
     enabled: !!projectId,
     // Stats are cached on the backend for 60s, so stale time matches that
     staleTime: 60_000,

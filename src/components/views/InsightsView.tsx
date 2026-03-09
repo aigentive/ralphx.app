@@ -124,11 +124,12 @@ function exportCSV(trends: ProjectTrends): void {
 
 function isCurrentWeek(weekStart: string, weekStartDay: number): boolean {
   const now = new Date();
-  const dayOfWeek = now.getUTCDay(); // 0=Sunday
-  // Compute offset from the configured week start day
-  const offset = (dayOfWeek - weekStartDay + 7) % 7;
-  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - offset));
-  return weekStart === start.toISOString().slice(0, 10);
+  const dayOfWeek = now.getDay(); // 0=Sunday, local time
+  const diff = (dayOfWeek - weekStartDay + 7) % 7;
+  const weekStartDate = new Date(now);
+  weekStartDate.setDate(now.getDate() - diff);
+  const expected = weekStartDate.toISOString().slice(0, 10);
+  return weekStart === expected;
 }
 
 function getWeekLabel(data: WeeklyDataPoint[], weekStartDay: number): string {
@@ -193,9 +194,10 @@ export function InsightsView() {
   const project = useProjectStore(selectActiveProject);
   const projectId = project?.id;
   const [weekStartDay, setWeekStartDay] = useWeekStartDay();
+  const tzOffsetMinutes = useMemo(() => -new Date().getTimezoneOffset(), []);
 
-  const statsQuery = useProjectStats(projectId, weekStartDay);
-  const trendsQuery = useProjectTrends(projectId, weekStartDay);
+  const statsQuery = useProjectStats(projectId, weekStartDay, tzOffsetMinutes);
+  const trendsQuery = useProjectTrends(projectId, weekStartDay, tzOffsetMinutes);
 
   // No active project
   if (!projectId) {

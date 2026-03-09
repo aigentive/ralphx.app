@@ -78,7 +78,7 @@ fn test_empty_project_returns_zero_stats() {
     let conn = setup_db();
     insert_project(&conn, "proj1");
 
-    let stats = compute_project_stats(&conn, "proj1", 0).expect("compute_project_stats");
+    let stats = compute_project_stats(&conn, "proj1", 0, 0).expect("compute_project_stats");
 
     assert_eq!(stats.task_count, 0);
     assert_eq!(stats.tasks_completed_today, 0);
@@ -111,7 +111,7 @@ fn test_full_stats_with_all_metric_types() {
     insert_review(&conn, "r2", "proj1", "t2", "approved");
     insert_review(&conn, "r3", "proj1", "t3", "changes_requested");
 
-    let stats = compute_project_stats(&conn, "proj1", 0).expect("compute_project_stats");
+    let stats = compute_project_stats(&conn, "proj1", 0, 0).expect("compute_project_stats");
 
     assert_eq!(stats.task_count, 4);
     assert_eq!(stats.agent_success_count, 3);
@@ -157,7 +157,7 @@ fn test_cycle_time_breakdown_uses_real_schema() {
     )
     .unwrap();
 
-    let stats = compute_project_stats(&conn, "proj1", 0).expect("compute_project_stats");
+    let stats = compute_project_stats(&conn, "proj1", 0, 0).expect("compute_project_stats");
 
     // ready→executing = 60min, executing→merged = 60min
     assert_eq!(stats.cycle_time_breakdown.len(), 2);
@@ -180,7 +180,7 @@ fn test_eme_returns_none_below_threshold() {
         insert_task(&conn, &format!("t{i}"), "proj1", "merged");
     }
 
-    let stats = compute_project_stats(&conn, "proj1", 0).expect("compute_project_stats");
+    let stats = compute_project_stats(&conn, "proj1", 0, 0).expect("compute_project_stats");
     assert!(stats.eme.is_none(), "EME should be None for < 5 merged tasks");
 }
 
@@ -197,7 +197,7 @@ fn test_eme_returns_estimate_at_threshold() {
         insert_step(&conn, &format!("s{i}b"), &task_id);
     }
 
-    let stats = compute_project_stats(&conn, "proj1", 0).expect("compute_project_stats");
+    let stats = compute_project_stats(&conn, "proj1", 0, 0).expect("compute_project_stats");
     let eme = stats.eme.expect("EME should be present for 5+ merged tasks");
 
     assert_eq!(eme.task_count, 5);
@@ -219,8 +219,8 @@ fn test_stats_scoped_to_project() {
     insert_task(&conn, "t3", "proj2", "failed");
     insert_review(&conn, "r1", "proj2", "t3", "changes_requested");
 
-    let s1 = compute_project_stats(&conn, "proj1", 0).expect("proj1");
-    let s2 = compute_project_stats(&conn, "proj2", 0).expect("proj2");
+    let s1 = compute_project_stats(&conn, "proj1", 0, 0).expect("proj1");
+    let s2 = compute_project_stats(&conn, "proj2", 0, 0).expect("proj2");
 
     assert_eq!(s1.task_count, 2);
     assert_eq!(s1.agent_success_count, 2);
@@ -264,7 +264,7 @@ fn test_weekly_throughput_counts_merged_tasks_in_current_week() {
     )
     .expect("insert failed task");
 
-    let trends = compute_project_trends(&conn, "proj1", 0).expect("compute_project_trends");
+    let trends = compute_project_trends(&conn, "proj1", 0, 0).expect("compute_project_trends");
 
     // weekly_throughput must have at least one entry — the CTE generates the last
     // 12–13 weeks (the exact count depends on how many Sundays fall in the window,
@@ -291,7 +291,7 @@ fn test_weekly_throughput_empty_project_returns_twelve_zero_weeks() {
     let conn = setup_db();
     insert_project(&conn, "proj1");
 
-    let trends = compute_project_trends(&conn, "proj1", 0).expect("compute_project_trends");
+    let trends = compute_project_trends(&conn, "proj1", 0, 0).expect("compute_project_trends");
 
     // The CTE generates 12–13 weeks depending on the current day of week.
     assert!(
@@ -331,8 +331,8 @@ fn test_weekly_throughput_scoped_to_project() {
         .expect("insert proj2 task");
     }
 
-    let t1 = compute_project_trends(&conn, "proj1", 0).expect("proj1 trends");
-    let t2 = compute_project_trends(&conn, "proj2", 0).expect("proj2 trends");
+    let t1 = compute_project_trends(&conn, "proj1", 0, 0).expect("proj1 trends");
+    let t2 = compute_project_trends(&conn, "proj2", 0, 0).expect("proj2 trends");
 
     // Sum across all weeks: proj1 should total 2.0, proj2 should total 5.0.
     // Using sum avoids having to predict which specific week bucket tasks fall into.

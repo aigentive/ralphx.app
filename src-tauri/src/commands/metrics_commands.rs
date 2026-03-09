@@ -84,6 +84,20 @@ pub fn invalidate_project_stats_cache(project_id: &str) {
     COLUMN_METRICS_CACHE.remove(project_id);
 }
 
+// ─── Timezone validation ──────────────────────────────────────────────────────
+
+/// Validate and clamp the timezone offset to the valid range UTC-12 to UTC+14.
+fn validate_tz_offset(tz_offset_minutes: Option<i32>) -> Result<i32, String> {
+    let tz = tz_offset_minutes.unwrap_or(0);
+    if !(-720..=840).contains(&tz) {
+        return Err(format!(
+            "tz_offset_minutes must be between -720 and 840, got {}",
+            tz
+        ));
+    }
+    Ok(tz)
+}
+
 // ─── Tauri commands ───────────────────────────────────────────────────────────
 
 /// Return all 5 core metrics for a project in a single response.
@@ -98,10 +112,12 @@ pub fn invalidate_project_stats_cache(project_id: &str) {
 pub async fn get_project_stats(
     project_id: String,
     week_start_day: Option<u8>,
+    tz_offset_minutes: Option<i32>,
     state: State<'_, AppState>,
 ) -> Result<ProjectStats, String> {
     let wsd = week_start_day.unwrap_or(0);
-    let cache_key = format!("{}:{}", project_id, wsd);
+    let tz = validate_tz_offset(tz_offset_minutes)?;
+    let cache_key = format!("{}:{}:{}", project_id, wsd, tz);
 
     if let Some(entry) = STATS_CACHE.get(&cache_key) {
         let (ts, stats) = &*entry;
@@ -114,7 +130,7 @@ pub async fn get_project_stats(
     let stats = state
         .db
         .clone()
-        .run(move |conn| compute_project_stats(conn, &pid, wsd))
+        .run(move |conn| compute_project_stats(conn, &pid, wsd, tz))
         .await
         .map_err(|e| e.to_string())?;
 
@@ -133,10 +149,12 @@ pub async fn get_project_stats(
 pub async fn get_project_trends(
     project_id: String,
     week_start_day: Option<u8>,
+    tz_offset_minutes: Option<i32>,
     state: State<'_, AppState>,
 ) -> Result<ProjectTrends, String> {
     let wsd = week_start_day.unwrap_or(0);
-    let cache_key = format!("{}:{}", project_id, wsd);
+    let tz = validate_tz_offset(tz_offset_minutes)?;
+    let cache_key = format!("{}:{}:{}", project_id, wsd, tz);
 
     if let Some(entry) = TRENDS_CACHE.get(&cache_key) {
         let (ts, trends) = &*entry;
@@ -149,7 +167,7 @@ pub async fn get_project_trends(
     let trends = state
         .db
         .clone()
-        .run(move |conn| compute_project_trends(conn, &pid, wsd))
+        .run(move |conn| compute_project_trends(conn, &pid, wsd, tz))
         .await
         .map_err(|e| e.to_string())?;
 
