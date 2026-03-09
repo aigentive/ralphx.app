@@ -91,7 +91,7 @@ fn test_configure_connection_sets_busy_timeout() {
         .pragma_query_value(None, "busy_timeout", |row| row.get(0))
         .unwrap();
 
-    assert_eq!(timeout, 5000, "Expected busy_timeout=5000, got {timeout}");
+    assert_eq!(timeout, 30000, "Expected busy_timeout=30000, got {timeout}");
 }
 
 #[test]

@@ -114,18 +114,32 @@ impl SqliteIdeationSessionRepository {
     }
 
     /// Update plan_artifact_id for a batch of sessions in one pass (no per-row lock).
+    /// Uses a single UPDATE with WHERE id IN (...) instead of per-row statements.
     pub(crate) fn batch_update_artifact_id_sync(
         conn: &Connection,
         session_ids: &[String],
         new_artifact_id: &str,
     ) -> AppResult<()> {
-        let now = Utc::now().to_rfc3339();
-        for session_id in session_ids {
-            conn.execute(
-                "UPDATE ideation_sessions SET plan_artifact_id = ?2, updated_at = ?3 WHERE id = ?1",
-                rusqlite::params![session_id, new_artifact_id, now],
-            )?;
+        if session_ids.is_empty() {
+            return Ok(());
         }
+        let now = Utc::now().to_rfc3339();
+        let placeholders: Vec<String> = (0..session_ids.len())
+            .map(|i| format!("?{}", i + 3))
+            .collect();
+        let sql = format!(
+            "UPDATE ideation_sessions SET plan_artifact_id = ?1, updated_at = ?2 \
+             WHERE id IN ({})",
+            placeholders.join(", ")
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(2 + session_ids.len());
+        params.push(Box::new(new_artifact_id.to_string()));
+        params.push(Box::new(now));
+        for id in session_ids {
+            params.push(Box::new(id.clone()));
+        }
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        conn.execute(&sql, param_refs.as_slice())?;
         Ok(())
     }
 

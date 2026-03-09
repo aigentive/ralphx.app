@@ -196,8 +196,8 @@ pub struct AppState {
 }
 
 impl AppState {
-    /// Create AppState for production use with SQLite repositories
-    /// Opens the database at the default path and runs migrations
+    /// Create AppState for production use with SQLite repositories.
+    /// Opens the database at the default path and runs migrations.
     pub fn new_production(app_handle: AppHandle) -> AppResult<Self> {
         let path = if cfg!(debug_assertions) {
             get_default_db_path()
@@ -207,9 +207,24 @@ impl AppState {
         let conn = open_connection(&path)?;
         run_migrations(&conn)?;
 
-        // Wrap connection in Arc<Mutex> for sharing between repos
         let shared_conn = Arc::new(Mutex::new(conn));
+        Self::build_from_shared_conn(app_handle, shared_conn)
+    }
 
+    /// Create AppState sharing an existing DB connection (no new connection or migrations).
+    /// Used by the HTTP/MCP server to share the Tauri AppState's physical SQLite connection.
+    pub fn new_production_shared(
+        app_handle: AppHandle,
+        shared_conn: Arc<Mutex<rusqlite::Connection>>,
+    ) -> AppResult<Self> {
+        Self::build_from_shared_conn(app_handle, shared_conn)
+    }
+
+    /// Internal helper: build all SQLite repositories from a pre-existing shared connection.
+    fn build_from_shared_conn(
+        app_handle: AppHandle,
+        shared_conn: Arc<Mutex<rusqlite::Connection>>,
+    ) -> AppResult<Self> {
         // Create repositories that are used by services
         let task_repo: Arc<dyn TaskRepository> =
             Arc::new(SqliteTaskRepository::from_shared(Arc::clone(&shared_conn)));
