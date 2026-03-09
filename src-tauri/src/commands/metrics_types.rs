@@ -85,6 +85,8 @@ pub struct ProjectTrends {
     pub weekly_throughput: Vec<WeeklyDataPoint>,
     /// Average cycle time in hours for merged tasks per week, last 12 weeks
     pub weekly_cycle_time: Vec<WeeklyDataPoint>,
+    /// Average pipeline cycle time (all non-terminal phases) in hours per week, last 12 weeks
+    pub weekly_pipeline_cycle_time: Vec<WeeklyDataPoint>,
     /// Percentage of merged vs total terminal tasks per week, last 12 weeks
     pub weekly_success_rate: Vec<WeeklyDataPoint>,
 }

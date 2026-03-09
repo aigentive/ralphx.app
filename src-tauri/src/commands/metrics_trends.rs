@@ -116,6 +116,70 @@ pub(crate) fn query_weekly_cycle_time(
     Ok(points)
 }
 
+/// Weekly average pipeline cycle time in hours for merged tasks, last 12 weeks.
+/// Unlike `query_weekly_cycle_time` which only counts executing/re_executing phases,
+/// this sums ALL non-terminal phase durations (excludes merged/cancelled/failed/stopped/paused/blocked).
+pub(crate) fn query_weekly_pipeline_cycle_time(
+    conn: &rusqlite::Connection,
+    project_id: &str,
+) -> AppResult<Vec<WeeklyDataPoint>> {
+    let sql = "
+        WITH merged_tasks AS (
+            SELECT id, updated_at FROM tasks
+            WHERE project_id = ?1
+              AND internal_status = 'merged'
+              AND updated_at >= datetime('now', '-365 days')
+        ),
+        transitions AS (
+            SELECT
+                h.task_id,
+                h.to_status,
+                h.created_at,
+                LAG(h.created_at) OVER (PARTITION BY h.task_id ORDER BY h.created_at) AS prev_at,
+                LAG(h.to_status)  OVER (PARTITION BY h.task_id ORDER BY h.created_at) AS prev_status
+            FROM task_state_history h
+            WHERE h.task_id IN (SELECT id FROM merged_tasks)
+        ),
+        task_pipeline_hours AS (
+            SELECT
+                tr.task_id,
+                SUM((julianday(tr.created_at) - julianday(tr.prev_at)) * 24.0) AS pipeline_hours
+            FROM transitions tr
+            WHERE tr.prev_at IS NOT NULL
+              AND tr.prev_status NOT IN ('merged', 'cancelled', 'failed', 'stopped', 'paused', 'blocked')
+            GROUP BY tr.task_id
+        )
+        SELECT
+          date(mt.updated_at, 'weekday 0', '-6 days') as week_start,
+          AVG(te.pipeline_hours) as avg_hours,
+          COUNT(*) as sample_size
+        FROM merged_tasks mt
+        JOIN task_pipeline_hours te ON te.task_id = mt.id
+        GROUP BY week_start
+        ORDER BY week_start
+    ";
+
+    let mut stmt = conn.prepare(sql).map_err(|e| AppError::Database(e.to_string()))?;
+    let rows = stmt
+        .query_map(params![project_id], |row| {
+            let week_start: String = row.get(0)?;
+            let avg_hours: Option<f64> = row.get(1)?;
+            let sample_size: i64 = row.get(2)?;
+            Ok(WeeklyDataPoint {
+                week_start,
+                value: avg_hours.unwrap_or(0.0),
+                sample_size,
+            })
+        })
+        .map_err(|e| AppError::Database(e.to_string()))?;
+
+    let mut points = Vec::new();
+    for row in rows {
+        points.push(row.map_err(|e| AppError::Database(e.to_string()))?);
+    }
+    Ok(points)
+}
+
 /// Weekly success rate: percentage of merged vs total terminal tasks, last 12 weeks.
 pub(crate) fn query_weekly_success_rate(
     conn: &rusqlite::Connection,
@@ -165,11 +229,13 @@ pub fn compute_project_trends(
 ) -> AppResult<ProjectTrends> {
     let weekly_throughput = query_weekly_throughput(conn, project_id)?;
     let weekly_cycle_time = query_weekly_cycle_time(conn, project_id)?;
+    let weekly_pipeline_cycle_time = query_weekly_pipeline_cycle_time(conn, project_id)?;
     let weekly_success_rate = query_weekly_success_rate(conn, project_id)?;
 
     Ok(ProjectTrends {
         weekly_throughput,
         weekly_cycle_time,
+        weekly_pipeline_cycle_time,
         weekly_success_rate,
     })
 }

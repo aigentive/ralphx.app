@@ -280,7 +280,7 @@ function InsightsContent({
                 tooltip="Percentage of tasks that completed successfully (merged) vs those that failed, were cancelled, or stopped. Higher = more reliable AI execution."
               />
               <StatCard
-                label="Avg Cycle Time"
+                label="Avg Pipeline Time"
                 value={getAvgCycleTimeDisplay(stats)}
                 sub="start to merge"
                 tooltip="Average wall-clock time a task takes from entering the pipeline to merge completion. Includes queue time, AI execution, review, and merge stages. Lower is better — most time is typically spent waiting (queue/escalation), not in active execution."
@@ -320,13 +320,25 @@ function InsightsContent({
                     <TrendChart
                       title="Weekly Throughput (tasks)"
                       data={trends.weeklyThroughput}
+                      {...(trends.weeklyThroughput.length > 0 && {
+                        currentValue: `${trends.weeklyThroughput[trends.weeklyThroughput.length - 1]!.value} this week`,
+                      })}
+                      timeWindow="Last 12 months"
                     />
                   </DetailCard>
                   <DetailCard>
                     <TrendChart
-                      title="Avg Cycle Time"
+                      title="Execution Time"
                       data={trends.weeklyCycleTime}
                       valueFormatter={(v) => formatMinutesHuman(v * 60)}
+                      primaryLabel="AI execution"
+                      secondaryData={trends.weeklyPipelineCycleTime}
+                      secondaryLabel="Pipeline (start → merge)"
+                      secondaryValueFormatter={(v) => formatMinutesHuman(v * 60)}
+                      {...(trends.weeklyCycleTime.length > 0 && {
+                        currentValue: formatMinutesHuman(trends.weeklyCycleTime[trends.weeklyCycleTime.length - 1]!.value * 60),
+                      })}
+                      timeWindow="Last 12 months"
                     />
                   </DetailCard>
                 </div>
@@ -337,6 +349,10 @@ function InsightsContent({
                       data={trends.weeklySuccessRate}
                       valueFormatter={(v) => `${Math.round(v * 100)}%`}
                       color="#34d399"
+                      {...(trends.weeklySuccessRate.length > 0 && {
+                        currentValue: `${Math.round(trends.weeklySuccessRate[trends.weeklySuccessRate.length - 1]!.value * 100)}%`,
+                      })}
+                      timeWindow="Last 12 months"
                     />
                   </DetailCard>
                 )}
@@ -344,7 +360,7 @@ function InsightsContent({
             )}
 
             {/* Breakdowns */}
-            <div className="grid grid-cols-1 min-[800px]:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-3">
               <CycleTimeBreakdown phases={stats.cycleTimeBreakdown} />
               <ColumnDwellTimeBreakdown dwellTimes={stats.columnDwellTimes} />
             </div>
