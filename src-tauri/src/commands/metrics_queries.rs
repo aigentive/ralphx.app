@@ -38,9 +38,9 @@ pub(crate) fn query_tasks_completed(
     let tz_neg = format!("{:+} minutes", -tz_offset_minutes);
     let sql = format!(
         "SELECT
-            COUNT(CASE WHEN h.created_at >= datetime(date('now', '{tz_off}'), '{tz_neg}') THEN 1 END) as today,
-            COUNT(CASE WHEN h.created_at >= datetime(date('now', '{tz_off}', 'weekday {wt}', '-6 days'), '{tz_neg}') THEN 1 END) as this_week,
-            COUNT(CASE WHEN h.created_at >= datetime('now', '-30 days') THEN 1 END) as this_month
+            COUNT(CASE WHEN datetime(h.created_at) >= datetime(date('now', '{tz_off}'), '{tz_neg}') THEN 1 END) as today,
+            COUNT(CASE WHEN datetime(h.created_at) >= datetime(date('now', '{tz_off}', 'weekday {wt}', '-6 days'), '{tz_neg}') THEN 1 END) as this_week,
+            COUNT(CASE WHEN datetime(h.created_at) >= datetime('now', '-30 days') THEN 1 END) as this_month
         FROM task_state_history h
         JOIN tasks t ON t.id = h.task_id
         WHERE t.project_id = ?1
@@ -118,7 +118,7 @@ pub(crate) fn query_cycle_time_breakdown(
             SELECT id FROM tasks
             WHERE project_id = ?1
               AND internal_status = 'merged'
-              AND updated_at >= datetime('now', '-90 days')
+              AND datetime(updated_at) >= datetime('now', '-90 days')
         ),
         transitions AS (
             SELECT
@@ -259,7 +259,7 @@ pub(crate) fn query_column_dwell_times(
             SELECT id FROM tasks
             WHERE project_id = ?1
               AND internal_status = 'merged'
-              AND updated_at >= datetime('now', '-90 days')
+              AND datetime(updated_at) >= datetime('now', '-90 days')
         ),
         transitions AS (
             SELECT
@@ -344,7 +344,7 @@ pub(crate) fn query_avg_pipeline_time(
             SELECT id FROM tasks
             WHERE project_id = ?1
               AND internal_status = 'merged'
-              AND updated_at >= datetime('now', '-90 days')
+              AND datetime(updated_at) >= datetime('now', '-90 days')
         ),
         transitions AS (
             SELECT
