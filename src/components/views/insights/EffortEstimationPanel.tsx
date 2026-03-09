@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { DetailCard } from "@/components/tasks/detail-views/shared/DetailCard";
 import { useMetricsConfig, useSaveMetricsConfig } from "@/hooks/useMetricsConfig";
@@ -6,6 +6,37 @@ import { DEFAULT_METRICS_CONFIG } from "@/types/project-stats";
 import type { MetricsConfig } from "@/types/project-stats";
 
 const ACCENT = "#ff6b35";
+
+type ExperienceLevel = "junior" | "mid" | "senior" | "staff" | "custom";
+
+interface ExperiencePreset {
+  label: string;
+  simpleBaseHours: number;
+  mediumBaseHours: number;
+  complexBaseHours: number;
+  calendarFactor: number;
+}
+
+const EXPERIENCE_PRESETS: Record<Exclude<ExperienceLevel, "custom">, ExperiencePreset> = {
+  junior: { label: "Junior", simpleBaseHours: 4, mediumBaseHours: 10, complexBaseHours: 20, calendarFactor: 2.0 },
+  mid: { label: "Mid-level", simpleBaseHours: 2, mediumBaseHours: 4, complexBaseHours: 8, calendarFactor: 1.5 },
+  senior: { label: "Senior", simpleBaseHours: 1, mediumBaseHours: 2, complexBaseHours: 4, calendarFactor: 1.3 },
+  staff: { label: "Staff/Principal", simpleBaseHours: 0.5, mediumBaseHours: 1, complexBaseHours: 2, calendarFactor: 1.2 },
+};
+
+function detectExperienceLevel(config: MetricsConfig): ExperienceLevel {
+  for (const [key, preset] of Object.entries(EXPERIENCE_PRESETS)) {
+    if (
+      config.simpleBaseHours === preset.simpleBaseHours &&
+      config.mediumBaseHours === preset.mediumBaseHours &&
+      config.complexBaseHours === preset.complexBaseHours &&
+      config.calendarFactor === preset.calendarFactor
+    ) {
+      return key as Exclude<ExperienceLevel, "custom">;
+    }
+  }
+  return "custom";
+}
 
 interface EffortEstimationPanelProps {
   lowHours: number;
@@ -34,10 +65,24 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, projectI
     currentConfig.complexBaseHours === DEFAULT_METRICS_CONFIG.complexBaseHours &&
     currentConfig.calendarFactor === DEFAULT_METRICS_CONFIG.calendarFactor;
 
+  const currentLevel = useMemo(() => detectExperienceLevel(currentConfig), [currentConfig]);
+
   function handleFieldBlur(field: keyof MetricsConfig, value: string) {
     const num = parseFloat(value);
     if (isNaN(num)) return;
     saveConfig({ ...currentConfig, [field]: num });
+  }
+
+  function handlePresetChange(level: ExperienceLevel) {
+    if (level === "custom") return;
+    const preset = EXPERIENCE_PRESETS[level];
+    saveConfig({
+      ...currentConfig,
+      simpleBaseHours: preset.simpleBaseHours,
+      mediumBaseHours: preset.mediumBaseHours,
+      complexBaseHours: preset.complexBaseHours,
+      calendarFactor: preset.calendarFactor,
+    });
   }
 
   function handleReset() {
@@ -131,8 +176,44 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, projectI
               >
                 Calibrate
               </div>
+
+              {/* Experience level preset selector */}
+              <div className="flex items-center gap-2">
+                <label
+                  htmlFor="experience-level-select"
+                  className="text-[11px] shrink-0"
+                  style={{ color: "rgba(255,255,255,0.45)" }}
+                >
+                  Team level
+                </label>
+                <select
+                  id="experience-level-select"
+                  value={currentLevel}
+                  onChange={(e) => handlePresetChange(e.target.value as ExperienceLevel)}
+                  className="flex-1 rounded px-2 py-1 text-[12px] outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0 cursor-pointer"
+                  style={{
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                    color: "rgba(255,255,255,0.7)",
+                    boxShadow: "none",
+                    outline: "none",
+                  }}
+                  data-testid="experience-level-select"
+                >
+                  {Object.entries(EXPERIENCE_PRESETS).map(([key, preset]) => (
+                    <option key={key} value={key} style={{ backgroundColor: "#1a1a1a" }}>
+                      {preset.label}
+                    </option>
+                  ))}
+                  {currentLevel === "custom" && (
+                    <option value="custom" style={{ backgroundColor: "#1a1a1a" }}>
+                      Custom
+                    </option>
+                  )}
+                </select>
+              </div>
+
               <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>
-                Estimated hours a mid-level developer would need to complete each task type manually, without AI assistance.
+                Estimated hours a developer would need to complete each task type manually, without AI assistance.
               </p>
               {CALIBRATION_FIELDS.map(({ field, label, hint }) => (
                 <div key={field} className="flex flex-col gap-0.5">
@@ -181,9 +262,6 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, projectI
                   Reset to defaults
                 </button>
               )}
-              <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
-                Adjust based on your team's experience level. Junior teams may use higher values, senior teams lower.
-              </p>
             </div>
           </div>
         )}
