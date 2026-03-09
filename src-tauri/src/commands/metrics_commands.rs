@@ -60,10 +60,10 @@ pub struct MetricsConfig {
 impl Default for MetricsConfig {
     fn default() -> Self {
         Self {
-            simple_base_hours: 2.0,
-            medium_base_hours: 4.0,
-            complex_base_hours: 8.0,
-            calendar_factor: 1.5,
+            simple_base_hours: 1.0,
+            medium_base_hours: 2.0,
+            complex_base_hours: 4.0,
+            calendar_factor: 1.3,
         }
     }
 }
