@@ -262,19 +262,19 @@ function InsightsContent({
               <StatCard
                 label="Agent Success Rate"
                 value={formatPercent(stats.agentSuccessRate)}
-                sub={`${stats.agentSuccessCount} / ${stats.agentTotalCount} tasks`}
+                sub={`${stats.agentSuccessCount} / ${stats.agentTotalCount} tasks · all time`}
                 tooltip="Percentage of tasks that completed successfully (merged) vs those that failed, were cancelled, or stopped. Higher = more reliable AI execution."
               />
               <StatCard
                 label="Avg Pipeline Time"
                 value={getAvgPipelineTimeDisplay(stats)}
-                sub="start to merge"
+                sub="start to merge · last 90 days"
                 tooltip="Average wall-clock time a task takes from entering the pipeline to merge completion. Includes queue time, AI execution, review, and merge stages. Lower is better — most time is typically spent waiting (queue/escalation), not in active execution."
               />
               <StatCard
                 label="Review Pass Rate"
                 value={formatPercent(stats.reviewPassRate)}
-                sub={`${stats.reviewPassCount} / ${stats.reviewTotalCount} reviews`}
+                sub={`${stats.reviewPassCount} / ${stats.reviewTotalCount} reviews · all time`}
                 tooltip="Percentage of AI code reviews that passed on first attempt without requesting changes. Higher = better first-draft quality."
               />
             </div>
