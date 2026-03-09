@@ -30,20 +30,23 @@ fn validate_week_start_day(week_start_day: u8) -> AppResult<()> {
 
 /// Weekly throughput: count of tasks merged per week, last 12 weeks.
 /// Uses a recursive CTE to generate all 12 weeks so empty weeks appear as 0.
+/// `tz_offset_minutes`: minutes east of UTC (e.g., AEST=+660, EST=-300).
 pub(crate) fn query_weekly_throughput(
     conn: &rusqlite::Connection,
     project_id: &str,
     week_start_day: u8,
+    tz_offset_minutes: i32,
 ) -> AppResult<Vec<WeeklyDataPoint>> {
     validate_week_start_day(week_start_day)?;
     let wt = weekday_target(week_start_day);
+    let tz_off = format!("{:+} minutes", tz_offset_minutes);
 
     let sql = format!(
         "WITH RECURSIVE weeks(week_start) AS (
-          SELECT date('now', 'weekday {wt}', '-6 days', '-364 days')
+          SELECT date('now', '{tz_off}', 'weekday {wt}', '-6 days', '-364 days')
           UNION ALL
           SELECT date(week_start, '+7 days')
-          FROM weeks WHERE week_start < date('now', 'weekday {wt}', '-6 days')
+          FROM weeks WHERE week_start < date('now', '{tz_off}', 'weekday {wt}', '-6 days')
         )
         SELECT
           w.week_start,
@@ -52,9 +55,9 @@ pub(crate) fn query_weekly_throughput(
         LEFT JOIN tasks t ON
           t.project_id = ?1
           AND t.internal_status = 'merged'
-          AND date(t.updated_at) >= w.week_start
-          AND date(t.updated_at) < date(w.week_start, '+7 days')
-        WHERE w.week_start <= date('now')
+          AND date(t.updated_at, '{tz_off}') >= w.week_start
+          AND date(t.updated_at, '{tz_off}') < date(w.week_start, '+7 days')
+        WHERE w.week_start <= date('now', '{tz_off}')
         GROUP BY w.week_start
         ORDER BY w.week_start"
     );
@@ -87,13 +90,16 @@ pub(crate) fn query_weekly_throughput(
 }
 
 /// Weekly average cycle time in hours for merged tasks, last 12 weeks.
+/// `tz_offset_minutes`: minutes east of UTC (e.g., AEST=+660, EST=-300).
 pub(crate) fn query_weekly_cycle_time(
     conn: &rusqlite::Connection,
     project_id: &str,
     week_start_day: u8,
+    tz_offset_minutes: i32,
 ) -> AppResult<Vec<WeeklyDataPoint>> {
     validate_week_start_day(week_start_day)?;
     let wt = weekday_target(week_start_day);
+    let tz_off = format!("{:+} minutes", tz_offset_minutes);
 
     let sql = format!(
         "WITH merged_tasks AS (
@@ -122,13 +128,13 @@ pub(crate) fn query_weekly_cycle_time(
             GROUP BY tr.task_id
         )
         SELECT
-          date(mt.updated_at, 'weekday {wt}', '-6 days') as week_start,
+          date(mt.updated_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
           AVG(te.exec_hours) as avg_hours,
           COUNT(*) as sample_size
         FROM merged_tasks mt
         JOIN task_exec_hours te ON te.task_id = mt.id
         GROUP BY week_start
-        HAVING week_start <= date('now')
+        HAVING week_start <= date('now', '{tz_off}')
         ORDER BY week_start"
     );
 
@@ -156,13 +162,16 @@ pub(crate) fn query_weekly_cycle_time(
 /// Weekly average pipeline cycle time in hours for merged tasks, last 12 weeks.
 /// Unlike `query_weekly_cycle_time` which only counts executing/re_executing phases,
 /// this sums ALL non-terminal phase durations (excludes merged/cancelled/failed/stopped/paused/blocked).
+/// `tz_offset_minutes`: minutes east of UTC (e.g., AEST=+660, EST=-300).
 pub(crate) fn query_weekly_pipeline_cycle_time(
     conn: &rusqlite::Connection,
     project_id: &str,
     week_start_day: u8,
+    tz_offset_minutes: i32,
 ) -> AppResult<Vec<WeeklyDataPoint>> {
     validate_week_start_day(week_start_day)?;
     let wt = weekday_target(week_start_day);
+    let tz_off = format!("{:+} minutes", tz_offset_minutes);
 
     let sql = format!(
         "WITH merged_tasks AS (
@@ -191,13 +200,13 @@ pub(crate) fn query_weekly_pipeline_cycle_time(
             GROUP BY tr.task_id
         )
         SELECT
-          date(mt.updated_at, 'weekday {wt}', '-6 days') as week_start,
+          date(mt.updated_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
           AVG(te.pipeline_hours) as avg_hours,
           COUNT(*) as sample_size
         FROM merged_tasks mt
         JOIN task_pipeline_hours te ON te.task_id = mt.id
         GROUP BY week_start
-        HAVING week_start <= date('now')
+        HAVING week_start <= date('now', '{tz_off}')
         ORDER BY week_start"
     );
 
@@ -223,17 +232,20 @@ pub(crate) fn query_weekly_pipeline_cycle_time(
 }
 
 /// Weekly success rate: percentage of merged vs total terminal tasks, last 12 weeks.
+/// `tz_offset_minutes`: minutes east of UTC (e.g., AEST=+660, EST=-300).
 pub(crate) fn query_weekly_success_rate(
     conn: &rusqlite::Connection,
     project_id: &str,
     week_start_day: u8,
+    tz_offset_minutes: i32,
 ) -> AppResult<Vec<WeeklyDataPoint>> {
     validate_week_start_day(week_start_day)?;
     let wt = weekday_target(week_start_day);
+    let tz_off = format!("{:+} minutes", tz_offset_minutes);
 
     let sql = format!(
         "SELECT
-          date(t.updated_at, 'weekday {wt}', '-6 days') as week_start,
+          date(t.updated_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
           CAST(SUM(CASE WHEN t.internal_status = 'merged' THEN 1 ELSE 0 END) AS FLOAT) /
             NULLIF(COUNT(*), 0) as success_rate,
           COUNT(*) as sample_size
@@ -242,7 +254,7 @@ pub(crate) fn query_weekly_success_rate(
           AND t.internal_status IN ('merged', 'failed', 'cancelled', 'stopped')
           AND t.updated_at >= datetime('now', '-365 days')
         GROUP BY week_start
-        HAVING week_start <= date('now')
+        HAVING week_start <= date('now', '{tz_off}')
         ORDER BY week_start"
     );
 
@@ -271,15 +283,17 @@ pub(crate) fn query_weekly_success_rate(
 
 /// Run all trend queries synchronously inside a single `db.run` closure.
 /// `week_start_day`: 0=Sunday, 1=Monday, ..., 6=Saturday.
+/// `tz_offset_minutes`: minutes east of UTC (e.g., AEST=+660, EST=-300).
 pub fn compute_project_trends(
     conn: &rusqlite::Connection,
     project_id: &str,
     week_start_day: u8,
+    tz_offset_minutes: i32,
 ) -> AppResult<ProjectTrends> {
-    let weekly_throughput = query_weekly_throughput(conn, project_id, week_start_day)?;
-    let weekly_cycle_time = query_weekly_cycle_time(conn, project_id, week_start_day)?;
-    let weekly_pipeline_cycle_time = query_weekly_pipeline_cycle_time(conn, project_id, week_start_day)?;
-    let weekly_success_rate = query_weekly_success_rate(conn, project_id, week_start_day)?;
+    let weekly_throughput = query_weekly_throughput(conn, project_id, week_start_day, tz_offset_minutes)?;
+    let weekly_cycle_time = query_weekly_cycle_time(conn, project_id, week_start_day, tz_offset_minutes)?;
+    let weekly_pipeline_cycle_time = query_weekly_pipeline_cycle_time(conn, project_id, week_start_day, tz_offset_minutes)?;
+    let weekly_success_rate = query_weekly_success_rate(conn, project_id, week_start_day, tz_offset_minutes)?;
 
     Ok(ProjectTrends {
         weekly_throughput,

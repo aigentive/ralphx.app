@@ -26,16 +26,20 @@ pub(crate) fn query_task_count(conn: &rusqlite::Connection, project_id: &str) ->
 /// Tasks that reached `merged` status in the last day / current calendar week / last 30 days.
 /// Uses `task_state_history` for accurate merge timestamps.
 /// `week_start_day`: 0=Sunday, 1=Monday, ..., 6=Saturday.
+/// `tz_offset_minutes`: minutes east of UTC (e.g., AEST=+660, EST=-300).
 pub(crate) fn query_tasks_completed(
     conn: &rusqlite::Connection,
     project_id: &str,
     week_start_day: u8,
+    tz_offset_minutes: i32,
 ) -> AppResult<(i64, i64, i64)> {
     let wt = (week_start_day + 6) % 7;
+    let tz_off = format!("{:+} minutes", tz_offset_minutes);
+    let tz_neg = format!("{:+} minutes", -tz_offset_minutes);
     let sql = format!(
         "SELECT
-            COUNT(CASE WHEN h.created_at >= datetime('now', '-1 day')  THEN 1 END) as today,
-            COUNT(CASE WHEN h.created_at >= date('now', 'weekday {wt}', '-6 days') THEN 1 END) as this_week,
+            COUNT(CASE WHEN h.created_at >= datetime(date('now', '{tz_off}'), '{tz_neg}') THEN 1 END) as today,
+            COUNT(CASE WHEN h.created_at >= datetime(date('now', '{tz_off}', 'weekday {wt}', '-6 days'), '{tz_neg}') THEN 1 END) as this_week,
             COUNT(CASE WHEN h.created_at >= datetime('now', '-30 days') THEN 1 END) as this_month
         FROM task_state_history h
         JOIN tasks t ON t.id = h.task_id
@@ -375,13 +379,16 @@ pub(crate) fn query_avg_pipeline_time(
 
 /// Run all metric queries synchronously inside a single `db.run` closure.
 /// `week_start_day`: 0=Sunday, 1=Monday, ..., 6=Saturday.
+/// `tz_offset_minutes`: minutes east of UTC (e.g., AEST=+660, EST=-300).
 pub fn compute_project_stats(
     conn: &rusqlite::Connection,
     project_id: &str,
     week_start_day: u8,
+    tz_offset_minutes: i32,
 ) -> AppResult<ProjectStats> {
     let task_count = query_task_count(conn, project_id)?;
-    let (today, this_week, this_month) = query_tasks_completed(conn, project_id, week_start_day)?;
+    let (today, this_week, this_month) =
+        query_tasks_completed(conn, project_id, week_start_day, tz_offset_minutes)?;
     let (success_rate, success_count, total_count) = query_agent_success_rate(conn, project_id)?;
     let (pass_rate, pass_count, review_total) = query_review_pass_rate(conn, project_id)?;
     let cycle_time = query_cycle_time_breakdown(conn, project_id)?;
