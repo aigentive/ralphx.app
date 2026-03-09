@@ -52,6 +52,13 @@ pub(crate) fn query_weekly_throughput(
     for row in rows {
         points.push(row.map_err(|e| AppError::Database(e.to_string()))?);
     }
+    // Trim leading zero-value weeks so the chart starts at the first week with data
+    let first_nonzero = points.iter().position(|p| p.value > 0.0);
+    if let Some(idx) = first_nonzero {
+        points = points.split_off(idx);
+    } else {
+        points.clear();
+    }
     Ok(points)
 }
 
