@@ -15,10 +15,10 @@ interface EffortEstimationPanelProps {
 }
 
 const CALIBRATION_FIELDS = [
-  { field: "simpleBaseHours" as const, label: "Simple base hours" },
-  { field: "mediumBaseHours" as const, label: "Medium base hours" },
-  { field: "complexBaseHours" as const, label: "Complex base hours" },
-  { field: "calendarFactor" as const, label: "Calendar factor" },
+  { field: "simpleBaseHours" as const, label: "Simple (≤3 steps)", hint: "e.g., small bug fix, config change" },
+  { field: "mediumBaseHours" as const, label: "Medium (4-7 steps or 1 review)", hint: "e.g., feature implementation, refactor" },
+  { field: "complexBaseHours" as const, label: "Complex (8+ steps or 2+ reviews)", hint: "e.g., multi-file architecture change" },
+  { field: "calendarFactor" as const, label: "Calendar factor", hint: "Accounts for context-switching, meetings, code review overhead" },
 ] as const;
 
 export function EffortEstimationPanel({ lowHours, highHours, taskCount, projectId }: EffortEstimationPanelProps) {
@@ -131,34 +131,42 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, projectI
               >
                 Calibrate
               </div>
-              {CALIBRATION_FIELDS.map(({ field, label }) => (
-                <div key={field} className="flex items-center justify-between gap-2">
-                  <label
-                    htmlFor={`insights-calibrate-${field}`}
-                    className="text-[12px]"
-                    style={{ color: "rgba(255,255,255,0.45)" }}
-                  >
-                    {label}
-                  </label>
-                  <input
-                    id={`insights-calibrate-${field}`}
-                    type="number"
-                    min={field === "calendarFactor" ? 1 : 0.5}
-                    max={field === "calendarFactor" ? 3 : 40}
-                    step={0.5}
-                    defaultValue={currentConfig[field]}
-                    key={currentConfig[field]}
-                    onBlur={(e) => handleFieldBlur(field, e.target.value)}
-                    className="w-16 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
-                    style={{
-                      backgroundColor: "rgba(255,255,255,0.06)",
-                      color: "rgba(255,255,255,0.7)",
-                      boxShadow: "none",
-                      outline: "none",
-                    }}
-                    data-testid={`calibrate-${field}`}
-                    aria-label={label}
-                  />
+              <p className="text-[11px]" style={{ color: "rgba(255,255,255,0.35)" }}>
+                Estimated hours a mid-level developer would need to complete each task type manually, without AI assistance.
+              </p>
+              {CALIBRATION_FIELDS.map(({ field, label, hint }) => (
+                <div key={field} className="flex flex-col gap-0.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <label
+                      htmlFor={`insights-calibrate-${field}`}
+                      className="text-[12px]"
+                      style={{ color: "rgba(255,255,255,0.45)" }}
+                    >
+                      {label}
+                    </label>
+                    <input
+                      id={`insights-calibrate-${field}`}
+                      type="number"
+                      min={field === "calendarFactor" ? 1 : 0.5}
+                      max={field === "calendarFactor" ? 3 : 40}
+                      step={0.5}
+                      defaultValue={currentConfig[field]}
+                      key={currentConfig[field]}
+                      onBlur={(e) => handleFieldBlur(field, e.target.value)}
+                      className="w-16 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+                      style={{
+                        backgroundColor: "rgba(255,255,255,0.06)",
+                        color: "rgba(255,255,255,0.7)",
+                        boxShadow: "none",
+                        outline: "none",
+                      }}
+                      data-testid={`calibrate-${field}`}
+                      aria-label={label}
+                    />
+                  </div>
+                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
+                    {hint}
+                  </span>
                 </div>
               ))}
 
@@ -173,6 +181,9 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, projectI
                   Reset to defaults
                 </button>
               )}
+              <p className="text-[10px]" style={{ color: "rgba(255,255,255,0.25)" }}>
+                Adjust based on your team's experience level. Junior teams may use higher values, senior teams lower.
+              </p>
             </div>
           </div>
         )}
