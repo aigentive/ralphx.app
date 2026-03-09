@@ -1,5 +1,5 @@
-import { useMemo } from "react";
-import { HelpCircle } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, HelpCircle } from "lucide-react";
 import {
   Tooltip,
   TooltipContent,
@@ -11,7 +11,7 @@ import { DEFAULT_METRICS_CONFIG } from "@/types/project-stats";
 import type { MetricsConfig } from "@/types/project-stats";
 
 const ACCENT = "#ff6b35";
-const HOURS_PER_DAY = 8;
+const HOURS_PER_MONTH_FTE = 160;
 
 type ExperienceLevel = "junior" | "mid" | "senior" | "staff" | "custom";
 
@@ -72,20 +72,6 @@ function formatEstimate(hours: number): string {
   return Math.round(hours).toLocaleString();
 }
 
-function formatWorkTime(hours: number, workingDaysPerWeek: number): string {
-  const totalDays = hours / HOURS_PER_DAY;
-  const weeks = Math.floor(totalDays / workingDaysPerWeek);
-  const remainingDays = Math.round(totalDays % workingDaysPerWeek);
-
-  if (weeks === 0) {
-    return `${Math.round(totalDays)}d`;
-  }
-  if (remainingDays === 0) {
-    return `${weeks}w`;
-  }
-  return `${weeks}w ${remainingDays}d`;
-}
-
 function formatDateRange(earliest: string | null, latest: string | null): string | null {
   if (!earliest || !latest) return null;
   const fmt = (d: string) => {
@@ -94,24 +80,22 @@ function formatDateRange(earliest: string | null, latest: string | null): string
   };
   const e = fmt(earliest);
   const l = fmt(latest);
-  return e === l ? e : `${e} — ${l}`;
+  return e === l ? e : `${e} \u2014 ${l}`;
 }
 
-function computeCalendarSpan(earliest: string | null, latest: string | null, workingDaysPerWeek: number): string | null {
+function computeCalendarWeeks(earliest: string | null, latest: string | null): number | null {
   if (!earliest || !latest) return null;
   const start = new Date(earliest + "T00:00:00");
   const end = new Date(latest + "T00:00:00");
   const diffMs = end.getTime() - start.getTime();
   const diffDays = Math.max(1, Math.round(diffMs / (1000 * 60 * 60 * 24)));
-  const calendarWeeks = Math.round(diffDays / 7);
-  const workWeeks = Math.round((diffDays / 7) * (workingDaysPerWeek / 7));
-  if (calendarWeeks < 1) return `${diffDays} days`;
-  return `${calendarWeeks} calendar weeks (~${workWeeks} work weeks)`;
+  return Math.max(1, Math.round(diffDays / 7));
 }
 
 export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliestTaskDate, latestTaskDate, projectId }: EffortEstimationPanelProps) {
   const { data: config } = useMetricsConfig(projectId);
   const { mutate: saveConfig } = useSaveMetricsConfig(projectId);
+  const [methodologyOpen, setMethodologyOpen] = useState(false);
 
   const currentConfig = config ?? DEFAULT_METRICS_CONFIG;
   const isDefault =
@@ -122,7 +106,21 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
     currentConfig.workingDaysPerWeek === DEFAULT_METRICS_CONFIG.workingDaysPerWeek;
 
   const currentLevel = useMemo(() => detectExperienceLevel(currentConfig), [currentConfig]);
-  const workDays = currentConfig.workingDaysPerWeek;
+
+  const midpoint = (lowHours + highHours) / 2;
+  const fteMonths = midpoint / HOURS_PER_MONTH_FTE;
+  const showFteMonths = midpoint >= HOURS_PER_MONTH_FTE;
+
+  // Compression ratio: estimated work weeks vs actual calendar weeks
+  const calendarWeeks = computeCalendarWeeks(earliestTaskDate, latestTaskDate);
+  const estimatedWorkWeeks = midpoint / 40; // 40h work week
+  const compressionRatio = calendarWeeks != null && calendarWeeks > 0
+    ? Math.round(estimatedWorkWeeks / calendarWeeks)
+    : null;
+  const showCompression = compressionRatio != null && compressionRatio >= 2;
+
+  // Range bar: position of low (coding-only) relative to high (with overhead)
+  const rangeBarFillPct = highHours > 0 ? Math.round((lowHours / highHours) * 100) : 0;
 
   function handleFieldBlur(field: keyof MetricsConfig, value: string) {
     const num = parseFloat(value);
@@ -151,106 +149,138 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
     saveConfig(DEFAULT_METRICS_CONFIG);
   }
 
+  const dateRange = formatDateRange(earliestTaskDate, latestTaskDate);
+
+  // Tooltip content for hero number hover
+  const heroTooltipContent = [
+    `Range: ${formatEstimate(lowHours)} \u2013 ${formatEstimate(highHours)} hours`,
+    `Low = pure coding time per task`,
+    `High = coding + overhead (${currentConfig.calendarFactor}\u00d7)`,
+    ``,
+    `Simple: ${currentConfig.simpleBaseHours}h \u00d7 ${currentConfig.calendarFactor}`,
+    `Medium: ${currentConfig.mediumBaseHours}h \u00d7 ${currentConfig.calendarFactor}`,
+    `Complex: ${currentConfig.complexBaseHours}h \u00d7 ${currentConfig.calendarFactor}`,
+  ].join("\n");
+
+  // Tooltip for FTE-months context line
+  const fteTooltipContent = showFteMonths
+    ? `${formatEstimate(midpoint)} hours \u00f7 ${HOURS_PER_MONTH_FTE}h/month = ~${fteMonths.toFixed(1)} FTE-months\nBased on standard 160h full-time month`
+    : `${formatEstimate(midpoint)} midpoint hours`;
+
   return (
     <div
-      className="rounded-xl"
+      className="@container rounded-xl"
       style={{ backgroundColor: "hsla(14 100% 60% / 0.08)" }}
     >
-      {/* Two-column layout: estimate left, calibration right */}
-      <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-0">
-        {/* Left: Estimate display */}
-        <div className="p-4 flex flex-col justify-center gap-1">
-          <div className="flex items-center gap-2">
-            <span
-              className="text-[11px] font-semibold uppercase tracking-wider"
-              style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
-            >
-              Estimated Manual Effort
-            </span>
-            {!isDefault && (
-              <span
-                className="text-[10px] px-1.5 py-0.5 rounded"
-                style={{ backgroundColor: "rgba(255,107,53,0.15)", color: ACCENT }}
-              >
-                calibrated
-              </span>
-            )}
-          </div>
-          <div className="flex items-baseline gap-1.5">
-            <span
-              className="text-[28px] font-semibold tabular-nums"
-              style={{ color: ACCENT, fontFamily: "system-ui", lineHeight: 1.1 }}
-            >
-              ~{formatEstimate(lowHours)}&ndash;{formatEstimate(highHours)}
-            </span>
-            <span
-              className="text-[16px] font-medium"
-              style={{ color: "rgba(255,107,53,0.6)" }}
-            >
-              active hours
-            </span>
-          </div>
-
-          {/* Work weeks/days conversion */}
+      <div className="flex flex-col p-4 gap-3">
+        {/* Header: title + customized badge */}
+        <div className="flex items-center gap-2">
           <span
-            className="text-[13px] tabular-nums"
-            style={{ color: "rgba(255,255,255,0.5)" }}
+            className="text-[11px] font-semibold uppercase tracking-wider"
+            style={{ color: "rgba(255,255,255,0.4)", letterSpacing: "0.08em" }}
           >
-            {formatWorkTime(lowHours, workDays)}&ndash;{formatWorkTime(highHours, workDays)}{" "}
-            <span style={{ color: "rgba(255,255,255,0.3)" }}>
-              ({HOURS_PER_DAY}h/day, {workDays}d/week)
-            </span>
+            Equivalent Developer Effort
           </span>
-
-          <span className="text-[12px]" style={{ color: "rgba(255,255,255,0.4)" }}>
-            Based on {taskCount} completed task{taskCount !== 1 ? "s" : ""}
-            {formatDateRange(earliestTaskDate, latestTaskDate) != null && (
-              <> · {formatDateRange(earliestTaskDate, latestTaskDate)}</>
-            )}
-            {" "}· Equivalent manual effort without AI
-          </span>
-          {computeCalendarSpan(earliestTaskDate, latestTaskDate, workDays) != null && (
-            <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
-              Completed over {computeCalendarSpan(earliestTaskDate, latestTaskDate, workDays)}
+          {!isDefault && (
+            <span
+              className="text-[10px] px-1.5 py-0.5 rounded"
+              style={{ backgroundColor: "rgba(255,107,53,0.15)", color: ACCENT }}
+            >
+              customized
             </span>
           )}
-
-          {/* Range explanation */}
-          <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.3)" }}>
-            Low = pure coding time per task · High = coding + overhead ({currentConfig.calendarFactor}× for meetings, reviews, context switching)
-          </span>
-
-          {/* Methodology inline — compact */}
-          <div
-            className="mt-1 flex gap-4 text-[11px]"
-            style={{ color: "rgba(255,255,255,0.35)" }}
-          >
-            <span>
-              <span style={{ color: "rgba(255,255,255,0.5)" }}>Simple:</span>{" "}
-              {currentConfig.simpleBaseHours}h × {currentConfig.calendarFactor}
-            </span>
-            <span>
-              <span style={{ color: "rgba(255,255,255,0.5)" }}>Medium:</span>{" "}
-              {currentConfig.mediumBaseHours}h × {currentConfig.calendarFactor}
-            </span>
-            <span>
-              <span style={{ color: "rgba(255,255,255,0.5)" }}>Complex:</span>{" "}
-              {currentConfig.complexBaseHours}h × {currentConfig.calendarFactor}
-            </span>
-          </div>
         </div>
 
-        {/* Right: Calibration panel */}
-        <div
-          className="p-4 flex flex-col gap-3"
-          style={{
-            borderLeft: "1px solid rgba(255,255,255,0.06)",
-            minWidth: "280px",
-          }}
-          data-testid="calibration-section"
-        >
-          {/* Level selector as segmented buttons */}
+        {/* Hero number: midpoint with tooltip showing full breakdown */}
+        <TooltipProvider delayDuration={200}>
           <div className="flex flex-col gap-1.5">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div className="flex items-baseline gap-1.5 cursor-default w-fit">
+                  <span
+                    className="text-[32px] font-semibold tabular-nums"
+                    style={{ color: ACCENT, fontFamily: "system-ui", lineHeight: 1.1 }}
+                  >
+                    ~{formatEstimate(midpoint)}
+                  </span>
+                  <span
+                    className="text-[16px] font-medium"
+                    style={{ color: "rgba(255,107,53,0.6)" }}
+                  >
+                    developer hours
+                  </span>
+                </div>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="max-w-[280px] text-[11px] whitespace-pre-line"
+              >
+                {heroTooltipContent}
+              </TooltipContent>
+            </Tooltip>
+
+            {/* Range bar */}
+            <div className="flex flex-col gap-1">
+              <div
+                className="w-full rounded-full overflow-hidden"
+                style={{ height: "6px", backgroundColor: "rgba(255,255,255,0.08)" }}
+              >
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: "100%",
+                    background: `linear-gradient(to right, ${ACCENT} ${rangeBarFillPct}%, rgba(255,107,53,0.35) ${rangeBarFillPct}%)`,
+                  }}
+                />
+              </div>
+              <div
+                className="flex justify-between text-[10px] tabular-nums"
+                style={{ color: "rgba(255,255,255,0.35)" }}
+              >
+                <span>{formatEstimate(lowHours)}h coding only</span>
+                <span>{formatEstimate(highHours)}h with overhead</span>
+              </div>
+            </div>
+
+            {/* Context line: FTE-months, tasks, date range, compression */}
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <div
+                  className="flex items-center flex-wrap gap-x-1.5 text-[12px] cursor-default w-fit"
+                  style={{ color: "rgba(255,255,255,0.45)" }}
+                >
+                  {showFteMonths && (
+                    <span>~{fteMonths.toFixed(1)} FTE-months</span>
+                  )}
+                  {showFteMonths && <span style={{ color: "rgba(255,255,255,0.2)" }}>&middot;</span>}
+                  <span>{taskCount} task{taskCount !== 1 ? "s" : ""}</span>
+                  {dateRange != null && (
+                    <>
+                      <span style={{ color: "rgba(255,255,255,0.2)" }}>&middot;</span>
+                      <span>{dateRange}</span>
+                    </>
+                  )}
+                  {showCompression && (
+                    <span
+                      className="text-[10px] font-medium px-1.5 py-0.5 rounded-full ml-1"
+                      style={{ backgroundColor: "rgba(255,107,53,0.15)", color: ACCENT }}
+                    >
+                      ~{compressionRatio}x compression
+                    </span>
+                  )}
+                </div>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="max-w-[260px] text-[11px] whitespace-pre-line"
+              >
+                {fteTooltipContent}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+
+          {/* Team Level selector — always visible */}
+          <div className="flex flex-col gap-1.5 pt-1">
             <span
               className="text-[10px] uppercase tracking-wide"
               style={{ color: "rgba(255,255,255,0.3)", letterSpacing: "0.06em" }}
@@ -296,27 +326,107 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
             )}
           </div>
 
-          {/* Calibration inputs in 2×2 grid + working days */}
-          <TooltipProvider delayDuration={200}>
-            <div className="grid grid-cols-2 gap-x-3 gap-y-2">
-              {CALIBRATION_FIELDS.map(({ field, label, sub }) => (
-                <div key={field} className="flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-1">
-                    <div className="flex flex-col">
-                      <span
-                        className="text-[11px]"
-                        style={{ color: "rgba(255,255,255,0.5)" }}
-                      >
-                        {label}
-                      </span>
-                      <span
-                        className="text-[9px]"
-                        style={{ color: "rgba(255,255,255,0.25)" }}
-                      >
-                        {sub}
-                      </span>
+          {/* Methodology & calibration — collapsible */}
+          <div>
+            <button
+              onClick={() => setMethodologyOpen(!methodologyOpen)}
+              className="flex items-center gap-1 text-[11px] transition-colors"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+            >
+              {methodologyOpen ? (
+                <ChevronDown className="w-3.5 h-3.5" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5" />
+              )}
+              Methodology & calibration
+            </button>
+
+            {methodologyOpen && (
+              <div className="flex flex-col gap-3 pt-3">
+                {/* Range explanation */}
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-[11px]" style={{ color: "rgba(255,255,255,0.5)" }}>
+                    Range: {formatEstimate(lowHours)} &ndash; {formatEstimate(highHours)} hours
+                  </span>
+                  <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                    Coding only (floor) &rarr; with overhead (typical)
+                  </span>
+                </div>
+
+                {/* Calibration inputs */}
+                <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                  {CALIBRATION_FIELDS.map(({ field, label, sub }) => (
+                    <div key={field} className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1">
+                        <div className="flex flex-col">
+                          <span
+                            className="text-[11px]"
+                            style={{ color: "rgba(255,255,255,0.5)" }}
+                          >
+                            {label}
+                          </span>
+                          <span
+                            className="text-[9px]"
+                            style={{ color: "rgba(255,255,255,0.25)" }}
+                          >
+                            {sub}
+                          </span>
+                        </div>
+                        {FIELD_TOOLTIPS[field] !== undefined && (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <HelpCircle className="w-3 h-3 shrink-0 text-muted-foreground" />
+                            </TooltipTrigger>
+                            <TooltipContent
+                              side="top"
+                              className="max-w-[220px] text-[11px]"
+                            >
+                              {FIELD_TOOLTIPS[field]}
+                            </TooltipContent>
+                          </Tooltip>
+                        )}
+                      </div>
+                      <input
+                        id={`insights-calibrate-${field}`}
+                        type="number"
+                        min={field === "calendarFactor" ? 1 : 0.5}
+                        max={field === "calendarFactor" ? 3 : 40}
+                        step={0.5}
+                        defaultValue={currentConfig[field]}
+                        key={currentConfig[field]}
+                        onBlur={(e) => handleFieldBlur(field, e.target.value)}
+                        className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+                        style={{
+                          backgroundColor: "rgba(255,255,255,0.06)",
+                          color: "rgba(255,255,255,0.7)",
+                          boxShadow: "none",
+                          outline: "none",
+                        }}
+                        data-testid={`calibrate-${field}`}
+                        aria-label={label}
+                      />
                     </div>
-                    {FIELD_TOOLTIPS[field] !== undefined && (
+                  ))}
+
+                  {/* Working days per week */}
+                  <div className="flex items-center justify-between gap-2 col-span-2 pt-1"
+                    style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
+                  >
+                    <div className="flex items-center gap-1">
+                      <div className="flex flex-col">
+                        <span
+                          className="text-[11px]"
+                          style={{ color: "rgba(255,255,255,0.5)" }}
+                        >
+                          Work days/week
+                        </span>
+                        <span
+                          className="text-[9px]"
+                          style={{ color: "rgba(255,255,255,0.25)" }}
+                        >
+                          for time conversion
+                        </span>
+                      </div>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <HelpCircle className="w-3 h-3 shrink-0 text-muted-foreground" />
@@ -325,99 +435,75 @@ export function EffortEstimationPanel({ lowHours, highHours, taskCount, earliest
                           side="top"
                           className="max-w-[220px] text-[11px]"
                         >
-                          {FIELD_TOOLTIPS[field]}
+                          Number of working days per week. Used to convert hours into work weeks and days (8h/day).
                         </TooltipContent>
                       </Tooltip>
-                    )}
+                    </div>
+                    <input
+                      id="insights-calibrate-workingDaysPerWeek"
+                      type="number"
+                      min={1}
+                      max={7}
+                      step={1}
+                      defaultValue={currentConfig.workingDaysPerWeek}
+                      key={currentConfig.workingDaysPerWeek}
+                      onBlur={(e) => handleFieldBlur("workingDaysPerWeek", e.target.value)}
+                      className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
+                      style={{
+                        backgroundColor: "rgba(255,255,255,0.06)",
+                        color: "rgba(255,255,255,0.7)",
+                        boxShadow: "none",
+                        outline: "none",
+                      }}
+                      data-testid="calibrate-workingDaysPerWeek"
+                      aria-label="Working days per week"
+                    />
                   </div>
-                  <input
-                    id={`insights-calibrate-${field}`}
-                    type="number"
-                    min={field === "calendarFactor" ? 1 : 0.5}
-                    max={field === "calendarFactor" ? 3 : 40}
-                    step={0.5}
-                    defaultValue={currentConfig[field]}
-                    key={currentConfig[field]}
-                    onBlur={(e) => handleFieldBlur(field, e.target.value)}
-                    className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
-                    style={{
-                      backgroundColor: "rgba(255,255,255,0.06)",
-                      color: "rgba(255,255,255,0.7)",
-                      boxShadow: "none",
-                      outline: "none",
-                    }}
-                    data-testid={`calibrate-${field}`}
-                    aria-label={label}
-                  />
                 </div>
-              ))}
 
-              {/* Working days per week */}
-              <div className="flex items-center justify-between gap-2 col-span-2 pt-1"
-                style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
-              >
-                <div className="flex items-center gap-1">
-                  <div className="flex flex-col">
-                    <span
-                      className="text-[11px]"
-                      style={{ color: "rgba(255,255,255,0.5)" }}
-                    >
-                      Work days/week
+                {/* What this captures / doesn't capture */}
+                <div className="flex flex-col gap-1.5 pt-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.45)" }}>
+                      What this captures
                     </span>
-                    <span
-                      className="text-[9px]"
-                      style={{ color: "rgba(255,255,255,0.25)" }}
-                    >
-                      for time conversion
+                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                      Coding, review, and context switching time
                     </span>
                   </div>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <HelpCircle className="w-3 h-3 shrink-0 text-muted-foreground" />
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="top"
-                      className="max-w-[220px] text-[11px]"
-                    >
-                      Number of working days per week. Used to convert hours into work weeks and days (8h/day).
-                    </TooltipContent>
-                  </Tooltip>
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-[10px] font-medium" style={{ color: "rgba(255,255,255,0.45)" }}>
+                      What this does NOT capture
+                    </span>
+                    <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.3)" }}>
+                      Requirements, deployment, cross-team coordination
+                    </span>
+                  </div>
+                  <span className="text-[10px] italic" style={{ color: "rgba(255,255,255,0.25)" }}>
+                    These estimates are conservative by design.
+                  </span>
                 </div>
-                <input
-                  id="insights-calibrate-workingDaysPerWeek"
-                  type="number"
-                  min={1}
-                  max={7}
-                  step={1}
-                  defaultValue={currentConfig.workingDaysPerWeek}
-                  key={currentConfig.workingDaysPerWeek}
-                  onBlur={(e) => handleFieldBlur("workingDaysPerWeek", e.target.value)}
-                  className="w-14 rounded px-1.5 py-0.5 text-[12px] text-right tabular-nums outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none border-0"
-                  style={{
-                    backgroundColor: "rgba(255,255,255,0.06)",
-                    color: "rgba(255,255,255,0.7)",
-                    boxShadow: "none",
-                    outline: "none",
-                  }}
-                  data-testid="calibrate-workingDaysPerWeek"
-                  aria-label="Working days per week"
-                />
+
+                {/* Reset */}
+                {!isDefault && (
+                  <button
+                    onClick={handleReset}
+                    className="text-[11px] transition-colors self-start"
+                    style={{ color: "rgba(255,255,255,0.35)" }}
+                    data-testid="calibration-reset"
+                  >
+                    Reset to Senior defaults
+                  </button>
+                )}
               </div>
-            </div>
-          </TooltipProvider>
+            )}
+          </div>
 
-          {/* Reset */}
-          {!isDefault && (
-            <button
-              onClick={handleReset}
-              className="text-[11px] transition-colors self-start"
-              style={{ color: "rgba(255,255,255,0.35)" }}
-              data-testid="calibration-reset"
-            >
-              Reset to defaults
-            </button>
-          )}
-        </div>
+          {/* Sovereignty footer */}
+          <span className="text-[10px]" style={{ color: "rgba(255,255,255,0.2)" }}>
+            Computed locally. Your metrics never leave your machine.
+          </span>
+        </TooltipProvider>
       </div>
     </div>
   );
