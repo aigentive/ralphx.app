@@ -29,7 +29,7 @@ pub fn get_app_data_db_path(app_handle: &AppHandle) -> AppResult<PathBuf> {
 /// Configure a SQLite connection with WAL mode and performance PRAGMAs.
 ///
 /// Sets WAL journal mode (verified — warns if filesystem silently falls back),
-/// busy_timeout=5000ms, and synchronous=NORMAL.
+/// busy_timeout=30000ms, and synchronous=NORMAL.
 ///
 /// Must be called BEFORE run_migrations() so migrations run with WAL active.
 ///
@@ -51,7 +51,7 @@ pub fn configure_connection(conn: &Connection) -> AppResult<()> {
         );
     }
 
-    conn.pragma_update(None, "busy_timeout", 5000)
+    conn.pragma_update(None, "busy_timeout", 30000)
         .map_err(|e| AppError::Database(format!("Failed to set busy_timeout: {e}")))?;
 
     conn.pragma_update(None, "synchronous", "NORMAL")

@@ -83,20 +83,34 @@ impl SqliteTaskProposalRepository {
     }
 
     /// Update a proposal's plan_artifact_id and plan_version_at_creation for a batch of proposal IDs.
+    /// Uses a single UPDATE with WHERE id IN (...) instead of per-row statements.
     pub(crate) fn batch_link_proposals_sync(
         conn: &Connection,
         proposal_ids: &[String],
         artifact_id: &str,
         version: u32,
     ) -> AppResult<()> {
-        let now = Utc::now().to_rfc3339();
-        for proposal_id in proposal_ids {
-            conn.execute(
-                "UPDATE task_proposals SET plan_artifact_id = ?2, plan_version_at_creation = ?3, \
-                 updated_at = ?4 WHERE id = ?1",
-                rusqlite::params![proposal_id, artifact_id, version, now],
-            )?;
+        if proposal_ids.is_empty() {
+            return Ok(());
         }
+        let now = Utc::now().to_rfc3339();
+        let placeholders: Vec<String> = (0..proposal_ids.len())
+            .map(|i| format!("?{}", i + 4))
+            .collect();
+        let sql = format!(
+            "UPDATE task_proposals SET plan_artifact_id = ?1, plan_version_at_creation = ?2, \
+             updated_at = ?3 WHERE id IN ({})",
+            placeholders.join(", ")
+        );
+        let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::with_capacity(3 + proposal_ids.len());
+        params.push(Box::new(artifact_id.to_string()));
+        params.push(Box::new(version));
+        params.push(Box::new(now));
+        for id in proposal_ids {
+            params.push(Box::new(id.clone()));
+        }
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        conn.execute(&sql, param_refs.as_slice())?;
         Ok(())
     }
 
@@ -343,18 +357,32 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
 
         self.db
             .run(move |conn| {
-                for (index, proposal_id) in proposal_ids.iter().enumerate() {
-                    conn.execute(
-                        "UPDATE task_proposals SET sort_order = ?2, updated_at = ?3
-                         WHERE id = ?1 AND session_id = ?4",
-                        rusqlite::params![
-                            proposal_id.as_str(),
-                            index as i32,
-                            now.to_rfc3339(),
-                            session_id.as_str(),
-                        ],
-                    )?;
+                if proposal_ids.is_empty() {
+                    return Ok(());
                 }
+                // Single UPDATE with CASE expression for per-row sort_order values
+                let mut case_parts = Vec::with_capacity(proposal_ids.len());
+                let mut id_placeholders = Vec::with_capacity(proposal_ids.len());
+                let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                // ?1 = updated_at, ?2 = session_id, then ?3..?N for CASE WHEN pairs
+                params.push(Box::new(now.to_rfc3339()));
+                params.push(Box::new(session_id));
+                let mut idx = 3;
+                for (order, proposal_id) in proposal_ids.iter().enumerate() {
+                    case_parts.push(format!("WHEN id = ?{} THEN ?{}", idx, idx + 1));
+                    id_placeholders.push(format!("?{}", idx));
+                    params.push(Box::new(proposal_id.as_str().to_string()));
+                    params.push(Box::new(order as i32));
+                    idx += 2;
+                }
+                let sql = format!(
+                    "UPDATE task_proposals SET sort_order = CASE {} END, updated_at = ?1 \
+                     WHERE session_id = ?2 AND id IN ({})",
+                    case_parts.join(" "),
+                    id_placeholders.join(", ")
+                );
+                let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+                conn.execute(&sql, param_refs.as_slice())?;
                 Ok(())
             })
             .await

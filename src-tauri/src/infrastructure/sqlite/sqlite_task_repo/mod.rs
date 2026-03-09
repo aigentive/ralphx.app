@@ -267,9 +267,9 @@ impl TaskRepository for SqliteTaskRepository {
         let id = id.clone();
         let trigger = trigger.to_string();
         self.db
-            .run(move |conn| {
+            .run_transaction(move |conn| {
                 let now = Utc::now();
-                helpers::persist_status_change_transaction(conn, &id, from, to, &trigger, now)
+                helpers::persist_status_change(conn, &id, from, to, &trigger, now)
             })
             .await
     }
