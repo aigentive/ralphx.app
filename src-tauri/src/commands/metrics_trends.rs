@@ -50,13 +50,17 @@ pub(crate) fn query_weekly_throughput(
         )
         SELECT
           w.week_start,
-          COALESCE(COUNT(t.id), 0) as completed_count
+          COALESCE(COUNT(merged.task_id), 0) as completed_count
         FROM weeks w
-        LEFT JOIN tasks t ON
-          t.project_id = ?1
-          AND t.internal_status = 'merged'
-          AND date(t.updated_at, '{tz_off}') >= w.week_start
-          AND date(t.updated_at, '{tz_off}') < date(w.week_start, '+7 days')
+        LEFT JOIN (
+          SELECT h.task_id, h.created_at
+          FROM task_state_history h
+          JOIN tasks t ON t.id = h.task_id
+          WHERE t.project_id = ?1
+            AND h.to_status = 'merged'
+        ) merged ON
+          date(merged.created_at, '{tz_off}') >= w.week_start
+          AND date(merged.created_at, '{tz_off}') < date(w.week_start, '+7 days')
         WHERE w.week_start <= date('now', '{tz_off}')
         GROUP BY w.week_start
         ORDER BY w.week_start"
@@ -103,10 +107,12 @@ pub(crate) fn query_weekly_cycle_time(
 
     let sql = format!(
         "WITH merged_tasks AS (
-            SELECT id, updated_at FROM tasks
-            WHERE project_id = ?1
-              AND internal_status = 'merged'
-              AND updated_at >= datetime('now', '-365 days')
+            SELECT t.id, h.created_at as merged_at
+            FROM tasks t
+            JOIN task_state_history h ON h.task_id = t.id AND h.to_status = 'merged'
+            WHERE t.project_id = ?1
+              AND t.internal_status = 'merged'
+              AND h.created_at >= datetime('now', '-365 days')
         ),
         transitions AS (
             SELECT
@@ -128,7 +134,7 @@ pub(crate) fn query_weekly_cycle_time(
             GROUP BY tr.task_id
         )
         SELECT
-          date(mt.updated_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
+          date(mt.merged_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
           AVG(te.exec_hours) as avg_hours,
           COUNT(*) as sample_size
         FROM merged_tasks mt
@@ -175,10 +181,12 @@ pub(crate) fn query_weekly_pipeline_cycle_time(
 
     let sql = format!(
         "WITH merged_tasks AS (
-            SELECT id, updated_at FROM tasks
-            WHERE project_id = ?1
-              AND internal_status = 'merged'
-              AND updated_at >= datetime('now', '-365 days')
+            SELECT t.id, h.created_at as merged_at
+            FROM tasks t
+            JOIN task_state_history h ON h.task_id = t.id AND h.to_status = 'merged'
+            WHERE t.project_id = ?1
+              AND t.internal_status = 'merged'
+              AND h.created_at >= datetime('now', '-365 days')
         ),
         transitions AS (
             SELECT
@@ -200,7 +208,7 @@ pub(crate) fn query_weekly_pipeline_cycle_time(
             GROUP BY tr.task_id
         )
         SELECT
-          date(mt.updated_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
+          date(mt.merged_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
           AVG(te.pipeline_hours) as avg_hours,
           COUNT(*) as sample_size
         FROM merged_tasks mt
@@ -244,15 +252,21 @@ pub(crate) fn query_weekly_success_rate(
     let tz_off = format!("{:+} minutes", tz_offset_minutes);
 
     let sql = format!(
-        "SELECT
-          date(t.updated_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
-          CAST(SUM(CASE WHEN t.internal_status = 'merged' THEN 1 ELSE 0 END) AS FLOAT) /
+        "WITH terminal_tasks AS (
+            SELECT t.id, t.internal_status, h.created_at as terminal_at
+            FROM tasks t
+            JOIN task_state_history h ON h.task_id = t.id
+              AND h.to_status = t.internal_status
+            WHERE t.project_id = ?1
+              AND t.internal_status IN ('merged', 'failed', 'cancelled', 'stopped')
+              AND h.created_at >= datetime('now', '-365 days')
+        )
+        SELECT
+          date(tt.terminal_at, '{tz_off}', 'weekday {wt}', '-6 days') as week_start,
+          CAST(SUM(CASE WHEN tt.internal_status = 'merged' THEN 1 ELSE 0 END) AS FLOAT) /
             NULLIF(COUNT(*), 0) as success_rate,
           COUNT(*) as sample_size
-        FROM tasks t
-        WHERE t.project_id = ?1
-          AND t.internal_status IN ('merged', 'failed', 'cancelled', 'stopped')
-          AND t.updated_at >= datetime('now', '-365 days')
+        FROM terminal_tasks tt
         GROUP BY week_start
         HAVING week_start <= date('now', '{tz_off}')
         ORDER BY week_start"
