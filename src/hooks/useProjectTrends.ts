@@ -4,13 +4,14 @@ import type { ProjectTrends } from "@/types/project-stats";
 
 export const projectTrendsKeys = {
   all: ["projectTrends"] as const,
-  detail: (projectId: string) => [...projectTrendsKeys.all, projectId] as const,
+  detail: (projectId: string, weekStartDay?: number) =>
+    [...projectTrendsKeys.all, projectId, ...(weekStartDay !== undefined ? [weekStartDay] : [])] as const,
 };
 
-export function useProjectTrends(projectId: string | undefined) {
+export function useProjectTrends(projectId: string | undefined, weekStartDay?: number) {
   return useQuery<ProjectTrends, Error>({
-    queryKey: projectTrendsKeys.detail(projectId ?? ""),
-    queryFn: () => getProjectTrends(projectId!),
+    queryKey: projectTrendsKeys.detail(projectId ?? "", weekStartDay),
+    queryFn: () => getProjectTrends(projectId!, weekStartDay),
     enabled: !!projectId,
     staleTime: 5 * 60 * 1000, // 5 minutes
   });

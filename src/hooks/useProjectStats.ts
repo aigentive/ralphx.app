@@ -22,7 +22,8 @@ import type { Unsubscribe } from "@/lib/event-bus";
 
 export const projectStatsKeys = {
   all: ["projectStats"] as const,
-  byProject: (projectId: string) => [...projectStatsKeys.all, projectId] as const,
+  byProject: (projectId: string, weekStartDay?: number) =>
+    [...projectStatsKeys.all, projectId, ...(weekStartDay !== undefined ? [weekStartDay] : [])] as const,
 };
 
 // ============================================================================
@@ -38,7 +39,7 @@ export const projectStatsKeys = {
  * @param projectId - The project ID to fetch stats for (may be undefined)
  * @returns TanStack Query result with project stats
  */
-export function useProjectStats(projectId: string | undefined) {
+export function useProjectStats(projectId: string | undefined, weekStartDay?: number) {
   const queryClient = useQueryClient();
   const bus = useEventBus();
 
@@ -55,7 +56,7 @@ export function useProjectStats(projectId: string | undefined) {
         // Only invalidate if the event is for this project (or if project_id is not provided)
         if (!payload.project_id || payload.project_id === projectId) {
           queryClient.invalidateQueries({
-            queryKey: projectStatsKeys.byProject(projectId),
+            queryKey: projectStatsKeys.byProject(projectId, weekStartDay),
           });
         }
       })
@@ -64,11 +65,11 @@ export function useProjectStats(projectId: string | undefined) {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, queryClient, projectId]);
+  }, [bus, queryClient, projectId, weekStartDay]);
 
   return useQuery<ProjectStats, Error>({
-    queryKey: projectStatsKeys.byProject(projectId ?? ""),
-    queryFn: () => getProjectStats(projectId!),
+    queryKey: projectStatsKeys.byProject(projectId ?? "", weekStartDay),
+    queryFn: () => getProjectStats(projectId!, weekStartDay),
     enabled: !!projectId,
     // Stats are cached on the backend for 60s, so stale time matches that
     staleTime: 60_000,
