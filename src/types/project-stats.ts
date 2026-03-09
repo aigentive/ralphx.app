@@ -67,6 +67,7 @@ export const WeeklyDataPointSchema = z.object({
 export const ProjectTrendsSchema = z.object({
   weeklyThroughput: z.array(WeeklyDataPointSchema),
   weeklyCycleTime: z.array(WeeklyDataPointSchema),
+  weeklyPipelineCycleTime: z.array(WeeklyDataPointSchema),
   weeklySuccessRate: z.array(WeeklyDataPointSchema),
 });
 
