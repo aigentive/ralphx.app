@@ -6,6 +6,26 @@ use rusqlite::params;
 use crate::commands::metrics_types::{ProjectTrends, WeeklyDataPoint};
 use crate::error::{AppError, AppResult};
 
+// ─── Week start helpers ───────────────────────────────────────────────────────
+
+/// Compute the SQLite weekday target for `date(x, 'weekday N', '-6 days')`.
+/// Given a desired week start day (0=Sunday .. 6=Saturday), returns N such that
+/// `date(x, 'weekday N', '-6 days')` yields the most recent occurrence of that day.
+fn weekday_target(week_start_day: u8) -> u8 {
+    (week_start_day + 6) % 7
+}
+
+/// Validate week_start_day is in range 0..=6.
+fn validate_week_start_day(week_start_day: u8) -> AppResult<()> {
+    if week_start_day > 6 {
+        return Err(AppError::Database(format!(
+            "week_start_day must be 0-6, got {}",
+            week_start_day
+        )));
+    }
+    Ok(())
+}
+
 // ─── Trend queries ────────────────────────────────────────────────────────────
 
 /// Weekly throughput: count of tasks merged per week, last 12 weeks.
@@ -13,13 +33,17 @@ use crate::error::{AppError, AppResult};
 pub(crate) fn query_weekly_throughput(
     conn: &rusqlite::Connection,
     project_id: &str,
+    week_start_day: u8,
 ) -> AppResult<Vec<WeeklyDataPoint>> {
-    let sql = "
-        WITH RECURSIVE weeks(week_start) AS (
-          SELECT date('now', 'weekday 0', '-365 days')
+    validate_week_start_day(week_start_day)?;
+    let wt = weekday_target(week_start_day);
+
+    let sql = format!(
+        "WITH RECURSIVE weeks(week_start) AS (
+          SELECT date('now', 'weekday {wt}', '-6 days', '-364 days')
           UNION ALL
           SELECT date(week_start, '+7 days')
-          FROM weeks WHERE week_start < date('now', 'weekday 0')
+          FROM weeks WHERE week_start < date('now', 'weekday {wt}', '-6 days')
         )
         SELECT
           w.week_start,
@@ -32,10 +56,10 @@ pub(crate) fn query_weekly_throughput(
           AND date(t.updated_at) < date(w.week_start, '+7 days')
         WHERE w.week_start <= date('now')
         GROUP BY w.week_start
-        ORDER BY w.week_start
-    ";
+        ORDER BY w.week_start"
+    );
 
-    let mut stmt = conn.prepare(sql).map_err(|e| AppError::Database(e.to_string()))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| AppError::Database(e.to_string()))?;
     let rows = stmt
         .query_map(params![project_id], |row| {
             let week_start: String = row.get(0)?;
@@ -66,9 +90,13 @@ pub(crate) fn query_weekly_throughput(
 pub(crate) fn query_weekly_cycle_time(
     conn: &rusqlite::Connection,
     project_id: &str,
+    week_start_day: u8,
 ) -> AppResult<Vec<WeeklyDataPoint>> {
-    let sql = "
-        WITH merged_tasks AS (
+    validate_week_start_day(week_start_day)?;
+    let wt = weekday_target(week_start_day);
+
+    let sql = format!(
+        "WITH merged_tasks AS (
             SELECT id, updated_at FROM tasks
             WHERE project_id = ?1
               AND internal_status = 'merged'
@@ -94,17 +122,17 @@ pub(crate) fn query_weekly_cycle_time(
             GROUP BY tr.task_id
         )
         SELECT
-          date(mt.updated_at, 'weekday 0', '-6 days') as week_start,
+          date(mt.updated_at, 'weekday {wt}', '-6 days') as week_start,
           AVG(te.exec_hours) as avg_hours,
           COUNT(*) as sample_size
         FROM merged_tasks mt
         JOIN task_exec_hours te ON te.task_id = mt.id
         GROUP BY week_start
         HAVING week_start <= date('now')
-        ORDER BY week_start
-    ";
+        ORDER BY week_start"
+    );
 
-    let mut stmt = conn.prepare(sql).map_err(|e| AppError::Database(e.to_string()))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| AppError::Database(e.to_string()))?;
     let rows = stmt
         .query_map(params![project_id], |row| {
             let week_start: String = row.get(0)?;
@@ -131,9 +159,13 @@ pub(crate) fn query_weekly_cycle_time(
 pub(crate) fn query_weekly_pipeline_cycle_time(
     conn: &rusqlite::Connection,
     project_id: &str,
+    week_start_day: u8,
 ) -> AppResult<Vec<WeeklyDataPoint>> {
-    let sql = "
-        WITH merged_tasks AS (
+    validate_week_start_day(week_start_day)?;
+    let wt = weekday_target(week_start_day);
+
+    let sql = format!(
+        "WITH merged_tasks AS (
             SELECT id, updated_at FROM tasks
             WHERE project_id = ?1
               AND internal_status = 'merged'
@@ -159,17 +191,17 @@ pub(crate) fn query_weekly_pipeline_cycle_time(
             GROUP BY tr.task_id
         )
         SELECT
-          date(mt.updated_at, 'weekday 0', '-6 days') as week_start,
+          date(mt.updated_at, 'weekday {wt}', '-6 days') as week_start,
           AVG(te.pipeline_hours) as avg_hours,
           COUNT(*) as sample_size
         FROM merged_tasks mt
         JOIN task_pipeline_hours te ON te.task_id = mt.id
         GROUP BY week_start
         HAVING week_start <= date('now')
-        ORDER BY week_start
-    ";
+        ORDER BY week_start"
+    );
 
-    let mut stmt = conn.prepare(sql).map_err(|e| AppError::Database(e.to_string()))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| AppError::Database(e.to_string()))?;
     let rows = stmt
         .query_map(params![project_id], |row| {
             let week_start: String = row.get(0)?;
@@ -194,10 +226,14 @@ pub(crate) fn query_weekly_pipeline_cycle_time(
 pub(crate) fn query_weekly_success_rate(
     conn: &rusqlite::Connection,
     project_id: &str,
+    week_start_day: u8,
 ) -> AppResult<Vec<WeeklyDataPoint>> {
-    let sql = "
-        SELECT
-          date(t.updated_at, 'weekday 0', '-6 days') as week_start,
+    validate_week_start_day(week_start_day)?;
+    let wt = weekday_target(week_start_day);
+
+    let sql = format!(
+        "SELECT
+          date(t.updated_at, 'weekday {wt}', '-6 days') as week_start,
           CAST(SUM(CASE WHEN t.internal_status = 'merged' THEN 1 ELSE 0 END) AS FLOAT) /
             NULLIF(COUNT(*), 0) as success_rate,
           COUNT(*) as sample_size
@@ -207,10 +243,10 @@ pub(crate) fn query_weekly_success_rate(
           AND t.updated_at >= datetime('now', '-365 days')
         GROUP BY week_start
         HAVING week_start <= date('now')
-        ORDER BY week_start
-    ";
+        ORDER BY week_start"
+    );
 
-    let mut stmt = conn.prepare(sql).map_err(|e| AppError::Database(e.to_string()))?;
+    let mut stmt = conn.prepare(&sql).map_err(|e| AppError::Database(e.to_string()))?;
     let rows = stmt
         .query_map(params![project_id], |row| {
             let week_start: String = row.get(0)?;
@@ -234,14 +270,16 @@ pub(crate) fn query_weekly_success_rate(
 // ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 /// Run all trend queries synchronously inside a single `db.run` closure.
+/// `week_start_day`: 0=Sunday, 1=Monday, ..., 6=Saturday.
 pub fn compute_project_trends(
     conn: &rusqlite::Connection,
     project_id: &str,
+    week_start_day: u8,
 ) -> AppResult<ProjectTrends> {
-    let weekly_throughput = query_weekly_throughput(conn, project_id)?;
-    let weekly_cycle_time = query_weekly_cycle_time(conn, project_id)?;
-    let weekly_pipeline_cycle_time = query_weekly_pipeline_cycle_time(conn, project_id)?;
-    let weekly_success_rate = query_weekly_success_rate(conn, project_id)?;
+    let weekly_throughput = query_weekly_throughput(conn, project_id, week_start_day)?;
+    let weekly_cycle_time = query_weekly_cycle_time(conn, project_id, week_start_day)?;
+    let weekly_pipeline_cycle_time = query_weekly_pipeline_cycle_time(conn, project_id, week_start_day)?;
+    let weekly_success_rate = query_weekly_success_rate(conn, project_id, week_start_day)?;
 
     Ok(ProjectTrends {
         weekly_throughput,

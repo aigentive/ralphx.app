@@ -7,8 +7,8 @@
  * - Two-column dashboard: metrics left, EME sticky right (>=1200px)
  */
 
-import { useMemo } from "react";
-import { Download } from "lucide-react";
+import { useCallback, useMemo, useSyncExternalStore } from "react";
+import { Calendar, Download } from "lucide-react";
 import { formatMinutesHuman } from "@/lib/formatters";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import { useProjectStats } from "@/hooks/useProjectStats";
@@ -29,6 +29,68 @@ import {
   ColumnDwellTimeBreakdown,
   CopyMarkdownButton,
 } from "./insights/MetricsDetails";
+
+// ============================================================================
+// Week Start Day Preference (localStorage-backed)
+// ============================================================================
+
+const WEEK_START_KEY = "ralphx:insights:weekStartDay";
+
+function getWeekStartDay(): number {
+  const stored = localStorage.getItem(WEEK_START_KEY);
+  if (stored === "1") return 1;
+  return 0; // default Sunday
+}
+
+const weekStartListeners = new Set<() => void>();
+function subscribeWeekStart(cb: () => void) {
+  weekStartListeners.add(cb);
+  return () => { weekStartListeners.delete(cb); };
+}
+
+function useWeekStartDay(): [number, (day: number) => void] {
+  const value = useSyncExternalStore(subscribeWeekStart, getWeekStartDay);
+  const setValue = useCallback((day: number) => {
+    localStorage.setItem(WEEK_START_KEY, String(day));
+    weekStartListeners.forEach((cb) => cb());
+  }, []);
+  return [value, setValue];
+}
+
+function WeekStartToggle({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (day: number) => void;
+}) {
+  return (
+    <div
+      className="flex items-center gap-1.5 rounded-lg px-2 py-1.5"
+      style={{ backgroundColor: "hsl(220 10% 14%)" }}
+    >
+      <Calendar size={13} style={{ color: "rgba(255,255,255,0.5)" }} />
+      {[
+        { day: 0, label: "Sun" },
+        { day: 1, label: "Mon" },
+      ].map(({ day, label }) => (
+        <button
+          key={day}
+          onClick={() => onChange(day)}
+          className="rounded px-2 py-0.5 text-[11px] font-medium transition-colors"
+          style={
+            value === day
+              ? { backgroundColor: "#ff6b35", color: "#fff" }
+              : { color: "rgba(255,255,255,0.55)" }
+          }
+          title={`Week starts on ${day === 0 ? "Sunday" : "Monday"}`}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 // ============================================================================
 // Helpers
@@ -60,17 +122,19 @@ function exportCSV(trends: ProjectTrends): void {
   downloadFile(csv, `ralphx-insights-${date}.csv`, "text/csv");
 }
 
-function isCurrentWeek(weekStart: string): boolean {
+function isCurrentWeek(weekStart: string, weekStartDay: number): boolean {
   const now = new Date();
   const dayOfWeek = now.getUTCDay(); // 0=Sunday
-  const sunday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayOfWeek));
-  return weekStart === sunday.toISOString().slice(0, 10);
+  // Compute offset from the configured week start day
+  const offset = (dayOfWeek - weekStartDay + 7) % 7;
+  const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - offset));
+  return weekStart === start.toISOString().slice(0, 10);
 }
 
-function getWeekLabel(data: WeeklyDataPoint[]): string {
+function getWeekLabel(data: WeeklyDataPoint[], weekStartDay: number): string {
   if (data.length === 0) return "this week";
   const last = data[data.length - 1]!;
-  return isCurrentWeek(last.weekStart) ? "this week" : "latest";
+  return isCurrentWeek(last.weekStart, weekStartDay) ? "this week" : "latest";
 }
 
 function getAvgPipelineTimeDisplay(stats: ProjectStats): string {
@@ -128,9 +192,10 @@ function EmeSection({
 export function InsightsView() {
   const project = useProjectStore(selectActiveProject);
   const projectId = project?.id;
+  const [weekStartDay, setWeekStartDay] = useWeekStartDay();
 
-  const statsQuery = useProjectStats(projectId);
-  const trendsQuery = useProjectTrends(projectId);
+  const statsQuery = useProjectStats(projectId, weekStartDay);
+  const trendsQuery = useProjectTrends(projectId, weekStartDay);
 
   // No active project
   if (!projectId) {
@@ -185,6 +250,8 @@ export function InsightsView() {
       projectId={projectId}
       hasEnoughForTrends={hasEnoughForTrends}
       showEme={showEme}
+      weekStartDay={weekStartDay}
+      onWeekStartDayChange={setWeekStartDay}
     />
   );
 }
@@ -195,33 +262,39 @@ function InsightsContent({
   projectId,
   hasEnoughForTrends,
   showEme,
+  weekStartDay,
+  onWeekStartDayChange,
 }: {
   stats: ProjectStats;
   trends: ProjectTrends;
   projectId: string;
   hasEnoughForTrends: boolean;
   showEme: boolean;
+  weekStartDay: number;
+  onWeekStartDayChange: (day: number) => void;
 }) {
-  const throughputWeekLabel = useMemo(() => getWeekLabel(trends.weeklyThroughput), [trends.weeklyThroughput]);
+  const weekBoundary = weekStartDay === 0 ? "Sun–Sat" : "Mon–Sun";
+
+  const throughputWeekLabel = useMemo(() => getWeekLabel(trends.weeklyThroughput, weekStartDay), [trends.weeklyThroughput, weekStartDay]);
   const isThisWeek = throughputWeekLabel === "this week";
 
   const throughputHeader = useMemo(() => {
     if (trends.weeklyThroughput.length === 0) return undefined;
     const last = trends.weeklyThroughput[trends.weeklyThroughput.length - 1]!;
-    return `${last.value} ${getWeekLabel(trends.weeklyThroughput)}`;
-  }, [trends.weeklyThroughput]);
+    return `${last.value} ${getWeekLabel(trends.weeklyThroughput, weekStartDay)}`;
+  }, [trends.weeklyThroughput, weekStartDay]);
 
   const cycleTimeHeader = useMemo(() => {
     if (trends.weeklyCycleTime.length === 0) return undefined;
     const last = trends.weeklyCycleTime[trends.weeklyCycleTime.length - 1]!;
-    return `${formatMinutesHuman(last.value * 60)} ${getWeekLabel(trends.weeklyCycleTime)}`;
-  }, [trends.weeklyCycleTime]);
+    return `${formatMinutesHuman(last.value * 60)} ${getWeekLabel(trends.weeklyCycleTime, weekStartDay)}`;
+  }, [trends.weeklyCycleTime, weekStartDay]);
 
   const successRateHeader = useMemo(() => {
     if (trends.weeklySuccessRate.length === 0) return undefined;
     const last = trends.weeklySuccessRate[trends.weeklySuccessRate.length - 1]!;
-    return `${Math.round(last.value * 100)}% ${getWeekLabel(trends.weeklySuccessRate)}`;
-  }, [trends.weeklySuccessRate]);
+    return `${Math.round(last.value * 100)}% ${getWeekLabel(trends.weeklySuccessRate, weekStartDay)}`;
+  }, [trends.weeklySuccessRate, weekStartDay]);
 
   const showSuccessRateTrend = useMemo(() => {
     if (!hasEnoughForTrends) return false;
@@ -253,6 +326,7 @@ function InsightsContent({
             </p>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <WeekStartToggle value={weekStartDay} onChange={onWeekStartDayChange} />
             <CopyMarkdownButton stats={stats} />
             <button
               onClick={() => exportJSON(stats, trends)}
@@ -296,7 +370,7 @@ function InsightsContent({
                 )}
                 sub={`${stats.tasksCompletedThisWeek} last 7 days · ${stats.tasksCompletedToday} today`}
                 tooltip={isThisWeek
-                  ? "Tasks merged this calendar week (Sun–Sat, UTC). The 'last 7 days' count uses a rolling window and may differ."
+                  ? `Tasks merged this calendar week (${weekBoundary}, UTC). The 'last 7 days' count uses a rolling window and may differ.`
                   : "Tasks merged in the most recent week with data. No tasks merged in the current calendar week yet."}
               />
               <StatCard

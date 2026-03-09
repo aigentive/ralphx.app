@@ -122,7 +122,7 @@ fn test_zero_tasks_returns_zero_metrics() {
     create_schema(&conn);
     insert_project(&conn, "proj1");
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
 
     assert_eq!(stats.task_count, 0);
     assert_eq!(stats.tasks_completed_today, 0);
@@ -147,7 +147,7 @@ fn test_single_merged_task_no_eme() {
     insert_task(&conn, "t1", "proj1", "merged");
     insert_history(&conn, "h1", "t1", "merged", "2099-01-01T12:00:00+00:00");
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
 
     assert_eq!(stats.task_count, 1);
     assert_eq!(stats.agent_success_count, 1);
@@ -165,7 +165,7 @@ fn test_all_cancelled_tasks() {
     insert_task(&conn, "t1", "proj1", "cancelled");
     insert_task(&conn, "t2", "proj1", "cancelled");
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
 
     assert_eq!(stats.task_count, 2);
     assert_eq!(stats.agent_success_count, 0);
@@ -180,7 +180,7 @@ fn test_no_reviews_returns_zero_pass_rate() {
     insert_project(&conn, "proj1");
     insert_task(&conn, "t1", "proj1", "merged");
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
 
     assert_eq!(stats.review_pass_rate, 0.0);
     assert_eq!(stats.review_pass_count, 0);
@@ -199,7 +199,7 @@ fn test_agent_success_rate_partial() {
     insert_task(&conn, "t3", "proj1", "failed");
     insert_task(&conn, "t4", "proj1", "cancelled");
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
 
     assert_eq!(stats.agent_success_count, 2);
     assert_eq!(stats.agent_total_count, 4);
@@ -216,7 +216,7 @@ fn test_review_pass_rate() {
     insert_review(&conn, "r2", "proj1", "t1", "approved");
     insert_review(&conn, "r3", "proj1", "t1", "changes_requested");
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
 
     assert_eq!(stats.review_pass_count, 2);
     assert_eq!(stats.review_total_count, 3);
@@ -266,7 +266,7 @@ fn test_tasks_completed_daily_weekly_monthly_windows() {
     )
     .unwrap();
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
 
     assert_eq!(stats.tasks_completed_today, 1);
     assert_eq!(stats.tasks_completed_this_week, 2);
@@ -303,7 +303,7 @@ fn test_cycle_time_breakdown_lag_window_function() {
         .unwrap();
     }
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
 
     // Should have 3 phases (ready→executing, executing→pending_review, pending_review→merged)
     // Each phase = 60 minutes
@@ -339,7 +339,7 @@ fn test_cycle_time_90_day_filter_excludes_old_tasks() {
     )
     .unwrap();
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     assert!(stats.cycle_time_breakdown.is_empty());
 }
 
@@ -356,7 +356,7 @@ fn test_eme_simple_tier_5_tasks() {
         insert_step(&conn, &format!("s{i}"), &task_id);
     }
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     let eme = stats.eme.expect("EME should be present for 5+ tasks");
 
     assert_eq!(eme.task_count, 5);
@@ -394,7 +394,7 @@ fn test_eme_mixed_tiers() {
         insert_task(&conn, &task_id, "proj1", "merged");
     }
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     let eme = stats.eme.expect("EME should be present");
 
     // Senior defaults: simple=1.0, medium=2.0, complex=4.0, calendar=1.3
@@ -420,7 +420,7 @@ fn test_eme_review_cycle_bumps_tier() {
         insert_review(&conn, &format!("r{i}"), "proj1", &task_id, "approved");
     }
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     let eme = stats.eme.expect("EME present");
 
     // Senior defaults: Medium base=2.0, calendar=1.3
@@ -439,7 +439,7 @@ fn test_eme_fewer_than_5_tasks_returns_none() {
         insert_task(&conn, &format!("t{i}"), "proj1", "merged");
     }
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     assert!(stats.eme.is_none());
 }
 
@@ -458,7 +458,7 @@ fn test_archived_tasks_excluded_from_task_count() {
     )
     .unwrap();
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     assert_eq!(stats.task_count, 1, "archived task should not be counted");
     // Archived cancelled tasks should not count in terminal totals either
     assert_eq!(stats.agent_total_count, 1);
@@ -474,8 +474,8 @@ fn test_different_projects_isolated() {
     insert_task(&conn, "t1", "proj1", "merged");
     insert_task(&conn, "t2", "proj2", "failed");
 
-    let stats1 = compute_project_stats(&conn, "proj1").unwrap();
-    let stats2 = compute_project_stats(&conn, "proj2").unwrap();
+    let stats1 = compute_project_stats(&conn, "proj1", 0).unwrap();
+    let stats2 = compute_project_stats(&conn, "proj2", 0).unwrap();
 
     assert_eq!(stats1.task_count, 1);
     assert_eq!(stats1.agent_success_count, 1);
@@ -498,7 +498,7 @@ fn test_eme_uses_default_config_when_no_override() {
         insert_step(&conn, &format!("s{i}"), &task_id);
     }
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     let eme = stats.eme.expect("EME should be present");
 
     // Senior default: Simple base=1.0, calendar=1.3 → low=1.0, high=1.3 per task → 5×: 5.0/6.5
@@ -524,7 +524,7 @@ fn test_eme_uses_custom_base_hours_override() {
         insert_step(&conn, &format!("s{i}"), &task_id);
     }
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     let eme = stats.eme.expect("EME should be present");
 
     // Custom: Simple 1.0 × 4.0 = 4.0 low, ×2.0 = 8.0 high per task → 5×: 20.0/40.0
@@ -550,7 +550,7 @@ fn test_eme_calendar_factor_override() {
         insert_step(&conn, &format!("s{i}"), &task_id);
     }
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     let eme = stats.eme.expect("EME present");
 
     // Simple base=1.0 low, ×2.0 = 2.0 high per task → 5×: 5.0/10.0
@@ -580,8 +580,8 @@ fn test_different_projects_use_independent_configs() {
         }
     }
 
-    let stats1 = compute_project_stats(&conn, "proj1").unwrap();
-    let stats2 = compute_project_stats(&conn, "proj2").unwrap();
+    let stats1 = compute_project_stats(&conn, "proj1", 0).unwrap();
+    let stats2 = compute_project_stats(&conn, "proj2", 0).unwrap();
     let eme1 = stats1.eme.unwrap();
     let eme2 = stats2.eme.unwrap();
 
@@ -818,7 +818,7 @@ fn test_column_dwell_times_empty_project() {
     create_schema(&conn);
     insert_project(&conn, "proj1");
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     assert!(stats.column_dwell_times.is_empty());
 }
 
@@ -841,7 +841,7 @@ fn test_column_dwell_times_maps_states_to_columns() {
     insert_history(&conn, "dw3", "t1", "pending_review", "2026-01-01T13:00:00+00:00");
     insert_history(&conn, "dw4", "t1", "merged", "2026-01-01T13:30:00+00:00");
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     let dwell = &stats.column_dwell_times;
 
     // Should have: ready(60m), in_progress(120m), in_review(30m)
@@ -885,7 +885,7 @@ fn test_column_dwell_times_averages_across_tasks() {
     insert_history(&conn, "b2", "t2", "executing", "2026-01-02T12:00:00+00:00");
     insert_history(&conn, "b3", "t2", "merged", "2026-01-02T13:00:00+00:00");
 
-    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let stats = compute_project_stats(&conn, "proj1", 0).unwrap();
     let ready = stats.column_dwell_times.iter().find(|d| d.column_id == "ready").expect("ready");
 
     // Average of 60m and 120m = 90m

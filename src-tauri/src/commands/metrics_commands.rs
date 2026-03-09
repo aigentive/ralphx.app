@@ -75,9 +75,12 @@ impl Default for MetricsConfig {
 /// Evict the cached stats, trends, and column metrics for `project_id`.
 /// Called by the transition handler on every task state exit so the next
 /// popover open always reflects the latest data.
+/// Clears all week_start_day variants of the cache key.
 pub fn invalidate_project_stats_cache(project_id: &str) {
-    STATS_CACHE.remove(project_id);
-    TRENDS_CACHE.remove(project_id);
+    let prefix = format!("{}:", project_id);
+    STATS_CACHE.retain(|k, _| !k.starts_with(&prefix));
+    TRENDS_CACHE.retain(|k, _| !k.starts_with(&prefix));
+    // Column metrics are not keyed by week_start_day
     COLUMN_METRICS_CACHE.remove(project_id);
 }
 
@@ -94,9 +97,13 @@ pub fn invalidate_project_stats_cache(project_id: &str) {
 #[tauri::command]
 pub async fn get_project_stats(
     project_id: String,
+    week_start_day: Option<u8>,
     state: State<'_, AppState>,
 ) -> Result<ProjectStats, String> {
-    if let Some(entry) = STATS_CACHE.get(&project_id) {
+    let wsd = week_start_day.unwrap_or(0);
+    let cache_key = format!("{}:{}", project_id, wsd);
+
+    if let Some(entry) = STATS_CACHE.get(&cache_key) {
         let (ts, stats) = &*entry;
         if ts.elapsed().as_secs() < CACHE_TTL_SECS {
             return Ok(stats.clone());
@@ -107,11 +114,11 @@ pub async fn get_project_stats(
     let stats = state
         .db
         .clone()
-        .run(move |conn| compute_project_stats(conn, &pid))
+        .run(move |conn| compute_project_stats(conn, &pid, wsd))
         .await
         .map_err(|e| e.to_string())?;
 
-    STATS_CACHE.insert(project_id, (Instant::now(), stats.clone()));
+    STATS_CACHE.insert(cache_key, (Instant::now(), stats.clone()));
     Ok(stats)
 }
 
@@ -125,9 +132,13 @@ pub async fn get_project_stats(
 #[tauri::command]
 pub async fn get_project_trends(
     project_id: String,
+    week_start_day: Option<u8>,
     state: State<'_, AppState>,
 ) -> Result<ProjectTrends, String> {
-    if let Some(entry) = TRENDS_CACHE.get(&project_id) {
+    let wsd = week_start_day.unwrap_or(0);
+    let cache_key = format!("{}:{}", project_id, wsd);
+
+    if let Some(entry) = TRENDS_CACHE.get(&cache_key) {
         let (ts, trends) = &*entry;
         if ts.elapsed().as_secs() < CACHE_TTL_SECS {
             return Ok(trends.clone());
@@ -138,11 +149,11 @@ pub async fn get_project_trends(
     let trends = state
         .db
         .clone()
-        .run(move |conn| compute_project_trends(conn, &pid))
+        .run(move |conn| compute_project_trends(conn, &pid, wsd))
         .await
         .map_err(|e| e.to_string())?;
 
-    TRENDS_CACHE.insert(project_id, (Instant::now(), trends.clone()));
+    TRENDS_CACHE.insert(cache_key, (Instant::now(), trends.clone()));
     Ok(trends)
 }
 
