@@ -168,7 +168,8 @@ pub(crate) fn query_eme(
         SELECT
             t.id,
             COALESCE(s.step_count,   0) AS step_count,
-            COALESCE(r.review_count, 0) AS review_cycles
+            COALESCE(r.review_count, 0) AS review_cycles,
+            date(t.updated_at)          AS merged_date
         FROM tasks t
         LEFT JOIN (
             SELECT task_id, COUNT(*) AS step_count
@@ -183,6 +184,7 @@ pub(crate) fn query_eme(
         WHERE t.project_id = ?1
           AND t.internal_status = 'merged'
           AND t.archived_at IS NULL
+        ORDER BY t.updated_at
     ";
 
     let mut stmt = conn
@@ -193,11 +195,12 @@ pub(crate) fn query_eme(
         .query_map(params![project_id], |row| {
             let step_count: i64 = row.get(1)?;
             let review_cycles: i64 = row.get(2)?;
-            Ok((step_count, review_cycles))
+            let merged_date: Option<String> = row.get(3)?;
+            Ok((step_count, review_cycles, merged_date))
         })
         .map_err(|e| AppError::Database(e.to_string()))?;
 
-    let mut task_rows: Vec<(i64, i64)> = Vec::new();
+    let mut task_rows: Vec<(i64, i64, Option<String>)> = Vec::new();
     for row in rows {
         task_rows.push(row.map_err(|e| AppError::Database(e.to_string()))?);
     }
@@ -206,8 +209,11 @@ pub(crate) fn query_eme(
         return Ok(None);
     }
 
-    let (low_total, high_total) = task_rows.iter().fold((0.0f64, 0.0f64), |acc, &(steps, reviews)| {
-        let (_weight, base_hours) = complexity_tier(steps, reviews, config);
+    let earliest = task_rows.first().and_then(|r| r.2.clone());
+    let latest = task_rows.last().and_then(|r| r.2.clone());
+
+    let (low_total, high_total) = task_rows.iter().fold((0.0f64, 0.0f64), |acc, (steps, reviews, _)| {
+        let (_weight, base_hours) = complexity_tier(*steps, *reviews, config);
         let low = base_hours;
         let high = base_hours * config.calendar_factor;
         (acc.0 + low, acc.1 + high)
@@ -217,6 +223,8 @@ pub(crate) fn query_eme(
         low_hours: (low_total * 10.0).round() / 10.0,
         high_hours: (high_total * 10.0).round() / 10.0,
         task_count: task_rows.len() as i64,
+        earliest_task_date: earliest,
+        latest_task_date: latest,
     }))
 }
 

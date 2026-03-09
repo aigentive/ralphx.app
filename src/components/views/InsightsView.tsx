@@ -60,9 +60,22 @@ function exportCSV(trends: ProjectTrends): void {
   downloadFile(csv, `ralphx-insights-${date}.csv`, "text/csv");
 }
 
+/** Terminal/non-pipeline states excluded from cycle time sum */
+const TERMINAL_PHASES = new Set([
+  "merged",
+  "cancelled",
+  "failed",
+  "stopped",
+  "paused",
+  "blocked",
+]);
+
 function getAvgCycleTimeDisplay(stats: ProjectStats): string {
-  if (stats.cycleTimeBreakdown.length === 0) return "—";
-  const total = stats.cycleTimeBreakdown.reduce((sum, p) => sum + p.avgMinutes, 0);
+  const pipelinePhases = stats.cycleTimeBreakdown.filter(
+    (p) => !TERMINAL_PHASES.has(p.phase),
+  );
+  if (pipelinePhases.length === 0) return "—";
+  const total = pipelinePhases.reduce((sum, p) => sum + p.avgMinutes, 0);
   return formatMinutesHuman(total);
 }
 
@@ -167,10 +180,10 @@ export function InsightsView() {
               tooltip="Number of tasks that reached merged status in the last 7 days."
             />
             <StatCard
-              label="Avg Cycle Time"
+              label="Avg Task Duration"
               value={getAvgCycleTimeDisplay(stats)}
-              sub="end-to-end"
-              tooltip="Average time from task creation to merge, measured across pipeline stages (queue, execute, review, merge). Based on state transition history."
+              sub="start to merge"
+              tooltip="Average wall-clock time a task takes from entering the pipeline to merge completion. Includes queue time, AI execution, review, and merge stages. Lower is better — most time is typically spent waiting (queue/escalation), not in active execution."
             />
           </div>
 
@@ -200,11 +213,8 @@ export function InsightsView() {
                 </DetailCard>
                 <DetailCard>
                   <TrendChart
-                    title="Avg Cycle Time (hours)"
-                    data={trends.weeklyCycleTime.map((pt) => ({
-                      ...pt,
-                      value: +(pt.value / 60).toFixed(2),
-                    }))}
+                    title="Avg Cycle Time"
+                    data={trends.weeklyCycleTime}
                     valueFormatter={(v) => formatMinutesHuman(v * 60)}
                   />
                 </DetailCard>
@@ -254,6 +264,8 @@ export function InsightsView() {
               lowHours={stats.eme.lowHours}
               highHours={stats.eme.highHours}
               taskCount={stats.eme.taskCount}
+              earliestTaskDate={stats.eme.earliestTaskDate}
+              latestTaskDate={stats.eme.latestTaskDate}
               projectId={projectId}
             />
           ) : (
