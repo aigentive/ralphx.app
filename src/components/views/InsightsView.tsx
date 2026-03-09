@@ -14,7 +14,7 @@ import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
 import { useProjectStats } from "@/hooks/useProjectStats";
 import { useProjectTrends } from "@/hooks/useProjectTrends";
 import { DetailCard } from "@/components/tasks/detail-views/shared/DetailCard";
-import type { ProjectStats, ProjectTrends } from "@/types/project-stats";
+import type { ProjectStats, ProjectTrends, WeeklyDataPoint } from "@/types/project-stats";
 import {
   formatCSV,
   formatJSONExport,
@@ -58,6 +58,19 @@ function exportCSV(trends: ProjectTrends): void {
   const date = new Date().toISOString().slice(0, 10);
   const csv = formatCSV(trends);
   downloadFile(csv, `ralphx-insights-${date}.csv`, "text/csv");
+}
+
+function isCurrentWeek(weekStart: string): boolean {
+  const now = new Date();
+  const dayOfWeek = now.getUTCDay(); // 0=Sunday
+  const sunday = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - dayOfWeek));
+  return weekStart === sunday.toISOString().slice(0, 10);
+}
+
+function getWeekLabel(data: WeeklyDataPoint[]): string {
+  if (data.length === 0) return "this week";
+  const last = data[data.length - 1]!;
+  return isCurrentWeek(last.weekStart) ? "this week" : "latest";
 }
 
 function getAvgPipelineTimeDisplay(stats: ProjectStats): string {
@@ -189,6 +202,27 @@ function InsightsContent({
   hasEnoughForTrends: boolean;
   showEme: boolean;
 }) {
+  const throughputWeekLabel = useMemo(() => getWeekLabel(trends.weeklyThroughput), [trends.weeklyThroughput]);
+  const isThisWeek = throughputWeekLabel === "this week";
+
+  const throughputHeader = useMemo(() => {
+    if (trends.weeklyThroughput.length === 0) return undefined;
+    const last = trends.weeklyThroughput[trends.weeklyThroughput.length - 1]!;
+    return `${last.value} ${getWeekLabel(trends.weeklyThroughput)}`;
+  }, [trends.weeklyThroughput]);
+
+  const cycleTimeHeader = useMemo(() => {
+    if (trends.weeklyCycleTime.length === 0) return undefined;
+    const last = trends.weeklyCycleTime[trends.weeklyCycleTime.length - 1]!;
+    return `${formatMinutesHuman(last.value * 60)} ${getWeekLabel(trends.weeklyCycleTime)}`;
+  }, [trends.weeklyCycleTime]);
+
+  const successRateHeader = useMemo(() => {
+    if (trends.weeklySuccessRate.length === 0) return undefined;
+    const last = trends.weeklySuccessRate[trends.weeklySuccessRate.length - 1]!;
+    return `${Math.round(last.value * 100)}% ${getWeekLabel(trends.weeklySuccessRate)}`;
+  }, [trends.weeklySuccessRate]);
+
   const showSuccessRateTrend = useMemo(() => {
     if (!hasEnoughForTrends) return false;
     const rates = trends.weeklySuccessRate.map((d) => d.value);
@@ -254,10 +288,16 @@ function InsightsContent({
             {/* Stat cards — reordered: Tasks → Success → Cycle Time → Review */}
             <div className="grid grid-cols-2 min-[800px]:grid-cols-4 gap-3">
               <StatCard
-                label="Tasks This Week"
-                value={String(stats.tasksCompletedThisWeek)}
-                sub={`${stats.tasksCompletedToday} tasks today`}
-                tooltip="Number of tasks that reached merged status in the last 7 days."
+                label={isThisWeek ? "Tasks This Week" : "Tasks (latest week)"}
+                value={String(
+                  trends.weeklyThroughput.length > 0
+                    ? trends.weeklyThroughput[trends.weeklyThroughput.length - 1]!.value
+                    : stats.tasksCompletedThisWeek
+                )}
+                sub={`${stats.tasksCompletedThisWeek} last 7 days · ${stats.tasksCompletedToday} today`}
+                tooltip={isThisWeek
+                  ? "Tasks merged this calendar week (Sun–Sat, UTC). The 'last 7 days' count uses a rolling window and may differ."
+                  : "Tasks merged in the most recent week with data. No tasks merged in the current calendar week yet."}
               />
               <StatCard
                 label="Agent Success Rate"
@@ -306,9 +346,7 @@ function InsightsContent({
                     <TrendChart
                       title="Weekly Throughput (tasks)"
                       data={trends.weeklyThroughput}
-                      {...(trends.weeklyThroughput.length > 0 && {
-                        currentValue: `${trends.weeklyThroughput[trends.weeklyThroughput.length - 1]!.value} this week`,
-                      })}
+                      {...(throughputHeader !== undefined && { currentValue: throughputHeader })}
                       timeWindow="Last 12 months"
                     />
                   </DetailCard>
@@ -321,9 +359,7 @@ function InsightsContent({
                       secondaryData={trends.weeklyPipelineCycleTime}
                       secondaryLabel="Pipeline (start → merge)"
                       secondaryValueFormatter={(v) => formatMinutesHuman(v * 60)}
-                      {...(trends.weeklyCycleTime.length > 0 && {
-                        currentValue: formatMinutesHuman(trends.weeklyCycleTime[trends.weeklyCycleTime.length - 1]!.value * 60),
-                      })}
+                      {...(cycleTimeHeader !== undefined && { currentValue: cycleTimeHeader })}
                       timeWindow="Last 12 months"
                     />
                   </DetailCard>
@@ -335,9 +371,7 @@ function InsightsContent({
                       data={trends.weeklySuccessRate}
                       valueFormatter={(v) => `${Math.round(v * 100)}%`}
                       color="#34d399"
-                      {...(trends.weeklySuccessRate.length > 0 && {
-                        currentValue: `${Math.round(trends.weeklySuccessRate[trends.weeklySuccessRate.length - 1]!.value * 100)}%`,
-                      })}
+                      {...(successRateHeader !== undefined && { currentValue: successRateHeader })}
                       timeWindow="Last 12 months"
                     />
                   </DetailCard>
