@@ -348,7 +348,7 @@ fn test_eme_simple_tier_5_tasks() {
     create_schema(&conn);
     insert_project(&conn, "proj1");
 
-    // 5 merged tasks, each with 1 step, 0 reviews → Simple tier (weight 1.0, base 2h)
+    // 5 merged tasks, each with 1 step, 0 reviews → Simple tier (base 1h, calendar 1.3)
     for i in 1..=5 {
         let task_id = format!("t{i}");
         insert_task(&conn, &task_id, "proj1", "merged");
@@ -359,9 +359,9 @@ fn test_eme_simple_tier_5_tasks() {
     let eme = stats.eme.expect("EME should be present for 5+ tasks");
 
     assert_eq!(eme.task_count, 5);
-    // Simple: 1.0 × 2.0 = 2.0 low, × 1.5 = 3.0 high per task → 5 tasks: 10.0 / 15.0
-    assert!((eme.low_hours - 10.0).abs() < 0.1, "low_hours={}", eme.low_hours);
-    assert!((eme.high_hours - 15.0).abs() < 0.1, "high_hours={}", eme.high_hours);
+    // Simple: base=1.0 low, ×1.3 = 1.3 high per task → 5 tasks: 5.0 / 6.5
+    assert!((eme.low_hours - 5.0).abs() < 0.1, "low_hours={}", eme.low_hours);
+    assert!((eme.high_hours - 6.5).abs() < 0.1, "high_hours={}", eme.high_hours);
 }
 
 #[test]
@@ -370,24 +370,24 @@ fn test_eme_mixed_tiers() {
     create_schema(&conn);
     insert_project(&conn, "proj1");
 
-    // Simple task (2 steps, 0 reviews): low=2, high=3
+    // Simple task (2 steps, 0 reviews): low=1, high=1.3
     insert_task(&conn, "t1", "proj1", "merged");
     insert_step(&conn, "s1a", "t1");
     insert_step(&conn, "s1b", "t1");
 
-    // Medium task (5 steps, 0 reviews): low=10, high=15
+    // Medium task (5 steps, 0 reviews): low=2, high=2.6
     insert_task(&conn, "t2", "proj1", "merged");
     for j in 1..=5 {
         insert_step(&conn, &format!("s2{j}"), "t2");
     }
 
-    // Complex task (8 steps, 0 reviews): low=40, high=60
+    // Complex task (8 steps, 0 reviews): low=4, high=5.2
     insert_task(&conn, "t3", "proj1", "merged");
     for j in 1..=8 {
         insert_step(&conn, &format!("s3{j}"), "t3");
     }
 
-    // 4 simple tasks to reach the 5-task threshold
+    // 3 simple tasks to reach the 5-task threshold
     for i in 4..=6 {
         let task_id = format!("t{i}");
         insert_task(&conn, &task_id, "proj1", "merged");
@@ -396,13 +396,13 @@ fn test_eme_mixed_tiers() {
     let stats = compute_project_stats(&conn, "proj1").unwrap();
     let eme = stats.eme.expect("EME should be present");
 
-    // Weight is for classification only, low = base_hours, high = base_hours × calendar_factor
-    // t1 simple: 2/3, t2 medium: 4/6, t3 complex: 8/12, t4-t6 simple: 2/3 each
-    // total low = 2 + 4 + 8 + 2 + 2 + 2 = 20.0
-    // total high = 3 + 6 + 12 + 3 + 3 + 3 = 30.0
+    // Senior defaults: simple=1.0, medium=2.0, complex=4.0, calendar=1.3
+    // t1 simple: 1/1.3, t2 medium: 2/2.6, t3 complex: 4/5.2, t4-t6 simple: 1/1.3 each
+    // total low = 1 + 2 + 4 + 1 + 1 + 1 = 10.0
+    // total high = 1.3 + 2.6 + 5.2 + 1.3 + 1.3 + 1.3 = 13.0
     assert_eq!(eme.task_count, 6);
-    assert!((eme.low_hours - 20.0).abs() < 0.5, "low_hours={}", eme.low_hours);
-    assert!((eme.high_hours - 30.0).abs() < 0.5, "high_hours={}", eme.high_hours);
+    assert!((eme.low_hours - 10.0).abs() < 0.5, "low_hours={}", eme.low_hours);
+    assert!((eme.high_hours - 13.0).abs() < 0.5, "high_hours={}", eme.high_hours);
 }
 
 #[test]
@@ -422,10 +422,10 @@ fn test_eme_review_cycle_bumps_tier() {
     let stats = compute_project_stats(&conn, "proj1").unwrap();
     let eme = stats.eme.expect("EME present");
 
-    // Weight is for classification only, low = base_hours, high = base_hours × calendar_factor
-    // Medium: base_hours=4.0, low=4.0, high=4.0×1.5=6.0 per task → 5×: 20/30
-    assert!((eme.low_hours - 20.0).abs() < 0.5, "low_hours={}", eme.low_hours);
-    assert!((eme.high_hours - 30.0).abs() < 0.5, "high_hours={}", eme.high_hours);
+    // Senior defaults: Medium base=2.0, calendar=1.3
+    // low=2.0, high=2.0×1.3=2.6 per task → 5×: 10.0/13.0
+    assert!((eme.low_hours - 10.0).abs() < 0.5, "low_hours={}", eme.low_hours);
+    assert!((eme.high_hours - 13.0).abs() < 0.5, "high_hours={}", eme.high_hours);
 }
 
 #[test]
@@ -500,9 +500,9 @@ fn test_eme_uses_default_config_when_no_override() {
     let stats = compute_project_stats(&conn, "proj1").unwrap();
     let eme = stats.eme.expect("EME should be present");
 
-    // Default: Simple 1.0 × 2.0 = 2.0 low, ×1.5 = 3.0 high per task → 5×: 10.0/15.0
-    assert!((eme.low_hours - 10.0).abs() < 0.1);
-    assert!((eme.high_hours - 15.0).abs() < 0.1);
+    // Senior default: Simple base=1.0, calendar=1.3 → low=1.0, high=1.3 per task → 5×: 5.0/6.5
+    assert!((eme.low_hours - 5.0).abs() < 0.1);
+    assert!((eme.high_hours - 6.5).abs() < 0.1);
 }
 
 #[test]
@@ -537,9 +537,9 @@ fn test_eme_calendar_factor_override() {
     create_schema(&conn);
     insert_project(&conn, "proj1");
 
-    // Override only calendar_factor (keep base hours at defaults)
+    // Override only calendar_factor (keep base hours at Senior defaults, but calendar=2.0)
     conn.execute(
-        "INSERT INTO project_metrics_config (project_id, simple_base_hours, medium_base_hours, complex_base_hours, calendar_factor) VALUES ('proj1', 2.0, 4.0, 8.0, 2.0)",
+        "INSERT INTO project_metrics_config (project_id, simple_base_hours, medium_base_hours, complex_base_hours, calendar_factor) VALUES ('proj1', 1.0, 2.0, 4.0, 2.0)",
         [],
     ).unwrap();
 
@@ -552,9 +552,9 @@ fn test_eme_calendar_factor_override() {
     let stats = compute_project_stats(&conn, "proj1").unwrap();
     let eme = stats.eme.expect("EME present");
 
-    // Simple 1.0 × 2.0 = 2.0 low, ×2.0 = 4.0 high per task → 5×: 10.0/20.0
-    assert!((eme.low_hours - 10.0).abs() < 0.1, "low_hours={}", eme.low_hours);
-    assert!((eme.high_hours - 20.0).abs() < 0.1, "high_hours={}", eme.high_hours);
+    // Simple base=1.0 low, ×2.0 = 2.0 high per task → 5×: 5.0/10.0
+    assert!((eme.low_hours - 5.0).abs() < 0.1, "low_hours={}", eme.low_hours);
+    assert!((eme.high_hours - 10.0).abs() < 0.1, "high_hours={}", eme.high_hours);
 }
 
 #[test]
@@ -588,9 +588,9 @@ fn test_different_projects_use_independent_configs() {
     assert!((eme1.low_hours - 20.0).abs() < 0.1, "proj1 low={}", eme1.low_hours);
     assert!((eme1.high_hours - 20.0).abs() < 0.1, "proj1 high={}", eme1.high_hours);
 
-    // proj2: Default Simple 1.0 × 2.0 = 2.0 low, ×1.5 = 3.0 high → 5×: 10.0/15.0
-    assert!((eme2.low_hours - 10.0).abs() < 0.1, "proj2 low={}", eme2.low_hours);
-    assert!((eme2.high_hours - 15.0).abs() < 0.1, "proj2 high={}", eme2.high_hours);
+    // proj2: Senior default Simple base=1.0, calendar=1.3 → low=1.0, high=1.3 per task → 5×: 5.0/6.5
+    assert!((eme2.low_hours - 5.0).abs() < 0.1, "proj2 low={}", eme2.low_hours);
+    assert!((eme2.high_hours - 6.5).abs() < 0.1, "proj2 high={}", eme2.high_hours);
 }
 
 // ─── Cache invalidation ───────────────────────────────────────────────────────

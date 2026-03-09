@@ -97,8 +97,8 @@ export const MetricsConfigSchema = z.object({
 export type MetricsConfig = z.infer<typeof MetricsConfigSchema>;
 
 export const DEFAULT_METRICS_CONFIG: MetricsConfig = {
-  simpleBaseHours: 2,
-  mediumBaseHours: 4,
-  complexBaseHours: 8,
-  calendarFactor: 1.5,
+  simpleBaseHours: 1,
+  mediumBaseHours: 2,
+  complexBaseHours: 4,
+  calendarFactor: 1.3,
 };
