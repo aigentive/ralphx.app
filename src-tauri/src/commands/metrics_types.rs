@@ -52,6 +52,10 @@ pub struct ProjectStats {
     /// Per-phase averages over the last 90 days (merged tasks only)
     pub cycle_time_breakdown: Vec<CycleTimePhase>,
 
+    // ── Column dwell time ──────────────────────────────────────────────────
+    /// Average time tasks spend in each Kanban column (last 90 days, merged tasks only)
+    pub column_dwell_times: Vec<ColumnDwellTime>,
+
     // ── EME (Estimated Manual Effort) ────────────────────────────────────────
     /// None when < 5 merged tasks exist (insufficient sample)
     pub eme: Option<EmeEstimate>,
@@ -79,6 +83,20 @@ pub struct ProjectTrends {
     pub weekly_cycle_time: Vec<WeeklyDataPoint>,
     /// Percentage of merged vs total terminal tasks per week, last 12 weeks
     pub weekly_success_rate: Vec<WeeklyDataPoint>,
+}
+
+/// Average dwell time per Kanban column, derived from task_state_history transitions.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ColumnDwellTime {
+    /// Kanban column id (e.g. "ready", "in_progress", "in_review", "merge", "done")
+    pub column_id: String,
+    /// Human-readable column name
+    pub column_name: String,
+    /// Average minutes tasks spent in this column
+    pub avg_minutes: f64,
+    /// Number of task-transitions that contributed to this average
+    pub sample_size: i64,
 }
 
 /// Per-column task distribution metric for the Kanban board.

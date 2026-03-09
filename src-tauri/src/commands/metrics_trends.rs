@@ -16,7 +16,7 @@ pub(crate) fn query_weekly_throughput(
 ) -> AppResult<Vec<WeeklyDataPoint>> {
     let sql = "
         WITH RECURSIVE weeks(week_start) AS (
-          SELECT date('now', 'weekday 0', '-84 days')
+          SELECT date('now', 'weekday 0', '-365 days')
           UNION ALL
           SELECT date(week_start, '+7 days')
           FROM weeks WHERE week_start < date('now', 'weekday 0')
@@ -60,14 +60,37 @@ pub(crate) fn query_weekly_cycle_time(
     project_id: &str,
 ) -> AppResult<Vec<WeeklyDataPoint>> {
     let sql = "
+        WITH merged_tasks AS (
+            SELECT id, updated_at FROM tasks
+            WHERE project_id = ?1
+              AND internal_status = 'merged'
+              AND updated_at >= datetime('now', '-365 days')
+        ),
+        transitions AS (
+            SELECT
+                h.task_id,
+                h.to_status,
+                h.created_at,
+                LAG(h.created_at) OVER (PARTITION BY h.task_id ORDER BY h.created_at) AS prev_at,
+                LAG(h.to_status)  OVER (PARTITION BY h.task_id ORDER BY h.created_at) AS prev_status
+            FROM task_state_history h
+            WHERE h.task_id IN (SELECT id FROM merged_tasks)
+        ),
+        task_exec_hours AS (
+            SELECT
+                tr.task_id,
+                SUM((julianday(tr.created_at) - julianday(tr.prev_at)) * 24.0) AS exec_hours
+            FROM transitions tr
+            WHERE tr.prev_at IS NOT NULL
+              AND tr.prev_status IN ('executing', 're_executing')
+            GROUP BY tr.task_id
+        )
         SELECT
-          date(t.updated_at, 'weekday 0', '-6 days') as week_start,
-          AVG((julianday(t.updated_at) - julianday(t.created_at)) * 24) as avg_hours,
+          date(mt.updated_at, 'weekday 0', '-6 days') as week_start,
+          AVG(te.exec_hours) as avg_hours,
           COUNT(*) as sample_size
-        FROM tasks t
-        WHERE t.project_id = ?1
-          AND t.internal_status = 'merged'
-          AND t.updated_at >= datetime('now', '-84 days')
+        FROM merged_tasks mt
+        JOIN task_exec_hours te ON te.task_id = mt.id
         GROUP BY week_start
         ORDER BY week_start
     ";
@@ -102,12 +125,12 @@ pub(crate) fn query_weekly_success_rate(
         SELECT
           date(t.updated_at, 'weekday 0', '-6 days') as week_start,
           CAST(SUM(CASE WHEN t.internal_status = 'merged' THEN 1 ELSE 0 END) AS FLOAT) /
-            NULLIF(COUNT(*), 0) * 100 as success_rate,
+            NULLIF(COUNT(*), 0) as success_rate,
           COUNT(*) as sample_size
         FROM tasks t
         WHERE t.project_id = ?1
           AND t.internal_status IN ('merged', 'failed', 'cancelled', 'stopped')
-          AND t.updated_at >= datetime('now', '-84 days')
+          AND t.updated_at >= datetime('now', '-365 days')
         GROUP BY week_start
         ORDER BY week_start
     ";

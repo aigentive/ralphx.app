@@ -134,6 +134,7 @@ fn test_zero_tasks_returns_zero_metrics() {
     assert_eq!(stats.review_pass_count, 0);
     assert_eq!(stats.review_total_count, 0);
     assert!(stats.cycle_time_breakdown.is_empty());
+    assert!(stats.column_dwell_times.is_empty());
     assert!(stats.eme.is_none());
 }
 
@@ -395,12 +396,13 @@ fn test_eme_mixed_tiers() {
     let stats = compute_project_stats(&conn, "proj1").unwrap();
     let eme = stats.eme.expect("EME should be present");
 
-    // t1 simple: 2/3, t2 medium: 10/15, t3 complex: 40/60, t4-t6 simple: 2/3 each
-    // total low = 2 + 10 + 40 + 2 + 2 + 2 = 58.0
-    // total high = 3 + 15 + 60 + 3 + 3 + 3 = 87.0
+    // Weight is for classification only, low = base_hours, high = base_hours × calendar_factor
+    // t1 simple: 2/3, t2 medium: 4/6, t3 complex: 8/12, t4-t6 simple: 2/3 each
+    // total low = 2 + 4 + 8 + 2 + 2 + 2 = 20.0
+    // total high = 3 + 6 + 12 + 3 + 3 + 3 = 30.0
     assert_eq!(eme.task_count, 6);
-    assert!((eme.low_hours - 58.0).abs() < 0.5, "low_hours={}", eme.low_hours);
-    assert!((eme.high_hours - 87.0).abs() < 0.5, "high_hours={}", eme.high_hours);
+    assert!((eme.low_hours - 20.0).abs() < 0.5, "low_hours={}", eme.low_hours);
+    assert!((eme.high_hours - 30.0).abs() < 0.5, "high_hours={}", eme.high_hours);
 }
 
 #[test]
@@ -420,9 +422,10 @@ fn test_eme_review_cycle_bumps_tier() {
     let stats = compute_project_stats(&conn, "proj1").unwrap();
     let eme = stats.eme.expect("EME present");
 
-    // Medium: 2.5 × 4.0 = 10.0 low, × 1.5 = 15.0 high per task → 5×: 50/75
-    assert!((eme.low_hours - 50.0).abs() < 0.5, "low_hours={}", eme.low_hours);
-    assert!((eme.high_hours - 75.0).abs() < 0.5, "high_hours={}", eme.high_hours);
+    // Weight is for classification only, low = base_hours, high = base_hours × calendar_factor
+    // Medium: base_hours=4.0, low=4.0, high=4.0×1.5=6.0 per task → 5×: 20/30
+    assert!((eme.low_hours - 20.0).abs() < 0.5, "low_hours={}", eme.low_hours);
+    assert!((eme.high_hours - 30.0).abs() < 0.5, "high_hours={}", eme.high_hours);
 }
 
 #[test]
@@ -610,6 +613,7 @@ fn test_invalidate_project_stats_cache_removes_entry() {
         review_pass_count: 0,
         review_total_count: 0,
         cycle_time_breakdown: vec![],
+        column_dwell_times: vec![],
         eme: None,
     };
     STATS_CACHE.insert(project_id.to_string(), (Instant::now(), fake_stats));
@@ -802,4 +806,87 @@ fn test_task_metrics_execution_minutes() {
         "expected ~30 execution_minutes, got {}",
         metrics.execution_minutes
     );
+}
+
+// ─── Column dwell time ───────────────────────────────────────────────────────
+
+#[test]
+fn test_column_dwell_times_empty_project() {
+    let conn = Connection::open_in_memory().unwrap();
+    create_schema(&conn);
+    insert_project(&conn, "proj1");
+
+    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    assert!(stats.column_dwell_times.is_empty());
+}
+
+#[test]
+fn test_column_dwell_times_maps_states_to_columns() {
+    let conn = Connection::open_in_memory().unwrap();
+    create_schema(&conn);
+    insert_project(&conn, "proj1");
+
+    // One merged task with known transitions: ready(1h) → executing(2h) → pending_review(30m) → merged
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, internal_status, updated_at)
+         VALUES ('t1', 'proj1', 'merged', datetime('now', '-1 day'))",
+        [],
+    )
+    .unwrap();
+
+    insert_history(&conn, "dw1", "t1", "ready", "2026-01-01T10:00:00+00:00");
+    insert_history(&conn, "dw2", "t1", "executing", "2026-01-01T11:00:00+00:00");
+    insert_history(&conn, "dw3", "t1", "pending_review", "2026-01-01T13:00:00+00:00");
+    insert_history(&conn, "dw4", "t1", "merged", "2026-01-01T13:30:00+00:00");
+
+    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let dwell = &stats.column_dwell_times;
+
+    // Should have: ready(60m), in_progress(120m), in_review(30m)
+    assert_eq!(dwell.len(), 3, "expected 3 columns with dwell times");
+
+    let ready = dwell.iter().find(|d| d.column_id == "ready").expect("ready column");
+    assert!((ready.avg_minutes - 60.0).abs() < 1.0, "ready avg={}", ready.avg_minutes);
+
+    let in_progress = dwell.iter().find(|d| d.column_id == "in_progress").expect("in_progress column");
+    assert!((in_progress.avg_minutes - 120.0).abs() < 1.0, "in_progress avg={}", in_progress.avg_minutes);
+
+    let in_review = dwell.iter().find(|d| d.column_id == "in_review").expect("in_review column");
+    assert!((in_review.avg_minutes - 30.0).abs() < 1.0, "in_review avg={}", in_review.avg_minutes);
+}
+
+#[test]
+fn test_column_dwell_times_averages_across_tasks() {
+    let conn = Connection::open_in_memory().unwrap();
+    create_schema(&conn);
+    insert_project(&conn, "proj1");
+
+    // Task 1: ready for 60m
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, internal_status, updated_at)
+         VALUES ('t1', 'proj1', 'merged', datetime('now', '-1 day'))",
+        [],
+    )
+    .unwrap();
+    insert_history(&conn, "a1", "t1", "ready", "2026-01-01T10:00:00+00:00");
+    insert_history(&conn, "a2", "t1", "executing", "2026-01-01T11:00:00+00:00");
+    insert_history(&conn, "a3", "t1", "merged", "2026-01-01T12:00:00+00:00");
+
+    // Task 2: ready for 120m
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, internal_status, updated_at)
+         VALUES ('t2', 'proj1', 'merged', datetime('now', '-1 day'))",
+        [],
+    )
+    .unwrap();
+    insert_history(&conn, "b1", "t2", "ready", "2026-01-02T10:00:00+00:00");
+    insert_history(&conn, "b2", "t2", "executing", "2026-01-02T12:00:00+00:00");
+    insert_history(&conn, "b3", "t2", "merged", "2026-01-02T13:00:00+00:00");
+
+    let stats = compute_project_stats(&conn, "proj1").unwrap();
+    let ready = stats.column_dwell_times.iter().find(|d| d.column_id == "ready").expect("ready");
+
+    // Average of 60m and 120m = 90m
+    assert!((ready.avg_minutes - 90.0).abs() < 1.0, "ready avg={}", ready.avg_minutes);
+    assert_eq!(ready.sample_size, 2);
 }

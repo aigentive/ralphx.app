@@ -28,12 +28,14 @@ import { TaskCard } from "./TaskCard";
 import { useUiStore } from "@/stores/uiStore";
 import { usePlanStore, selectActiveExecutionPlanId } from "@/stores/planStore";
 import { Toggle } from "@/components/ui/toggle";
-import { Archive, GitMerge, FileText, Sparkles } from "lucide-react";
+import { Archive, BarChart2, GitMerge, FileText, Sparkles } from "lucide-react";
 import { api } from "@/lib/tauri";
 import { useTaskSearch } from "@/hooks/useTaskSearch";
 import { TaskSearchBar } from "../TaskSearchBar";
 import { EmptySearchState } from "../EmptySearchState";
 import { PlanSelectorInline } from "@/components/plan/PlanSelectorInline";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { ProjectStatsCard } from "@/components/project/ProjectStatsCard";
 import type { SelectionSource } from "@/api/plan";
 import { infiniteTaskKeys } from "@/hooks/useInfiniteTasksQuery";
 import { defaultWorkflow, type WorkflowColumn } from "@/types/workflow";
@@ -94,6 +96,7 @@ export function TaskBoard({
   const setShowArchived = useUiStore((s) => s.setShowArchived);
   const showMergeTasks = useUiStore((s) => s.showMergeTasks);
   const setShowMergeTasks = useUiStore((s) => s.setShowMergeTasks);
+  const [isStatsOpen, setIsStatsOpen] = useState(false);
   const boardSearchQuery = useUiStore((s) => s.boardSearchQuery);
   const setBoardSearchQuery = useUiStore((s) => s.setBoardSearchQuery);
   const kanbanChatVisible = useUiStore((s) => s.chatVisibleByView.kanban);
@@ -512,6 +515,21 @@ export function TaskBoard({
               <span>Merge ({mergeTaskCount})</span>
             </Toggle>
           )}
+
+          {/* Project stats popover */}
+          <Popover open={isStatsOpen} onOpenChange={setIsStatsOpen}>
+            <PopoverTrigger asChild>
+              <button
+                className="ml-auto flex items-center justify-center w-7 h-7 rounded text-muted-foreground hover:text-foreground hover:bg-white/5 transition-colors"
+                aria-label="Project stats"
+              >
+                <BarChart2 className="w-4 h-4" />
+              </button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-96 p-0 border-white/10 bg-transparent shadow-xl">
+              <ProjectStatsCard projectId={projectId} />
+            </PopoverContent>
+          </Popover>
         </div>
 
         {/* TaskBoard container - macOS Tahoe: clean, flat, minimal */}
