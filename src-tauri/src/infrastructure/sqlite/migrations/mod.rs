@@ -80,6 +80,7 @@ mod v56_api_keys;
 mod v57_plan_verification;
 mod v58_metrics_index;
 mod v59_project_metrics_config;
+mod v60_metrics_working_days;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
@@ -172,9 +173,11 @@ mod v57_plan_verification_tests;
 mod v58_metrics_index_tests;
 #[cfg(test)]
 mod v59_project_metrics_config_tests;
+#[cfg(test)]
+mod v60_metrics_working_days_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 59;
+pub const SCHEMA_VERSION: i32 = 60;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -483,6 +486,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 59,
         name: "project_metrics_config",
         migrate: v59_project_metrics_config::migrate,
+    },
+    Migration {
+        version: 60,
+        name: "metrics_working_days",
+        migrate: v60_metrics_working_days::migrate,
     },
 ];
 

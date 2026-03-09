@@ -55,6 +55,7 @@ pub struct MetricsConfig {
     pub medium_base_hours: f64,
     pub complex_base_hours: f64,
     pub calendar_factor: f64,
+    pub working_days_per_week: i64,
 }
 
 impl Default for MetricsConfig {
@@ -64,6 +65,7 @@ impl Default for MetricsConfig {
             medium_base_hours: 2.0,
             complex_base_hours: 4.0,
             calendar_factor: 1.3,
+            working_days_per_week: 5,
         }
     }
 }
@@ -229,20 +231,22 @@ pub async fn save_metrics_config(
         .run(move |conn| {
             conn.execute(
                 "INSERT INTO project_metrics_config
-                     (project_id, simple_base_hours, medium_base_hours, complex_base_hours, calendar_factor, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
+                     (project_id, simple_base_hours, medium_base_hours, complex_base_hours, calendar_factor, working_days_per_week, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
                  ON CONFLICT(project_id) DO UPDATE SET
-                     simple_base_hours  = excluded.simple_base_hours,
-                     medium_base_hours  = excluded.medium_base_hours,
-                     complex_base_hours = excluded.complex_base_hours,
-                     calendar_factor    = excluded.calendar_factor,
-                     updated_at         = excluded.updated_at",
+                     simple_base_hours    = excluded.simple_base_hours,
+                     medium_base_hours    = excluded.medium_base_hours,
+                     complex_base_hours   = excluded.complex_base_hours,
+                     calendar_factor      = excluded.calendar_factor,
+                     working_days_per_week = excluded.working_days_per_week,
+                     updated_at           = excluded.updated_at",
                 rusqlite::params![
                     pid,
                     config.simple_base_hours,
                     config.medium_base_hours,
                     config.complex_base_hours,
-                    config.calendar_factor
+                    config.calendar_factor,
+                    config.working_days_per_week
                 ],
             )
             .map(|_| ())
@@ -263,7 +267,7 @@ pub(crate) fn load_metrics_config(
     project_id: &str,
 ) -> crate::error::AppResult<MetricsConfig> {
     let result = conn.query_row(
-        "SELECT simple_base_hours, medium_base_hours, complex_base_hours, calendar_factor
+        "SELECT simple_base_hours, medium_base_hours, complex_base_hours, calendar_factor, working_days_per_week
          FROM project_metrics_config WHERE project_id = ?1",
         rusqlite::params![project_id],
         |row| {
@@ -272,6 +276,7 @@ pub(crate) fn load_metrics_config(
                 medium_base_hours: row.get(1)?,
                 complex_base_hours: row.get(2)?,
                 calendar_factor: row.get(3)?,
+                working_days_per_week: row.get(4)?,
             })
         },
     );

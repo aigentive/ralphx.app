@@ -175,8 +175,20 @@ interface CycleTimeBreakdownProps {
   phases: CycleTimePhase[];
 }
 
+/** Terminal/non-pipeline states excluded from cycle time breakdown */
+const TERMINAL_PHASES = new Set([
+  "merged",
+  "cancelled",
+  "failed",
+  "stopped",
+  "paused",
+  "blocked",
+]);
+
 export function CycleTimeBreakdown({ phases }: CycleTimeBreakdownProps) {
-  const nonZeroPhases = phases.filter((p) => p.avgMinutes >= 1);
+  const nonZeroPhases = phases.filter(
+    (p) => p.avgMinutes >= 1 && !TERMINAL_PHASES.has(p.phase),
+  );
   if (nonZeroPhases.length === 0) return null;
   const maxMinutes = nonZeroPhases.reduce((acc, p) => Math.max(acc, p.avgMinutes), 0);
 
@@ -284,15 +296,18 @@ function generateMarkdown(stats: ProjectStats): string {
   const agentPct = Math.round(stats.agentSuccessRate * 100);
   const reviewPct = Math.round(stats.reviewPassRate * 100);
 
+  const pipelinePhases = stats.cycleTimeBreakdown.filter(
+    (p) => p.avgMinutes >= 1 && !TERMINAL_PHASES.has(p.phase),
+  );
   const cycleTimeLine =
-    stats.cycleTimeBreakdown.length > 0
-      ? stats.cycleTimeBreakdown
+    pipelinePhases.length > 0
+      ? pipelinePhases
           .map((p) => `${p.phase}: ${formatMinutesHuman(p.avgMinutes)}`)
           .join(", ")
       : "No data yet";
 
   const emeSection = stats.eme
-    ? `\n### Estimated Manual Effort\n- **Estimate:** ~${stats.eme.lowHours}–${stats.eme.highHours} hours\n- *Based on task complexity analysis.*\n`
+    ? `\n### Estimated Manual Effort\n- **Estimate:** ~${stats.eme.lowHours}–${stats.eme.highHours} active hours${stats.eme.earliestTaskDate && stats.eme.latestTaskDate ? ` (${stats.eme.earliestTaskDate} to ${stats.eme.latestTaskDate})` : ""}\n- **Tasks analyzed:** ${stats.eme.taskCount}\n- *Based on task complexity analysis. Equivalent manual effort without AI.*\n`
     : "";
 
   return `## Project Stats — ${date}

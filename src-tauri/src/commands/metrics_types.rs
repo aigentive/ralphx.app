@@ -24,6 +24,10 @@ pub struct EmeEstimate {
     pub high_hours: f64,
     /// Number of merged tasks used in the estimate
     pub task_count: i64,
+    /// ISO date of the earliest merged task in the sample
+    pub earliest_task_date: Option<String>,
+    /// ISO date of the most recent merged task in the sample
+    pub latest_task_date: Option<String>,
 }
 
 /// All project metrics returned by the `get_project_stats` command.

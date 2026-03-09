@@ -31,6 +31,8 @@ export const EmeEstimateSchema = z.object({
   lowHours: z.number(),
   highHours: z.number(),
   taskCount: z.number(),
+  earliestTaskDate: z.string().nullable(),
+  latestTaskDate: z.string().nullable(),
 });
 
 export const ColumnDwellTimeSchema = z.object({
@@ -92,6 +94,7 @@ export const MetricsConfigSchema = z.object({
   mediumBaseHours: z.number().min(0.5).max(40),
   complexBaseHours: z.number().min(0.5).max(40),
   calendarFactor: z.number().min(1).max(3),
+  workingDaysPerWeek: z.number().int().min(1).max(7),
 });
 
 export type MetricsConfig = z.infer<typeof MetricsConfigSchema>;
@@ -101,4 +104,5 @@ export const DEFAULT_METRICS_CONFIG: MetricsConfig = {
   mediumBaseHours: 2,
   complexBaseHours: 4,
   calendarFactor: 1.3,
+  workingDaysPerWeek: 5,
 };

@@ -55,12 +55,13 @@ fn create_schema(conn: &Connection) {
         );
 
         CREATE TABLE project_metrics_config (
-            project_id         TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
-            simple_base_hours  REAL NOT NULL DEFAULT 2.0,
-            medium_base_hours  REAL NOT NULL DEFAULT 4.0,
-            complex_base_hours REAL NOT NULL DEFAULT 8.0,
-            calendar_factor    REAL NOT NULL DEFAULT 1.5,
-            updated_at         TEXT
+            project_id            TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+            simple_base_hours     REAL NOT NULL DEFAULT 2.0,
+            medium_base_hours     REAL NOT NULL DEFAULT 4.0,
+            complex_base_hours    REAL NOT NULL DEFAULT 8.0,
+            calendar_factor       REAL NOT NULL DEFAULT 1.5,
+            working_days_per_week INTEGER NOT NULL DEFAULT 5,
+            updated_at            TEXT
         );
         ",
     )
