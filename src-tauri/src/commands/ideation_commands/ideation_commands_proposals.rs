@@ -3,14 +3,15 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 use tauri::{Emitter, State};
 
-use crate::application::AppState;
+use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
 use crate::domain::entities::{
-    BusinessValueFactor, Complexity, ComplexityFactor, CriticalPathFactor, DependencyFactor,
-    DependencyGraph, DependencyGraphEdge, DependencyGraphNode, IdeationSessionId,
-    IdeationSessionStatus, Priority, PriorityAssessment, PriorityAssessmentFactors,
-    ProposalCategory, TaskProposal, TaskProposalId, UserHintFactor,
+    BusinessValueFactor, ComplexityFactor, CriticalPathFactor, DependencyFactor, DependencyGraph,
+    DependencyGraphEdge, DependencyGraphNode, IdeationSessionId, Priority, PriorityAssessment,
+    PriorityAssessmentFactors, ProposalCategory, TaskProposal, TaskProposalId, UserHintFactor,
 };
-use crate::http_server::helpers::{assert_session_mutable, maybe_trigger_dependency_analysis};
+use crate::http_server::helpers::{
+    assert_session_mutable, create_proposal_impl, delete_proposal_impl, update_proposal_impl,
+};
 
 use super::ideation_commands_types::{
     CreateProposalInput, PriorityAssessmentResponse, TaskProposalResponse, UpdateProposalInput,
@@ -28,87 +29,36 @@ pub async fn create_task_proposal(
 ) -> Result<TaskProposalResponse, String> {
     let session_id = IdeationSessionId::from_string(input.session_id);
 
-    // Validate session exists and is active
-    let session = state
-        .ideation_session_repo
-        .get_by_id(&session_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Session not found".to_string())?;
-
-    if session.status != IdeationSessionStatus::Active {
-        return Err("Cannot create proposals in archived or converted sessions".to_string());
-    }
-
-    // Enforce plan artifact requirement
-    let plan_artifact_id = session.plan_artifact_id.as_ref().ok_or_else(|| {
-        "Proposals can only be created when a plan artifact exists for this session. \
-         Use create_plan_artifact first."
-            .to_string()
-    })?;
-
-    // Fetch current artifact version for auto-linking
-    let artifact = state
-        .artifact_repo
-        .get_by_id(plan_artifact_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Plan artifact {} not found", plan_artifact_id))?;
-
-    // Parse category
     let category: ProposalCategory = input
         .category
         .parse()
         .map_err(|_| format!("Invalid category: {}", input.category))?;
-
-    // Parse priority if provided, default to Medium
     let priority: Priority = input
         .priority
         .map(|p| p.parse().unwrap_or(Priority::Medium))
         .unwrap_or(Priority::Medium);
+    let steps = input
+        .steps
+        .map(|s| serde_json::to_string(&s).unwrap_or_default());
+    let acceptance_criteria = input
+        .acceptance_criteria
+        .map(|ac| serde_json::to_string(&ac).unwrap_or_default());
 
-    // Create proposal with auto-linked plan artifact
-    let mut proposal = TaskProposal::new(session_id, &input.title, category, priority);
-    proposal.plan_artifact_id = Some(plan_artifact_id.clone());
-    proposal.plan_version_at_creation = Some(artifact.metadata.version);
+    let options = CreateProposalOptions {
+        title: input.title,
+        description: input.description,
+        category,
+        suggested_priority: priority,
+        steps,
+        acceptance_criteria,
+        estimated_complexity: input.complexity,
+    };
 
-    // Set optional fields
-    if let Some(desc) = input.description {
-        proposal.description = Some(desc);
-    }
-    if let Some(steps) = input.steps {
-        proposal.steps = Some(serde_json::to_string(&steps).unwrap_or_default());
-    }
-    if let Some(criteria) = input.acceptance_criteria {
-        proposal.acceptance_criteria = Some(serde_json::to_string(&criteria).unwrap_or_default());
-    }
-    if let Some(complexity_str) = input.complexity {
-        if let Ok(complexity) = complexity_str.parse::<Complexity>() {
-            proposal.estimated_complexity = complexity;
-        }
-    }
-
-    let created_proposal = state
-        .task_proposal_repo
-        .create(proposal)
+    // Delegates all checks, INSERT, event emission, and dep analysis to shared impl
+    create_proposal_impl(state.inner(), session_id, options)
         .await
-        .map_err(|e| e.to_string())?;
-
-    // Emit event to frontend
-    if let Some(app_handle) = &state.app_handle {
-        let response = TaskProposalResponse::from(created_proposal.clone());
-        let _ = app_handle.emit(
-            "proposal:created",
-            serde_json::json!({
-                "proposal": response
-            }),
-        );
-    }
-
-    // Auto-trigger dependency analysis when we have 2+ proposals
-    maybe_trigger_dependency_analysis(&created_proposal.session_id, state.inner()).await;
-
-    Ok(TaskProposalResponse::from(created_proposal))
+        .map(TaskProposalResponse::from)
+        .map_err(|e| e.to_string())
 }
 
 /// Get a task proposal by ID
@@ -155,121 +105,53 @@ pub async fn update_task_proposal(
 ) -> Result<TaskProposalResponse, String> {
     let proposal_id = TaskProposalId::from_string(id);
 
-    // Get existing proposal
-    let mut proposal = state
-        .task_proposal_repo
-        .get_by_id(&proposal_id)
+    let category = input
+        .category
+        .map(|s| s.parse::<ProposalCategory>())
+        .transpose()
+        .map_err(|_| "Invalid category".to_string())?;
+    let user_priority = input
+        .user_priority
+        .map(|s| s.parse::<Priority>())
+        .transpose()
+        .map_err(|_| "Invalid priority".to_string())?;
+    let steps = input
+        .steps
+        .map(|s| Some(serde_json::to_string(&s).unwrap_or_default()));
+    let acceptance_criteria = input
+        .acceptance_criteria
+        .map(|ac| Some(serde_json::to_string(&ac).unwrap_or_default()));
+
+    let options = UpdateProposalOptions {
+        title: input.title,
+        description: input.description.map(Some),
+        category,
+        steps,
+        acceptance_criteria,
+        user_priority,
+        estimated_complexity: input.complexity,
+        source: UpdateSource::TauriIpc,
+    };
+
+    // Delegates all checks (including assert_session_mutable), UPDATE, event emission,
+    // user_modified tracking, and dep analysis to shared impl
+    update_proposal_impl(state.inner(), &proposal_id, options)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| "Proposal not found".to_string())?;
-
-    // Apply updates
-    if let Some(title) = input.title {
-        proposal.title = title;
-        proposal.user_modified = true;
-    }
-    if let Some(desc) = input.description {
-        proposal.description = Some(desc);
-        proposal.user_modified = true;
-    }
-    if let Some(category_str) = input.category {
-        if let Ok(category) = category_str.parse::<ProposalCategory>() {
-            proposal.category = category;
-            proposal.user_modified = true;
-        }
-    }
-    if let Some(steps) = input.steps {
-        proposal.steps = Some(serde_json::to_string(&steps).unwrap_or_default());
-        proposal.user_modified = true;
-    }
-    if let Some(criteria) = input.acceptance_criteria {
-        proposal.acceptance_criteria = Some(serde_json::to_string(&criteria).unwrap_or_default());
-        proposal.user_modified = true;
-    }
-    if let Some(priority_str) = input.user_priority {
-        if let Ok(priority) = priority_str.parse::<Priority>() {
-            proposal.user_priority = Some(priority);
-            proposal.user_modified = true;
-        }
-    }
-    if let Some(complexity_str) = input.complexity {
-        if let Ok(complexity) = complexity_str.parse::<Complexity>() {
-            proposal.estimated_complexity = complexity;
-            proposal.user_modified = true;
-        }
-    }
-
-    proposal.touch();
-
-    state
-        .task_proposal_repo
-        .update(&proposal)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Emit event to frontend
-    if let Some(app_handle) = &state.app_handle {
-        let response = TaskProposalResponse::from(proposal.clone());
-        let _ = app_handle.emit(
-            "proposal:updated",
-            serde_json::json!({
-                "proposal": response
-            }),
-        );
-    }
-
-    // Auto-trigger dependency analysis when proposals change
-    maybe_trigger_dependency_analysis(&proposal.session_id, state.inner()).await;
-
-    Ok(TaskProposalResponse::from(proposal))
+        .map(TaskProposalResponse::from)
+        .map_err(|e| e.to_string())
 }
 
 /// Delete a task proposal
 #[tauri::command]
 pub async fn delete_task_proposal(id: String, state: State<'_, AppState>) -> Result<(), String> {
-    let proposal_id = TaskProposalId::from_string(id.clone());
+    let proposal_id = TaskProposalId::from_string(id);
 
-    // Get the proposal before deleting (needed for session guard + auto-trigger)
-    let proposal = state
-        .task_proposal_repo
-        .get_by_id(&proposal_id)
+    // Delegates all checks (including assert_session_mutable), DELETE, event emission,
+    // and dep analysis to shared impl
+    delete_proposal_impl(state.inner(), proposal_id)
         .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Proposal {} not found", id))?;
-
-    // Guard: reject mutations on Archived/Accepted sessions
-    let session = state
-        .ideation_session_repo
-        .get_by_id(&proposal.session_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Session {} not found", proposal.session_id))?;
-    assert_session_mutable(&session).map_err(|e| e.to_string())?;
-
-    let session_id = Some(proposal.session_id);
-
-    state
-        .task_proposal_repo
-        .delete(&proposal_id)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Emit event to frontend
-    if let Some(app_handle) = &state.app_handle {
-        let _ = app_handle.emit(
-            "proposal:deleted",
-            serde_json::json!({
-                "proposalId": id
-            }),
-        );
-    }
-
-    // Auto-trigger dependency analysis after deletion (if we still have 2+ proposals)
-    if let Some(sess_id) = session_id {
-        maybe_trigger_dependency_analysis(&sess_id, state.inner()).await;
-    }
-
-    Ok(())
+        .map(|_| ())
+        .map_err(|e| e.to_string())
 }
 
 /// Toggle proposal selection state
@@ -287,6 +169,15 @@ pub async fn toggle_proposal_selection(
         .await
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "Proposal not found".to_string())?;
+
+    // Guard: reject mutations on Archived/Accepted sessions
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&proposal.session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Session {} not found", proposal.session_id))?;
+    assert_session_mutable(&session).map_err(|e| e.to_string())?;
 
     let new_selected = !proposal.selected;
 
@@ -320,6 +211,22 @@ pub async fn set_proposal_selection(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let proposal_id = TaskProposalId::from_string(id);
+
+    // Guard: reject mutations on Archived/Accepted sessions
+    let proposal = state
+        .task_proposal_repo
+        .get_by_id(&proposal_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| "Proposal not found".to_string())?;
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&proposal.session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Session {} not found", proposal.session_id))?;
+    assert_session_mutable(&session).map_err(|e| e.to_string())?;
+
     state
         .task_proposal_repo
         .update_selection(&proposal_id, selected)
@@ -350,6 +257,16 @@ pub async fn reorder_proposals(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let session_id = IdeationSessionId::from_string(session_id.clone());
+
+    // Guard: reject mutations on Archived/Accepted sessions
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Session {} not found", session_id))?;
+    assert_session_mutable(&session).map_err(|e| e.to_string())?;
+
     let proposal_ids: Vec<TaskProposalId> = proposal_ids
         .into_iter()
         .map(TaskProposalId::from_string)

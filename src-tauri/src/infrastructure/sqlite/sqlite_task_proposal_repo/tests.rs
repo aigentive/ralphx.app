@@ -929,6 +929,126 @@ async fn test_clear_created_task_ids_by_session_nullifies_all_in_session() {
     assert!(cleared_p2.created_task_id.is_none());
 }
 
+// ==================== SYNC HELPER TESTS ====================
+
+#[test]
+fn test_create_sync_inserts_and_returns_proposal() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    let session_id = IdeationSessionId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_session(&conn, &session_id, &project_id);
+
+    let proposal = create_test_proposal(&session_id, "Sync Create");
+    let result = SqliteTaskProposalRepository::create_sync(&conn, proposal.clone());
+
+    assert!(result.is_ok());
+    let created = result.unwrap();
+    assert_eq!(created.id, proposal.id);
+    assert_eq!(created.title, "Sync Create");
+}
+
+#[test]
+fn test_count_by_session_sync_returns_correct_count() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    let session_id = IdeationSessionId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_session(&conn, &session_id, &project_id);
+
+    let p1 = create_test_proposal(&session_id, "One");
+    let p2 = create_test_proposal(&session_id, "Two");
+    SqliteTaskProposalRepository::create_sync(&conn, p1).unwrap();
+    SqliteTaskProposalRepository::create_sync(&conn, p2).unwrap();
+
+    let count = SqliteTaskProposalRepository::count_by_session_sync(&conn, session_id.as_str());
+    assert!(count.is_ok());
+    assert_eq!(count.unwrap(), 2);
+}
+
+#[test]
+fn test_count_by_session_sync_returns_zero_when_empty() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    let session_id = IdeationSessionId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_session(&conn, &session_id, &project_id);
+
+    let count = SqliteTaskProposalRepository::count_by_session_sync(&conn, session_id.as_str());
+    assert!(count.is_ok());
+    assert_eq!(count.unwrap(), 0);
+}
+
+#[test]
+fn test_update_sync_modifies_proposal_and_returns_updated() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    let session_id = IdeationSessionId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_session(&conn, &session_id, &project_id);
+
+    let proposal = create_test_proposal(&session_id, "Before Update");
+    SqliteTaskProposalRepository::create_sync(&conn, proposal.clone()).unwrap();
+
+    let mut updated = proposal.clone();
+    updated.title = "After Update".to_string();
+    let result = SqliteTaskProposalRepository::update_sync(&conn, &updated);
+
+    assert!(result.is_ok());
+    let returned = result.unwrap();
+    assert_eq!(returned.title, "After Update");
+    // updated_at should be refreshed by update_sync
+    assert!(returned.updated_at >= proposal.updated_at);
+}
+
+#[test]
+fn test_delete_sync_removes_proposal_scoped_to_session() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    let session_id = IdeationSessionId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_session(&conn, &session_id, &project_id);
+
+    let proposal = create_test_proposal(&session_id, "To Delete Sync");
+    SqliteTaskProposalRepository::create_sync(&conn, proposal.clone()).unwrap();
+
+    let result = SqliteTaskProposalRepository::delete_sync(
+        &conn,
+        proposal.id.as_str(),
+        session_id.as_str(),
+    );
+    assert!(result.is_ok());
+
+    // Verify gone
+    let count = SqliteTaskProposalRepository::count_by_session_sync(&conn, session_id.as_str()).unwrap();
+    assert_eq!(count, 0);
+}
+
+#[test]
+fn test_delete_sync_with_wrong_session_is_noop() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    let session_id = IdeationSessionId::new();
+    let other_session = IdeationSessionId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    create_test_session(&conn, &session_id, &project_id);
+
+    let proposal = create_test_proposal(&session_id, "Wrong Session Delete");
+    SqliteTaskProposalRepository::create_sync(&conn, proposal.clone()).unwrap();
+
+    // Delete with wrong session_id — should not remove the row
+    let result = SqliteTaskProposalRepository::delete_sync(
+        &conn,
+        proposal.id.as_str(),
+        other_session.as_str(),
+    );
+    assert!(result.is_ok()); // no error, just no-op
+
+    // Row still exists
+    let count = SqliteTaskProposalRepository::count_by_session_sync(&conn, session_id.as_str()).unwrap();
+    assert_eq!(count, 1);
+}
+
 #[tokio::test]
 async fn test_clear_created_task_ids_by_session_only_affects_target_session() {
     let conn = setup_test_db();

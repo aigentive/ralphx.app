@@ -16,13 +16,12 @@ fn json_error(status: StatusCode, error: impl Into<String>) -> JsonError {
     (status, Json(serde_json::json!({ "error": error.into() })))
 }
 
-use crate::application::{CreateProposalOptions, UpdateProposalOptions};
-use crate::commands::ideation_commands::TaskProposalResponse;
+use crate::application::{CreateProposalOptions, UpdateProposalOptions, UpdateSource};
 use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
 use crate::domain::services::emit_verification_status_changed;
 
 use super::super::helpers::{
-    create_proposal_impl, maybe_trigger_dependency_analysis, parse_category, parse_priority,
+    create_proposal_impl, delete_proposal_impl, parse_category, parse_priority,
     update_proposal_impl,
 };
 use super::super::types::{
@@ -91,9 +90,10 @@ pub async fn create_task_proposal(
         suggested_priority: priority,
         steps,
         acceptance_criteria,
+        estimated_complexity: None,
     };
 
-    // Create proposal using IdeationService logic
+    // Create proposal — events and dep analysis emitted inside create_proposal_impl()
     let session_id_str = session_id.as_str().to_string();
     let proposal = create_proposal_impl(&state.app_state, session_id, options)
         .await
@@ -102,25 +102,13 @@ pub async fn create_task_proposal(
                 "Failed to create proposal for session {}: {}",
                 session_id_str, e
             );
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to create proposal: {}", e),
-            )
+            let status = match &e {
+                crate::error::AppError::Validation(_) => StatusCode::BAD_REQUEST,
+                crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            json_error(status, e.to_string())
         })?;
-
-    // Emit event for real-time UI update
-    if let Some(app_handle) = &state.app_state.app_handle {
-        let response = TaskProposalResponse::from(proposal.clone());
-        let _ = app_handle.emit(
-            "proposal:created",
-            serde_json::json!({
-                "proposal": response
-            }),
-        );
-    }
-
-    // Auto-trigger dependency analysis when we have 2+ proposals
-    maybe_trigger_dependency_analysis(&proposal.session_id, &state.app_state).await;
 
     Ok(Json(ProposalResponse::from(proposal)))
 }
@@ -186,31 +174,22 @@ pub async fn update_task_proposal(
         steps: steps.map(Some),
         acceptance_criteria: acceptance_criteria.map(Some),
         user_priority,
+        estimated_complexity: None,
+        source: UpdateSource::Api,
     };
 
+    // Update proposal — events and dep analysis emitted inside update_proposal_impl()
     let updated = update_proposal_impl(&state.app_state, &proposal_id, options)
         .await
         .map_err(|e| {
             error!("Failed to update proposal {}: {}", proposal_id.as_str(), e);
-            json_error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                format!("Failed to update proposal: {}", e),
-            )
+            let status = match &e {
+                crate::error::AppError::Validation(_) => StatusCode::BAD_REQUEST,
+                crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            json_error(status, e.to_string())
         })?;
-
-    // Emit event for real-time UI update
-    if let Some(app_handle) = &state.app_state.app_handle {
-        let response = TaskProposalResponse::from(updated.clone());
-        let _ = app_handle.emit(
-            "proposal:updated",
-            serde_json::json!({
-                "proposal": response
-            }),
-        );
-    }
-
-    // Auto-trigger dependency analysis when proposals change
-    maybe_trigger_dependency_analysis(&updated.session_id, &state.app_state).await;
 
     Ok(Json(ProposalResponse::from(updated)))
 }
@@ -221,42 +200,17 @@ pub async fn delete_task_proposal(
 ) -> Result<Json<SuccessResponse>, StatusCode> {
     let proposal_id = TaskProposalId::from_string(req.proposal_id.clone());
 
-    // Fetch proposal first to get session_id (needed for auto-trigger)
-    let proposal = state
-        .app_state
-        .task_proposal_repo
-        .get_by_id(&proposal_id)
+    // Delete proposal — assert_session_mutable(), events, and dep analysis inside impl
+    delete_proposal_impl(&state.app_state, proposal_id)
         .await
         .map_err(|e| {
-            error!("Failed to get proposal {}: {}", proposal_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    let session_id = proposal.session_id.clone();
-
-    state
-        .app_state
-        .task_proposal_repo
-        .delete(&proposal_id)
-        .await
-        .map_err(|e| {
-            error!("Failed to delete proposal {}: {}", proposal_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            error!("Failed to delete proposal {}: {}", req.proposal_id, e);
+            match e {
+                crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
+                crate::error::AppError::Validation(_) => StatusCode::BAD_REQUEST,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            }
         })?;
-
-    // Emit event for real-time UI update
-    if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit(
-            "proposal:deleted",
-            serde_json::json!({
-                "proposalId": req.proposal_id
-            }),
-        );
-    }
-
-    // Auto-trigger dependency analysis after deletion (if we still have 2+ proposals)
-    maybe_trigger_dependency_analysis(&session_id, &state.app_state).await;
 
     Ok(Json(SuccessResponse {
         success: true,

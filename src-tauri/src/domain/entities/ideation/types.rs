@@ -509,6 +509,25 @@ pub enum VerificationError {
     RoundExceedsMax { round: u32, max: u32 },
     #[error("Verification agent crashed during round {round}")]
     AgentCrashed { round: u32 },
+
+    /// Gate for proposal mutations (create/update/delete).
+    /// Distinct from `NotVerified` which gates acceptance.
+    #[error("Cannot create proposals: plan verification has not been run. Either run verification (update_plan_verification with status 'reviewing') or skip it (update_plan_verification with status 'skipped', convergence_reason 'user_skipped').")]
+    ProposalNotVerified,
+
+    /// Gate for proposal mutations when verification is in progress.
+    /// Distinct from `InProgress` which gates acceptance.
+    #[error("Cannot {operation} proposals: plan verification is in progress (round {round}/{max_rounds}). Complete the current verification round before modifying proposals.")]
+    ProposalReviewInProgress {
+        operation: String,
+        round: u32,
+        max_rounds: u32,
+    },
+
+    /// Gate for proposal mutations when plan has unresolved gaps.
+    /// Distinct from `HasUnresolvedGaps` which gates acceptance.
+    #[error("Cannot {operation} proposals: plan verification found {gap_count} unresolved gap(s). Update the plan to address gaps (update_plan_artifact), then re-run verification.")]
+    ProposalHasUnresolvedGaps { operation: String, gap_count: usize },
 }
 
 // ---------------------------------------------------------------------------

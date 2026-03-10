@@ -24,6 +24,22 @@ pub struct SessionWithData {
     pub messages: Vec<ChatMessage>,
 }
 
+/// Tracks caller origin for field-level modification tracking.
+///
+/// Used by `update_proposal_impl()` to determine whether to set `user_modified = true`
+/// and call `proposal.touch()` on changed fields.
+///
+/// Distinct from `ProposalOperation` (future) which will gate verification checks
+/// based on the type of mutation (create/update/delete).
+#[derive(Debug, Clone, Copy, Default)]
+pub enum UpdateSource {
+    /// API (HTTP/MCP) — agent-originated. No `user_modified` tracking.
+    #[default]
+    Api,
+    /// Tauri IPC — user-originated. Sets `user_modified = true` per changed field + calls `touch()`.
+    TauriIpc,
+}
+
 /// Options for creating a new proposal
 #[derive(Debug, Clone)]
 pub struct CreateProposalOptions {
@@ -39,6 +55,8 @@ pub struct CreateProposalOptions {
     pub steps: Option<String>,
     /// Optional acceptance criteria (JSON array)
     pub acceptance_criteria: Option<String>,
+    /// Optional estimated complexity string (parsed to Complexity enum in impl)
+    pub estimated_complexity: Option<String>,
 }
 
 /// Options for updating a proposal
@@ -56,6 +74,10 @@ pub struct UpdateProposalOptions {
     pub acceptance_criteria: Option<Option<String>>,
     /// User priority override (if provided)
     pub user_priority: Option<Priority>,
+    /// Estimated complexity string (parsed to Complexity enum in impl, if provided)
+    pub estimated_complexity: Option<String>,
+    /// Source of the update — controls `user_modified` tracking and `touch()` call
+    pub source: UpdateSource,
 }
 
 /// Statistics for an ideation session

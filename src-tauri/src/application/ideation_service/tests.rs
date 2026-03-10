@@ -776,6 +776,7 @@ fn create_proposal_options() -> CreateProposalOptions {
         suggested_priority: Priority::Medium,
         steps: None,
         acceptance_criteria: None,
+        estimated_complexity: None,
     }
 }
 

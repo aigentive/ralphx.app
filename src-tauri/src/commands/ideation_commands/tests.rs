@@ -1225,6 +1225,7 @@ async fn test_update_ideation_settings() {
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
         require_verification_for_accept: false,
+        require_verification_for_proposals: false,
     };
 
     // Update settings
@@ -1254,6 +1255,7 @@ async fn test_ideation_settings_persist_across_reads() {
         suggest_plans_for_complex: true,
         auto_link_proposals: false,
         require_verification_for_accept: false,
+        require_verification_for_proposals: false,
     };
 
     state
