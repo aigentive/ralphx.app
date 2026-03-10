@@ -8,8 +8,7 @@ use axum::{
 
 use super::*;
 use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
-use crate::domain::repositories::{CreateKeyParams, RotateKeyParams};
-use crate::infrastructure::sqlite::sqlite_api_key_repo::{generate_raw_key, hash_key, key_prefix};
+use crate::domain::services::api_key_service::{ApiKeyService, KeySource};
 
 /// Response for GET /api/validate_key
 #[derive(Debug, serde::Serialize)]
@@ -99,45 +98,27 @@ pub async fn create_api_key(
     State(state): State<HttpServerState>,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> Result<Json<CreateApiKeyResponse>, StatusCode> {
-    let raw_key = generate_raw_key();
-    let key_hash = hash_key(&raw_key);
-    let prefix = key_prefix(&raw_key);
-    let permissions = req.permissions.unwrap_or(3);
-    let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-
-    let api_key = ApiKey {
-        id: ApiKeyId::new(),
-        name: req.name.clone(),
-        key_hash,
-        key_prefix: prefix.clone(),
-        permissions,
-        created_at: now,
-        revoked_at: None,
-        last_used_at: None,
-        grace_expires_at: None,
-        metadata: None,
-    };
-
-    let created = state
-        .app_state
-        .api_key_repo
-        .create_key_atomic(CreateKeyParams {
-            new_key: api_key,
-            project_ids: req.project_ids.unwrap_or_default(),
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to atomically create API key: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    let project_ids = req.project_ids.unwrap_or_default();
+    let result = ApiKeyService::create_key(
+        state.app_state.api_key_repo.as_ref(),
+        &req.name,
+        req.permissions,
+        &project_ids,
+        KeySource::HttpApi,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to create API key: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(CreateApiKeyResponse {
-        id: created.id.to_string(),
-        name: created.name,
-        key: raw_key,
-        key_prefix: created.key_prefix,
-        permissions: created.permissions,
-        created_at: created.created_at,
+        id: result.key.id.to_string(),
+        name: result.key.name,
+        key: result.raw_key,
+        key_prefix: result.key.key_prefix,
+        permissions: result.key.permissions,
+        created_at: result.key.created_at,
     }))
 }
 
@@ -180,24 +161,28 @@ pub async fn delete_api_key(
     State(state): State<HttpServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<SuccessResponse>, StatusCode> {
-    let key_id = ApiKeyId::from_string(id);
-
-    let key = state.app_state.api_key_repo
+    // Verify key exists before revoking
+    let key_id = ApiKeyId::from_string(&id);
+    let key = state
+        .app_state
+        .api_key_repo
         .get_by_id(&key_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
     if key.is_none() {
         return Err(StatusCode::NOT_FOUND);
     }
 
-    state.app_state.api_key_repo
-        .revoke(&key_id)
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to revoke API key: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+    ApiKeyService::revoke_key(
+        state.app_state.api_key_repo.as_ref(),
+        &id,
+        KeySource::HttpApi,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!("Failed to revoke API key: {}", e);
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok(Json(SuccessResponse {
         success: true,
@@ -210,63 +195,31 @@ pub async fn rotate_api_key(
     State(state): State<HttpServerState>,
     Path(id): Path<String>,
 ) -> Result<Json<RotateApiKeyResponse>, StatusCode> {
-    let old_key_id = ApiKeyId::from_string(&id);
+    let result = ApiKeyService::rotate_key(
+        state.app_state.api_key_repo.as_ref(),
+        &id,
+        KeySource::HttpApi,
+    )
+    .await
+    .map_err(|e| match e {
+        crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
+        crate::error::AppError::Validation(_) => StatusCode::UNPROCESSABLE_ENTITY,
+        other => {
+            tracing::error!("Failed to rotate API key: {}", other);
+            StatusCode::INTERNAL_SERVER_ERROR
+        }
+    })?;
 
-    let old_key = state.app_state.api_key_repo
-        .get_by_id(&old_key_id)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    if old_key.revoked_at.is_some() && !old_key.is_in_grace_period() {
-        return Err(StatusCode::UNPROCESSABLE_ENTITY);
-    }
-
-    let raw_key = generate_raw_key();
-    let new_key_hash = hash_key(&raw_key);
-    let new_prefix = key_prefix(&raw_key);
-    let now = chrono::Utc::now();
-    let grace_expires_at = (now + chrono::Duration::seconds(60))
+    // Reconstruct the grace expiry that was applied to the old key.
+    // The service set now+60s at call time; we replicate that for the response.
+    let grace_expires_at = (chrono::Utc::now() + chrono::Duration::seconds(60))
         .format("%Y-%m-%dT%H:%M:%SZ")
         .to_string();
-    let now_str = now.format("%Y-%m-%dT%H:%M:%SZ").to_string();
-
-    let project_ids = state.app_state.api_key_repo
-        .get_projects(&old_key_id)
-        .await
-        .unwrap_or_default();
-
-    let new_key = ApiKey {
-        id: ApiKeyId::new(),
-        name: old_key.name.clone(),
-        key_hash: new_key_hash,
-        key_prefix: new_prefix.clone(),
-        permissions: old_key.permissions,
-        created_at: now_str,
-        revoked_at: None,
-        last_used_at: None,
-        grace_expires_at: None,
-        metadata: None,
-    };
-
-    let new_key_id = new_key.id.clone();
-    state.app_state.api_key_repo
-        .rotate_key_atomic(RotateKeyParams {
-            new_key,
-            project_ids,
-            old_key_id: old_key_id.clone(),
-            grace_expires_at: grace_expires_at.clone(),
-        })
-        .await
-        .map_err(|e| {
-            tracing::error!("Failed to atomically rotate API key: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
 
     Ok(Json(RotateApiKeyResponse {
-        id: new_key_id.to_string(),
-        new_key: raw_key,
-        key_prefix: new_prefix,
+        id: result.key.id.to_string(),
+        new_key: result.raw_key,
+        key_prefix: result.key.key_prefix,
         old_key_grace_expires_at: grace_expires_at,
     }))
 }

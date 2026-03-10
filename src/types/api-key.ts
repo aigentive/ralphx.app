@@ -25,66 +25,47 @@ export function togglePermission(permissions: number, bit: number): number {
 // Zod Schemas
 // ============================================================================
 
+// ApiKeySchema matches ApiKeyInfoResponse from Tauri (camelCase via serde rename_all)
 export const ApiKeySchema = z.object({
   id: z.string().min(1),
   name: z.string().min(1),
   /** Short prefix shown for identification, e.g. "rxk_live_a3f2" */
-  key_prefix: z.string().min(1),
+  keyPrefix: z.string().min(1),
   /** Bitmask: 1=read, 2=write, 4=admin */
   permissions: z.number().int().min(0).max(7),
-  created_at: z.string(),
-  revoked_at: z.string().nullable(),
-  last_used_at: z.string().nullable(),
+  createdAt: z.string(),
+  revokedAt: z.string().nullable(),
+  lastUsedAt: z.string().nullable(),
   /** Project IDs this key has access to */
-  project_ids: z.array(z.string()).default([]),
+  projectIds: z.array(z.string()).default([]),
 });
 
 export type ApiKey = z.infer<typeof ApiKeySchema>;
 
+// AuditLogEntry matches AuditLogEntry domain struct (no camelCase rename — stays snake_case)
 export const AuditLogEntrySchema = z.object({
   id: z.number().int(),
   api_key_id: z.string().min(1),
   tool_name: z.string().min(1),
   project_id: z.string().nullable(),
-  success: z.number().int(), // 0 or 1
+  success: z.boolean(),
   latency_ms: z.number().int().nullable(),
   created_at: z.string(),
 });
 
 export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
 
-export const ListApiKeysResponseSchema = z.object({
-  keys: z.array(ApiKeySchema),
-  count: z.number(),
-});
-
-export type ListApiKeysResponse = z.infer<typeof ListApiKeysResponseSchema>;
-
-export const CreateApiKeyResponseSchema = z.object({
+// ApiKeyCreatedResponseSchema matches ApiKeyCreatedResponse from Tauri (camelCase via serde rename_all)
+// Used by create_api_key and rotate_api_key commands
+export const ApiKeyCreatedResponseSchema = z.object({
   id: z.string(),
   name: z.string(),
-  key: z.string(),
-  key_prefix: z.string(),
+  rawKey: z.string(),
+  keyPrefix: z.string(),
   permissions: z.number(),
-  created_at: z.string(),
 });
 
-export type CreateApiKeyResponse = z.infer<typeof CreateApiKeyResponseSchema>;
-
-export const RotateApiKeyResponseSchema = z.object({
-  id: z.string(),
-  new_key: z.string(),
-  key_prefix: z.string(),
-  old_key_grace_expires_at: z.string().nullable(),
-});
-
-export type RotateApiKeyResponse = z.infer<typeof RotateApiKeyResponseSchema>;
-
-export const AuditLogResponseSchema = z.object({
-  entries: z.array(AuditLogEntrySchema),
-});
-
-export type AuditLogResponse = z.infer<typeof AuditLogResponseSchema>;
+export type ApiKeyCreatedResponse = z.infer<typeof ApiKeyCreatedResponseSchema>;
 
 // ============================================================================
 // Parsing Utilities

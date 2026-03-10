@@ -68,7 +68,7 @@ export function RotateKeyDialog({
     setError(null);
     try {
       const result = await rotateMutation.mutateAsync(keyId);
-      setRawKey(result.raw_key);
+      setRawKey(result.rawKey);
       setStep("reveal");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Rotation failed");

@@ -946,6 +946,14 @@ pub fn run() {
             commands::team_commands::get_team_messages,
             commands::team_commands::get_teammate_cost,
             commands::team_commands::get_team_history,
+            // API key management commands (Tauri IPC — replaces HTTP fetch in settings UI)
+            commands::api_key_commands::list_api_keys,
+            commands::api_key_commands::create_api_key,
+            commands::api_key_commands::revoke_api_key,
+            commands::api_key_commands::rotate_api_key,
+            commands::api_key_commands::update_api_key_projects,
+            commands::api_key_commands::update_api_key_permissions,
+            commands::api_key_commands::get_api_key_audit_log,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

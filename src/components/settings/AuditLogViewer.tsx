@@ -86,7 +86,7 @@ export function AuditLogViewer({ keyId }: AuditLogViewerProps) {
         </thead>
         <tbody>
           {entries.map((entry) => {
-            const success = entry.success === 1;
+            const success = entry.success;
             return (
               <tr
                 key={entry.id}

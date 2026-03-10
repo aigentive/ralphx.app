@@ -8,9 +8,10 @@ use tokio::sync::Mutex;
 
 use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
 use crate::domain::repositories::{ApiKeyRepository, CreateKeyParams};
+use crate::domain::services::key_crypto::{generate_raw_key, hash_key, key_prefix};
 use crate::infrastructure::sqlite::{
     migrations::run_migrations,
-    sqlite_api_key_repo::{generate_raw_key, hash_key, key_prefix, SqliteApiKeyRepository},
+    sqlite_api_key_repo::SqliteApiKeyRepository,
 };
 
 fn setup_repo() -> SqliteApiKeyRepository {

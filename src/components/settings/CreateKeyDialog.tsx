@@ -74,9 +74,10 @@ export function CreateKeyDialog({ open, onClose, onCreated }: CreateKeyDialogPro
     try {
       const result = await createMutation.mutateAsync({
         name: trimmedName,
-        project_ids: [],
+        projectIds: [],
+        permissions: 7,
       });
-      setRawKey(result.raw_key);
+      setRawKey(result.rawKey);
       setStep("reveal");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create key");

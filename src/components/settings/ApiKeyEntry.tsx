@@ -79,7 +79,7 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
   const revokeMutation = useRevokeApiKey();
 
   // Project editing state
-  const [projectIds, setProjectIds] = useState<string[]>(apiKey.project_ids);
+  const [projectIds, setProjectIds] = useState<string[]>(apiKey.projectIds);
   const [projectSaveError, setProjectSaveError] = useState<string | null>(null);
   const updateProjectsMutation = useUpdateKeyProjects();
 
@@ -175,15 +175,15 @@ export function ApiKeyEntry({ apiKey, onKeyChanged }: ApiKeyEntryProps) {
               {apiKey.name}
             </p>
             <p className="text-xs text-[var(--text-muted)] font-mono mt-0.5">
-              {apiKey.key_prefix}...
+              {apiKey.keyPrefix}...
             </p>
             <div className="flex items-center gap-3 mt-1">
               <span className="text-xs text-[var(--text-muted)]">
-                Created {formatDate(apiKey.created_at)}
+                Created {formatDate(apiKey.createdAt)}
               </span>
               <span className="text-[var(--border-subtle)]">·</span>
               <span className="text-xs text-[var(--text-muted)]">
-                Last used {formatDate(apiKey.last_used_at)}
+                Last used {formatDate(apiKey.lastUsedAt)}
               </span>
             </div>
           </div>
