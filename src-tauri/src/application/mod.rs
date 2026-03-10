@@ -53,6 +53,7 @@ pub use git_service::{
 pub use interactive_process_registry::{InteractiveProcessKey, InteractiveProcessRegistry};
 pub use ideation_service::{
     CreateProposalOptions, IdeationService, SessionStats, SessionWithData, UpdateProposalOptions,
+    UpdateSource,
 };
 pub use memory_archive_service::MemoryArchiveService;
 pub use permission_state::{PendingPermissionInfo, PermissionDecision, PermissionState};

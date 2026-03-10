@@ -31,6 +31,9 @@ pub struct IdeationSettings {
     /// If true, plans must be verified (or skipped) before accepting proposals
     #[serde(default)]
     pub require_verification_for_accept: bool,
+    /// If true, plans must be verified (or skipped) before proposals can be created
+    #[serde(default)]
+    pub require_verification_for_proposals: bool,
 }
 
 impl Default for IdeationSettings {
@@ -41,6 +44,7 @@ impl Default for IdeationSettings {
             suggest_plans_for_complex: true,
             auto_link_proposals: true,
             require_verification_for_accept: false, // Opt-in feature
+            require_verification_for_proposals: false, // Opt-in feature
         }
     }
 }

@@ -4,6 +4,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::domain::agents::error::AgentError;
+use crate::domain::entities::ideation::VerificationError;
 
 /// Application error type for RalphX
 #[derive(Error, Debug)]
@@ -51,6 +52,12 @@ pub enum AppError {
 impl From<AgentError> for AppError {
     fn from(err: AgentError) -> Self {
         AppError::Agent(err.to_string())
+    }
+}
+
+impl From<VerificationError> for AppError {
+    fn from(err: VerificationError) -> Self {
+        AppError::Validation(err.to_string())
     }
 }
 

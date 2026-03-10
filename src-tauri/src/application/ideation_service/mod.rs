@@ -13,6 +13,7 @@ mod types;
 
 pub use types::{
     CreateProposalOptions, PlanArtifactConfig, SessionStats, SessionWithData, UpdateProposalOptions,
+    UpdateSource,
 };
 
 use crate::domain::entities::{

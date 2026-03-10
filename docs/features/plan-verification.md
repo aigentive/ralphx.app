@@ -150,6 +150,86 @@ Event: `plan_verification:status_changed`
 
 Emitted from: POST verification handler, revert-and-skip handler, conditional reset in `update_plan_artifact`.
 
+## Proposal Verification Gate
+
+When `require_verification_for_proposals: true` (opt-in, default: `false`), the backend blocks proposal mutations on plans that haven't passed adversarial review. This is defense-in-depth: agents cannot create proposals on unreviewed plans.
+
+### Config Field
+
+```yaml
+ideation:
+  verification:
+    require_verification_for_proposals: false   # Opt-in gate (default: false)
+    require_verification_for_accept: true        # Acceptance gate (default: true)
+```
+
+Both fields are independent. `require_verification_for_proposals` only blocks proposal mutations — it does not affect plan acceptance.
+
+### Gate Behavior by Operation
+
+| Operation | Blocked statuses | Allowed statuses |
+|-----------|-----------------|-----------------|
+| Create | `Unverified`, `Reviewing`, `NeedsRevision` | `Verified`, `Skipped` |
+| Update | `Reviewing`, `NeedsRevision` | `Unverified`, `Verified`, `Skipped` |
+| Delete | `Reviewing`, `NeedsRevision` | `Unverified`, `Verified`, `Skipped` |
+| Reorder / Toggle selection | Not gated (content-preserving) | — |
+
+Update and delete allow `Unverified` by design — blocking edits before verification starts would lock users out of housekeeping.
+
+### Error Messages
+
+Error messages are relayed verbatim to external agents via the MCP server:
+
+| Status | Error Message |
+|--------|--------------|
+| `Unverified` | "Cannot create proposals: plan verification has not been run. Either run verification (update_plan_verification with status 'reviewing') or skip it (update_plan_verification with status 'skipped', convergence_reason 'user_skipped')." |
+| `Reviewing` | "Cannot {operation} proposals: plan verification is in progress (round {N}/{max}). Complete the current verification round before modifying proposals." |
+| `NeedsRevision` | "Cannot {operation} proposals: plan verification found {N} unresolved gap(s). Update the plan to address gaps (update_plan_artifact), then re-run verification." |
+
+`{operation}` = `create`, `update`, or `delete`. HTTP status code: `400 BAD_REQUEST`.
+
+### Child Session Behavior
+
+Child sessions inherit their gate check from the session that owns the plan:
+
+| Child session state | Which status is checked |
+|--------------------|------------------------|
+| Has its own plan artifact (`plan_artifact_id` set) | Child's own verification status |
+| Inherited plan only (`inherited_plan_artifact_id` set) | Parent session's verification status |
+| No plan and no inherited plan | Gate skipped entirely (passthrough) |
+
+**Edge cases:**
+- **Parent deleted** (FK set to NULL after deletion): gate passes — blocking orphaned children creates dead-end sessions with no escape.
+- **Parent archived**: parent's verification status is checked normally. Archived ≠ deleted; session data is intact. If parent is `NeedsRevision`, child is blocked — but child can create its own plan to escape.
+
+### TOCTOU Protection
+
+The gate runs inside a `db.run_transaction()` closure alongside the proposal mutation. All checks — session fetch, settings read, parent session lookup, proposal insert — share a single DB lock.
+
+**Before (vulnerable):**
+```
+await get_session()  →  check status  →  await count_proposals()  →  await create()
+     ↑ lock 1              ↑ stale             ↑ lock 2                  ↑ lock 3
+```
+
+**After (safe):**
+```
+db.run_transaction(|conn| {
+    get_session_sync(conn)  →  check gate  →  count_sync(conn)  →  create_sync(conn)
+         ↑ same lock               ↑ fresh        ↑ same lock          ↑ same lock
+})
+```
+
+This prevents a concurrent verification status change from slipping between the check and the insert.
+
+### Implementation
+
+| File | Purpose |
+|------|---------|
+| `domain/services/verification_gate.rs` | `check_proposal_verification_gate()` — pure function: `(session, settings, parent_status: Option, operation: ProposalOperation) → Result` |
+| `http_server/helpers.rs` | `create_proposal_impl()`, `update_proposal_impl()`, `delete_proposal_impl()` — gate wired inside `db.run_transaction()` |
+| `infrastructure/sqlite/sqlite_ideation_settings_repo.rs` | `get_settings_sync(conn)` — reads settings inside the proposal transaction |
+
 ## Acceptance Path Enforcement
 
 All 3 acceptance paths enforce the verification gate:

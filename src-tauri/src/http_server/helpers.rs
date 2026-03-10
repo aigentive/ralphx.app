@@ -7,13 +7,20 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use std::sync::Arc;
 
-use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions};
+use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
+use crate::domain::services::{check_proposal_verification_gate, ProposalOperation};
+use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
+use crate::commands::ideation_commands::TaskProposalResponse;
 use crate::domain::entities::{
-    Artifact, ArtifactContent, ArtifactSummary, ArtifactType, IdeationSession, IdeationSessionId,
-    IdeationSessionStatus, InternalStatus, Priority, ProposalCategory, TaskContext, TaskId,
-    TaskProposal, TaskProposalId,
+    Artifact, ArtifactContent, ArtifactSummary, ArtifactType, Complexity, IdeationSession,
+    IdeationSessionId, IdeationSessionStatus, InternalStatus, Priority, ProposalCategory,
+    TaskContext, TaskId, TaskProposal, TaskProposalId,
 };
 use crate::error::{AppError, AppResult};
+use crate::infrastructure::sqlite::{
+    SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
+    SqliteTaskProposalRepository as ProposalRepo,
+};
 use tauri::Emitter;
 
 // ============================================================================
@@ -138,128 +145,355 @@ pub fn assert_session_mutable(session: &IdeationSession) -> AppResult<()> {
 // Proposal Implementation Functions
 // ============================================================================
 
-/// Create proposal (reuses IdeationService logic)
+/// Create proposal — all checks and INSERT in a single DB transaction.
 ///
-/// Verifies session exists and is active, calculates sort order, and saves to database.
+/// Session existence, active status, plan artifact requirement, and sort_order count
+/// are verified inside `db.run_transaction()` to prevent TOCTOU races. Events and
+/// dependency analysis are emitted after the transaction returns.
 ///
 /// # Errors
-/// - `AppError::NotFound` if session doesn't exist
-/// - `AppError::Validation` if session is not active
+/// - `AppError::NotFound` if session or plan artifact doesn't exist
+/// - `AppError::Validation` if session is not active or has no plan artifact
 /// - Database errors from the proposal repository
 pub async fn create_proposal_impl(
     state: &AppState,
-    session_id: crate::domain::entities::IdeationSessionId,
+    session_id: IdeationSessionId,
     options: CreateProposalOptions,
 ) -> AppResult<TaskProposal> {
-    // Verify session exists and is active
-    let session = state
-        .ideation_session_repo
-        .get_by_id(&session_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Session {} not found", session_id)))?;
+    // Single lock: all checks + INSERT in one transaction (TOCTOU prevention).
+    // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
+    let proposal = state
+        .db
+        .run_transaction(move |conn| {
+            // Check session exists and is active
+            let session = SessionRepo::get_by_id_sync(conn, session_id.as_str())?
+                .ok_or_else(|| AppError::NotFound(format!("Session {} not found", session_id)))?;
 
-    if session.status != IdeationSessionStatus::Active {
-        return Err(AppError::Validation(format!(
-            "Cannot add proposal to {} session",
-            session.status
-        )));
-    }
+            if session.status != IdeationSessionStatus::Active {
+                return Err(AppError::Validation(format!(
+                    "Cannot add proposal to {} session",
+                    session.status
+                )));
+            }
 
-    // Enforce plan artifact requirement
-    let plan_artifact_id = session.plan_artifact_id.as_ref().ok_or_else(|| {
-        AppError::Validation(
-            "Proposals can only be created when a plan artifact exists for this session. \
-             Use create_plan_artifact first."
-                .to_string(),
-        )
-    })?;
+            // Verification gate: block creation if plan hasn't been verified (when enabled)
+            {
+                let settings = get_settings_sync(conn)?;
+                let parent_status = if session.plan_artifact_id.is_none()
+                    && session.inherited_plan_artifact_id.is_some()
+                {
+                    session
+                        .parent_session_id
+                        .as_ref()
+                        .and_then(|pid| {
+                            SessionRepo::get_by_id_sync(conn, pid.as_str())
+                                .ok()
+                                .flatten()
+                        })
+                        .map(|p| p.verification_status)
+                } else {
+                    None
+                };
+                check_proposal_verification_gate(
+                    &session,
+                    &settings,
+                    parent_status,
+                    ProposalOperation::Create,
+                )
+                .map_err(AppError::from)?;
+            }
 
-    // Fetch current artifact version for auto-linking
-    let artifact = state
-        .artifact_repo
-        .get_by_id(plan_artifact_id)
-        .await?
-        .ok_or_else(|| {
-            AppError::NotFound(format!("Plan artifact {} not found", plan_artifact_id))
-        })?;
+            // Enforce plan artifact requirement
+            let plan_artifact_id = session.plan_artifact_id.ok_or_else(|| {
+                AppError::Validation(
+                    "Proposals can only be created when a plan artifact exists for this session. \
+                     Use create_plan_artifact first."
+                        .to_string(),
+                )
+            })?;
 
-    // Get current proposal count for sort_order
-    let count = state
-        .task_proposal_repo
-        .count_by_session(&session_id)
+            // Fetch artifact version for auto-linking
+            let artifact = ArtifactRepo::get_by_id_sync(conn, plan_artifact_id.as_str())?
+                .ok_or_else(|| {
+                    AppError::NotFound(format!("Plan artifact {} not found", plan_artifact_id))
+                })?;
+
+            // Count proposals for sort_order (within same lock — no TOCTOU)
+            let count = ProposalRepo::count_by_session_sync(conn, session_id.as_str())?;
+
+            // Build proposal with auto-linked plan artifact
+            let mut proposal = TaskProposal::new(
+                session_id,
+                options.title,
+                options.category,
+                options.suggested_priority,
+            );
+            proposal.description = options.description;
+            proposal.steps = options.steps;
+            proposal.acceptance_criteria = options.acceptance_criteria;
+            proposal.sort_order = count as i32;
+            proposal.plan_version_at_creation = Some(artifact.metadata.version);
+            proposal.plan_artifact_id = Some(plan_artifact_id);
+            if let Some(complexity_str) = options.estimated_complexity {
+                if let Ok(c) = complexity_str.parse::<Complexity>() {
+                    proposal.estimated_complexity = c;
+                }
+            }
+
+            ProposalRepo::create_sync(conn, proposal)
+        })
         .await?;
 
-    // Create proposal with auto-linked plan artifact
-    let mut proposal = TaskProposal::new(
-        session_id,
-        options.title,
-        options.category,
-        options.suggested_priority,
-    );
-    proposal.description = options.description;
-    proposal.steps = options.steps;
-    proposal.acceptance_criteria = options.acceptance_criteria;
-    proposal.sort_order = count as i32;
-    proposal.plan_artifact_id = Some(plan_artifact_id.clone());
-    proposal.plan_version_at_creation = Some(artifact.metadata.version);
+    // Emit event after transaction (acceptable crash-consistency gap)
+    if let Some(app_handle) = &state.app_handle {
+        let response = TaskProposalResponse::from(proposal.clone());
+        let _ = app_handle.emit(
+            "proposal:created",
+            serde_json::json!({ "proposal": response }),
+        );
+    }
 
-    // Save to database
-    state.task_proposal_repo.create(proposal.clone()).await?;
+    // Auto-trigger dependency analysis when we have 2+ proposals
+    maybe_trigger_dependency_analysis(&proposal.session_id, state).await;
 
     Ok(proposal)
 }
 
-/// Update proposal (reuses IdeationService logic)
+/// Update proposal — fetch, validate, and UPDATE in a single DB transaction.
 ///
-/// Fetches existing proposal, applies updates to specified fields, and saves.
+/// `assert_session_mutable()` is called inside the transaction (bug fix: IPC update
+/// path was previously missing this guard). When `options.source == TauriIpc`, sets
+/// `user_modified = true` per changed field and calls `proposal.touch()`. Events and
+/// dependency analysis are emitted after the transaction returns.
 ///
 /// # Errors
-/// - `AppError::NotFound` if proposal doesn't exist
+/// - `AppError::NotFound` if proposal or session doesn't exist
+/// - `AppError::Validation` if session is Archived or Accepted
 /// - Database errors from the proposal repository
 pub async fn update_proposal_impl(
     state: &AppState,
     proposal_id: &TaskProposalId,
     options: UpdateProposalOptions,
 ) -> AppResult<TaskProposal> {
-    // Get existing proposal
-    let mut proposal = state
-        .task_proposal_repo
-        .get_by_id(proposal_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Proposal {} not found", proposal_id)))?;
+    let pid = proposal_id.as_str().to_string();
 
-    // Guard: reject mutations on Archived/Accepted sessions
-    let session = state
-        .ideation_session_repo
-        .get_by_id(&proposal.session_id)
-        .await?
-        .ok_or_else(|| AppError::NotFound(format!("Session {} not found", proposal.session_id)))?;
-    assert_session_mutable(&session)?;
+    // Single lock: fetch + validate + UPDATE in one transaction.
+    // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
+    let updated = state
+        .db
+        .run_transaction(move |conn| {
+            // Fetch proposal
+            let mut proposal = conn
+                .query_row(
+                    "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
+                            suggested_priority, priority_score, priority_reason, priority_factors,
+                            estimated_complexity, user_priority, user_modified, status, selected,
+                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
+                     FROM task_proposals WHERE id = ?1",
+                    [&pid],
+                    |row| TaskProposal::from_row(row),
+                )
+                .map_err(|e| match e {
+                    rusqlite::Error::QueryReturnedNoRows => {
+                        AppError::NotFound(format!("Proposal {} not found", pid))
+                    }
+                    other => AppError::from(other),
+                })?;
 
-    // Apply updates
-    if let Some(title) = options.title {
-        proposal.title = title;
-    }
-    if let Some(description) = options.description {
-        proposal.description = description;
-    }
-    if let Some(category) = options.category {
-        proposal.category = category;
-    }
-    if let Some(steps) = options.steps {
-        proposal.steps = steps;
-    }
-    if let Some(acceptance_criteria) = options.acceptance_criteria {
-        proposal.acceptance_criteria = acceptance_criteria;
-    }
-    if let Some(priority) = options.user_priority {
-        proposal.user_priority = Some(priority);
+            // Guard: reject mutations on Archived/Accepted sessions (bug fix: IPC update was ungated)
+            let session =
+                SessionRepo::get_by_id_sync(conn, proposal.session_id.as_str())?.ok_or_else(
+                    || AppError::NotFound(format!("Session {} not found", proposal.session_id)),
+                )?;
+            assert_session_mutable(&session)?;
+
+            // Verification gate: block update if verification in progress or needs revision
+            {
+                let settings = get_settings_sync(conn)?;
+                let parent_status = if session.plan_artifact_id.is_none()
+                    && session.inherited_plan_artifact_id.is_some()
+                {
+                    session
+                        .parent_session_id
+                        .as_ref()
+                        .and_then(|pid| {
+                            SessionRepo::get_by_id_sync(conn, pid.as_str())
+                                .ok()
+                                .flatten()
+                        })
+                        .map(|p| p.verification_status)
+                } else {
+                    None
+                };
+                check_proposal_verification_gate(
+                    &session,
+                    &settings,
+                    parent_status,
+                    ProposalOperation::Update,
+                )
+                .map_err(AppError::from)?;
+            }
+
+            let is_ipc = matches!(options.source, UpdateSource::TauriIpc);
+
+            // Apply updates; track user_modified per field when source is TauriIpc
+            if let Some(title) = options.title {
+                proposal.title = title;
+                if is_ipc {
+                    proposal.user_modified = true;
+                }
+            }
+            if let Some(description) = options.description {
+                proposal.description = description;
+                if is_ipc {
+                    proposal.user_modified = true;
+                }
+            }
+            if let Some(category) = options.category {
+                proposal.category = category;
+                if is_ipc {
+                    proposal.user_modified = true;
+                }
+            }
+            if let Some(steps) = options.steps {
+                proposal.steps = steps;
+                if is_ipc {
+                    proposal.user_modified = true;
+                }
+            }
+            if let Some(acceptance_criteria) = options.acceptance_criteria {
+                proposal.acceptance_criteria = acceptance_criteria;
+                if is_ipc {
+                    proposal.user_modified = true;
+                }
+            }
+            if let Some(priority) = options.user_priority {
+                proposal.user_priority = Some(priority);
+                if is_ipc {
+                    proposal.user_modified = true;
+                }
+            }
+            if let Some(complexity_str) = options.estimated_complexity {
+                if let Ok(complexity) = complexity_str.parse::<Complexity>() {
+                    proposal.estimated_complexity = complexity;
+                    if is_ipc {
+                        proposal.user_modified = true;
+                    }
+                }
+            }
+
+            // Touch timestamp when user-originated (matches IPC command behaviour)
+            if is_ipc {
+                proposal.touch();
+            }
+
+            ProposalRepo::update_sync(conn, &proposal)
+        })
+        .await?;
+
+    // Emit event after transaction (acceptable crash-consistency gap)
+    if let Some(app_handle) = &state.app_handle {
+        let response = TaskProposalResponse::from(updated.clone());
+        let _ = app_handle.emit(
+            "proposal:updated",
+            serde_json::json!({ "proposal": response }),
+        );
     }
 
-    // Save updated proposal
-    state.task_proposal_repo.update(&proposal).await?;
+    // Auto-trigger dependency analysis when proposals change
+    maybe_trigger_dependency_analysis(&updated.session_id, state).await;
 
-    Ok(proposal)
+    Ok(updated)
+}
+
+/// Delete proposal — fetch session, assert mutability, and DELETE in a single DB transaction.
+///
+/// Fixes existing bug: HTTP delete handler had no `assert_session_mutable()` guard, allowing
+/// MCP agents to delete proposals from Archived/Accepted sessions.
+///
+/// # Errors
+/// - `AppError::NotFound` if proposal or session doesn't exist
+/// - `AppError::Validation` if session is Archived or Accepted
+/// - Database errors from the proposal repository
+pub async fn delete_proposal_impl(
+    state: &AppState,
+    proposal_id: TaskProposalId,
+) -> AppResult<IdeationSessionId> {
+    let pid = proposal_id.as_str().to_string();
+
+    // Single lock: fetch proposal+session, assert mutability, DELETE — all in one transaction.
+    // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
+    let session_id = state
+        .db
+        .run_transaction(move |conn| {
+            // Fetch session_id from proposal
+            let session_id_str: String = match conn.query_row(
+                "SELECT session_id FROM task_proposals WHERE id = ?1",
+                [&pid],
+                |row| row.get(0),
+            ) {
+                Ok(s) => s,
+                Err(rusqlite::Error::QueryReturnedNoRows) => {
+                    return Err(AppError::NotFound(format!("Proposal {} not found", pid)));
+                }
+                Err(e) => return Err(AppError::from(e)),
+            };
+
+            let session_id = IdeationSessionId::from_string(session_id_str);
+
+            // Guard: reject mutations on Archived/Accepted sessions (bug fix: HTTP delete was ungated)
+            let session =
+                SessionRepo::get_by_id_sync(conn, session_id.as_str())?.ok_or_else(|| {
+                    AppError::NotFound(format!("Session {} not found", session_id))
+                })?;
+            assert_session_mutable(&session)?;
+
+            // Verification gate: block delete if verification in progress or needs revision
+            {
+                let settings = get_settings_sync(conn)?;
+                let parent_status = if session.plan_artifact_id.is_none()
+                    && session.inherited_plan_artifact_id.is_some()
+                {
+                    session
+                        .parent_session_id
+                        .as_ref()
+                        .and_then(|pid| {
+                            SessionRepo::get_by_id_sync(conn, pid.as_str())
+                                .ok()
+                                .flatten()
+                        })
+                        .map(|p| p.verification_status)
+                } else {
+                    None
+                };
+                check_proposal_verification_gate(
+                    &session,
+                    &settings,
+                    parent_status,
+                    ProposalOperation::Delete,
+                )
+                .map_err(AppError::from)?;
+            }
+
+            // Delete proposal scoped to session (prevents cross-session deletions)
+            ProposalRepo::delete_sync(conn, &pid, session_id.as_str())?;
+
+            Ok(session_id)
+        })
+        .await?;
+
+    // Emit event after transaction (acceptable crash-consistency gap)
+    if let Some(app_handle) = &state.app_handle {
+        let _ = app_handle.emit(
+            "proposal:deleted",
+            serde_json::json!({ "proposalId": proposal_id.as_str() }),
+        );
+    }
+
+    // Auto-trigger dependency analysis after deletion (if we still have 2+ proposals)
+    maybe_trigger_dependency_analysis(&session_id, state).await;
+
+    Ok(session_id)
 }
 
 // ============================================================================

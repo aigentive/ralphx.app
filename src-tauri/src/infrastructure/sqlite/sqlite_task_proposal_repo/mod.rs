@@ -114,54 +114,140 @@ impl SqliteTaskProposalRepository {
         Ok(())
     }
 
+    /// Insert a proposal into the database within a transaction closure.
+    /// Takes &Connection directly for use inside db.run_transaction().
+    pub(crate) fn create_sync(
+        conn: &Connection,
+        proposal: TaskProposal,
+    ) -> AppResult<TaskProposal> {
+        let priority_factors_json = proposal
+            .priority_factors
+            .as_ref()
+            .and_then(|f| serde_json::to_string(f).ok());
+        conn.execute(
+            "INSERT INTO task_proposals (
+                id, session_id, title, description, category, steps, acceptance_criteria,
+                suggested_priority, priority_score, priority_reason, priority_factors,
+                estimated_complexity, user_priority, user_modified, status, selected,
+                created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
+            ) VALUES (
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
+            )",
+            rusqlite::params![
+                proposal.id.as_str(),
+                proposal.session_id.as_str(),
+                proposal.title,
+                proposal.description,
+                proposal.category.to_string(),
+                proposal.steps,
+                proposal.acceptance_criteria,
+                proposal.suggested_priority.to_string(),
+                proposal.priority_score,
+                proposal.priority_reason,
+                priority_factors_json,
+                proposal.estimated_complexity.to_string(),
+                proposal.user_priority.map(|p| p.to_string()),
+                proposal.user_modified as i32,
+                proposal.status.to_string(),
+                proposal.selected as i32,
+                proposal.created_task_id.as_ref().map(|id| id.as_str()),
+                proposal.plan_artifact_id.as_ref().map(|id| id.as_str()),
+                proposal.plan_version_at_creation,
+                proposal.sort_order,
+                proposal.created_at.to_rfc3339(),
+                proposal.updated_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(proposal)
+    }
+
+    /// Count proposals for a session within a transaction closure.
+    /// Returns usize for direct use in sort_order calculations.
+    pub(crate) fn count_by_session_sync(
+        conn: &Connection,
+        session_id: &str,
+    ) -> AppResult<usize> {
+        let count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM task_proposals WHERE session_id = ?1",
+            [session_id],
+            |row| row.get(0),
+        )?;
+        Ok(count as usize)
+    }
+
+    /// Update a proposal within a transaction closure.
+    /// Takes &Connection directly for use inside db.run_transaction().
+    /// Returns the proposal with updated `updated_at` timestamp.
+    pub(crate) fn update_sync(
+        conn: &Connection,
+        proposal: &TaskProposal,
+    ) -> AppResult<TaskProposal> {
+        let now = Utc::now();
+        let priority_factors_json = proposal
+            .priority_factors
+            .as_ref()
+            .and_then(|f| serde_json::to_string(f).ok());
+        conn.execute(
+            "UPDATE task_proposals SET
+                title = ?2, description = ?3, category = ?4, steps = ?5, acceptance_criteria = ?6,
+                suggested_priority = ?7, priority_score = ?8, priority_reason = ?9, priority_factors = ?10,
+                estimated_complexity = ?11, user_priority = ?12, user_modified = ?13, status = ?14,
+                selected = ?15, created_task_id = ?16, plan_artifact_id = ?17, plan_version_at_creation = ?18,
+                sort_order = ?19, updated_at = ?20
+             WHERE id = ?1",
+            rusqlite::params![
+                proposal.id.as_str(),
+                proposal.title,
+                proposal.description,
+                proposal.category.to_string(),
+                proposal.steps,
+                proposal.acceptance_criteria,
+                proposal.suggested_priority.to_string(),
+                proposal.priority_score,
+                proposal.priority_reason,
+                priority_factors_json,
+                proposal.estimated_complexity.to_string(),
+                proposal.user_priority.map(|p| p.to_string()),
+                proposal.user_modified as i32,
+                proposal.status.to_string(),
+                proposal.selected as i32,
+                proposal.created_task_id.as_ref().map(|id| id.as_str()),
+                proposal.plan_artifact_id.as_ref().map(|id| id.as_str()),
+                proposal.plan_version_at_creation,
+                proposal.sort_order,
+                now.to_rfc3339(),
+            ],
+        )?;
+        let mut updated = proposal.clone();
+        updated.updated_at = now;
+        Ok(updated)
+    }
+
+    /// Delete a proposal within a transaction closure, scoped to a session.
+    /// Takes both proposal_id and session_id to prevent cross-session deletions.
+    /// Callers: downstream transaction closures in proposal impl functions (Phase 1 refactor).
+    #[allow(dead_code)]
+    pub(crate) fn delete_sync(
+        conn: &Connection,
+        proposal_id: &str,
+        session_id: &str,
+    ) -> AppResult<()> {
+        // CASCADE is defined in the schema, so deleting the proposal
+        // will automatically delete related dependencies
+        conn.execute(
+            "DELETE FROM task_proposals WHERE id = ?1 AND session_id = ?2",
+            rusqlite::params![proposal_id, session_id],
+        )?;
+        Ok(())
+    }
+
 }
 
 #[async_trait]
 impl TaskProposalRepository for SqliteTaskProposalRepository {
     async fn create(&self, proposal: TaskProposal) -> AppResult<TaskProposal> {
-        let priority_factors_json = proposal
-            .priority_factors
-            .as_ref()
-            .and_then(|f| serde_json::to_string(f).ok());
-
         self.db
-            .run(move |conn| {
-                conn.execute(
-                    "INSERT INTO task_proposals (
-                        id, session_id, title, description, category, steps, acceptance_criteria,
-                        suggested_priority, priority_score, priority_reason, priority_factors,
-                        estimated_complexity, user_priority, user_modified, status, selected,
-                        created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
-                    ) VALUES (
-                        ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
-                    )",
-                    rusqlite::params![
-                        proposal.id.as_str(),
-                        proposal.session_id.as_str(),
-                        proposal.title,
-                        proposal.description,
-                        proposal.category.to_string(),
-                        proposal.steps,
-                        proposal.acceptance_criteria,
-                        proposal.suggested_priority.to_string(),
-                        proposal.priority_score,
-                        proposal.priority_reason,
-                        priority_factors_json,
-                        proposal.estimated_complexity.to_string(),
-                        proposal.user_priority.map(|p| p.to_string()),
-                        proposal.user_modified as i32,
-                        proposal.status.to_string(),
-                        proposal.selected as i32,
-                        proposal.created_task_id.as_ref().map(|id| id.as_str()),
-                        proposal.plan_artifact_id.as_ref().map(|id| id.as_str()),
-                        proposal.plan_version_at_creation,
-                        proposal.sort_order,
-                        proposal.created_at.to_rfc3339(),
-                        proposal.updated_at.to_rfc3339(),
-                    ],
-                )?;
-                Ok(proposal)
-            })
+            .run(move |conn| SqliteTaskProposalRepository::create_sync(conn, proposal))
             .await
     }
 
@@ -202,71 +288,9 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
     }
 
     async fn update(&self, proposal: &TaskProposal) -> AppResult<()> {
-        let now = Utc::now();
-        let id = proposal.id.as_str().to_string();
-        let title = proposal.title.clone();
-        let description = proposal.description.clone();
-        let category = proposal.category.to_string();
-        let steps = proposal.steps.clone();
-        let acceptance_criteria = proposal.acceptance_criteria.clone();
-        let suggested_priority = proposal.suggested_priority.to_string();
-        let priority_score = proposal.priority_score;
-        let priority_reason = proposal.priority_reason.clone();
-        let priority_factors_json = proposal
-            .priority_factors
-            .as_ref()
-            .and_then(|f| serde_json::to_string(f).ok());
-        let estimated_complexity = proposal.estimated_complexity.to_string();
-        let user_priority = proposal.user_priority.map(|p| p.to_string());
-        let user_modified = proposal.user_modified as i32;
-        let status = proposal.status.to_string();
-        let selected = proposal.selected as i32;
-        let created_task_id = proposal
-            .created_task_id
-            .as_ref()
-            .map(|id| id.as_str().to_string());
-        let plan_artifact_id = proposal
-            .plan_artifact_id
-            .as_ref()
-            .map(|id| id.as_str().to_string());
-        let plan_version_at_creation = proposal.plan_version_at_creation;
-        let sort_order = proposal.sort_order;
-
+        let proposal = proposal.clone();
         self.db
-            .run(move |conn| {
-                conn.execute(
-                    "UPDATE task_proposals SET
-                        title = ?2, description = ?3, category = ?4, steps = ?5, acceptance_criteria = ?6,
-                        suggested_priority = ?7, priority_score = ?8, priority_reason = ?9, priority_factors = ?10,
-                        estimated_complexity = ?11, user_priority = ?12, user_modified = ?13, status = ?14,
-                        selected = ?15, created_task_id = ?16, plan_artifact_id = ?17, plan_version_at_creation = ?18,
-                        sort_order = ?19, updated_at = ?20
-                     WHERE id = ?1",
-                    rusqlite::params![
-                        id,
-                        title,
-                        description,
-                        category,
-                        steps,
-                        acceptance_criteria,
-                        suggested_priority,
-                        priority_score,
-                        priority_reason,
-                        priority_factors_json,
-                        estimated_complexity,
-                        user_priority,
-                        user_modified,
-                        status,
-                        selected,
-                        created_task_id,
-                        plan_artifact_id,
-                        plan_version_at_creation,
-                        sort_order,
-                        now.to_rfc3339(),
-                    ],
-                )?;
-                Ok(())
-            })
+            .run(move |conn| SqliteTaskProposalRepository::update_sync(conn, &proposal).map(|_| ()))
             .await
     }
 
@@ -416,12 +440,8 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
         let session_id = session_id.as_str().to_string();
         self.db
             .run(move |conn| {
-                let count: i64 = conn.query_row(
-                    "SELECT COUNT(*) FROM task_proposals WHERE session_id = ?1",
-                    [&session_id],
-                    |row| row.get(0),
-                )?;
-                Ok(count as u32)
+                SqliteTaskProposalRepository::count_by_session_sync(conn, &session_id)
+                    .map(|c| c as u32)
             })
             .await
     }

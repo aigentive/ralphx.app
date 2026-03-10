@@ -22,6 +22,7 @@ async fn test_update_settings() {
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
         require_verification_for_accept: false,
+        require_verification_for_proposals: false,
     };
 
     let updated = repo.update_settings(&new_settings).await.unwrap();
@@ -41,6 +42,7 @@ async fn test_with_settings() {
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
         require_verification_for_accept: false,
+        require_verification_for_proposals: false,
     };
 
     let repo = MemoryIdeationSettingsRepository::with_settings(initial_settings);

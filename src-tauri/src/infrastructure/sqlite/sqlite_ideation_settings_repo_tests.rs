@@ -12,6 +12,8 @@ async fn test_get_default_settings() {
     assert!(!settings.require_plan_approval);
     assert!(settings.suggest_plans_for_complex);
     assert!(settings.auto_link_proposals);
+    assert!(!settings.require_verification_for_accept);
+    assert!(!settings.require_verification_for_proposals);
 }
 
 #[tokio::test]
@@ -26,6 +28,7 @@ async fn test_update_settings() {
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
         require_verification_for_accept: false,
+        require_verification_for_proposals: false,
     };
 
     let updated = repo.update_settings(&new_settings).await.unwrap();
@@ -122,6 +125,7 @@ async fn test_update_overrides_previous_update() {
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
         require_verification_for_accept: false,
+        require_verification_for_proposals: false,
     })
     .await
     .unwrap();
@@ -132,6 +136,7 @@ async fn test_update_overrides_previous_update() {
         suggest_plans_for_complex: true,
         auto_link_proposals: true,
         require_verification_for_accept: false,
+        require_verification_for_proposals: false,
     })
     .await
     .unwrap();
@@ -158,6 +163,7 @@ async fn test_boolean_fields_toggle_independently() {
         suggest_plans_for_complex: false,
         auto_link_proposals: false,
         require_verification_for_accept: false,
+        require_verification_for_proposals: false,
     })
     .await
     .unwrap();
@@ -174,6 +180,7 @@ async fn test_boolean_fields_toggle_independently() {
         suggest_plans_for_complex: true,
         auto_link_proposals: true,
         require_verification_for_accept: false,
+        require_verification_for_proposals: false,
     })
     .await
     .unwrap();
@@ -182,4 +189,107 @@ async fn test_boolean_fields_toggle_independently() {
     assert!(!s2.require_plan_approval);
     assert!(s2.suggest_plans_for_complex);
     assert!(s2.auto_link_proposals);
+}
+
+// ─── verification fields roundtrip ───────────────────────────────────────────
+
+#[tokio::test]
+async fn test_require_verification_for_accept_roundtrip() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let repo = SqliteIdeationSettingsRepository::new(conn);
+
+    repo.update_settings(&IdeationSettings {
+        require_verification_for_accept: true,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+
+    let s = repo.get_settings().await.unwrap();
+    assert!(s.require_verification_for_accept);
+    assert!(!s.require_verification_for_proposals);
+
+    // Toggle back off
+    repo.update_settings(&IdeationSettings {
+        require_verification_for_accept: false,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+
+    let s2 = repo.get_settings().await.unwrap();
+    assert!(!s2.require_verification_for_accept);
+}
+
+#[tokio::test]
+async fn test_require_verification_for_proposals_roundtrip() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let repo = SqliteIdeationSettingsRepository::new(conn);
+
+    repo.update_settings(&IdeationSettings {
+        require_verification_for_proposals: true,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+
+    let s = repo.get_settings().await.unwrap();
+    assert!(!s.require_verification_for_accept);
+    assert!(s.require_verification_for_proposals);
+
+    // Toggle back off
+    repo.update_settings(&IdeationSettings {
+        require_verification_for_proposals: false,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+
+    let s2 = repo.get_settings().await.unwrap();
+    assert!(!s2.require_verification_for_proposals);
+}
+
+#[tokio::test]
+async fn test_both_verification_fields_toggle_independently() {
+    let conn = open_memory_connection().unwrap();
+    run_migrations(&conn).unwrap();
+    let repo = SqliteIdeationSettingsRepository::new(conn);
+
+    // Enable accept only
+    repo.update_settings(&IdeationSettings {
+        require_verification_for_accept: true,
+        require_verification_for_proposals: false,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    let s = repo.get_settings().await.unwrap();
+    assert!(s.require_verification_for_accept);
+    assert!(!s.require_verification_for_proposals);
+
+    // Enable proposals only
+    repo.update_settings(&IdeationSettings {
+        require_verification_for_accept: false,
+        require_verification_for_proposals: true,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    let s2 = repo.get_settings().await.unwrap();
+    assert!(!s2.require_verification_for_accept);
+    assert!(s2.require_verification_for_proposals);
+
+    // Enable both
+    repo.update_settings(&IdeationSettings {
+        require_verification_for_accept: true,
+        require_verification_for_proposals: true,
+        ..Default::default()
+    })
+    .await
+    .unwrap();
+    let s3 = repo.get_settings().await.unwrap();
+    assert!(s3.require_verification_for_accept);
+    assert!(s3.require_verification_for_proposals);
 }
