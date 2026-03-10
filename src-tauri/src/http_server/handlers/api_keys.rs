@@ -1,11 +1,14 @@
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Request, State},
     http::{HeaderMap, StatusCode},
+    middleware::Next,
+    response::Response,
     Json,
 };
 
 use super::*;
 use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
+use crate::domain::repositories::{CreateKeyParams, RotateKeyParams};
 use crate::infrastructure::sqlite::sqlite_api_key_repo::{generate_raw_key, hash_key, key_prefix};
 
 /// Response for GET /api/validate_key
@@ -41,6 +44,56 @@ fn sha256_hex(raw: &str) -> String {
     format!("{:x}", hasher.finalize())
 }
 
+/// Middleware: require a valid admin-level API key for management routes.
+///
+/// Bootstrap exception: if no active (non-revoked) keys exist, access is
+/// allowed so the first key can be created from the Tauri UI.
+///
+/// Returns 401 UNAUTHORIZED if no key is provided or the key is invalid/revoked.
+/// Returns 403 FORBIDDEN if the key is valid but lacks admin permission.
+pub async fn require_admin_key(
+    State(state): State<HttpServerState>,
+    headers: HeaderMap,
+    request: Request,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    // Bootstrap mode: allow unauthenticated access when no active keys exist,
+    // so the first key can be created from the UI.
+    let active_key_count = state
+        .app_state
+        .api_key_repo
+        .list()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|k| k.revoked_at.is_none())
+        .count();
+
+    if active_key_count == 0 {
+        return Ok(next.run(request).await);
+    }
+
+    let raw_key = match extract_raw_key(&headers) {
+        Some(k) => k,
+        None => return Err(StatusCode::UNAUTHORIZED),
+    };
+
+    let key_hash = sha256_hex(&raw_key);
+    let key = state
+        .app_state
+        .api_key_repo
+        .get_by_hash(&key_hash)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    match key {
+        None => Err(StatusCode::UNAUTHORIZED),
+        Some(k) if !k.is_active() && !k.is_in_grace_period() => Err(StatusCode::UNAUTHORIZED),
+        Some(k) if k.permissions & PERMISSION_ADMIN == 0 => Err(StatusCode::FORBIDDEN),
+        Some(_) => Ok(next.run(request).await),
+    }
+}
+
 /// POST /api/auth/keys — Create a new API key
 pub async fn create_api_key(
     State(state): State<HttpServerState>,
@@ -65,23 +118,18 @@ pub async fn create_api_key(
         metadata: None,
     };
 
-    let created = state.app_state.api_key_repo
-        .create(api_key)
+    let created = state
+        .app_state
+        .api_key_repo
+        .create_key_atomic(CreateKeyParams {
+            new_key: api_key,
+            project_ids: req.project_ids.unwrap_or_default(),
+        })
         .await
         .map_err(|e| {
-            tracing::error!("Failed to create API key: {}", e);
+            tracing::error!("Failed to atomically create API key: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-
-    if let Some(project_ids) = &req.project_ids {
-        state.app_state.api_key_repo
-            .set_projects(&created.id, project_ids)
-            .await
-            .map_err(|e| {
-                tracing::error!("Failed to set API key projects: {}", e);
-                StatusCode::INTERNAL_SERVER_ERROR
-            })?;
-    }
 
     Ok(Json(CreateApiKeyResponse {
         id: created.id.to_string(),
@@ -203,24 +251,17 @@ pub async fn rotate_api_key(
 
     let new_key_id = new_key.id.clone();
     state.app_state.api_key_repo
-        .create(new_key)
+        .rotate_key_atomic(RotateKeyParams {
+            new_key,
+            project_ids,
+            old_key_id: old_key_id.clone(),
+            grace_expires_at: grace_expires_at.clone(),
+        })
         .await
         .map_err(|e| {
-            tracing::error!("Failed to create rotated API key: {}", e);
+            tracing::error!("Failed to atomically rotate API key: {}", e);
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
-
-    if !project_ids.is_empty() {
-        state.app_state.api_key_repo
-            .set_projects(&new_key_id, &project_ids)
-            .await
-            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    }
-
-    state.app_state.api_key_repo
-        .set_grace_period(&old_key_id, &grace_expires_at)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     Ok(Json(RotateApiKeyResponse {
         id: new_key_id.to_string(),
@@ -258,6 +299,58 @@ pub async fn update_api_key_projects(
     Ok(Json(SuccessResponse {
         success: true,
         message: "Project associations updated".to_string(),
+    }))
+}
+
+/// GET /api/auth/keys/:id/audit — Retrieve audit log entries for a key
+pub async fn get_audit_log(
+    State(state): State<HttpServerState>,
+    Path(id): Path<String>,
+) -> Result<Json<AuditLogResponse>, StatusCode> {
+    let key_id = ApiKeyId::from_string(id);
+
+    let entries = state
+        .app_state
+        .api_key_repo
+        .get_audit_log(key_id.as_str(), Some(100))
+        .await
+        .map_err(|e| {
+            tracing::error!("Failed to get audit log: {}", e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(AuditLogResponse { entries }))
+}
+
+/// PUT /api/auth/keys/:id/permissions — Update the permission bitmask for a key
+pub async fn update_key_permissions(
+    State(state): State<HttpServerState>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdatePermissionsRequest>,
+) -> Result<Json<SuccessResponse>, StatusCode> {
+    if req.permissions < 0 {
+        return Err(StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    let key_id = ApiKeyId::from_string(id);
+
+    state
+        .app_state
+        .api_key_repo
+        .update_api_key_permissions(key_id.as_str(), req.permissions)
+        .await
+        .map_err(|e| {
+            if matches!(e, crate::error::AppError::NotFound(_)) {
+                StatusCode::NOT_FOUND
+            } else {
+                tracing::error!("Failed to update API key permissions: {}", e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            }
+        })?;
+
+    Ok(Json(SuccessResponse {
+        success: true,
+        message: "Permissions updated".to_string(),
     }))
 }
 
@@ -453,3 +546,7 @@ pub async fn validate_key(
         }
     }
 }
+
+#[cfg(test)]
+#[path = "api_keys_tests.rs"]
+mod api_keys_tests;

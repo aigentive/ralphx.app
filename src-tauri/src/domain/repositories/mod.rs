@@ -50,7 +50,7 @@ pub use activity_event_repository::{
 };
 pub use agent_profile_repository::{AgentProfileId, AgentProfileRepository};
 pub use agent_run_repository::AgentRunRepository;
-pub use api_key_repository::ApiKeyRepository;
+pub use api_key_repository::{ApiKeyRepository, CreateKeyParams, RotateKeyParams};
 pub use app_state_repository::AppStateRepository;
 pub use artifact_bucket_repository::ArtifactBucketRepository;
 pub use artifact_flow_repository::ArtifactFlowRepository;

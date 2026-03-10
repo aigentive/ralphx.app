@@ -1,6 +1,18 @@
 use serde::{Deserialize, Serialize};
 use crate::domain::entities::types::ApiKeyId;
 
+/// A single entry from the API audit log
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditLogEntry {
+    pub id: i64,
+    pub api_key_id: String,
+    pub tool_name: String,
+    pub project_id: Option<String>,
+    pub success: bool,
+    pub latency_ms: Option<i64>,
+    pub created_at: String,
+}
+
 /// Bitmask permission constants
 pub const PERMISSION_READ: i32 = 1;
 pub const PERMISSION_WRITE: i32 = 2;

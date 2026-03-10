@@ -2,12 +2,13 @@
 // This allows the MCP server to call RalphX functionality via REST API
 
 use axum::{
+    middleware,
     routing::{delete, get, post, put},
     Router,
 };
 use std::sync::Arc;
 use std::time::Duration;
-use tower_http::cors::{Any, CorsLayer};
+use tower_http::cors::{AllowOrigin, Any, CorsLayer};
 
 use crate::application::{AppState, TeamService, TeamStateTracker};
 use crate::commands::ExecutionState;
@@ -52,13 +53,38 @@ pub async fn start_http_server(
         team_service,
     };
 
-    let app = Router::new()
-        // API key management endpoints (/api/auth/*)
+    // Management routes — require admin API key + localhost-only CORS.
+    // Bootstrap exception: unauthenticated when no active keys exist.
+    // CORS restricted to Tauri app and local dev server origins (defense-in-depth
+    // against CSRF from external websites; server already binds to 127.0.0.1).
+    let management_routes = Router::new()
         .route("/api/auth/keys", post(create_api_key))
         .route("/api/auth/keys", get(list_api_keys))
         .route("/api/auth/keys/:id", delete(delete_api_key))
         .route("/api/auth/keys/:id/rotate", post(rotate_api_key))
         .route("/api/auth/keys/:id/projects", put(update_api_key_projects))
+        .route("/api/auth/keys/:id/audit", get(get_audit_log))
+        .route("/api/auth/keys/:id/permissions", put(update_key_permissions))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            require_admin_key,
+        ))
+        .layer(
+            CorsLayer::new()
+                .allow_origin(AllowOrigin::predicate(|origin, _| {
+                    let s = origin.as_bytes();
+                    s.starts_with(b"http://localhost")
+                        || s.starts_with(b"https://localhost")
+                        || s == b"tauri://localhost"
+                        || s == b"https://tauri.localhost"
+                }))
+                .allow_methods(Any)
+                .allow_headers(Any),
+        );
+
+    let app = Router::new()
+        .merge(management_routes)
+        // Validate endpoints (public — validate a bearer token, no admin needed)
         .route("/api/auth/validate-key", get(validate_api_key))
         // Legacy validate_key endpoint (kept for backward compat)
         .route("/api/validate_key", get(validate_key))
