@@ -7,8 +7,8 @@ use tokio::sync::RwLock;
 
 use async_trait::async_trait;
 
-use crate::domain::entities::{ApiKey, ApiKeyId};
-use crate::domain::repositories::ApiKeyRepository;
+use crate::domain::entities::{ApiKey, ApiKeyId, AuditLogEntry};
+use crate::domain::repositories::{ApiKeyRepository, CreateKeyParams, RotateKeyParams};
 use crate::error::AppResult;
 
 /// In-memory implementation of ApiKeyRepository for testing
@@ -121,6 +121,47 @@ impl ApiKeyRepository for MemoryApiKeyRepository {
             success,
             latency_ms,
         ));
+        Ok(())
+    }
+
+    async fn get_audit_log(
+        &self,
+        _key_id: &str,
+        _limit: Option<i64>,
+    ) -> AppResult<Vec<AuditLogEntry>> {
+        Ok(vec![])
+    }
+
+    async fn update_api_key_permissions(
+        &self,
+        _key_id: &str,
+        _permissions: i64,
+    ) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn create_key_atomic(&self, params: CreateKeyParams) -> AppResult<ApiKey> {
+        // In-memory implementation: apply each step sequentially (no real transaction needed).
+        let new_key_id = params.new_key.id.clone();
+        let created = self.create(params.new_key).await?;
+        if !params.project_ids.is_empty() {
+            self.set_projects(&new_key_id, &params.project_ids).await?;
+        }
+        Ok(created)
+    }
+
+    async fn rotate_key_atomic(&self, params: RotateKeyParams) -> AppResult<()> {
+        // In-memory implementation: apply each step sequentially (no real transaction needed).
+        let new_key_id = params.new_key.id.clone();
+        self.create(params.new_key).await?;
+        if !params.project_ids.is_empty() {
+            self.set_projects(&new_key_id, &params.project_ids).await?;
+        }
+        // Revoke the old key and set its grace period so it is technically revoked
+        // but still usable via is_in_grace_period() until the grace window elapses.
+        self.revoke(&params.old_key_id).await?;
+        self.set_grace_period(&params.old_key_id, &params.grace_expires_at)
+            .await?;
         Ok(())
     }
 }

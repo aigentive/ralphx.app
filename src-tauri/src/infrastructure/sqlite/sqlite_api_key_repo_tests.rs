@@ -7,7 +7,7 @@ use rusqlite::Connection;
 use tokio::sync::Mutex;
 
 use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
-use crate::domain::repositories::ApiKeyRepository;
+use crate::domain::repositories::{ApiKeyRepository, CreateKeyParams};
 use crate::infrastructure::sqlite::{
     migrations::run_migrations,
     sqlite_api_key_repo::{generate_raw_key, hash_key, key_prefix, SqliteApiKeyRepository},
@@ -327,4 +327,337 @@ async fn test_log_audit_success() {
     repo.log_audit(id.as_str(), "list_tasks", None, false, None)
         .await
         .expect("second log_audit failed");
+}
+
+// ============================================================================
+// rotate_key_atomic tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_rotate_key_atomic_success() {
+    use crate::domain::repositories::RotateKeyParams;
+
+    let repo = setup_repo();
+    let old_key_raw = generate_raw_key();
+    let old_key = ApiKey {
+        id: ApiKeyId::new(),
+        name: "Original Key".to_string(),
+        key_hash: hash_key(&old_key_raw),
+        key_prefix: key_prefix(&old_key_raw),
+        permissions: PERMISSION_READ | PERMISSION_WRITE,
+        created_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        revoked_at: None,
+        last_used_at: None,
+        grace_expires_at: None,
+        metadata: None,
+    };
+    let old_key_id = old_key.id.clone();
+    repo.create(old_key).await.expect("create old key");
+
+    let new_key_raw = generate_raw_key();
+    let new_key = ApiKey {
+        id: ApiKeyId::new(),
+        name: "Original Key".to_string(),
+        key_hash: hash_key(&new_key_raw),
+        key_prefix: key_prefix(&new_key_raw),
+        permissions: PERMISSION_READ | PERMISSION_WRITE,
+        created_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        revoked_at: None,
+        last_used_at: None,
+        grace_expires_at: None,
+        metadata: None,
+    };
+    let new_key_id = new_key.id.clone();
+
+    let grace_expires_at = (chrono::Utc::now() + chrono::Duration::seconds(60))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+
+    repo.rotate_key_atomic(RotateKeyParams {
+        new_key,
+        project_ids: vec![],
+        old_key_id: old_key_id.clone(),
+        grace_expires_at: grace_expires_at.clone(),
+    })
+    .await
+    .expect("rotate_key_atomic failed");
+
+    // New key must exist
+    let found_new = repo
+        .get_by_id(&new_key_id)
+        .await
+        .expect("get new key")
+        .expect("new key not found");
+    assert_eq!(found_new.name, "Original Key");
+    assert!(found_new.revoked_at.is_none(), "new key should not be revoked");
+
+    // Old key must have grace period AND revoked_at set
+    let found_old = repo
+        .get_by_id(&old_key_id)
+        .await
+        .expect("get old key")
+        .expect("old key not found");
+    assert_eq!(
+        found_old.grace_expires_at.as_deref(),
+        Some(grace_expires_at.as_str()),
+        "old key must have grace_expires_at set"
+    );
+    assert!(found_old.is_in_grace_period(), "old key must be in grace period");
+    assert!(
+        found_old.revoked_at.is_some(),
+        "old key must have revoked_at set after rotation"
+    );
+    assert!(
+        !found_old.is_active(),
+        "old key must not be active (revoked_at set) after rotation"
+    );
+}
+
+#[tokio::test]
+async fn test_rotate_key_atomic_rollback_on_duplicate_key_hash() {
+    use crate::domain::repositories::RotateKeyParams;
+
+    // Simulate a partial failure: if we try to insert a new key with a hash that already
+    // exists (UNIQUE constraint violation), the transaction must roll back and the old
+    // key must NOT have its grace period updated.
+    let repo = setup_repo();
+
+    let old_key_raw = generate_raw_key();
+    let old_key_hash = hash_key(&old_key_raw);
+    let old_key = ApiKey {
+        id: ApiKeyId::new(),
+        name: "Key To Rotate".to_string(),
+        key_hash: old_key_hash.clone(),
+        key_prefix: key_prefix(&old_key_raw),
+        permissions: PERMISSION_ADMIN,
+        created_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        revoked_at: None,
+        last_used_at: None,
+        grace_expires_at: None,
+        metadata: None,
+    };
+    let old_key_id = old_key.id.clone();
+    repo.create(old_key).await.expect("create old key");
+
+    // Attempt to rotate with a new key that has the SAME hash as the old key,
+    // triggering a UNIQUE constraint violation on key_hash.
+    let conflicting_new_key = ApiKey {
+        id: ApiKeyId::new(),
+        name: "Key To Rotate".to_string(),
+        key_hash: old_key_hash.clone(), // duplicate hash — will cause UNIQUE violation
+        key_prefix: "rxk_live_ddd".to_string(),
+        permissions: PERMISSION_ADMIN,
+        created_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+        revoked_at: None,
+        last_used_at: None,
+        grace_expires_at: None,
+        metadata: None,
+    };
+    let conflicting_new_id = conflicting_new_key.id.clone();
+
+    let grace_expires_at = (chrono::Utc::now() + chrono::Duration::seconds(60))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+
+    let result = repo
+        .rotate_key_atomic(RotateKeyParams {
+            new_key: conflicting_new_key,
+            project_ids: vec![],
+            old_key_id: old_key_id.clone(),
+            grace_expires_at,
+        })
+        .await;
+
+    // The rotation must fail
+    assert!(result.is_err(), "rotation with duplicate hash must fail");
+
+    // The conflicting new key must NOT exist (transaction rolled back)
+    let found_new = repo
+        .get_by_id(&conflicting_new_id)
+        .await
+        .expect("get_by_id should not error");
+    assert!(
+        found_new.is_none(),
+        "new key must not exist after failed rotation"
+    );
+
+    // The old key must NOT have a grace period set (transaction rolled back)
+    let found_old = repo
+        .get_by_id(&old_key_id)
+        .await
+        .expect("get old key")
+        .expect("old key must still exist");
+    assert!(
+        found_old.grace_expires_at.is_none(),
+        "old key grace_expires_at must not be set after failed rotation"
+    );
+}
+
+// After grace period expires, old key should be fully inactive
+#[tokio::test]
+async fn test_old_key_inactive_after_grace_expires() {
+    use crate::domain::repositories::RotateKeyParams;
+
+    let repo = setup_repo();
+    let old_key = make_key("Old Key");
+    let old_key_id = old_key.id.clone();
+    repo.create(old_key).await.expect("create old key");
+
+    let new_key = make_key("New Key");
+
+    // Grace period set to a time in the past — already expired
+    let grace_expires_at = (chrono::Utc::now() - chrono::Duration::seconds(10))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+
+    repo.rotate_key_atomic(RotateKeyParams {
+        new_key,
+        project_ids: vec![],
+        old_key_id: old_key_id.clone(),
+        grace_expires_at,
+    })
+    .await
+    .expect("rotate_key_atomic failed");
+
+    let found_old = repo
+        .get_by_id(&old_key_id)
+        .await
+        .expect("get old key")
+        .expect("old key not found");
+
+    assert!(found_old.revoked_at.is_some(), "old key must have revoked_at set");
+    assert!(!found_old.is_active(), "old key must not be active after revocation");
+    assert!(
+        !found_old.is_in_grace_period(),
+        "grace period has expired, is_in_grace_period() must return false"
+    );
+}
+
+// During grace period, old key is revoked but still usable via grace period check
+#[tokio::test]
+async fn test_old_key_usable_during_grace_period() {
+    use crate::domain::repositories::RotateKeyParams;
+
+    let repo = setup_repo();
+    let old_key = make_key("Old Key");
+    let old_key_id = old_key.id.clone();
+    repo.create(old_key).await.expect("create old key");
+
+    let new_key = make_key("New Key");
+
+    // Grace period set to a time in the future — still active
+    let grace_expires_at = (chrono::Utc::now() + chrono::Duration::seconds(60))
+        .format("%Y-%m-%dT%H:%M:%SZ")
+        .to_string();
+
+    repo.rotate_key_atomic(RotateKeyParams {
+        new_key,
+        project_ids: vec![],
+        old_key_id: old_key_id.clone(),
+        grace_expires_at,
+    })
+    .await
+    .expect("rotate_key_atomic failed");
+
+    let found_old = repo
+        .get_by_id(&old_key_id)
+        .await
+        .expect("get old key")
+        .expect("old key not found");
+
+    // revoked_at is eagerly set during rotation
+    assert!(
+        found_old.revoked_at.is_some(),
+        "old key must have revoked_at set immediately after rotation"
+    );
+    // is_active() checks revoked_at only — key is revoked
+    assert!(!found_old.is_active(), "old key must not be active (revoked_at is set)");
+    // but the grace window is still open, so the key remains usable
+    assert!(
+        found_old.is_in_grace_period(),
+        "old key must still be in grace period (grace_expires_at is in the future)"
+    );
+}
+
+// ============================================================================
+// create_key_atomic tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_key_atomic_success_no_projects() {
+    let repo = setup_repo();
+    let key = make_key("Atomic Create No Projects");
+    let key_id = key.id.clone();
+
+    let created = repo
+        .create_key_atomic(CreateKeyParams {
+            new_key: key,
+            project_ids: vec![],
+        })
+        .await
+        .expect("create_key_atomic failed");
+
+    assert_eq!(created.id, key_id);
+    assert_eq!(created.name, "Atomic Create No Projects");
+
+    let found = repo.get_by_id(&key_id).await.expect("get_by_id").expect("not found");
+    assert_eq!(found.id, key_id);
+    let projects = repo.get_projects(&key_id).await.expect("get_projects");
+    assert!(projects.is_empty(), "should have no project associations");
+}
+
+#[tokio::test]
+async fn test_create_key_atomic_success_with_projects() {
+    let (repo, conn) = setup_repo_with_conn();
+    insert_test_project(&conn, "proj-a").await;
+    insert_test_project(&conn, "proj-b").await;
+
+    let key = make_key("Atomic Create With Projects");
+    let key_id = key.id.clone();
+
+    let created = repo
+        .create_key_atomic(CreateKeyParams {
+            new_key: key,
+            project_ids: vec!["proj-a".to_string(), "proj-b".to_string()],
+        })
+        .await
+        .expect("create_key_atomic failed");
+
+    assert_eq!(created.id, key_id);
+
+    let found = repo.get_by_id(&key_id).await.expect("get_by_id").expect("not found");
+    assert_eq!(found.name, "Atomic Create With Projects");
+
+    let mut projects = repo.get_projects(&key_id).await.expect("get_projects");
+    projects.sort();
+    assert_eq!(projects, vec!["proj-a".to_string(), "proj-b".to_string()]);
+}
+
+#[tokio::test]
+async fn test_create_key_atomic_rollback_on_duplicate_project() {
+    // If the project association step fails mid-transaction (PRIMARY KEY violation
+    // from duplicate project_ids), the key insert must be rolled back — no orphaned keys.
+    let (repo, conn) = setup_repo_with_conn();
+    insert_test_project(&conn, "proj-dup").await;
+
+    let key = make_key("Orphan Candidate");
+    let key_id = key.id.clone();
+
+    // Duplicate project IDs trigger a PRIMARY KEY violation on (api_key_id, project_id)
+    // during step 2 of the transaction, causing rollback of the step 1 key insert.
+    let result = repo
+        .create_key_atomic(CreateKeyParams {
+            new_key: key,
+            project_ids: vec!["proj-dup".to_string(), "proj-dup".to_string()],
+        })
+        .await;
+
+    assert!(result.is_err(), "create_key_atomic must fail on duplicate project_id");
+
+    // The key must NOT exist — entire transaction was rolled back
+    let found = repo.get_by_id(&key_id).await.expect("get_by_id should not error");
+    assert!(
+        found.is_none(),
+        "key must not exist after failed atomic create (no orphaned keys)"
+    );
 }

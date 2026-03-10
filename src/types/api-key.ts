@@ -53,12 +53,38 @@ export const AuditLogEntrySchema = z.object({
 
 export type AuditLogEntry = z.infer<typeof AuditLogEntrySchema>;
 
-export const RotateKeyResponseSchema = z.object({
-  new_key: ApiKeySchema,
-  raw_key: z.string().min(1),
+export const ListApiKeysResponseSchema = z.object({
+  keys: z.array(ApiKeySchema),
+  count: z.number(),
 });
 
-export type RotateKeyResponse = z.infer<typeof RotateKeyResponseSchema>;
+export type ListApiKeysResponse = z.infer<typeof ListApiKeysResponseSchema>;
+
+export const CreateApiKeyResponseSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  key: z.string(),
+  key_prefix: z.string(),
+  permissions: z.number(),
+  created_at: z.string(),
+});
+
+export type CreateApiKeyResponse = z.infer<typeof CreateApiKeyResponseSchema>;
+
+export const RotateApiKeyResponseSchema = z.object({
+  id: z.string(),
+  new_key: z.string(),
+  key_prefix: z.string(),
+  old_key_grace_expires_at: z.string().nullable(),
+});
+
+export type RotateApiKeyResponse = z.infer<typeof RotateApiKeyResponseSchema>;
+
+export const AuditLogResponseSchema = z.object({
+  entries: z.array(AuditLogEntrySchema),
+});
+
+export type AuditLogResponse = z.infer<typeof AuditLogResponseSchema>;
 
 // ============================================================================
 // Parsing Utilities

@@ -8,8 +8,8 @@ use async_trait::async_trait;
 use rusqlite::Connection;
 
 use super::DbConnection;
-use crate::domain::entities::{ApiKey, ApiKeyId};
-use crate::domain::repositories::ApiKeyRepository;
+use crate::domain::entities::{ApiKey, ApiKeyId, AuditLogEntry};
+use crate::domain::repositories::{ApiKeyRepository, CreateKeyParams, RotateKeyParams};
 use crate::error::{AppError, AppResult};
 
 /// Generate a new raw API key in the format: rxk_live_{32 random alphanumeric chars}
@@ -262,6 +262,175 @@ impl ApiKeyRepository for SqliteApiKeyRepository {
                     ],
                 )
                 .map_err(|e| AppError::Database(e.to_string()))?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn get_audit_log(
+        &self,
+        key_id: &str,
+        limit: Option<i64>,
+    ) -> AppResult<Vec<AuditLogEntry>> {
+        let key_id = key_id.to_string();
+        let limit = limit.unwrap_or(100);
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, api_key_id, tool_name, project_id, success, latency_ms, created_at
+                     FROM api_audit_log WHERE api_key_id = ?1
+                     ORDER BY created_at DESC LIMIT ?2",
+                )?;
+                let entries = stmt
+                    .query_map(rusqlite::params![key_id, limit], |row| {
+                        let success_int: i64 = row.get(4)?;
+                        Ok(AuditLogEntry {
+                            id: row.get(0)?,
+                            api_key_id: row.get(1)?,
+                            tool_name: row.get(2)?,
+                            project_id: row.get(3)?,
+                            success: success_int != 0,
+                            latency_ms: row.get(5)?,
+                            created_at: row.get(6)?,
+                        })
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(entries)
+            })
+            .await
+    }
+
+    async fn update_api_key_permissions(
+        &self,
+        key_id: &str,
+        permissions: i64,
+    ) -> AppResult<()> {
+        let key_id = key_id.to_string();
+        self.db
+            .run(move |conn| {
+                let rows_updated = conn.execute(
+                    "UPDATE api_keys SET permissions = ?1 WHERE id = ?2",
+                    rusqlite::params![permissions, key_id],
+                )?;
+                if rows_updated == 0 {
+                    return Err(AppError::NotFound(format!(
+                        "API key not found: {}",
+                        key_id
+                    )));
+                }
+                Ok(())
+            })
+            .await
+    }
+
+    async fn create_key_atomic(&self, params: CreateKeyParams) -> AppResult<ApiKey> {
+        let new_key = params.new_key;
+        let project_ids = params.project_ids;
+
+        // Clone all fields before moving into the closure
+        let new_id = new_key.id.as_str().to_string();
+        let new_name = new_key.name.clone();
+        let new_key_hash = new_key.key_hash.clone();
+        let new_key_prefix = new_key.key_prefix.clone();
+        let new_permissions = new_key.permissions;
+        let new_created_at = new_key.created_at.clone();
+        let new_revoked_at = new_key.revoked_at.clone();
+        let new_last_used_at = new_key.last_used_at.clone();
+        let new_grace_expires_at = new_key.grace_expires_at.clone();
+        let new_metadata = new_key.metadata.clone();
+
+        let returned_key = new_key.clone();
+
+        self.db
+            .run_transaction(move |conn| {
+                // Step 1: insert key
+                conn.execute(
+                    "INSERT INTO api_keys (id, name, key_hash, key_prefix, permissions, created_at, revoked_at, last_used_at, grace_expires_at, metadata)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    rusqlite::params![
+                        new_id,
+                        new_name,
+                        new_key_hash,
+                        new_key_prefix,
+                        new_permissions,
+                        new_created_at,
+                        new_revoked_at,
+                        new_last_used_at,
+                        new_grace_expires_at,
+                        new_metadata,
+                    ],
+                )?;
+
+                // Step 2: set project associations (if any)
+                for project_id in &project_ids {
+                    conn.execute(
+                        "INSERT INTO api_key_projects (api_key_id, project_id) VALUES (?1, ?2)",
+                        rusqlite::params![new_id, project_id],
+                    )?;
+                }
+
+                Ok(returned_key)
+            })
+            .await
+    }
+
+    async fn rotate_key_atomic(&self, params: RotateKeyParams) -> AppResult<()> {
+        let new_key = params.new_key;
+        let project_ids = params.project_ids;
+        let old_key_id = params.old_key_id.as_str().to_string();
+        let grace_expires_at = params.grace_expires_at;
+
+        // Clone all fields out of new_key before moving into the closure
+        let new_id = new_key.id.as_str().to_string();
+        let new_name = new_key.name.clone();
+        let new_key_hash = new_key.key_hash.clone();
+        let new_key_prefix = new_key.key_prefix.clone();
+        let new_permissions = new_key.permissions;
+        let new_created_at = new_key.created_at.clone();
+        let new_revoked_at = new_key.revoked_at.clone();
+        let new_last_used_at = new_key.last_used_at.clone();
+        let new_grace_expires_at = new_key.grace_expires_at.clone();
+        let new_metadata = new_key.metadata.clone();
+
+        self.db
+            .run_transaction(move |conn| {
+                // Step 1: insert new key
+                conn.execute(
+                    "INSERT INTO api_keys (id, name, key_hash, key_prefix, permissions, created_at, revoked_at, last_used_at, grace_expires_at, metadata)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    rusqlite::params![
+                        new_id,
+                        new_name,
+                        new_key_hash,
+                        new_key_prefix,
+                        new_permissions,
+                        new_created_at,
+                        new_revoked_at,
+                        new_last_used_at,
+                        new_grace_expires_at,
+                        new_metadata,
+                    ],
+                )?;
+
+                // Step 2: set project associations on new key
+                for project_id in &project_ids {
+                    conn.execute(
+                        "INSERT INTO api_key_projects (api_key_id, project_id) VALUES (?1, ?2)",
+                        rusqlite::params![new_id, project_id],
+                    )?;
+                }
+
+                // Step 3: revoke the old key and set its grace period atomically.
+                // revoked_at marks the key as rotated; grace_expires_at allows it to
+                // remain usable via is_in_grace_period() until the grace window elapses.
+                conn.execute(
+                    "UPDATE api_keys \
+                     SET revoked_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now'), \
+                         grace_expires_at = ?2 \
+                     WHERE id = ?1",
+                    rusqlite::params![old_key_id, grace_expires_at],
+                )?;
+
                 Ok(())
             })
             .await

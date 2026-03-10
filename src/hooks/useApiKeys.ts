@@ -7,12 +7,13 @@
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  ApiKeySchema,
-  AuditLogEntrySchema,
+  ListApiKeysResponseSchema,
+  CreateApiKeyResponseSchema,
+  RotateApiKeyResponseSchema,
+  AuditLogResponseSchema,
   type ApiKey,
   type AuditLogEntry,
 } from "@/types/api-key";
-import { z } from "zod";
 
 const BASE = "http://localhost:3847";
 
@@ -40,24 +41,26 @@ async function fetchKeys(): Promise<ApiKey[]> {
     throw new Error(text || `HTTP ${res.status}`);
   }
   const data: unknown = await res.json();
-  return z.array(ApiKeySchema).parse(data);
+  const parsed = ListApiKeysResponseSchema.parse(data);
+  return parsed.keys;
 }
 
-async function fetchAuditLog(keyId: string): Promise<AuditLogEntry[]> {
+export async function fetchAuditLog(keyId: string): Promise<AuditLogEntry[]> {
   const res = await fetch(`${BASE}/api/auth/keys/${keyId}/audit`);
   if (!res.ok) {
     const text = await res.text();
     throw new Error(text || `HTTP ${res.status}`);
   }
   const data: unknown = await res.json();
-  return z.array(AuditLogEntrySchema).parse(data);
+  const parsed = AuditLogResponseSchema.parse(data);
+  return parsed.entries;
 }
 
 async function createKey(payload: {
   name: string;
   project_ids: string[];
   permissions?: number;
-}): Promise<{ key: ApiKey; raw_key: string }> {
+}): Promise<{ raw_key: string }> {
   const res = await fetch(`${BASE}/api/auth/keys`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -67,19 +70,35 @@ async function createKey(payload: {
     const text = await res.text();
     throw new Error(text || `HTTP ${res.status}`);
   }
-  const data = (await res.json()) as { key: unknown; raw_key: string };
-  return { key: ApiKeySchema.parse(data.key), raw_key: data.raw_key };
+  const data: unknown = await res.json();
+  const result = CreateApiKeyResponseSchema.safeParse(data);
+  if (!result.success) {
+    throw new Error(`Invalid create key response: ${result.error.message}`);
+  }
+  return { raw_key: result.data.key };
 }
 
 async function revokeKey(id: string): Promise<void> {
   const res = await fetch(`${BASE}/api/auth/keys/${id}`, { method: "DELETE" });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(text || `HTTP ${res.status}`);
+    let message = text;
+    try {
+      const parsed: unknown = JSON.parse(text);
+      if (parsed !== null && typeof parsed === "object" && "message" in parsed) {
+        const msg = (parsed as { message: unknown }).message;
+        if (typeof msg === "string") {
+          message = msg;
+        }
+      }
+    } catch {
+      // not JSON — use raw text as-is
+    }
+    throw new Error(message || `HTTP ${res.status}`);
   }
 }
 
-async function rotateKey(id: string): Promise<{ key: ApiKey; raw_key: string }> {
+async function rotateKey(id: string): Promise<{ raw_key: string }> {
   const res = await fetch(`${BASE}/api/auth/keys/${id}/rotate`, {
     method: "POST",
   });
@@ -87,8 +106,12 @@ async function rotateKey(id: string): Promise<{ key: ApiKey; raw_key: string }> 
     const text = await res.text();
     throw new Error(text || `HTTP ${res.status}`);
   }
-  const data = (await res.json()) as { new_key: unknown; raw_key: string };
-  return { key: ApiKeySchema.parse(data.new_key), raw_key: data.raw_key };
+  const data: unknown = await res.json();
+  const result = RotateApiKeyResponseSchema.safeParse(data);
+  if (!result.success) {
+    throw new Error(`Invalid rotate key response: ${result.error.message}`);
+  }
+  return { raw_key: result.data.new_key };
 }
 
 async function updateKeyProjects(id: string, projectIds: string[]): Promise<void> {
@@ -103,7 +126,7 @@ async function updateKeyProjects(id: string, projectIds: string[]): Promise<void
   }
 }
 
-async function updateKeyPermissions(id: string, permissions: number): Promise<void> {
+export async function updateKeyPermissions(id: string, permissions: number): Promise<void> {
   const res = await fetch(`${BASE}/api/auth/keys/${id}/permissions`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -140,7 +163,7 @@ export function useApiKeyAuditLog(keyId: string) {
 export function useCreateApiKey() {
   const qc = useQueryClient();
   return useMutation<
-    { key: ApiKey; raw_key: string },
+    { raw_key: string },
     Error,
     { name: string; project_ids: string[]; permissions?: number }
   >({
@@ -165,7 +188,7 @@ export function useRevokeApiKey() {
 /** Rotate an API key — returns new raw key once */
 export function useRotateApiKey() {
   const qc = useQueryClient();
-  return useMutation<{ key: ApiKey; raw_key: string }, Error, string>({
+  return useMutation<{ raw_key: string }, Error, string>({
     mutationFn: rotateKey,
     onSuccess: () => {
       void qc.invalidateQueries({ queryKey: apiKeyKeys.list() });

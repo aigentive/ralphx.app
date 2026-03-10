@@ -40,7 +40,7 @@ pub use activity_event::{
     ParseActivityEventRoleError, ParseActivityEventTypeError,
 };
 pub use agent_run::{AgentRun, AgentRunId, AgentRunStatus, InterruptedConversation};
-pub use api_key::{ApiKey, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
+pub use api_key::{ApiKey, AuditLogEntry, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
 pub use app_state::AppSettings;
 pub use artifact::{
     Artifact, ArtifactBucket, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata,

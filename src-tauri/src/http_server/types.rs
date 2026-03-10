@@ -7,7 +7,8 @@ use std::sync::Arc;
 use crate::application::{AppState, TeamService, TeamStateTracker};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
-    Artifact, ArtifactContent, MemoryEntry, StepProgressSummary, TaskProposal, TaskStep,
+    Artifact, ArtifactContent, AuditLogEntry, MemoryEntry, StepProgressSummary, TaskProposal,
+    TaskStep,
 };
 
 // ============================================================================
@@ -1302,6 +1303,16 @@ pub struct RotateApiKeyResponse {
     pub new_key: String,
     pub key_prefix: String,
     pub old_key_grace_expires_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct AuditLogResponse {
+    pub entries: Vec<AuditLogEntry>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdatePermissionsRequest {
+    pub permissions: i64,
 }
 
 // ============================================================================
