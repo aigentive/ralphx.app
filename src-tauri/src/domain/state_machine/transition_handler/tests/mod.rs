@@ -199,3 +199,9 @@ mod concurrent_freshness_tests;
 // Integration tests for conflict marker scan before reviewer spawn (Fix 2) and
 // BranchFreshnessConflict metadata persistence during on_enter(Reviewing)
 mod reviewing_conflict_marker_tests;
+
+// Integration tests for freshness-conflict merge worktree fix:
+//   on_enter(Merging) via BranchFreshnessConflict path creates merge-{id} worktree
+//   Tests: source_update_conflict, plan_update_conflict, normal pipeline no-op,
+//          no-flags skip, and clear_routing_flags() unit test
+mod freshness_merge_worktree_tests;

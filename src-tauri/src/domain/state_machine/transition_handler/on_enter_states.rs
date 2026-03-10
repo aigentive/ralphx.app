@@ -11,7 +11,8 @@ use chrono::Utc;
 use super::super::machine::State;
 use super::freshness::{self, FreshnessAction};
 use super::merge_helpers::{
-    compute_merge_worktree_path, expand_home, resolve_task_base_branch, slugify,
+    compute_merge_worktree_path, compute_task_worktree_path, expand_home,
+    resolve_task_base_branch, slugify,
 };
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::git_service::git_cmd::ENOENT_MARKER;
@@ -418,6 +419,60 @@ impl<'a> super::TransitionHandler<'a> {
                                 task.touch();
                                 if let Err(e) = task_repo.update(&task).await {
                                     tracing::error!(error = %e, "Failed to persist task branch info");
+                                }
+                            }
+                        }
+
+                        // Worktree existence guard: even when task_branch is already set (prior run),
+                        // the worktree may have been cleaned up. Re-create if missing to prevent
+                        // run_and_store_pre_execution_setup from using a stale/nonexistent path.
+                        // Also handles the race where create_worktree succeeded but DB persist failed.
+                        if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
+                            if let Some(ref branch) = task.task_branch.clone() {
+                                let expected_wt_path = compute_task_worktree_path(&project, task_id_str);
+                                let expected_wt_buf = std::path::PathBuf::from(&expected_wt_path);
+                                // Check both the expected path AND the stored path
+                                let stored_path_exists = task.worktree_path
+                                    .as_ref()
+                                    .map(|p| std::path::PathBuf::from(p).exists())
+                                    .unwrap_or(false);
+                                let expected_path_exists = expected_wt_buf.exists();
+                                if !stored_path_exists && !expected_path_exists {
+                                    tracing::info!(
+                                        task_id = task_id_str,
+                                        branch = %branch,
+                                        expected_wt = %expected_wt_path,
+                                        "Worktree missing for task with existing branch — re-creating"
+                                    );
+                                    let repo_path = Path::new(&project.working_directory);
+                                    match GitService::checkout_existing_branch_worktree(
+                                        repo_path,
+                                        &expected_wt_buf,
+                                        branch,
+                                    )
+                                    .await
+                                    {
+                                        Ok(_) => {
+                                            task.worktree_path = Some(expected_wt_path);
+                                            task.touch();
+                                            if let Err(e) = task_repo.update(&task).await {
+                                                tracing::error!(error = %e, "Failed to persist re-created worktree_path");
+                                            }
+                                        }
+                                        Err(e) => {
+                                            return Err(AppError::ExecutionBlocked(format!(
+                                                "Git isolation failed: could not re-create missing worktree for task with existing branch: {}",
+                                                e
+                                            )));
+                                        }
+                                    }
+                                } else if !stored_path_exists && expected_path_exists {
+                                    // Expected path exists but DB has wrong/missing worktree_path — update DB
+                                    task.worktree_path = Some(expected_wt_path);
+                                    task.touch();
+                                    if let Err(e) = task_repo.update(&task).await {
+                                        tracing::error!(error = %e, "Failed to update stale worktree_path in DB");
+                                    }
                                 }
                             }
                         }
@@ -1178,7 +1233,11 @@ impl<'a> super::TransitionHandler<'a> {
                 // Clean up merge worktree before spawning merger agent.
                 // - Symlink removal: ALWAYS (symlinks cause false conflicts for the agent)
                 // - Git abort: only on recovery re-entry (stale rebase/merge from prior attempt)
-                if let (Some(ref _task_repo), Some(ref project_repo)) = (
+                // - Worktree creation: when missing (BranchFreshnessConflict path from
+                //   on_enter(Executing/ReExecuting/Reviewing) — the freshness path sets metadata
+                //   flags and returns BranchFreshnessConflict; task_transition_service transitions
+                //   to Merging and calls on_enter(Merging) without creating a merge worktree)
+                if let (Some(ref task_repo), Some(ref project_repo)) = (
                     &self.machine.context.services.task_repo,
                     &self.machine.context.services.project_repo,
                 ) {
@@ -1188,6 +1247,118 @@ impl<'a> super::TransitionHandler<'a> {
                         let wt_path = std::path::PathBuf::from(compute_merge_worktree_path(
                             &project, task_id,
                         ));
+
+                        // --- Create merge worktree if missing (BranchFreshnessConflict path) ---
+                        // The normal merge pipeline path (side_effects.rs) always creates the
+                        // worktree before on_enter(Merging), so this block is a no-op on that
+                        // path. It only runs when on_enter(Merging) is reached via
+                        // BranchFreshnessConflict handling (mod.rs handle_transition or
+                        // task_transition_service auto-transition), where no merge worktree was
+                        // created.
+                        //
+                        // Guard: only attempt if the project working directory exists as a valid
+                        // git repo. Tests use nonexistent paths intentionally; skipping worktree
+                        // creation there preserves test behavior.
+                        let repo_path = std::path::Path::new(&project.working_directory);
+                        if !wt_path.exists() && repo_path.exists() {
+                            let tid = TaskId::from_string(task_id.clone());
+                            if let Ok(Some(task)) = task_repo.get_by_id(&tid).await {
+                                let meta = task.metadata.as_ref()
+                                    .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok());
+                                let is_plan_conflict = meta.as_ref()
+                                    .and_then(|v| v.get("plan_update_conflict")?.as_bool())
+                                    .unwrap_or(false);
+                                let is_source_conflict = meta.as_ref()
+                                    .and_then(|v| v.get("source_update_conflict")?.as_bool())
+                                    .unwrap_or(false);
+                                let meta_source_branch = meta.as_ref()
+                                    .and_then(|v| v.get("source_branch")?.as_str().map(String::from));
+                                let meta_target_branch = meta.as_ref()
+                                    .and_then(|v| v.get("target_branch")?.as_str().map(String::from));
+
+                                // Determine which branch to checkout in the merge worktree.
+                                // plan_update_conflict: checkout target (plan branch) so agent runs `git merge base_branch`
+                                // source_update_conflict: checkout source (task branch) so agent runs `git merge target_branch`
+                                // conflict_markers_detected (from Reviewing): checkout task branch so agent resolves markers
+                                // fallback: use task's task_branch (regular freshness-conflict path)
+                                let checkout_branch: Option<String> = if is_plan_conflict {
+                                    meta_target_branch
+                                        .or_else(|| project.base_branch.clone())
+                                } else if is_source_conflict {
+                                    meta_source_branch
+                                        .or_else(|| task.task_branch.clone())
+                                } else {
+                                    // conflict_markers_detected or generic freshness conflict:
+                                    // use the task branch (the branch with conflict markers)
+                                    task.task_branch.clone()
+                                };
+
+                                if let Some(ref branch) = checkout_branch {
+                                    // Pre-delete task worktree: git rejects two worktrees on the
+                                    // same branch (source_update_conflict and conflict_markers
+                                    // cases both check out the task branch).
+                                    let task_wt_str = super::merge_helpers::compute_task_worktree_path(&project, task_id);
+                                    let task_wt_path = std::path::PathBuf::from(&task_wt_str);
+                                    super::merge_helpers::pre_delete_worktree(repo_path, &task_wt_path, task_id).await;
+
+                                    // Pre-delete plan-update worktree (plan_update_conflict case:
+                                    // plan branch may still be checked out in plan-update worktree).
+                                    let plan_update_wt_str = super::merge_helpers::compute_plan_update_worktree_path(&project, task_id);
+                                    let plan_update_wt_path = std::path::PathBuf::from(&plan_update_wt_str);
+                                    super::merge_helpers::pre_delete_worktree(repo_path, &plan_update_wt_path, task_id).await;
+
+                                    // Create the merge worktree with the appropriate branch.
+                                    match GitService::checkout_existing_branch_worktree(repo_path, &wt_path, branch).await {
+                                        Ok(_) => {
+                                            tracing::info!(
+                                                task_id = task_id,
+                                                branch = %branch,
+                                                worktree = %wt_path.display(),
+                                                is_plan_conflict = is_plan_conflict,
+                                                is_source_conflict = is_source_conflict,
+                                                "on_enter(Merging): Created merge worktree for freshness-conflict path"
+                                            );
+                                            // Persist worktree_path to DB so resolve_working_directory
+                                            // (called inside send_message) can find the merge worktree.
+                                            // Symlink removal runs in the wt_path.exists() block below.
+                                            if let Ok(Some(mut fresh_task)) = task_repo.get_by_id(&tid).await {
+                                                fresh_task.worktree_path = Some(wt_path.to_string_lossy().to_string());
+                                                fresh_task.touch();
+                                                if let Err(e) = task_repo.update(&fresh_task).await {
+                                                    tracing::warn!(
+                                                        task_id = task_id,
+                                                        error = %e,
+                                                        "on_enter(Merging): Failed to persist worktree_path — cleaning up orphan"
+                                                    );
+                                                    let _ = GitService::delete_worktree(repo_path, &wt_path).await;
+                                                    // Fall through: let the agent spawn attempt run;
+                                                    // it will fail with a clear error and reconciler will retry.
+                                                }
+                                            }
+                                        }
+                                        Err(e) => {
+                                            tracing::warn!(
+                                                task_id = task_id,
+                                                branch = %branch,
+                                                error = %e,
+                                                "on_enter(Merging): Failed to create merge worktree on freshness path"
+                                            );
+                                            // Fall through: let the agent spawn attempt proceed;
+                                            // if it fails, record_merger_spawn_failure will run
+                                            // in the spawn error handler below.
+                                        }
+                                    }
+                                } else {
+                                    tracing::warn!(
+                                        task_id = task_id,
+                                        "on_enter(Merging): No merge worktree and no branch to checkout from metadata"
+                                    );
+                                    // Fall through: let the agent spawn attempt proceed.
+                                }
+                            }
+                        }
+                        // --- END: Create merge worktree if missing ---
+
                         if wt_path.exists() {
                             // Abort stale rebase/merge from prior attempt (recovery or retry)
                             super::merge_helpers::clean_stale_git_state(&wt_path, task_id).await;

@@ -8,6 +8,7 @@
 use async_trait::async_trait;
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
@@ -364,6 +365,10 @@ pub fn kill_worktree_processes(path: &Path) {
     }
 }
 
+/// Counts how many times lsof failed to enumerate processes (expected + unexpected).
+/// Used to preserve observability signal after the WARN → DEBUG downgrade.
+static LSOF_ENUMERATE_FAIL_COUNT: AtomicU64 = AtomicU64::new(0);
+
 /// Async version of `kill_worktree_processes` with a cancellable lsof scan.
 ///
 /// Uses `tokio::process::Command` with `kill_on_drop(true)` so that when the
@@ -429,12 +434,29 @@ pub async fn kill_worktree_processes_async(path: &Path, timeout_secs: u64, immed
         }
         Ok(Err(err)) => {
             let elapsed_ms = start.elapsed().as_millis();
-            tracing::warn!(
-                worktree = %display_path,
-                elapsed_ms,
-                error = %err,
-                "kill_worktree_processes_async: could not enumerate processes"
-            );
+            let fail_count = LSOF_ENUMERATE_FAIL_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
+            // Unexpected errors (spawn/wait failures, permission denied) stay at WARN.
+            // Expected cases (lsof exits non-zero when no files are open) go to DEBUG.
+            let is_unexpected = err.contains("spawn failure")
+                || err.contains("wait failure")
+                || err.to_lowercase().contains("permission");
+            if is_unexpected {
+                tracing::warn!(
+                    worktree = %display_path,
+                    elapsed_ms,
+                    error = %err,
+                    enumerate_fail_count = fail_count,
+                    "kill_worktree_processes_async: could not enumerate processes (unexpected)"
+                );
+            } else {
+                tracing::debug!(
+                    worktree = %display_path,
+                    elapsed_ms,
+                    error = %err,
+                    enumerate_fail_count = fail_count,
+                    "kill_worktree_processes_async: could not enumerate processes"
+                );
+            }
         }
         Err(_) => {
             let elapsed_ms = start.elapsed().as_millis();

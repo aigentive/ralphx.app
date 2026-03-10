@@ -230,47 +230,39 @@ fn test_tasks_completed_daily_weekly_monthly_windows() {
     create_schema(&conn);
     insert_project(&conn, "proj1");
 
-    // Task merged 12 hours ago — counts in today, week, month
+    // Task merged at 1am today (UTC) — counts in today, week, month.
+    // 'start of day' + 1 hour avoids the midnight edge case (reliable on all UTC hours).
     insert_task(&conn, "t1", "proj1", "merged");
     conn.execute(
         "INSERT INTO task_state_history (id, task_id, to_status, created_at)
-         VALUES ('h1', 't1', 'merged', datetime('now', '-12 hours'))",
+         VALUES ('h1', 't1', 'merged', datetime('now', 'start of day', '+1 hour'))",
         [],
     )
     .unwrap();
 
-    // Task merged 5 days ago — week + month but NOT today
+    // Task merged 15 days ago — month only (always outside the 0–6 day calendar-week window).
     insert_task(&conn, "t2", "proj1", "merged");
     conn.execute(
         "INSERT INTO task_state_history (id, task_id, to_status, created_at)
-         VALUES ('h2', 't2', 'merged', datetime('now', '-5 days'))",
+         VALUES ('h2', 't2', 'merged', datetime('now', '-15 days'))",
         [],
     )
     .unwrap();
 
-    // Task merged 25 days ago — month only
+    // Task merged 45 days ago — outside all windows
     insert_task(&conn, "t3", "proj1", "merged");
     conn.execute(
         "INSERT INTO task_state_history (id, task_id, to_status, created_at)
-         VALUES ('h3', 't3', 'merged', datetime('now', '-25 days'))",
-        [],
-    )
-    .unwrap();
-
-    // Task merged 60 days ago — outside all windows
-    insert_task(&conn, "t4", "proj1", "merged");
-    conn.execute(
-        "INSERT INTO task_state_history (id, task_id, to_status, created_at)
-         VALUES ('h4', 't4', 'merged', datetime('now', '-60 days'))",
+         VALUES ('h3', 't3', 'merged', datetime('now', '-45 days'))",
         [],
     )
     .unwrap();
 
     let stats = compute_project_stats(&conn, "proj1", 0, 0).unwrap();
 
-    assert_eq!(stats.tasks_completed_today, 1);
-    assert_eq!(stats.tasks_completed_this_week, 2);
-    assert_eq!(stats.tasks_completed_this_month, 3);
+    assert_eq!(stats.tasks_completed_today, 1); // t1 only
+    assert_eq!(stats.tasks_completed_this_week, 1); // t1 only (15+ days ago is never in the week window)
+    assert_eq!(stats.tasks_completed_this_month, 2); // t1 + t2
 }
 
 #[test]

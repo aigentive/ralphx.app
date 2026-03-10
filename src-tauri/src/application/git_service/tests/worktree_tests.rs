@@ -759,8 +759,9 @@ async fn test_worktree_creation_new_branch_when_not_exists() {
 }
 
 #[tokio::test]
-async fn test_create_worktree_fails_when_branch_exists() {
-    // Demonstrates the problem this fix addresses: create_worktree with -b fails for existing branch
+async fn test_create_worktree_recovers_when_branch_exists() {
+    // Verifies the race-condition fix: create_worktree with -b for an already-existing branch
+    // now retries as a checkout (without -b) instead of returning an error.
     let temp_dir = tempfile::tempdir().unwrap();
     let repo = temp_dir.path();
 
@@ -804,20 +805,19 @@ async fn test_create_worktree_fails_when_branch_exists() {
         .output()
         .unwrap();
 
-    // Attempt to create worktree with -b for existing branch (should fail)
+    // Attempt to create worktree with -b for existing branch — should now succeed via retry
     let worktree_path = temp_dir.path().join("worktrees").join("task-exists");
     let result = GitService::create_worktree(repo, &worktree_path, existing_branch, "main").await;
 
     assert!(
-        result.is_err(),
-        "create_worktree should fail when branch already exists"
+        result.is_ok(),
+        "create_worktree should recover when branch already exists by retrying as checkout: {:?}",
+        result.err()
     );
-
-    let err_msg = result.unwrap_err().to_string();
+    // Verify the worktree was actually created
     assert!(
-        err_msg.contains("already exists") || err_msg.contains("Failed to create worktree"),
-        "Error should indicate branch already exists: {}",
-        err_msg
+        worktree_path.exists(),
+        "Worktree path should exist after successful recovery"
     );
 }
 
@@ -947,6 +947,80 @@ async fn test_checkout_existing_branch_worktree_retries_after_locked_stale_entry
 
     // Clean up
     let _ = GitService::delete_worktree(repo, &wt_path).await;
+}
+
+/// checkout_existing_branch_worktree: branch already checked out at another path → recovery.
+///
+/// Scenario: a stale worktree from a prior execution still has the task branch checked out.
+/// The retry guard should detect "already checked out at" in stderr, delete the stale
+/// worktree, prune git metadata, and retry successfully.
+///
+/// This exercises the Fix 2 recovery path for the "reference already exists" race condition
+/// described in the worktree path-exists race bug.
+#[tokio::test]
+async fn test_checkout_existing_branch_worktree_recovers_from_already_checked_out_at() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+    init_git_repo(repo);
+
+    // Create the task branch that will be "stale-checked-out"
+    Command::new("git")
+        .args(["branch", "task/stale-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Step 1: Check out the branch in a "stale" worktree (simulating prior execution)
+    let stale_wt_path = temp_dir.path().join("worktrees").join("stale-task-wt");
+    std::fs::create_dir_all(stale_wt_path.parent().unwrap()).unwrap();
+    Command::new("git")
+        .args([
+            "worktree",
+            "add",
+            stale_wt_path.to_str().unwrap(),
+            "task/stale-branch",
+        ])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    assert!(
+        stale_wt_path.exists(),
+        "Stale worktree should exist before test"
+    );
+
+    // Step 2: Attempt to checkout the same branch into a DIFFERENT path.
+    // Without the fix, this would fail with "already checked out at <stale_wt_path>".
+    let target_wt_path = temp_dir.path().join("worktrees").join("new-task-wt");
+    let result =
+        GitService::checkout_existing_branch_worktree(repo, &target_wt_path, "task/stale-branch")
+            .await;
+    assert!(
+        result.is_ok(),
+        "checkout_existing_branch_worktree should recover from 'already checked out at': {:?}",
+        result.err()
+    );
+
+    // Verify new worktree was created at the target path
+    assert!(
+        target_wt_path.exists(),
+        "New worktree should exist at target path after recovery"
+    );
+
+    // Verify it's on the correct branch
+    let branch = GitService::get_current_branch(&target_wt_path).await.unwrap();
+    assert_eq!(
+        branch, "task/stale-branch",
+        "New worktree should be on the task branch"
+    );
+
+    // Verify the stale worktree was cleaned up (branch freed)
+    assert!(
+        !stale_wt_path.exists(),
+        "Stale worktree should be deleted after recovery"
+    );
+
+    // Clean up
+    let _ = GitService::delete_worktree(repo, &target_wt_path).await;
 }
 
 /// create_worktree with no locked entry succeeds on first attempt (no extra git calls).

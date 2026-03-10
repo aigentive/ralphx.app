@@ -80,6 +80,30 @@ impl GitService {
                 return Ok(());
             }
 
+            // Guard: branch already exists (race between branch_exists() check and create)
+            // Retry without -b to checkout the existing branch instead.
+            if stderr.contains("already exists") {
+                debug!(
+                    "create_worktree: branch '{}' already exists (race), retrying as checkout of existing branch",
+                    branch
+                );
+                let checkout_args = [
+                    "worktree",
+                    "add",
+                    worktree.to_str().unwrap_or_default(),
+                    branch,
+                ];
+                let retry = git_cmd::run(&checkout_args, repo).await?;
+                if !retry.status.success() {
+                    let retry_stderr = String::from_utf8_lossy(&retry.stderr);
+                    return Err(AppError::GitOperation(format!(
+                        "Failed to create worktree at {:?} for branch '{}' after reference-exists retry: {}",
+                        worktree, branch, retry_stderr
+                    )));
+                }
+                return Ok(());
+            }
+
             return Err(AppError::GitOperation(format!(
                 "Failed to create worktree at {:?}: {}",
                 worktree, stderr
@@ -202,6 +226,52 @@ impl GitService {
                     let retry_stderr = String::from_utf8_lossy(&retry.stderr);
                     return Err(AppError::GitOperation(format!(
                         "Failed to create worktree at {:?} for branch '{}' after unlock+prune retry: {}",
+                        worktree, branch, retry_stderr
+                    )));
+                }
+                return Ok(());
+            }
+
+            // Guard: branch is already checked out in another worktree (stale/orphan from prior run).
+            // Extract the other worktree path from the error, delete it, prune, and retry.
+            //
+            // Git error formats (varies by version):
+            //   "fatal: '<branch>' is already checked out at '<path>'"   (older git)
+            //   "fatal: '<branch>' is already used by worktree at '<path>'"  (newer git)
+            if stderr.contains("already checked out at")
+                || stderr.contains("already used by worktree at")
+            {
+                debug!(
+                    "checkout_existing_branch_worktree: branch '{}' already checked out, cleaning stale worktree",
+                    branch
+                );
+                // Extract path from either format:
+                //   "is already checked out at '<path>'"
+                //   "is already used by worktree at '<path>'"
+                let other_path = ["is already checked out at '", "is already used by worktree at '"]
+                    .iter()
+                    .find_map(|marker| {
+                        stderr.find(marker).and_then(|i| {
+                            let rest = &stderr[i + marker.len()..];
+                            rest.find('\'').map(|end| &rest[..end])
+                        })
+                    });
+                if let Some(other) = other_path {
+                    debug!("Removing stale worktree at {:?} to free branch", other);
+                    let _ = git_cmd::run(&["worktree", "unlock", other], repo).await;
+                    let _ = git_cmd::run(&["worktree", "remove", "-f", "-f", other], repo).await;
+                    // Also try tokio::fs::remove_dir_all as fallback for unregistered dirs
+                    if std::path::Path::new(other).exists() {
+                        let _ = tokio::fs::remove_dir_all(other).await;
+                    }
+                }
+                let _ = git_cmd::run(&["worktree", "prune"], repo).await;
+
+                let retry = git_cmd::run(&args, repo).await?;
+                if !retry.status.success() {
+                    let retry_stderr = String::from_utf8_lossy(&retry.stderr);
+                    return Err(AppError::GitOperation(format!(
+                        "Failed to create worktree at {:?} for branch '{}' after already-checked-out recovery: {}",
                         worktree, branch, retry_stderr
                     )));
                 }
