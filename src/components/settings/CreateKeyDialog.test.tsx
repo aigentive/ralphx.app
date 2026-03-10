@@ -26,12 +26,12 @@ const defaultProps = {
 const mockKey: ApiKey = {
   id: "key-001",
   name: "Test",
-  key_prefix: "rxk_live_a3f",
+  keyPrefix: "rxk_live_a3f",
   permissions: 3,
-  created_at: "2024-01-01T00:00:00Z",
-  revoked_at: null,
-  last_used_at: null,
-  project_ids: [],
+  createdAt: "2024-01-01T00:00:00Z",
+  revokedAt: null,
+  lastUsedAt: null,
+  projectIds: [],
 };
 
 function makeWrapper() {
@@ -43,7 +43,7 @@ function makeWrapper() {
 
 function makeSuccessMutation(rawKey = "rxk_live_supersecretkey") {
   return {
-    mutateAsync: vi.fn().mockResolvedValue({ key: mockKey, raw_key: rawKey }),
+    mutateAsync: vi.fn().mockResolvedValue({ id: mockKey.id, name: mockKey.name, rawKey, keyPrefix: mockKey.keyPrefix, permissions: mockKey.permissions }),
     isPending: false,
     reset: vi.fn(),
   };

@@ -36,23 +36,23 @@ import {
 const mockApiKey: ApiKey = {
   id: "key-001",
   name: "CI Key",
-  key_prefix: "rxk_live_a3f2",
+  keyPrefix: "rxk_live_a3f2",
   permissions: 3,
-  created_at: "2024-01-15T10:00:00Z",
-  revoked_at: null,
-  last_used_at: "2024-03-01T08:30:00Z",
-  project_ids: ["proj-1"],
+  createdAt: "2024-01-15T10:00:00Z",
+  revokedAt: null,
+  lastUsedAt: "2024-03-01T08:30:00Z",
+  projectIds: ["proj-1"],
 };
 
 const mockNeverUsedKey: ApiKey = {
   id: "key-002",
   name: "New Key",
-  key_prefix: "rxk_live_b9e1",
+  keyPrefix: "rxk_live_b9e1",
   permissions: 1,
-  created_at: "2024-06-01T00:00:00Z",
-  revoked_at: null,
-  last_used_at: null,
-  project_ids: [],
+  createdAt: "2024-06-01T00:00:00Z",
+  revokedAt: null,
+  lastUsedAt: null,
+  projectIds: [],
 };
 
 function makeWrapper() {

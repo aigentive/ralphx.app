@@ -82,6 +82,7 @@ mod v58_metrics_index;
 mod v59_project_metrics_config;
 mod v60_metrics_working_days;
 mod v61_ideation_settings_verification;
+mod v62_api_key_admin_permissions;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
@@ -178,9 +179,11 @@ mod v59_project_metrics_config_tests;
 mod v60_metrics_working_days_tests;
 #[cfg(test)]
 mod v61_ideation_settings_verification_tests;
+#[cfg(test)]
+mod v62_api_key_admin_permissions_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 61;
+pub const SCHEMA_VERSION: i32 = 62;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -499,6 +502,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 61,
         name: "ideation_settings_verification",
         migrate: v61_ideation_settings_verification::migrate,
+    },
+    Migration {
+        version: 62,
+        name: "api_key_admin_permissions",
+        migrate: v62_api_key_admin_permissions::migrate,
     },
 ];
 

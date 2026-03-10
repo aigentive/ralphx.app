@@ -126,17 +126,39 @@ impl ApiKeyRepository for MemoryApiKeyRepository {
 
     async fn get_audit_log(
         &self,
-        _key_id: &str,
-        _limit: Option<i64>,
+        key_id: &str,
+        limit: Option<i64>,
     ) -> AppResult<Vec<AuditLogEntry>> {
-        Ok(vec![])
+        let log = self.audit_log.read().await;
+        let limit = limit.unwrap_or(100) as usize;
+        let entries: Vec<AuditLogEntry> = log
+            .iter()
+            .filter(|(id, _, _, _, _)| id == key_id)
+            .rev()
+            .take(limit)
+            .enumerate()
+            .map(|(i, (api_key_id, tool_name, project_id, success, latency_ms))| AuditLogEntry {
+                id: i as i64,
+                api_key_id: api_key_id.clone(),
+                tool_name: tool_name.clone(),
+                project_id: project_id.clone(),
+                success: *success,
+                latency_ms: *latency_ms,
+                created_at: chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            })
+            .collect();
+        Ok(entries)
     }
 
     async fn update_api_key_permissions(
         &self,
-        _key_id: &str,
-        _permissions: i64,
+        key_id: &str,
+        permissions: i64,
     ) -> AppResult<()> {
+        let mut keys = self.keys.write().await;
+        if let Some(key) = keys.get_mut(key_id) {
+            key.permissions = permissions as i32;
+        }
         Ok(())
     }
 

@@ -3,8 +3,10 @@
 // Services coordinate repositories and entities to implement
 // use cases and business rules.
 
+pub mod api_key_service;
 pub mod artifact_flow_service;
 pub mod artifact_service;
+pub mod key_crypto;
 pub mod bucket_classifier;
 pub mod gap_fingerprint;
 pub mod index_rewriter;

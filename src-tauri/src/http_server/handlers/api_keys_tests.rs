@@ -4,7 +4,7 @@ use super::*;
 use crate::application::AppState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
-use crate::infrastructure::sqlite::sqlite_api_key_repo::{generate_raw_key, hash_key, key_prefix};
+use crate::domain::services::key_crypto::{generate_raw_key, hash_key, key_prefix};
 use axum::{body::Body, extract::{Path, State}, http::Request, routing::get, Json};
 use std::sync::Arc;
 use tower::ServiceExt;

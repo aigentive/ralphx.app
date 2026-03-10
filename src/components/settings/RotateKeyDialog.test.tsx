@@ -103,7 +103,7 @@ describe("RotateKeyDialog", () => {
     it("calls mutateAsync with keyId when Rotate Key confirmed", async () => {
       const mutateAsync = vi
         .fn()
-        .mockResolvedValue({ raw_key: "rxk_live_newkey123", key: {} });
+        .mockResolvedValue({ rawKey: "rxk_live_newkey123", key: {} });
 
       vi.mocked(useRotateApiKey).mockReturnValue({
         mutateAsync,
@@ -123,7 +123,7 @@ describe("RotateKeyDialog", () => {
       vi.mocked(useRotateApiKey).mockReturnValue({
         mutateAsync: vi
           .fn()
-          .mockResolvedValue({ raw_key: "rxk_live_newkey123", key: {} }),
+          .mockResolvedValue({ rawKey: "rxk_live_newkey123", key: {} }),
         isPending: false,
       } as unknown as ReturnType<typeof useRotateApiKey>);
 
@@ -164,7 +164,7 @@ describe("RotateKeyDialog", () => {
       vi.mocked(useRotateApiKey).mockReturnValue({
         mutateAsync: vi
           .fn()
-          .mockResolvedValue({ raw_key: "rxk_live_abc123", key: {} }),
+          .mockResolvedValue({ rawKey: "rxk_live_abc123", key: {} }),
         isPending: false,
       } as unknown as ReturnType<typeof useRotateApiKey>);
 
@@ -214,7 +214,7 @@ describe("RotateKeyDialog", () => {
       vi.mocked(useRotateApiKey).mockReturnValue({
         mutateAsync: vi
           .fn()
-          .mockResolvedValue({ raw_key: "rxk_live_abc123", key: {} }),
+          .mockResolvedValue({ rawKey: "rxk_live_abc123", key: {} }),
         isPending: false,
       } as unknown as ReturnType<typeof useRotateApiKey>);
 
