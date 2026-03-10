@@ -154,32 +154,81 @@ async fn test_a4_execution_blocked_for_check_failure() {
 }
 
 // ============================================================================
-// A5: Worktree mode but worktree_path is None at spawn time -> safe
+// A5: Worktree mode but worktree_path is None at spawn time -> re-creates worktree
 // ============================================================================
 
 #[tokio::test]
 async fn test_a5_worktree_path_none_at_spawn_time() {
-    // Scenario A5: Worktree mode but worktree_path is None at spawn time — COVERED
+    // Scenario A5: Worktree mode, task_branch is set but worktree_path is None — COVERED
     //
-    // Create a task already in Executing state with worktree_path=None.
-    // Verify that the spawner/chat_service receives the task and doesn't crash.
-    // The actual worktree path resolution happens in production code (AgenticClientSpawner),
-    // not in the mock. This test verifies the state machine doesn't require
-    // worktree_path to be set before entering Executing.
+    // When a task already has task_branch set but no worktree_path (e.g., DB persist failed
+    // after worktree creation, or worktree was cleaned up between runs), the state machine
+    // re-creates the missing worktree and persists the path before spawning the agent.
+    //
+    // This requires a real git repo so checkout_existing_branch_worktree can succeed.
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo_path = temp_dir.path().join("repo");
+    let worktrees_dir = temp_dir.path().join("worktrees");
+    std::fs::create_dir_all(&repo_path).unwrap();
+    std::fs::create_dir_all(&worktrees_dir).unwrap();
+
+    // Initialize a real git repo
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::fs::write(repo_path.join("test.txt"), "initial").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["branch", "-M", "main"])
+        .current_dir(&repo_path)
+        .output();
 
     let svc = create_hardening_services();
 
     let mut project = create_test_project_with_git_mode("wt-proj", GitMode::Worktree);
-    project.worktree_parent_directory = Some("/tmp/worktrees".to_string());
+    project.working_directory = repo_path.to_str().unwrap().to_string();
+    project.worktree_parent_directory = Some(worktrees_dir.to_str().unwrap().to_string());
     let project_id = project.id.clone();
     svc.project_repo.create(project).await.unwrap();
 
-    // Task already has a branch but no worktree_path
+    // Create the task first to get its generated ID
     let mut task = create_test_task(&project_id, "No worktree path task");
     task.internal_status = InternalStatus::Ready;
-    task.task_branch = Some("ralphx/wt-proj/task-existing".to_string());
-    task.worktree_path = None; // explicitly None
     let task_id_str = task.id.as_str().to_string();
+
+    // Create the task branch in the real repo using the task's actual ID
+    let branch_name = format!("ralphx/wt-proj/task-{}", task_id_str);
+    std::process::Command::new("git")
+        .args(["branch", &branch_name])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    // Set task_branch but leave worktree_path = None
+    task.task_branch = Some(branch_name.clone());
+    task.worktree_path = None; // explicitly None
     svc.task_repo.create(task).await.unwrap();
 
     let services = build_task_services(&svc);

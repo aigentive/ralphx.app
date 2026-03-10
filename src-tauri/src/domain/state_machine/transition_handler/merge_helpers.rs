@@ -225,7 +225,7 @@ pub(super) fn expand_home(path: &str) -> String {
 /// This is the worktree created during on_enter(Executing) for task isolation.
 /// Used by pre_merge_cleanup to delete the task worktree even when
 /// `task.worktree_path` has been overwritten by a prior merge attempt.
-pub(super) fn compute_task_worktree_path(project: &Project, task_id: &str) -> String {
+pub(crate) fn compute_task_worktree_path(project: &Project, task_id: &str) -> String {
     let worktree_parent = project
         .worktree_parent_directory
         .as_deref()
@@ -286,7 +286,7 @@ pub(super) fn compute_source_update_worktree_path(project: &Project, task_id: &s
 /// Convention: `{worktree_parent}/{slug}/plan-update-{task_id}`
 /// This is a short-lived worktree used only to bring the plan branch up-to-date with main
 /// before the actual task→plan merge runs.
-pub(super) fn compute_plan_update_worktree_path(project: &Project, task_id: &str) -> String {
+pub(crate) fn compute_plan_update_worktree_path(project: &Project, task_id: &str) -> String {
     let worktree_parent = project
         .worktree_parent_directory
         .as_deref()

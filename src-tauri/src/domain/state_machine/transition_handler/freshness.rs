@@ -639,6 +639,7 @@ pub async fn ensure_branches_fresh(
     freshness.last_freshness_check_at = Some(Utc::now().to_rfc3339());
     freshness.branch_freshness_conflict = false;
     freshness.reset_conflict_state();
+    freshness.clear_routing_flags(); // clear stale routing flags after successful freshness check
 
     emit_freshness_activity(
         activity_event_repo,
