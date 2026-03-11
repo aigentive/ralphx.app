@@ -162,6 +162,50 @@ agents:
 }
 
 #[test]
+fn test_openrouter_settings_profile_supports_blank_api_key_and_timeout() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+  settings_profile: openrouter
+  settings_profiles:
+    default:
+      sandbox:
+        enabled: false
+    openrouter:
+      extends: default
+      env:
+        ANTHROPIC_AUTH_TOKEN: your_openrouter_api_key
+        ANTHROPIC_BASE_URL: https://openrouter.ai/api
+        ANTHROPIC_API_KEY: ""
+        API_TIMEOUT_MS: "3000000"
+agents:
+  - name: ralphx-worker
+    tools:
+      extends: base_tools
+      include: [Write]
+    mcp_tools: [get_task_context]
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+    assert_eq!(
+        parsed.claude.settings,
+        Some(serde_json::json!({
+            "sandbox": { "enabled": false },
+            "env": {
+                "ANTHROPIC_AUTH_TOKEN": "your_openrouter_api_key",
+                "ANTHROPIC_BASE_URL": "https://openrouter.ai/api",
+                "ANTHROPIC_API_KEY": "",
+                "API_TIMEOUT_MS": "3000000"
+            }
+        }))
+    );
+}
+
+#[test]
 fn test_settings_profile_resolves_prefixed_env_overrides() {
     let mut settings = serde_json::json!({
         "env": {
