@@ -16,11 +16,32 @@
  * 10. Fast path skips verification invalidateQueries
  * 11. planVersion stamped from store onto setQueryData call
  * 12. planVersion omitted when store has no planArtifact
+ *
+ * Tests for toast notifications (terminal transitions):
+ * 13. success toast on verified + in_progress=false
+ * 14. warning toast on needs_revision + in_progress=false
+ * 15. no toast on intermediate reviewing events
+ * 16. no toast when in_progress=true (non-terminal)
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import type { IdeationSession } from "@/types/ideation";
+
+// ============================================================================
+// Mock sonner toast
+// ============================================================================
+
+const mockToastSuccess = vi.fn();
+const mockToastWarning = vi.fn();
+
+vi.mock("sonner", () => ({
+  toast: {
+    success: (...args: unknown[]) => mockToastSuccess(...args),
+    warning: (...args: unknown[]) => mockToastWarning(...args),
+    error: vi.fn(),
+  },
+}));
 
 // ============================================================================
 // Mock infrastructure
@@ -168,6 +189,8 @@ describe("useVerificationEvents — verificationUpdateSeq", () => {
     mockInvalidateQueries.mockClear();
     mockSetQueryData.mockClear();
     mockCancelQueries.mockClear();
+    mockToastSuccess.mockClear();
+    mockToastWarning.mockClear();
     mockGetQueryData = vi.fn().mockReturnValue(undefined);
     useIdeationStore.setState({
       sessions: { [SESSION_ID]: createTestSession() },
@@ -277,6 +300,8 @@ describe("useVerificationEvents — race condition fix", () => {
     mockInvalidateQueries.mockClear();
     mockSetQueryData.mockClear();
     mockCancelQueries.mockClear();
+    mockToastSuccess.mockClear();
+    mockToastWarning.mockClear();
     mockGetQueryData = vi.fn().mockReturnValue(undefined);
     useIdeationStore.setState({
       sessions: { [SESSION_ID]: createTestSession() },
@@ -396,5 +421,92 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(mockSetQueryData).toHaveBeenCalledTimes(1);
     const [, cacheData] = mockSetQueryData.mock.calls[0] as [unknown, { planVersion?: number }];
     expect(cacheData.planVersion).toBeUndefined();
+  });
+});
+
+// ============================================================================
+// Tests — toast notifications (new)
+// ============================================================================
+
+describe("useVerificationEvents — toast notifications", () => {
+  beforeEach(() => {
+    subscriptions.clear();
+    mockInvalidateQueries.mockClear();
+    mockSetQueryData.mockClear();
+    mockCancelQueries.mockClear();
+    mockToastSuccess.mockClear();
+    mockToastWarning.mockClear();
+    mockGetQueryData = vi.fn().mockReturnValue(undefined);
+    useIdeationStore.setState({
+      sessions: { [SESSION_ID]: createTestSession() },
+      activeSessionId: SESSION_ID,
+      isLoading: false,
+      error: null,
+      planArtifact: null,
+    });
+  });
+
+  it("(13) fires success toast when status=verified and in_progress=false", () => {
+    renderHook(() => useVerificationEvents());
+
+    act(() => {
+      fireEvent("plan_verification:status_changed", makeVerificationEvent({
+        status: "verified",
+        in_progress: false,
+      }));
+    });
+
+    expect(mockToastSuccess).toHaveBeenCalledTimes(1);
+    expect(mockToastSuccess).toHaveBeenCalledWith(
+      expect.stringContaining("verified"),
+      expect.objectContaining({ duration: expect.any(Number) })
+    );
+    expect(mockToastWarning).not.toHaveBeenCalled();
+  });
+
+  it("(14) fires warning toast when status=needs_revision and in_progress=false", () => {
+    renderHook(() => useVerificationEvents());
+
+    act(() => {
+      fireEvent("plan_verification:status_changed", makeVerificationEvent({
+        status: "needs_revision",
+        in_progress: false,
+      }));
+    });
+
+    expect(mockToastWarning).toHaveBeenCalledTimes(1);
+    expect(mockToastWarning).toHaveBeenCalledWith(
+      expect.stringContaining("gaps"),
+      expect.objectContaining({ duration: expect.any(Number) })
+    );
+    expect(mockToastSuccess).not.toHaveBeenCalled();
+  });
+
+  it("(15) no toast for intermediate reviewing events", () => {
+    renderHook(() => useVerificationEvents());
+
+    act(() => {
+      fireEvent("plan_verification:status_changed", makeVerificationEvent({
+        status: "reviewing",
+        in_progress: true,
+      }));
+    });
+
+    expect(mockToastSuccess).not.toHaveBeenCalled();
+    expect(mockToastWarning).not.toHaveBeenCalled();
+  });
+
+  it("(16) no toast when in_progress=true even for terminal-looking status", () => {
+    renderHook(() => useVerificationEvents());
+
+    act(() => {
+      fireEvent("plan_verification:status_changed", makeVerificationEvent({
+        status: "verified",
+        in_progress: true,
+      }));
+    });
+
+    expect(mockToastSuccess).not.toHaveBeenCalled();
+    expect(mockToastWarning).not.toHaveBeenCalled();
   });
 });

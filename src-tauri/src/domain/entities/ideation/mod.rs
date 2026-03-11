@@ -75,6 +75,9 @@ pub struct IdeationSession {
     /// JSON-serialized VerificationMetadata (round history, gaps, convergence reason)
     #[serde(default)]
     pub verification_metadata: Option<String>,
+    /// Generation counter for zombie protection (incremented on each auto-verify trigger)
+    #[serde(default)]
+    pub verification_generation: i32,
 }
 
 /// Builder for creating IdeationSession instances
@@ -98,6 +101,7 @@ pub struct IdeationSessionBuilder {
     verification_status: Option<VerificationStatus>,
     verification_in_progress: Option<bool>,
     verification_metadata: Option<String>,
+    verification_generation: Option<i32>,
 }
 
 impl IdeationSessionBuilder {
@@ -196,6 +200,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the verification generation counter
+    pub fn verification_generation(mut self, generation: i32) -> Self {
+        self.verification_generation = Some(generation);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -219,6 +229,7 @@ impl IdeationSessionBuilder {
             verification_status: self.verification_status.unwrap_or_default(),
             verification_in_progress: self.verification_in_progress.unwrap_or(false),
             verification_metadata: self.verification_metadata,
+            verification_generation: self.verification_generation.unwrap_or(0),
         }
     }
 }
@@ -344,6 +355,11 @@ impl IdeationSession {
             verification_metadata: row
                 .get::<_, Option<String>>("verification_metadata")
                 .unwrap_or(None),
+            verification_generation: row
+                .get::<_, Option<i64>>("verification_generation")
+                .unwrap_or(None)
+                .map(|v| v as i32)
+                .unwrap_or(0),
         })
     }
 

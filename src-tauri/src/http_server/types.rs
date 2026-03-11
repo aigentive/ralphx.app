@@ -1346,6 +1346,10 @@ pub struct UpdateVerificationRequest {
     /// True if the critic output could not be parsed this round (parse failure tracking)
     #[serde(default)]
     pub parse_failed: Option<bool>,
+    /// Generation counter for zombie protection — must match session's current generation
+    /// when setting in_progress=true
+    #[serde(default)]
+    pub generation: Option<i32>,
 }
 
 /// A single verification gap in the API response (mirrors domain VerificationGap)
@@ -1393,6 +1397,8 @@ pub struct VerificationResponse {
     /// Plan artifact version when verification ran — null if session has no linked plan
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_version: Option<u32>,
+    /// Current verification generation counter
+    pub verification_generation: i32,
 }
 
 /// Request to atomically revert plan + skip verification

@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ShieldCheck, SkipForward, RotateCcw, Wand2, ListPlus } from "lucide-react";
+import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ShieldCheck, SkipForward, RotateCcw, Wand2, ListPlus, AlertTriangle, Clock } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,7 @@ import { DebateSummary } from "./DebateSummary";
 import type { DebateSummaryData } from "./DebateSummary";
 import { VerificationBadge } from "./VerificationBadge";
 import { VerificationGapList } from "./VerificationGapList";
+import { VerificationHistory } from "./VerificationHistory";
 import type { RoundSummary, VerificationGap, VerificationStatus } from "@/types/ideation";
 
 // ============================================================================
@@ -264,6 +265,9 @@ export function PlanDisplay({
   // Default to collapsed (false) for initial render
   const [internalIsOpen, setInternalIsOpen] = useState(false);
 
+  // Tab state: "content" (plan markdown) or "history" (verification history)
+  const [activeTab, setActiveTab] = useState<"content" | "history">("content");
+
   // Gap selection state for "Address Gaps" feature
   const [selectedGaps, setSelectedGaps] = useState<Set<number>>(new Set());
 
@@ -302,6 +306,19 @@ export function PlanDisplay({
     (verificationStatus === "verified" || verificationStatus === "skipped") &&
     !verificationInProgress &&
     (linkedProposalsCount === undefined || linkedProposalsCount === 0);
+  // Show history tab when rounds exist and verification is not actively in progress
+  // Includes unverified+rounds case (incomplete/reset) so "View partial results" link works
+  const showHistoryTab =
+    hasVerification &&
+    !verificationInProgress &&
+    verificationRounds !== undefined &&
+    verificationRounds.length > 0;
+  // Show incomplete verification message when reset to unverified but rounds exist
+  const showIncompleteMessage =
+    hasVerification &&
+    verificationStatus === "unverified" &&
+    verificationRounds !== undefined &&
+    verificationRounds.length > 0;
   const isOpen = isExpanded !== undefined ? isExpanded : internalIsOpen;
   const setIsOpen = onExpandedChange ?? setInternalIsOpen;
 
@@ -736,16 +753,26 @@ export function PlanDisplay({
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={onEdit}
-                className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
+                onClick={verificationInProgress ? undefined : onEdit}
+                disabled={verificationInProgress}
+                title={
+                  verificationInProgress
+                    ? "Plan is being auto-verified. Editing will be available after verification completes."
+                    : undefined
+                }
+                className="h-7 w-7 p-0 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
                 style={{ color: "hsl(220 10% 50%)" }}
                 onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                  e.currentTarget.style.color = "hsl(220 10% 90%)";
+                  if (!verificationInProgress) {
+                    e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                    e.currentTarget.style.color = "hsl(220 10% 90%)";
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "hsl(220 10% 50%)";
+                  if (!verificationInProgress) {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "hsl(220 10% 50%)";
+                  }
                 }}
               >
                 <FileEdit className="w-3.5 h-3.5" />
@@ -897,8 +924,86 @@ export function PlanDisplay({
               </>
             )}
 
-            {/* Version banner when viewing historical */}
-            {isViewingHistorical && (
+            {/* Incomplete verification message — shown when unverified but partial rounds exist */}
+            {showIncompleteMessage && (
+              <div
+                className="flex items-start gap-2.5 rounded-lg px-3 py-2.5 mb-4"
+                style={{
+                  background: "hsla(45 93% 50% / 0.08)",
+                  border: "1px solid hsla(45 93% 50% / 0.15)",
+                }}
+              >
+                <AlertTriangle
+                  className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
+                  style={{ color: "hsl(45 93% 55%)" }}
+                />
+                <div className="flex items-center gap-2 flex-1 min-w-0">
+                  <span
+                    className="text-[12px]"
+                    style={{ color: "hsl(45 93% 65%)" }}
+                  >
+                    Verification incomplete — {verificationRounds!.length} round{verificationRounds!.length !== 1 ? "s" : ""} completed.
+                  </span>
+                  {showHistoryTab && (
+                    <button
+                      onClick={() => { setIsOpen(true); setActiveTab("history"); }}
+                      className="text-[11px] font-medium underline underline-offset-2 flex-shrink-0"
+                      style={{ color: "hsl(45 93% 55%)" }}
+                    >
+                      View partial results
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Tab switcher — shown when history tab is available */}
+            {showHistoryTab && (
+              <div
+                className="flex gap-1 mb-4 p-0.5 rounded-lg"
+                style={{
+                  background: "hsla(220 10% 100% / 0.03)",
+                  border: "1px solid hsla(220 10% 100% / 0.06)",
+                }}
+              >
+                <button
+                  onClick={() => setActiveTab("content")}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-150 flex-1 justify-center"
+                  style={{
+                    background: activeTab === "content" ? "hsla(220 10% 100% / 0.06)" : "transparent",
+                    color: activeTab === "content" ? "hsl(220 10% 85%)" : "hsl(220 10% 50%)",
+                  }}
+                >
+                  <FileText className="w-3 h-3" />
+                  Plan
+                </button>
+                <button
+                  onClick={() => setActiveTab("history")}
+                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-150 flex-1 justify-center"
+                  style={{
+                    background: activeTab === "history" ? "hsla(220 10% 100% / 0.06)" : "transparent",
+                    color: activeTab === "history" ? "hsl(220 10% 85%)" : "hsl(220 10% 50%)",
+                  }}
+                >
+                  <Clock className="w-3 h-3" />
+                  Verification History
+                </button>
+              </div>
+            )}
+
+            {/* Verification History tab content */}
+            {showHistoryTab && activeTab === "history" && (
+              <VerificationHistory
+                rounds={verificationRounds!}
+                {...(verificationGaps !== undefined && { currentGaps: verificationGaps })}
+                {...(gapScore !== undefined && { gapScore })}
+                {...(verificationStatus !== undefined && { status: verificationStatus })}
+                {...(convergenceReason !== undefined && { convergenceReason })}
+              />
+            )}
+
+            {/* Version banner when viewing historical — only on content tab */}
+            {isViewingHistorical && (!showHistoryTab || activeTab === "content") && (
               <div
                 className="flex items-center justify-between mb-4 px-3 py-2.5 rounded-lg"
                 style={{
@@ -931,29 +1036,31 @@ export function PlanDisplay({
               </div>
             )}
 
-            {/* Loading state */}
-            {isLoadingVersion ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 className="w-6 h-6 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
-                  <span className="text-[12px]" style={{ color: "hsl(220 10% 50%)" }}>
-                    Loading version...
-                  </span>
+            {/* Loading state / plan content — only shown when on "content" tab */}
+            {(!showHistoryTab || activeTab === "content") && (
+              isLoadingVersion ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="flex flex-col items-center gap-3">
+                    <Loader2 className="w-6 h-6 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
+                    <span className="text-[12px]" style={{ color: "hsl(220 10% 50%)" }}>
+                      Loading version...
+                    </span>
+                  </div>
                 </div>
-              </div>
-            ) : displayContent ? (
-              <div className="text-[13px] leading-relaxed">
-                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {displayContent}
-                </ReactMarkdown>
-              </div>
-            ) : (
-              <p
-                className="text-[13px] italic py-8 text-center"
-                style={{ color: "hsl(220 10% 50%)" }}
-              >
-                No content available
-              </p>
+              ) : displayContent ? (
+                <div className="text-[13px] leading-relaxed">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                    {displayContent}
+                  </ReactMarkdown>
+                </div>
+              ) : (
+                <p
+                  className="text-[13px] italic py-8 text-center"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                >
+                  No content available
+                </p>
+              )
             )}
           </div>
         </CollapsibleContent>

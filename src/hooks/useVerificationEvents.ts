@@ -21,6 +21,7 @@
 
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { ideationKeys } from "./useIdeation";
@@ -91,6 +92,15 @@ export function useVerificationEvents() {
           ...(gapScore !== undefined && { gapScore }),
           verificationUpdateSeq: currentSeq + 1,
         });
+
+        // Toast notifications for terminal transitions (in_progress=false with terminal status)
+        if (!inProgress) {
+          if (status === "verified") {
+            toast.success("Plan verified — no critical gaps remain.", { duration: 5000 });
+          } else if (status === "needs_revision") {
+            toast.warning("Verification complete — gaps found that need attention.", { duration: 6000 });
+          }
+        }
 
         // Async portion wrapped in IIFE — bus.subscribe callbacks must be synchronous
         void (async () => {

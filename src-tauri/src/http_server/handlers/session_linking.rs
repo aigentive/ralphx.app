@@ -197,6 +197,7 @@ pub async fn create_child_session(
         verification_status: VerificationStatus::default(),
         verification_in_progress: false,
         verification_metadata: None,
+        verification_generation: 0,
     };
 
     let child_id = child_session.id.clone();
