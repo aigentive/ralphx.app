@@ -2128,3 +2128,46 @@ async fn test_edit_plan_artifact_batch_updates_linked_proposals() {
         .unwrap();
     assert_eq!(new_linked.len(), 3, "All 3 proposals should be re-linked to the new artifact");
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests for AUTO_VERIFICATION_KEY constant and metadata JSON structure
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn auto_verification_key_constant_value() {
+    assert_eq!(AUTO_VERIFICATION_KEY, "auto_verification");
+}
+
+#[test]
+fn auto_verification_metadata_json_is_valid() {
+    // Verify the serde_json::json! macro produces valid JSON with the constant as a key.
+    let json = serde_json::json!({AUTO_VERIFICATION_KEY: true});
+    let serialized = json.to_string();
+    // Must contain the key name (with or without whitespace around colon)
+    assert!(
+        serialized.contains("\"auto_verification\""),
+        "Serialized JSON must contain the auto_verification key: {}",
+        serialized
+    );
+    // Must be parseable back to a JSON object with the bool true
+    let parsed: serde_json::Value = serde_json::from_str(&serialized).unwrap();
+    assert_eq!(
+        parsed.get("auto_verification").and_then(|v| v.as_bool()),
+        Some(true),
+        "Parsed value must be true for the auto_verification key"
+    );
+}
+
+#[test]
+fn auto_verification_metadata_key_matches_format_session_history_filter() {
+    // The key used in spawn_auto_verifier metadata must exactly match the key
+    // that format_session_history filters on. This test documents the contract.
+    let metadata_json =
+        serde_json::json!({AUTO_VERIFICATION_KEY: true}).to_string();
+    let parsed: serde_json::Value = serde_json::from_str(&metadata_json).unwrap();
+    // The filter in format_session_history looks for "auto_verification" key presence
+    assert!(
+        parsed.get("auto_verification").is_some(),
+        "auto_verification key must be present in parsed metadata JSON"
+    );
+}

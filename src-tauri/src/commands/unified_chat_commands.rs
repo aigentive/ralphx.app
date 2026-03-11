@@ -307,7 +307,7 @@ pub async fn send_agent_message(
     }
 
     service
-        .send_message(context_type, &input.context_id, &input.content)
+        .send_message(context_type, &input.context_id, &input.content, Default::default())
         .await
         .map(SendAgentMessageResponse::from)
         .map_err(|e| e.to_string())

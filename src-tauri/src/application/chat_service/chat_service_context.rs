@@ -117,6 +117,14 @@ pub fn format_session_history(messages: &[ChatMessage], total_available: usize) 
                 .and_then(|v| v.get("recovery_context").cloned())
                 .is_none()
         })
+        .filter(|m| {
+            // Exclude messages that have an "auto_verification" key in their metadata JSON.
+            m.metadata
+                .as_deref()
+                .and_then(|meta| serde_json::from_str::<serde_json::Value>(meta).ok())
+                .and_then(|v| v.get("auto_verification").cloned())
+                .is_none()
+        })
         .collect();
 
     if filtered.is_empty() {
@@ -941,6 +949,8 @@ pub fn create_user_message(
     context_id: &str,
     content: &str,
     conversation_id: ChatConversationId,
+    metadata: Option<String>,
+    created_at: Option<chrono::DateTime<chrono::Utc>>,
 ) -> ChatMessage {
     let mut msg = match context_type {
         ChatContextType::Ideation => {
@@ -957,6 +967,12 @@ pub fn create_user_message(
         }
     };
     msg.conversation_id = Some(conversation_id);
+    if let Some(m) = metadata {
+        msg.metadata = Some(m);
+    }
+    if let Some(ts) = created_at {
+        msg.created_at = ts;
+    }
     msg
 }
 

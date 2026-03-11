@@ -330,7 +330,7 @@ pub async fn create_child_session(
         }
 
         match chat_service
-            .send_message(ChatContextType::Ideation, &child_session_str, prompt)
+            .send_message(ChatContextType::Ideation, &child_session_str, prompt, Default::default())
             .await
         {
             Ok(_) => true,
@@ -375,7 +375,7 @@ pub async fn create_child_session(
             }
 
             match chat_service
-                .send_message(ChatContextType::Ideation, &child_session_str, desc)
+                .send_message(ChatContextType::Ideation, &child_session_str, desc, Default::default())
                 .await
             {
                 Ok(_) => true,

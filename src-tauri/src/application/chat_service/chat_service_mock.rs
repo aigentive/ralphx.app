@@ -14,7 +14,7 @@ use crate::domain::entities::{
 use crate::domain::services::{MessageQueue, QueuedMessage};
 use crate::infrastructure::agents::claude::ToolCall;
 
-use super::{ChatConversationWithMessages, ChatService, ChatServiceError, SendResult};
+use super::{ChatConversationWithMessages, ChatService, ChatServiceError, SendMessageOptions, SendResult};
 
 // ============================================================================
 // MockChatService - For testing
@@ -111,6 +111,7 @@ impl ChatService for MockChatService {
         context_type: ChatContextType,
         context_id: &str,
         _message: &str,
+        _options: SendMessageOptions,
     ) -> Result<SendResult, ChatServiceError> {
         let current = self
             .call_count

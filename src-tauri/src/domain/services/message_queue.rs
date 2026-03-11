@@ -54,6 +54,12 @@ pub struct QueuedMessage {
     pub content: String,
     pub created_at: String,
     pub is_editing: bool,
+    /// Optional metadata JSON to apply when persisting this message (survives queue round-trip)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata_override: Option<String>,
+    /// Optional RFC3339 timestamp override (preserves trigger time through queue)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub created_at_override: Option<String>,
 }
 
 impl QueuedMessage {
@@ -64,6 +70,8 @@ impl QueuedMessage {
             content,
             created_at: chrono::Utc::now().to_rfc3339(),
             is_editing: false,
+            metadata_override: None,
+            created_at_override: None,
         }
     }
 
@@ -75,6 +83,8 @@ impl QueuedMessage {
             content,
             created_at: chrono::Utc::now().to_rfc3339(),
             is_editing: false,
+            metadata_override: None,
+            created_at_override: None,
         }
     }
 }
@@ -148,6 +158,27 @@ impl MessageQueue {
     ) -> QueuedMessage {
         let key = QueueKey::new(context_type, context_id);
         let message = QueuedMessage::with_id(client_id, content);
+        let mut queues = self.queues.lock().unwrap();
+        queues.entry(key).or_default().push(message.clone());
+        message
+    }
+
+    /// Queue a message with metadata and timestamp overrides.
+    ///
+    /// Used by Gate 2 when auto-verification or other send_message callers
+    /// pass SendMessageOptions — the overrides must survive the queue round-trip.
+    pub fn queue_with_overrides(
+        &self,
+        context_type: ChatContextType,
+        context_id: impl Into<String>,
+        content: String,
+        metadata_override: Option<String>,
+        created_at_override: Option<String>,
+    ) -> QueuedMessage {
+        let key = QueueKey::new(context_type, context_id);
+        let mut message = QueuedMessage::new(content);
+        message.metadata_override = metadata_override;
+        message.created_at_override = created_at_override;
         let mut queues = self.queues.lock().unwrap();
         queues.entry(key).or_default().push(message.clone());
         message

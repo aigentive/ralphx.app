@@ -575,6 +575,7 @@ impl<'a> super::TransitionHandler<'a> {
                         crate::domain::entities::ChatContextType::TaskExecution,
                         task_id_str,
                         &prompt,
+                        Default::default(),
                     )
                     .await
                 {
@@ -895,6 +896,7 @@ impl<'a> super::TransitionHandler<'a> {
                         crate::domain::entities::ChatContextType::Review,
                         task_id,
                         &prompt,
+                        Default::default(),
                     )
                     .await;
 
@@ -1050,6 +1052,7 @@ impl<'a> super::TransitionHandler<'a> {
                         crate::domain::entities::ChatContextType::TaskExecution,
                         task_id,
                         &prompt,
+                        Default::default(),
                     )
                     .await
                 {
@@ -1562,6 +1565,7 @@ impl<'a> super::TransitionHandler<'a> {
                         crate::domain::entities::ChatContextType::Merge,
                         task_id,
                         &prompt,
+                        Default::default(),
                     )
                     .await;
 

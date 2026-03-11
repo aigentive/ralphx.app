@@ -7,6 +7,8 @@ import { z } from "zod";
 // Verification
 // ============================================================================
 
+export const AUTO_VERIFICATION_KEY = "auto_verification";
+
 export const VERIFICATION_STATUS_VALUES = [
   "unverified",
   "reviewing",

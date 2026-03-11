@@ -166,6 +166,7 @@ impl<R: Runtime> ChatResumptionRunner<R> {
                     conv.conversation.context_type,
                     &conv.conversation.context_id,
                     "Continue where you left off.",
+                    Default::default(),
                 )
                 .await
             {
