@@ -10,6 +10,7 @@ fn test_all_defaults_are_sensible() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
     assert_eq!(cfg.stream.merge_line_read_secs, 600);
     assert_eq!(cfg.reconciliation.merger_timeout_secs, 1200);
@@ -50,6 +51,7 @@ fn test_merge_speed_env_overrides() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -80,6 +82,7 @@ fn test_env_overrides_apply() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -114,6 +117,7 @@ fn test_backward_compat_merger_timeout_env() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     // Old key only
@@ -134,6 +138,7 @@ fn test_new_key_takes_precedence_over_old() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     // Both keys set — new one should win (applied second)
@@ -155,6 +160,7 @@ fn test_invalid_env_values_ignored() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -178,6 +184,7 @@ fn test_validation_deadline_env_override() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -228,6 +235,7 @@ fn test_branch_freshness_timeout_env_override() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -282,6 +290,7 @@ fn test_execution_failed_max_retries_env_override() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -304,6 +313,7 @@ fn test_execution_failed_retry_base_secs_env_override() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -324,6 +334,7 @@ fn test_execution_failed_retry_max_secs_env_override() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -346,6 +357,7 @@ fn test_execution_failed_all_three_env_overrides_applied_together() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -383,6 +395,7 @@ fn test_circuit_breaker_env_overrides() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -405,6 +418,7 @@ fn test_execution_failed_invalid_env_values_keep_defaults() {
         supervisor: SupervisorRuntimeConfig::default(),
         limits: LimitsConfig::default(),
         verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
     };
 
     apply_env_overrides_with(&mut cfg, &|name| match name {
@@ -416,4 +430,173 @@ fn test_execution_failed_invalid_env_values_keep_defaults() {
     // Invalid values ignored — defaults preserved
     assert_eq!(cfg.reconciliation.execution_failed_max_retries, 3);
     assert_eq!(cfg.reconciliation.execution_failed_retry_base_secs, 30);
+}
+
+// ── ExternalMcpConfig tests ───────────────────────────────────────────────
+
+#[test]
+fn test_external_mcp_config_defaults() {
+    let cfg = ExternalMcpConfig::default();
+    assert!(!cfg.enabled);
+    assert_eq!(cfg.port, 3848);
+    assert_eq!(cfg.host, "127.0.0.1");
+    assert_eq!(cfg.max_restart_attempts, 3);
+    assert_eq!(cfg.restart_delay_ms, 2000);
+    assert!(cfg.auth_token.is_none());
+    assert!(cfg.node_path.is_none());
+}
+
+#[test]
+fn test_external_mcp_env_overrides_enabled_true() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_EXTERNAL_MCP_ENABLED" => Some("true".to_string()),
+        _ => None,
+    });
+    assert!(cfg.external_mcp.enabled);
+}
+
+#[test]
+fn test_external_mcp_env_overrides_enabled_one() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_EXTERNAL_MCP_ENABLED" => Some("1".to_string()),
+        _ => None,
+    });
+    assert!(cfg.external_mcp.enabled);
+}
+
+#[test]
+fn test_external_mcp_env_overrides_enabled_false() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig { enabled: true, ..ExternalMcpConfig::default() },
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_EXTERNAL_MCP_ENABLED" => Some("false".to_string()),
+        _ => None,
+    });
+    assert!(!cfg.external_mcp.enabled);
+}
+
+#[test]
+fn test_external_mcp_env_overrides_port_and_host() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_EXTERNAL_MCP_PORT" => Some("9999".to_string()),
+        "RALPHX_EXTERNAL_MCP_HOST" => Some("0.0.0.0".to_string()),
+        _ => None,
+    });
+    assert_eq!(cfg.external_mcp.port, 9999);
+    assert_eq!(cfg.external_mcp.host, "0.0.0.0");
+}
+
+#[test]
+fn test_external_mcp_env_override_node_path() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_NODE_PATH" => Some("/usr/local/bin/node".to_string()),
+        _ => None,
+    });
+    assert_eq!(cfg.external_mcp.node_path, Some("/usr/local/bin/node".to_string()));
+}
+
+#[test]
+fn test_external_mcp_invalid_port_env_keeps_default() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_EXTERNAL_MCP_PORT" => Some("not_a_port".to_string()),
+        _ => None,
+    });
+    assert_eq!(cfg.external_mcp.port, 3848);
+}
+
+#[test]
+fn test_validate_external_mcp_config_valid_local() {
+    let cfg = ExternalMcpConfig { enabled: true, ..ExternalMcpConfig::default() };
+    assert!(validate_external_mcp_config(&cfg).is_ok());
+}
+
+#[test]
+fn test_validate_external_mcp_config_port_zero() {
+    let cfg = ExternalMcpConfig { port: 0, ..ExternalMcpConfig::default() };
+    let result = validate_external_mcp_config(&cfg);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("port"));
+}
+
+#[test]
+fn test_validate_external_mcp_config_empty_host() {
+    let cfg = ExternalMcpConfig { host: String::new(), ..ExternalMcpConfig::default() };
+    let result = validate_external_mcp_config(&cfg);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("host"));
+}
+
+#[test]
+fn test_validate_external_mcp_config_disabled_non_local_no_tls_ok() {
+    // When disabled, non-local host without TLS should be fine
+    let cfg = ExternalMcpConfig {
+        enabled: false,
+        host: "192.168.1.100".to_string(),
+        ..ExternalMcpConfig::default()
+    };
+    assert!(validate_external_mcp_config(&cfg).is_ok());
 }

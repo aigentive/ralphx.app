@@ -4,6 +4,7 @@
 mod agent_config;
 pub mod agent_names;
 mod claude_code_client;
+pub mod node_utils;
 mod stream_processor;
 
 #[allow(unused_imports)]
@@ -13,11 +14,12 @@ pub use agent_config::team_config::{
     TeamConstraints, TeamConstraintsConfig, TeamMode, TeammateSpawnRequest,
 };
 pub use agent_config::{
-    agent_configs, claude_runtime_config, defer_merge_enabled, file_logging_enabled,
-    get_agent_config, get_allowed_tools, get_effective_settings, get_preapproved_tools,
-    git_runtime_config, limits_config, process_mapping, reconciliation_config,
-    resolve_file_logging_early, scheduler_config, stream_timeouts, supervisor_runtime_config,
-    team_constraints_config, verification_config, AgentConfig, AllRuntimeConfig, GitRuntimeConfig,
+    agent_configs, claude_runtime_config, defer_merge_enabled, external_mcp_config,
+    file_logging_enabled, get_agent_config, get_allowed_tools, get_effective_settings,
+    get_preapproved_tools, git_runtime_config, limits_config, process_mapping,
+    reconciliation_config, resolve_file_logging_early, scheduler_config, stream_timeouts,
+    supervisor_runtime_config, team_constraints_config, validate_external_mcp_config,
+    verification_config, AgentConfig, AllRuntimeConfig, ExternalMcpConfig, GitRuntimeConfig,
     LimitsConfig, ReconciliationConfig, SchedulerConfig, StreamTimeoutsConfig,
     SupervisorRuntimeConfig, VerificationConfig,
 };
@@ -337,19 +339,11 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
     // spawn_teammate_interactive sets CLAUDE_PLUGIN_ROOT=plugin_dir, so expansion must match.
     let mcp_server_path = plugin_dir.join("ralphx-mcp-server/build/index.js");
     let mcp_server_path_str = mcp_server_path.to_string_lossy().to_string();
-    // Resolve node path robustly — macOS GUI apps (Dock/Finder) have stripped PATH
-    // (/usr/bin:/bin only), so which::which may fail. Fall back to common install paths.
-    let node_command = which::which("node")
-        .ok()
-        .and_then(|p| p.to_str().map(|s| s.to_string()))
-        .unwrap_or_else(|| {
-            for candidate in ["/opt/homebrew/bin/node", "/usr/local/bin/node"] {
-                if std::path::Path::new(candidate).exists() {
-                    return candidate.to_string();
-                }
-            }
-            "node".to_string()
-        });
+    // Resolve node path robustly — delegates to node_utils::find_node_binary() so
+    // both stdio MCP registration and the external MCP supervisor use identical logic.
+    let node_command = node_utils::find_node_binary()
+        .to_string_lossy()
+        .into_owned();
 
     // Strip plugin prefix for MCP server's --agent-type param
     let short_name = mcp_agent_type(agent_type);

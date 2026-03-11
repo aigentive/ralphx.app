@@ -40,10 +40,12 @@ mod tests;
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::Manager;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
+
+use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 
 use application::{
     ChatResumptionRunner, EventCleanupService, ReconciliationRunner, StartupJobRunner,
@@ -54,6 +56,48 @@ use application::{
 #[tauri::command]
 fn greet(name: &str) -> String {
     format!("Hello, {}! You've been greeted from Rust!", name)
+}
+
+/// Wait for the local HTTP backend at `port` to respond with HTTP 200 on `/health`.
+/// Retries every 200ms until `timeout` elapses (2s per-request timeout).
+async fn wait_for_backend_ready(port: u16, timeout: Duration) -> Result<(), String> {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let start = Instant::now();
+    loop {
+        if start.elapsed() > timeout {
+            return Err(format!("Backend :{port} not ready after {timeout:?}"));
+        }
+        let addr = format!("127.0.0.1:{port}");
+        let conn = tokio::time::timeout(
+            Duration::from_secs(2),
+            tokio::net::TcpStream::connect(&addr),
+        )
+        .await;
+        if let Ok(Ok(mut stream)) = conn {
+            let req = "GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+            if tokio::time::timeout(Duration::from_secs(2), stream.write_all(req.as_bytes()))
+                .await
+                .is_ok()
+            {
+                let mut buf = [0u8; 256];
+                if let Ok(Ok(n)) =
+                    tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buf)).await
+                {
+                    let response = std::str::from_utf8(&buf[..n]).unwrap_or("");
+                    let status = response
+                        .split_whitespace()
+                        .nth(1)
+                        .and_then(|s| s.parse::<u16>().ok())
+                        .unwrap_or(0);
+                    if status == 200 {
+                        return Ok(());
+                    }
+                }
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(200)).await;
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -404,6 +448,8 @@ pub fn run() {
                 let reconcile_review_repo = Arc::clone(&startup_review_repo);
                 let reconcile_app_handle = startup_app_handle.clone();
                 let verification_recon_app_handle = startup_app_handle.clone();
+                // Clone for external MCP startup (after HTTP server ready, at end of startup_jobs)
+                let external_mcp_app_handle = startup_app_handle.clone();
 
                 // Clone task_dependency_repo for StartupJobRunner (before TaskTransitionService consumes it)
                 let startup_runner_task_dep_repo = Arc::clone(&startup_task_dependency_repo);
@@ -661,6 +707,73 @@ pub fn run() {
                     }
                 });
 
+                // ── External MCP auto-start ──────────────────────────────────────────────
+                // Starts the external MCP server (:3848) after :3847 is confirmed ready.
+                // Gated on: config.enabled + TLS validation + entry_path.exists()
+                {
+                    let config = infrastructure::agents::claude::external_mcp_config().clone();
+                    if config.enabled {
+                        // Ensure :3847 is ready before spawning :3848
+                        match wait_for_backend_ready(3847, Duration::from_secs(30)).await {
+                            Err(e) => {
+                                warn!("Backend not ready, skipping external MCP start: {}", e);
+                            }
+                            Ok(()) => {
+                                // Validate config (TLS enforcement, port/host checks)
+                                match infrastructure::agents::claude::validate_external_mcp_config(
+                                    &config,
+                                ) {
+                                    Err(e) => {
+                                        warn!("External MCP config invalid, skipping start: {}", e);
+                                    }
+                                    Ok(()) => {
+                                        // Resolve entry path: plugin_dir/ralphx-external-mcp/build/index.js
+                                        let entry_path = infrastructure::agents::claude::find_plugin_dir()
+                                            .map(|p| p.join("ralphx-external-mcp/build/index.js"));
+                                        match entry_path {
+                                            None => {
+                                                warn!("Plugin dir not found, cannot start external MCP");
+                                            }
+                                            Some(ep) if !ep.exists() => {
+                                                warn!(
+                                                    path = %ep.display(),
+                                                    "External MCP entry not found — run `npm run build` in ralphx-plugin/ralphx-external-mcp"
+                                                );
+                                            }
+                                            Some(ep) => {
+                                                let node_path = infrastructure::agents::claude::node_utils::find_node_binary();
+                                                let app_data_dir = external_mcp_app_handle
+                                                    .path()
+                                                    .app_data_dir()
+                                                    .unwrap_or_else(|_| PathBuf::from("."));
+                                                let supervisor = Arc::new(ExternalMcpSupervisor::new(
+                                                    config,
+                                                    external_mcp_app_handle.clone(),
+                                                    app_data_dir,
+                                                ));
+                                                match Arc::clone(&supervisor).start(node_path, ep).await {
+                                                    Ok(()) => {
+                                                        let handle = external_mcp_app_handle
+                                                            .state::<ExternalMcpHandle>();
+                                                        if handle.set(supervisor).is_err() {
+                                                            warn!("ExternalMcpHandle already initialized");
+                                                        } else {
+                                                            info!("External MCP supervisor started and registered");
+                                                        }
+                                                    }
+                                                    Err(e) => {
+                                                        warn!("Failed to start external MCP: {}", e);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
             });
 
             // Clone team repos before app_state is moved into Tauri state
@@ -678,6 +791,10 @@ pub fn run() {
                 team_message_repo,
             ));
             app.manage(team_service);
+
+            // Pre-register ExternalMcpHandle (OnceLock) — populated later in startup_jobs.
+            // Must be registered here (before build()) so app.state::<ExternalMcpHandle>() works.
+            app.manage(ExternalMcpHandle::new());
 
             Ok(())
         })
@@ -971,17 +1088,41 @@ pub fn run() {
                 let registry = Arc::clone(&app_state.running_agent_registry);
                 let interactive = Arc::clone(&app_state.interactive_process_registry);
                 let db = app_state.db.clone();
-                tauri::async_runtime::block_on(async move {
-                    interactive.clear().await;
-                    let stopped = registry.stop_all().await;
-                    crate::infrastructure::agents::claude::kill_all_tracked_processes().await;
-                    if !stopped.is_empty() {
-                        tracing::info!(
-                            count = stopped.len(),
-                            "Killed running agents on app exit"
-                        );
-                    }
-                    // Fold WAL back into main DB file on clean shutdown to prevent unbounded growth
+
+                // Step 1: Agent shutdown — capped at 2.5s so MCP + WAL fit within macOS 5s window.
+                // If agents are slow, they are abandoned and the OS will clean up.
+                tauri::async_runtime::block_on(async {
+                    let _ = tokio::time::timeout(Duration::from_millis(2500), async move {
+                        interactive.clear().await;
+                        let stopped = registry.stop_all().await;
+                        crate::infrastructure::agents::claude::kill_all_tracked_processes().await;
+                        if !stopped.is_empty() {
+                            tracing::info!(
+                                count = stopped.len(),
+                                "Killed running agents on app exit"
+                            );
+                        }
+                    })
+                    .await;
+                });
+
+                // Step 2: External MCP shutdown — separate OS thread to avoid nested block_on deadlock.
+                // Supervisor.shutdown() is internally capped at 2s (SIGTERM → SIGKILL).
+                if let Some(supervisor) = app_handle.state::<ExternalMcpHandle>().get() {
+                    let supervisor = supervisor.clone();
+                    std::thread::spawn(move || {
+                        let rt = tokio::runtime::Builder::new_current_thread()
+                            .enable_all()
+                            .build()
+                            .unwrap();
+                        rt.block_on(supervisor.shutdown());
+                    })
+                    .join()
+                    .ok();
+                }
+
+                // Step 3: WAL checkpoint — runs last, ~100ms. Total budget: 2.5 + 2 + 0.1 = 4.6s < 5s.
+                tauri::async_runtime::block_on(async {
                     let checkpoint_result = db
                         .run(|conn| {
                             conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE)")

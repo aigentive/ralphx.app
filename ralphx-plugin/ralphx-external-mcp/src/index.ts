@@ -19,6 +19,7 @@
 import { createServer as createHttpServer } from "node:http";
 import { createServer as createHttpsServer } from "node:https";
 import { randomUUID } from "node:crypto";
+import type { Server as HttpServer } from "node:http";
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -43,6 +44,9 @@ const activeTransports = new Map<string, StreamableHTTPServerTransport>();
 
 /** Active connection count — tracked via httpServer connection/close events */
 let _activeConnections = 0;
+
+/** Module-scope HTTP/HTTPS server handle — set by startServer(), used by shutdown() */
+let _httpServer: HttpServer | undefined;
 
 /** Returns the current number of active TCP connections (for testing). */
 export function getActiveConnections(): number {
@@ -191,6 +195,52 @@ export function resetActiveConnections(): void {
   _activeConnections = 0;
 }
 
+/** Returns the current HTTP server handle — for testing shutdown behavior. */
+export function getHttpServer(): HttpServer | undefined {
+  return _httpServer;
+}
+
+/**
+ * Gracefully shut down the server: stop accepting connections, close all
+ * active MCP transports, then exit. A 1-second force-exit timer ensures we
+ * stay within the Rust supervisor's 2-second SIGTERM window.
+ */
+export async function shutdown(): Promise<void> {
+  console.error("[ralphx-external-mcp] Graceful shutdown initiated...");
+
+  // Safety net: force-exit after 1s if graceful drain stalls.
+  const forceTimer = setTimeout(() => {
+    console.error("[ralphx-external-mcp] Force exit after 1s drain timeout");
+    process.exit(0);
+  }, 1000);
+
+  // Stop accepting new HTTP connections
+  if (_httpServer) {
+    await new Promise<void>((resolve) => {
+      _httpServer!.close(() => resolve());
+    });
+  }
+
+  // Close all active MCP transport sessions
+  for (const [sid, transport] of activeTransports) {
+    try {
+      await transport.close();
+    } catch {
+      // Ignore individual transport close errors
+    }
+    activeTransports.delete(sid);
+    console.error(`[ralphx-external-mcp] Transport closed: ${sid}`);
+  }
+
+  clearTimeout(forceTimer);
+  console.error("[ralphx-external-mcp] Shutdown complete");
+  process.exit(0);
+}
+
+// Register graceful shutdown handlers
+process.on("SIGTERM", shutdown);
+process.on("SIGINT", shutdown);
+
 /**
  * Start the external MCP server.
  */
@@ -228,6 +278,9 @@ export async function startServer(
     cfg.tls
       ? createHttpsServer(buildTlsOptions(cfg.tls), requestHandler)
       : createHttpServer(requestHandler);
+
+  // Expose at module scope so shutdown() can close the server
+  _httpServer = httpServer as HttpServer;
 
   // Track active TCP connections for max-connection enforcement.
   // Increment on new socket, decrement when that socket closes.
