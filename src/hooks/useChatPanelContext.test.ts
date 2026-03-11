@@ -14,6 +14,21 @@ import { useChatStore } from "@/stores/chatStore";
 import { useTeamStore } from "@/stores/teamStore";
 import * as teamApi from "@/api/team";
 
+// Mock sonner toast
+const mockToast = vi.fn();
+vi.mock("sonner", () => ({
+  toast: (message: string, options?: unknown) => mockToast(message, options),
+}));
+
+// Mock ideation store
+const mockSetActiveSession = vi.fn();
+vi.mock("@/stores/ideationStore", () => ({
+  useIdeationStore: Object.assign(
+    vi.fn(),
+    { getState: () => ({ setActiveSession: mockSetActiveSession }) },
+  ),
+}));
+
 interface MockState {
   activeConversationId: string | null;
   setActiveConversation: ReturnType<typeof vi.fn>;
@@ -128,6 +143,8 @@ describe("useChatPanelContext", () => {
 
   afterEach(() => {
     vi.clearAllMocks();
+    mockToast.mockClear();
+    mockSetActiveSession.mockClear();
     queryClient.clear();
   });
 
@@ -551,7 +568,7 @@ describe("useChatPanelContext", () => {
   });
 
   describe("pending plan rejection on session switch", () => {
-    it("should call rejectTeamPlan when switching sessions with a pending plan", async () => {
+    it("should NOT call rejectTeamPlan when switching sessions with a pending plan (backend plan survives for re-discovery)", async () => {
       const prevContextKey = "session:session-1";
       mockTeamStore.pendingPlans[prevContextKey] = {
         planId: "plan-abc",
@@ -590,8 +607,12 @@ describe("useChatPanelContext", () => {
       });
 
       await waitFor(() => {
-        expect(teamApi.rejectTeamPlan).toHaveBeenCalledWith("plan-abc");
+        // clearPendingPlan is called for frontend-only cleanup
+        expect(mockTeamStore.clearPendingPlan).toHaveBeenCalledWith(prevContextKey);
       });
+
+      // Backend plan must NOT be destroyed — it survives for hydration when user returns
+      expect(teamApi.rejectTeamPlan).not.toHaveBeenCalled();
     });
 
     it("should clear pending plan for old context after session switch", async () => {
@@ -673,6 +694,141 @@ describe("useChatPanelContext", () => {
       });
 
       expect(teamApi.rejectTeamPlan).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("pending plan toast notification on session switch", () => {
+    it("should show toast when switching away from session with a pending plan", async () => {
+      const prevContextKey = "session:session-1";
+      mockTeamStore.pendingPlans[prevContextKey] = {
+        planId: "plan-abc",
+        process: "test process",
+        teammates: [],
+        originContextType: "ideation",
+        originContextId: "session-1",
+      };
+
+      const { rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper: ({ children }: { children: React.ReactNode }) =>
+            createElement(QueryClientProvider, { client: queryClient }, children),
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-2",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+      });
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalledWith(
+          "Team plan approval still pending — switch back to approve",
+          expect.objectContaining({
+            duration: 5000,
+            action: expect.objectContaining({ label: "Go back" }),
+          }),
+        );
+      });
+    });
+
+    it("should NOT show toast when switching without a pending plan", async () => {
+      // No pending plans in store
+      mockTeamStore.pendingPlans = {};
+
+      const { rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper: ({ children }: { children: React.ReactNode }) =>
+            createElement(QueryClientProvider, { client: queryClient }, children),
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-2",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+      });
+
+      await waitFor(() => {
+        expect(mockTeamStore.clearPendingPlan).toHaveBeenCalled();
+      });
+
+      expect(mockToast).not.toHaveBeenCalled();
+    });
+
+    it("should capture session ID in closure before clearing plan, enabling Go back navigation", async () => {
+      const prevContextKey = "session:session-1";
+      mockTeamStore.pendingPlans[prevContextKey] = {
+        planId: "plan-xyz",
+        process: "test process",
+        teammates: [],
+        originContextType: "ideation",
+        originContextId: "session-1",
+      };
+
+      const { rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper: ({ children }: { children: React.ReactNode }) =>
+            createElement(QueryClientProvider, { client: queryClient }, children),
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+          },
+        }
+      );
+
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-2",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+      });
+
+      await waitFor(() => {
+        expect(mockToast).toHaveBeenCalled();
+      });
+
+      // Extract and invoke the Go back action to verify it navigates to the original session
+      const [[, options]] = mockToast.mock.calls as [[string, { action: { onClick: () => void } }]];
+      options.action.onClick();
+      expect(mockSetActiveSession).toHaveBeenCalledWith("session-1");
     });
   });
 });

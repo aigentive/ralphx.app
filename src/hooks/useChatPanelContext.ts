@@ -9,10 +9,11 @@
  */
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
 import { useChatStore, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
 import { useTeamStore } from "@/stores/teamStore";
-import { rejectTeamPlan } from "@/api/team";
+import { useIdeationStore } from "@/stores/ideationStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
 import { chatKeys } from "@/hooks/useChat";
 import type { ChatContext } from "@/types/chat";
@@ -200,13 +201,24 @@ export function useChatPanelContext({
         setAgentRunning(prevStoreContextKeyRef.current, false);
         setSending(prevStoreContextKeyRef.current, false);
 
-        // Cancel any pending team plan for the old context to prevent orphaned backend long-polls.
+        // Read pending plan BEFORE clearing — used for toast notification below
         const oldPendingPlan = useTeamStore.getState().pendingPlans[prevStoreContextKeyRef.current];
+
+        // Notify user if they're switching away from a session with a pending team plan approval
         if (oldPendingPlan) {
-          rejectTeamPlan(oldPendingPlan.planId).catch(() => {
-            // Ignore errors — backend clears the plan on timeout regardless
+          const sessionId = oldPendingPlan.originContextId;
+          toast("Team plan approval still pending — switch back to approve", {
+            duration: 5000,
+            action: {
+              label: "Go back",
+              onClick: () => { useIdeationStore.getState().setActiveSession(sessionId); },
+            },
           });
         }
+
+        // Clear frontend pending plan state only — backend plan survives for re-discovery
+        // when user returns to this session (via useTeamEvents Effect 3 hydration).
+        // Backend TTL (14 min) is the safety net for true abandonment.
         useTeamStore.getState().clearPendingPlan(prevStoreContextKeyRef.current);
       }
 
