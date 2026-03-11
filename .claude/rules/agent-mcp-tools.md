@@ -91,6 +91,20 @@ After adding a tool, verify MCP server stderr shows:
 | Tool allowed but 404 | Handler missing or wrong route | Check `index.ts` dispatch + `mod.rs` route |
 | Subagent can't use tool | Agent `.md` doesn't have `mcp__ralphx__*` wildcard | Add wildcard to frontmatter `allowedTools` |
 
+## Current Tool Grants (per-agent reference)
+
+| Agent | Tools in `ralphx.yaml` `mcp_tools` |
+|-------|--------------------------------------|
+| `orchestrator-ideation` | `*_task_proposal`, `*_plan_artifact` (incl. `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `get_plan_artifact`, `link_proposals_to_plan`), `get_session_plan`, `list_session_proposals`, `update_plan_verification`, `get_plan_verification`, `analyze_session_dependencies`, `get_parent_session_context`, `create_child_session`, `get_session_messages` |
+| `ideation-team-lead` | Same as `orchestrator-ideation` (listed separately — `mcp_tools` is full-override, not merged) |
+| `ralphx-worker` / `ralphx-coder` | `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `*_step`, `execution_complete`, `get_project_analysis` |
+| `ralphx-reviewer` | `complete_review`, `get_task_context` |
+| `ralphx-merger` | `report_conflict`, `report_incomplete`, `get_merge_target`, `get_task_context` |
+| `chat-task` | `update_task`, `add_task_note`, `get_task_details` |
+| `chat-project` | `suggest_task`, `list_tasks` |
+
+**Note:** `edit_plan_artifact` is explicitly included in both `orchestrator-ideation` and `ideation-team-lead` (added to `ralphx.yaml` 2026-03-11). `orchestrator-ideation-readonly` intentionally does NOT have it.
+
 ## Example: Adding `get_merge_target` to `ralphx-merger`
 
 ```yaml

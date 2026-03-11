@@ -88,8 +88,9 @@ RalphX agent teams use a **dual-spawn model**. Both components are required:
 ```
 Claude Agent → MCP Protocol → ralphx-mcp-server (TS) → HTTP :3847 → Tauri Backend
 ```
-Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md` (three-layer allowlist)
+Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md`
 **MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `ralphx-plugin/ralphx-mcp-server/src/`, run `cd ralphx-plugin/ralphx-mcp-server && npm run build` to rebuild assets. ❌ Committing without rebuilding.
+**mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `ralphx.yaml` does NOT merge `mcp_tools` — it fully overrides. If `ideation-team-lead` extends `orchestrator-ideation`, its `mcp_tools` must list ALL required tools independently. ❌ Assuming inherited tools are present.
 
 | Agent | MCP Tools |
 |-------|-----------|

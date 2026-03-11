@@ -17,6 +17,8 @@ import {
   IDEATION_TEAM_LEAD,
   IDEATION_TEAM_MEMBER,
   WORKER_TEAM_MEMBER,
+  ORCHESTRATOR_IDEATION,
+  ORCHESTRATOR_IDEATION_READONLY,
 } from '../agentNames.js';
 
 describe('getAllowedToolNames', () => {
@@ -530,5 +532,51 @@ describe('getAllowedToolNames - CLI arg priority chain', () => {
     expect(tools).toEqual(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]);
     expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('WARN'));
     consoleSpy.mockRestore();
+  });
+});
+
+// ===========================================================================
+// revert_and_skip MCP tool — tool definition, allowlist, and dispatch coverage
+// ===========================================================================
+
+describe('revert_and_skip tool', () => {
+  const allTools = getAllTools();
+  const tool = allTools.find((t) => t.name === 'revert_and_skip');
+
+  it('should exist in ALL_TOOLS', () => {
+    expect(tool).toBeDefined();
+  });
+
+  it('should have correct inputSchema with required fields', () => {
+    expect(tool?.inputSchema).toBeDefined();
+    expect(tool?.inputSchema.type).toBe('object');
+    expect(tool?.inputSchema.properties).toHaveProperty('session_id');
+    expect(tool?.inputSchema.properties).toHaveProperty('plan_version_to_restore');
+    expect(tool?.inputSchema.required).toContain('session_id');
+    expect(tool?.inputSchema.required).toContain('plan_version_to_restore');
+  });
+
+  it('should be in TOOL_ALLOWLIST for orchestrator-ideation', () => {
+    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('revert_and_skip');
+  });
+
+  it('should be in TOOL_ALLOWLIST for ideation-team-lead', () => {
+    expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('revert_and_skip');
+  });
+
+  it('should NOT be in TOOL_ALLOWLIST for orchestrator-ideation-readonly', () => {
+    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('revert_and_skip');
+  });
+
+  it('should be returned by getFilteredTools for orchestrator-ideation', () => {
+    setAgentType(ORCHESTRATOR_IDEATION);
+    const toolNames = getFilteredTools().map((t) => t.name);
+    expect(toolNames).toContain('revert_and_skip');
+  });
+
+  it('should be returned by getFilteredTools for ideation-team-lead', () => {
+    setAgentType(IDEATION_TEAM_LEAD);
+    const toolNames = getFilteredTools().map((t) => t.name);
+    expect(toolNames).toContain('revert_and_skip');
   });
 });

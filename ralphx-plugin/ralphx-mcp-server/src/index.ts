@@ -377,6 +377,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         convergence_reason?: string;
       };
       result = await callTauri(`ideation/sessions/${session_id}/verification`, body);
+    } else if (name === "revert_and_skip") {
+      // POST /api/ideation/sessions/:id/revert-and-skip
+      const { session_id, plan_version_to_restore } = args as {
+        session_id: string;
+        plan_version_to_restore: string;
+      };
+      result = await callTauri(`ideation/sessions/${session_id}/revert-and-skip`, { plan_version_to_restore });
     } else if (name === "get_task_steps") {
       // GET /api/task_steps/:task_id
       const { task_id } = args as { task_id: string };
