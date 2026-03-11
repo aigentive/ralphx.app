@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { invoke } from "@tauri-apps/api/core";
 import {
   parseContentBlocks,
@@ -15,7 +15,9 @@ import {
   stopAgent,
   isAgentRunning,
   chatApi,
+  getConversationActiveState,
 } from "./chat";
+import type { ConversationActiveStateResponse } from "./chat";
 
 const mockInvoke = invoke as ReturnType<typeof vi.fn>;
 
@@ -164,5 +166,93 @@ describe("chat api", () => {
   it("exports chatApi namespace", () => {
     expect(chatApi.sendAgentMessage).toBe(sendAgentMessage);
     expect(chatApi.listConversations).toBe(listConversations);
+    expect(chatApi.getConversationActiveState).toBe(getConversationActiveState);
+  });
+});
+
+describe("getConversationActiveState", () => {
+  let mockFetch: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockFetch = vi.fn();
+    global.fetch = mockFetch;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("fetches conversation active state with stats fields", async () => {
+    const mockResponse: ConversationActiveStateResponse = {
+      is_active: true,
+      tool_calls: [],
+      streaming_tasks: [
+        {
+          tool_use_id: "toolu_abc123",
+          description: "Running tests",
+          subagent_type: "ralphx:coder",
+          model: "sonnet",
+          status: "completed",
+          total_tokens: 5000,
+          total_tool_uses: 12,
+          duration_ms: 45000,
+        },
+      ],
+      partial_text: "",
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    const result = await getConversationActiveState("conv-123");
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      "http://localhost:3847/api/conversations/conv-123/active-state"
+    );
+    expect(result.is_active).toBe(true);
+    expect(result.streaming_tasks).toHaveLength(1);
+    const task = result.streaming_tasks[0];
+    expect(task.tool_use_id).toBe("toolu_abc123");
+    expect(task.total_tokens).toBe(5000);
+    expect(task.total_tool_uses).toBe(12);
+    expect(task.duration_ms).toBe(45000);
+  });
+
+  it("handles response with no stats fields (old format)", async () => {
+    const mockResponse: ConversationActiveStateResponse = {
+      is_active: true,
+      tool_calls: [],
+      streaming_tasks: [
+        {
+          tool_use_id: "toolu_xyz",
+          status: "running",
+        },
+      ],
+      partial_text: "Working...",
+    };
+
+    mockFetch.mockResolvedValueOnce({
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
+    });
+
+    const result = await getConversationActiveState("conv-456");
+
+    expect(result.streaming_tasks[0].total_tokens).toBeUndefined();
+    expect(result.streaming_tasks[0].total_tool_uses).toBeUndefined();
+    expect(result.streaming_tasks[0].duration_ms).toBeUndefined();
+  });
+
+  it("throws on non-ok response", async () => {
+    mockFetch.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+    });
+
+    await expect(getConversationActiveState("conv-missing")).rejects.toThrow(
+      "Failed to get conversation active state: 404"
+    );
   });
 });

@@ -11,6 +11,14 @@ import type { ReactNode } from "react";
 // Tool Call Type (canonical definition — re-exported from ToolCallIndicator)
 // ============================================================================
 
+/** Structured stats for Task/Agent tool calls — populated from backend at TaskCompleted time. camelCase (matches Rust #[serde(rename_all = "camelCase")]). */
+export interface ToolCallStats {
+  model?: string;
+  totalTokens?: number;
+  totalToolUses?: number;
+  durationMs?: number;
+}
+
 /**
  * Tool call structure from Claude CLI stream-json output
  */
@@ -30,6 +38,8 @@ export interface ToolCall {
     oldContent?: string;
     filePath: string;
   };
+  /** Structured stats for Task/Agent tool calls — absent for old DB rows and non-Task calls */
+  stats?: ToolCallStats;
 }
 
 // ============================================================================

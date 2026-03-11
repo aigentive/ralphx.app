@@ -125,6 +125,9 @@ async fn test_get_active_state_returns_cached_streaming_tasks() {
         model: Some("sonnet".to_string()),
         status: "running".to_string(),
         teammate_name: None,
+        total_tokens: None,
+        total_tool_uses: None,
+        duration_ms: None,
     };
     state
         .app_state
@@ -268,6 +271,9 @@ async fn test_get_active_state_combines_all_data() {
         model: None,
         status: "completed".to_string(),
         teammate_name: None,
+        total_tokens: None,
+        total_tool_uses: None,
+        duration_ms: None,
     };
     state
         .app_state
@@ -290,4 +296,54 @@ async fn test_get_active_state_combines_all_data() {
     assert_eq!(response.0.tool_calls.len(), 1);
     assert_eq!(response.0.streaming_tasks.len(), 1);
     assert_eq!(response.0.partial_text, "Analyzing...");
+}
+
+#[tokio::test]
+async fn test_active_streaming_task_from_impl_forwards_stats() {
+    use crate::http_server::types::ActiveStreamingTask;
+
+    let cached = CachedStreamingTask {
+        tool_use_id: "toolu_stats_test".to_string(),
+        description: Some("Test task".to_string()),
+        subagent_type: Some("ralphx:coder".to_string()),
+        model: Some("sonnet".to_string()),
+        status: "completed".to_string(),
+        teammate_name: None,
+        total_tokens: Some(9876),
+        total_tool_uses: Some(42),
+        duration_ms: Some(60000),
+    };
+
+    let active = ActiveStreamingTask::from(cached);
+
+    assert_eq!(active.tool_use_id, "toolu_stats_test");
+    assert_eq!(active.status, "completed");
+    assert_eq!(active.total_tokens, Some(9876));
+    assert_eq!(active.total_tool_uses, Some(42));
+    assert_eq!(active.duration_ms, Some(60000));
+}
+
+#[tokio::test]
+async fn test_active_streaming_task_from_impl_handles_none_stats() {
+    use crate::http_server::types::ActiveStreamingTask;
+
+    let cached = CachedStreamingTask {
+        tool_use_id: "toolu_no_stats".to_string(),
+        description: None,
+        subagent_type: None,
+        model: None,
+        status: "running".to_string(),
+        teammate_name: None,
+        total_tokens: None,
+        total_tool_uses: None,
+        duration_ms: None,
+    };
+
+    let active = ActiveStreamingTask::from(cached);
+
+    assert_eq!(active.tool_use_id, "toolu_no_stats");
+    assert_eq!(active.status, "running");
+    assert!(active.total_tokens.is_none());
+    assert!(active.total_tool_uses.is_none());
+    assert!(active.duration_ms.is_none());
 }
