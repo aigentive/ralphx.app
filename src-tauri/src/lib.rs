@@ -64,6 +64,8 @@ async fn wait_for_backend_ready(port: u16, timeout: Duration) -> Result<(), Stri
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let start = Instant::now();
+    let mut logged_non_200 = false;
+    let mut logged_conn_refused = false;
     loop {
         if start.elapsed() > timeout {
             return Err(format!("Backend :{port} not ready after {timeout:?}"));
@@ -74,25 +76,40 @@ async fn wait_for_backend_ready(port: u16, timeout: Duration) -> Result<(), Stri
             tokio::net::TcpStream::connect(&addr),
         )
         .await;
-        if let Ok(Ok(mut stream)) = conn {
-            let req = "GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
-            if tokio::time::timeout(Duration::from_secs(2), stream.write_all(req.as_bytes()))
-                .await
-                .is_ok()
-            {
-                let mut buf = [0u8; 256];
-                if let Ok(Ok(n)) =
-                    tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buf)).await
+        match conn {
+            Ok(Ok(mut stream)) => {
+                logged_conn_refused = false; // reset so reconnect events are re-logged
+                let req = "GET /health HTTP/1.0\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n";
+                if tokio::time::timeout(Duration::from_secs(2), stream.write_all(req.as_bytes()))
+                    .await
+                    .is_ok()
                 {
-                    let response = std::str::from_utf8(&buf[..n]).unwrap_or("");
-                    let status = response
-                        .split_whitespace()
-                        .nth(1)
-                        .and_then(|s| s.parse::<u16>().ok())
-                        .unwrap_or(0);
-                    if status == 200 {
-                        return Ok(());
+                    let mut buf = [0u8; 1024];
+                    if let Ok(Ok(n)) =
+                        tokio::time::timeout(Duration::from_secs(2), stream.read(&mut buf)).await
+                    {
+                        let response = std::str::from_utf8(&buf[..n]).unwrap_or("");
+                        let status = response
+                            .split_whitespace()
+                            .nth(1)
+                            .and_then(|s| s.parse::<u16>().ok())
+                            .unwrap_or(0);
+                        if status == 200 {
+                            return Ok(());
+                        }
+                        if !logged_non_200 {
+                            tracing::debug!(
+                                "Backend :{port} /health returned status {status} (expected 200), retrying"
+                            );
+                            logged_non_200 = true;
+                        }
                     }
+                }
+            }
+            _ => {
+                if !logged_conn_refused {
+                    tracing::debug!("Backend :{port} not yet accepting connections, retrying");
+                    logged_conn_refused = true;
                 }
             }
         }
@@ -719,6 +736,7 @@ pub fn run() {
                                 warn!("Backend not ready, skipping external MCP start: {}", e);
                             }
                             Ok(()) => {
+                                info!("Backend :3847 ready, starting external MCP server");
                                 // Validate config (TLS enforcement, port/host checks)
                                 match infrastructure::agents::claude::validate_external_mcp_config(
                                     &config,
