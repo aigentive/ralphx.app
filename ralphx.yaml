@@ -396,6 +396,18 @@ claude:
         ANTHROPIC_DEFAULT_HAIKU_MODEL: glm-4.5-air
         ANTHROPIC_DEFAULT_SONNET_MODEL: glm-4.7
         ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5
+    # OpenRouter integration profile. Values can be overridden via src-tauri/.env:
+    # RALPHX_ANTHROPIC_AUTH_TOKEN=...
+    # RALPHX_ANTHROPIC_BASE_URL=https://openrouter.ai/api
+    # RALPHX_ANTHROPIC_API_KEY=
+    # RALPHX_API_TIMEOUT_MS=3000000
+    openrouter:
+      extends: default
+      env:
+        ANTHROPIC_AUTH_TOKEN: your_openrouter_api_key
+        ANTHROPIC_BASE_URL: https://openrouter.ai/api
+        ANTHROPIC_API_KEY: ""
+        API_TIMEOUT_MS: "3000000"
 
 agents:
   - name: orchestrator-ideation
