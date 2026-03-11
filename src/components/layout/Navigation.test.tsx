@@ -22,6 +22,11 @@ vi.mock("@/stores/teamStore", () => ({
     ),
 }));
 
+// Mock useProjectStats — avoids needing QueryClientProvider in Navigation tests
+vi.mock("@/hooks/useProjectStats", () => ({
+  useProjectStats: vi.fn(() => ({ data: undefined, isLoading: false, isError: false })),
+}));
+
 // Mock tooltip components to avoid portal issues
 vi.mock("@/components/ui/tooltip", () => ({
   Tooltip: ({ children }: { children: React.ReactNode }) => <>{children}</>,

@@ -1357,3 +1357,121 @@ async fn test_get_archived_count_filters_by_session_id() {
         .count();
     assert_eq!(session_archived, 1);
 }
+
+// ── IPC contract tests ─────────────────────────────────────────────────────────
+// Verify camelCase deserialization for task command input structs.
+
+#[cfg(test)]
+mod ipc_contract {
+    use super::super::{AnswerUserQuestionInput, CreateTaskInput, InjectTaskInput, UpdateTaskInput};
+
+    // ── CreateTaskInput ─────────────────────────────────────────────────────
+
+    #[test]
+    fn create_task_input_deserializes_camel_case() {
+        let json = r#"{"projectId":"proj-123","title":"Build auth module","category":"regular","description":"Implement JWT","priority":50,"steps":["Step A","Step B"]}"#;
+        let input: CreateTaskInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.project_id, "proj-123");
+        assert_eq!(input.title, "Build auth module");
+        assert_eq!(input.category, Some("regular".to_string()));
+        assert_eq!(input.description, Some("Implement JWT".to_string()));
+        assert_eq!(input.priority, Some(50));
+        assert_eq!(
+            input.steps,
+            Some(vec!["Step A".to_string(), "Step B".to_string()])
+        );
+    }
+
+    #[test]
+    fn create_task_input_required_fields_only() {
+        let json = r#"{"projectId":"proj-456","title":"Minimal task"}"#;
+        let input: CreateTaskInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.project_id, "proj-456");
+        assert_eq!(input.title, "Minimal task");
+        assert!(input.category.is_none());
+        assert!(input.description.is_none());
+        assert!(input.priority.is_none());
+        assert!(input.steps.is_none());
+    }
+
+    #[test]
+    fn create_task_input_rejects_snake_case() {
+        // project_id in snake_case must not deserialize as projectId
+        let json = r#"{"project_id":"proj-1","title":"Bad"}"#;
+        let result: Result<CreateTaskInput, _> = serde_json::from_str(json);
+        assert!(
+            result.is_err(),
+            "snake_case project_id must not deserialize (missing required camelCase field)"
+        );
+    }
+
+    // ── UpdateTaskInput ─────────────────────────────────────────────────────
+
+    #[test]
+    fn update_task_input_deserializes_camel_case() {
+        let json = r#"{"title":"New Title","description":"New desc","category":"bug","priority":75,"internalStatus":"ready"}"#;
+        let input: UpdateTaskInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.title, Some("New Title".to_string()));
+        assert_eq!(input.description, Some("New desc".to_string()));
+        assert_eq!(input.category, Some("bug".to_string()));
+        assert_eq!(input.priority, Some(75));
+        assert_eq!(input.internal_status, Some("ready".to_string()));
+    }
+
+    #[test]
+    fn update_task_input_empty_patch() {
+        let json = r#"{}"#;
+        let input: UpdateTaskInput = serde_json::from_str(json).unwrap();
+        assert!(input.title.is_none());
+        assert!(input.description.is_none());
+        assert!(input.priority.is_none());
+        assert!(input.internal_status.is_none());
+    }
+
+    // ── InjectTaskInput ─────────────────────────────────────────────────────
+
+    #[test]
+    fn inject_task_input_deserializes_camel_case() {
+        let json = r#"{"projectId":"proj-abc","title":"Hotfix","description":"Fix prod bug","category":"bug","target":"next","makeNext":true}"#;
+        let input: InjectTaskInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.project_id, "proj-abc");
+        assert_eq!(input.title, "Hotfix");
+        assert_eq!(input.description, Some("Fix prod bug".to_string()));
+        assert_eq!(input.category, Some("bug".to_string()));
+        assert_eq!(input.target, "next");
+        assert!(input.make_next);
+    }
+
+    #[test]
+    fn inject_task_input_defaults_applied() {
+        // makeNext defaults to false, target defaults via helper
+        let json = r#"{"projectId":"proj-1","title":"Quick task"}"#;
+        let input: InjectTaskInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.project_id, "proj-1");
+        assert!(!input.make_next);
+        assert!(!input.target.is_empty(), "target must have a default value");
+    }
+
+    // ── AnswerUserQuestionInput ─────────────────────────────────────────────
+
+    #[test]
+    fn answer_user_question_input_deserializes_camel_case() {
+        let json = r#"{"taskId":"task-999","selectedOptions":["opt-a","opt-b"],"customResponse":"My answer"}"#;
+        let input: AnswerUserQuestionInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.task_id, "task-999");
+        assert_eq!(
+            input.selected_options,
+            vec!["opt-a".to_string(), "opt-b".to_string()]
+        );
+        assert_eq!(input.custom_response, Some("My answer".to_string()));
+    }
+
+    #[test]
+    fn answer_user_question_input_no_custom_response() {
+        let json = r#"{"taskId":"task-1","selectedOptions":[]}"#;
+        let input: AnswerUserQuestionInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.task_id, "task-1");
+        assert!(input.selected_options.is_empty());
+        assert!(input.custom_response.is_none());
+    }
+}

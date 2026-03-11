@@ -285,3 +285,85 @@ async fn test_get_git_default_branch_first_branch_alphabetically() {
     // which lists branches alphabetically, so feature-a comes first
     assert_eq!(result.unwrap(), "feature-a");
 }
+
+// ── IPC contract tests ─────────────────────────────────────────────────────────
+// Verify camelCase deserialization for project command input structs.
+
+#[cfg(test)]
+mod ipc_contract {
+    use super::super::{CreateProjectInput, UpdateProjectInput};
+
+    // ── CreateProjectInput ──────────────────────────────────────────────────
+
+    #[test]
+    fn create_project_input_deserializes_camel_case() {
+        let json = r#"{"name":"My Project","workingDirectory":"/code/my-project","gitMode":"worktree","baseBranch":"main"}"#;
+        let input: CreateProjectInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.name, "My Project");
+        assert_eq!(input.working_directory, "/code/my-project");
+        assert_eq!(input.git_mode, Some("worktree".to_string()));
+        assert_eq!(input.base_branch, Some("main".to_string()));
+    }
+
+    #[test]
+    fn create_project_input_optional_fields_absent() {
+        let json = r#"{"name":"Minimal","workingDirectory":"/tmp/proj"}"#;
+        let input: CreateProjectInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.name, "Minimal");
+        assert_eq!(input.working_directory, "/tmp/proj");
+        assert!(input.git_mode.is_none());
+        assert!(input.base_branch.is_none());
+    }
+
+    #[test]
+    fn create_project_input_rejects_snake_case() {
+        // snake_case keys must NOT be accepted when camelCase is required
+        let json = r#"{"name":"Bad","working_directory":"/bad"}"#;
+        let result: Result<CreateProjectInput, _> = serde_json::from_str(json);
+        // working_directory won't map to working_directory field due to rename_all camelCase
+        // The struct will deserialize but working_directory field will be missing → error
+        assert!(
+            result.is_err(),
+            "snake_case working_directory must not deserialize (missing required field)"
+        );
+    }
+
+    // ── UpdateProjectInput ──────────────────────────────────────────────────
+
+    #[test]
+    fn update_project_input_deserializes_all_camel_case_fields() {
+        let json = r#"{"name":"Updated","workingDirectory":"/new/path","gitMode":"local","baseBranch":"develop","mergeValidationMode":"strict","mergeStrategy":"rebase_squash"}"#;
+        let input: UpdateProjectInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.name, Some("Updated".to_string()));
+        assert_eq!(input.working_directory, Some("/new/path".to_string()));
+        assert_eq!(input.git_mode, Some("local".to_string()));
+        assert_eq!(input.base_branch, Some("develop".to_string()));
+        assert_eq!(
+            input.merge_validation_mode,
+            Some("strict".to_string())
+        );
+        assert_eq!(input.merge_strategy, Some("rebase_squash".to_string()));
+    }
+
+    #[test]
+    fn update_project_input_partial_fields() {
+        let json = r#"{"name":"Just Name"}"#;
+        let input: UpdateProjectInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.name, Some("Just Name".to_string()));
+        assert!(input.working_directory.is_none());
+        assert!(input.git_mode.is_none());
+        assert!(input.merge_strategy.is_none());
+    }
+
+    #[test]
+    fn update_project_input_empty_object() {
+        let json = r#"{}"#;
+        let input: UpdateProjectInput = serde_json::from_str(json).unwrap();
+        assert!(input.name.is_none());
+        assert!(input.working_directory.is_none());
+        assert!(input.git_mode.is_none());
+        assert!(input.base_branch.is_none());
+        assert!(input.merge_validation_mode.is_none());
+        assert!(input.merge_strategy.is_none());
+    }
+}
