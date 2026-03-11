@@ -10,6 +10,7 @@ use crate::domain::entities::{
     Artifact, ArtifactContent, AuditLogEntry, MemoryEntry, StepProgressSummary, TaskProposal,
     TaskStep,
 };
+use crate::http_server::handlers::artifacts::EditError;
 
 // ============================================================================
 // HTTP Server State
@@ -372,6 +373,18 @@ pub struct CreatePlanArtifactRequest {
 pub struct UpdatePlanArtifactRequest {
     pub artifact_id: String,
     pub content: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct EditPlanArtifactRequest {
+    pub artifact_id: String,
+    pub edits: Vec<PlanEdit>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PlanEdit {
+    pub old_text: String,
+    pub new_text: String,
 }
 
 #[derive(Debug, Deserialize)]
@@ -1238,6 +1251,27 @@ impl From<StatusCode> for HttpError {
         Self {
             status,
             message: None,
+        }
+    }
+}
+
+impl From<EditError> for HttpError {
+    fn from(e: EditError) -> Self {
+        match e {
+            EditError::AnchorNotFound {
+                edit_index,
+                old_text_preview,
+            } => HttpError::validation(format!(
+                "Edit #{} failed: old_text not found in plan content. Preview: '{}'",
+                edit_index, old_text_preview
+            )),
+            EditError::AmbiguousAnchor {
+                edit_index,
+                old_text_preview,
+            } => HttpError::validation(format!(
+                "Edit #{} failed: old_text matches multiple locations. Use a longer/more unique anchor. Preview: '{}'",
+                edit_index, old_text_preview
+            )),
         }
     }
 }

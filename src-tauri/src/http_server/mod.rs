@@ -126,6 +126,7 @@ pub async fn start_http_server(
         // NOTE: All ideation mutation routes MUST call assert_session_mutable() after fetching the session.
         .route("/api/create_plan_artifact", post(create_plan_artifact))
         .route("/api/update_plan_artifact", post(update_plan_artifact))
+        .route("/api/edit_plan_artifact", post(edit_plan_artifact))
         .route(
             "/api/get_plan_artifact/:artifact_id",
             get(get_plan_artifact),

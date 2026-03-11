@@ -11,8 +11,9 @@ use super::*;
 use crate::application::chat_service::{ChatService, ClaudeChatService};
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType,
-    ChatContextType, IdeationSessionId, VerificationStatus,
+    ChatContextType, IdeationSession, IdeationSessionId, VerificationStatus,
 };
+use rusqlite::Connection;
 use crate::domain::services::emit_verification_status_changed;
 use crate::error::AppError;
 use crate::infrastructure::agents::claude::verification_config;
@@ -21,6 +22,68 @@ use crate::infrastructure::sqlite::{
     SqliteTaskProposalRepository as ProposalRepo,
 };
 
+// ============================================================================
+// EditError Types
+// ============================================================================
+
+/// Error type for apply_edits pure function.
+#[derive(Debug)]
+pub enum EditError {
+    /// The old_text anchor was not found in the content.
+    AnchorNotFound {
+        edit_index: usize,
+        old_text_preview: String,
+    },
+    /// The old_text anchor matches multiple locations (ambiguous).
+    AmbiguousAnchor {
+        edit_index: usize,
+        old_text_preview: String,
+    },
+}
+
+/// Apply sequential old_text→new_text edits to content.
+///
+/// Edits are applied SEQUENTIALLY — each edit sees the result of all previous edits,
+/// not the original content. If any edit fails (anchor not found or ambiguous),
+/// the entire operation returns an error and no changes are applied.
+///
+/// **Ambiguity check**: Verifies that each old_text appears exactly once in the
+/// CURRENT content (after prior edits). The check starts searching AFTER the first
+/// match ends (`pos + old_text.len()`) to avoid false positives from the match itself.
+///
+/// **Phantom match note**: If edit N's `new_text` introduces text matching edit N+1's
+/// `old_text`, edit N+1 will operate on the introduced text (by design). Agents should
+/// use unique 20+ char anchors to avoid ambiguity from sequential interactions.
+#[allow(dead_code)]
+pub fn apply_edits(content: &str, edits: &[PlanEdit]) -> Result<String, EditError> {
+    let mut result = content.to_string();
+    for (i, edit) in edits.iter().enumerate() {
+        // Find exact match
+        let pos = result.find(&edit.old_text).ok_or_else(|| EditError::AnchorNotFound {
+            edit_index: i,
+            old_text_preview: edit.old_text.chars().take(80).collect(),
+        })?;
+
+        // Verify unique match — check for second occurrence AFTER the first match ends.
+        // Use pos + old_text.len() to skip the matched text itself.
+        if result[pos + edit.old_text.len()..].contains(&edit.old_text) {
+            return Err(EditError::AmbiguousAnchor {
+                edit_index: i,
+                old_text_preview: edit.old_text.chars().take(80).collect(),
+            });
+        }
+
+        // Apply replacement
+        result = format!(
+            "{}{}{}",
+            &result[..pos],
+            &edit.new_text,
+            &result[pos + edit.old_text.len()..],
+        );
+    }
+    Ok(result)
+}
+
 /// Map an AppError to an HttpError for handler responses.
 fn map_app_err(e: AppError) -> HttpError {
     match e {
@@ -28,6 +91,76 @@ fn map_app_err(e: AppError) -> HttpError {
         AppError::NotFound(_) => StatusCode::NOT_FOUND.into(),
         _ => StatusCode::INTERNAL_SERVER_ERROR.into(),
     }
+}
+
+/// Shared core for both update_plan_artifact and (future) edit_plan_artifact.
+///
+/// Takes the resolved artifact + new content, creates a new version,
+/// batch-updates sessions/proposals, resets verification, and returns
+/// data needed for event emission.
+///
+/// IMPORTANT: This helper does NOT trigger auto-verification.
+/// Auto-verify is triggered ONLY by create_plan_artifact (which calls
+/// trigger_auto_verify_sync separately). Both update and edit handlers
+/// use finalize_plan_update, which handles:
+///   - Create new version (version + 1, previous_version_id = old.id)
+///   - Batch-update sessions pointing to old → new
+///   - Batch-update proposals (preserve plan_version_at_creation)
+///   - Conditional verification reset (CAS: only if in_progress=0)
+///
+/// The caller is responsible for emitting events:
+///   - plan_artifact:updated { previous_artifact_id: old.id, new_artifact_id: new.id, session_id }
+///   - plan:proposals_may_need_update (only if linked proposals exist)
+///
+/// Returns a tuple containing:
+///   - (created_artifact, old_artifact_id, owning_sessions, linked_proposal_ids, verification_reset)
+fn finalize_plan_update(
+    conn: &Connection,
+    old_artifact: &Artifact,
+    new_content: String,
+) -> Result<(Artifact, String, Vec<IdeationSession>, Vec<String>, bool), AppError> {
+    let old_id = old_artifact.id.as_str().to_string();
+
+    // 1. Create NEW artifact with incremented version (version chain, not in-place update)
+    let new_artifact = Artifact {
+        id: ArtifactId::new(),
+        artifact_type: old_artifact.artifact_type.clone(),
+        name: old_artifact.name.clone(),
+        content: ArtifactContent::Inline { text: new_content },
+        metadata: ArtifactMetadata::new(&old_artifact.metadata.created_by)
+            .with_version(old_artifact.metadata.version + 1),
+        derived_from: vec![],
+        bucket_id: old_artifact.bucket_id.clone(),
+    };
+    let created =
+        ArtifactRepo::create_with_previous_version_sync(conn, new_artifact, &old_id)?;
+
+    // 2. Batch-update all sessions pointing to old artifact to point to new one
+    let owning_sessions = SessionRepo::get_by_plan_artifact_id_sync(conn, &old_id)?;
+    let session_ids: Vec<String> = owning_sessions
+        .iter()
+        .map(|s| s.id.as_str().to_string())
+        .collect();
+    SessionRepo::batch_update_artifact_id_sync(conn, &session_ids, created.id.as_str())?;
+
+    // 3. Fetch proposals linked to old artifact (before batch-updating them)
+    let linked_proposals = ProposalRepo::get_by_plan_artifact_id_sync(conn, &old_id)?;
+    let linked_proposal_ids: Vec<String> =
+        linked_proposals.iter().map(|p| p.id.to_string()).collect();
+
+    // 4. Batch-update all linked proposals to point to the new artifact version.
+    //    plan_version_at_creation is intentionally NOT changed (preserves original birth version).
+    ProposalRepo::batch_update_artifact_id_sync(conn, &old_id, created.id.as_str())?;
+
+    // 5. Conditionally reset verification — only when verification_in_progress = 0.
+    //    Prevents the loop-reset paradox where auto-corrections reset verification mid-loop.
+    let verification_reset = if let Some(session) = owning_sessions.first() {
+        SessionRepo::reset_verification_sync(conn, session.id.as_str())?
+    } else {
+        false
+    };
+
+    Ok((created, old_id, owning_sessions, linked_proposal_ids, verification_reset))
 }
 
 pub async fn create_plan_artifact(
@@ -387,45 +520,9 @@ pub async fn update_plan_artifact(
                 }
             }
 
-            // 5. Create NEW artifact with incremented version (version chain, not in-place update)
-            let new_artifact = Artifact {
-                id: ArtifactId::new(),
-                artifact_type: old_artifact.artifact_type.clone(),
-                name: old_artifact.name.clone(),
-                content: ArtifactContent::Inline { text: content },
-                metadata: ArtifactMetadata::new(&old_artifact.metadata.created_by)
-                    .with_version(old_artifact.metadata.version + 1),
-                derived_from: vec![],
-                bucket_id: old_artifact.bucket_id.clone(),
-            };
-            let created =
-                ArtifactRepo::create_with_previous_version_sync(conn, new_artifact, &old_id)?;
-
-            // 6. Batch-update all sessions pointing to old artifact to point to new one
-            let session_ids: Vec<String> = owning_sessions
-                .iter()
-                .map(|s| s.id.as_str().to_string())
-                .collect();
-            SessionRepo::batch_update_artifact_id_sync(conn, &session_ids, created.id.as_str())?;
-
-            // 7. Fetch proposals linked to old artifact (before batch-updating them)
-            let linked_proposals = ProposalRepo::get_by_plan_artifact_id_sync(conn, &old_id)?;
-            let linked_proposal_ids: Vec<String> =
-                linked_proposals.iter().map(|p| p.id.to_string()).collect();
-
-            // 8. Batch-update all linked proposals to point to the new artifact version.
-            //    plan_version_at_creation is intentionally NOT changed (preserves original birth version).
-            ProposalRepo::batch_update_artifact_id_sync(conn, &old_id, created.id.as_str())?;
-
-            // 9. Conditionally reset verification — only when verification_in_progress = 0.
-            //    Prevents the loop-reset paradox where auto-corrections reset verification mid-loop.
-            let reset = if let Some(session) = owning_sessions.first() {
-                SessionRepo::reset_verification_sync(conn, session.id.as_str())?
-            } else {
-                false
-            };
-
-            Ok((created, old_id, owning_sessions, linked_proposal_ids, reset))
+            // 5. Shared finalization: create version, batch-update, verification reset
+            //    Does NOT trigger auto-verify — that's only in create_plan_artifact
+            finalize_plan_update(conn, &old_artifact, content)
         })
         .await
         .map_err(|e| {
@@ -443,6 +540,156 @@ pub async fn update_plan_artifact(
         if verification_reset {
             if let Some(session) = sessions.first() {
                 // B4: use shared helper for canonical payload (was missing round/gaps/rounds fields)
+                emit_verification_status_changed(
+                    app_handle,
+                    session.id.as_str(),
+                    VerificationStatus::Unverified,
+                    false,
+                    None,
+                    None,
+                );
+            }
+        }
+
+        // Emit plan_artifact:updated event with the NEW artifact info
+        let _ = app_handle.emit(
+            "plan_artifact:updated",
+            serde_json::json!({
+                "artifactId": created.id.as_str(),
+                "previousArtifactId": old_artifact_id_str,
+                "sessionId": sessions.first().map(|s| s.id.as_str()),
+                "artifact": {
+                    "id": created.id.as_str(),
+                    "name": created.name,
+                    "content": content_text,
+                    "version": created.metadata.version,
+                }
+            }),
+        );
+
+        // If there are linked proposals, emit sync notification
+        if !linked_proposal_ids.is_empty() {
+            let payload = PlanProposalsSyncPayload {
+                artifact_id: created.id.to_string(),
+                previous_artifact_id: old_artifact_id_str.clone(),
+                proposal_ids: linked_proposal_ids,
+                new_version: created.metadata.version,
+                session_id: sessions.first().map(|s| s.id.to_string()),
+                proposals_relinked: true,
+            };
+            let _ = app_handle.emit("plan:proposals_may_need_update", payload);
+        }
+    }
+
+    let mut response = ArtifactResponse::from(created);
+    response.previous_artifact_id = Some(old_artifact_id_str);
+    response.session_id = sessions.first().map(|s| s.id.to_string());
+
+    Ok(Json(response))
+}
+
+pub async fn edit_plan_artifact(
+    State(state): State<HttpServerState>,
+    Json(req): Json<EditPlanArtifactRequest>,
+) -> Result<Json<ArtifactResponse>, HttpError> {
+    let input_artifact_id = req.artifact_id.clone();
+    let edits = req.edits;
+
+    // Pre-transaction input validation (defense-in-depth — MCP schema validates too)
+    if edits.is_empty() {
+        return Err(HttpError::validation("edits array must not be empty".to_string()));
+    }
+    for (i, edit) in edits.iter().enumerate() {
+        if edit.old_text.is_empty() {
+            return Err(HttpError::validation(format!(
+                "Edit #{i}: old_text must not be empty"
+            )));
+        }
+        if edit.old_text.len() > 100_000 || edit.new_text.len() > 100_000 {
+            return Err(HttpError::validation(format!(
+                "Edit #{i}: old_text/new_text exceeds 100KB limit"
+            )));
+        }
+    }
+
+    // Single lock acquisition: all DB work in one transaction.
+    // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
+    let (created, old_artifact_id_str, sessions, linked_proposal_ids, verification_reset) = state
+        .app_state
+        .db
+        .run_transaction(move |conn| {
+            // 1. Resolve stale IDs: walk the version chain forward to find the latest version.
+            //    Makes the endpoint idempotent — agents can pass any version ID and it works.
+            let old_id = ArtifactRepo::resolve_latest_sync(conn, &input_artifact_id)?;
+
+            // 2. Get existing artifact (using resolved ID)
+            let old_artifact = ArtifactRepo::get_by_id_sync(conn, &old_id)?
+                .ok_or_else(|| AppError::NotFound(format!("Artifact {old_id} not found")))?;
+
+            // 3. Guard: reject mutations on Archived/Accepted sessions
+            let owning_sessions = SessionRepo::get_by_plan_artifact_id_sync(conn, &old_id)?;
+            if let Some(session) = owning_sessions.first() {
+                crate::http_server::helpers::assert_session_mutable(session)?;
+            }
+
+            // 4. Guard: reject edit if this artifact is only referenced as an inherited plan
+            if owning_sessions.is_empty() {
+                let inherited =
+                    SessionRepo::get_by_inherited_plan_artifact_id_sync(conn, &old_id)?;
+                if !inherited.is_empty() {
+                    return Err(AppError::Validation(
+                        "Cannot edit inherited plan. Use create_plan_artifact to create a session-specific plan.".to_string(),
+                    ));
+                }
+            }
+
+            // 5. Guard: only inline content is supported (file-backed artifacts cannot be edited)
+            let current_content = match &old_artifact.content {
+                ArtifactContent::Inline { text } => text.clone(),
+                ArtifactContent::File { .. } => {
+                    return Err(AppError::Validation(
+                        "Cannot edit file-backed artifacts. Use update_plan_artifact with full content.".to_string(),
+                    ));
+                }
+            };
+
+            // 6. Apply edits (pure function — returns error if any anchor not found/ambiguous)
+            let new_content = apply_edits(&current_content, &edits).map_err(|e| {
+                let http_err: HttpError = e.into();
+                AppError::Validation(
+                    http_err
+                        .message
+                        .unwrap_or_else(|| "Edit failed".to_string()),
+                )
+            })?;
+
+            // 7. Guard: post-apply content size (prevent unbounded growth)
+            if new_content.len() > 500_000 {
+                return Err(AppError::Validation(format!(
+                    "Resulting plan content exceeds 500KB limit ({} bytes). Use fewer/smaller edits.",
+                    new_content.len()
+                )));
+            }
+
+            // 8. Shared finalization: create version, batch-update, verification reset
+            //    Does NOT trigger auto-verify — that's only in create_plan_artifact
+            finalize_plan_update(conn, &old_artifact, new_content)
+        })
+        .await
+        .map_err(|e| {
+            error!("edit_plan_artifact transaction failed: {}", e);
+            map_app_err(e)
+        })?;
+
+    // Emit events outside the lock (acceptable crash-consistency gap)
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let content_text = match &created.content {
+            ArtifactContent::Inline { text } => text.clone(),
+            ArtifactContent::File { path } => format!("[File: {}]", path),
+        };
+
+        if verification_reset {
+            if let Some(session) = sessions.first() {
                 emit_verification_status_changed(
                     app_handle,
                     session.id.as_str(),

@@ -170,5 +170,40 @@ export const PLAN_TOOLS = [
             required: ["session_id"],
         },
     },
+    {
+        name: "edit_plan_artifact",
+        description: "Apply anchor-based edit operations to an existing implementation plan. More token-efficient than update_plan_artifact for targeted changes — only send the text to find and replace, not the entire plan content. Each edit finds the first occurrence of old_text and replaces it with new_text. Stale artifact IDs are auto-resolved to the latest version. Edits are applied sequentially; if any edit fails (old_text not found or ambiguous), the entire operation is rejected with details of which edit failed.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                artifact_id: {
+                    type: "string",
+                    description: "The artifact ID of the plan to edit. Can be any version ID — stale IDs are auto-resolved to the latest version.",
+                },
+                edits: {
+                    type: "array",
+                    minItems: 1,
+                    maxItems: 20,
+                    items: {
+                        type: "object",
+                        properties: {
+                            old_text: {
+                                type: "string",
+                                minLength: 1,
+                                description: "The exact text to find in the plan. Must be unique within the plan content to avoid ambiguous replacements.",
+                            },
+                            new_text: {
+                                type: "string",
+                                description: "The replacement text. Can be empty string to delete the matched text.",
+                            },
+                        },
+                        required: ["old_text", "new_text"],
+                    },
+                    description: "List of edit operations to apply sequentially. Each operation finds old_text and replaces with new_text.",
+                },
+            },
+            required: ["artifact_id", "edits"],
+        },
+    },
 ];
 //# sourceMappingURL=plan-tools.js.map
