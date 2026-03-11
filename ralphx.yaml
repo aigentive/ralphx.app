@@ -451,7 +451,7 @@ agents:
 
   - name: orchestrator-ideation-readonly
     system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
         list_session_proposals,
@@ -487,7 +487,7 @@ agents:
 
   - name: chat-task
     system_prompt_file: ralphx-plugin/agents/chat-task.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
         update_task,
@@ -502,7 +502,7 @@ agents:
 
   - name: chat-project
     system_prompt_file: ralphx-plugin/agents/chat-project.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
         suggest_task,
@@ -517,7 +517,7 @@ agents:
 
   - name: ralphx-review-chat
     system_prompt_file: ralphx-plugin/agents/review-chat.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
         approve_task,
@@ -538,7 +538,7 @@ agents:
 
   - name: ralphx-review-history
     system_prompt_file: ralphx-plugin/agents/review-history.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
         get_review_notes,
@@ -560,7 +560,7 @@ agents:
 
   - name: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
@@ -609,7 +609,7 @@ agents:
 
   - name: ralphx-coder
     system_prompt_file: ralphx-plugin/agents/coder.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task, LSP] }
     mcp_tools: [
         # step management tools
@@ -655,7 +655,7 @@ agents:
 
   - name: ralphx-reviewer
     system_prompt_file: ralphx-plugin/agents/reviewer.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
         # review tools
@@ -681,14 +681,14 @@ agents:
 
   - name: ralphx-qa-prep
     system_prompt_file: ralphx-plugin/agents/qa-prep.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: []
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: ralphx-qa-executor
     system_prompt_file: ralphx-plugin/agents/qa-executor.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools: { extends: base_tools, include: [Write, Edit, Task] }
     mcp_tools: []
     preapproved_cli_tools: [Write, Edit, Bash, Task(Explore), Task(Plan)]
@@ -836,7 +836,7 @@ agents:
   - name: ralphx-worker-team
     extends: ralphx-worker
     system_prompt_file: ralphx-plugin/agents/worker-team.md
-    model: claude-sonnet-4-6
+    model: sonnet
     tools:
       {
         extends: base_tools,
