@@ -10,7 +10,7 @@ import { z } from "zod";
 /**
  * Who performed the review
  */
-export const REVIEWER_TYPE_VALUES = ["ai", "human"] as const;
+export const REVIEWER_TYPE_VALUES = ["ai", "human", "system"] as const;
 export const ReviewerTypeSchema = z.enum(REVIEWER_TYPE_VALUES);
 export type ReviewerType = z.infer<typeof ReviewerTypeSchema>;
 

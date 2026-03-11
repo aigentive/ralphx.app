@@ -90,6 +90,8 @@ pub enum ReviewerType {
     Ai,
     /// Human reviewer
     Human,
+    /// System-initiated action (reconciler, policy limits, agent crash)
+    System,
 }
 
 impl std::fmt::Display for ReviewerType {
@@ -97,6 +99,7 @@ impl std::fmt::Display for ReviewerType {
         match self {
             ReviewerType::Ai => write!(f, "ai"),
             ReviewerType::Human => write!(f, "human"),
+            ReviewerType::System => write!(f, "system"),
         }
     }
 }
@@ -108,6 +111,7 @@ impl FromStr for ReviewerType {
         match s.to_lowercase().as_str() {
             "ai" => Ok(ReviewerType::Ai),
             "human" => Ok(ReviewerType::Human),
+            "system" => Ok(ReviewerType::System),
             _ => Err(ParseReviewerTypeError(s.to_string())),
         }
     }

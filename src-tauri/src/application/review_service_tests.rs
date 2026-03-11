@@ -74,8 +74,15 @@ impl ReviewRepository for MockReviewRepo {
         self.notes.write().unwrap().push(note.clone());
         Ok(())
     }
-    async fn get_notes_by_task_id(&self, _task_id: &TaskId) -> AppResult<Vec<ReviewNote>> {
-        Ok(vec![])
+    async fn get_notes_by_task_id(&self, task_id: &TaskId) -> AppResult<Vec<ReviewNote>> {
+        Ok(self
+            .notes
+            .read()
+            .unwrap()
+            .iter()
+            .filter(|n| n.task_id == *task_id)
+            .cloned()
+            .collect())
     }
     async fn get_note_by_id(
         &self,
@@ -932,4 +939,65 @@ async fn test_reject_human_review_not_found() {
         .reject_human_review(&nonexistent_id, "Rejected".to_string())
         .await;
     assert!(result.is_err());
+}
+
+// ========================================
+// ReviewerType Regression Tests
+// ========================================
+
+/// Regression guard: complete_review(escalate) via the AI review path MUST produce ReviewerType::Ai.
+/// This is a deliberate AI decision — do NOT change to System.
+#[tokio::test]
+async fn test_process_review_escalate_produces_reviewer_type_ai() {
+    let (review_repo, task_repo, project_id, task_id) = setup();
+    let service = ReviewService::new(review_repo.clone(), task_repo);
+
+    let mut review = service
+        .start_ai_review(&task_id, &project_id)
+        .await
+        .unwrap();
+
+    let input = CompleteReviewInput::escalate(
+        "Security-sensitive change requires human oversight",
+        "Please review authentication logic manually",
+    );
+    service
+        .process_review_result(&mut review, &input)
+        .await
+        .unwrap();
+
+    // The escalation via complete_review MUST be attributed to Ai reviewer.
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    assert_eq!(notes.len(), 1, "Expected exactly one review note");
+    assert_eq!(
+        notes[0].reviewer,
+        ReviewerType::Ai,
+        "complete_review(escalate) must produce ReviewerType::Ai, not System"
+    );
+}
+
+/// System escalation (move_to_backlog) MUST produce ReviewerType::System.
+/// This path is triggered by policy limits, not an AI decision.
+#[tokio::test]
+async fn test_move_to_backlog_produces_reviewer_type_system() {
+    let (review_repo, task_repo, _project_id, task_id) = setup();
+    let service = ReviewService::new(review_repo.clone(), task_repo.clone());
+
+    // Update task to non-backlog status first
+    let mut task = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    task.internal_status = InternalStatus::PendingReview;
+    task_repo.update(&task).await.unwrap();
+
+    service
+        .move_to_backlog(&task_id, "Max retries exceeded by system policy")
+        .await
+        .unwrap();
+
+    let notes = review_repo.get_notes_by_task_id(&task_id).await.unwrap();
+    assert_eq!(notes.len(), 1, "Expected exactly one review note");
+    assert_eq!(
+        notes[0].reviewer,
+        ReviewerType::System,
+        "move_to_backlog (system policy) must produce ReviewerType::System, not Ai"
+    );
 }

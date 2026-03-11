@@ -301,7 +301,7 @@ pub async fn reject_fix_task(
         // Add review note about max attempts
         let note = ReviewNote::with_notes(
             original_task_id.clone(),
-            ReviewerType::Ai,
+            ReviewerType::System,
             ReviewOutcome::Rejected,
             format!(
                 "Max fix attempts ({}) reached. Task moved to backlog. Last feedback: {}",

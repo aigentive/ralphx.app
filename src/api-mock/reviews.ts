@@ -67,6 +67,14 @@ export const mockReviewsApi = {
         notes: "Please add error handling for edge cases in the validation logic.",
         created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
       },
+      {
+        id: `note-${taskId}-3`,
+        task_id: taskId,
+        reviewer: "system",
+        outcome: "rejected",
+        notes: "Review agent was interrupted before completing the review (app restart).",
+        created_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString(), // 3 hours ago
+      },
     ];
   },
 

@@ -334,7 +334,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                         let reason = "Review agent exited without calling complete_review";
                         let note = ReviewNote::with_notes(
                             task_id.clone(),
-                            ReviewerType::Ai,
+                            ReviewerType::System,
                             ReviewOutcome::Rejected,
                             reason.to_string(),
                         );
@@ -1305,7 +1305,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                         let reason = format!("Review agent crashed: {}", error);
                         let note = ReviewNote::with_notes(
                             task_id.clone(),
-                            ReviewerType::Ai,
+                            ReviewerType::System,
                             ReviewOutcome::Rejected,
                             reason,
                         );

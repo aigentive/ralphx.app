@@ -9,12 +9,12 @@
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Bot, User, GitCompare, Loader2, Eye } from "lucide-react";
+import { Bot, User, Settings, GitCompare, Loader2, Eye } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
-import type { Review, ReviewStatus } from "@/types/review";
+import type { Review, ReviewStatus, ReviewerType } from "@/types/review";
 import { ReviewStatusBadge } from "./ReviewStatusBadge";
 
 interface ReviewCardProps {
@@ -31,15 +31,16 @@ interface ReviewCardProps {
   isLoading?: boolean;
 }
 
-function ReviewerTypeIndicator({ type }: { type: "ai" | "human" }) {
-  const Icon = type === "ai" ? Bot : User;
+function ReviewerTypeIndicator({ type }: { type: ReviewerType }) {
+  const Icon = type === "ai" ? Bot : type === "system" ? Settings : User;
+  const label = type === "ai" ? "AI Review" : type === "system" ? "System" : "Human Review";
   return (
     <span
       data-testid="reviewer-type-indicator"
       className="inline-flex items-center gap-1 text-xs text-[var(--text-secondary)]"
     >
       <Icon className="w-4 h-4" />
-      {type === "ai" ? "AI Review" : "Human Review"}
+      {label}
     </span>
   );
 }

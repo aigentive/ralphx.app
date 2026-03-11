@@ -65,9 +65,9 @@ function StatusBadge({ status }: { status: InternalStatus }) {
   );
 }
 
-function ReviewItem({ reviewerType, status }: { reviewerType: "ai" | "human"; status: string }) {
-  const icon = reviewerType === "ai" ? "🤖" : "👤";
-  const label = reviewerType === "ai" ? "AI Review" : "Human Review";
+function ReviewItem({ reviewerType, status }: { reviewerType: "ai" | "human" | "system"; status: string }) {
+  const icon = reviewerType === "ai" ? "🤖" : reviewerType === "system" ? "⚙️" : "👤";
+  const label = reviewerType === "ai" ? "AI Review" : reviewerType === "system" ? "System" : "Human Review";
   return (
     <div data-testid={`review-item-${reviewerType}`} className="flex items-center gap-2 text-sm" style={{ color: "var(--text-secondary)" }}>
       <span>{icon}</span>

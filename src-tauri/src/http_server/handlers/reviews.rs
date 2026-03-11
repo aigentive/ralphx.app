@@ -141,6 +141,7 @@ pub async fn complete_review(
     } else {
         req.feedback.clone()
     };
+    // Legitimate AI decision via MCP tool — agent deliberately called complete_review. Do NOT change to System.
     let review_note = ReviewNote::with_content(
         task_id.clone(),
         ReviewerType::Ai,

@@ -25,13 +25,14 @@ import {
 } from "./review";
 
 describe("ReviewerTypeSchema", () => {
-  it("should have 2 reviewer types", () => {
-    expect(REVIEWER_TYPE_VALUES.length).toBe(2);
+  it("should have 3 reviewer types", () => {
+    expect(REVIEWER_TYPE_VALUES.length).toBe(3);
   });
 
   it("should parse valid reviewer types", () => {
     expect(ReviewerTypeSchema.parse("ai")).toBe("ai");
     expect(ReviewerTypeSchema.parse("human")).toBe("human");
+    expect(ReviewerTypeSchema.parse("system")).toBe("system");
   });
 
   it("should reject invalid reviewer types", () => {

@@ -208,6 +208,31 @@ describe("TaskDetailView", () => {
       renderWithProviders(<TaskDetailView task={mockTask} />);
       expect(screen.getByText("Human Review")).toBeInTheDocument();
     });
+
+    it("should display system review indicator", () => {
+      mockUseReviewsByTaskId.mockReturnValue({
+        data: [
+          {
+            id: "review-1",
+            project_id: "project-1",
+            task_id: "task-123",
+            reviewer_type: "system",
+            status: "rejected",
+            notes: "Agent stopped before completing review",
+            created_at: new Date().toISOString(),
+            completed_at: null,
+          },
+        ],
+        isLoading: false,
+        hasAiReview: false,
+        hasHumanReview: false,
+        hasSystemReview: true,
+        latestReview: null,
+      });
+
+      renderWithProviders(<TaskDetailView task={mockTask} />);
+      expect(screen.getByText("System")).toBeInTheDocument();
+    });
   });
 
   describe("loading states", () => {

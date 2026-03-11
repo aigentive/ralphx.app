@@ -131,6 +131,7 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
                     .escalation_reason
                     .as_deref()
                     .unwrap_or(&input.notes);
+                // Legitimate AI decision — agent called complete_review(escalate). Do NOT change to System.
                 self.add_review_note(
                     &review.task_id,
                     ReviewerType::Ai,
@@ -273,7 +274,7 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
             // Add a note about max attempts reached
             self.add_review_note(
                 original_task_id,
-                ReviewerType::Ai,
+                ReviewerType::System,
                 ReviewOutcome::Rejected,
                 &format!(
                     "Max fix attempts ({}) reached. Task moved to backlog. Last feedback: {}",
@@ -320,7 +321,7 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
         self.task_repo.update(&task).await?;
 
         // Add a note about why it was moved to backlog
-        self.add_review_note(task_id, ReviewerType::Ai, ReviewOutcome::Rejected, reason)
+        self.add_review_note(task_id, ReviewerType::System, ReviewOutcome::Rejected, reason)
             .await
     }
 

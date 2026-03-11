@@ -192,7 +192,7 @@ function mapTransitionToAuditEntry(t: StateTransition, index: number): AuditEntr
 }
 
 function mapReviewToAuditEntry(review: ReviewNoteResponse): AuditEntry {
-  const actorLabel = review.reviewer === "ai" ? "AI Reviewer" : "Human Reviewer";
+  const actorLabel = review.reviewer === "ai" ? "AI Reviewer" : review.reviewer === "system" ? "System Escalation" : "Human Reviewer";
   const outcomeLabels: Record<string, string> = {
     approved: "Approved",
     changes_requested: "Changes Requested",

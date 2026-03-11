@@ -9,7 +9,7 @@ import { useCallback, useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
-import { Loader2, Radio, AlertTriangle, Bot, User, Zap, MoreVertical, Square, Ban } from "lucide-react";
+import { Loader2, Radio, AlertTriangle, Bot, User, Settings, Zap, MoreVertical, Square, Ban } from "lucide-react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { StepList } from "../StepList";
 import {
@@ -208,6 +208,7 @@ function RevisionFeedbackCard({
   if (!feedback) return null;
 
   const isAiReviewer = feedback.reviewer === "ai";
+  const isSystemReviewer = feedback.reviewer === "system";
 
   return (
     <DetailCard variant="warning">
@@ -218,11 +219,15 @@ function RevisionFeedbackCard({
           style={{
             backgroundColor: isAiReviewer
               ? "rgba(10, 132, 255, 0.15)"
+              : isSystemReviewer
+              ? "rgba(255, 159, 10, 0.15)"
               : "rgba(52, 199, 89, 0.15)",
           }}
         >
           {isAiReviewer ? (
             <Bot className="w-4 h-4" style={{ color: "#0a84ff" }} />
+          ) : isSystemReviewer ? (
+            <Settings className="w-4 h-4" style={{ color: "#ff9f0a" }} />
           ) : (
             <User className="w-4 h-4" style={{ color: "#34c759" }} />
           )}
@@ -232,7 +237,7 @@ function RevisionFeedbackCard({
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 mb-1">
             <span className="text-[12px] font-semibold text-white/70">
-              {isAiReviewer ? "AI Feedback" : "Human Feedback"}
+              {isAiReviewer ? "AI Feedback" : isSystemReviewer ? "System Escalation" : "Human Feedback"}
             </span>
             <StatusPill
               icon={AlertTriangle}

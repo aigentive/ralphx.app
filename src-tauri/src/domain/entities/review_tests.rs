@@ -54,6 +54,7 @@ fn test_review_action_id_from_string() {
 fn test_reviewer_type_display() {
     assert_eq!(format!("{}", ReviewerType::Ai), "ai");
     assert_eq!(format!("{}", ReviewerType::Human), "human");
+    assert_eq!(format!("{}", ReviewerType::System), "system");
 }
 
 #[test]
@@ -67,6 +68,14 @@ fn test_reviewer_type_from_str() {
     assert_eq!(
         ReviewerType::from_str("HUMAN").unwrap(),
         ReviewerType::Human
+    );
+    assert_eq!(
+        ReviewerType::from_str("system").unwrap(),
+        ReviewerType::System
+    );
+    assert_eq!(
+        ReviewerType::from_str("SYSTEM").unwrap(),
+        ReviewerType::System
     );
     assert!(ReviewerType::from_str("invalid").is_err());
 }

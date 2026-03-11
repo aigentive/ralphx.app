@@ -1726,7 +1726,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                             .unwrap_or("Review recovery: task escalated by reconciler");
                         let note = ReviewNote::with_notes(
                             task.id.clone(),
-                            ReviewerType::Ai,
+                            ReviewerType::System,
                             ReviewOutcome::Rejected,
                             reason.to_string(),
                         );
