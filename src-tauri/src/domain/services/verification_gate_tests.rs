@@ -421,3 +421,50 @@ fn test_proposal_gate_inherited_plan_parent_needs_revision_blocks() {
         );
     }
 }
+
+// ============================================================================
+// check_verification_gate() — in_progress flag tests
+// ============================================================================
+
+/// Test: session with in_progress=true blocks with InProgress regardless of status field being Reviewing
+#[test]
+fn test_verification_gate_in_progress_blocks_regardless_of_status() {
+    let settings = settings_with_required(true);
+    let mut session = make_session(VerificationStatus::Reviewing);
+    session.verification_in_progress = true;
+    let result = check_verification_gate(&session, &settings);
+    assert!(
+        matches!(result, Err(VerificationError::InProgress { .. })),
+        "in_progress=true with Reviewing status should return InProgress"
+    );
+}
+
+/// Test: session with in_progress=true but status=Unverified still blocks with InProgress.
+/// This is an inconsistent state (shouldn't happen in practice) but guards are ordered
+/// to check in_progress first.
+#[test]
+fn test_verification_gate_in_progress_before_status_check() {
+    let settings = settings_with_required(true);
+    let mut session = make_session(VerificationStatus::Unverified);
+    session.verification_in_progress = true;
+    let result = check_verification_gate(&session, &settings);
+    // in_progress=true should take priority over status=Unverified (which would normally → NotVerified)
+    assert!(
+        matches!(result, Err(VerificationError::InProgress { .. })),
+        "in_progress=true must be checked before status, returning InProgress not NotVerified"
+    );
+}
+
+/// Test: session with in_progress=false and status=Reviewing falls through to status match.
+#[test]
+fn test_verification_gate_reviewing_status_without_in_progress() {
+    let settings = settings_with_required(true);
+    let mut session = make_session(VerificationStatus::Reviewing);
+    session.verification_in_progress = false;
+    let result = check_verification_gate(&session, &settings);
+    // Should still be InProgress from the Reviewing match arm (defense-in-depth)
+    assert!(
+        matches!(result, Err(VerificationError::InProgress { .. })),
+        "Reviewing status without in_progress flag should still return InProgress"
+    );
+}

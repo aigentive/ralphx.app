@@ -268,7 +268,8 @@ async fn test_agent_crash_recovery_reconciliation_resets_and_retry_succeeds() {
 
     // Reconciliation detects and resets the stuck session
     let config = VerificationReconciliationConfig {
-        stale_after_secs: 5400, // 90 min
+        stale_after_secs: 5400,      // 90 min
+        auto_verify_stale_secs: 600, // 10 min
         interval_secs: 300,
     };
     let svc = VerificationReconciliationService::new(

@@ -21,6 +21,7 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         verification_status: Default::default(),
         verification_in_progress: false,
         verification_metadata: None,
+        verification_generation: 0,
     }
 }
 

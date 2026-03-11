@@ -19,6 +19,17 @@ vi.mock("./DebateSummary", () => ({
   ),
 }));
 
+vi.mock("./VerificationHistory", () => ({
+  VerificationHistory: ({ rounds }: { rounds: { round: number; gapScore: number }[] }) => (
+    <div data-testid="verification-history">
+      <div>Gap Score by Round</div>
+      {rounds.map((r) => (
+        <div key={r.round}>R{r.round}: {r.gapScore}</div>
+      ))}
+    </div>
+  ),
+}));
+
 const mockPlan: Artifact = {
   id: "artifact-1",
   type: "specification",
@@ -447,6 +458,268 @@ describe("PlanDisplay", () => {
       expect(screen.queryByText(/plan updated — these gaps may be resolved/i)).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: /address.*gaps/i })).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /re-verify plan/i })).not.toBeInTheDocument();
+    });
+  });
+
+  // ============================================================================
+  // Plan-edit lock (auto-verification in progress)
+  // ============================================================================
+
+  describe("plan-edit lock", () => {
+    it("disables Edit button when verificationInProgress=true", () => {
+      const onEdit = vi.fn();
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          onEdit={onEdit}
+          verificationStatus="reviewing"
+          verificationInProgress={true}
+        />
+      );
+
+      const editButton = screen.getByTitle(/Plan is being auto-verified/i);
+      expect(editButton).toBeDisabled();
+    });
+
+    it("enables Edit button when verificationInProgress=false", () => {
+      const onEdit = vi.fn();
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          onEdit={onEdit}
+          verificationStatus="reviewing"
+          verificationInProgress={false}
+        />
+      );
+
+      // No disabled edit button with auto-verify title
+      expect(screen.queryByTitle(/Plan is being auto-verified/i)).not.toBeInTheDocument();
+    });
+
+    it("clicking disabled Edit button does not call onEdit", () => {
+      const onEdit = vi.fn();
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          onEdit={onEdit}
+          verificationStatus="reviewing"
+          verificationInProgress={true}
+        />
+      );
+
+      const editButton = screen.getByTitle(/Plan is being auto-verified/i);
+      fireEvent.click(editButton);
+      expect(onEdit).not.toHaveBeenCalled();
+    });
+
+    it("enables Edit button after verification completes (verificationInProgress transitions to false)", () => {
+      const { rerender } = render(
+        <PlanDisplay
+          plan={mockPlan}
+          verificationStatus="reviewing"
+          verificationInProgress={true}
+        />
+      );
+
+      expect(screen.getByTitle(/Plan is being auto-verified/i)).toBeDisabled();
+
+      rerender(
+        <PlanDisplay
+          plan={mockPlan}
+          verificationStatus="verified"
+          verificationInProgress={false}
+        />
+      );
+
+      expect(screen.queryByTitle(/Plan is being auto-verified/i)).not.toBeInTheDocument();
+    });
+  });
+
+  // ============================================================================
+  // Verification History tab
+  // ============================================================================
+
+  describe("Verification History tab", () => {
+    const rounds = [
+      { round: 1, gapScore: 20, gapCount: 3 },
+      { round: 2, gapScore: 0, gapCount: 0 },
+    ];
+
+    it("shows history tab when verified with rounds", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="verified"
+          verificationInProgress={false}
+          verificationRounds={rounds}
+        />
+      );
+
+      expect(screen.getByText("Verification History")).toBeInTheDocument();
+    });
+
+    it("shows history tab when needs_revision with rounds", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="needs_revision"
+          verificationInProgress={false}
+          verificationRounds={rounds}
+        />
+      );
+
+      expect(screen.getByText("Verification History")).toBeInTheDocument();
+    });
+
+    it("does not show history tab when reviewing (in progress)", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="reviewing"
+          verificationInProgress={true}
+          verificationRounds={rounds}
+        />
+      );
+
+      expect(screen.queryByText("Verification History")).not.toBeInTheDocument();
+    });
+
+    it("does not show history tab when no rounds", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="verified"
+          verificationInProgress={false}
+          verificationRounds={[]}
+        />
+      );
+
+      expect(screen.queryByText("Verification History")).not.toBeInTheDocument();
+    });
+
+    it("switching to history tab hides plan content", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="verified"
+          verificationInProgress={false}
+          verificationRounds={rounds}
+        />
+      );
+
+      // Initially on content tab — plan content visible
+      expect(screen.getByText(/JWT-based authentication/i)).toBeInTheDocument();
+
+      // Click history tab
+      fireEvent.click(screen.getByText("Verification History"));
+
+      // Plan content hidden, history shown
+      expect(screen.queryByText(/JWT-based authentication/i)).not.toBeInTheDocument();
+      expect(screen.getByText(/Gap Score by Round/i)).toBeInTheDocument();
+    });
+
+    it("switching back to Plan tab shows content again", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="verified"
+          verificationInProgress={false}
+          verificationRounds={rounds}
+        />
+      );
+
+      fireEvent.click(screen.getByText("Verification History"));
+      fireEvent.click(screen.getByText("Plan"));
+
+      expect(screen.getByText(/JWT-based authentication/i)).toBeInTheDocument();
+    });
+  });
+
+  // ============================================================================
+  // Incomplete verification message
+  // ============================================================================
+
+  describe("incomplete verification message", () => {
+    const rounds = [
+      { round: 1, gapScore: 18, gapCount: 3 },
+      { round: 2, gapScore: 5, gapCount: 1 },
+    ];
+
+    it("shows incomplete message when unverified with rounds (reconciler reset)", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="unverified"
+          verificationInProgress={false}
+          verificationRounds={rounds}
+        />
+      );
+
+      expect(screen.getByText(/Verification incomplete/i)).toBeInTheDocument();
+      expect(screen.getByText(/2 rounds completed/i)).toBeInTheDocument();
+    });
+
+    it("shows 'View partial results' link when unverified with rounds", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="unverified"
+          verificationInProgress={false}
+          verificationRounds={rounds}
+        />
+      );
+
+      expect(screen.getByText(/Verification incomplete/i)).toBeInTheDocument();
+      expect(screen.getByText(/View partial results/i)).toBeInTheDocument();
+    });
+
+    it("does not show incomplete message when unverified with no rounds", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="unverified"
+          verificationInProgress={false}
+          verificationRounds={[]}
+        />
+      );
+
+      expect(screen.queryByText(/Verification incomplete/i)).not.toBeInTheDocument();
+    });
+
+    it("does not show incomplete message when verificationRounds undefined", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="unverified"
+          verificationInProgress={false}
+        />
+      );
+
+      expect(screen.queryByText(/Verification incomplete/i)).not.toBeInTheDocument();
+    });
+
+    it("does not show incomplete message when status is needs_revision (not unverified)", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="needs_revision"
+          verificationInProgress={false}
+          verificationRounds={rounds}
+        />
+      );
+
+      expect(screen.queryByText(/Verification incomplete/i)).not.toBeInTheDocument();
     });
   });
 

@@ -23,8 +23,10 @@ use crate::domain::services::emit_verification_status_changed;
 /// Configuration for the verification reconciliation service.
 #[derive(Debug, Clone, Copy)]
 pub struct VerificationReconciliationConfig {
-    /// Sessions stuck in `verification_in_progress=1` for longer than this are reset.
+    /// Sessions stuck in `verification_in_progress=1` for longer than this are reset (manual verify).
     pub stale_after_secs: u64,
+    /// Shorter stale threshold for auto-verify sessions (generation > 0).
+    pub auto_verify_stale_secs: u64,
     /// How often to scan for stuck sessions (seconds).
     pub interval_secs: u64,
 }
@@ -32,8 +34,9 @@ pub struct VerificationReconciliationConfig {
 impl Default for VerificationReconciliationConfig {
     fn default() -> Self {
         Self {
-            stale_after_secs: 5400, // 90 minutes (D14)
-            interval_secs: 300,     // 5 minutes
+            stale_after_secs: 5400,       // 90 minutes for manual verify (D14)
+            auto_verify_stale_secs: 600,  // 10 minutes for auto-verify
+            interval_secs: 300,           // 5 minutes
         }
     }
 }
@@ -67,14 +70,22 @@ impl VerificationReconciliationService {
 
     /// Scan for stuck sessions and reset them. Called on startup and periodically.
     ///
+    /// Uses dual thresholds:
+    /// - Auto-verify sessions (`verification_generation > 0`): reset after `auto_verify_stale_secs`
+    /// - Manual verify sessions (`verification_generation == 0`): reset after `stale_after_secs`
+    ///
     /// Returns the number of sessions reset.
     pub async fn scan_and_reset(&self) -> u32 {
-        let stale_before = Utc::now()
+        // Query with the shorter auto-verify threshold to get all candidates.
+        // Manual sessions that haven't passed the longer threshold will be skipped below.
+        let auto_stale_before = Utc::now()
+            - chrono::Duration::seconds(self.config.auto_verify_stale_secs as i64);
+        let manual_stale_before = Utc::now()
             - chrono::Duration::seconds(self.config.stale_after_secs as i64);
 
         let stale_sessions = match self
             .ideation_session_repo
-            .get_stale_in_progress_sessions(stale_before)
+            .get_stale_in_progress_sessions(auto_stale_before)
             .await
         {
             Ok(sessions) => sessions,
@@ -89,7 +100,25 @@ impl VerificationReconciliationService {
 
         let mut reset_count = 0u32;
         for session in &stale_sessions {
+            // Dual threshold: manual sessions need the longer stale period before reset.
+            // Auto-verify sessions (generation > 0) are already filtered by auto_stale_before.
+            if session.verification_generation == 0 && session.updated_at > manual_stale_before {
+                tracing::debug!(
+                    session_id = %session.id.as_str(),
+                    generation = session.verification_generation,
+                    "Skipping manual-verify session not yet stale for longer threshold"
+                );
+                continue;
+            }
+
+            let effective_stale_secs = if session.verification_generation > 0 {
+                self.config.auto_verify_stale_secs
+            } else {
+                self.config.stale_after_secs
+            };
+
             // Force-reset via update_verification_state (unconditional).
+            // Preserve existing metadata so the frontend can show what happened.
             // reset_verification() guards on in_progress=false and is only for
             // conditional resets on plan artifact updates — not for crash recovery.
             match self
@@ -98,14 +127,15 @@ impl VerificationReconciliationService {
                     &session.id,
                     VerificationStatus::Unverified,
                     false,
-                    None,
+                    session.verification_metadata.clone(),
                 )
                 .await
             {
                 Ok(()) => {
                     tracing::info!(
                         session_id = %session.id.as_str(),
-                        stale_after_secs = self.config.stale_after_secs,
+                        generation = session.verification_generation,
+                        stale_after_secs = effective_stale_secs,
                         "Reconciliation reset stuck verification"
                     );
                     // Emit UI event so the frontend reflects the reset immediately

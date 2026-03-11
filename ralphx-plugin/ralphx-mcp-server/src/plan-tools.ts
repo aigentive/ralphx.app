@@ -164,6 +164,11 @@ export const PLAN_TOOLS: Tool[] = [
           description:
             "Why verification converged (only when status=verified or skipped)",
         },
+        generation: {
+          type: "integer",
+          description:
+            "Generation counter for zombie protection. Pass in every call when in auto-verify mode. Server rejects in_progress=true if generation mismatches.",
+        },
       },
       required: ["session_id", "status"],
     },

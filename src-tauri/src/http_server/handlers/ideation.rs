@@ -1002,6 +1002,22 @@ pub async fn update_plan_verification(
         })?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
 
+    // Server-side generation guard: when setting in_progress=true, verify generation matches
+    if req.in_progress {
+        if let Some(req_gen) = req.generation {
+            if req_gen != session.verification_generation {
+                return Err(json_error(
+                    StatusCode::CONFLICT,
+                    format!(
+                        "Generation mismatch: request generation {} != current generation {}. \
+                         Verification was reset — zombie agent detected.",
+                        req_gen, session.verification_generation
+                    ),
+                ));
+            }
+        }
+    }
+
     // Parse new status (mut — server-side convergence conditions may override)
     let mut new_status: VerificationStatus = req.status.parse().map_err(|_| {
         json_error(
@@ -1154,13 +1170,17 @@ pub async fn update_plan_verification(
 
         // Auto-converge: override NeedsRevision → Verified when conditions are met
         if new_status == VerificationStatus::NeedsRevision {
-            if zero_critical_converged {
+            // R1 empty round guard: require at least round 2 before zero_critical convergence.
+            // Round 1 with 0 gaps may be a broken critic — need round 2 to confirm.
+            let current_round_for_convergence = req.round.unwrap_or(metadata.current_round);
+            if zero_critical_converged && current_round_for_convergence >= 2 {
                 new_status = VerificationStatus::Verified;
                 if metadata.convergence_reason.is_none() {
                     metadata.convergence_reason = Some("zero_critical".to_string());
                 }
                 tracing::info!(
                     session_id = %session_id,
+                    round = current_round_for_convergence,
                     "Server-side convergence: 0 critical + high ≤ prev → Verified"
                 );
             } else if jaccard_converged {
@@ -1322,6 +1342,7 @@ pub async fn update_plan_verification(
         current_gaps: post_current_gaps,
         rounds: post_rounds,
         plan_version: None,
+        verification_generation: session.verification_generation,
     }))
 }
 
@@ -1407,8 +1428,8 @@ pub async fn get_plan_verification(
         })
         .unwrap_or_default();
 
-    // Resolve plan_version: get the session's plan_artifact_id, then fetch its current version
-    let plan_version = {
+    // Resolve plan_version and verification_generation: get the session's fields
+    let (plan_version, verification_generation) = {
         let session = state
             .app_state
             .ideation_session_repo
@@ -1416,7 +1437,11 @@ pub async fn get_plan_verification(
             .await
             .ok()
             .flatten();
-        if let Some(ref s) = session {
+        let gen = session
+            .as_ref()
+            .map(|s| s.verification_generation)
+            .unwrap_or(0);
+        let pv = if let Some(ref s) = session {
             if let Some(ref artifact_id) = s.plan_artifact_id {
                 state
                     .app_state
@@ -1431,7 +1456,8 @@ pub async fn get_plan_verification(
             }
         } else {
             None
-        }
+        };
+        (pv, gen)
     };
 
     Ok(Json(VerificationResponse {
@@ -1446,6 +1472,7 @@ pub async fn get_plan_verification(
         current_gaps,
         rounds,
         plan_version,
+        verification_generation,
     }))
 }
 

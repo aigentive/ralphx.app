@@ -39,8 +39,14 @@ pub fn check_verification_gate(
     if !settings.require_verification_for_accept {
         return Ok(());
     }
+    // Check in_progress first — reconciler may have reset status but process still running
+    if session.verification_in_progress {
+        let (round, max_rounds) = parse_round_info(&session.verification_metadata);
+        return Err(VerificationError::InProgress { round, max_rounds });
+    }
     match session.verification_status {
         VerificationStatus::Verified | VerificationStatus::Skipped => Ok(()),
+        // Defense-in-depth: Reviewing arm still present in case in_progress flag is inconsistent
         VerificationStatus::Reviewing => {
             let (round, max_rounds) = parse_round_info(&session.verification_metadata);
             Err(VerificationError::InProgress { round, max_rounds })

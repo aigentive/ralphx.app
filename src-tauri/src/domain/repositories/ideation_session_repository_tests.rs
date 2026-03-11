@@ -246,6 +246,7 @@ fn create_test_session(project_id: &ProjectId) -> IdeationSession {
         verification_status: Default::default(),
         verification_in_progress: false,
         verification_metadata: None,
+        verification_generation: 0,
     }
 }
 

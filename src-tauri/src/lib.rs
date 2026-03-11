@@ -586,6 +586,7 @@ pub fn run() {
                     let vcfg = infrastructure::agents::claude::verification_config();
                     let verification_config = VerificationReconciliationConfig {
                         stale_after_secs: vcfg.reconciliation_stale_after_secs,
+                        auto_verify_stale_secs: vcfg.auto_verify_stale_secs,
                         interval_secs: vcfg.reconciliation_interval_secs,
                     };
                     let verification_session_repo = Arc::clone(&startup_ideation_session_repo);

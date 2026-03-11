@@ -30,10 +30,17 @@ pub struct VerificationConfig {
     /// Minimum number of proposal tasks before auto-verification triggers (if `auto_verify=true`).
     pub complexity_threshold: u32,
     /// Sessions stuck in `verification_in_progress=1` for longer than this are reset by
-    /// the reconciliation service (seconds). Default: 5400 (90 min).
+    /// the reconciliation service (seconds). Default: 5400 (90 min). For manual verify sessions.
     pub reconciliation_stale_after_secs: u64,
     /// How often the verification reconciliation service scans for stuck sessions (seconds).
     pub reconciliation_interval_secs: u64,
+    /// Stale threshold for auto-verify sessions (generation > 0). Default: 600s (10 minutes).
+    #[serde(default = "default_auto_verify_stale_secs")]
+    pub auto_verify_stale_secs: u64,
+}
+
+fn default_auto_verify_stale_secs() -> u64 {
+    600
 }
 
 impl Default for VerificationConfig {
@@ -45,6 +52,7 @@ impl Default for VerificationConfig {
             complexity_threshold: 3,
             reconciliation_stale_after_secs: 5400, // 90 minutes
             reconciliation_interval_secs: 300,     // 5 minutes
+            auto_verify_stale_secs: 600,           // 10 minutes
         }
     }
 }
@@ -565,6 +573,10 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
         cfg.verification.reconciliation_interval_secs,
         "RALPHX_VERIFICATION_RECONCILIATION_INTERVAL_SECS"
     );
+    env_u64!(
+        cfg.verification.auto_verify_stale_secs,
+        "RALPHX_VERIFICATION_AUTO_VERIFY_STALE_SECS"
+    );
     if let Some(v) = lookup("RALPHX_VERIFICATION_MAX_ROUNDS") {
         if let Ok(n) = v.parse::<u32>() {
             cfg.verification.max_rounds = n;
@@ -633,6 +645,18 @@ pub fn validate_verification_config(cfg: &mut VerificationConfig) {
     if cfg.reconciliation_stale_after_secs == 0 {
         warn!("verification.reconciliation_stale_after_secs must be > 0; clamping to 5400");
         cfg.reconciliation_stale_after_secs = 5400;
+    }
+
+    if cfg.auto_verify_stale_secs == 0 {
+        warn!("verification.auto_verify_stale_secs must be > 0; clamping to 600");
+        cfg.auto_verify_stale_secs = 600;
+    }
+    if cfg.auto_verify_stale_secs >= cfg.reconciliation_stale_after_secs {
+        warn!(
+            "verification.auto_verify_stale_secs ({}) >= reconciliation_stale_after_secs ({}); \
+             auto_verify threshold should be shorter",
+            cfg.auto_verify_stale_secs, cfg.reconciliation_stale_after_secs
+        );
     }
 }
 

@@ -117,6 +117,8 @@ Session history is auto-injected in the bootstrap prompt as `<session_history>` 
 
 The agent decides which layers apply based on plan content. If the plan proposes specific code changes, file modifications, or architectural modifications → both layers. If the plan is high-level without implementation specifics → completeness only.
 
+**Pre-check (auto-verify guard):** Before starting the round loop, call `get_plan_verification(session_id)`. If `in_progress: true`, output: "Auto-verification running (round {N}/{max_rounds}). Results appear automatically when complete." and EXIT the VERIFY phase — do not start a new round.
+
 **Round Loop:**
 1. `get_plan_verification(session_id)` → get current round number, gap history, best version state
 2. Read current plan: `get_session_plan(session_id)` → extract full plan content (≤3000 tokens; truncate at 3000 if longer — prepend "TRUNCATED TO 3000 TOKENS:" and keep the first 3000 tokens)

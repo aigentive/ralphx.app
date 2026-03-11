@@ -20,7 +20,8 @@ fn make_service(
 
 fn default_config() -> VerificationReconciliationConfig {
     VerificationReconciliationConfig {
-        stale_after_secs: 5400, // 90 min
+        stale_after_secs: 5400,      // 90 min
+        auto_verify_stale_secs: 600, // 10 min
         interval_secs: 300,
     }
 }
@@ -167,4 +168,112 @@ async fn test_reconciliation_empty_repo_returns_zero() {
     let count = svc.scan_and_reset().await;
 
     assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn test_reconciler_preserves_metadata() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Session stuck in verification for 2 hours with metadata
+    let mut session = IdeationSession::new(project_id);
+    session.verification_status = VerificationStatus::Reviewing;
+    session.verification_in_progress = true;
+    session.verification_metadata = Some(r#"{"current_round":2,"max_rounds":5,"current_gaps":[],"rounds":[],"best_round_index":null,"parse_failures":[],"convergence_reason":null}"#.to_string());
+    session.updated_at = Utc::now() - Duration::hours(2);
+
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    let count = svc.scan_and_reset().await;
+
+    assert_eq!(count, 1, "one stuck session should be reset");
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(after.verification_status, VerificationStatus::Unverified);
+    assert!(!after.verification_in_progress);
+    // Metadata should be preserved (not cleared) so frontend can show what happened
+    assert!(
+        after.verification_metadata.is_some(),
+        "verification_metadata must be preserved after reconciliation reset"
+    );
+}
+
+#[tokio::test]
+async fn test_reconciler_auto_verify_shorter_threshold() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let config = VerificationReconciliationConfig {
+        stale_after_secs: 5400,      // 90 min for manual
+        auto_verify_stale_secs: 600, // 10 min for auto
+        interval_secs: 300,
+    };
+
+    // Auto-verify session (generation > 0) stuck for 15 minutes — should be reset (> 10 min)
+    let mut auto_session = IdeationSession::new(project_id.clone());
+    auto_session.verification_status = VerificationStatus::Reviewing;
+    auto_session.verification_in_progress = true;
+    auto_session.verification_generation = 1;
+    auto_session.updated_at = Utc::now() - Duration::minutes(15);
+    let auto_id = auto_session.id.clone();
+    repo.create(auto_session).await.unwrap();
+
+    // Manual verify session (generation == 0) stuck for 15 minutes — should NOT be reset (< 90 min)
+    let mut manual_session = IdeationSession::new(project_id.clone());
+    manual_session.verification_status = VerificationStatus::Reviewing;
+    manual_session.verification_in_progress = true;
+    manual_session.verification_generation = 0;
+    manual_session.updated_at = Utc::now() - Duration::minutes(15);
+    let manual_id = manual_session.id.clone();
+    repo.create(manual_session).await.unwrap();
+
+    let svc = make_service(repo.clone(), config);
+    let count = svc.scan_and_reset().await;
+
+    assert_eq!(count, 1, "only the auto-verify session should be reset");
+
+    let auto_after = repo.get_by_id(&auto_id).await.unwrap().unwrap();
+    assert_eq!(
+        auto_after.verification_status,
+        VerificationStatus::Unverified,
+        "auto-verify session must be reset"
+    );
+
+    let manual_after = repo.get_by_id(&manual_id).await.unwrap().unwrap();
+    assert_eq!(
+        manual_after.verification_status,
+        VerificationStatus::Reviewing,
+        "manual-verify session must NOT be reset (shorter than 90-min threshold)"
+    );
+}
+
+#[tokio::test]
+async fn test_reconciler_manual_session_reset_after_long_threshold() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    let config = VerificationReconciliationConfig {
+        stale_after_secs: 5400,      // 90 min
+        auto_verify_stale_secs: 600, // 10 min
+        interval_secs: 300,
+    };
+
+    // Manual verify session stuck for 2 hours — should be reset (> 90 min)
+    let mut session = IdeationSession::new(project_id);
+    session.verification_status = VerificationStatus::Reviewing;
+    session.verification_in_progress = true;
+    session.verification_generation = 0;
+    session.updated_at = Utc::now() - Duration::hours(2);
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    let svc = make_service(repo.clone(), config);
+    let count = svc.scan_and_reset().await;
+
+    assert_eq!(count, 1, "manual session stuck > 90 min should be reset");
+
+    let after = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(after.verification_status, VerificationStatus::Unverified);
 }

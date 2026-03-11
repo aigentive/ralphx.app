@@ -59,6 +59,7 @@ fn make_active_session() -> IdeationSession {
         verification_status: Default::default(),
         verification_in_progress: false,
         verification_metadata: None,
+        verification_generation: 0,
     }
 }
 
@@ -950,6 +951,287 @@ async fn test_update_plan_artifact_stale_id_resolved_to_latest() {
         Some(v2_id.as_str()),
         "v3's previous should be v2 (stale ID resolved to v2 before creating v3)"
     );
+}
+
+// ============================================================
+// Auto-verify trigger tests (Phase 2)
+// ============================================================
+
+/// trigger_auto_verify_sync sets in_progress=1 and increments generation atomically.
+/// A second call on the same session returns None (already in_progress=1 — skip).
+#[tokio::test]
+async fn test_trigger_auto_verify_sync_atomicity_and_skip() {
+    use crate::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
+
+    let state = setup_test_state().await;
+    let session = make_active_session();
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // First trigger: should succeed and return generation=1
+    let sid = session_id.as_str().to_string();
+    let gen = state
+        .app_state
+        .db
+        .run(move |conn| SessionRepo::trigger_auto_verify_sync(conn, &sid))
+        .await
+        .unwrap();
+    assert_eq!(gen, Some(1), "First trigger should return generation=1");
+
+    // Verify session state: in_progress=true, generation=1, status=Reviewing
+    let after_trigger = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(after_trigger.verification_in_progress, "in_progress must be true after trigger");
+    assert_eq!(after_trigger.verification_generation, 1, "generation must be 1");
+    assert_eq!(
+        after_trigger.verification_status,
+        VerificationStatus::Reviewing,
+        "status must be Reviewing"
+    );
+
+    // Second trigger on same session: in_progress=1, so must be skipped
+    let sid2 = session_id.as_str().to_string();
+    let gen2 = state
+        .app_state
+        .db
+        .run(move |conn| SessionRepo::trigger_auto_verify_sync(conn, &sid2))
+        .await
+        .unwrap();
+    assert_eq!(gen2, None, "Second trigger must return None (already in_progress)");
+
+    // Generation must NOT have been incremented again
+    let after_skip = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(after_skip.verification_generation, 1, "generation must remain 1 after skip");
+}
+
+/// reset_auto_verify_sync unconditionally resets in_progress=0 and status=unverified.
+/// This is the spawn-failure recovery path.
+#[tokio::test]
+async fn test_reset_auto_verify_sync_clears_in_progress() {
+    use crate::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
+
+    let state = setup_test_state().await;
+    let session = make_active_session();
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Put session into triggered state
+    let sid = session_id.as_str().to_string();
+    state
+        .app_state
+        .db
+        .run(move |conn| SessionRepo::trigger_auto_verify_sync(conn, &sid))
+        .await
+        .unwrap();
+
+    // Verify it's in triggered state
+    let triggered = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(triggered.verification_in_progress);
+
+    // Reset (simulates spawn failure recovery)
+    let sid2 = session_id.as_str().to_string();
+    state
+        .app_state
+        .db
+        .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid2))
+        .await
+        .unwrap();
+
+    // Verify state is reset
+    let after_reset = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!after_reset.verification_in_progress, "in_progress must be false after reset");
+    assert_eq!(
+        after_reset.verification_status,
+        VerificationStatus::Unverified,
+        "status must be Unverified after reset"
+    );
+}
+
+/// create_plan_artifact skips trigger when verification_in_progress=1 (mutex held).
+/// Uses the trigger_auto_verify_sync guard: if in_progress=1 when create_plan_artifact runs,
+/// the trigger is skipped — generation is NOT incremented again.
+#[tokio::test]
+async fn test_create_plan_artifact_skips_trigger_when_already_in_progress() {
+    let state = setup_test_state().await;
+    let session = make_active_session();
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Manually set in_progress=1 with generation=0 (simulates prior verifier holding the lock)
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id, VerificationStatus::Reviewing, true, None)
+        .await
+        .unwrap();
+
+    let _ = create_plan_artifact(
+        State(state.clone()),
+        Json(CreatePlanArtifactRequest {
+            session_id: session_id.as_str().to_string(),
+            title: "Plan".to_string(),
+            content: "Plan content".to_string(),
+        }),
+    )
+    .await
+    .expect("create_plan_artifact should succeed even when in_progress=1");
+
+    let after = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Trigger must have been skipped — generation stays 0
+    assert_eq!(
+        after.verification_generation, 0,
+        "generation must not be incremented when trigger is skipped (in_progress=1)"
+    );
+    // in_progress stays 1 (the existing verifier still holds the lock)
+    assert!(
+        after.verification_in_progress,
+        "in_progress must remain true (existing verifier holds lock)"
+    );
+}
+
+/// update_plan_artifact does NOT have auto-verify trigger logic.
+/// Verifies structurally: only create_plan_artifact contains the trigger.
+/// When verification is running (in_progress=1), update_plan_artifact must NOT reset or
+/// re-trigger verification — generation stays the same and in_progress stays true.
+#[tokio::test]
+async fn test_update_plan_artifact_does_not_trigger_auto_verify() {
+    let state = setup_test_state().await;
+
+    // Create session + plan
+    let session = make_active_session();
+    let session_id = session.id.clone();
+    state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+    let create_result = create_plan_artifact(
+        State(state.clone()),
+        Json(CreatePlanArtifactRequest {
+            session_id: session_id.as_str().to_string(),
+            title: "Plan v1".to_string(),
+            content: "initial".to_string(),
+        }),
+    )
+    .await
+    .unwrap();
+    let artifact_id = create_result.0.id.clone();
+
+    // Read session to get the current plan_artifact_id (create may have changed it)
+    // and capture generation (may be >0 if auto_verify=true in YAML)
+    let after_create = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let gen_after_create = after_create.verification_generation;
+    let latest_artifact_id = after_create
+        .plan_artifact_id
+        .as_ref()
+        .unwrap()
+        .as_str()
+        .to_string();
+
+    // Manually put session into triggered state (simulating auto-verify running)
+    // Use update_verification_state to ensure in_progress=1 regardless of auto_verify setting
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&session_id, VerificationStatus::Reviewing, true, None)
+        .await
+        .unwrap();
+
+    // Capture generation before update (same as gen_after_create — update_verification_state
+    // does not change generation)
+    let before_update = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let gen_before_update = before_update.verification_generation;
+    assert!(before_update.verification_in_progress, "in_progress must be true before update");
+
+    // update_plan_artifact must NOT re-trigger (no trigger logic in update handler)
+    // reset_verification_sync has in_progress=0 guard — no-op while running
+    let _ = update_plan_artifact(
+        State(state.clone()),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: latest_artifact_id,
+            content: "auto-corrected plan content".to_string(),
+        }),
+    )
+    .await
+    .expect("update_plan_artifact should succeed while in_progress=1");
+
+    // Verify generation was NOT incremented by update_plan_artifact
+    let after_update = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after_update.verification_generation, gen_before_update,
+        "generation must not be incremented by update_plan_artifact (before={}, after={})",
+        gen_before_update, after_update.verification_generation
+    );
+    // in_progress must remain true (reset_verification_sync is no-op when in_progress=1)
+    assert!(
+        after_update.verification_in_progress,
+        "in_progress must remain true after update_plan_artifact while verification is running"
+    );
+    let _ = (gen_after_create, artifact_id); // suppress unused warnings
 }
 
 /// update_plan_artifact: when proposals are linked to old artifact, they are batch-updated
