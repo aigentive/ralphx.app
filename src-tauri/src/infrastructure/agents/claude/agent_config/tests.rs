@@ -196,7 +196,7 @@ agents:
     if let Some(defaults) = parsed.claude.settings_profile_defaults.clone() {
         selected = merge_settings(defaults, selected);
     }
-    apply_prefixed_env_overrides_with(&mut selected, &|_| None);
+    apply_prefixed_env_overrides_with(&mut selected, Some("openrouter"), &|_| None);
     assert_eq!(
         Some(selected),
         Some(serde_json::json!({
@@ -221,7 +221,7 @@ fn test_settings_profile_resolves_prefixed_env_overrides() {
         }
     });
 
-    apply_prefixed_env_overrides_with(&mut settings, &|name| match name {
+    apply_prefixed_env_overrides_with(&mut settings, None, &|name| match name {
         "RALPHX_ANTHROPIC_DEFAULT_HAIKU_MODEL" => Some("custom-haiku".to_string()),
         "RALPHX_ANTHROPIC_DEFAULT_SONNET_MODEL" => Some("custom-sonnet".to_string()),
         _ => None,
@@ -247,6 +247,52 @@ fn test_settings_profile_resolves_prefixed_env_overrides() {
             .and_then(|v| v.get("ANTHROPIC_DEFAULT_OPUS_MODEL"))
             .and_then(|v| v.as_str()),
         Some("glm-5")
+    );
+}
+
+#[test]
+fn test_profile_specific_env_override_takes_precedence_over_generic() {
+    let mut settings = serde_json::json!({
+        "env": {
+            "ANTHROPIC_AUTH_TOKEN": "yaml-token",
+            "ANTHROPIC_BASE_URL": "https://openrouter.ai/api"
+        }
+    });
+
+    apply_prefixed_env_overrides_with(&mut settings, Some("openrouter"), &|name| match name {
+        "RALPHX_OPENROUTER_ANTHROPIC_AUTH_TOKEN" => Some("profile-token".to_string()),
+        "RALPHX_ANTHROPIC_AUTH_TOKEN" => Some("generic-token".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(
+        settings
+            .get("env")
+            .and_then(|v| v.get("ANTHROPIC_AUTH_TOKEN"))
+            .and_then(|v| v.as_str()),
+        Some("profile-token")
+    );
+}
+
+#[test]
+fn test_profile_specific_env_override_uses_normalized_profile_name() {
+    let mut settings = serde_json::json!({
+        "env": {
+            "ANTHROPIC_AUTH_TOKEN": "yaml-token"
+        }
+    });
+
+    apply_prefixed_env_overrides_with(&mut settings, Some("z_ai"), &|name| match name {
+        "RALPHX_Z_AI_ANTHROPIC_AUTH_TOKEN" => Some("zai-token".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(
+        settings
+            .get("env")
+            .and_then(|v| v.get("ANTHROPIC_AUTH_TOKEN"))
+            .and_then(|v| v.as_str()),
+        Some("zai-token")
     );
 }
 
@@ -385,6 +431,12 @@ fn test_normalize_agent_name_for_env_replaces_symbols() {
         normalize_agent_name_for_env("ralphx:session-namer"),
         "RALPHX_SESSION_NAMER"
     );
+}
+
+#[test]
+fn test_normalize_profile_name_for_env_replaces_symbols() {
+    assert_eq!(normalize_profile_name_for_env("z_ai"), "Z_AI");
+    assert_eq!(normalize_profile_name_for_env("openrouter"), "OPENROUTER");
 }
 
 #[test]
