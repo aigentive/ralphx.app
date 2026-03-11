@@ -10,7 +10,9 @@
 
 import React, { useState, useMemo } from "react";
 import { ChevronDown, ChevronRight, Bot } from "lucide-react";
-import { ToolCallIndicator, type ToolCall } from "./ToolCallIndicator";
+import { ToolCallIndicator } from "./ToolCallIndicator";
+import type { ToolCall } from "./tool-widgets/shared.constants";
+import { formatDuration, getSubagentTypeColor, getModelColor } from "./tool-call-utils";
 
 // ============================================================================
 // Types
@@ -35,52 +37,19 @@ interface TaskArgs {
 }
 
 interface TaskStats {
+  /** True when result was parsed (even if all fields are undefined). False when no parseable result. */
+  statsAvailable: boolean;
   agentId: string | undefined;
   totalDurationMs: number | undefined;
   totalTokens: number | undefined;
   totalToolUseCount: number | undefined;
+  model: string | undefined;
   textOutput: string | undefined;
 }
 
 // ============================================================================
 // Helpers
 // ============================================================================
-
-/** Format milliseconds into human-readable duration */
-function formatDuration(ms: number): string {
-  if (ms < 1000) return `${ms}ms`;
-  const secs = Math.floor(ms / 1000);
-  if (secs < 60) return `${secs}s`;
-  const mins = Math.floor(secs / 60);
-  const remainSecs = secs % 60;
-  return `${mins}m ${remainSecs}s`;
-}
-
-/** Get a display-friendly color for the subagent type badge */
-function getSubagentTypeColor(subagentType: string): { bg: string; text: string } {
-  const type = subagentType.toLowerCase();
-  switch (type) {
-    case "explore":
-      return { bg: "hsla(200, 70%, 50%, 0.15)", text: "hsl(200, 70%, 65%)" };
-    case "plan":
-      return { bg: "hsla(280, 60%, 50%, 0.15)", text: "hsl(280, 60%, 70%)" };
-    case "bash":
-      return { bg: "hsla(140, 60%, 40%, 0.15)", text: "hsl(140, 60%, 65%)" };
-    case "general-purpose":
-      return { bg: "hsla(220, 60%, 50%, 0.15)", text: "hsl(220, 60%, 70%)" };
-    default:
-      return { bg: "hsla(220, 10%, 50%, 0.15)", text: "hsl(220, 10%, 65%)" };
-  }
-}
-
-/** Get model badge color */
-function getModelColor(model: string): { bg: string; text: string } {
-  const m = model.toLowerCase();
-  if (m.includes("opus")) return { bg: "hsla(14, 100%, 60%, 0.15)", text: "hsl(14, 100%, 65%)" };
-  if (m.includes("sonnet")) return { bg: "hsla(40, 80%, 50%, 0.15)", text: "hsl(40, 80%, 65%)" };
-  if (m.includes("haiku")) return { bg: "hsla(160, 60%, 45%, 0.15)", text: "hsl(160, 60%, 65%)" };
-  return { bg: "hsla(220, 10%, 50%, 0.15)", text: "hsl(220, 10%, 65%)" };
-}
 
 const EMPTY_ARGS: TaskArgs = {
   description: undefined,
@@ -120,10 +89,12 @@ function extractTaskArgs(args: unknown): TaskArgs {
  * ```
  */
 const EMPTY_STATS: TaskStats = {
+  statsAvailable: false,
   agentId: undefined,
   totalDurationMs: undefined,
   totalTokens: undefined,
   totalToolUseCount: undefined,
+  model: undefined,
   textOutput: undefined,
 };
 
@@ -161,21 +132,32 @@ function extractChildToolCalls(result: unknown): ToolCall[] {
   });
 }
 
-function extractTaskStats(result: unknown): TaskStats {
+/** Text-parsing fallback: extract stats and textOutput from raw result content. Used for old DB rows without a structured stats field. */
+function extractTaskStatsFromResult(result: unknown): TaskStats {
   if (result == null) return EMPTY_STATS;
 
-  // Result can be a string or an array of content blocks
+  // Result can be a string, array of content blocks, or JSON object
   let text: string;
   if (typeof result === "string") {
     text = result;
   } else if (Array.isArray(result)) {
     // Array of content blocks — join text blocks
-    text = result
-      .filter((b: unknown) => b && typeof b === "object" && (b as Record<string, unknown>).type === "text")
-      .map((b: unknown) => (b as Record<string, unknown>).text as string)
-      .join("\n");
+    const textBlocks = result.filter(
+      (b: unknown) => b && typeof b === "object" && (b as Record<string, unknown>).type === "text",
+    );
+    if (textBlocks.length === 0) {
+      // tool_use-only array or empty — result exists but no text stats available
+      return { ...EMPTY_STATS, statsAvailable: false };
+    }
+    text = textBlocks.map((b: unknown) => (b as Record<string, unknown>).text as string).join("\n");
   } else if (typeof result === "object") {
-    text = JSON.stringify(result);
+    // Single content block object — extract .text field if present
+    const obj = result as Record<string, unknown>;
+    if (typeof obj.text === "string") {
+      text = obj.text;
+    } else {
+      return { ...EMPTY_STATS, statsAvailable: false };
+    }
   } else {
     return EMPTY_STATS;
   }
@@ -186,8 +168,8 @@ function extractTaskStats(result: unknown): TaskStats {
   let totalToolUseCount: number | undefined;
   let textOutput: string | undefined;
 
-  // Extract agentId
-  const agentIdMatch = text.match(/agentId:\s*([a-f0-9]+)/);
+  // Extract agentId (case-insensitive — defensive, CLI currently emits lowercase)
+  const agentIdMatch = text.match(/agentId:\s*([a-fA-F0-9]+)/i);
   if (agentIdMatch) {
     agentId = agentIdMatch[1];
   }
@@ -205,16 +187,50 @@ function extractTaskStats(result: unknown): TaskStats {
     if (durationMatch) totalDurationMs = parseInt(durationMatch[1]!, 10);
   }
 
-  // Extract text output (everything before agentId/usage block)
-  const outputEnd = text.search(/\nagentId:/);
-  if (outputEnd > 0) {
-    textOutput = text.slice(0, outputEnd).trim() || undefined;
+  // Extract text output (everything before agentId/usage block).
+  // Use (?:^|\n) to handle agentId at start of text (no preceding newline)
+  const agentIdPos = text.search(/(?:^|\n)agentId:/);
+  if (agentIdPos >= 0) {
+    // Slice up to the match position (0 if agentId is first line → empty output)
+    textOutput = text.slice(0, agentIdPos).trim() || undefined;
   } else if (!usageMatch) {
-    // No usage block — the whole result is text output
+    // No agentId or usage block — the whole result is text output
     textOutput = text.trim() || undefined;
   }
 
-  return { agentId, totalDurationMs, totalTokens, totalToolUseCount, textOutput };
+  return { statsAvailable: true, agentId, totalDurationMs, totalTokens, totalToolUseCount, model: undefined, textOutput };
+}
+
+/**
+ * Extract stats for a Task/Agent tool call.
+ *
+ * Structured path (new DB rows): checks toolCall.stats first — directly uses camelCase fields
+ * persisted by the backend at TaskCompleted time. agentId and textOutput still come from result.
+ *
+ * Text-parsing fallback (old DB rows): if toolCall.stats is absent/undefined, falls back to
+ * parsing the result text for embedded <usage> tags and agentId lines.
+ */
+function extractTaskStats(toolCall: ToolCall): TaskStats {
+  // Structured path: use stats field if present (new DB rows — camelCase from backend)
+  if (toolCall.stats !== undefined) {
+    // Still extract agentId + textOutput from result text (not in stats field)
+    const fromResult = extractTaskStatsFromResult(toolCall.result);
+    return {
+      statsAvailable: true,
+      agentId: fromResult.agentId,
+      totalDurationMs: toolCall.stats.durationMs,
+      totalTokens: toolCall.stats.totalTokens,
+      totalToolUseCount: toolCall.stats.totalToolUses,
+      model: toolCall.stats.model,
+      textOutput: fromResult.textOutput,
+    };
+  }
+
+  // Text-parsing fallback for old DB rows without structured stats
+  if (import.meta.env.DEV) {
+    console.debug("[extractTaskStats] text-parsing fallback for tool call:", toolCall.id);
+  }
+  return extractTaskStatsFromResult(toolCall.result);
 }
 
 // ============================================================================
@@ -229,13 +245,27 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
   const hasError = Boolean(toolCall.error);
 
   const taskArgs = useMemo(() => extractTaskArgs(toolCall.arguments), [toolCall.arguments]);
-  const taskStats = useMemo(() => extractTaskStats(toolCall.result), [toolCall.result]);
+  const taskStats = useMemo(() => extractTaskStats(toolCall), [toolCall]);
   const childToolCalls = useMemo(() => extractChildToolCalls(toolCall.result), [toolCall.result]);
 
-  const description = taskArgs.description || "Subagent task";
+  const isAgentCall = toolCall.name.toLowerCase() === "agent";
   const subagentType = taskArgs.subagent_type || "agent";
   const model = taskArgs.model || "";
-  const isAgentCall = toolCall.name.toLowerCase() === "agent";
+
+  // Card title: Agent with name → show name (team mode); otherwise description or fallback
+  const cardTitle = isAgentCall && taskArgs.name
+    ? taskArgs.name
+    : taskArgs.description || (isAgentCall ? "Agent task" : "Subagent task");
+
+  // Hide subagent_type badge when it's the redundant default "agent" value
+  const showSubagentTypeBadge = Boolean(subagentType && subagentType !== "agent");
+
+  // Subtitle: shown below title for named agents (description or prompt preview)
+  const subtitle = isAgentCall && taskArgs.name && taskArgs.description
+    ? taskArgs.description
+    : isAgentCall && taskArgs.name && !taskArgs.description && taskArgs.prompt
+      ? taskArgs.prompt.slice(0, 100) + "..."
+      : null;
 
   const subagentColor = getSubagentTypeColor(subagentType);
   const modelColor = model ? getModelColor(model) : null;
@@ -268,7 +298,7 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
         onClick={() => hasBody && setIsExpanded(!isExpanded)}
         className={`w-full flex items-center gap-2 px-3 py-2 text-left transition-opacity ${hasBody ? "hover:opacity-80 cursor-pointer" : "cursor-default"}`}
         aria-expanded={hasBody ? isExpanded : undefined}
-        aria-label={`${subagentType} subagent: ${description}. ${hasBody ? `Click to ${isExpanded ? "collapse" : "expand"}.` : ""}`}
+        aria-label={`${subagentType} subagent: ${cardTitle}. ${hasBody ? `Click to ${isExpanded ? "collapse" : "expand"}.` : ""}`}
       >
         {/* Expand/Collapse chevron (only if has body) */}
         {hasBody ? (
@@ -297,23 +327,25 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           {isAgentCall ? "Agent" : "Task"}
         </span>
 
-        {/* Subagent type badge */}
-        <span
-          className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
-          style={{
-            backgroundColor: subagentColor.bg,
-            color: subagentColor.text,
-          }}
-        >
-          {subagentType}
-        </span>
+        {/* Subagent type badge — hidden for redundant "agent" default */}
+        {showSubagentTypeBadge && (
+          <span
+            className="text-[10px] px-1.5 py-0.5 rounded flex-shrink-0 font-medium"
+            style={{
+              backgroundColor: subagentColor.bg,
+              color: subagentColor.text,
+            }}
+          >
+            {subagentType}
+          </span>
+        )}
 
-        {/* Description text */}
+        {/* Title text */}
         <span
           className="text-xs truncate flex-1 min-w-0"
           style={{ color: hasError ? "hsl(0 70% 75%)" : "var(--text-secondary, hsl(220 10% 75%))" }}
         >
-          {description}
+          {cardTitle}
         </span>
 
         {/* Model badge */}
@@ -368,6 +400,21 @@ export const TaskToolCallCard = React.memo(function TaskToolCallCard({
           </span>
         )}
       </button>
+
+      {/* Subtitle: description or prompt preview for named agents */}
+      {subtitle && (
+        <div
+          className="px-3 pb-1.5"
+          style={{ paddingLeft: "2.25rem" /* align under title, past chevron+bot icons */ }}
+        >
+          <span
+            className="text-[11px] truncate block"
+            style={{ color: "var(--text-muted, hsl(220 10% 50%))" }}
+          >
+            {subtitle}
+          </span>
+        </div>
+      )}
 
       {/* Stats summary (shown below header when collapsed) */}
       {statParts.length > 0 && (

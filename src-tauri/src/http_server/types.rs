@@ -1182,6 +1182,15 @@ pub struct ActiveStreamingTask {
     /// Teammate name if this is a team member task
     #[serde(skip_serializing_if = "Option::is_none")]
     pub teammate_name: Option<String>,
+    /// Total tokens used by this task (from TaskCompleted stats)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tokens: Option<u64>,
+    /// Total tool uses count (from TaskCompleted stats)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tool_uses: Option<u64>,
+    /// Duration in milliseconds (from TaskCompleted stats)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStreamingTask {
@@ -1193,6 +1202,9 @@ impl From<crate::application::chat_service::CachedStreamingTask> for ActiveStrea
             model: cached.model,
             status: cached.status,
             teammate_name: cached.teammate_name,
+            total_tokens: cached.total_tokens,
+            total_tool_uses: cached.total_tool_uses,
+            duration_ms: cached.duration_ms,
         }
     }
 }

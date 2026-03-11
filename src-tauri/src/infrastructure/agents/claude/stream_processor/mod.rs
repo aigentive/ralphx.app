@@ -7,7 +7,7 @@ mod types;
 
 pub use types::{
     AssistantContent, AssistantMessage, ContentBlock, ContentBlockItem, ContentDelta, DiffContext,
-    ParsedLine, StreamEvent, StreamMessage, StreamResult, ToolCall, UserContent,
+    ParsedLine, StreamEvent, StreamMessage, StreamResult, ToolCall, ToolCallStats, UserContent,
 };
 
 // Re-export types and parser helpers only used by tests (via `use super::*`)
@@ -182,6 +182,7 @@ impl StreamProcessor {
                         arguments: args.clone(),
                         result: None,
                         diff_context: None,
+                        stats: None,
                     };
 
                     self.tool_calls.push(tool_call.clone());
@@ -303,6 +304,7 @@ impl StreamProcessor {
                                 arguments: input.clone(),
                                 result: None,
                                 diff_context: None,
+                                stats: None,
                             };
 
                             self.tool_calls.push(tool_call.clone());
@@ -458,6 +460,21 @@ impl StreamProcessor {
                                         parser::parse_usage_text(&text);
                                     (json_agent_id.or(text_agent), text_dur, text_tok, text_tools)
                                 };
+
+                            // Inject stats into the matching ToolCall so they are
+                            // persisted via all write paths (flush, TurnComplete, finalization).
+                            if let Some(tool_call) = self
+                                .tool_calls
+                                .iter_mut()
+                                .find(|tc| tc.id.as_ref() == Some(&tool_use_id))
+                            {
+                                tool_call.stats = Some(ToolCallStats {
+                                    model: None,
+                                    total_tokens,
+                                    total_tool_uses: total_tool_use_count,
+                                    duration_ms: total_duration_ms,
+                                });
+                            }
 
                             events.push(StreamEvent::TaskCompleted {
                                 tool_use_id: tool_use_id.clone(),

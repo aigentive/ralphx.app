@@ -24,7 +24,7 @@ use crate::domain::repositories::{
 use crate::domain::services::{RunningAgentKey, RunningAgentRegistry};
 use crate::infrastructure::agents::claude::stream_timeouts;
 use crate::infrastructure::agents::claude::{
-    ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall,
+    ContentBlockItem, DiffContext, StreamEvent, StreamProcessor, ToolCall, ToolCallStats,
 };
 use tokio_util::sync::CancellationToken;
 
@@ -1036,6 +1036,9 @@ pub async fn process_stream_background<R: Runtime>(
                             model: model.clone(),
                             status: "running".to_string(),
                             teammate_name: tm_name.clone(),
+                            total_tokens: None,
+                            total_tool_uses: None,
+                            duration_ms: None,
                         };
                         streaming_state_cache
                             .add_task(&conversation_id_str, cached_task)
@@ -1072,7 +1075,16 @@ pub async fn process_stream_background<R: Runtime>(
 
                         // Update streaming state cache - mark task as completed
                         streaming_state_cache
-                            .complete_task(&conversation_id_str, &tool_use_id)
+                            .complete_task(
+                                &conversation_id_str,
+                                &tool_use_id,
+                                Some(ToolCallStats {
+                                    model: None,
+                                    total_tokens,
+                                    total_tool_uses: total_tool_use_count,
+                                    duration_ms: total_duration_ms,
+                                }),
+                            )
                             .await;
 
                         // Check if this completes a teammate Task

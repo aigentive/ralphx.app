@@ -69,6 +69,9 @@ async fn test_add_task() {
         model: Some("sonnet".to_string()),
         status: "running".to_string(),
         teammate_name: None,
+        total_tokens: None,
+        total_tool_uses: None,
+        duration_ms: None,
     };
 
     cache.add_task("conv-123", task).await;
@@ -88,10 +91,13 @@ async fn test_complete_task() {
         model: Some("sonnet".to_string()),
         status: "running".to_string(),
         teammate_name: None,
+        total_tokens: None,
+        total_tool_uses: None,
+        duration_ms: None,
     };
     cache.add_task("conv-123", task).await;
 
-    cache.complete_task("conv-123", "toolu_002").await;
+    cache.complete_task("conv-123", "toolu_002", None).await;
 
     let state = cache.get("conv-123").await.unwrap();
     assert_eq!(state.streaming_tasks[0].status, "completed");
@@ -206,6 +212,9 @@ async fn test_serialize_produces_expected_json() {
             model: None,
             status: "running".to_string(),
             teammate_name: None,
+            total_tokens: None,
+            total_tool_uses: None,
+            duration_ms: None,
         }],
         partial_text: "Hello".to_string(),
         updated_at: Utc::now(),
@@ -235,4 +244,61 @@ async fn test_serialize_skips_none_fields() {
     assert!(!json.contains("\"result\""));
     assert!(!json.contains("\"diff_context\""));
     assert!(!json.contains("\"parent_tool_use_id\""));
+}
+
+#[tokio::test]
+async fn test_complete_task_with_stats() {
+    let cache = StreamingStateCache::new();
+    let task = CachedStreamingTask {
+        tool_use_id: "toolu_002".to_string(),
+        description: Some("Running tests".to_string()),
+        subagent_type: None,
+        model: None,
+        status: "running".to_string(),
+        teammate_name: None,
+        total_tokens: None,
+        total_tool_uses: None,
+        duration_ms: None,
+    };
+    cache.add_task("conv-123", task).await;
+
+    use crate::infrastructure::agents::claude::ToolCallStats;
+    let stats = ToolCallStats {
+        model: Some("sonnet".to_string()),
+        total_tokens: Some(1234),
+        total_tool_uses: Some(5),
+        duration_ms: Some(30000),
+    };
+    cache.complete_task("conv-123", "toolu_002", Some(stats)).await;
+
+    let state = cache.get("conv-123").await.unwrap();
+    assert_eq!(state.streaming_tasks[0].status, "completed");
+    assert_eq!(state.streaming_tasks[0].total_tokens, Some(1234));
+    assert_eq!(state.streaming_tasks[0].total_tool_uses, Some(5));
+    assert_eq!(state.streaming_tasks[0].duration_ms, Some(30000));
+}
+
+#[tokio::test]
+async fn test_complete_task_with_none_stats_clears_nothing() {
+    let cache = StreamingStateCache::new();
+    let task = CachedStreamingTask {
+        tool_use_id: "toolu_003".to_string(),
+        description: None,
+        subagent_type: None,
+        model: None,
+        status: "running".to_string(),
+        teammate_name: None,
+        total_tokens: None,
+        total_tool_uses: None,
+        duration_ms: None,
+    };
+    cache.add_task("conv-abc", task).await;
+
+    cache.complete_task("conv-abc", "toolu_003", None).await;
+
+    let state = cache.get("conv-abc").await.unwrap();
+    assert_eq!(state.streaming_tasks[0].status, "completed");
+    assert_eq!(state.streaming_tasks[0].total_tokens, None);
+    assert_eq!(state.streaming_tasks[0].total_tool_uses, None);
+    assert_eq!(state.streaming_tasks[0].duration_ms, None);
 }

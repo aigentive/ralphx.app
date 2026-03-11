@@ -8,6 +8,7 @@ fn test_tool_call_serialization() {
         arguments: serde_json::json!({"title": "Test task"}),
         result: None,
         diff_context: None,
+        stats: None,
     };
 
     let json = serde_json::to_string(&tool_call).unwrap();
@@ -32,6 +33,7 @@ fn test_tool_call_with_diff_context_serialization() {
             old_content: Some("fn main() {\n    old\n}\n".to_string()),
             file_path: "/project/src/main.rs".to_string(),
         }),
+        stats: None,
     };
 
     let json = serde_json::to_string(&tool_call).unwrap();
@@ -57,6 +59,7 @@ fn test_tool_call_diff_context_new_file() {
             old_content: None,
             file_path: "/project/src/new.rs".to_string(),
         }),
+        stats: None,
     };
 
     let json = serde_json::to_string(&tool_call).unwrap();
@@ -116,4 +119,136 @@ fn test_value_to_text_content_blocks() {
     assert!(text.contains("output line 1"));
     assert!(text.contains("<usage>"));
     assert!(text.contains("agentId: abc"));
+}
+
+// ============================================================================
+// ToolCallStats serialization tests
+// ============================================================================
+
+#[test]
+fn test_tool_call_stats_serialized_as_camel_case() {
+    let tool_call = ToolCall {
+        id: Some("toolu_stats1".to_string()),
+        name: "Task".to_string(),
+        arguments: serde_json::json!({"prompt": "do something"}),
+        result: Some(serde_json::json!("task output")),
+        diff_context: None,
+        stats: Some(ToolCallStats {
+            model: Some("claude-sonnet-4-6".to_string()),
+            total_tokens: Some(12345),
+            total_tool_uses: Some(8),
+            duration_ms: Some(45000),
+        }),
+    };
+
+    let json = serde_json::to_string(&tool_call).unwrap();
+
+    // Verify field is present
+    assert!(json.contains("\"stats\""), "stats field should be present");
+    // Verify camelCase serialization (not snake_case)
+    assert!(json.contains("\"totalTokens\""), "should use camelCase totalTokens");
+    assert!(json.contains("\"totalToolUses\""), "should use camelCase totalToolUses");
+    assert!(json.contains("\"durationMs\""), "should use camelCase durationMs");
+    // Verify snake_case is NOT used
+    assert!(!json.contains("\"total_tokens\""), "should NOT use snake_case total_tokens");
+    assert!(!json.contains("\"total_tool_uses\""), "should NOT use snake_case total_tool_uses");
+    assert!(!json.contains("\"duration_ms\""), "should NOT use snake_case duration_ms");
+    // Verify values
+    assert!(json.contains("12345"));
+    assert!(json.contains("45000"));
+
+    // Round-trip: deserialized stats should match
+    let parsed: ToolCall = serde_json::from_str(&json).unwrap();
+    let stats = parsed.stats.expect("stats should round-trip");
+    assert_eq!(stats.model, Some("claude-sonnet-4-6".to_string()));
+    assert_eq!(stats.total_tokens, Some(12345));
+    assert_eq!(stats.total_tool_uses, Some(8));
+    assert_eq!(stats.duration_ms, Some(45000));
+}
+
+#[test]
+fn test_tool_call_without_stats_field_is_absent() {
+    let tool_call = ToolCall {
+        id: Some("toolu_nostats".to_string()),
+        name: "Read".to_string(),
+        arguments: serde_json::json!({"file_path": "src/main.rs"}),
+        result: Some(serde_json::json!("file contents")),
+        diff_context: None,
+        stats: None,
+    };
+
+    let json = serde_json::to_string(&tool_call).unwrap();
+
+    // Field must be absent (not present as null) — ensures old rows remain compatible
+    assert!(!json.contains("\"stats\""), "stats field should be absent when None");
+
+    // Deserializing old JSON (no stats key) should yield stats: None
+    let old_json = r#"{"id":"toolu_old","name":"Read","arguments":{},"result":"output"}"#;
+    let old: ToolCall = serde_json::from_str(old_json).unwrap();
+    assert!(old.stats.is_none(), "old rows without stats key should deserialize to None");
+}
+
+#[test]
+fn test_task_completed_injects_stats_into_tool_call() {
+    // Integration test: stream a Task tool call + result through StreamProcessor,
+    // then verify stats are present in processor.tool_calls after TaskCompleted.
+    let mut processor = StreamProcessor::new();
+
+    // Register the Task tool_use
+    processor.process_message(StreamMessage::Assistant {
+        message: AssistantMessage {
+            content: vec![AssistantContent::ToolUse {
+                id: "toolu_integ1".to_string(),
+                name: "Task".to_string(),
+                input: serde_json::json!({
+                    "description": "Run integration test",
+                    "subagent_type": "general-purpose"
+                }),
+            }],
+            stop_reason: None,
+        },
+        session_id: None,
+    });
+
+    // Deliver the tool result with structured metadata (JSON path)
+    processor.process_message(StreamMessage::User {
+        message: UserMessage {
+            content: vec![UserContent::ToolResult {
+                tool_use_id: "toolu_integ1".to_string(),
+                content: serde_json::json!({
+                    "tool_use_result": {
+                        "agentId": "integ-agent-001",
+                        "totalDurationMs": 30000_u64,
+                        "totalTokens": 9876_u64,
+                        "totalToolUseCount": 5_u64
+                    }
+                }),
+                is_error: false,
+            }],
+        },
+    });
+
+    // Verify stats were injected into the ToolCall struct
+    let tool_call = processor
+        .tool_calls
+        .iter()
+        .find(|tc| tc.id.as_deref() == Some("toolu_integ1"))
+        .expect("Tool call toolu_integ1 should be in processor.tool_calls");
+
+    let stats = tool_call
+        .stats
+        .as_ref()
+        .expect("Stats should be injected into ToolCall after TaskCompleted");
+
+    assert_eq!(stats.total_tokens, Some(9876));
+    assert_eq!(stats.total_tool_uses, Some(5));
+    assert_eq!(stats.duration_ms, Some(30000));
+
+    // Verify serialization produces the camelCase JSON that will be stored in DB
+    let json = serde_json::to_value(tool_call).unwrap();
+    let stats_json = &json["stats"];
+    assert!(stats_json.is_object(), "stats should serialize as an object");
+    assert_eq!(stats_json["totalTokens"], 9876);
+    assert_eq!(stats_json["totalToolUses"], 5);
+    assert_eq!(stats_json["durationMs"], 30000);
 }

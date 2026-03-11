@@ -31,7 +31,7 @@ pub use claude_code_client::{
 // Re-export stream processor types for use by services
 pub use stream_processor::{
     AssistantContent, AssistantMessage, ContentBlock, ContentBlockItem, ContentDelta, DiffContext,
-    ParsedLine, StreamEvent, StreamMessage, StreamProcessor, StreamResult, ToolCall,
+    ParsedLine, StreamEvent, StreamMessage, StreamProcessor, StreamResult, ToolCall, ToolCallStats,
 };
 
 use std::path::{Path, PathBuf};

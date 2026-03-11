@@ -160,6 +160,18 @@ pub struct DiffContext {
     pub file_path: String,
 }
 
+/// Stats captured from a completed Task/Agent tool call.
+/// Stored as a sibling field of `result` in `ToolCall` — serialized via all write paths.
+/// Uses camelCase because the frontend TypeScript expects camelCase field names.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCallStats {
+    pub model: Option<String>,
+    pub total_tokens: Option<u64>,
+    pub total_tool_uses: Option<u64>,
+    pub duration_ms: Option<u64>,
+}
+
 /// Tool call extracted from the stream
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolCall {
@@ -169,6 +181,10 @@ pub struct ToolCall {
     pub result: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub diff_context: Option<DiffContext>,
+    /// Stats for Task/Agent tool calls — populated at TaskCompleted time.
+    /// Field is absent (not null) for old rows and non-Task tool calls.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stats: Option<ToolCallStats>,
 }
 
 /// Content block item - preserves order of text and tool calls

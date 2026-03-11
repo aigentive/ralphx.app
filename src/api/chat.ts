@@ -136,6 +136,56 @@ export interface QueuedMessageResponse {
   isEditing: boolean;
 }
 
+/**
+ * A streaming task in the active state HTTP response from GET /api/conversations/:id/active-state.
+ * Mirrors the Rust ActiveStreamingTask struct (snake_case — no rename_all on the Rust struct).
+ */
+export interface ActiveStreamingTaskResponse {
+  tool_use_id: string;
+  description?: string;
+  subagent_type?: string;
+  model?: string;
+  status: string;
+  teammate_name?: string;
+  /** Total tokens used (from TaskCompleted stats) */
+  total_tokens?: number;
+  /** Total tool uses count (from TaskCompleted stats) */
+  total_tool_uses?: number;
+  /** Duration in milliseconds (from TaskCompleted stats) */
+  duration_ms?: number;
+}
+
+/**
+ * Response from GET /api/conversations/:id/active-state HTTP endpoint.
+ * Used to hydrate streaming UI when navigating to an active agent execution.
+ */
+export interface ConversationActiveStateResponse {
+  is_active: boolean;
+  tool_calls: unknown[];
+  streaming_tasks: ActiveStreamingTaskResponse[];
+  partial_text: string;
+}
+
+/**
+ * Fetch the active streaming state for a conversation.
+ * Called when navigating to a conversation with an active agent execution
+ * to hydrate the streaming UI with missed events.
+ *
+ * @param conversationId - The conversation ID
+ * @returns The active state response
+ */
+export async function getConversationActiveState(
+  conversationId: string
+): Promise<ConversationActiveStateResponse> {
+  const res = await fetch(
+    `http://localhost:3847/api/conversations/${conversationId}/active-state`
+  );
+  if (!res.ok) {
+    throw new Error(`Failed to get conversation active state: ${res.status}`);
+  }
+  return res.json() as Promise<ConversationActiveStateResponse>;
+}
+
 // ============================================================================
 // Response Schemas (snake_case from Rust backend)
 // ============================================================================
@@ -348,6 +398,8 @@ export const chatApi = {
   isAgentRunning,
   // Attachments
   listMessageAttachments,
+  // Active state
+  getConversationActiveState,
 } as const;
 
 // ============================================================================

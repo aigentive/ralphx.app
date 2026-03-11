@@ -12,6 +12,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
+use crate::infrastructure::agents::claude::ToolCallStats;
+
 /// A cached tool call that's currently in progress or recently completed.
 #[derive(Debug, Clone, Serialize)]
 pub struct CachedToolCall {
@@ -51,6 +53,15 @@ pub struct CachedStreamingTask {
     /// Teammate name if this is a team member task
     #[serde(skip_serializing_if = "Option::is_none")]
     pub teammate_name: Option<String>,
+    /// Total tokens used (from TaskCompleted stats)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tokens: Option<u64>,
+    /// Total tool uses count (from TaskCompleted stats)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_tool_uses: Option<u64>,
+    /// Duration in milliseconds (from TaskCompleted stats)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration_ms: Option<u64>,
 }
 
 /// Complete streaming state for a single conversation.
@@ -160,7 +171,12 @@ impl StreamingStateCache {
     }
 
     /// Mark a streaming task as completed.
-    pub async fn complete_task(&self, conversation_id: &str, tool_use_id: &str) {
+    pub async fn complete_task(
+        &self,
+        conversation_id: &str,
+        tool_use_id: &str,
+        stats: Option<ToolCallStats>,
+    ) {
         let mut states = self.states.lock().await;
         if let Some(state) = states.get_mut(conversation_id) {
             if let Some(task) = state
@@ -169,6 +185,11 @@ impl StreamingStateCache {
                 .find(|t| t.tool_use_id == tool_use_id)
             {
                 task.status = "completed".to_string();
+                if let Some(s) = stats {
+                    task.total_tokens = s.total_tokens;
+                    task.total_tool_uses = s.total_tool_uses;
+                    task.duration_ms = s.duration_ms;
+                }
                 state.updated_at = Utc::now();
                 tracing::debug!(
                     conversation_id,
