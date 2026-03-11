@@ -496,14 +496,32 @@ fn normalize_agent_name_for_env(agent_name: &str) -> String {
     out
 }
 
+fn normalize_profile_name_for_env(profile_name: &str) -> String {
+    let mut out = String::with_capacity(profile_name.len());
+    for ch in profile_name.chars() {
+        if ch.is_ascii_alphanumeric() {
+            out.push(ch.to_ascii_uppercase());
+        } else {
+            out.push('_');
+        }
+    }
+    out
+}
+
 fn resolve_claude_settings(
     raw: &ClaudeRuntimeConfigRaw,
     profile_selection: Option<&str>,
 ) -> Option<serde_json::Value> {
-    let mut selected = if let Some(profile_name) = profile_selection {
-        resolve_profile_settings(raw, profile_name)
+    let selected_profile = if let Some(profile_name) = profile_selection {
+        Some(profile_name)
     } else if raw.settings_profiles.contains_key("default") {
-        resolve_profile_settings(raw, "default")
+        Some("default")
+    } else {
+        None
+    };
+
+    let mut selected = if let Some(profile_name) = selected_profile {
+        resolve_profile_settings(raw, profile_name)
     } else {
         raw.settings.clone()
     };
@@ -516,7 +534,7 @@ fn resolve_claude_settings(
     }
 
     if let Some(ref mut value) = selected {
-        apply_prefixed_env_overrides(value);
+        apply_prefixed_env_overrides(value, selected_profile);
         if value.as_object().is_some_and(|obj| obj.is_empty()) {
             return None;
         }
@@ -628,21 +646,34 @@ fn merge_settings(base: serde_json::Value, overlay: serde_json::Value) -> serde_
     }
 }
 
-fn apply_prefixed_env_overrides(settings: &mut serde_json::Value) {
-    apply_prefixed_env_overrides_with(settings, &|name| std::env::var(name).ok());
+fn apply_prefixed_env_overrides(
+    settings: &mut serde_json::Value,
+    profile_name: Option<&str>,
+) {
+    apply_prefixed_env_overrides_with(settings, profile_name, &|name| std::env::var(name).ok());
 }
 
 fn apply_prefixed_env_overrides_with(
     settings: &mut serde_json::Value,
+    profile_name: Option<&str>,
     lookup: &dyn Fn(&str) -> Option<String>,
 ) {
     let Some(env_settings) = settings.get_mut("env").and_then(|v| v.as_object_mut()) else {
         return;
     };
 
+    let normalized_profile = profile_name.map(normalize_profile_name_for_env);
     for (target_key, target_value) in env_settings.iter_mut() {
-        let source_key = format!("RALPHX_{target_key}");
-        if let Some(value) = lookup(&source_key) {
+        let profile_source_key =
+            normalized_profile.as_ref().map(|profile| format!("RALPHX_{profile}_{target_key}"));
+        let generic_source_key = format!("RALPHX_{target_key}");
+
+        let value = profile_source_key
+            .as_deref()
+            .and_then(lookup)
+            .or_else(|| lookup(&generic_source_key));
+
+        if let Some(value) = value {
             *target_value = serde_json::Value::String(value);
         }
     }

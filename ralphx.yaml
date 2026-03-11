@@ -381,12 +381,13 @@ claude:
       sandbox:
         enabled: false
     # Z.AI integration profile. Values can be overridden via src-tauri/.env:
-    # RALPHX_ANTHROPIC_AUTH_TOKEN=...
-    # RALPHX_ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
-    # RALPHX_API_TIMEOUT_MS=3000000
-    # RALPHX_ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air
-    # RALPHX_ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7
-    # RALPHX_ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5
+    # RALPHX_Z_AI_ANTHROPIC_AUTH_TOKEN=...
+    # RALPHX_Z_AI_ANTHROPIC_BASE_URL=https://api.z.ai/api/anthropic
+    # RALPHX_Z_AI_API_TIMEOUT_MS=3000000
+    # RALPHX_Z_AI_ANTHROPIC_DEFAULT_HAIKU_MODEL=glm-4.5-air
+    # RALPHX_Z_AI_ANTHROPIC_DEFAULT_SONNET_MODEL=glm-4.7
+    # RALPHX_Z_AI_ANTHROPIC_DEFAULT_OPUS_MODEL=glm-5
+    # Generic RALPHX_* overrides still work as a fallback.
     z_ai:
       extends: default
       env:
@@ -397,10 +398,11 @@ claude:
         ANTHROPIC_DEFAULT_SONNET_MODEL: glm-4.7
         ANTHROPIC_DEFAULT_OPUS_MODEL: glm-5
     # OpenRouter integration profile. Values can be overridden via src-tauri/.env:
-    # RALPHX_ANTHROPIC_AUTH_TOKEN=...
-    # RALPHX_ANTHROPIC_BASE_URL=https://openrouter.ai/api
-    # RALPHX_ANTHROPIC_API_KEY=
-    # RALPHX_API_TIMEOUT_MS=3000000
+    # RALPHX_OPENROUTER_ANTHROPIC_AUTH_TOKEN=...
+    # RALPHX_OPENROUTER_ANTHROPIC_BASE_URL=https://openrouter.ai/api
+    # RALPHX_OPENROUTER_ANTHROPIC_API_KEY=
+    # RALPHX_OPENROUTER_API_TIMEOUT_MS=3000000
+    # Generic RALPHX_* overrides still work as a fallback.
     openrouter:
       extends: default
       env:
