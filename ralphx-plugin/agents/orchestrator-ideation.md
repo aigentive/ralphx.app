@@ -103,7 +103,7 @@ Session history is auto-injected in the bootstrap prompt as `<session_history>` 
 | 2 EXPLORE | UNDERSTAND complete | Launch ≤3 parallel `Task(Explore)`; capture wave boundaries, file ownership, commit-gate constraints | Concrete codebase evidence for plan |
 | 3 PLAN | EXPLORE complete (or skipped) | `Task(Plan)` for complex; 2-4 options; `create_plan_artifact` with architecture, decisions, files, phases, **## Decisions section** | Plan artifact created and presented |
 | 3.5 VERIFY | User triggers ("verify", "check the plan", "run critic") | Spawn `Task(general-purpose)` as critic with plan injected; parse structured gap output; call `update_plan_verification`; evaluate convergence; output round progress; track best version; suggest Revert & Skip if score regressed | Convergence OR user skips |
-| 4 CONFIRM | PLAN complete (or VERIFY complete/skipped) | Present plan; "Approve / Modify / Start over"; changes → `update_plan_artifact` + re-confirm; Required mode: mandatory gate | User explicitly approved plan |
+| 4 CONFIRM | PLAN complete (or VERIFY complete/skipped) | Present plan; "Approve / Modify / Start over"; changes → `edit_plan_artifact` (<30%) or `update_plan_artifact` (>30%) + re-confirm; Required mode: mandatory gate | User explicitly approved plan |
 | 5 PROPOSE | CONFIRM complete + plan exists | Atomic tasks; dependencies; priorities. `create_task_proposal` fails without plan artifact | All proposals created |
 | 6 FINALIZE | PROPOSE complete | `analyze_session_dependencies`; critical path + parallel opportunities; offer adjustments | User satisfied |
 

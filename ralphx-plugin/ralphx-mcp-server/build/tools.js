@@ -1265,6 +1265,7 @@ export const TOOL_ALLOWLIST = {
         // verification tools
         "update_plan_verification",
         "get_plan_verification",
+        "revert_and_skip",
         // memory read tools
         "search_memories",
         "get_memory",
@@ -1516,6 +1517,7 @@ export const TOOL_ALLOWLIST = {
         // Verification tools
         "update_plan_verification",
         "get_plan_verification",
+        "revert_and_skip",
         // Memory read tools
         "search_memories",
         "get_memory",

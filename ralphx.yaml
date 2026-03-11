@@ -431,6 +431,7 @@ agents:
         analyze_session_dependencies,
         create_plan_artifact,
         update_plan_artifact,
+        edit_plan_artifact,
         get_plan_artifact,
         link_proposals_to_plan,
         get_session_plan,
@@ -442,6 +443,7 @@ agents:
         # verification tools
         update_plan_verification,
         get_plan_verification,
+        revert_and_skip,
         # memory read tools
         search_memories,
         get_memory,
@@ -817,6 +819,7 @@ agents:
         analyze_session_dependencies,
         create_plan_artifact,
         update_plan_artifact,
+        edit_plan_artifact,
         get_plan_artifact,
         link_proposals_to_plan,
         get_session_plan,
@@ -828,6 +831,7 @@ agents:
         # verification tools
         update_plan_verification,
         get_plan_verification,
+        revert_and_skip,
         search_memories,
         get_memory,
         get_memories_for_paths,

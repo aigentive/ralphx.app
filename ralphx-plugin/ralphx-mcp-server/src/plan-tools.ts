@@ -189,6 +189,30 @@ export const PLAN_TOOLS: Tool[] = [
     },
   },
   {
+    name: "revert_and_skip",
+    description:
+      "Atomically revert the plan to a previous version and skip verification. " +
+      "Use when the user wants to discard recent plan changes and proceed without re-running adversarial review. " +
+      "Restores the exact content of the specified plan version, creates a new artifact entry for auditability, " +
+      "and sets verification status to skipped in a single atomic operation.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description: "The ideation session ID",
+        },
+        plan_version_to_restore: {
+          type: "string",
+          description:
+            "The artifact ID of the plan version to restore content from. " +
+            "Typically a previous version's artifact ID (e.g., from before edits were made).",
+        },
+      },
+      required: ["session_id", "plan_version_to_restore"],
+    },
+  },
+  {
     name: "edit_plan_artifact",
     description:
       "Apply anchor-based edit operations to an existing implementation plan. More token-efficient than update_plan_artifact for targeted changes — only send the text to find and replace, not the entire plan content. Each edit finds the first occurrence of old_text and replaces it with new_text. Stale artifact IDs are auto-resolved to the latest version. Edits are applied sequentially; if any edit fails (old_text not found or ambiguous), the entire operation is rejected with details of which edit failed.",
