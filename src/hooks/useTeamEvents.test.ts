@@ -45,6 +45,12 @@ vi.mock("@/providers/EventProvider", () => ({
   }),
 }));
 
+// Mock team API for hydration tests
+const mockGetPendingPlans = vi.fn().mockResolvedValue([]);
+vi.mock("@/api/team", () => ({
+  getPendingPlans: (...args: unknown[]) => mockGetPendingPlans(...args),
+}));
+
 // buildStoreKey: match the real implementation for "task_execution" prefix
 vi.mock("@/lib/chat-context-registry", () => ({
   buildStoreKey: (contextType: string, contextId: string) => {
@@ -89,14 +95,15 @@ function makePayload(overrides?: Record<string, unknown>) {
 describe("useTeamEvents", () => {
   beforeEach(() => {
     subscriptions.clear();
+    mockGetPendingPlans.mockResolvedValue([]);
     // Reset stores to initial state
-    useTeamStore.setState({ activeTeams: {} });
+    useTeamStore.setState({ activeTeams: {}, pendingPlans: {} });
     useChatStore.getState().setTeamActive(CONTEXT_KEY, false);
   });
 
   afterEach(() => {
     // Clean up any remaining teams
-    useTeamStore.setState({ activeTeams: {} });
+    useTeamStore.setState({ activeTeams: {}, pendingPlans: {} });
   });
 
   // --------------------------------------------------------------------------
@@ -509,5 +516,64 @@ describe("useTeamEvents", () => {
     // All subscriptions should be removed
     const totalAfter = Array.from(subscriptions.values()).reduce((sum, h) => sum + h.length, 0);
     expect(totalAfter).toBe(0);
+  });
+
+  // --------------------------------------------------------------------------
+  // 15. Hydration round-trip: re-hydrates pending plan when switching back
+  // --------------------------------------------------------------------------
+  it("should re-hydrate pending plan when switching back to session with pending plan", async () => {
+    const sessionAKey = "session:session-a";
+    const sessionBKey = "session:session-b";
+
+    const pendingPlan = {
+      plan_id: "plan-hydrate-123",
+      process: "test process for session A",
+      teammates: [],
+      context_type: "ideation",
+      context_id: "session-a",
+      created_at_ms: Date.now(),
+    };
+
+    // getPendingPlans returns a plan only for session-a
+    mockGetPendingPlans.mockImplementation((contextId: string) => {
+      if (contextId === "session-a") return Promise.resolve([pendingPlan]);
+      return Promise.resolve([]);
+    });
+
+    // Render with session A — Effect 3 fires and hydrates the plan
+    const { rerender } = renderHook(
+      ({ key }: { key: string }) => useTeamEvents(key),
+      { initialProps: { key: sessionAKey } },
+    );
+
+    // Wait for Effect 3 to complete — plan should be stored
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    expect(useTeamStore.getState().pendingPlans[sessionAKey]?.planId).toBe("plan-hydrate-123");
+
+    // Switch to session B — clears session A's pending plan from frontend store
+    useTeamStore.setState({ pendingPlans: {} });
+    rerender({ key: sessionBKey });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // No plan for session B
+    expect(useTeamStore.getState().pendingPlans[sessionBKey]).toBeUndefined();
+
+    // Switch back to session A — Effect 3 re-runs with new contextKey → re-hydrates plan
+    rerender({ key: sessionAKey });
+
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+
+    // Plan is re-discovered and restored from backend
+    expect(useTeamStore.getState().pendingPlans[sessionAKey]?.planId).toBe("plan-hydrate-123");
+    // getPendingPlans was called at least twice (mount with A + re-render back to A)
+    expect(mockGetPendingPlans).toHaveBeenCalledWith("session-a");
   });
 });
