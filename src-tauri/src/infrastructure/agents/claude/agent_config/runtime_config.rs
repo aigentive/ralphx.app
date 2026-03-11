@@ -13,6 +13,7 @@ pub struct AllRuntimeConfig {
     pub supervisor: SupervisorRuntimeConfig,
     pub limits: LimitsConfig,
     pub verification: VerificationConfig,
+    pub external_mcp: ExternalMcpConfig,
 }
 
 /// Configuration for the plan verification feature.
@@ -53,6 +54,46 @@ impl Default for VerificationConfig {
             reconciliation_stale_after_secs: 5400, // 90 minutes
             reconciliation_interval_secs: 300,     // 5 minutes
             auto_verify_stale_secs: 600,           // 10 minutes
+        }
+    }
+}
+
+// ── ExternalMcpConfig ─────────────────────────────────────────────────────
+
+/// Configuration for the external MCP server feature.
+///
+/// All fields have defaults via `#[serde(default)]` — no YAML entry required.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct ExternalMcpConfig {
+    /// Enable the external MCP server. Default: false.
+    pub enabled: bool,
+    /// Port the external MCP server listens on. Default: 3848.
+    pub port: u16,
+    /// Host the external MCP server binds to. Default: "127.0.0.1".
+    pub host: String,
+    /// Maximum restart attempts before giving up. Default: 3.
+    pub max_restart_attempts: u32,
+    /// Delay between restart attempts in milliseconds. Default: 2000.
+    pub restart_delay_ms: u64,
+    /// Optional auth token for the external MCP server (placeholder for future use).
+    #[serde(default)]
+    pub auth_token: Option<String>,
+    /// Path to the Node.js binary. Resolved from `RALPHX_NODE_PATH` env var if not set.
+    #[serde(default)]
+    pub node_path: Option<String>,
+}
+
+impl Default for ExternalMcpConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            port: 3848,
+            host: "127.0.0.1".to_string(),
+            max_restart_attempts: 3,
+            restart_delay_ms: 2000,
+            auth_token: None,
+            node_path: None,
         }
     }
 }
@@ -589,6 +630,22 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     }
 
     validate_verification_config(&mut cfg.verification);
+
+    // External MCP
+    if let Some(v) = lookup("RALPHX_EXTERNAL_MCP_ENABLED") {
+        cfg.external_mcp.enabled = matches!(v.to_lowercase().as_str(), "true" | "1");
+    }
+    if let Some(v) = lookup("RALPHX_EXTERNAL_MCP_PORT") {
+        if let Ok(n) = v.parse::<u16>() {
+            cfg.external_mcp.port = n;
+        }
+    }
+    if let Some(v) = lookup("RALPHX_EXTERNAL_MCP_HOST") {
+        cfg.external_mcp.host = v;
+    }
+    if let Some(v) = lookup("RALPHX_NODE_PATH") {
+        cfg.external_mcp.node_path = Some(v);
+    }
 }
 
 /// Validate ReconciliationConfig fields and clamp to safe defaults on invalid values (GAP M7).
@@ -658,6 +715,39 @@ pub fn validate_verification_config(cfg: &mut VerificationConfig) {
             cfg.auto_verify_stale_secs, cfg.reconciliation_stale_after_secs
         );
     }
+}
+
+/// Validate ExternalMcpConfig fields.
+///
+/// # Errors
+///
+/// Returns an error message if:
+/// - `port` is 0 (invalid port number)
+/// - `host` is empty
+/// - `enabled` is true, host is not local, and TLS env vars are missing
+#[allow(dead_code)]
+pub fn validate_external_mcp_config(cfg: &ExternalMcpConfig) -> Result<(), String> {
+    if cfg.port == 0 {
+        return Err("external_mcp.port must be in range 1-65535, got 0".to_string());
+    }
+    if cfg.host.is_empty() {
+        return Err("external_mcp.host must not be empty".to_string());
+    }
+    if cfg.enabled {
+        let is_local = cfg.host == "localhost" || cfg.host == "127.0.0.1";
+        if !is_local {
+            let tls_cert = std::env::var("EXTERNAL_MCP_TLS_CERT").ok();
+            let tls_key = std::env::var("EXTERNAL_MCP_TLS_KEY").ok();
+            if tls_cert.is_none() || tls_key.is_none() {
+                return Err(format!(
+                    "external_mcp is enabled with non-local host '{}'; \
+                     EXTERNAL_MCP_TLS_CERT and EXTERNAL_MCP_TLS_KEY must be set",
+                    cfg.host
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]

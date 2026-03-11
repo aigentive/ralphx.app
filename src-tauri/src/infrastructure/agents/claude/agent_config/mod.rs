@@ -13,8 +13,9 @@ pub use team_config::{
 };
 
 pub use runtime_config::{
-    AllRuntimeConfig, GitRuntimeConfig, LimitsConfig, ReconciliationConfig, SchedulerConfig,
-    StreamTimeoutsConfig, SupervisorRuntimeConfig, VerificationConfig,
+    validate_external_mcp_config, AllRuntimeConfig, ExternalMcpConfig, GitRuntimeConfig,
+    LimitsConfig, ReconciliationConfig, SchedulerConfig, StreamTimeoutsConfig,
+    SupervisorRuntimeConfig, VerificationConfig,
 };
 
 const MEMORY_SKILLS: &[&str] = &[
@@ -156,6 +157,8 @@ struct RalphxConfig {
     limits: LimitsConfig,
     #[serde(default)]
     ideation: runtime_config::IdeationConfigWrapper,
+    #[serde(default)]
+    external_mcp: ExternalMcpConfig,
 }
 
 const EMBEDDED_CONFIG: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../ralphx.yaml"));
@@ -432,6 +435,7 @@ fn parse_config_with_lookup(
         supervisor: parsed.supervisor,
         limits: parsed.limits,
         verification: parsed.ideation.verification,
+        external_mcp: parsed.external_mcp,
     };
     runtime_config::apply_env_overrides(&mut runtime);
 
@@ -707,6 +711,7 @@ fn load_config() -> LoadedConfig {
             supervisor: SupervisorRuntimeConfig::default(),
             limits: LimitsConfig::default(),
             verification: VerificationConfig::default(),
+            external_mcp: ExternalMcpConfig::default(),
         };
         runtime_config::apply_env_overrides(&mut runtime);
         LoadedConfig {
@@ -824,6 +829,14 @@ pub fn verification_config() -> &'static VerificationConfig {
         .get_or_init(load_config)
         .runtime
         .verification
+}
+
+#[allow(dead_code)]
+pub fn external_mcp_config() -> &'static ExternalMcpConfig {
+    &LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .runtime
+        .external_mcp
 }
 
 pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {

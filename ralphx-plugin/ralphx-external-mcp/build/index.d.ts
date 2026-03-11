@@ -14,11 +14,20 @@
  *   - Token bucket rate limiting per key + IP-based auth throttle
  *   - X-RalphX-Project-Scope header injected for backend enforcement
  */
+import type { Server as HttpServer } from "node:http";
 import type { ExternalMcpConfig } from "./types.js";
 /** Returns the current number of active TCP connections (for testing). */
 export declare function getActiveConnections(): number;
 /** Reset connection counter — used in tests to clean up between runs. */
 export declare function resetActiveConnections(): void;
+/** Returns the current HTTP server handle — for testing shutdown behavior. */
+export declare function getHttpServer(): HttpServer | undefined;
+/**
+ * Gracefully shut down the server: stop accepting connections, close all
+ * active MCP transports, then exit. A 1-second force-exit timer ensures we
+ * stay within the Rust supervisor's 2-second SIGTERM window.
+ */
+export declare function shutdown(): Promise<void>;
 /**
  * Start the external MCP server.
  */
