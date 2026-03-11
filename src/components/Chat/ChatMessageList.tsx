@@ -12,6 +12,8 @@ import React, { forwardRef, useCallback, useEffect, useMemo, useRef, useState, u
 import { Virtuoso, type VirtuosoHandle } from "react-virtuoso";
 import { MessageItem } from "./MessageItem";
 import { HookEventMessage } from "./HookEventMessage";
+import { AutoVerificationCard } from "./AutoVerificationCard";
+import { AUTO_VERIFICATION_KEY } from "@/types/ideation";
 import {
   TypingIndicator,
   FailedRunBanner,
@@ -72,6 +74,7 @@ export interface ChatMessageData {
   contentBlocks?: ContentBlockItem[] | null;
   attachments?: MessageAttachment[];
   sender?: string | null;
+  metadata?: string | null;
 }
 
 /** Discriminated union for timeline items when hook events are interleaved */
@@ -663,6 +666,20 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       }
       const msg = item.data;
 
+      // Render auto-verification messages as system cards, not user bubbles
+      if (msg.metadata) {
+        try {
+          const meta = JSON.parse(msg.metadata) as Record<string, unknown>;
+          if (meta[AUTO_VERIFICATION_KEY]) {
+            return (
+              <div className="px-3 w-full" style={contentContainerStyle}>
+                <AutoVerificationCard content={msg.content} createdAt={msg.createdAt} />
+              </div>
+            );
+          }
+        } catch { /* not JSON, render normally */ }
+      }
+
       // Look up teammate info if sender is present and message is from assistant
       const { teammateName, teammateColor } = msg.role === "assistant"
         ? getTeammateInfo(msg.sender)
@@ -725,6 +742,21 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
               );
             }
             const msg = item.data;
+
+            // Render auto-verification messages as system cards, not user bubbles
+            if (msg.metadata) {
+              try {
+                const meta = JSON.parse(msg.metadata) as Record<string, unknown>;
+                if (meta[AUTO_VERIFICATION_KEY]) {
+                  return (
+                    <div key={`${item.kind}-${item.sortTime}-${index}`} className="px-3 w-full" style={contentContainerStyle}>
+                      <AutoVerificationCard content={msg.content} createdAt={msg.createdAt} />
+                    </div>
+                  );
+                }
+              } catch { /* not JSON, render normally */ }
+            }
+
             const { teammateName, teammateColor } = msg.role === "assistant"
               ? getTeammateInfo(msg.sender)
               : { teammateName: null, teammateColor: null };

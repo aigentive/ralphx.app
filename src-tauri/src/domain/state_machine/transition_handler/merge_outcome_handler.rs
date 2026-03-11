@@ -579,6 +579,7 @@ impl<'a> super::TransitionHandler<'a> {
                 crate::domain::entities::ChatContextType::Merge,
                 task_id_str,
                 &prompt,
+                Default::default(),
             )
             .await;
         match &result {

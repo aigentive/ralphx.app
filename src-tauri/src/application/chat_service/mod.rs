@@ -136,6 +136,15 @@ pub(crate) fn event_context(
 // ChatService trait
 // ============================================================================
 
+/// Options for customizing message sending behavior.
+#[derive(Debug, Default, Clone)]
+pub struct SendMessageOptions {
+    /// Optional JSON metadata string to attach to the user message.
+    pub metadata: Option<String>,
+    /// Optional timestamp override for the user message. If None, uses Utc::now().
+    pub created_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 /// Unified chat service for all context types
 ///
 /// Key features:
@@ -163,6 +172,7 @@ pub trait ChatService: Send + Sync {
         context_type: ChatContextType,
         context_id: &str,
         message: &str,
+        options: SendMessageOptions,
     ) -> Result<SendResult, ChatServiceError>;
 
     /// Queue a message to be sent when the current agent run completes
@@ -572,6 +582,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         context_type: ChatContextType,
         context_id: &str,
         message: &str,
+        options: SendMessageOptions,
     ) -> Result<SendResult, ChatServiceError> {
         tracing::info!(
             %context_type,
@@ -677,6 +688,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         context_id,
                         message,
                         conversation.id,
+                        options.metadata.clone(),
+                        options.created_at,
                     );
                     let user_msg_id = user_msg.id.as_str().to_string();
                     let user_msg_created_at = user_msg.created_at.to_rfc3339();
@@ -693,6 +706,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             role: "user".to_string(),
                             content: message.to_string(),
                             created_at: Some(user_msg_created_at),
+                            metadata: options.metadata.clone(),
                         },
                     );
 
@@ -776,7 +790,13 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             );
             let queued = self
                 .message_queue
-                .queue(context_type, context_id, message.to_string());
+                .queue_with_overrides(
+                    context_type,
+                    context_id,
+                    message.to_string(),
+                    options.metadata.clone(),
+                    options.created_at.map(|ts| ts.to_rfc3339()),
+                );
             self.emit_event(
                 "agent:queue_sent",
                 AgentQueueSentPayload {
@@ -872,6 +892,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             context_id,
             message,
             conversation_id,
+            options.metadata.clone(),
+            options.created_at,
         );
         let user_msg_id = user_msg.id.as_str().to_string();
         let user_msg_created_at = user_msg.created_at.to_rfc3339();
@@ -925,6 +947,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 role: "user".to_string(),
                 content: message.to_string(),
                 created_at: Some(user_msg_created_at),
+                metadata: options.metadata.clone(),
             },
         );
 
@@ -1244,6 +1267,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         context_id,
                         content,
                         conversation.id,
+                        None,
+                        None,
                     );
                     let user_msg_id = user_msg.id.as_str().to_string();
                     let user_msg_created_at = user_msg.created_at.to_rfc3339();
@@ -1260,6 +1285,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                             role: "user".to_string(),
                             content: content.to_string(),
                             created_at: Some(user_msg_created_at),
+                            metadata: None,
                         },
                     );
 

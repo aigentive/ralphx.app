@@ -136,6 +136,9 @@ pub struct AgentMessageCreatedPayload {
     /// Server-side DB timestamp for the message (RFC3339). Used by frontend to avoid clock skew.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub created_at: Option<String>,
+    /// Optional JSON metadata string attached to the message (e.g. auto_verification, recovery_context).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<String>,
 }
 
 /// Payload for agent:run_completed event

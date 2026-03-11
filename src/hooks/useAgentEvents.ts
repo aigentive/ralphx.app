@@ -94,6 +94,7 @@ export function useAgentEvents(activeConversationId: string | null) {
         role: string;
         content: string;
         created_at?: string;
+        metadata?: string | null;
       }>("agent:message_created", (payload) => {
         const { conversation_id, message_id, role, content, created_at } = payload;
 
@@ -120,7 +121,7 @@ export function useAgentEvents(activeConversationId: string | null) {
                 taskId: null,
                 role: role as "user" | "assistant" | "system",
                 content: content || "",
-                metadata: null,
+                metadata: payload.metadata ?? null,
                 parentMessageId: null,
                 createdAt: created_at ?? new Date().toISOString(),
                 toolCalls: null,

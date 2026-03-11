@@ -177,19 +177,28 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                 );
             }
 
-            // Persist user message
+            // Persist user message — apply overrides if present (e.g. auto-verification metadata + trigger timestamp)
+            let created_at_override = queued_msg
+                .created_at_override
+                .as_deref()
+                .and_then(|ts| chrono::DateTime::parse_from_rfc3339(ts).ok())
+                .map(|ts| ts.with_timezone(&chrono::Utc));
             let mut user_msg = chat_service_context::create_user_message(
                 context_type,
                 context_id,
                 &queued_msg.content,
                 conversation_id,
+                queued_msg.metadata_override.clone(),
+                created_at_override,
             );
             // Mark session recovery rehydration prompts so the frontend can hide them
-            if queued_msg.content.starts_with("<instructions>") {
+            // (only if no metadata_override was provided — override takes precedence)
+            if queued_msg.metadata_override.is_none() && queued_msg.content.starts_with("<instructions>") {
                 user_msg.metadata = Some(r#"{"recovery_context":true}"#.to_string());
             }
             let user_msg_id = user_msg.id.as_str().to_string();
             let user_msg_created_at = user_msg.created_at.to_rfc3339();
+            let user_msg_metadata = user_msg.metadata.clone();
             let _ = chat_message_repo.create(user_msg).await;
 
             // Link pending attachments to the user message
@@ -230,6 +239,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                         role: "user".to_string(),
                         content: queued_msg.content.clone(),
                         created_at: Some(user_msg_created_at),
+                        metadata: user_msg_metadata,
                     },
                 );
             }
@@ -334,6 +344,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                                             role: get_assistant_role(&context_type).to_string(),
                                             content: response.clone(),
                                             created_at: None,
+                                            metadata: None,
                                         },
                                     );
                                 }

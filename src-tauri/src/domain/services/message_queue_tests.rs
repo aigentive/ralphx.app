@@ -370,12 +370,16 @@ fn test_remove_stale_drops_old_messages() {
             content: "Old message".to_string(),
             created_at: stale_ts,
             is_editing: false,
+            metadata_override: None,
+            created_at_override: None,
         });
         q.push(QueuedMessage {
             id: "fresh-1".to_string(),
             content: "Fresh message".to_string(),
             created_at: fresh_ts,
             is_editing: false,
+            metadata_override: None,
+            created_at_override: None,
         });
     }
 
@@ -435,6 +439,46 @@ fn test_remove_stale_rehydration_messages_retained() {
 }
 
 #[test]
+fn test_queue_with_overrides_preserves_metadata_and_timestamp() {
+    let queue = MessageQueue::new();
+    let metadata = r#"{"auto_verification":true}"#.to_string();
+    let timestamp = "2026-03-11T10:00:00Z".to_string();
+
+    let queued = queue.queue_with_overrides(
+        ChatContextType::Ideation,
+        "sess-1",
+        "AUTO-VERIFICATION MODE".to_string(),
+        Some(metadata.clone()),
+        Some(timestamp.clone()),
+    );
+
+    assert_eq!(queued.metadata_override, Some(metadata));
+    assert_eq!(queued.created_at_override, Some(timestamp));
+
+    let popped = queue.pop(ChatContextType::Ideation, "sess-1").unwrap();
+    assert_eq!(
+        popped.metadata_override.as_deref(),
+        Some(r#"{"auto_verification":true}"#)
+    );
+    assert_eq!(
+        popped.created_at_override.as_deref(),
+        Some("2026-03-11T10:00:00Z")
+    );
+}
+
+#[test]
+fn test_queue_standard_has_no_overrides() {
+    let queue = MessageQueue::new();
+    let queued = queue.queue(
+        ChatContextType::Task,
+        "task-1",
+        "Normal message".to_string(),
+    );
+    assert_eq!(queued.metadata_override, None);
+    assert_eq!(queued.created_at_override, None);
+}
+
+#[test]
 fn test_remove_stale_unparseable_timestamp_retained() {
     let queue = MessageQueue::new();
 
@@ -447,6 +491,8 @@ fn test_remove_stale_unparseable_timestamp_retained() {
             content: "Unparseable timestamp".to_string(),
             created_at: "not-a-timestamp".to_string(),
             is_editing: false,
+            metadata_override: None,
+            created_at_override: None,
         });
     }
 

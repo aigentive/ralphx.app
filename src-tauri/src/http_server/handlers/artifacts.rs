@@ -8,7 +8,7 @@ use tauri::Emitter;
 use tracing::error;
 
 use super::*;
-use crate::application::chat_service::{ChatService, ClaudeChatService};
+use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType,
     ChatContextType, IdeationSession, IdeationSessionId, VerificationStatus,
@@ -21,6 +21,9 @@ use crate::infrastructure::sqlite::{
     SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
     SqliteTaskProposalRepository as ProposalRepo,
 };
+
+/// Metadata key used to mark auto-verification messages.
+pub(crate) const AUTO_VERIFICATION_KEY: &str = "auto_verification";
 
 // ============================================================================
 // EditError Types
@@ -296,7 +299,8 @@ async fn spawn_auto_verifier(
     let cfg = verification_config();
     let max_rounds = cfg.max_rounds;
 
-    let prompt = format!(
+    let trigger_time = chrono::Utc::now();
+    let inner_prompt = format!(
         "AUTO-VERIFICATION MODE for session {session_id}. Generation: {generation}. Max rounds: {max_rounds}. NO user is present — run the complete verification loop WITHOUT waiting for user input.\n\
          \n\
          ## MANDATORY FIRST STEP\n\
@@ -450,6 +454,7 @@ async fn spawn_auto_verifier(
         generation = generation,
         max_rounds = max_rounds,
     );
+    let prompt = format!("<auto-verification>\n{}\n</auto-verification>", inner_prompt);
 
     let app = &state.app_state;
     let mut chat_service = ClaudeChatService::new(
@@ -476,7 +481,10 @@ async fn spawn_auto_verifier(
     }
 
     chat_service
-        .send_message(ChatContextType::Ideation, session_id, &prompt)
+        .send_message(ChatContextType::Ideation, session_id, &prompt, SendMessageOptions {
+            metadata: Some(serde_json::json!({AUTO_VERIFICATION_KEY: true}).to_string()),
+            created_at: Some(trigger_time),
+        })
         .await
         .map(|_| ())
         .map_err(|e| format!("send_message failed: {}", e))
