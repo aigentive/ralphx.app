@@ -58,6 +58,13 @@ fn greet(name: &str) -> String {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Startup hardening: increase per-thread minimum stack when not explicitly set.
+    // Tokio runtime workers execute deeply nested async recovery paths at startup,
+    // and the platform default stack can be too small for worst-case futures.
+    if std::env::var_os("RUST_MIN_STACK").is_none() {
+        std::env::set_var("RUST_MIN_STACK", "8388608");
+    }
+
     // Initialize layered tracing subscriber: console + optional per-launch log file.
     // Respects RUST_LOG env var; defaults to ralphx=info plus warn for everything else.
     // File logging controlled by RALPHX_FILE_LOGGING env / ralphx.yaml `file_logging` (default: true).
