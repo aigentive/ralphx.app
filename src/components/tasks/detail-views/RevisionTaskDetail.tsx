@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   Bot,
   User,
+  Settings,
   RotateCcw,
   MessageCircleWarning,
 } from "lucide-react";
@@ -75,6 +76,7 @@ interface FeedbackCardProps {
  */
 function FeedbackCard({ review, issues }: FeedbackCardProps) {
   const isAiReviewer = review.reviewer === "ai";
+  const isSystemReviewer = review.reviewer === "system";
   const timeAgo = formatTimeAgo(review.created_at);
 
   return (
@@ -86,18 +88,22 @@ function FeedbackCard({ review, issues }: FeedbackCardProps) {
           style={{
             backgroundColor: isAiReviewer
               ? "rgba(10, 132, 255, 0.15)"
+              : isSystemReviewer
+              ? "rgba(255, 159, 10, 0.15)"
               : "rgba(52, 199, 89, 0.15)",
           }}
         >
           {isAiReviewer ? (
             <Bot className="w-5 h-5" style={{ color: "#0a84ff" }} />
+          ) : isSystemReviewer ? (
+            <Settings className="w-5 h-5" style={{ color: "#ff9f0a" }} />
           ) : (
             <User className="w-5 h-5" style={{ color: "#34c759" }} />
           )}
         </div>
         <div className="flex-1">
           <span className="text-[13px] font-semibold text-white/80 block">
-            {isAiReviewer ? "AI Review Feedback" : "Human Review Feedback"}
+            {isAiReviewer ? "AI Review Feedback" : isSystemReviewer ? "System Escalation" : "Human Review Feedback"}
           </span>
           <span className="text-[11px] text-white/40">{timeAgo}</span>
         </div>

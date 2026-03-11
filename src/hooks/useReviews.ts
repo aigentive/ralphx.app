@@ -170,6 +170,11 @@ export function useReviewsByTaskId(
     [data]
   );
 
+  const hasSystemReview = useMemo(
+    () => data.some((r) => r.reviewer_type === "system"),
+    [data]
+  );
+
   const latestReview = useMemo(() => {
     if (data.length === 0) return null;
     return data.reduce((latest, review) =>
@@ -188,6 +193,8 @@ export function useReviewsByTaskId(
     hasAiReview,
     /** Whether the task has a human review */
     hasHumanReview,
+    /** Whether the task has a system-escalated review */
+    hasSystemReview,
     /** The most recent review */
     latestReview,
     /** Refetch reviews from backend */

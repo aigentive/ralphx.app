@@ -19,6 +19,7 @@ import {
   RotateCcw,
   Bot,
   User,
+  Settings,
   MessageSquare,
   Clock,
 } from "lucide-react";
@@ -249,11 +250,13 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
             <div className="flex items-center gap-1.5">
               {entry.reviewer === "ai" ? (
                 <Bot className="w-3 h-3 text-white/50" />
+              ) : entry.reviewer === "system" ? (
+                <Settings className="w-3 h-3 text-white/50" />
               ) : (
                 <User className="w-3 h-3 text-white/50" />
               )}
               <span className="text-[11px] font-medium text-white/60">
-                {entry.reviewer === "ai" ? "AI" : "Human"}{" "}
+                {entry.reviewer === "ai" ? "AI" : entry.reviewer === "system" ? "System" : "Human"}{" "}
                 {entry.outcome === "approved"
                   ? "approved"
                   : entry.outcome === "changes_requested"

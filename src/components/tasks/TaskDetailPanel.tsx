@@ -25,7 +25,7 @@ import { StepList } from "./StepList";
 import { useTaskSteps } from "@/hooks/useTaskSteps";
 import type { Task, InternalStatus } from "@/types/task";
 import type { ComponentType } from "react";
-import { Bot, User, Loader2, FileText } from "lucide-react";
+import { Bot, User, Settings, Loader2, FileText } from "lucide-react";
 import { useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -289,11 +289,11 @@ function ReviewCard({
   reviewerType,
   status,
 }: {
-  reviewerType: "ai" | "human";
+  reviewerType: "ai" | "human" | "system";
   status: string;
 }) {
-  const Icon = reviewerType === "ai" ? Bot : User;
-  const label = reviewerType === "ai" ? "AI Review" : "Human Review";
+  const Icon = reviewerType === "ai" ? Bot : reviewerType === "system" ? Settings : User;
+  const label = reviewerType === "ai" ? "AI Review" : reviewerType === "system" ? "System" : "Human Review";
 
   const defaultStatusColor = { bg: "rgba(255,255,255,0.05)", text: "rgba(255,255,255,0.5)" };
   const statusColors: Record<string, { bg: string; text: string }> = {

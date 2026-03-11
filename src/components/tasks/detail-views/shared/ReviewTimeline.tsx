@@ -7,7 +7,7 @@
 import { useState, Fragment } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { CheckCircle2, RotateCcw, Bot, User } from "lucide-react";
+import { CheckCircle2, RotateCcw, Bot, User, Settings } from "lucide-react";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
 import type { ReviewNoteResponse } from "@/lib/tauri";
 import type { StateTransition } from "@/api/tasks";
@@ -124,6 +124,7 @@ function TimelineItem({
   const isApproved = entry.outcome === "approved";
   const isChangesRequested = entry.outcome === "changes_requested";
   const isHuman = entry.reviewer === "human";
+  const isSystem = entry.reviewer === "system";
 
   // Use summary if available, otherwise fall back to notes
   const hasSummary = !!entry.summary;
@@ -165,19 +166,20 @@ function TimelineItem({
   };
 
   const config = getConfig();
-  const ReviewerIcon = isHuman ? User : Bot;
+  const ReviewerIcon = isHuman ? User : isSystem ? Settings : Bot;
+  const reviewerLabel = isHuman ? "Human" : isSystem ? "System" : "AI";
 
   const getLabel = () => {
     if (attemptNumber !== undefined && isChangesRequested) {
       return `Attempt #${attemptNumber}: Changes requested`;
     }
     if (isApproved) {
-      return `${isHuman ? "Human" : "AI"} approved`;
+      return `${reviewerLabel} approved`;
     }
     if (isChangesRequested) {
-      return `${isHuman ? "Human" : "AI"} requested changes`;
+      return `${reviewerLabel} requested changes`;
     }
-    return `${isHuman ? "Human" : "AI"} reviewed`;
+    return `${reviewerLabel} reviewed`;
   };
 
   return (
@@ -210,7 +212,7 @@ function TimelineItem({
           <div className="flex items-center gap-2">
             <ReviewerIcon
               className="w-3.5 h-3.5"
-              style={{ color: isHuman ? "#34c759" : "#0a84ff" }}
+              style={{ color: isHuman ? "#34c759" : isSystem ? "#ff9f0a" : "#0a84ff" }}
             />
             <span className="text-[12px] font-semibold text-white/75">
               {getLabel()}

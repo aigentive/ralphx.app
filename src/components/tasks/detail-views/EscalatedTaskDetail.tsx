@@ -37,6 +37,7 @@ import {
   RefreshCw,
   XCircle,
   Clock,
+  Settings,
 } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { ReviewNoteResponse } from "@/lib/tauri";
@@ -53,7 +54,7 @@ function getLatestEscalationReview(
   return history[0] ?? null;
 }
 
-type EscalationType = "reason_provided" | "agent_error" | "incomplete" | "failed";
+type EscalationType = "system_interrupted" | "reason_provided" | "agent_error" | "incomplete" | "failed";
 
 interface EscalationInfo {
   type: EscalationType;
@@ -80,6 +81,17 @@ function determineEscalationInfo(
 ): EscalationInfo {
   const agentError = parseMetadataError(metadata);
   const notes = review?.notes ?? null;
+
+  // Primary signal: system reviewer type means agent was killed, not an AI decision
+  if (review?.reviewer === "system") {
+    return {
+      type: "system_interrupted",
+      header: "Review Interrupted",
+      subtitle: "Review was interrupted (agent stopped or app restarted)",
+      reason: notes ?? "The review agent was interrupted before completing its review.",
+      suggestReReview: true,
+    };
+  }
 
   if (notes) {
     const notesLower = notes.toLowerCase();
@@ -123,6 +135,7 @@ function determineEscalationInfo(
 }
 
 const ESCALATION_ICON_MAP: Record<EscalationType, React.ElementType> = {
+  system_interrupted: Settings,
   reason_provided: Bot,
   agent_error: XCircle,
   incomplete: Clock,
@@ -153,7 +166,7 @@ function EscalationReasonCard({
             Escalation Reason
           </span>
           <span className="text-[11px] text-white/45">
-            AI couldn't make a decision
+            {escalationInfo.subtitle}
           </span>
         </div>
       </div>

@@ -295,7 +295,7 @@ export function ReviewDetailHeader({
             {taskTitle}
           </h2>
           <p className="text-xs truncate text-[var(--text-muted)]">
-            {review.reviewer_type === "ai" ? "AI Review" : "Human Review"} •{" "}
+            {review.reviewer_type === "ai" ? "AI Review" : review.reviewer_type === "system" ? "System Escalation" : "Human Review"} •{" "}
             {review.status}
           </p>
         </div>
