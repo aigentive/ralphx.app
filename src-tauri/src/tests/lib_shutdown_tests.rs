@@ -216,17 +216,78 @@ fn test_external_mcp_handle_set_once_succeeds() {
 // ── wait_for_backend_ready tests ──────────────────────────────────────────
 
 #[tokio::test]
+async fn test_wait_for_backend_ready_succeeds_when_server_returns_200() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // Bind to port 0 — OS assigns a free port
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    // Spawn a minimal server that accepts one connection and responds HTTP 200
+    tokio::spawn(async move {
+        if let Ok((mut stream, _)) = listener.accept().await {
+            let mut buf = [0u8; 256];
+            let _ = stream.read(&mut buf).await;
+            let _ = stream
+                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n")
+                .await;
+        }
+    });
+
+    let result = wait_for_backend_ready_with_timeout(port, Duration::from_millis(500)).await;
+
+    assert!(
+        result.is_ok(),
+        "should return Ok when server responds HTTP 200, got: {:?}",
+        result
+    );
+}
+
+#[tokio::test]
+async fn test_wait_for_backend_ready_times_out_when_server_returns_404() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    use tokio::net::TcpListener;
+
+    // Bind to port 0 — OS assigns a free port
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+
+    // Spawn a server that always returns HTTP 404 (never 200)
+    tokio::spawn(async move {
+        loop {
+            if let Ok((mut stream, _)) = listener.accept().await {
+                let mut buf = [0u8; 256];
+                let _ = stream.read(&mut buf).await;
+                let _ = stream
+                    .write_all(b"HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n")
+                    .await;
+            }
+        }
+    });
+
+    let result = wait_for_backend_ready_with_timeout(port, Duration::from_millis(300)).await;
+
+    assert!(
+        result.is_err(),
+        "should time out when server always returns 404"
+    );
+}
+
+#[tokio::test]
 async fn test_wait_for_backend_ready_times_out_when_no_server() {
-    // Use a port that is almost certainly not listening
-    let port = 19847u16;
+    use tokio::net::TcpListener;
+
+    // Bind to port 0 to get a guaranteed-free port, then drop the listener
+    // so the port is immediately connection-refused.
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    drop(listener);
+
     let start = std::time::Instant::now();
 
     // Use a very short timeout for test speed
-    let result = crate::tests::lib_shutdown_tests::wait_for_backend_ready_with_timeout(
-        port,
-        Duration::from_millis(300),
-    )
-    .await;
+    let result = wait_for_backend_ready_with_timeout(port, Duration::from_millis(300)).await;
 
     assert!(result.is_err(), "should time out when server not running");
     assert!(

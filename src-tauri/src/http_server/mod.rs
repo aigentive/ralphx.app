@@ -2,6 +2,7 @@
 // This allows the MCP server to call RalphX functionality via REST API
 
 use axum::{
+    http::StatusCode,
     middleware,
     routing::{delete, get, post, put},
     Router,
@@ -26,6 +27,12 @@ mod types;
 use handlers::*;
 pub use project_scope::*;
 pub use types::*;
+
+/// Health check endpoint — returns 200 OK with no body.
+/// Must be unauthenticated and registered before any auth middleware layers.
+pub(crate) async fn health_handler() -> StatusCode {
+    StatusCode::OK
+}
 
 pub async fn start_http_server(
     app_state: Arc<AppState>,
@@ -83,6 +90,8 @@ pub async fn start_http_server(
         );
 
     let app = Router::new()
+        // Health check — unauthenticated, no auth middleware
+        .route("/health", get(health_handler))
         .merge(management_routes)
         // Validate endpoints (public — validate a bearer token, no admin needed)
         .route("/api/auth/validate-key", get(validate_api_key))
