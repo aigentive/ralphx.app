@@ -190,9 +190,15 @@ agents:
     preapproved_cli_tools: []
     system_prompt_file: ralphx-plugin/agents/worker.md
 "#;
-    let parsed = parse_config_no_env_overrides(yaml).expect("config should parse");
+    let parsed: RalphxConfig = serde_yaml::from_str(yaml).expect("config should parse");
+    let mut selected =
+        resolve_profile_settings(&parsed.claude, "openrouter").expect("profile should resolve");
+    if let Some(defaults) = parsed.claude.settings_profile_defaults.clone() {
+        selected = merge_settings(defaults, selected);
+    }
+    apply_prefixed_env_overrides_with(&mut selected, &|_| None);
     assert_eq!(
-        parsed.claude.settings,
+        Some(selected),
         Some(serde_json::json!({
             "sandbox": { "enabled": false },
             "env": {
