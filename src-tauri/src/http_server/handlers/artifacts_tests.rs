@@ -1329,3 +1329,802 @@ async fn test_update_plan_artifact_batch_updates_linked_proposals() {
         "All 5 proposals should be re-linked to the new artifact"
     );
 }
+
+// ============================================================================
+// apply_edits Unit Tests
+// ============================================================================
+
+#[test]
+fn test_single_edit() {
+    let content = "hello world";
+    let edits = vec![PlanEdit {
+        old_text: "hello".to_string(),
+        new_text: "goodbye".to_string(),
+    }];
+    let result = apply_edits(content, &edits).unwrap();
+    assert_eq!(result, "goodbye world");
+}
+
+#[test]
+fn test_multiple_sequential_edits() {
+    let content = "one two three four";
+    let edits = vec![
+        PlanEdit {
+            old_text: "one".to_string(),
+            new_text: "a".to_string(),
+        },
+        PlanEdit {
+            old_text: "two".to_string(),
+            new_text: "b".to_string(),
+        },
+        PlanEdit {
+            old_text: "three".to_string(),
+            new_text: "c".to_string(),
+        },
+    ];
+    let result = apply_edits(content, &edits).unwrap();
+    assert_eq!(result, "a b c four");
+}
+
+#[test]
+fn test_anchor_not_found() {
+    let content = "hello world";
+    let edits = vec![PlanEdit {
+        old_text: "goodbye".to_string(),
+        new_text: "foo".to_string(),
+    }];
+    let err = apply_edits(content, &edits).unwrap_err();
+    match err {
+        EditError::AnchorNotFound {
+            edit_index,
+            old_text_preview,
+        } => {
+            assert_eq!(edit_index, 0);
+            assert_eq!(old_text_preview, "goodbye");
+        }
+        _ => panic!("Expected AnchorNotFound"),
+    }
+}
+
+#[test]
+fn test_ambiguous_anchor() {
+    let content = "hello hello world";
+    let edits = vec![PlanEdit {
+        old_text: "hello".to_string(),
+        new_text: "hi".to_string(),
+    }];
+    let err = apply_edits(content, &edits).unwrap_err();
+    match err {
+        EditError::AmbiguousAnchor {
+            edit_index,
+            old_text_preview,
+        } => {
+            assert_eq!(edit_index, 0);
+            assert_eq!(old_text_preview, "hello");
+        }
+        _ => panic!("Expected AmbiguousAnchor"),
+    }
+}
+
+#[test]
+fn test_deletion() {
+    let content = "keep this delete this keep that";
+    let edits = vec![PlanEdit {
+        old_text: "delete this".to_string(),
+        new_text: "".to_string(),
+    }];
+    let result = apply_edits(content, &edits).unwrap();
+    assert_eq!(result, "keep this  keep that");
+}
+
+#[test]
+fn test_insertion_via_expansion() {
+    let content = "## Heading\n\nContent";
+    let edits = vec![PlanEdit {
+        old_text: "## Heading".to_string(),
+        new_text: "## Heading\n\nNew paragraph".to_string(),
+    }];
+    let result = apply_edits(content, &edits).unwrap();
+    assert_eq!(
+        result,
+        "## Heading\n\nNew paragraph\n\nContent"
+    );
+}
+
+#[test]
+fn test_overlapping_sequential_edits() {
+    // Edit 0 changes the target of edit 1 — edit 1 searches the mutated result
+    let content = "foo bar baz";
+    let edits = vec![
+        PlanEdit {
+            old_text: "foo".to_string(),
+            new_text: "hello world".to_string(),
+        },
+        PlanEdit {
+            old_text: "bar".to_string(),
+            new_text: "goodbye".to_string(),
+        },
+    ];
+    let result = apply_edits(content, &edits).unwrap();
+    assert_eq!(result, "hello world goodbye baz");
+}
+
+#[test]
+fn test_phantom_match_by_design() {
+    // Edit 0 introduces text that matches edit 1's old_text
+    // Edit 1 operates on the introduced text (sequential semantics)
+    let content = "one two";
+    let edits = vec![
+        PlanEdit {
+            old_text: "one".to_string(),
+            new_text: "phantom".to_string(),
+        },
+        PlanEdit {
+            old_text: "phantom".to_string(),
+            new_text: "replaced".to_string(),
+        },
+    ];
+    let result = apply_edits(content, &edits).unwrap();
+    assert_eq!(result, "replaced two");
+}
+
+#[test]
+fn test_phantom_ambiguity() {
+    // Edit 0's new_text creates a SECOND occurrence of edit 1's old_text
+    // This should return AmbiguousAnchor
+    let content = "duplicate here";
+    let edits = vec![
+        PlanEdit {
+            old_text: "here".to_string(),
+            new_text: "duplicate here again".to_string(),
+        },
+        PlanEdit {
+            old_text: "duplicate".to_string(),
+            new_text: "replaced".to_string(),
+        },
+    ];
+    let err = apply_edits(content, &edits).unwrap_err();
+    match err {
+        EditError::AmbiguousAnchor { edit_index, .. } => {
+            assert_eq!(edit_index, 1);
+        }
+        _ => panic!("Expected AmbiguousAnchor for edit 1"),
+    }
+}
+
+#[test]
+fn test_large_content() {
+    let mut content = "#".repeat(10_000);
+    content.push_str("\nTARGET\n");
+    let edits = vec![PlanEdit {
+        old_text: "\nTARGET\n".to_string(),
+        new_text: "\nREPLACED\n".to_string(),
+    }];
+    let result = apply_edits(&content, &edits).unwrap();
+    assert!(result.contains("\nREPLACED\n"));
+    assert!(!result.contains("\nTARGET\n"));
+    assert_eq!(result.len(), 10_000 + 10); // 10K + "\nREPLACED\n"
+}
+
+#[test]
+fn test_unicode_content() {
+    let content = "Hello 🌍 世界";
+    let edits = vec![
+        PlanEdit {
+            old_text: "🌍".to_string(),
+            new_text: "🌎".to_string(),
+        },
+        PlanEdit {
+            old_text: "世界".to_string(),
+            new_text: "World".to_string(),
+        },
+    ];
+    let result = apply_edits(content, &edits).unwrap();
+    assert_eq!(result, "Hello 🌎 World");
+}
+
+// ============================================================================
+// edit_plan_artifact Integration Tests
+// ============================================================================
+
+/// Test 1: Happy path — create plan, edit it. New version created, version incremented.
+#[tokio::test]
+async fn test_edit_plan_artifact_happy_path() {
+    let state = setup_test_state().await;
+    let (_, artifact_id) = create_parent_with_plan(&state).await;
+
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            edits: vec![PlanEdit {
+                old_text: "Parent plan content".to_string(),
+                new_text: "Updated plan content".to_string(),
+            }],
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "edit_plan_artifact should succeed");
+    let response = result.unwrap().0;
+    assert_eq!(response.version, 2, "Version should be incremented to 2");
+    assert_eq!(response.content, "Updated plan content");
+    assert_eq!(
+        response.previous_artifact_id,
+        Some(artifact_id),
+        "previous_artifact_id should be the pre-edit artifact ID"
+    );
+}
+
+/// Test 2: Stale ID resolution — edit with original ID after update resolves to latest.
+#[tokio::test]
+async fn test_edit_plan_artifact_resolves_stale_id() {
+    let state = setup_test_state().await;
+    let (_, original_artifact_id) = create_parent_with_plan(&state).await;
+
+    // First update to create a stale original ID
+    let update_result = update_plan_artifact(
+        State(state.clone()),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: original_artifact_id.clone(),
+            content: "v2 content with unique anchor phrase here".to_string(),
+        }),
+    )
+    .await
+    .expect("update_plan_artifact should succeed");
+    let v2_id = update_result.0.id.clone();
+    assert_ne!(v2_id, original_artifact_id);
+
+    // Edit using the ORIGINAL (stale) artifact ID — should auto-resolve to v2
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id: original_artifact_id.clone(), // stale ID
+            edits: vec![PlanEdit {
+                old_text: "unique anchor phrase here".to_string(),
+                new_text: "replaced anchor phrase".to_string(),
+            }],
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "edit_plan_artifact with stale ID should auto-resolve and succeed");
+    let response = result.unwrap().0;
+    assert_eq!(response.version, 3, "Should be at version 3 (v1 → v2 → v3)");
+    assert_eq!(
+        response.previous_artifact_id,
+        Some(v2_id),
+        "previous_artifact_id should be the resolved (latest) artifact, not the original stale ID"
+    );
+}
+
+/// Test 3: Inherited plan guard — artifact referenced only as inherited cannot be edited.
+#[tokio::test]
+async fn test_edit_plan_artifact_rejects_inherited_plan() {
+    let state = setup_test_state().await;
+
+    // Create orphan artifact (no session owns it via plan_artifact_id)
+    let orphan = Artifact::new_inline(
+        "Inherited Plan",
+        ArtifactType::Specification,
+        "Inherited plan content that is unique enough for anchoring",
+        "orchestrator",
+    );
+    let orphan_id = orphan.id.as_str().to_string();
+    state.app_state.artifact_repo.create(orphan).await.unwrap();
+
+    // Child session references it as inherited only (plan_artifact_id = None)
+    let mut child = make_active_session();
+    child.plan_artifact_id = None;
+    child.inherited_plan_artifact_id = Some(ArtifactId::from_string(orphan_id.clone()));
+    state.app_state.ideation_session_repo.create(child).await.unwrap();
+
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id: orphan_id.clone(),
+            edits: vec![PlanEdit {
+                old_text: "Inherited plan content that is unique enough for anchoring".to_string(),
+                new_text: "Should be rejected".to_string(),
+            }],
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "edit_plan_artifact on inherited-only artifact should fail");
+    let err = result.unwrap_err();
+    assert_eq!(
+        err.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "Should return 422, got {:?}",
+        err.status
+    );
+    let msg = err.message.expect("422 should include message body");
+    assert!(
+        msg.contains("Cannot edit inherited plan"),
+        "Error must mention inherited plan: got '{msg}'"
+    );
+    assert!(
+        msg.contains("create_plan_artifact"),
+        "Error must direct to create_plan_artifact: got '{msg}'"
+    );
+}
+
+/// Test 4: Session archived guard — plan owned by an archived session cannot be edited.
+#[tokio::test]
+async fn test_edit_plan_artifact_rejects_archived_session() {
+    let state = setup_test_state().await;
+
+    // Create inline artifact directly (bypassing handler so we can set session.status = Archived)
+    let artifact = Artifact::new_inline(
+        "Archived Session Plan",
+        ArtifactType::Specification,
+        "Content that belongs to an archived session uniquely",
+        "orchestrator",
+    );
+    let artifact_id = artifact.id.as_str().to_string();
+    state.app_state.artifact_repo.create(artifact).await.unwrap();
+
+    // Session owns the artifact but is Archived
+    let mut session = make_active_session();
+    session.status = IdeationSessionStatus::Archived;
+    session.plan_artifact_id = Some(ArtifactId::from_string(artifact_id.clone()));
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id,
+            edits: vec![PlanEdit {
+                old_text: "Content that belongs to an archived session uniquely".to_string(),
+                new_text: "Should not be applied".to_string(),
+            }],
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "edit_plan_artifact on archived session should fail");
+    let err = result.unwrap_err();
+    assert_eq!(
+        err.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "Should return 422, got {:?}",
+        err.status
+    );
+}
+
+/// Test 5: File-backed artifact guard — file-backed artifacts cannot be edited.
+#[tokio::test]
+async fn test_edit_plan_artifact_rejects_file_backed_artifact() {
+    let state = setup_test_state().await;
+
+    // Create a file-backed artifact directly via repo
+    let artifact = Artifact {
+        id: ArtifactId::new(),
+        artifact_type: ArtifactType::Specification,
+        name: "File-backed Plan".to_string(),
+        content: ArtifactContent::File { path: "/tmp/plan.md".to_string() },
+        metadata: ArtifactMetadata::new("orchestrator").with_version(1),
+        derived_from: vec![],
+        bucket_id: None,
+    };
+    let artifact_id = artifact.id.as_str().to_string();
+    state.app_state.artifact_repo.create(artifact).await.unwrap();
+
+    // Active session owns the file-backed artifact
+    let mut session = make_active_session();
+    session.plan_artifact_id = Some(ArtifactId::from_string(artifact_id.clone()));
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id,
+            edits: vec![PlanEdit {
+                old_text: "any text".to_string(),
+                new_text: "replacement".to_string(),
+            }],
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "edit_plan_artifact on file-backed artifact should fail");
+    let err = result.unwrap_err();
+    assert_eq!(
+        err.status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "Should return 422, got {:?}",
+        err.status
+    );
+    let msg = err.message.expect("422 should include message body");
+    assert!(
+        msg.contains("file-backed artifact"),
+        "Error must mention file-backed artifact: got '{msg}'"
+    );
+    assert!(
+        msg.contains("update_plan_artifact"),
+        "Error must suggest update_plan_artifact: got '{msg}'"
+    );
+}
+
+/// Test 6: Verification reset — editing plan resets verification when not in_progress.
+#[tokio::test]
+async fn test_edit_plan_artifact_resets_verification() {
+    let state = setup_test_state().await;
+    let (parent_session_id, artifact_id) = create_parent_with_plan(&state).await;
+
+    // Set verification status to Verified (not in_progress)
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_session_id, VerificationStatus::Verified, false, None)
+        .await
+        .unwrap();
+
+    let before = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(before.verification_status, VerificationStatus::Verified);
+    assert!(!before.verification_in_progress);
+
+    // Edit the plan
+    let _ = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id,
+            edits: vec![PlanEdit {
+                old_text: "Parent plan content".to_string(),
+                new_text: "Edited content".to_string(),
+            }],
+        }),
+    )
+    .await
+    .expect("edit_plan_artifact should succeed");
+
+    // Verification must be reset to Unverified
+    let after = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after.verification_status,
+        VerificationStatus::Unverified,
+        "Verification should be reset to Unverified after editing plan"
+    );
+    assert!(!after.verification_in_progress, "in_progress should remain false");
+}
+
+/// Test 7: Verification preserved during loop — edit while in_progress=1 does NOT reset.
+#[tokio::test]
+async fn test_edit_plan_artifact_preserves_verification_during_loop() {
+    let state = setup_test_state().await;
+    let (parent_session_id, artifact_id) = create_parent_with_plan(&state).await;
+
+    // Simulate active verification loop (in_progress=1)
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_session_id, VerificationStatus::Reviewing, true, None)
+        .await
+        .unwrap();
+
+    let before = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let gen_before = before.verification_generation;
+    assert!(before.verification_in_progress);
+
+    // Edit plan while verification loop is running
+    let _ = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id,
+            edits: vec![PlanEdit {
+                old_text: "Parent plan content".to_string(),
+                new_text: "Auto-corrected content".to_string(),
+            }],
+        }),
+    )
+    .await
+    .expect("edit_plan_artifact should succeed even while verification is running");
+
+    // Verification state must be UNCHANGED (CAS guard prevents reset)
+    let after = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_session_id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        after.verification_generation, gen_before,
+        "generation must not change while in_progress=true (before={gen_before}, after={})",
+        after.verification_generation
+    );
+    assert!(after.verification_in_progress, "in_progress must remain true");
+    assert_eq!(
+        after.verification_status,
+        VerificationStatus::Reviewing,
+        "status must remain Reviewing"
+    );
+}
+
+/// Test 8: Zero edits guard — empty edits array rejected before transaction.
+#[tokio::test]
+async fn test_edit_plan_artifact_rejects_empty_edits() {
+    let state = setup_test_state().await;
+    let (_, artifact_id) = create_parent_with_plan(&state).await;
+
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id,
+            edits: vec![],
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "Empty edits should be rejected");
+    let err = result.unwrap_err();
+    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let msg = err.message.expect("422 should include message body");
+    assert!(
+        msg.contains("edits array must not be empty"),
+        "Error should mention empty edits: got '{msg}'"
+    );
+}
+
+/// Test 9: Empty old_text guard — edit with old_text="" rejected before transaction.
+#[tokio::test]
+async fn test_edit_plan_artifact_rejects_empty_old_text() {
+    let state = setup_test_state().await;
+    let (_, artifact_id) = create_parent_with_plan(&state).await;
+
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id,
+            edits: vec![PlanEdit {
+                old_text: "".to_string(),
+                new_text: "some replacement".to_string(),
+            }],
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "Empty old_text should be rejected");
+    let err = result.unwrap_err();
+    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let msg = err.message.expect("422 should include message body");
+    assert!(
+        msg.contains("old_text must not be empty"),
+        "Error should mention empty old_text: got '{msg}'"
+    );
+}
+
+/// Test 10: Input size limit — old_text > 100KB rejected before transaction.
+#[tokio::test]
+async fn test_edit_plan_artifact_rejects_oversized_input() {
+    let state = setup_test_state().await;
+    let (_, artifact_id) = create_parent_with_plan(&state).await;
+
+    let oversized_old_text = "x".repeat(100_001); // 1 byte over 100KB limit
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id,
+            edits: vec![PlanEdit {
+                old_text: oversized_old_text,
+                new_text: "replacement".to_string(),
+            }],
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "Oversized old_text should be rejected");
+    let err = result.unwrap_err();
+    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let msg = err.message.expect("422 should include message body");
+    assert!(
+        msg.contains("100KB"),
+        "Error should mention 100KB limit: got '{msg}'"
+    );
+}
+
+/// Test 11: Output size limit — edits growing content > 500KB rejected atomically (no partial version).
+///
+/// Strategy: initial content = 499KB of text + unique anchor.
+/// Edit replaces anchor with 5KB → total ≈ 504KB → exceeds 500KB post-apply guard.
+/// Both old_text and new_text stay well under the 100KB per-field limit.
+#[tokio::test]
+async fn test_edit_plan_artifact_rejects_oversized_output() {
+    let state = setup_test_state().await;
+
+    let parent = make_active_session();
+    let parent_id = parent.id.clone();
+    state.app_state.ideation_session_repo.create(parent).await.unwrap();
+
+    // 499KB of filler + unique anchor — total still under 500KB
+    let large_content = format!("{}{}", "A".repeat(499_000), "UNIQUE_ANCHOR_FOR_SIZE_TEST");
+    let create_result = create_plan_artifact(
+        State(state.clone()),
+        Json(CreatePlanArtifactRequest {
+            session_id: parent_id.as_str().to_string(),
+            title: "Plan".to_string(),
+            content: large_content,
+        }),
+    )
+    .await
+    .expect("Plan creation should succeed");
+    let artifact_id = create_result.0.id.clone();
+
+    // Replace anchor with 5KB — total becomes ≈ 504KB, exceeds 500KB post-apply guard.
+    // new_text is well under the 100KB per-field limit.
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            edits: vec![PlanEdit {
+                old_text: "UNIQUE_ANCHOR_FOR_SIZE_TEST".to_string(),
+                new_text: "Y".repeat(5_000),
+            }],
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "Oversized result should be rejected");
+    let err = result.unwrap_err();
+    assert_eq!(err.status, StatusCode::UNPROCESSABLE_ENTITY);
+    let msg = err.message.expect("422 should include message body");
+    assert!(msg.contains("500KB"), "Error should mention 500KB limit: got '{msg}'");
+
+    // Verify no spurious new version was created (atomic rollback)
+    let session_after = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let plan_id = session_after.plan_artifact_id.expect("Plan must still exist");
+    let artifact = state
+        .app_state
+        .artifact_repo
+        .get_by_id(&plan_id)
+        .await
+        .unwrap()
+        .expect("Original artifact must still exist");
+    assert_eq!(
+        artifact.metadata.version, 1,
+        "Version must remain 1 — no partial version should be created on error"
+    );
+}
+
+/// Test 12: Response fields correct for event emission — previous_artifact_id and session_id populated.
+#[tokio::test]
+async fn test_edit_plan_artifact_response_has_correct_event_fields() {
+    let state = setup_test_state().await;
+    let (_, artifact_id) = create_parent_with_plan(&state).await;
+
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            edits: vec![PlanEdit {
+                old_text: "Parent plan content".to_string(),
+                new_text: "Revised plan content".to_string(),
+            }],
+        }),
+    )
+    .await
+    .expect("edit_plan_artifact should succeed");
+
+    let response = result.0;
+    // previous_artifact_id must be set for frontend cache invalidation
+    assert_eq!(
+        response.previous_artifact_id,
+        Some(artifact_id.clone()),
+        "previous_artifact_id must be the pre-edit artifact ID"
+    );
+    // New artifact ID must differ from old
+    assert_ne!(response.id, artifact_id, "New artifact ID must differ from old");
+    // session_id must be populated (used in plan_artifact:updated event payload)
+    assert!(response.session_id.is_some(), "session_id must be populated in response");
+}
+
+/// Test 13: Proposals batch-updated — linked proposals point to new artifact version after edit.
+#[tokio::test]
+async fn test_edit_plan_artifact_batch_updates_linked_proposals() {
+    use crate::domain::entities::{
+        Complexity, Priority, ProposalCategory, ProposalStatus, TaskProposal, TaskProposalId,
+    };
+
+    let state = setup_test_state().await;
+    let (_, artifact_id) = create_parent_with_plan(&state).await;
+
+    // Create 3 proposals and link them to the initial artifact
+    let mut proposal_ids = Vec::new();
+    for i in 0..3usize {
+        let proposal = TaskProposal {
+            id: TaskProposalId::new(),
+            session_id: IdeationSessionId::new(),
+            title: format!("Edit Proposal {i}"),
+            description: None,
+            category: ProposalCategory::Feature,
+            steps: None,
+            acceptance_criteria: None,
+            suggested_priority: Priority::Medium,
+            priority_score: 50,
+            priority_reason: None,
+            priority_factors: None,
+            estimated_complexity: Complexity::Moderate,
+            user_priority: None,
+            user_modified: false,
+            status: ProposalStatus::Pending,
+            selected: false,
+            created_task_id: None,
+            plan_artifact_id: None,
+            plan_version_at_creation: None,
+            sort_order: i as i32,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let saved = state.app_state.task_proposal_repo.create(proposal).await.unwrap();
+        proposal_ids.push(saved.id.as_str().to_string());
+    }
+
+    let _ = link_proposals_to_plan(
+        State(state.clone()),
+        Json(LinkProposalsToPlanRequest {
+            artifact_id: artifact_id.clone(),
+            proposal_ids: proposal_ids.clone(),
+        }),
+    )
+    .await
+    .expect("Initial link should succeed");
+
+    // Edit the plan — proposals must follow to the new version
+    let edited = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            edits: vec![PlanEdit {
+                old_text: "Parent plan content".to_string(),
+                new_text: "Edited plan content".to_string(),
+            }],
+        }),
+    )
+    .await
+    .expect("edit_plan_artifact should succeed");
+    let new_artifact_id = edited.0.id.clone();
+    assert_ne!(new_artifact_id, artifact_id);
+
+    // Old artifact should have 0 proposals
+    let old_linked = state
+        .app_state
+        .task_proposal_repo
+        .get_by_plan_artifact_id(&ArtifactId::from_string(artifact_id.clone()))
+        .await
+        .unwrap();
+    assert_eq!(old_linked.len(), 0, "Old artifact should have no proposals after edit");
+
+    // New artifact should have all 3 proposals
+    let new_linked = state
+        .app_state
+        .task_proposal_repo
+        .get_by_plan_artifact_id(&ArtifactId::from_string(new_artifact_id.clone()))
+        .await
+        .unwrap();
+    assert_eq!(new_linked.len(), 3, "All 3 proposals should be re-linked to the new artifact");
+}

@@ -306,7 +306,7 @@ The agent decides which layers apply based on plan content. If the plan proposes
    On convergence: `update_plan_verification(session_id, status: "verified", in_progress: false, convergence_reason: "...")` → proceed to CONFIRM.
 
 9. Present gaps to user. Ask: "Shall I update the plan to address these gaps and run another round?"
-10. User approves → `update_plan_artifact` → repeat from step 1.
+10. User approves → `edit_plan_artifact` (targeted changes <30%) or `update_plan_artifact` (full rewrites >30%) → repeat from step 1.
 11. User skips → `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
 **Best-version tracking:** At hard-cap exit, if `final_gap_score > original_gap_score` → output "The current plan (gap score: {final}) is worse than the original (gap score: {original}). Consider **Revert & Skip** to restore the original plan."
@@ -340,6 +340,12 @@ Present next step: "Ready to apply to Kanban?"
 <tool-usage>
 
 Tool reference and prompt templates: see `ralphx-plugin/agents/system-cards/agent-teams-orchestration.md` (read at Phase 0).
+
+## Plan Editing Tools
+| Tool | When | Notes |
+|------|------|-------|
+| `edit_plan_artifact` | Targeted changes (<30% of plan) | All-or-nothing atomicity — all edits succeed or none applied. Sequential: each edit sees result of prior edits. Use `old_text` anchors of 20+ chars. Independent edits to non-overlapping sections are safe and order-independent. If an edit fails, retry the entire call. |
+| `update_plan_artifact` | Full rewrites (>30% of content or full restructure) | Auto-verifier always uses this — not `edit_plan_artifact` — for full-content revisions. |
 
 </tool-usage>
 
