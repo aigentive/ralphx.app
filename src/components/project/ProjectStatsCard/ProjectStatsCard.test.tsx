@@ -420,7 +420,7 @@ describe("ProjectStatsCard", () => {
         })
       );
       render(<ProjectStatsCard projectId="proj-1" />);
-      expect(screen.getByText("1.0h")).toBeInTheDocument();
+      expect(screen.getByText("1h")).toBeInTheDocument();
     });
 
     it("does not render cycle time section when breakdown is empty", () => {
@@ -494,10 +494,10 @@ describe("ProjectStatsCard", () => {
       fireEvent.click(screen.getByTestId("estimates-toggle"));
       fireEvent.click(screen.getByTestId("formula-toggle"));
       expect(screen.getByTestId("formula-content")).toBeInTheDocument();
-      expect(screen.getByText(/Simple.*= 2h/)).toBeInTheDocument();
-      expect(screen.getByText(/Medium.*= 4h/)).toBeInTheDocument();
-      expect(screen.getByText(/Complex.*= 8h/)).toBeInTheDocument();
-      expect(screen.getByText(/×1\.5 calendar factor/)).toBeInTheDocument();
+      expect(screen.getByText(/Simple.*= 1h/)).toBeInTheDocument();
+      expect(screen.getByText(/Medium.*= 2h/)).toBeInTheDocument();
+      expect(screen.getByText(/Complex.*= 4h/)).toBeInTheDocument();
+      expect(screen.getByText(/×1\.3 calendar factor/)).toBeInTheDocument();
     });
 
     it("collapses estimates section when toggle is clicked again", () => {
@@ -674,10 +674,10 @@ describe("ProjectStatsCard", () => {
       fireEvent.click(screen.getByTestId("estimates-toggle"));
       fireEvent.click(screen.getByTestId("formula-toggle"));
 
-      expect(screen.getByTestId("calibrate-simpleBaseHours")).toHaveValue(2);
-      expect(screen.getByTestId("calibrate-mediumBaseHours")).toHaveValue(4);
-      expect(screen.getByTestId("calibrate-complexBaseHours")).toHaveValue(8);
-      expect(screen.getByTestId("calibrate-calendarFactor")).toHaveValue(1.5);
+      expect(screen.getByTestId("calibrate-simpleBaseHours")).toHaveValue(1);
+      expect(screen.getByTestId("calibrate-mediumBaseHours")).toHaveValue(2);
+      expect(screen.getByTestId("calibrate-complexBaseHours")).toHaveValue(4);
+      expect(screen.getByTestId("calibrate-calendarFactor")).toHaveValue(1.3);
     });
 
     it("does not show calibrated badge when using default config", () => {

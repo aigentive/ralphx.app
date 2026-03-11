@@ -33,6 +33,8 @@ const mockStats: ProjectStats = {
     { phase: "executing", avgMinutes: 15, sampleSize: 5 },
     { phase: "pending_review", avgMinutes: 30, sampleSize: 3 },
   ],
+  columnDwellTimes: [],
+  avgPipelineMinutes: null,
   eme: null,
 };
 

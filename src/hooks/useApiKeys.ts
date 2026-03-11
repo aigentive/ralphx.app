@@ -34,44 +34,46 @@ export const apiKeyKeys = {
 // Fetchers
 // ============================================================================
 
-async function fetchKeys(): Promise<ApiKey[]> {
+export async function fetchKeys(): Promise<ApiKey[]> {
   const data = await invoke<unknown[]>("list_api_keys");
   return z.array(ApiKeySchema).parse(data);
 }
 
 export async function fetchAuditLog(keyId: string): Promise<AuditLogEntry[]> {
-  const data = await invoke<unknown[]>("get_api_key_audit_log", { id: keyId });
+  const data = await invoke<unknown[]>("get_api_key_audit_log", { input: { id: keyId } });
   return z.array(AuditLogEntrySchema).parse(data);
 }
 
-async function createKey(payload: {
+export async function createKey(payload: {
   name: string;
   projectIds: string[];
   permissions?: number;
 }): Promise<ApiKeyCreatedResponse> {
   const data = await invoke<unknown>("create_api_key", {
-    name: payload.name,
-    projectIds: payload.projectIds,
-    permissions: payload.permissions,
+    input: {
+      name: payload.name,
+      projectIds: payload.projectIds,
+      permissions: payload.permissions,
+    },
   });
   return ApiKeyCreatedResponseSchema.parse(data);
 }
 
-async function revokeKey(id: string): Promise<void> {
-  await invoke<void>("revoke_api_key", { id });
+export async function revokeKey(id: string): Promise<void> {
+  await invoke<void>("revoke_api_key", { input: { id } });
 }
 
-async function rotateKey(id: string): Promise<ApiKeyCreatedResponse> {
-  const data = await invoke<unknown>("rotate_api_key", { id });
+export async function rotateKey(id: string): Promise<ApiKeyCreatedResponse> {
+  const data = await invoke<unknown>("rotate_api_key", { input: { id } });
   return ApiKeyCreatedResponseSchema.parse(data);
 }
 
-async function updateKeyProjects(id: string, projectIds: string[]): Promise<void> {
-  await invoke<void>("update_api_key_projects", { id, projectIds });
+export async function updateKeyProjects(id: string, projectIds: string[]): Promise<void> {
+  await invoke<void>("update_api_key_projects", { input: { id, projectIds } });
 }
 
 export async function updateKeyPermissions(id: string, permissions: number): Promise<void> {
-  await invoke<void>("update_api_key_permissions", { id, permissions });
+  await invoke<void>("update_api_key_permissions", { input: { id, permissions } });
 }
 
 // ============================================================================

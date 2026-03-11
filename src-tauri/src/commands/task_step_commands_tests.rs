@@ -535,3 +535,71 @@ async fn test_fail_step_invalid_status() {
     assert_eq!(found.status, TaskStepStatus::Pending);
     assert_ne!(found.status, TaskStepStatus::InProgress);
 }
+
+// ── IPC contract tests ─────────────────────────────────────────────────────────
+// Verify camelCase deserialization for task step command input structs.
+
+#[cfg(test)]
+mod ipc_contract {
+    use super::super::{CreateTaskStepInput, UpdateTaskStepInput};
+
+    // ── CreateTaskStepInput ─────────────────────────────────────────────────
+
+    #[test]
+    fn create_task_step_input_deserializes_camel_case() {
+        let json = r#"{"title":"Implement auth","description":"Add JWT middleware","sortOrder":0}"#;
+        let input: CreateTaskStepInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.title, "Implement auth");
+        assert_eq!(input.description, Some("Add JWT middleware".to_string()));
+        assert_eq!(input.sort_order, Some(0));
+    }
+
+    #[test]
+    fn create_task_step_input_optional_fields_absent() {
+        let json = r#"{"title":"Minimal step"}"#;
+        let input: CreateTaskStepInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.title, "Minimal step");
+        assert!(input.description.is_none());
+        assert!(input.sort_order.is_none());
+    }
+
+    #[test]
+    fn create_task_step_input_snake_case_sort_order_ignored() {
+        // sort_order in snake_case must not map to sortOrder field due to rename_all
+        let json = r#"{"title":"Bad","sort_order":5}"#;
+        let input: CreateTaskStepInput = serde_json::from_str(json).unwrap();
+        assert!(
+            input.sort_order.is_none(),
+            "snake_case sort_order must not deserialize into sortOrder field"
+        );
+    }
+
+    // ── UpdateTaskStepInput ─────────────────────────────────────────────────
+
+    #[test]
+    fn update_task_step_input_deserializes_all_camel_case_fields() {
+        let json = r#"{"title":"Updated title","description":"New desc","sortOrder":3}"#;
+        let input: UpdateTaskStepInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.title, Some("Updated title".to_string()));
+        assert_eq!(input.description, Some("New desc".to_string()));
+        assert_eq!(input.sort_order, Some(3));
+    }
+
+    #[test]
+    fn update_task_step_input_partial_update() {
+        let json = r#"{"title":"Only title changed"}"#;
+        let input: UpdateTaskStepInput = serde_json::from_str(json).unwrap();
+        assert_eq!(input.title, Some("Only title changed".to_string()));
+        assert!(input.description.is_none());
+        assert!(input.sort_order.is_none());
+    }
+
+    #[test]
+    fn update_task_step_input_empty_object() {
+        let json = r#"{}"#;
+        let input: UpdateTaskStepInput = serde_json::from_str(json).unwrap();
+        assert!(input.title.is_none());
+        assert!(input.description.is_none());
+        assert!(input.sort_order.is_none());
+    }
+}

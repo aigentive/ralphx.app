@@ -24,6 +24,14 @@ vi.mock("@/hooks/useEvents.planArtifact", () => ({
   usePlanArtifactEvents: vi.fn(),
 }));
 
+vi.mock("@/hooks/useVerificationEvents", () => ({
+  useVerificationEvents: vi.fn(),
+}));
+
+vi.mock("@/hooks/useFreshnessBlockedNotification", () => ({
+  useFreshnessBlockedNotification: vi.fn(),
+}));
+
 // Mock the event bus module
 vi.mock("@/lib/event-bus", () => ({
   createEventBus: vi.fn(() => ({
