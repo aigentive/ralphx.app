@@ -419,16 +419,18 @@ pub async fn ensure_branches_fresh(
 
     // 6. Plan freshness check (plan←main)
     if let Some(plan_branch_name) = plan_branch {
+        // Heap-allocate the large update future to avoid overflowing tokio worker stacks
+        // when startup reconciliation inlines deep async chains.
         let plan_result = tokio::time::timeout(
             freshness_timeout,
-            update_plan_from_main(
+            Box::pin(update_plan_from_main(
                 repo_path,
                 plan_branch_name,
                 base_branch,
                 project,
                 task_id_str,
                 app_handle,
-            ),
+            )),
         )
         .await;
 
@@ -532,16 +534,18 @@ pub async fn ensure_branches_fresh(
             "No task branch set — skipping source freshness check"
         );
     } else {
+        // Heap-allocate the large update future to avoid overflowing tokio worker stacks
+        // when startup reconciliation inlines deep async chains.
         let source_result = tokio::time::timeout(
             freshness_timeout,
-            update_source_from_target(
+            Box::pin(update_source_from_target(
                 repo_path,
                 source_branch,
                 target_branch,
                 project,
                 task_id_str,
                 app_handle,
-            ),
+            )),
         )
         .await;
 
