@@ -402,6 +402,9 @@ claude:
     # RALPHX_OPENROUTER_ANTHROPIC_BASE_URL=https://openrouter.ai/api
     # RALPHX_OPENROUTER_ANTHROPIC_API_KEY=
     # RALPHX_OPENROUTER_API_TIMEOUT_MS=3000000
+    # RALPHX_OPENROUTER_ANTHROPIC_DEFAULT_HAIKU_MODEL=z-ai/glm-4.7-flash
+    # RALPHX_OPENROUTER_ANTHROPIC_DEFAULT_SONNET_MODEL=z-ai/glm-4.7
+    # RALPHX_OPENROUTER_ANTHROPIC_DEFAULT_OPUS_MODEL=z-ai/glm-5
     # Generic RALPHX_* overrides still work as a fallback.
     openrouter:
       extends: default
@@ -410,6 +413,9 @@ claude:
         ANTHROPIC_BASE_URL: https://openrouter.ai/api
         ANTHROPIC_API_KEY: ""
         API_TIMEOUT_MS: "3000000"
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: z-ai/glm-4.7-flash
+        ANTHROPIC_DEFAULT_SONNET_MODEL: z-ai/glm-4.7
+        ANTHROPIC_DEFAULT_OPUS_MODEL: z-ai/glm-5
 
 agents:
   - name: orchestrator-ideation
