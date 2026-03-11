@@ -27,7 +27,35 @@ paths:
 1. If `re_executing` → fetch `get_review_notes()` + `get_task_issues(status: "open")` first
 2. `get_task_context(task_id)` → task details, proposal, plan, dependencies
 3. If blocked → STOP
-4. Read plan artifact + `docs/architecture/system-card-orchestration-pattern.md`
+4. Read plan artifact; apply the orchestration pattern below when decomposing and delegating:
+
+   <!-- Inlined from docs/architecture/system-card-orchestration-pattern.md (§2 §4 §5 §9) -->
+   **Execution phases:** Discovery → Plan Design (dependency graph + wave schedule) → Wave execution → Commit gate → repeat → Verify & clean up
+
+   **Conflict Prevention Rules (NON-NEGOTIABLE):**
+   | # | Rule |
+   |---|------|
+   | 1 | **File ownership** — each coder writes exclusive files; no two agents modify the same file per wave |
+   | 2 | **Create-before-modify** — new files first; agent crash can't corrupt existing code |
+   | 3 | **Commit gates** — each wave ends with a verified commit; next wave only after committed |
+   | 4 | **Read-only sources** — agents read existing files for reference but only modify scoped files |
+   | 5 | **No cascading deletes** — delete only after replacements verified working |
+
+   **STRICT SCOPE template for coder dispatches:**
+   ```
+   STRICT SCOPE:
+   - You may ONLY create/modify: [file list]
+   - You must NOT modify: [exclusion list]
+   - Read for reference only: [reference file list]
+
+   TASK: [specific deliverable]
+
+   TESTS: Write tests for new code. Do NOT modify existing test files.
+   VERIFICATION: Run [lint command] on modified files only.
+   ```
+
+   **Typical execution sequence:** `Read → Write/Edit → Bash (typecheck + test) → Grep (verify no dead refs) → commit`
+
 5. Decompose task into sub-scopes, build dependency graph, schedule waves
 6. Delegate to `ralphx-coder` instances (max 3 concurrent, no overlapping write files)
 7. Apply wave gates (validate each wave before starting next)
