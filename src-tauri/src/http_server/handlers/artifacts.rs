@@ -25,37 +25,6 @@ use crate::infrastructure::sqlite::{
 /// Metadata key used to mark auto-verification messages.
 pub(crate) const AUTO_VERIFICATION_KEY: &str = "auto_verification";
 
-/// Framing text injected inside every critic delimiter block (LAYER1, ALPHA, BETA).
-/// Must remain brace-free (no `{}`) so it is safe to embed in `format!()` calls
-/// and can be copy-pasted verbatim into `.md` agent files.
-pub(crate) const PROPOSED_VS_EXISTING_FRAMING: &str = "\
-CRITICAL INSTRUCTION — Proposed vs Existing State:\n\
-This plan describes FUTURE changes that have NOT been implemented yet. When evaluating gaps:\n\
-- If the plan says \"Add column X\" or \"Create file Y\" or \"Add migration vN\" — X, Y, and the migration DO NOT EXIST YET in the codebase. That is expected, NOT a gap.\n\
-- A gap is something the plan SHOULD address but DOESN'T — not something that doesn't exist yet because the plan hasn't been executed.\n\
-- When reading current code, treat it as the BEFORE state. The plan transforms it to the AFTER state.\n\
-- Only flag gaps where the plan's proposed changes are INSUFFICIENT or INCORRECT — not where current code lacks what the plan proposes to add.\n\
-\n\
-Examples of FALSE POSITIVES (do NOT report these):\n\
-- \"Column X doesn't exist in the database\" when the plan adds it in a migration\n\
-- \"File Y not found in the codebase\" when the plan creates it as a new file\n\
-- \"Function Z is not implemented\" when the plan proposes implementing it\n\
-\n\
-Examples of REAL GAPS (DO report these):\n\
-- Plan adds a column but no code path ever reads or writes it (dead addition)\n\
-- Plan creates a service but doesn't wire it into AppState or DI container\n\
-- Plan references a trait method but neither an existing nor proposed implementation exists\n\
-- Plan says \"use existing X\" but X doesn't exist and no creation step is proposed\n\
-\n\
-OVER-SUPPRESSION GUARD — You MUST still flag these even if the plan mentions them:\n\
-- Plan proposes adding item X but no code path calls, reads, or references X after creation\n\
-- Plan proposes a new file but no import, use statement, or AppState wiring references it\n\
-- Plan proposes a migration column but no repository method reads or writes it\n\
-- Plan proposes a trait but no struct implements it (and no implementation step is listed)\n\
-- Plan says \"wire X into Y\" but the wiring step lacks specifics (which field, which constructor, which module)\n\
-The test is: after all plan steps execute, would the addition actually BE USED? If not, it's a real gap.\n\
-";
-
 // ============================================================================
 // EditError Types
 // ============================================================================
@@ -334,7 +303,9 @@ pub(crate) fn build_auto_verifier_prompt(
     max_rounds: u32,
     prior_gaps: &[String],
 ) -> String {
-    let prior_gaps_section = if prior_gaps.is_empty() {
+    // Pre-seeded prior gaps for the initial call (in practice always empty).
+    // On subsequent rounds the orchestrator injects prior gaps dynamically (see step C).
+    let initial_prior_gaps_block = if prior_gaps.is_empty() {
         String::new()
     } else {
         let gap_lines: Vec<String> = prior_gaps
@@ -346,127 +317,13 @@ pub(crate) fn build_auto_verifier_prompt(
             })
             .collect();
         format!(
-            "\nPRIOR ROUND CONTEXT (round N-1 findings that were addressed in the current plan revision):\n\
+            "PRIOR ROUND CONTEXT (round N-1 findings that were addressed in the current plan revision):\n\
              {}\n\
              Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. \
-             Do not re-flag just because the code has not been written yet.\n",
+             Do not re-flag just because the code has not been written yet.\n\n",
             gap_lines.join("\n")
         )
     };
-
-    let layer2_code_reading_note = "\
-IMPORTANT: You are reading the codebase in its CURRENT state (before the plan executes).\n\
-The plan proposes changes that will transform this code. When you find that something\n\
-doesn't exist in the current code:\n\
-1. Check if the plan proposes adding it\n\
-2. If yes — NOT a gap (the plan handles it). But DO verify the plan wires/uses it correctly.\n\
-3. If no — potential gap (the plan may have missed it)\n\
-\n\
-Focus on: Does the plan's proposed transformation produce a CORRECT and COMPLETE result?\n\
-Not: Does the current code have what the plan describes?\n\
-\n";
-
-    let severity_guide = "\
-Severity guide (plan-aware):\n\
-- critical: Blocks implementation EVEN AFTER all plan steps execute. The plan is fundamentally \
-flawed or missing a necessary component that cannot be added incrementally. Examples: missing a \
-required trait implementation that blocks compilation, no error handling for a failure mode that \
-causes data loss, architectural contradiction between two plan sections.\n\
-- high: Significant rework required — plan has the right idea but misses important details that \
-would cause failures post-implementation. Examples: service created but not wired into dependency \
-injection, migration adds column but repository never queries it, test strategy doesn't cover the \
-primary failure mode.\n\
-- medium: Adds risk but workable — plan addresses this area but could be more thorough. Examples: \
-edge case not explicitly handled but recoverable, sync mechanism mentioned but not specified, \
-rollback path not documented.\n\
-- low: Nice-to-have improvement — plan works without this but could be better. Examples: \
-additional test coverage, documentation gaps, code organization suggestions.\n\
-\n\
-IMPORTANT for multi-round verification: When evaluating a REVISED plan (after prior rounds fixed \
-gaps), apply the same standard. If a prior revision added \"we will add X\" to address a gap, \
-verify X is PROPERLY integrated (wired, tested, used) — do not mark it resolved just because the \
-plan now mentions it. A revision that adds \"we will wire X into AppState\" without specifying \
-which field or constructor is still a HIGH gap.\n";
-
-    let layer1_block = format!(
-        "---LAYER1-PROMPT-START---\n\
-         {PROPOSED_VS_EXISTING_FRAMING}\
-         {prior_gaps_section}\
-         You are an adversarial plan critic. Review the following plan for gaps, risks, and missing details.\n\
-         \n\
-         OUTPUT FORMAT: You MUST respond with ONLY a JSON object in this exact format, no prose before or after:\n\
-         {{\n\
-           \"gaps\": [\n\
-             {{\n\
-               \"severity\": \"critical|high|medium|low\",\n\
-               \"category\": \"architecture|security|testing|performance|scalability|maintainability|completeness\",\n\
-               \"description\": \"Concise description of the gap\",\n\
-               \"why_it_matters\": \"Concrete impact if not addressed\"\n\
-             }}\n\
-           ],\n\
-           \"summary\": \"One-sentence synthesis of the plan's main risk\"\n\
-         }}\n\
-         \n\
-         {severity_guide}\
-         \n\
-         PLAN CONTENT:\n\
-         [insert plan content here]\n\
-         ---LAYER1-PROMPT-END---",
-        prior_gaps_section = prior_gaps_section,
-        severity_guide = severity_guide,
-    );
-
-    let alpha_block = format!(
-        "---ALPHA-PROMPT-START---\n\
-         {PROPOSED_VS_EXISTING_FRAMING}\
-         {prior_gaps_section}\
-         {layer2_code_reading_note}\
-         You are reviewing an implementation plan. Argue for the MINIMAL fix. Read the actual code at proposed locations if file paths are given. Find functional gaps — scenarios where the proposed changes would fail, cause regressions, or miss edge cases. Rate each gap CRITICAL/HIGH/MEDIUM/LOW. Focus: Is this change sufficient? What can be safely skipped?\n\
-         \n\
-         OUTPUT FORMAT: ONLY a JSON object:\n\
-         {{\n\
-           \"gaps\": [\n\
-             {{\n\
-               \"severity\": \"critical|high|medium|low\",\n\
-               \"category\": \"architecture|security|testing|performance|scalability|maintainability|completeness\",\n\
-               \"description\": \"Concise gap with specific scenario (\\\"if X happens, Y breaks because Z does W\\\")\",\n\
-               \"why_it_matters\": \"What breaks if not addressed\"\n\
-             }}\n\
-           ],\n\
-           \"summary\": \"One-sentence assessment from the minimal-fix perspective\"\n\
-         }}\n\
-         \n\
-         PLAN: [insert plan content here]\n\
-         ---ALPHA-PROMPT-END---",
-        prior_gaps_section = prior_gaps_section,
-        layer2_code_reading_note = layer2_code_reading_note,
-    );
-
-    let beta_block = format!(
-        "---BETA-PROMPT-START---\n\
-         {PROPOSED_VS_EXISTING_FRAMING}\
-         {prior_gaps_section}\
-         {layer2_code_reading_note}\
-         You are reviewing an implementation plan. Argue for COMPREHENSIVE defense-in-depth. Read the actual code at proposed locations if file paths are given. Find functional gaps the minimal approach would miss — race conditions, uncovered code paths, missing cleanup. Rate each gap CRITICAL/HIGH/MEDIUM/LOW. Focus: What additional protections are needed? What paths are left unguarded?\n\
-         \n\
-         OUTPUT FORMAT: ONLY a JSON object:\n\
-         {{\n\
-           \"gaps\": [\n\
-             {{\n\
-               \"severity\": \"critical|high|medium|low\",\n\
-               \"category\": \"architecture|security|testing|performance|scalability|maintainability|completeness\",\n\
-               \"description\": \"Concise gap with specific scenario (\\\"if X happens, Y breaks because Z does W\\\")\",\n\
-               \"why_it_matters\": \"What breaks if not addressed\"\n\
-             }}\n\
-           ],\n\
-           \"summary\": \"One-sentence assessment from the comprehensive-defense perspective\"\n\
-         }}\n\
-         \n\
-         PLAN: [insert plan content here]\n\
-         ---BETA-PROMPT-END---",
-        prior_gaps_section = prior_gaps_section,
-        layer2_code_reading_note = layer2_code_reading_note,
-    );
 
     format!(
         "AUTO-VERIFICATION MODE for session {session_id}. Generation: {generation}. Max rounds: {max_rounds}. NO user is present — run the complete verification loop WITHOUT waiting for user input.\n\
@@ -488,34 +345,47 @@ which field or constructor is still a HIGH gap.\n";
          ### B. Round counter\n\
          Compute round = current_round + 1.\n\
          \n\
-         ### C. LAYER 1 — Completeness Critic (always run)\n\
-         Spawn a Task(general-purpose) subagent with the following prompt (insert the plan content where indicated):\n\
+         ### C. Build critic prompt\n\
+         Compose the critic_prompt string to pass to each Agent:\n\
+         - If round == 1 and there are pre-seeded prior gaps, start with:\n\
+           {initial_prior_gaps_block}\
+         - If round > 1, prepend the following section BEFORE the plan content (using gap descriptions from the previous get_plan_verification response):\n\
+           ```\n\
+           PRIOR ROUND CONTEXT (gaps from round N-1 addressed in the current plan revision):\n\
+           - <gap1 description> — ADDRESSED in revision (do not re-flag unless the fix is inadequate)\n\
+           - <gap2 description> — ADDRESSED in revision (do not re-flag unless the fix is inadequate)\n\
+           ...\n\
+           Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. Do not re-flag just because the code has not been written yet.\n\
+           \n\
+           PLAN CONTENT:\n\
+           <plan content here>\n\
+           ```\n\
+         - If round == 1 (no pre-seeded gaps), critic_prompt = just the plan content.\n\
          \n\
-         {layer1_block}\n\
+         ### D. LAYER 1 — Completeness Critic (always run)\n\
+         Spawn: Agent(subagent_type: \"ralphx:plan-critic-layer1\", prompt: critic_prompt)\n\
+         Wait for the result.\n\
          \n\
-         ### D. LAYER 2 — Alpha + Beta Critics (run only if plan contains code indicators)\n\
+         ### E. LAYER 2 — Alpha + Beta Critics (run only if plan contains code indicators)\n\
          Check if the plan content matches: /(?:src[-\\/]|\\.rs\\b|\\.tsx?\\b|Affected Files|## Implementation)/\n\
-         If it matches, emit BOTH Task calls in ONE response (parallel execution):\n\
+         If it matches, emit BOTH Agent calls in ONE response (parallel execution):\n\
+         Agent(subagent_type: \"ralphx:plan-critic-alpha\", prompt: critic_prompt)\n\
+         Agent(subagent_type: \"ralphx:plan-critic-beta\", prompt: critic_prompt)\n\
+         Wait for both results.\n\
          \n\
-         Alpha Task prompt (insert plan content where indicated):\n\
-         {alpha_block}\n\
+         ### F. Merge and deduplicate gaps\n\
+         Collect all gaps from all Agent results that completed. Deduplicate by description similarity (merge gaps where descriptions are >80% similar). Assign the higher severity when merging.\n\
          \n\
-         Beta Task prompt (insert plan content where indicated):\n\
-         {beta_block}\n\
-         \n\
-         ### E. Merge and deduplicate gaps\n\
-         Collect all gaps from all Task agents that completed. Deduplicate by description similarity (merge gaps where descriptions are >80% similar). Assign the higher severity when merging.\n\
-         \n\
-         ### F. Report to backend\n\
+         ### G. Report to backend\n\
          Call: update_plan_verification(session_id: \"{session_id}\", status: \"reviewing\", in_progress: true, round: N, gaps: [all_gaps], generation: {generation})\n\
          NOTE: Always send status: \"reviewing\" — the backend auto-corrects to \"needs_revision\" when appropriate. NEVER send \"needs_revision\" directly.\n\
          \n\
-         ### G. EMPTY ROUND GUARD\n\
+         ### H. EMPTY ROUND GUARD\n\
          If all_gaps is empty AND round == 1:\n\
          - Call update_plan_verification with 0 gaps as above\n\
          - CONTINUE to round 2 automatically — do NOT stop. Empty round 1 requires confirmation in round 2.\n\
          \n\
-         ### H. Revise plan if gaps found\n\
+         ### I. Revise plan if gaps found\n\
          Compute gap_score = (critical_count × 10) + (high_count × 3) + (medium_count × 1).\n\
          If gap_score > 0:\n\
          - Call get_session_plan(\"{session_id}\") to get the latest plan content\n\
@@ -529,14 +399,14 @@ which field or constructor is still a HIGH gap.\n";
          - Call update_plan_artifact(artifact_id: <current_artifact_id>, content: <revised_plan_content>)\n\
          - Store the new artifact_id returned from the response\n\
          \n\
-         ### I. CONVERGENCE CHECK\n\
+         ### J. CONVERGENCE CHECK\n\
          Call get_plan_verification(\"{session_id}\").\n\
          If convergence_reason is not null, proceed to FINAL CLEANUP.\n\
          \n\
-         ### J. Max rounds check\n\
+         ### K. Max rounds check\n\
          If round >= {max_rounds}: proceed to FINAL CLEANUP with convergence_reason: \"max_rounds\".\n\
          \n\
-         ### K. Re-read and loop\n\
+         ### L. Re-read and loop\n\
          Call get_session_plan(\"{session_id}\") to re-read the (possibly updated) plan, then return to step A.\n\
          \n\
          ## FINAL CLEANUP\n\
@@ -565,9 +435,7 @@ which field or constructor is still a HIGH gap.\n";
          - max_rounds: round >= {max_rounds}\n\
          - critic_parse_failure: >= 3 parse failures in 5 rounds\n\
          The backend computes convergence — always check get_plan_verification for convergence_reason after each update_plan_verification call.",
-        layer1_block = layer1_block,
-        alpha_block = alpha_block,
-        beta_block = beta_block,
+        initial_prior_gaps_block = initial_prior_gaps_block,
     )
 }
 
