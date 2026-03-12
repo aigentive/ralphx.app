@@ -1,0 +1,181 @@
+/**
+ * Ideation tool handlers — Flow 2 (Phase 4)
+ *
+ * 9 tools for starting/monitoring ideation sessions, proposals, and plans.
+ * Delegates multi-step operations to composites.
+ */
+import { getBackendClient, BackendError } from "../backend-client.js";
+import { startIdeation } from "../composites/start-ideation.js";
+import { acceptAndSchedule } from "../composites/accept-and-schedule.js";
+function handleError(err) {
+    if (err instanceof BackendError) {
+        return JSON.stringify({ error: "backend_error", status: err.statusCode, message: err.message }, null, 2);
+    }
+    return JSON.stringify({ error: "unexpected_error", message: String(err) }, null, 2);
+}
+/**
+ * v1_start_ideation — create an ideation session and spawn the orchestrator agent.
+ * Delegates to startIdeation composite (POST /api/external/start_ideation).
+ */
+export async function handleStartIdeation(args, context) {
+    const projectId = args.project_id;
+    const prompt = args.prompt;
+    if (!projectId) {
+        return JSON.stringify({ error: "missing_argument", message: "project_id is required" }, null, 2);
+    }
+    if (!prompt) {
+        return JSON.stringify({ error: "missing_argument", message: "prompt is required" }, null, 2);
+    }
+    try {
+        const result = await startIdeation({ projectId, prompt }, context);
+        return JSON.stringify(result, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_get_ideation_status — get ideation session status, agent state, and proposal count.
+ * GET /api/external/ideation_status/:session_id
+ */
+export async function handleGetIdeationStatus(args, context) {
+    const sessionId = args.session_id;
+    if (!sessionId) {
+        return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().get(`/api/external/ideation_status/${encodeURIComponent(sessionId)}`, context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_send_ideation_message — send a message to the ideation agent.
+ * POST /api/external/ideation_message
+ */
+export async function handleSendIdeationMessage(args, context) {
+    const sessionId = args.session_id;
+    const message = args.message;
+    if (!sessionId) {
+        return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+    }
+    if (!message) {
+        return JSON.stringify({ error: "missing_argument", message: "message is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().post("/api/external/ideation_message", context, { session_id: sessionId, message });
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_list_proposals — list proposals in an ideation session.
+ * GET /api/list_session_proposals/:session_id
+ */
+export async function handleListProposals(args, context) {
+    const sessionId = args.session_id;
+    if (!sessionId) {
+        return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().get(`/api/list_session_proposals/${encodeURIComponent(sessionId)}`, context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_get_proposal_detail — get full proposal details including steps and acceptance criteria.
+ * GET /api/proposal/:proposal_id
+ */
+export async function handleGetProposalDetail(args, context) {
+    const proposalId = args.proposal_id;
+    if (!proposalId) {
+        return JSON.stringify({ error: "missing_argument", message: "proposal_id is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().get(`/api/proposal/${encodeURIComponent(proposalId)}`, context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_get_plan — get plan artifact content for an ideation session.
+ * GET /api/get_session_plan/:session_id
+ */
+export async function handleGetPlan(args, context) {
+    const sessionId = args.session_id;
+    if (!sessionId) {
+        return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().get(`/api/get_session_plan/${encodeURIComponent(sessionId)}`, context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_accept_plan_and_schedule — saga: apply proposals → create tasks → schedule.
+ * Delegates to acceptAndSchedule composite.
+ */
+export async function handleAcceptPlanAndSchedule(args, context) {
+    const sessionId = args.session_id;
+    if (!sessionId) {
+        return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+    }
+    try {
+        const result = await acceptAndSchedule({ sessionId }, context);
+        return JSON.stringify(result, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_modify_proposal — update a proposal before acceptance.
+ * POST /api/update_task_proposal
+ */
+export async function handleModifyProposal(args, context) {
+    const proposalId = args.proposal_id;
+    const changes = args.changes;
+    if (!proposalId) {
+        return JSON.stringify({ error: "missing_argument", message: "proposal_id is required" }, null, 2);
+    }
+    if (!changes || typeof changes !== "object") {
+        return JSON.stringify({ error: "missing_argument", message: "changes object is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().post("/api/update_task_proposal", context, { proposal_id: proposalId, ...changes });
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_analyze_dependencies — get dependency graph for proposals in a session.
+ * GET /api/analyze_dependencies/:session_id
+ */
+export async function handleAnalyzeDependencies(args, context) {
+    const sessionId = args.session_id;
+    if (!sessionId) {
+        return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().get(`/api/analyze_dependencies/${encodeURIComponent(sessionId)}`, context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+//# sourceMappingURL=ideation.js.map
