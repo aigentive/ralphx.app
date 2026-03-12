@@ -201,6 +201,9 @@ impl ExecutionState {
                 Some(v.saturating_sub(1))
             })
             .unwrap(); // fetch_update with Some always succeeds
+        if prev == 0 {
+            tracing::warn!("decrement_running: running_count underflow prevented (was 0)");
+        }
         prev.saturating_sub(1)
     }
 

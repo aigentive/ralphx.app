@@ -4,11 +4,13 @@
 // Implementations can use SQLite, in-memory, etc.
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 
 use crate::domain::entities::{
     ArtifactId, ExecutionPlanId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus,
     ProjectId, TaskId,
 };
+use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus};
 use crate::error::AppResult;
 
 /// Repository trait for PlanBranch persistence.
@@ -16,6 +18,9 @@ use crate::error::AppResult;
 pub trait PlanBranchRepository: Send + Sync {
     /// Create a new plan branch record
     async fn create(&self, branch: PlanBranch) -> AppResult<PlanBranch>;
+
+    /// Get a plan branch by its ID
+    async fn get_by_id(&self, id: &PlanBranchId) -> AppResult<Option<PlanBranch>>;
 
     /// Get plan branches by plan artifact ID (multiple sessions can share the same artifact)
     async fn get_by_plan_artifact_id(&self, id: &ArtifactId) -> AppResult<Vec<PlanBranch>>;
@@ -57,4 +62,43 @@ pub trait PlanBranchRepository: Send + Sync {
 
     /// Delete a plan branch record
     async fn delete(&self, id: &PlanBranchId) -> AppResult<()>;
+
+    /// Update PR info after PR creation
+    async fn update_pr_info(
+        &self,
+        id: &PlanBranchId,
+        pr_number: i64,
+        pr_url: String,
+        pr_status: PrStatus,
+        pr_draft: bool,
+    ) -> AppResult<()>;
+
+    /// Clear PR info (reset to pre-PR state)
+    async fn clear_pr_info(&self, id: &PlanBranchId) -> AppResult<()>;
+
+    /// Update PR status only
+    async fn update_pr_status(&self, id: &PlanBranchId, status: PrStatus) -> AppResult<()>;
+
+    /// Set merge commit SHA after merge
+    async fn set_merge_commit_sha(&self, id: &PlanBranchId, sha: String) -> AppResult<()>;
+
+    /// Update last_polled_at timestamp
+    async fn update_last_polled_at(
+        &self,
+        id: &PlanBranchId,
+        polled_at: DateTime<Utc>,
+    ) -> AppResult<()>;
+
+    /// Clear pr_polling_active for all branches belonging to a task
+    async fn clear_polling_active_by_task(&self, task_id: &TaskId) -> AppResult<()>;
+
+    /// Find task IDs where pr_polling_active = true
+    async fn find_pr_polling_task_ids(&self) -> AppResult<Vec<TaskId>>;
+
+    /// Update pr_push_status only
+    async fn update_pr_push_status(
+        &self,
+        id: &PlanBranchId,
+        status: PrPushStatus,
+    ) -> AppResult<()>;
 }

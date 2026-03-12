@@ -60,6 +60,8 @@ pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     pub(crate) app_handle: Option<AppHandle<R>>,
     pub(crate) policy: RecoveryPolicy,
     pub(crate) prompt_tracker: Arc<Mutex<HashSet<String>>>,
+    /// PR poller registry for GitHub PR polling (own DI, separate from TaskServices — AD18).
+    pub(crate) pr_poller_registry: Option<Arc<crate::application::PrPollerRegistry>>,
 }
 
 impl<R: Runtime> ReconciliationRunner<R> {
@@ -102,6 +104,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             app_handle,
             policy: RecoveryPolicy,
             prompt_tracker: Arc::new(Mutex::new(HashSet::new())),
+            pr_poller_registry: None,
         }
     }
 
@@ -128,6 +131,14 @@ impl<R: Runtime> ReconciliationRunner<R> {
         repo: Arc<dyn crate::domain::repositories::ReviewRepository>,
     ) -> Self {
         self.review_repo = Some(repo);
+        self
+    }
+
+    pub fn with_pr_poller_registry(
+        mut self,
+        registry: Arc<crate::application::PrPollerRegistry>,
+    ) -> Self {
+        self.pr_poller_registry = Some(registry);
         self
     }
 }

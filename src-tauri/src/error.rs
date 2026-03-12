@@ -47,6 +47,9 @@ pub enum AppError {
 
     #[error("Branch freshness conflict: branches need updating before execution can proceed")]
     BranchFreshnessConflict,
+
+    #[error("Duplicate pull request: branch already has an open PR")]
+    DuplicatePr,
 }
 
 impl From<AgentError> for AppError {

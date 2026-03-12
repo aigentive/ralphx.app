@@ -604,6 +604,20 @@ impl<'a> super::TransitionHandler<'a> {
             .unwrap_or_else(|p| p.into_inner())
             .clone();
 
+        // Pre-load PR-polling task IDs to exclude from blocking check (AD14).
+        // PR-mode tasks wait for GitHub merge and must not block the local pipeline.
+        let pr_polling_ids: std::collections::HashSet<String> =
+            if let Some(ref pbr) = plan_branch_repo {
+                pbr.find_pr_polling_task_ids()
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|id| id.as_str().to_string())
+                    .collect()
+            } else {
+                std::collections::HashSet::new()
+            };
+
         let blocking_task_info = Self::find_blocking_merge_task(
             task,
             task_id_str,
@@ -615,6 +629,7 @@ impl<'a> super::TransitionHandler<'a> {
             &in_flight_ids,
             task_repo,
             plan_branch_repo,
+            &pr_polling_ids,
         )
         .await;
 
@@ -653,10 +668,16 @@ impl<'a> super::TransitionHandler<'a> {
         in_flight_ids: &std::collections::HashSet<String>,
         task_repo: &Arc<dyn TaskRepository>,
         plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+        pr_polling_task_ids: &std::collections::HashSet<String>,
     ) -> Option<TaskId> {
         for other in all_tasks {
             // Skip self
             if other.id == task.id {
+                continue;
+            }
+            // Skip PR-polling tasks (AD14): they are waiting for GitHub merge, not
+            // blocking the local merge pipeline. PR-mode tasks have their own guard.
+            if pr_polling_task_ids.contains(other.id.as_str()) {
                 continue;
             }
             // Only consider tasks in merge states

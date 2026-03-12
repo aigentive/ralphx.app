@@ -13,6 +13,13 @@ export interface PlanBranch {
   mergeTaskId: string | null;
   createdAt: string;
   mergedAt: string | null;
+  prNumber: number | null;
+  prUrl: string | null;
+  prDraft: boolean | null;
+  prPushStatus: "pending" | "pushed" | "failed" | null;
+  prStatus: "Draft" | "Open" | "Merged" | "Closed" | null;
+  prPollingActive: boolean;
+  prEligible: boolean;
 }
 
 export interface EnableFeatureBranchInput {

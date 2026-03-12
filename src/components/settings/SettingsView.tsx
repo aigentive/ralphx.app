@@ -29,6 +29,7 @@ import type {
 import { DEFAULT_PROJECT_SETTINGS } from "@/types/settings";
 import { IdeationSettingsPanel } from "./IdeationSettingsPanel";
 import { GitSettingsSection } from "./GitSettingsSection";
+import { GitHubSettingsSection } from "./GitHubSettingsSection";
 import { ProjectAnalysisSection } from "./ProjectAnalysisSection";
 import { ApiKeysSection } from "./ApiKeysSection";
 import {
@@ -565,6 +566,7 @@ export function SettingsView({
           />
           <GlobalExecutionSection />
           <GitSettingsSection />
+          <GitHubSettingsSection />
           <ProjectAnalysisSection />
           <IdeationSettingsPanel />
           <ApiKeysSection />

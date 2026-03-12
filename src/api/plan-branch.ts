@@ -116,4 +116,17 @@ export const planBranchApi = {
       projectId,
       enabled,
     }) as Promise<void>,
+
+  /**
+   * Get plan branch by merge task ID
+   * @param taskId - The merge task ID to look up
+   * @returns PlanBranch or null if none exists
+   */
+  getByTaskId: (taskId: string): Promise<PlanBranch | null> =>
+    typedInvokeWithTransform(
+      "get_plan_branch_by_task_id",
+      { taskId },
+      PlanBranchNullableSchema,
+      (raw) => (raw ? transformPlanBranch(raw) : null)
+    ),
 } as const;

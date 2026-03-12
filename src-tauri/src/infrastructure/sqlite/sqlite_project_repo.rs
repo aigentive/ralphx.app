@@ -40,8 +40,8 @@ impl ProjectRepository for SqliteProjectRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+                    "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
                     rusqlite::params![
                         project.id.as_str(),
                         project.name,
@@ -57,6 +57,7 @@ impl ProjectRepository for SqliteProjectRepository {
                         project.analyzed_at,
                         project.created_at.to_rfc3339(),
                         project.updated_at.to_rfc3339(),
+                        project.github_pr_enabled as i64,
                     ],
                 )?;
                 Ok(project)
@@ -69,7 +70,7 @@ impl ProjectRepository for SqliteProjectRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at
+                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled
                      FROM projects WHERE id = ?1",
                     [id.as_str()],
                     |row| Project::from_row(row),
@@ -82,7 +83,7 @@ impl ProjectRepository for SqliteProjectRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at
+                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled
                      FROM projects ORDER BY name ASC",
                 )?;
                 let projects = stmt
@@ -107,11 +108,12 @@ impl ProjectRepository for SqliteProjectRepository {
         let custom_analysis = project.custom_analysis.clone();
         let analyzed_at = project.analyzed_at.clone();
         let updated_at = project.updated_at.to_rfc3339();
+        let github_pr_enabled = project.github_pr_enabled as i64;
 
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE projects SET name = ?2, working_directory = ?3, git_mode = ?4, base_branch = ?5, worktree_parent_directory = ?6, use_feature_branches = ?7, merge_validation_mode = ?8, merge_strategy = ?9, detected_analysis = ?10, custom_analysis = ?11, analyzed_at = ?12, updated_at = ?13
+                    "UPDATE projects SET name = ?2, working_directory = ?3, git_mode = ?4, base_branch = ?5, worktree_parent_directory = ?6, use_feature_branches = ?7, merge_validation_mode = ?8, merge_strategy = ?9, detected_analysis = ?10, custom_analysis = ?11, analyzed_at = ?12, updated_at = ?13, github_pr_enabled = ?14
                      WHERE id = ?1",
                     rusqlite::params![
                         id,
@@ -127,6 +129,7 @@ impl ProjectRepository for SqliteProjectRepository {
                         custom_analysis,
                         analyzed_at,
                         updated_at,
+                        github_pr_enabled,
                     ],
                 )?;
                 Ok(())
@@ -149,7 +152,7 @@ impl ProjectRepository for SqliteProjectRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at
+                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled
                      FROM projects WHERE working_directory = ?1",
                     [path.as_str()],
                     |row| Project::from_row(row),

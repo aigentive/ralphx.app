@@ -51,6 +51,7 @@ fn make_project(id: &str, name: &str) -> Project {
         detected_analysis: None,
         custom_analysis: None,
         analyzed_at: None,
+        github_pr_enabled: true,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
     }

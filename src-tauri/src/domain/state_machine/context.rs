@@ -10,7 +10,11 @@ use super::services::{
 };
 use super::types::Blocker;
 use crate::application::ChatService;
+use crate::application::PrPollerRegistry;
+use crate::application::TaskTransitionService;
+use crate::domain::services::github_service::GithubServiceTrait;
 use crate::commands::ExecutionState;
+use crate::domain::entities::PlanBranchId;
 use crate::domain::repositories::{
     ActivityEventRepository, IdeationSessionRepository, PlanBranchRepository, ProjectRepository,
     TaskRepository, TaskStepRepository,
@@ -98,6 +102,24 @@ pub struct TaskServices {
     /// Activity event repository for emitting merge pipeline audit events.
     /// Optional — if not wired, merge activity events are silently skipped.
     pub activity_event_repo: Option<Arc<dyn ActivityEventRepository>>,
+
+    /// Registry of active GitHub PR polling tasks (AD18).
+    /// Optional — None disables PR integration (tests, non-PR workflows).
+    pub pr_poller_registry: Option<Arc<PrPollerRegistry>>,
+
+    /// Guard preventing duplicate draft PR creation per plan branch (AD10).
+    /// Shared with PrPollerRegistry — same underlying DashMap.
+    /// Optional — None disables PR creation guarding.
+    pub pr_creation_guard: Option<Arc<DashMap<PlanBranchId, ()>>>,
+
+    /// GitHub service for PR operations (create PR, push branch, mark ready, etc.).
+    /// Optional — None when GitHub integration is disabled or in tests.
+    pub github_service: Option<Arc<dyn GithubServiceTrait>>,
+
+    /// Task transition service for triggering state transitions from within state machine actions.
+    /// Used by PR merge poller (started in on_enter(Merging)) to fire Merging → Merged when
+    /// GitHub reports the PR as merged. Optional — None when not wired (tests, non-PR paths).
+    pub transition_service: Option<Arc<TaskTransitionService<Wry>>>,
 }
 
 impl TaskServices {
@@ -129,6 +151,10 @@ impl TaskServices {
             ideation_session_repo: None,
             validation_tokens: Arc::new(DashMap::new()),
             activity_event_repo: None,
+            pr_poller_registry: None,
+            pr_creation_guard: None,
+            github_service: None,
+            transition_service: None,
         }
     }
 
@@ -223,6 +249,35 @@ impl TaskServices {
         self
     }
 
+    /// Set the PR poller registry for GitHub PR polling (builder pattern).
+    pub fn with_pr_poller_registry(mut self, registry: Arc<PrPollerRegistry>) -> Self {
+        self.pr_poller_registry = Some(registry);
+        self
+    }
+
+    /// Set the PR creation guard DashMap (builder pattern).
+    /// Should be the same Arc as PrPollerRegistry::pr_creation_guard.
+    pub fn with_pr_creation_guard(
+        mut self,
+        guard: Arc<DashMap<PlanBranchId, ()>>,
+    ) -> Self {
+        self.pr_creation_guard = Some(guard);
+        self
+    }
+
+    /// Set the GitHub service for PR integration (builder pattern).
+    pub fn with_github_service(mut self, svc: Arc<dyn GithubServiceTrait>) -> Self {
+        self.github_service = Some(svc);
+        self
+    }
+
+    /// Set the task transition service for PR merge poller (builder pattern).
+    /// The poller uses this to fire Merging → Merged when GitHub reports the PR as merged.
+    pub fn with_transition_service(mut self, svc: Arc<TaskTransitionService<Wry>>) -> Self {
+        self.transition_service = Some(svc);
+        self
+    }
+
     /// Creates a TaskServices with all mock implementations for testing
     pub fn new_mock() -> Self {
         use crate::application::MockChatService;
@@ -246,6 +301,10 @@ impl TaskServices {
             ideation_session_repo: None,
             validation_tokens: Arc::new(DashMap::new()),
             activity_event_repo: None,
+            pr_poller_registry: None,
+            pr_creation_guard: None,
+            github_service: None,
+            transition_service: None,
         }
     }
 }
@@ -305,6 +364,28 @@ impl std::fmt::Debug for TaskServices {
                     .activity_event_repo
                     .as_ref()
                     .map(|_| "<ActivityEventRepository>"),
+            )
+            .field(
+                "pr_poller_registry",
+                &self
+                    .pr_poller_registry
+                    .as_ref()
+                    .map(|_| "<PrPollerRegistry>"),
+            )
+            .field(
+                "pr_creation_guard",
+                &self
+                    .pr_creation_guard
+                    .as_ref()
+                    .map(|g| format!("<DashMap len={}>", g.len())),
+            )
+            .field(
+                "github_service",
+                &self.github_service.as_ref().map(|_| "<GithubService>"),
+            )
+            .field(
+                "transition_service",
+                &self.transition_service.as_ref().map(|_| "<TaskTransitionService>"),
             )
             .finish()
     }

@@ -330,12 +330,16 @@ pub fn run() {
             let shared_permission_state = Arc::clone(&app_state.permission_state);
             let shared_message_queue = Arc::clone(&app_state.message_queue);
             let shared_interactive_process_registry = Arc::clone(&app_state.interactive_process_registry);
+            let shared_github_service = app_state.github_service.clone();
+            let shared_pr_poller_registry = Arc::clone(&app_state.pr_poller_registry);
             let mut http_app_state_inner =
                 AppState::new_production_shared(app_handle, shared_db_conn).expect("Failed to initialize AppState for HTTP server");
             http_app_state_inner.question_state = shared_question_state;
             http_app_state_inner.permission_state = shared_permission_state;
             http_app_state_inner.message_queue = shared_message_queue;
             http_app_state_inner.interactive_process_registry = shared_interactive_process_registry;
+            http_app_state_inner.github_service = shared_github_service;
+            http_app_state_inner.pr_poller_registry = shared_pr_poller_registry;
             let http_app_state = Arc::new(http_app_state_inner);
             // Spawn HTTP server with pre-cloned state
             tauri::async_runtime::spawn(async move {
@@ -384,6 +388,7 @@ pub fn run() {
             let startup_interactive_process_registry = Arc::clone(&app_state.interactive_process_registry);
             let startup_review_repo = Arc::clone(&app_state.review_repo);
             let startup_external_events_repo = Arc::clone(&app_state.external_events_repo);
+            let startup_pr_poller_registry = Arc::clone(&app_state.pr_poller_registry);
             // Clone app handle to enable event emission in startup tasks
             let startup_app_handle = app.handle().clone();
 
@@ -492,6 +497,18 @@ pub fn run() {
                 .with_step_repo(Arc::clone(&startup_step_repo))
                 .with_interactive_process_registry(Arc::clone(&startup_interactive_process_registry))
                 .with_external_events_repo(Arc::clone(&startup_external_events_repo)));
+
+                // PR startup recovery: restart pollers for tasks that were polling when app shut down.
+                // Must run BEFORE StartupJobRunner to prevent reconciler re-entering on_enter(Merging)
+                // for PR-mode tasks before their pollers exist.
+                tracing::info!("Running PR startup recovery...");
+                crate::application::pr_startup_recovery::recover_pr_pollers(
+                    Arc::clone(&startup_task_repo),
+                    Arc::clone(&startup_plan_branch_repo),
+                    Arc::clone(&startup_pr_poller_registry),
+                    Arc::clone(&startup_project_repo),
+                    Arc::clone(&transition_service),
+                ).await;
 
                 let runner = StartupJobRunner::new(
                     startup_task_repo,
@@ -864,6 +881,9 @@ pub fn run() {
             commands::project_commands::get_git_default_branch,
             commands::project_commands::reanalyze_project,
             commands::project_commands::update_custom_analysis,
+            commands::project_commands::get_git_remote_url,
+            commands::project_commands::check_gh_auth,
+            commands::project_commands::update_github_pr_enabled,
             commands::agent_profile_commands::list_agent_profiles,
             commands::agent_profile_commands::get_agent_profile,
             commands::agent_profile_commands::get_agent_profiles_by_role,
@@ -1062,6 +1082,7 @@ pub fn run() {
             commands::git_commands::change_project_git_mode,
             // Plan branch commands (Phase 85 - Feature branch for plan groups)
             commands::plan_branch_commands::get_plan_branch,
+            commands::plan_branch_commands::get_plan_branch_by_task_id,
             commands::plan_branch_commands::get_project_plan_branches,
             commands::plan_branch_commands::enable_feature_branch,
             commands::plan_branch_commands::disable_feature_branch,

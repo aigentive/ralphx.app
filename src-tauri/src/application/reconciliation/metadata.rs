@@ -273,6 +273,17 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .map_err(|e| e.to_string())
     }
 
+    /// Returns true if the task has mode_switch=true in metadata (AD12).
+    /// Set by handle_pr_mode_switch when toggling PR→push-to-main mid-Merging.
+    /// Used by reconcile_merge_incomplete_task to bypass all guards and retry immediately.
+    pub(crate) fn is_mode_switch(task: &Task) -> bool {
+        task.metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| v.get("mode_switch").and_then(|v| v.as_bool()))
+            .unwrap_or(false)
+    }
+
     /// Returns true if the circuit breaker has been triggered, preventing auto-retry.
     /// The circuit breaker is cleared when the user manually retries.
     pub(crate) fn is_circuit_breaker_active(task: &Task) -> bool {

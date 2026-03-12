@@ -11,7 +11,7 @@
  */
 
 import { useDraggable } from "@dnd-kit/core";
-import { GripVertical, FileText, Lightbulb, Clock, Ban, GitBranch } from "lucide-react";
+import { GripVertical, FileText, Lightbulb, Clock, Ban, GitBranch, GitPullRequest } from "lucide-react";
 import { useState, useMemo, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -46,6 +46,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
 import { toast } from "sonner";
 import { useTaskExecutionState, formatDuration } from "@/hooks/useTaskExecutionState";
+import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 import { StepProgressBar } from "@/components/tasks/StepProgressBar";
 import { TaskStatusBadge } from "./TaskStatusBadge";
 import { getCardStyles, isDraggableStatus } from "./TaskCard.utils";
@@ -111,6 +112,11 @@ export function TaskCard({
 
   // Execution state
   const executionState = useTaskExecutionState(task.id);
+
+  // PR mode — fetch plan branch only for plan_merge tasks
+  const isPlanMerge = task.category === "plan_merge";
+  const { data: planBranch } = usePlanBranchForTask(task.id, { enabled: isPlanMerge });
+  const isPrMode = isPlanMerge && planBranch?.prEligible === true && planBranch?.prNumber != null;
 
   // Mutations
   const {
@@ -400,6 +406,27 @@ export function TaskCard({
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs">
                   <p className="text-xs font-mono">{task.taskBranch}</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+
+          {/* PR mode indicator — shown when plan_merge task has active PR */}
+          {isPrMode && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <div
+                    data-testid="pr-mode-indicator"
+                    className="inline-flex items-center gap-1"
+                    style={{ color: "#34c759" }}
+                  >
+                    <GitPullRequest className="w-3 h-3 flex-shrink-0" />
+                    <span className="text-[10px]">Review PR</span>
+                  </div>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  PR #{planBranch?.prNumber} — waiting for GitHub PR merge
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>

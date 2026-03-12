@@ -3,6 +3,7 @@
 
 pub mod agents;
 pub mod memory;
+pub mod services;
 pub mod sqlite;
 pub mod supervisor;
 pub mod external_mcp_supervisor;
@@ -11,6 +12,7 @@ pub mod external_mcp_supervisor;
 pub use agents::{
     AgenticClientSpawner, ClaudeCodeClient, MockAgenticClient, MockCall, MockCallType,
 };
+pub use services::GhCliGithubService;
 pub use sqlite::{get_default_db_path, open_connection, open_memory_connection, run_migrations};
 pub use supervisor::{EventBus, EventSubscriber};
 pub use external_mcp_supervisor::{ExternalMcpHandle, ExternalMcpSupervisor};

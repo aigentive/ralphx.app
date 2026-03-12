@@ -205,3 +205,21 @@ mod reviewing_conflict_marker_tests;
 //   Tests: source_update_conflict, plan_update_conflict, normal pipeline no-op,
 //          no-flags skip, and clear_routing_flags() unit test
 mod freshness_merge_worktree_tests;
+
+// Cascade stop poller cleanup + post_merge_cleanup PR fork (AD11, AD17):
+//   1. cascade_stop calls stop_polling for each sibling BEFORE persist_status_change
+//   2. cascade_stop decrements running_count for PR-mode Merging siblings
+//   3. post_merge_cleanup PR mode: delete_remote_branch for plan + task branches
+//   4. push-to-main mode: delete_remote_branch NOT called
+//   5. no poller registry: cascade proceeds normally without panic
+mod cascade_poller_cleanup_tests;
+
+// PR-mode state machine integration tests (Phase 3 GitHub PR integration):
+//   1. existing pr_number → push_branch + mark_pr_ready (no create_draft_pr)
+//   2. no pr_number → create_draft_pr + mark_pr_ready
+//   3. pr_eligible=false → skips PR path entirely
+//   4. re-entry guard: pr_polling_active=true, no registry → proceeds
+//   5. AD14: PR-polling task in Merging does not block PendingMerge task
+//   6. post_merge_cleanup idempotency: Merged plan branch → early return
+//   7. no github_service wired → falls through to push-to-main
+mod pr_mode_state_machine_tests;

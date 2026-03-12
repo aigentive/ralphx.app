@@ -6601,3 +6601,56 @@ fn should_circuit_break_returns_none_without_metadata() {
         "should_circuit_break should return None when no metadata"
     );
 }
+
+// ── is_mode_switch tests ──────────────────────────────────────────────────────
+
+#[test]
+fn is_mode_switch_returns_true_when_set() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Mode Switch Task".to_string(),
+    );
+    task.metadata = Some(r#"{"mode_switch":true}"#.to_string());
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::is_mode_switch(&task),
+        "is_mode_switch should return true when mode_switch=true in metadata"
+    );
+}
+
+#[test]
+fn is_mode_switch_returns_false_without_metadata() {
+    let task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "No Metadata Task".to_string(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::is_mode_switch(&task),
+        "is_mode_switch should return false when no metadata"
+    );
+}
+
+#[test]
+fn is_mode_switch_returns_false_when_explicitly_false() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Not Mode Switch".to_string(),
+    );
+    task.metadata = Some(r#"{"mode_switch":false}"#.to_string());
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::is_mode_switch(&task),
+        "is_mode_switch should return false when mode_switch=false"
+    );
+}
+
+#[test]
+fn is_mode_switch_returns_false_with_other_metadata() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Other Metadata Task".to_string(),
+    );
+    task.metadata = Some(r#"{"merge_failure_source":"agent_reported"}"#.to_string());
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::is_mode_switch(&task),
+        "is_mode_switch should return false when mode_switch key is absent"
+    );
+}

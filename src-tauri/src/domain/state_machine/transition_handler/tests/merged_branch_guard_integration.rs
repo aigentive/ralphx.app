@@ -371,7 +371,7 @@ async fn integration_resolve_base_branch_fallback_for_merged() {
     let task_repo_opt: Option<Arc<dyn TaskRepository>> = None;
 
     let result =
-        resolve_task_base_branch(&task, &project, &pb_repo_opt, &task_repo_opt).await;
+        resolve_task_base_branch(&task, &project, &pb_repo_opt, &task_repo_opt, &None, &None).await;
 
     assert_eq!(
         result, "develop",

@@ -22,6 +22,8 @@ import {
   RefreshCw,
   Square,
   Info,
+  ExternalLink,
+  GitPullRequest,
 } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useConflictDiff } from "@/hooks/useConflictDiff";
@@ -44,6 +46,8 @@ import { taskKeys } from "@/hooks/useTasks";
 import type { Task } from "@/types/task";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
 import { useMergePipeline } from "@/hooks/useMergePipeline";
+import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
+import { PrStatusBadge } from "./shared/PrStatusBadge";
 
 const FRESHNESS_BANNER_COPY: Record<string, string> = {
   executing: "Stale branches detected when starting execution. Task will resume execution after resolution.",
@@ -299,6 +303,71 @@ function MergeProgressSteps({
   );
 }
 
+/**
+ * PrModeCard - Shows PR status when task is in PR polling mode
+ */
+function PrModeCard({
+  planBranch,
+}: {
+  planBranch: {
+    prNumber: number;
+    prUrl: string | null;
+    prStatus: "Draft" | "Open" | "Merged" | "Closed" | null;
+    prPollingActive: boolean;
+  };
+}) {
+  const handleOpenInGithub = async () => {
+    if (planBranch.prUrl) {
+      const { openUrl } = await import("@tauri-apps/plugin-opener");
+      await openUrl(planBranch.prUrl);
+    }
+  };
+
+  return (
+    <DetailCard>
+      <div className="space-y-3">
+        {/* PR Number + Status */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <GitPullRequest className="w-4 h-4" style={{ color: "#34c759" }} />
+            <span className="text-[13px] font-medium text-white/80">
+              PR #{planBranch.prNumber}
+            </span>
+          </div>
+          {planBranch.prStatus && <PrStatusBadge status={planBranch.prStatus} />}
+        </div>
+
+        {/* Polling indicator */}
+        {planBranch.prPollingActive && (
+          <div className="flex items-center gap-1.5">
+            <Loader2
+              className="w-3.5 h-3.5 animate-spin"
+              style={{ color: "rgba(255,255,255,0.4)" }}
+            />
+            <span className="text-[12px] text-white/40">Monitoring PR status</span>
+          </div>
+        )}
+
+        {/* Open in GitHub button */}
+        {planBranch.prUrl && (
+          <button
+            type="button"
+            onClick={handleOpenInGithub}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-md text-[12px] font-medium transition-colors cursor-pointer"
+            style={{
+              backgroundColor: "rgba(52, 199, 89, 0.12)",
+              color: "#34c759",
+            }}
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            Open in GitHub
+          </button>
+        )}
+      </div>
+    </DetailCard>
+  );
+}
+
 export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTaskDetailProps) {
   // Action buttons state
   const queryClient = useQueryClient();
@@ -429,6 +498,10 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
 
   const branchName = task.taskBranch ?? "task branch";
 
+  // PR mode: fetch plan branch for PR status display
+  const { data: planBranch } = usePlanBranchForTask(task.id);
+  const isPrMode = isAgentPhase && planBranch?.prEligible === true && planBranch?.prNumber != null;
+
   // Resolve target branch: pipeline (most accurate) → metadata fallback
   const { data: pipelineData } = useMergePipeline(task.projectId);
   const pipelineTask = [
@@ -542,6 +615,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               : "Resolving Conflicts"
             : isProgrammaticPhase
             ? "Merging Changes..."
+            : isPrMode
+            ? "Waiting for PR Merge"
             : isValidationRecovery
             ? "Fixing Validation Errors..."
             : mergeConflictContext?.type === "plan_update"
@@ -567,6 +642,8 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
               : "Agent was resolving conflicts"
             : isProgrammaticPhase
             ? "Attempting to merge..."
+            : isPrMode
+            ? "Monitoring GitHub PR status — merge will complete automatically"
             : isValidationRecovery
             ? "AI agent is fixing build errors"
             : mergeConflictContext?.type === "plan_update"
@@ -627,6 +704,21 @@ export function MergingTaskDetail({ task, isHistorical, viewStatus }: MergingTas
           />
         }
       />
+
+      {/* PR Mode: show PR status when polling */}
+      {isPrMode && planBranch && (
+        <section data-testid="pr-mode-section">
+          <SectionTitle>Pull Request</SectionTitle>
+          <PrModeCard
+            planBranch={{
+              prNumber: planBranch.prNumber!,
+              prUrl: planBranch.prUrl,
+              prStatus: planBranch.prStatus,
+              prPollingActive: planBranch.prPollingActive,
+            }}
+          />
+        </section>
+      )}
 
       {/* Merge Progress — high-level steps for historical, agent, and validation recovery (fixing) modes */}
       {(isHistorical || isAgentPhase || (isValidationRecovery && !isRevalidating)) && (

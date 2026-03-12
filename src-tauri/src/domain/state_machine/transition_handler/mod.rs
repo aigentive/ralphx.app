@@ -286,6 +286,21 @@ impl<'a> TransitionHandler<'a> {
             _ => {}
         }
 
+        // Defense-in-depth: stop poller when task transitions to Stopped or Cancelled
+        // via normal state machine paths (non-cascade). This handles user-initiated stops,
+        // bulk cancels, and any other path that bypasses cascade_stop_sibling_tasks. (AD11)
+        if matches!(to, State::Stopped | State::Cancelled) {
+            if let Some(ref registry) = self.machine.context.services.pr_poller_registry {
+                let task_id = TaskId::from_string(self.machine.context.task_id.clone());
+                registry.stop_polling(&task_id);
+                tracing::debug!(
+                    task_id = %self.machine.context.task_id,
+                    to_state = ?to,
+                    "on_exit: stopped poller (defense-in-depth for Stopped/Cancelled)"
+                );
+            }
+        }
+
         // State-specific exit actions
         match from {
             State::Executing | State::ReExecuting => {
