@@ -2,6 +2,7 @@ use super::*;
 use crate::application::AppState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{ProjectId, Task};
+use crate::http_server::project_scope::ProjectScope;
 use std::sync::Arc;
 
 async fn setup_test_state() -> HttpServerState {
@@ -540,6 +541,139 @@ async fn test_skip_step_all_done_removes_ipr() {
     );
 
     let _ = child.kill().await;
+}
+
+// ============================================================================
+// get_task_steps_http scope guard tests
+// ============================================================================
+
+/// get_task_steps_http — no scope header (internal agent) returns steps without checking project.
+#[tokio::test]
+async fn test_get_task_steps_no_scope_header_returns_steps() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let task = Task::new(project_id.clone(), "Steps task".to_string());
+    let task_id = task.id.clone();
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    // Create 2 steps
+    state
+        .app_state
+        .task_step_repo
+        .create(TaskStep::new(
+            task_id.clone(),
+            "Step 1".to_string(),
+            0,
+            "test".to_string(),
+        ))
+        .await
+        .unwrap();
+    state
+        .app_state
+        .task_step_repo
+        .create(TaskStep::new(
+            task_id.clone(),
+            "Step 2".to_string(),
+            1,
+            "test".to_string(),
+        ))
+        .await
+        .unwrap();
+
+    // No scope header → ProjectScope(None) → unrestricted
+    let result = get_task_steps_http(
+        State(state.clone()),
+        ProjectScope(None),
+        Path(task_id.as_str().to_string()),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.0.len(), 2);
+    assert_eq!(result.0[0].title, "Step 1");
+    assert_eq!(result.0[1].title, "Step 2");
+}
+
+/// get_task_steps_http — no steps returns empty list.
+#[tokio::test]
+async fn test_get_task_steps_empty_returns_empty_list() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let task = Task::new(project_id.clone(), "Empty steps task".to_string());
+    let task_id = task.id.clone();
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    let result = get_task_steps_http(
+        State(state.clone()),
+        ProjectScope(None),
+        Path(task_id.as_str().to_string()),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.0.is_empty(), "expected empty list when no steps exist");
+}
+
+/// get_task_steps_http — scope header present with matching project ID returns steps.
+#[tokio::test]
+async fn test_get_task_steps_scope_header_matching_project_returns_steps() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let task = Task::new(project_id.clone(), "Scoped task".to_string());
+    let task_id = task.id.clone();
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    state
+        .app_state
+        .task_step_repo
+        .create(TaskStep::new(
+            task_id.clone(),
+            "Scoped step".to_string(),
+            0,
+            "test".to_string(),
+        ))
+        .await
+        .unwrap();
+
+    // Scope header present, project_id matches → allowed
+    let result = get_task_steps_http(
+        State(state.clone()),
+        ProjectScope(Some(vec![project_id.clone()])),
+        Path(task_id.as_str().to_string()),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(result.0.len(), 1);
+    assert_eq!(result.0[0].title, "Scoped step");
+}
+
+/// get_task_steps_http — scope header present with different project ID returns 403.
+#[tokio::test]
+async fn test_get_task_steps_scope_header_mismatched_project_returns_403() {
+    let state = setup_test_state().await;
+    let project_id = ProjectId::new();
+    let task = Task::new(project_id.clone(), "Scoped task mismatch".to_string());
+    let task_id = task.id.clone();
+    state.app_state.task_repo.create(task).await.unwrap();
+
+    // Scope header present with a DIFFERENT project ID → 403 Forbidden
+    let other_project_id = ProjectId::new();
+    let result = get_task_steps_http(
+        State(state.clone()),
+        ProjectScope(Some(vec![other_project_id])),
+        Path(task_id.as_str().to_string()),
+    )
+    .await;
+
+    match result {
+        Err(status) => assert_eq!(
+            status,
+            axum::http::StatusCode::FORBIDDEN,
+            "expected 403 when task's project is not in scope"
+        ),
+        Ok(_) => panic!("expected 403 for out-of-scope project"),
+    }
 }
 
 /// complete_step with only some steps done keeps IPR entry intact.

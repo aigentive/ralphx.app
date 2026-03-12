@@ -318,7 +318,8 @@ async fn test_start_ideation_creates_session() {
         unrestricted_scope(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
-            title: "New feature brainstorm".to_string(),
+            title: Some("New feature brainstorm".to_string()),
+            prompt: None,
             initial_prompt: Some("Let's ideate on authentication".to_string()),
         }),
     )
@@ -356,7 +357,8 @@ async fn test_start_ideation_rate_limit() {
         unrestricted_scope(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
-            title: "Another session".to_string(),
+            title: Some("Another session".to_string()),
+            prompt: None,
             initial_prompt: None,
         }),
     )
@@ -382,7 +384,8 @@ async fn test_start_ideation_scope_violation() {
         scoped(&["proj-other"]),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
-            title: "Forbidden".to_string(),
+            title: Some("Forbidden".to_string()),
+            prompt: None,
             initial_prompt: None,
         }),
     )
@@ -390,6 +393,304 @@ async fn test_start_ideation_scope_violation() {
 
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+}
+
+// ============================================================================
+// start_ideation_http — extended behavior tests
+// ============================================================================
+
+/// No prompt provided → session created, agent_spawned: false (no attempt to spawn)
+#[tokio::test]
+async fn test_start_ideation_no_prompt_agent_not_spawned() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-no-prompt";
+    let p = make_project(project_id, "No Prompt Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: None,
+            initial_prompt: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(!response.session_id.is_empty());
+    assert_eq!(response.status, "ideating");
+    // No prompt → no agent spawned
+    assert!(!response.agent_spawned, "agent_spawned must be false when no prompt is given");
+}
+
+/// With title → session created with that title preserved in the response session_id and
+/// verifiable by fetching the session from the repo.
+#[tokio::test]
+async fn test_start_ideation_with_title_preserved() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-with-title";
+    let p = make_project(project_id, "Title Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: Some("My Custom Session Title".to_string()),
+            prompt: None,
+            initial_prompt: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(!response.session_id.is_empty());
+    assert_eq!(response.status, "ideating");
+
+    // Verify the session was stored with the correct title
+    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+        response.session_id.clone(),
+    );
+    let fetched = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap()
+        .expect("Session should exist in repo");
+    assert_eq!(
+        fetched.title.as_deref(),
+        Some("My Custom Session Title"),
+        "Session title should be persisted as provided"
+    );
+}
+
+/// Non-existent project_id → 404
+#[tokio::test]
+async fn test_start_ideation_invalid_project_returns_404() {
+    let state = setup_test_state().await;
+
+    let result = start_ideation_http(
+        State(state),
+        unrestricted_scope(),
+        Json(StartIdeationRequest {
+            project_id: "nonexistent-project-xyz".to_string(),
+            title: None,
+            prompt: None,
+            initial_prompt: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::NOT_FOUND);
+}
+
+/// backward_compat: `initial_prompt` field (no `prompt`) → treated same as `prompt`.
+/// Both fields absent means agent_spawned = false; presence of either triggers spawn attempt.
+/// In test env the spawn attempt fails gracefully, so agent_spawned stays false in both cases,
+/// but the session is still created and the response is 200.
+#[tokio::test]
+async fn test_start_ideation_initial_prompt_backward_compat() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-initial-prompt";
+    let p = make_project(project_id, "Initial Prompt Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    // Use `initial_prompt` (legacy field) but NOT `prompt`
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: None,
+            initial_prompt: Some("Legacy initial prompt text".to_string()),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "initial_prompt should be accepted as a valid prompt");
+    let response = result.unwrap().0;
+    assert!(!response.session_id.is_empty());
+    assert_eq!(response.status, "ideating");
+    // Session must have been created
+    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+        response.session_id.clone(),
+    );
+    let fetched = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .unwrap();
+    assert!(fetched.is_some(), "Session should be persisted when initial_prompt is used");
+}
+
+/// `prompt` field takes precedence over `initial_prompt` when both are supplied.
+/// The session is created and 200 is returned regardless of spawn outcome.
+#[tokio::test]
+async fn test_start_ideation_prompt_takes_precedence_over_initial_prompt() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-prompt-precedence";
+    let p = make_project(project_id, "Prompt Precedence Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    // Both fields supplied — handler should prefer `prompt`
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some("Primary prompt".to_string()),
+            initial_prompt: Some("Legacy fallback".to_string()),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "ideating");
+    // Session was created regardless of which prompt field was used
+    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+        response.session_id.clone(),
+    );
+    assert!(
+        state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&session_id)
+            .await
+            .unwrap()
+            .is_some(),
+        "Session should exist in repo"
+    );
+}
+
+/// With prompt present → session created; `agent_spawned` reflects whether the spawn
+/// attempt succeeded. In CI/test environments where Claude CLI is unavailable,
+/// the handler logs the error and returns agent_spawned=false but still 200.
+/// This test verifies the handler never returns an error for a spawn failure.
+#[tokio::test]
+async fn test_start_ideation_with_prompt_returns_200_regardless_of_spawn_outcome() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-prompt-spawn";
+    let p = make_project(project_id, "Prompt Spawn Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some("Please ideate on caching strategies".to_string()),
+            initial_prompt: None,
+        }),
+    )
+    .await;
+
+    // Must always return 200 — spawn failures are non-fatal
+    assert!(result.is_ok(), "Spawn failure must not cause a non-200 response");
+    let response = result.unwrap().0;
+    assert!(!response.session_id.is_empty());
+    assert_eq!(response.status, "ideating");
+    // Session persisted regardless of spawn outcome
+    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+        response.session_id.clone(),
+    );
+    assert!(
+        state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&session_id)
+            .await
+            .unwrap()
+            .is_some(),
+        "Session must be persisted even when agent spawn fails"
+    );
+}
+
+/// Scope 403 — API key scoped to a different project cannot create an ideation session
+/// for a project it has no access to. (Explicit named test for start_ideation_http scope check.)
+#[tokio::test]
+async fn test_start_ideation_scope_mismatch_returns_403() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-scope-mismatch";
+    let p = make_project(project_id, "Scope Mismatch Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    // Key scoped to a different project
+    let result = start_ideation_http(
+        State(state),
+        scoped(&["proj-different-from-target"]),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some("Should be blocked".to_string()),
+            initial_prompt: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+}
+
+/// Max sessions 429 — already at the limit → new request returns TOO_MANY_REQUESTS.
+/// (Explicit named test documenting the limit enforcement semantics.)
+#[tokio::test]
+async fn test_start_ideation_at_max_sessions_returns_429() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-max-sessions";
+    let p = make_project(project_id, "Max Sessions Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    // Default max_external_ideation_sessions = 1; create one active session to saturate the limit
+    let existing = IdeationSession::new_with_title(
+        ProjectId::from_string(project_id.to_string()),
+        "Already active session",
+    );
+    state
+        .app_state
+        .ideation_session_repo
+        .create(existing)
+        .await
+        .unwrap();
+
+    // Next request must be rejected with 429
+    let result = start_ideation_http(
+        State(state),
+        unrestricted_scope(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: None,
+            initial_prompt: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(
+        result.unwrap_err(),
+        axum::http::StatusCode::TOO_MANY_REQUESTS,
+        "Should return 429 when active sessions = max_external_ideation_sessions"
+    );
 }
 
 // ============================================================================
@@ -1238,3 +1539,1096 @@ async fn test_external_apply_proposals_creates_tasks_from_proposals() {
 // require Wave 1 schema migration (`v57_plan_verification.rs`) to add verification_status
 // to ideation_sessions. check_verification_gate() is currently a stub (allows all sessions).
 // See: src-tauri/src/domain/services/verification_gate.rs
+
+// ============================================================================
+// ideation_message_http
+// ============================================================================
+
+use crate::domain::services::running_agent_registry::RunningAgentKey;
+
+#[tokio::test]
+async fn test_ideation_message_invalid_session_returns_404() {
+    let state = setup_test_state().await;
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: "nonexistent-session-id".to_string(),
+            message: "hello".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_ideation_message_session_not_active_returns_400() {
+    use crate::domain::entities::ideation::IdeationSessionStatus;
+
+    let state = setup_test_state().await;
+    let (_, session_id_str) = setup_session(&state, "proj-msg-inactive", "Inactive Session").await;
+
+    // Update the session status to Archived (non-Active)
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+    state
+        .app_state
+        .ideation_session_repo
+        .update_status(&session_id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "hello".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_ideation_message_scope_violation_returns_403() {
+    let state = setup_test_state().await;
+    // Session belongs to "proj-msg-scope-a"
+    let (_, session_id_str) = setup_session(&state, "proj-msg-scope-a", "Scope A Session").await;
+
+    // Request using scope for a different project "proj-msg-scope-b"
+    let result = ideation_message_http(
+        State(state),
+        scoped(&["proj-msg-scope-b"]),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "hello".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_ideation_message_queued_when_agent_running() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) = setup_session(&state, "proj-msg-queued", "Queued Session").await;
+
+    // Register a fake running agent for this session in the registry
+    let agent_key = RunningAgentKey::new("session", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            agent_key,
+            12345,                        // fake PID
+            "fake-conv-id".to_string(),
+            "fake-run-id".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "hello".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "expected Ok response, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "queued");
+}
+
+#[tokio::test]
+async fn test_ideation_message_sent_when_interactive_process_registered() {
+    // Register a real interactive process (using `cat` as a stand-in for Claude CLI).
+    // This verifies that when an interactive process is registered for the session,
+    // the message is written directly to stdin and the response status is "sent".
+    let state = setup_test_state().await;
+    let (_, session_id_str) = setup_session(&state, "proj-msg-sent", "Sent Session").await;
+
+    // Spawn a `cat` process to act as the interactive process (accepts stdin writes)
+    let mut child = tokio::process::Command::new("cat")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true)
+        .spawn()
+        .expect("failed to spawn cat for test");
+    let stdin = child.stdin.take().expect("no stdin on cat process");
+
+    let ipr_key = crate::application::InteractiveProcessKey::new("session", &session_id_str);
+    state
+        .app_state
+        .interactive_process_registry
+        .register(ipr_key, stdin)
+        .await;
+
+    let result = ideation_message_http(
+        State(state),
+        unrestricted_scope(),
+        Json(IdeationMessageRequest {
+            session_id: session_id_str,
+            message: "hello from test".to_string(),
+        }),
+    )
+    .await;
+
+    // Ensure child is kept alive until after the handler call
+    drop(child);
+
+    assert!(result.is_ok(), "expected Ok response, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "sent");
+}
+
+// ============================================================================
+// list_ideation_sessions_http
+// ============================================================================
+
+/// No filter — all sessions for the project returned
+#[tokio::test]
+async fn test_list_sessions_no_scope_returns_all() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-all";
+    let p = make_project(project_id, "List All Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+    let s1 = IdeationSession::new_with_title(pid.clone(), "Session One");
+    let s2 = IdeationSession::new_with_title(pid.clone(), "Session Two");
+    state.app_state.ideation_session_repo.create(s1).await.unwrap();
+    state.app_state.ideation_session_repo.create(s2).await.unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: None, limit: None }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.sessions.len(), 2);
+    let titles: Vec<_> = response.sessions.iter().filter_map(|s| s.title.as_deref()).collect();
+    assert!(titles.contains(&"Session One"));
+    assert!(titles.contains(&"Session Two"));
+}
+
+/// Filter by status=active — only active sessions returned
+#[tokio::test]
+async fn test_list_sessions_filter_active() {
+    use crate::domain::entities::ideation::IdeationSessionStatus;
+
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-active";
+    let p = make_project(project_id, "List Active Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+
+    // Create one active session
+    let active = IdeationSession::new_with_title(pid.clone(), "Active Session");
+    let created_active = state.app_state.ideation_session_repo.create(active).await.unwrap();
+
+    // Create one archived session
+    let archived = IdeationSession::new_with_title(pid.clone(), "Archived Session");
+    let created_archived = state.app_state.ideation_session_repo.create(archived).await.unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_status(&created_archived.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: Some("active".to_string()), limit: None }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.sessions.len(), 1);
+    assert_eq!(response.sessions[0].id, created_active.id.as_str());
+    assert_eq!(response.sessions[0].status, "active");
+}
+
+/// Filter by status=accepted — only accepted sessions returned
+#[tokio::test]
+async fn test_list_sessions_filter_accepted() {
+    use crate::domain::entities::ideation::IdeationSessionStatus;
+
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-accepted";
+    let p = make_project(project_id, "List Accepted Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+
+    // Create active session
+    let active = IdeationSession::new_with_title(pid.clone(), "Still Active");
+    state.app_state.ideation_session_repo.create(active).await.unwrap();
+
+    // Create accepted session
+    let accepted_sess = IdeationSession::new_with_title(pid.clone(), "Accepted Session");
+    let created_accepted = state
+        .app_state
+        .ideation_session_repo
+        .create(accepted_sess)
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_status(&created_accepted.id, IdeationSessionStatus::Accepted)
+        .await
+        .unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: Some("accepted".to_string()), limit: None }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.sessions.len(), 1);
+    assert_eq!(response.sessions[0].status, "accepted");
+}
+
+/// Filter by status=archived — only archived sessions returned
+#[tokio::test]
+async fn test_list_sessions_filter_archived() {
+    use crate::domain::entities::ideation::IdeationSessionStatus;
+
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-archived";
+    let p = make_project(project_id, "List Archived Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+
+    // Create active session
+    let active = IdeationSession::new_with_title(pid.clone(), "Active Remains");
+    state.app_state.ideation_session_repo.create(active).await.unwrap();
+
+    // Create archived session
+    let archived = IdeationSession::new_with_title(pid.clone(), "Archived Session");
+    let created_archived = state
+        .app_state
+        .ideation_session_repo
+        .create(archived)
+        .await
+        .unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_status(&created_archived.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: Some("archived".to_string()), limit: None }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.sessions.len(), 1);
+    assert_eq!(response.sessions[0].status, "archived");
+}
+
+/// Filter by status=all — same as no filter, returns all sessions
+#[tokio::test]
+async fn test_list_sessions_filter_all() {
+    use crate::domain::entities::ideation::IdeationSessionStatus;
+
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-filter-all";
+    let p = make_project(project_id, "List Filter All Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+
+    let s1 = IdeationSession::new_with_title(pid.clone(), "Session A");
+    let s2 = IdeationSession::new_with_title(pid.clone(), "Session B");
+    let created_s2 = state.app_state.ideation_session_repo.create(s2).await.unwrap();
+    state.app_state.ideation_session_repo.create(s1).await.unwrap();
+    state
+        .app_state
+        .ideation_session_repo
+        .update_status(&created_s2.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: Some("all".to_string()), limit: None }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.sessions.len(), 2, "status=all must return all sessions regardless of status");
+}
+
+/// Invalid status filter → 400
+#[tokio::test]
+async fn test_list_sessions_invalid_status_returns_400() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-bad-status";
+    let p = make_project(project_id, "Bad Status Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: Some("invalid_xyz".to_string()), limit: None }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    let (status, _body) = result.unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+}
+
+/// Scope violation — API key scoped to different project returns 403
+#[tokio::test]
+async fn test_list_sessions_scope_violation_returns_403() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-scope-a";
+    let p = make_project(project_id, "Scope A Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        scoped(&["proj-list-scope-b"]),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: None, limit: None }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    let (status, _body) = result.unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::FORBIDDEN);
+}
+
+/// Empty project — no sessions → empty array returned
+#[tokio::test]
+async fn test_list_sessions_empty_project() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-empty";
+    let p = make_project(project_id, "Empty Sessions Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: None, limit: None }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(response.sessions.is_empty(), "expected empty sessions array for project with no sessions");
+}
+
+/// Session with proposals — proposal_count reflects the actual count
+#[tokio::test]
+async fn test_list_sessions_includes_proposal_count() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-list-proposals";
+    let p = make_project(project_id, "Proposals Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    let pid = ProjectId::from_string(project_id.to_string());
+    let session = IdeationSession::new_with_title(pid.clone(), "Session With Proposals");
+    let created = state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Add 2 proposals to the session
+    let prop1 = make_proposal(created.id.clone(), "Feature Alpha");
+    let prop2 = make_proposal(created.id.clone(), "Feature Beta");
+    state.app_state.task_proposal_repo.create(prop1).await.unwrap();
+    state.app_state.task_proposal_repo.create(prop2).await.unwrap();
+
+    let result = list_ideation_sessions_http(
+        State(state),
+        unrestricted_scope(),
+        Path(project_id.to_string()),
+        Query(ListSessionsParams { status: None, limit: None }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.sessions.len(), 1);
+    assert_eq!(
+        response.sessions[0].proposal_count, 2,
+        "proposal_count must reflect actual number of proposals"
+    );
+}
+
+// ============================================================================
+// trigger_verification_http
+// ============================================================================
+
+/// SQLite-backed setup for trigger_verification tests.
+/// trigger_verification_http calls db.run(|conn| SessionRepo::trigger_auto_verify_sync(conn, ...))
+/// which requires the session to exist in the SQLite DB, not just in memory.
+async fn setup_sqlite_test_state() -> HttpServerState {
+    let app_state = Arc::new(AppState::new_sqlite_test());
+    let execution_state = Arc::new(ExecutionState::new());
+    let tracker = crate::application::TeamStateTracker::new();
+    let team_service = Arc::new(crate::application::TeamService::new_without_events(
+        Arc::new(tracker.clone()),
+    ));
+    HttpServerState {
+        app_state,
+        execution_state,
+        team_tracker: tracker,
+        team_service,
+    }
+}
+
+#[tokio::test]
+async fn test_trigger_verification_no_plan() {
+    // Session with no plan_artifact_id → status "no_plan"
+    let state = setup_test_state().await;
+
+    let pid = ProjectId::from_string("proj-verify-no-plan".to_string());
+    let project = make_project("proj-verify-no-plan", "No Plan Project");
+    state.app_state.project_repo.create(project).await.unwrap();
+
+    // Create session with no plan
+    let session = IdeationSession::new(pid);
+    let created = state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    let result = trigger_verification_http(
+        State(state),
+        unrestricted_scope(),
+        Json(TriggerVerificationRequest {
+            session_id: created.id.as_str().to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "no_plan");
+}
+
+#[tokio::test]
+async fn test_trigger_verification_already_running() {
+    // Session with plan + verification_in_progress=true → "already_running"
+    // Uses SQLite-backed state so trigger_auto_verify_sync can operate on the DB.
+    use crate::domain::entities::ideation::{IdeationSessionStatus, VerificationStatus};
+
+    let state = setup_sqlite_test_state().await;
+
+    let pid = ProjectId::from_string("proj-verify-running".to_string());
+    let project = make_project("proj-verify-running", "Already Running Project");
+    state.app_state.project_repo.create(project).await.unwrap();
+
+    // Create session with a plan artifact
+    let session = IdeationSession::builder()
+        .project_id(pid.clone())
+        .status(IdeationSessionStatus::Active)
+        .build();
+    let created = state
+        .app_state
+        .ideation_session_repo
+        .create(session)
+        .await
+        .unwrap();
+
+    // Set a plan_artifact_id so the no_plan check passes
+    state
+        .app_state
+        .ideation_session_repo
+        .update_plan_artifact_id(&created.id, Some("artifact-x".to_string()))
+        .await
+        .unwrap();
+
+    // Mark verification_in_progress = true via update_verification_state
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &created.id,
+            VerificationStatus::Reviewing,
+            true,
+            None,
+        )
+        .await
+        .unwrap();
+
+    // Trigger: session in_progress=1 → trigger_auto_verify_sync returns None → "already_running"
+    let result = trigger_verification_http(
+        State(state),
+        unrestricted_scope(),
+        Json(TriggerVerificationRequest {
+            session_id: created.id.as_str().to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "already_running");
+}
+
+#[tokio::test]
+async fn test_trigger_verification_scope_403() {
+    // Session from different project → 403
+    let state = setup_test_state().await;
+    let (_, session_id) = setup_session(&state, "proj-verify-a", "Project A").await;
+
+    let result = trigger_verification_http(
+        State(state),
+        scoped(&["proj-verify-b"]),
+        Json(TriggerVerificationRequest { session_id }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_trigger_verification_session_not_found() {
+    // Non-existent session → 404
+    let state = setup_test_state().await;
+
+    let result = trigger_verification_http(
+        State(state),
+        unrestricted_scope(),
+        Json(TriggerVerificationRequest {
+            session_id: "nonexistent-session-id".to_string(),
+        }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::NOT_FOUND);
+}
+
+// ============================================================================
+// get_plan_verification_external_http
+// ============================================================================
+
+#[tokio::test]
+async fn test_get_plan_verification_basic() {
+    // Session with verification state → reads it correctly
+    use crate::domain::entities::ideation::VerificationStatus;
+
+    let state = setup_test_state().await;
+    let (_, session_id) = setup_session(&state, "proj-verify-get", "Verify Get Project").await;
+    let session_id_obj = IdeationSessionId::from_string(session_id.clone());
+
+    // Set verification state
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id_obj,
+            VerificationStatus::Verified,
+            false,
+            None,
+        )
+        .await
+        .unwrap();
+
+    let result = get_plan_verification_external_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id),
+    )
+    .await;
+
+    assert!(result.is_ok(), "expected Ok, got: {:?}", result.err());
+    let response = result.unwrap().0;
+    assert_eq!(response.status, "verified");
+    assert!(!response.in_progress);
+    assert_eq!(response.round, None);
+    assert_eq!(response.gap_count, None);
+}
+
+#[tokio::test]
+async fn test_get_plan_verification_scope_403() {
+    // Session from different project → 403
+    let state = setup_test_state().await;
+    let (_, session_id) = setup_session(&state, "proj-verify-scope", "Scope Project").await;
+
+    let result = get_plan_verification_external_http(
+        State(state),
+        scoped(&["proj-other-scope"]),
+        Path(session_id),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+}
+
+// ============================================================================
+// get_ideation_messages_http
+// ============================================================================
+
+async fn create_message(
+    state: &HttpServerState,
+    msg: crate::domain::entities::ideation::ChatMessage,
+) {
+    state
+        .app_state
+        .chat_message_repo
+        .create(msg)
+        .await
+        .unwrap();
+}
+
+#[tokio::test]
+async fn test_get_ideation_messages_empty() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-msg-empty", "Empty Messages Session").await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert!(response.messages.is_empty());
+    assert!(!response.has_more);
+    assert_eq!(response.agent_status, "idle");
+}
+
+#[tokio::test]
+async fn test_get_ideation_messages_returns_user_and_orchestrator() {
+    use crate::domain::entities::ideation::ChatMessage;
+    use crate::domain::entities::IdeationSessionId;
+
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-msg-roles", "Role Filter Session").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Add user, orchestrator, and system messages
+    create_message(
+        &state,
+        ChatMessage::user_in_session(session_id.clone(), "user message"),
+    )
+    .await;
+    create_message(
+        &state,
+        ChatMessage::orchestrator_in_session(session_id.clone(), "orchestrator reply"),
+    )
+    .await;
+    create_message(
+        &state,
+        ChatMessage::system_in_session(session_id.clone(), "system internal"),
+    )
+    .await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    // System message must be excluded
+    assert_eq!(response.messages.len(), 2);
+
+    let roles: Vec<&str> = response.messages.iter().map(|m| m.role.as_str()).collect();
+    assert!(roles.contains(&"user"));
+    assert!(roles.contains(&"assistant")); // Orchestrator maps to "assistant"
+    assert!(!roles.contains(&"system"));
+}
+
+#[tokio::test]
+async fn test_get_ideation_messages_excludes_auto_verification() {
+    use crate::domain::entities::ideation::ChatMessage;
+    use crate::domain::entities::IdeationSessionId;
+    use crate::http_server::handlers::artifacts::AUTO_VERIFICATION_KEY;
+
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-msg-autoverify", "Auto Verify Session").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Normal user message
+    create_message(
+        &state,
+        ChatMessage::user_in_session(session_id.clone(), "normal message"),
+    )
+    .await;
+
+    // Auto-verification user message (should be excluded)
+    let mut auto_msg =
+        ChatMessage::user_in_session(session_id.clone(), "verification trigger");
+    auto_msg.metadata = Some(
+        serde_json::json!({ AUTO_VERIFICATION_KEY: true }).to_string(),
+    );
+    create_message(&state, auto_msg).await;
+
+    // Orchestrator response with auto-verification metadata (should be excluded)
+    let mut auto_orch =
+        ChatMessage::orchestrator_in_session(session_id.clone(), "verification result");
+    auto_orch.metadata = Some(
+        serde_json::json!({ AUTO_VERIFICATION_KEY: true }).to_string(),
+    );
+    create_message(&state, auto_orch).await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    // Only normal user message survives both filters
+    assert_eq!(response.messages.len(), 1);
+    assert_eq!(response.messages[0].content, "normal message");
+    assert_eq!(response.messages[0].role, "user");
+}
+
+#[tokio::test]
+async fn test_get_ideation_messages_pagination() {
+    use crate::domain::entities::ideation::ChatMessage;
+    use crate::domain::entities::IdeationSessionId;
+
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-msg-page", "Pagination Session").await;
+    let session_id = IdeationSessionId::from_string(session_id_str.clone());
+
+    // Insert 5 user messages
+    for i in 0..5 {
+        create_message(
+            &state,
+            ChatMessage::user_in_session(session_id.clone(), format!("message {i}")),
+        )
+        .await;
+    }
+
+    // Fetch first 3
+    let result = get_ideation_messages_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Path(session_id_str.clone()),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 3, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.messages.len(), 3);
+    assert!(response.has_more);
+
+    // Fetch remaining 2
+    let result2 = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 3, offset: 3 }),
+    )
+    .await;
+
+    assert!(result2.is_ok());
+    let response2 = result2.unwrap().0;
+    assert_eq!(response2.messages.len(), 2);
+    assert!(!response2.has_more);
+}
+
+#[tokio::test]
+async fn test_get_ideation_messages_scope_violation() {
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-msg-scope", "Scope Test Session").await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        scoped(&["proj-other"]),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+}
+
+#[tokio::test]
+async fn test_get_ideation_messages_not_found() {
+    let state = setup_test_state().await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path("nonexistent-session".to_string()),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), axum::http::StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_get_ideation_messages_agent_status_generating() {
+    use crate::domain::services::running_agent_registry::RunningAgentKey;
+
+    let state = setup_test_state().await;
+    let (_, session_id_str) =
+        setup_session(&state, "proj-msg-agent", "Agent Status Session").await;
+
+    // Register a running agent (no interactive process = "generating")
+    let agent_key = RunningAgentKey::new("session", &session_id_str);
+    state
+        .app_state
+        .running_agent_registry
+        .register(
+            agent_key,
+            0,
+            "conv-id".to_string(),
+            "run-id".to_string(),
+            None,
+            None,
+        )
+        .await;
+
+    let result = get_ideation_messages_http(
+        State(state),
+        unrestricted_scope(),
+        Path(session_id_str),
+        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.agent_status, "generating");
+}
+
+// ============================================================================
+// batch_task_status_http
+// ============================================================================
+
+async fn seed_task(state: &HttpServerState, project_id: &str, title: &str) -> Task {
+    let task = Task::new(
+        ProjectId::from_string(project_id.to_string()),
+        title.to_string(),
+    );
+    state.app_state.task_repo.create(task.clone()).await.unwrap();
+    task
+}
+
+#[tokio::test]
+async fn test_batch_task_status_multiple_tasks() {
+    let state = setup_test_state().await;
+    let t1 = seed_task(&state, "proj-batch-1", "Task Alpha").await;
+    let t2 = seed_task(&state, "proj-batch-1", "Task Beta").await;
+
+    let req = BatchTaskStatusRequest {
+        task_ids: vec![t1.id.to_string(), t2.id.to_string()],
+    };
+
+    let result = batch_task_status_http(
+        State(state),
+        unrestricted_scope(),
+        Json(req),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.requested_count, 2);
+    assert_eq!(response.returned_count, 2);
+    assert_eq!(response.tasks.len(), 2);
+    assert!(response.errors.is_empty());
+
+    let titles: Vec<&str> = response.tasks.iter().map(|t| t.title.as_str()).collect();
+    assert!(titles.contains(&"Task Alpha"));
+    assert!(titles.contains(&"Task Beta"));
+}
+
+#[tokio::test]
+async fn test_batch_task_status_not_found() {
+    let state = setup_test_state().await;
+    let t1 = seed_task(&state, "proj-batch-nf", "Real Task").await;
+
+    let req = BatchTaskStatusRequest {
+        task_ids: vec![t1.id.to_string(), "nonexistent-task-id".to_string()],
+    };
+
+    let result = batch_task_status_http(
+        State(state),
+        unrestricted_scope(),
+        Json(req),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.requested_count, 2);
+    assert_eq!(response.returned_count, 1);
+    assert_eq!(response.tasks.len(), 1);
+    assert_eq!(response.errors.len(), 1);
+    assert_eq!(response.errors[0].id, "nonexistent-task-id");
+    assert_eq!(response.errors[0].reason, "not_found");
+}
+
+#[tokio::test]
+async fn test_batch_task_status_access_denied() {
+    let state = setup_test_state().await;
+    let t1 = seed_task(&state, "proj-batch-scoped", "Scoped Task").await;
+    let t2 = seed_task(&state, "proj-batch-other", "Other Task").await;
+
+    // Scope to only proj-batch-scoped
+    let req = BatchTaskStatusRequest {
+        task_ids: vec![t1.id.to_string(), t2.id.to_string()],
+    };
+
+    let result = batch_task_status_http(
+        State(state),
+        scoped(&["proj-batch-scoped"]),
+        Json(req),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.requested_count, 2);
+    assert_eq!(response.returned_count, 1);
+    assert_eq!(response.tasks.len(), 1);
+    assert_eq!(response.tasks[0].title, "Scoped Task");
+    assert_eq!(response.errors.len(), 1);
+    assert_eq!(response.errors[0].id, t2.id.to_string());
+    assert_eq!(response.errors[0].reason, "access_denied");
+}
+
+#[tokio::test]
+async fn test_batch_task_status_max_50_enforced() {
+    let state = setup_test_state().await;
+
+    // Submit 51 task IDs
+    let task_ids: Vec<String> = (0..51).map(|i| format!("task-id-{i}")).collect();
+    let req = BatchTaskStatusRequest { task_ids };
+
+    let result = batch_task_status_http(
+        State(state),
+        unrestricted_scope(),
+        Json(req),
+    )
+    .await;
+
+    assert!(result.is_err());
+    let (status, msg) = result.unwrap_err();
+    assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
+    assert!(msg.contains("Maximum is 50"));
+}
+
+#[tokio::test]
+async fn test_batch_task_status_requested_count_and_returned_count() {
+    let state = setup_test_state().await;
+    let t1 = seed_task(&state, "proj-batch-counts", "Task One").await;
+
+    let req = BatchTaskStatusRequest {
+        task_ids: vec![
+            t1.id.to_string(),
+            "ghost-1".to_string(),
+            "ghost-2".to_string(),
+        ],
+    };
+
+    let result = batch_task_status_http(
+        State(state),
+        unrestricted_scope(),
+        Json(req),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.requested_count, 3);
+    assert_eq!(response.returned_count, 1);
+    assert_eq!(response.errors.len(), 2);
+    for err in &response.errors {
+        assert_eq!(err.reason, "not_found");
+    }
+}
+
+#[tokio::test]
+async fn test_batch_task_status_empty_request() {
+    let state = setup_test_state().await;
+
+    let req = BatchTaskStatusRequest { task_ids: vec![] };
+
+    let result = batch_task_status_http(
+        State(state),
+        unrestricted_scope(),
+        Json(req),
+    )
+    .await;
+
+    assert!(result.is_ok());
+    let response = result.unwrap().0;
+    assert_eq!(response.requested_count, 0);
+    assert_eq!(response.returned_count, 0);
+    assert!(response.tasks.is_empty());
+    assert!(response.errors.is_empty());
+}

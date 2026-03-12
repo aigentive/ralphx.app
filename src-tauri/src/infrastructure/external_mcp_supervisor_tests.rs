@@ -18,6 +18,7 @@ mod tests {
             restart_delay_ms: 100,
             auth_token: None,
             node_path: None,
+            max_external_ideation_sessions: 1,
         }
     }
 

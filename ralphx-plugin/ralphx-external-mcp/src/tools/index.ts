@@ -21,12 +21,16 @@ import {
   handleStartIdeation,
   handleGetIdeationStatus,
   handleSendIdeationMessage,
+  handleGetIdeationMessages,
   handleListProposals,
   handleGetProposalDetail,
   handleGetPlan,
   handleAcceptPlanAndSchedule,
   handleModifyProposal,
   handleAnalyzeDependencies,
+  handleTriggerPlanVerification,
+  handleGetPlanVerification,
+  handleListIdeationSessions,
 } from "./ideation.js";
 import {
   handleGetTaskDetail,
@@ -47,6 +51,7 @@ import {
   handleGetAttentionItems,
   handleGetExecutionCapacity,
 } from "./events.js";
+import { handleBatchTaskStatus, handleGetTaskSteps } from "./tasks.js";
 
 /** Tool categories by phase */
 export const TOOL_CATEGORIES = {
@@ -55,13 +60,18 @@ export const TOOL_CATEGORIES = {
     "v1_start_ideation",
     "v1_get_ideation_status",
     "v1_send_ideation_message",
+    "v1_get_ideation_messages",
     "v1_list_proposals",
     "v1_get_proposal_detail",
     "v1_get_plan",
     "v1_accept_plan_and_schedule",
     "v1_modify_proposal",
     "v1_analyze_dependencies",
+    "v1_trigger_plan_verification",
+    "v1_get_plan_verification",
+    "v1_list_ideation_sessions",
   ],
+  tasks: ["v1_get_task_steps", "v1_batch_task_status"],
   pipeline: [
     "v1_get_task_detail",
     "v1_get_task_diff",
@@ -161,6 +171,20 @@ export function registerTools(
         },
       },
       {
+        name: "v1_get_ideation_messages",
+        description:
+          "Get user and orchestrator messages for an ideation session. Excludes system messages and auto-verification messages. Returns agent_status (idle/generating/waiting_for_input).",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+            limit: { type: "number", description: "Max messages to return (default 50)" },
+            offset: { type: "number", description: "Pagination offset (default 0)" },
+          },
+          required: ["session_id"],
+        },
+      },
+      {
         name: "v1_list_proposals",
         description: "List proposals in an ideation session",
         inputSchema: {
@@ -226,6 +250,59 @@ export function registerTools(
             session_id: { type: "string", description: "Ideation session ID" },
           },
           required: ["session_id"],
+        },
+      },
+      {
+        name: "v1_trigger_plan_verification",
+        description:
+          "Trigger automatic plan verification for a session. Returns status: 'triggered' | 'already_running' | 'no_plan'",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+          },
+          required: ["session_id"],
+        },
+      },
+      {
+        name: "v1_get_plan_verification",
+        description:
+          "Get plan verification status for a session (status, in_progress, round, gap_count, convergence_reason)",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            session_id: { type: "string", description: "Ideation session ID" },
+          },
+          required: ["session_id"],
+        },
+      },
+      {
+        name: "v1_list_ideation_sessions",
+        description: "List ideation sessions for a project with optional status filter",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            project_id: { type: "string", description: "Project ID" },
+            status: {
+              type: "string",
+              enum: ["active", "accepted", "archived", "all"],
+              description: "Filter by status (default: all)",
+            },
+            limit: { type: "number", description: "Max sessions to return (default: 20, max: 100)" },
+          },
+          required: ["project_id"],
+        },
+      },
+      // Task Steps
+      {
+        name: "v1_get_task_steps",
+        description: "List all steps for a task, including status and completion notes",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_id: { type: "string", description: "Task ID" },
+          },
+          required: ["task_id"],
         },
       },
       // Flow 3: Task Pipeline Supervision (Phase 5)
@@ -411,6 +488,23 @@ export function registerTools(
           required: ["project_id"],
         },
       },
+      // Flow 5: Batch task operations
+      {
+        name: "v1_batch_task_status",
+        description:
+          "Batch lookup status for up to 50 task IDs. Returns tasks array + errors array with reason: not_found | access_denied.",
+        inputSchema: {
+          type: "object" as const,
+          properties: {
+            task_ids: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of task IDs to look up (max 50)",
+            },
+          },
+          required: ["task_ids"],
+        },
+      },
     ],
   }));
 
@@ -458,6 +552,9 @@ export function registerTools(
       case "v1_send_ideation_message":
         text = await handleSendIdeationMessage(args, context);
         break;
+      case "v1_get_ideation_messages":
+        text = await handleGetIdeationMessages(args, context);
+        break;
       case "v1_list_proposals":
         text = await handleListProposals(args, context);
         break;
@@ -475,6 +572,20 @@ export function registerTools(
         break;
       case "v1_analyze_dependencies":
         text = await handleAnalyzeDependencies(args, context);
+        break;
+      case "v1_trigger_plan_verification":
+        text = await handleTriggerPlanVerification(args, context);
+        break;
+      case "v1_get_plan_verification":
+        text = await handleGetPlanVerification(args, context);
+        break;
+      case "v1_list_ideation_sessions":
+        text = await handleListIdeationSessions(args, context);
+        break;
+
+      // --- Task Steps ---
+      case "v1_get_task_steps":
+        text = await handleGetTaskSteps(args, context);
         break;
 
       // --- Flow 3: Pipeline Supervision ---
@@ -524,6 +635,11 @@ export function registerTools(
         break;
       case "v1_get_execution_capacity":
         text = await handleGetExecutionCapacity(args, context);
+        break;
+
+      // --- Flow 5: Batch task operations ---
+      case "v1_batch_task_status":
+        text = await handleBatchTaskStatus(args, context);
         break;
 
       default:

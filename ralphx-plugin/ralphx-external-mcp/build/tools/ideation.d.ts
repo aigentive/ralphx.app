@@ -46,8 +46,28 @@ export declare function handleAcceptPlanAndSchedule(args: Record<string, unknown
  */
 export declare function handleModifyProposal(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
 /**
+ * v1_list_ideation_sessions — list ideation sessions for a project.
+ * GET /api/external/sessions/:project_id
+ */
+export declare function handleListIdeationSessions(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
+/**
+ * v1_get_ideation_messages — read orchestrator responses for an ideation session.
+ * GET /api/external/ideation_messages/:session_id
+ */
+export declare function handleGetIdeationMessages(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
+/**
  * v1_analyze_dependencies — get dependency graph for proposals in a session.
  * GET /api/analyze_dependencies/:session_id
  */
 export declare function handleAnalyzeDependencies(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
+/**
+ * v1_trigger_plan_verification — trigger auto-verification for a session's plan.
+ * POST /api/external/trigger_verification
+ */
+export declare function handleTriggerPlanVerification(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
+/**
+ * v1_get_plan_verification — get plan verification status for a session.
+ * GET /api/external/plan_verification/:session_id
+ */
+export declare function handleGetPlanVerification(args: Record<string, unknown>, context: ApiKeyContext): Promise<string>;
 //# sourceMappingURL=ideation.d.ts.map

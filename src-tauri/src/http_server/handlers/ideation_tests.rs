@@ -4,8 +4,13 @@ use crate::commands::ExecutionState;
 use crate::domain::entities::{ChatMessage, IdeationSession, IdeationSessionId, ProjectId};
 use crate::domain::entities::IdeationSessionBuilder;
 use crate::domain::entities::ideation::VerificationStatus;
+use crate::http_server::project_scope::ProjectScope;
 use crate::http_server::types::{UpdateVerificationRequest, VerificationGapRequest};
 use std::sync::Arc;
+
+fn unrestricted_scope() -> ProjectScope {
+    ProjectScope(None)
+}
 
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
@@ -314,7 +319,7 @@ async fn test_get_plan_verification_happy_path_gaps_and_rounds() {
         .unwrap();
 
     let result =
-        get_plan_verification(State(state), Path(session_id.as_str().to_string())).await;
+        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string())).await;
 
     assert!(result.is_ok(), "expected Ok, got {:?}", result.err());
     let response = result.unwrap().0;
@@ -371,7 +376,7 @@ async fn test_get_plan_verification_null_metadata_returns_empty_vecs() {
         .unwrap();
 
     let result =
-        get_plan_verification(State(state), Path(session_id.as_str().to_string())).await;
+        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string())).await;
 
     assert!(result.is_ok());
     let response = result.unwrap().0;
@@ -410,7 +415,7 @@ async fn test_get_plan_verification_malformed_metadata_no_panic() {
         .unwrap();
 
     let result =
-        get_plan_verification(State(state), Path(session_id.as_str().to_string())).await;
+        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string())).await;
 
     assert!(result.is_ok(), "malformed metadata must not panic the handler");
     let response = result.unwrap().0;
@@ -454,7 +459,7 @@ async fn test_get_plan_verification_rounds_capped_at_10() {
         .unwrap();
 
     let result =
-        get_plan_verification(State(state), Path(session_id.as_str().to_string())).await;
+        get_plan_verification(State(state), unrestricted_scope(), Path(session_id.as_str().to_string())).await;
 
     assert!(result.is_ok());
     let response = result.unwrap().0;
@@ -530,7 +535,7 @@ async fn test_get_plan_verification_round_trip_post_then_get() {
 
     // GET: read back via get_plan_verification handler
     let get_result =
-        get_plan_verification(State(state), Path(session_id_str)).await;
+        get_plan_verification(State(state), unrestricted_scope(), Path(session_id_str)).await;
 
     assert!(get_result.is_ok(), "GET should succeed: {:?}", get_result.err());
     let response = get_result.unwrap().0;

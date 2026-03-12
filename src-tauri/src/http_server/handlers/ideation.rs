@@ -7,6 +7,7 @@ use axum::{
     http::StatusCode,
     Json,
 };
+use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 use tauri::Emitter;
 use tracing::error;
 
@@ -1133,8 +1134,12 @@ pub async fn update_plan_verification(
 /// GET /api/ideation/sessions/:id/verification
 ///
 /// Get current verification status for a session's plan (lightweight read).
+///
+/// D9: If `X-RalphX-Project-Scope` header is present, enforces project scope.
+/// Internal agents (no header) bypass scope enforcement for backward compatibility.
 pub async fn get_plan_verification(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Path(session_id): Path<String>,
 ) -> Result<Json<VerificationResponse>, JsonError> {
     use crate::domain::entities::ideation::VerificationMetadata;
@@ -1142,6 +1147,21 @@ pub async fn get_plan_verification(
     use crate::http_server::types::{VerificationGapResponse, VerificationRoundSummary};
 
     let session_id_obj = crate::domain::entities::IdeationSessionId::from_string(session_id.clone());
+
+    // D9: optional scope enforcement — if header present, check project access
+    if !scope.is_unrestricted() {
+        let session = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&session_id_obj)
+            .await
+            .ok()
+            .flatten()
+            .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+        session
+            .assert_project_scope(&scope)
+            .map_err(|_| json_error(StatusCode::FORBIDDEN, "Forbidden"))?;
+    }
 
     let (status, in_progress, metadata_json) = state
         .app_state

@@ -11,12 +11,31 @@ use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::domain::entities::{
     StepProgressSummary, Task, TaskId, TaskStep, TaskStepId, TaskStepStatus,
 };
+use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 
 pub async fn get_task_steps_http(
     State(state): State<HttpServerState>,
+    scope: ProjectScope,
     Path(task_id): Path<String>,
 ) -> Result<Json<Vec<StepResponse>>, StatusCode> {
     let task_id = TaskId::from_string(task_id);
+
+    // If a project scope header is present, verify the task belongs to the scoped project.
+    // If absent (internal agent call), skip the check.
+    if scope.0.is_some() {
+        let task = state
+            .app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to get task {}: {}", task_id.as_str(), e);
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?
+            .ok_or(StatusCode::NOT_FOUND)?;
+        task.assert_project_scope(&scope).map_err(|e| e.status)?;
+    }
+
     let steps = state
         .app_state
         .task_step_repo

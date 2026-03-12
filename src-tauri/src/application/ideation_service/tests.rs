@@ -258,6 +258,25 @@ impl IdeationSessionRepository for MockSessionRepository {
             .cloned()
             .collect())
     }
+
+    async fn get_by_project_and_status(
+        &self,
+        project_id: &str,
+        status: &str,
+        limit: u32,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let mut sessions: Vec<_> = self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.project_id.as_str() == project_id && s.status.to_string() == status)
+            .cloned()
+            .collect();
+        sessions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        sessions.truncate(limit as usize);
+        Ok(sessions)
+    }
 }
 
 struct MockProposalRepository {

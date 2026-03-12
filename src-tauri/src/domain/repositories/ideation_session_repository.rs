@@ -142,6 +142,14 @@ pub trait IdeationSessionRepository: Send + Sync {
         &self,
         stale_before: DateTime<Utc>,
     ) -> AppResult<Vec<IdeationSession>>;
+
+    /// Get sessions for a project filtered by status, ordered by created_at DESC with a limit.
+    async fn get_by_project_and_status(
+        &self,
+        project_id: &str,
+        status: &str,
+        limit: u32,
+    ) -> AppResult<Vec<IdeationSession>>;
 }
 
 #[cfg(test)]

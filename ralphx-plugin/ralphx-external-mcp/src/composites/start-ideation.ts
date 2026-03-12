@@ -16,11 +16,13 @@ export interface StartIdeationInput {
 export interface StartIdeationResult {
   sessionId: string;
   status: "started";
+  agentSpawned: boolean;
 }
 
 interface StartIdeationBackendResponse {
   session_id: string;
   status: string;
+  agent_spawned?: boolean;
 }
 
 /**
@@ -55,5 +57,6 @@ export async function startIdeation(
   return {
     sessionId: body.session_id,
     status: "started",
+    agentSpawned: body.agent_spawned ?? false,
   };
 }

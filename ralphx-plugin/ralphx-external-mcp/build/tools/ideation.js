@@ -162,6 +162,52 @@ export async function handleModifyProposal(args, context) {
     }
 }
 /**
+ * v1_list_ideation_sessions — list ideation sessions for a project.
+ * GET /api/external/sessions/:project_id
+ */
+export async function handleListIdeationSessions(args, context) {
+    const projectId = args.project_id;
+    if (!projectId) {
+        return JSON.stringify({ error: "missing_argument", message: "project_id is required" }, null, 2);
+    }
+    const params = new URLSearchParams();
+    if (args.status)
+        params.set("status", args.status);
+    if (args.limit)
+        params.set("limit", String(args.limit));
+    const queryString = params.toString() ? `?${params.toString()}` : "";
+    try {
+        const response = await getBackendClient().get(`/api/external/sessions/${encodeURIComponent(projectId)}${queryString}`, context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_get_ideation_messages — read orchestrator responses for an ideation session.
+ * GET /api/external/ideation_messages/:session_id
+ */
+export async function handleGetIdeationMessages(args, context) {
+    const sessionId = args.session_id;
+    if (!sessionId) {
+        return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+    }
+    const limit = args.limit !== undefined ? Number(args.limit) : 50;
+    const offset = args.offset !== undefined ? Number(args.offset) : 0;
+    try {
+        const params = new URLSearchParams({
+            limit: String(limit),
+            offset: String(offset),
+        });
+        const response = await getBackendClient().get(`/api/external/ideation_messages/${encodeURIComponent(sessionId)}?${params}`, context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
  * v1_analyze_dependencies — get dependency graph for proposals in a session.
  * GET /api/analyze_dependencies/:session_id
  */
@@ -172,6 +218,40 @@ export async function handleAnalyzeDependencies(args, context) {
     }
     try {
         const response = await getBackendClient().get(`/api/analyze_dependencies/${encodeURIComponent(sessionId)}`, context);
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_trigger_plan_verification — trigger auto-verification for a session's plan.
+ * POST /api/external/trigger_verification
+ */
+export async function handleTriggerPlanVerification(args, context) {
+    const sessionId = args.session_id;
+    if (!sessionId) {
+        return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().post("/api/external/trigger_verification", context, { session_id: sessionId });
+        return JSON.stringify(response.body, null, 2);
+    }
+    catch (err) {
+        return handleError(err);
+    }
+}
+/**
+ * v1_get_plan_verification — get plan verification status for a session.
+ * GET /api/external/plan_verification/:session_id
+ */
+export async function handleGetPlanVerification(args, context) {
+    const sessionId = args.session_id;
+    if (!sessionId) {
+        return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
+    }
+    try {
+        const response = await getBackendClient().get(`/api/external/plan_verification/${encodeURIComponent(sessionId)}`, context);
         return JSON.stringify(response.body, null, 2);
     }
     catch (err) {

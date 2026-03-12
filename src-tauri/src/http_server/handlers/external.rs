@@ -17,11 +17,14 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tracing::error;
 
+use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
 use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput};
 use crate::domain::entities::{
-    ideation::IdeationSession, types::ProjectId, IdeationSessionId, InternalStatus, TaskId,
+    ideation::IdeationSession, types::ProjectId, ChatContextType, IdeationSessionId, InternalStatus,
+    TaskId,
 };
 use crate::domain::services::check_verification_gate;
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
@@ -79,9 +82,8 @@ pub struct ProjectStatusResponse {
 #[derive(Debug, Deserialize)]
 pub struct StartIdeationRequest {
     pub project_id: String,
-    pub title: String,
-    // initial_prompt is part of the public API; used in future composite step when agent is spawned.
-    #[allow(dead_code)]
+    pub title: Option<String>,
+    pub prompt: Option<String>,
     pub initial_prompt: Option<String>,
 }
 
@@ -89,6 +91,20 @@ pub struct StartIdeationRequest {
 pub struct StartIdeationResponse {
     pub session_id: String,
     pub status: String,
+    pub agent_spawned: bool,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct IdeationMessageRequest {
+    pub session_id: String,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct IdeationMessageResponse {
+    /// Delivery outcome: "sent" | "queued" | "spawned"
+    pub status: String,
+    pub session_id: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -100,6 +116,26 @@ pub struct IdeationStatusResponse {
     pub agent_running: bool,
     pub proposal_count: u32,
     pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SessionSummary {
+    pub id: String,
+    pub title: Option<String>,
+    pub status: String,
+    pub proposal_count: u32,
+    pub created_at: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ListSessionsResponse {
+    pub sessions: Vec<SessionSummary>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ListSessionsParams {
+    pub status: Option<String>,
+    pub limit: Option<u32>,
 }
 
 #[derive(Debug, Serialize)]
@@ -348,8 +384,8 @@ pub async fn start_ideation_http(
         .assert_project_scope(&scope)
         .map_err(|e| e.status)?;
 
-    // Check max_external_ideation_sessions limit (default: 1)
-    let max_sessions: u32 = 1;
+    // Check max_external_ideation_sessions limit (from runtime config)
+    let max_sessions = crate::infrastructure::agents::claude::external_mcp_config().max_external_ideation_sessions;
     let active_count = state
         .app_state
         .ideation_session_repo
@@ -367,8 +403,14 @@ pub async fn start_ideation_http(
         return Err(StatusCode::TOO_MANY_REQUESTS);
     }
 
-    // Create the ideation session
-    let session = IdeationSession::new_with_title(project_id, req.title.clone());
+    // Resolve effective prompt: prefer `prompt`, fall back to `initial_prompt`
+    let effective_prompt = req.prompt.clone().or_else(|| req.initial_prompt.clone());
+
+    // Create the ideation session — title is optional
+    let session = match req.title.clone() {
+        None => IdeationSession::new(project_id),
+        Some(t) => IdeationSession::new_with_title(project_id, t),
+    };
     let created = state
         .app_state
         .ideation_session_repo
@@ -379,9 +421,121 @@ pub async fn start_ideation_http(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
+    let session_id_str = created.id.to_string();
+
+    // If a prompt was provided, spawn the orchestrator agent (external sessions are always solo mode)
+    let mut agent_spawned = false;
+    if let Some(ref prompt_str) = effective_prompt {
+        let app = &state.app_state;
+        let mut chat_service = ClaudeChatService::new(
+            Arc::clone(&app.chat_message_repo),
+            Arc::clone(&app.chat_attachment_repo),
+            Arc::clone(&app.chat_conversation_repo),
+            Arc::clone(&app.agent_run_repo),
+            Arc::clone(&app.project_repo),
+            Arc::clone(&app.task_repo),
+            Arc::clone(&app.task_dependency_repo),
+            Arc::clone(&app.ideation_session_repo),
+            Arc::clone(&app.activity_event_repo),
+            Arc::clone(&app.message_queue),
+            Arc::clone(&app.running_agent_registry),
+            Arc::clone(&app.memory_event_repo),
+        )
+        .with_execution_state(Arc::clone(&state.execution_state))
+        .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
+        .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
+        .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
+        if let Some(ref handle) = app.app_handle {
+            chat_service = chat_service.with_app_handle(handle.clone());
+        }
+        // External sessions are always solo mode — no team_mode check needed
+
+        match chat_service
+            .send_message(
+                ChatContextType::Ideation,
+                &session_id_str,
+                prompt_str,
+                Default::default(),
+            )
+            .await
+        {
+            Ok(_) => {
+                agent_spawned = true;
+
+                // Fire-and-forget session namer
+                let namer_session_id = session_id_str.clone();
+                let namer_prompt = prompt_str.clone();
+                let agent_client = Arc::clone(&state.app_state.agent_client);
+                tokio::spawn(async move {
+                    use crate::domain::agents::{AgentConfig, AgentRole};
+                    use crate::infrastructure::agents::claude::{agent_names, mcp_agent_type};
+                    use std::path::PathBuf;
+
+                    let namer_instructions = format!(
+                        "<instructions>\n\
+                         Generate a commit-ready title (imperative mood, \u{2264}50 characters) for this ideation session based on the context.\n\
+                         Describe what the plan does, not just the domain (e.g., 'Add OAuth2 login and JWT sessions').\n\
+                         Call the update_session_title tool with the session_id and the generated title.\n\
+                         Do NOT investigate, fix, or act on the user message content.\n\
+                         Do NOT use Read, Write, Edit, Task, or any file manipulation tools.\n\
+                         </instructions>\n\
+                         <data>\n\
+                         <session_id>{}</session_id>\n\
+                         <user_message>{}</user_message>\n\
+                         </data>",
+                        namer_session_id, namer_prompt
+                    );
+
+                    let working_directory = std::env::current_dir()
+                        .map(|cwd| cwd.parent().map(|p| p.to_path_buf()).unwrap_or(cwd))
+                        .unwrap_or_else(|_| PathBuf::from("."));
+                    let plugin_dir = crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
+
+                    let mut env = std::collections::HashMap::new();
+                    env.insert(
+                        "RALPHX_AGENT_TYPE".to_string(),
+                        mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
+                    );
+
+                    let config = AgentConfig {
+                        role: AgentRole::Custom(
+                            mcp_agent_type(agent_names::AGENT_SESSION_NAMER).to_string(),
+                        ),
+                        prompt: namer_instructions,
+                        working_directory,
+                        plugin_dir: Some(plugin_dir),
+                        agent: Some(agent_names::AGENT_SESSION_NAMER.to_string()),
+                        model: None,
+                        max_tokens: None,
+                        timeout_secs: Some(60),
+                        env,
+                    };
+
+                    match agent_client.spawn_agent(config).await {
+                        Ok(handle) => {
+                            if let Err(e) = agent_client.wait_for_completion(&handle).await {
+                                tracing::warn!("Session namer agent failed: {}", e);
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!("Failed to spawn session namer agent: {}", e);
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                error!(
+                    "Failed to auto-spawn agent on external ideation session {}: {}",
+                    session_id_str, e
+                );
+            }
+        }
+    }
+
     Ok(Json(StartIdeationResponse {
-        session_id: created.id.to_string(),
+        session_id: session_id_str,
         status: "ideating".to_string(),
+        agent_spawned,
     }))
 }
 
@@ -441,6 +595,115 @@ pub async fn get_ideation_status_http(
         proposal_count,
         created_at: session.created_at.to_rfc3339(),
     }))
+}
+
+/// GET /api/external/sessions/:project_id?status=active&limit=20
+/// List ideation sessions for a project, optionally filtered by status.
+pub async fn list_ideation_sessions_http(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Path(project_id): Path<String>,
+    Query(params): Query<ListSessionsParams>,
+) -> Result<Json<ListSessionsResponse>, (StatusCode, Json<serde_json::Value>)> {
+    let pid = ProjectId::from_string(project_id.clone());
+
+    // Validate project exists and enforce scope
+    let project = state
+        .app_state
+        .project_repo
+        .get_by_id(&pid)
+        .await
+        .map_err(|e| {
+            error!("Failed to get project {}: {}", project_id, e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "Internal server error"})),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": "Project not found"})),
+            )
+        })?;
+
+    project.assert_project_scope(&scope).map_err(|e| {
+        (
+            e.status,
+            Json(serde_json::json!({"error": "Forbidden"})),
+        )
+    })?;
+
+    let limit = params.limit.unwrap_or(20).clamp(1, 100);
+
+    // Fetch sessions based on status filter
+    let sessions = match params.status.as_deref() {
+        None | Some("all") => {
+            // Return all sessions for the project (up to limit, ordered by updated_at DESC)
+            let all = state
+                .app_state
+                .ideation_session_repo
+                .get_by_project(&pid)
+                .await
+                .map_err(|e| {
+                    error!("Failed to list sessions for project {}: {}", project_id, e);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": "Internal server error"})),
+                    )
+                })?;
+            all.into_iter().take(limit as usize).collect::<Vec<_>>()
+        }
+        Some(s @ ("active" | "accepted" | "archived")) => {
+            let status_str = s.to_string();
+            state
+                .app_state
+                .ideation_session_repo
+                .get_by_project_and_status(pid.as_str(), &status_str, limit)
+                .await
+                .map_err(|e| {
+                    error!("Failed to list sessions by status for project {}: {}", project_id, e);
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(serde_json::json!({"error": "Internal server error"})),
+                    )
+                })?
+        }
+        Some(_) => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({
+                    "error": "Invalid status filter. Valid values: active, accepted, archived, all"
+                })),
+            ));
+        }
+    };
+
+    // Build summaries with proposal counts
+    let mut summaries = Vec::with_capacity(sessions.len());
+    for session in &sessions {
+        let proposal_count = state
+            .app_state
+            .task_proposal_repo
+            .count_by_session(&session.id)
+            .await
+            .map_err(|e| {
+                error!("Failed to count proposals for session {}: {}", session.id.as_str(), e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    Json(serde_json::json!({"error": "Internal server error"})),
+                )
+            })?;
+        summaries.push(SessionSummary {
+            id: session.id.to_string(),
+            title: session.title.clone(),
+            status: session.status.to_string(),
+            proposal_count,
+            created_at: session.created_at.to_rfc3339(),
+        });
+    }
+
+    Ok(Json(ListSessionsResponse { sessions: summaries }))
 }
 
 /// GET /api/external/pipeline/:project_id
@@ -1561,5 +1824,539 @@ pub async fn external_apply_proposals(
         warnings: result.warnings,
         session_converted: result.session_converted,
         execution_plan_id: result.execution_plan_id,
+    }))
+}
+
+/// POST /api/external/ideation_message
+/// Send a message to an active ideation session.
+///
+/// Tri-state delivery:
+/// 1. "sent"    — interactive process is open; message written directly to stdin
+/// 2. "queued"  — agent is running but has no open stdin; message queued for resume
+/// 3. "spawned" — no agent running; new agent process is spawned with the message
+pub async fn ideation_message_http(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Json(req): Json<IdeationMessageRequest>,
+) -> Result<Json<IdeationMessageResponse>, StatusCode> {
+    let session_id = IdeationSessionId::from_string(req.session_id.clone());
+
+    // Validate session exists
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get ideation session {}: {}", session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Enforce project scope
+    session.assert_project_scope(&scope).map_err(|e| e.status)?;
+
+    // Enforce Active status
+    if session.status != crate::domain::entities::ideation::IdeationSessionStatus::Active {
+        return Err(StatusCode::BAD_REQUEST);
+    }
+
+    let session_id_str = session_id.as_str().to_string();
+
+    // Try 1: write directly to open interactive process (agent in multi-turn mode)
+    let ipr_key = crate::application::InteractiveProcessKey {
+        context_type: "session".to_string(),
+        context_id: session_id_str.clone(),
+    };
+    if state
+        .app_state
+        .interactive_process_registry
+        .has_process(&ipr_key)
+        .await
+    {
+        match state
+            .app_state
+            .interactive_process_registry
+            .write_message(&ipr_key, &req.message)
+            .await
+        {
+            Ok(()) => {
+                return Ok(Json(IdeationMessageResponse {
+                    status: "sent".to_string(),
+                    session_id: session_id_str,
+                }));
+            }
+            Err(e) => {
+                // Process may have closed between has_process and write_message; fall through
+                error!(
+                    "Failed to write to interactive process for session {}: {}",
+                    session_id_str, e
+                );
+            }
+        }
+    }
+
+    // Try 2: queue message if agent is running (will be delivered on next resume)
+    let agent_key =
+        crate::domain::services::running_agent_registry::RunningAgentKey::new("session", &session_id_str);
+    if state
+        .app_state
+        .running_agent_registry
+        .is_running(&agent_key)
+        .await
+    {
+        state
+            .app_state
+            .message_queue
+            .queue(ChatContextType::Ideation, &session_id_str, req.message.clone());
+        return Ok(Json(IdeationMessageResponse {
+            status: "queued".to_string(),
+            session_id: session_id_str,
+        }));
+    }
+
+    // Try 3: spawn a new agent
+    let app = &state.app_state;
+    let mut chat_service = ClaudeChatService::new(
+        Arc::clone(&app.chat_message_repo),
+        Arc::clone(&app.chat_attachment_repo),
+        Arc::clone(&app.chat_conversation_repo),
+        Arc::clone(&app.agent_run_repo),
+        Arc::clone(&app.project_repo),
+        Arc::clone(&app.task_repo),
+        Arc::clone(&app.task_dependency_repo),
+        Arc::clone(&app.ideation_session_repo),
+        Arc::clone(&app.activity_event_repo),
+        Arc::clone(&app.message_queue),
+        Arc::clone(&app.running_agent_registry),
+        Arc::clone(&app.memory_event_repo),
+    )
+    .with_execution_state(Arc::clone(&state.execution_state))
+    .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
+    .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
+    .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
+
+    if let Some(ref handle) = app.app_handle {
+        chat_service = chat_service.with_app_handle(handle.clone());
+    }
+
+    chat_service
+        .send_message(
+            ChatContextType::Ideation,
+            &session_id_str,
+            &req.message,
+            SendMessageOptions::default(),
+        )
+        .await
+        .map_err(|e| {
+            error!("Failed to send message to ideation session {}: {}", session_id_str, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    Ok(Json(IdeationMessageResponse {
+        status: "spawned".to_string(),
+        session_id: session_id_str,
+    }))
+}
+
+// ============================================================================
+// trigger_verification_http + get_plan_verification_external_http
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct TriggerVerificationRequest {
+    pub session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TriggerVerificationResponse {
+    pub status: String, // "triggered" | "already_running" | "no_plan"
+    pub session_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExternalVerificationResponse {
+    pub status: String,
+    pub in_progress: bool,
+    pub round: Option<u32>,
+    pub max_rounds: Option<u32>,
+    pub gap_count: Option<u32>,
+    pub convergence_reason: Option<String>,
+}
+
+/// POST /api/external/trigger_verification
+pub async fn trigger_verification_http(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Json(req): Json<TriggerVerificationRequest>,
+) -> Result<Json<TriggerVerificationResponse>, StatusCode> {
+    use crate::http_server::handlers::artifacts::spawn_auto_verifier;
+    use crate::infrastructure::sqlite::sqlite_ideation_session_repo::SqliteIdeationSessionRepository as SessionRepo;
+
+    let session_id = req.session_id.clone();
+    let session_id_obj = IdeationSessionId::from_string(session_id.clone());
+
+    // Load session
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .map_err(|e| {
+            error!("Failed to load session {}: {}", session_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Scope check
+    session.assert_project_scope(&scope).map_err(|e| e.status)?;
+
+    // No-plan check: neither own plan nor inherited
+    if session.plan_artifact_id.is_none() && session.inherited_plan_artifact_id.is_none() {
+        return Ok(Json(TriggerVerificationResponse {
+            status: "no_plan".to_string(),
+            session_id,
+        }));
+    }
+
+    // CAS: atomically trigger auto_verify_sync
+    let sid_for_trigger = session_id.clone();
+    let generation_opt = state
+        .app_state
+        .db
+        .run(move |conn| SessionRepo::trigger_auto_verify_sync(conn, &sid_for_trigger))
+        .await
+        .map_err(|e| {
+            error!("trigger_auto_verify_sync failed for session {}: {}", session_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let Some(generation) = generation_opt else {
+        return Ok(Json(TriggerVerificationResponse {
+            status: "already_running".to_string(),
+            session_id,
+        }));
+    };
+
+    // Spawn verifier; reset on failure
+    if let Err(e) = spawn_auto_verifier(&state, &session_id, generation).await {
+        error!("spawn_auto_verifier failed for session {}: {}", session_id, e);
+        let sid_reset = session_id.clone();
+        if let Err(reset_err) = state
+            .app_state
+            .db
+            .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_reset))
+            .await
+        {
+            error!(
+                "Failed to reset auto-verify state for session {} after spawn failure: {}",
+                session_id, reset_err
+            );
+        }
+        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    }
+
+    Ok(Json(TriggerVerificationResponse {
+        status: "triggered".to_string(),
+        session_id,
+    }))
+}
+
+/// GET /api/external/plan_verification/:session_id
+pub async fn get_plan_verification_external_http(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Path(session_id): Path<String>,
+) -> Result<Json<ExternalVerificationResponse>, StatusCode> {
+    use crate::domain::entities::ideation::VerificationMetadata;
+    use crate::domain::services::gap_score;
+
+    let session_id_obj = IdeationSessionId::from_string(session_id.clone());
+
+    // Load session for scope check
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .map_err(|e| {
+            error!("Failed to load session {}: {}", session_id, e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    // Scope check
+    session.assert_project_scope(&scope).map_err(|e| e.status)?;
+
+    // Read verification state from session entity
+    let status_str = session.verification_status.to_string();
+    let in_progress = session.verification_in_progress;
+
+    let metadata: Option<VerificationMetadata> = session
+        .verification_metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok());
+
+    let round = metadata
+        .as_ref()
+        .and_then(|m| if m.current_round > 0 { Some(m.current_round) } else { None });
+    let max_rounds = metadata
+        .as_ref()
+        .and_then(|m| if m.max_rounds > 0 { Some(m.max_rounds) } else { None });
+    let gap_count = metadata.as_ref().map(|m| gap_score(&m.current_gaps));
+    let convergence_reason = metadata.as_ref().and_then(|m| m.convergence_reason.clone());
+
+    Ok(Json(ExternalVerificationResponse {
+        status: status_str,
+        in_progress,
+        round,
+        max_rounds,
+        gap_count,
+        convergence_reason,
+    }))
+}
+
+// ============================================================================
+// Get ideation messages
+// ============================================================================
+
+/// A single message returned to external consumers.
+#[derive(Debug, Serialize)]
+pub struct IdeationMessageSummary {
+    pub id: String,
+    /// "user" or "assistant" (Orchestrator is mapped to "assistant")
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+/// Response for GET /api/external/ideation_messages/:session_id
+#[derive(Debug, Serialize)]
+pub struct GetIdeationMessagesResponse {
+    pub messages: Vec<IdeationMessageSummary>,
+    pub has_more: bool,
+    /// "idle" | "generating" | "waiting_for_input"
+    pub agent_status: String,
+}
+
+/// Query params for pagination.
+#[derive(Debug, Deserialize)]
+pub struct GetIdeationMessagesQuery {
+    #[serde(default = "default_messages_limit")]
+    pub limit: u32,
+    #[serde(default)]
+    pub offset: u32,
+}
+
+fn default_messages_limit() -> u32 {
+    50
+}
+
+/// GET /api/external/ideation_messages/:session_id
+///
+/// Returns orchestrator and user messages for an ideation session.
+/// Two-pass filter: (1) User + Orchestrator roles only (Orchestrator → "assistant"),
+/// (2) messages tagged with AUTO_VERIFICATION_KEY metadata are excluded.
+pub async fn get_ideation_messages_http(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Path(session_id): Path<String>,
+    Query(params): Query<GetIdeationMessagesQuery>,
+) -> Result<Json<GetIdeationMessagesResponse>, StatusCode> {
+    use crate::domain::entities::ideation::MessageRole;
+    use crate::http_server::handlers::artifacts::AUTO_VERIFICATION_KEY;
+
+    let session_id = IdeationSessionId::from_string(session_id);
+
+    // Load session and enforce scope
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| {
+            error!("Failed to get ideation session {}: {}", session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
+        .ok_or(StatusCode::NOT_FOUND)?;
+
+    session.assert_project_scope(&scope).map_err(|e| e.status)?;
+
+    // Fetch limit+1 to detect has_more (SQL already filters User + Orchestrator roles)
+    let fetch_limit = params.limit.saturating_add(1);
+    let raw_messages = state
+        .app_state
+        .chat_message_repo
+        .get_recent_by_session_paginated(&session_id, fetch_limit, params.offset)
+        .await
+        .map_err(|e| {
+            error!("Failed to get messages for session {}: {}", session_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Determine has_more before truncating
+    let has_more = raw_messages.len() > params.limit as usize;
+    let messages_slice = if has_more {
+        &raw_messages[..params.limit as usize]
+    } else {
+        &raw_messages[..]
+    };
+
+    // Two-pass filter:
+    // Pass 1: role filter — User and Orchestrator only (SQL already does this, but be defensive)
+    // Pass 2: exclude auto-verification messages
+    let messages: Vec<IdeationMessageSummary> = messages_slice
+        .iter()
+        .filter(|msg| matches!(msg.role, MessageRole::User | MessageRole::Orchestrator))
+        .filter(|msg| {
+            msg.metadata
+                .as_ref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .and_then(|v| v.get(AUTO_VERIFICATION_KEY).cloned())
+                .is_none()
+        })
+        .map(|msg| {
+            let role = match msg.role {
+                MessageRole::Orchestrator => "assistant".to_string(),
+                _ => "user".to_string(),
+            };
+            IdeationMessageSummary {
+                id: msg.id.to_string(),
+                role,
+                content: msg.content.clone(),
+                created_at: msg.created_at.to_rfc3339(),
+            }
+        })
+        .collect();
+
+    // Determine agent_status from RunningAgentRegistry + InteractiveProcessRegistry
+    let agent_key = crate::domain::services::running_agent_registry::RunningAgentKey::new(
+        "session",
+        session_id.as_str(),
+    );
+    let agent_status = if state
+        .app_state
+        .running_agent_registry
+        .is_running(&agent_key)
+        .await
+    {
+        let ipr_key = crate::application::InteractiveProcessKey {
+            context_type: "session".to_string(),
+            context_id: session_id.as_str().to_string(),
+        };
+        if state
+            .app_state
+            .interactive_process_registry
+            .has_process(&ipr_key)
+            .await
+        {
+            "waiting_for_input".to_string()
+        } else {
+            "generating".to_string()
+        }
+    } else {
+        "idle".to_string()
+    };
+
+    Ok(Json(GetIdeationMessagesResponse {
+        messages,
+        has_more,
+        agent_status,
+    }))
+}
+
+// ============================================================================
+// Phase 3.2: Batch task status
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct BatchTaskStatusRequest {
+    pub task_ids: Vec<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BatchTaskStatusItem {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub project_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BatchTaskStatusError {
+    pub id: String,
+    pub reason: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct BatchTaskStatusResponse {
+    pub tasks: Vec<BatchTaskStatusItem>,
+    pub errors: Vec<BatchTaskStatusError>,
+    pub requested_count: usize,
+    pub returned_count: usize,
+}
+
+/// POST /api/external/tasks/batch_status
+/// Batch lookup up to 50 task IDs.
+/// Returns tasks array + errors array with reason: "not_found" | "access_denied"
+pub async fn batch_task_status_http(
+    State(state): State<HttpServerState>,
+    scope: ProjectScope,
+    Json(req): Json<BatchTaskStatusRequest>,
+) -> Result<Json<BatchTaskStatusResponse>, (StatusCode, String)> {
+    if req.task_ids.len() > 50 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "Too many task IDs: {}. Maximum is 50.",
+                req.task_ids.len()
+            ),
+        ));
+    }
+
+    let requested_count = req.task_ids.len();
+    let mut tasks = Vec::new();
+    let mut errors = Vec::new();
+
+    for raw_id in &req.task_ids {
+        let task_id = TaskId::from_string(raw_id.clone());
+        match state.app_state.task_repo.get_by_id(&task_id).await {
+            Ok(Some(task)) => {
+                if task.assert_project_scope(&scope).is_err() {
+                    errors.push(BatchTaskStatusError {
+                        id: raw_id.clone(),
+                        reason: "access_denied".to_string(),
+                    });
+                } else {
+                    tasks.push(BatchTaskStatusItem {
+                        id: task.id.to_string(),
+                        title: task.title.clone(),
+                        status: task.internal_status.to_string(),
+                        project_id: task.project_id.to_string(),
+                    });
+                }
+            }
+            Ok(None) => {
+                errors.push(BatchTaskStatusError {
+                    id: raw_id.clone(),
+                    reason: "not_found".to_string(),
+                });
+            }
+            Err(e) => {
+                error!("Failed to get task {}: {}", raw_id, e);
+                errors.push(BatchTaskStatusError {
+                    id: raw_id.clone(),
+                    reason: "not_found".to_string(),
+                });
+            }
+        }
+    }
+
+    let returned_count = tasks.len();
+    Ok(Json(BatchTaskStatusResponse {
+        tasks,
+        errors,
+        requested_count,
+        returned_count,
     }))
 }

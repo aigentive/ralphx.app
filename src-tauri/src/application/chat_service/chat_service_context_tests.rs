@@ -340,6 +340,15 @@ impl IdeationSessionRepository for MockIdeationRepo {
     ) -> AppResult<Vec<IdeationSession>> {
         unimplemented!()
     }
+
+    async fn get_by_project_and_status(
+        &self,
+        _project_id: &str,
+        _status: &str,
+        _limit: u32,
+    ) -> AppResult<Vec<IdeationSession>> {
+        unimplemented!()
+    }
 }
 
 struct MockTaskRepo;

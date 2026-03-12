@@ -438,7 +438,7 @@ pub(crate) fn build_auto_verifier_prompt(
     )
 }
 
-async fn spawn_auto_verifier(
+pub(crate) async fn spawn_auto_verifier(
     state: &HttpServerState,
     session_id: &str,
     generation: i32,
