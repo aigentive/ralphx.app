@@ -61,3 +61,4 @@ vitest-results.json
 .stream-*-mtimes
 streams/hygiene/trigger
 .claude/worktrees/
+!ralphx-plugin/ralphx-external-mcp/build/
