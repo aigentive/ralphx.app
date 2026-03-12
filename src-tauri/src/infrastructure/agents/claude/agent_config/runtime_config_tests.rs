@@ -36,7 +36,7 @@ fn test_merge_speed_defaults() {
     // Git — agent cleanup speed targets
     assert_eq!(git.agent_stop_timeout_secs, 3, "agent stop: 10→3");
     assert_eq!(git.agent_kill_settle_secs, 0, "kill settle: 1→0");
-    assert_eq!(git.cleanup_worktree_timeout_secs, 5, "worktree cleanup: 10→5");
+    assert_eq!(git.cleanup_worktree_timeout_secs, 15, "worktree cleanup: 5→15 for TOCTOU fix");
     assert_eq!(git.step_0b_kill_timeout_secs, 5, "step 0b kill: 20→5");
 }
 

@@ -390,7 +390,7 @@ All settings support environment variable overrides: `RALPHX_<SECTION>_<FIELD>` 
 | `git.cmd_timeout_secs` | 60 | Per-command timeout to prevent hung git processes |
 | `git.max_retries` | 3 | Max retries for transient git failures |
 | `git.index_lock_stale_secs` | 5 | Age threshold before removing a stale `.git/index.lock` file |
-| `git.cleanup_worktree_timeout_secs` | 10 | Timeout for worktree deletion during cleanup |
+| `git.cleanup_worktree_timeout_secs` | 15 | Timeout for worktree deletion during cleanup |
 
 ### Supervisor
 

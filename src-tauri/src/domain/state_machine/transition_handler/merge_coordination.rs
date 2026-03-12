@@ -11,7 +11,7 @@ use std::sync::Arc;
 use crate::application::GitService;
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
-    InternalStatus, PlanBranchStatus, Task,
+    InternalStatus, PlanBranchStatus, Task, TaskId,
 };
 use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
 use crate::infrastructure::agents::claude::{defer_merge_enabled, git_runtime_config};
@@ -709,8 +709,8 @@ impl<'a> super::TransitionHandler<'a> {
         task: &crate::domain::entities::Task,
         project: &crate::domain::entities::Project,
         repo_path: &Path,
-        _target_branch: &str,
-        _task_repo: &Arc<dyn TaskRepository>,
+        target_branch: &str,
+        task_repo: &Arc<dyn TaskRepository>,
     ) {
         let cleanup_start = std::time::Instant::now();
         let app_handle = self.machine.context.services.app_handle.as_ref();
@@ -928,33 +928,79 @@ impl<'a> super::TransitionHandler<'a> {
                         "Skipping task worktree deletion — path is the main working tree"
                     );
                 } else if worktree_path_buf.exists() {
-                    super::merge_helpers::clean_stale_git_state(&worktree_path_buf, task_id_str)
-                        .await;
-                    match run_cleanup_step(
-                        "step 2 task worktree deletion (fast)",
-                        git_runtime_config().cleanup_worktree_timeout_secs,
-                        task_id_str,
-                        super::cleanup_helpers::remove_worktree_fast(
+                    // Step 2 TOCTOU guard: re-read status from DB before deleting.
+                    // A concurrent handle_outcome_needs_agent may have set Merging
+                    // and written this worktree_path as the merge agent's working dir.
+                    let task_repo_step2 = Arc::clone(task_repo);
+                    let task_id_for_step2 = task.id.clone();
+                    let should_skip_step2 =
+                        match task_repo_step2.get_by_id(&task_id_for_step2).await {
+                            Ok(Some(ref fresh_task))
+                                if matches!(
+                                    fresh_task.internal_status,
+                                    InternalStatus::Merging
+                                ) =>
+                            {
+                                true
+                            }
+                            // Error or None: proceed with deletion (safe default)
+                            _ => false,
+                        };
+
+                    if should_skip_step2 {
+                        tracing::info!(
+                            task_id = task_id_str,
+                            worktree_path = %worktree_path,
+                            "Skipping task worktree deletion — task is actively merging"
+                        );
+                    } else {
+                        super::merge_helpers::clean_stale_git_state(
                             &worktree_path_buf,
-                            repo_path,
-                        ),
-                    )
-                    .await
-                    {
-                        CleanupStepResult::Ok => {}
-                        CleanupStepResult::TimedOut { elapsed } => {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                elapsed_ms = elapsed.as_millis() as u64,
-                                "Task worktree deletion timed out — branch may still be locked"
-                            );
-                        }
-                        CleanupStepResult::Error { ref message } => {
-                            tracing::warn!(
-                                task_id = task_id_str,
-                                error = %message,
-                                "Task worktree deletion failed — branch may still be locked"
-                            );
+                            task_id_str,
+                        )
+                        .await;
+                        let deletion_start = std::time::Instant::now();
+                        match run_cleanup_step(
+                            "step 2 task worktree deletion (fast)",
+                            git_runtime_config().cleanup_worktree_timeout_secs,
+                            task_id_str,
+                            super::cleanup_helpers::remove_worktree_fast(
+                                &worktree_path_buf,
+                                repo_path,
+                            ),
+                        )
+                        .await
+                        {
+                            CleanupStepResult::Ok => {
+                                tracing::info!(
+                                    task_id = task_id_str,
+                                    elapsed_ms = deletion_start.elapsed().as_millis() as u64,
+                                    "Task worktree deletion succeeded"
+                                );
+                            }
+                            CleanupStepResult::TimedOut { elapsed } => {
+                                tracing::warn!(
+                                    task_id = task_id_str,
+                                    elapsed_ms = elapsed.as_millis() as u64,
+                                    "Task worktree deletion timed out — branch may still be locked"
+                                );
+                                // Stale path cleanup: clear worktree_path from DB since deletion
+                                // timed out and the path is no longer valid. Race guard inside
+                                // prevents clearing when task is actively Merging.
+                                clear_stale_worktree_path_on_timeout(
+                                    &task_id_for_step2,
+                                    task_id_str,
+                                    task_repo,
+                                )
+                                .await;
+                            }
+                            CleanupStepResult::Error { ref message } => {
+                                tracing::warn!(
+                                    task_id = task_id_str,
+                                    error = %message,
+                                    "Task worktree deletion failed — branch may still be locked"
+                                );
+                            }
                         }
                     }
                 }
@@ -1021,16 +1067,57 @@ impl<'a> super::TransitionHandler<'a> {
                     .collect();
                 // Use remove_worktree_fast (unlock + double-force + rm-rf + prune) in parallel.
                 // remove_worktree_fast handles locked worktrees via unlock + -f -f before removal.
+                // Step 4 TOCTOU guard: for "merge" worktrees, check DB status INSIDE the
+                // async future body (not in filter_map) to close the race window where
+                // handle_outcome_needs_agent sets Merging after filter_map but before join_all.
+                let task_id_for_step4 = task.id.clone();
+                let task_id_str_owned = task_id_str.to_string();
+                let repo_path_owned = repo_path.to_path_buf();
                 let futs: Vec<_> = existing_worktrees
                     .iter()
                     .zip(step_labels.iter())
-                    .map(|((_, wt_path), step_label)| {
-                        run_cleanup_step(
-                            step_label,
-                            cleanup_timeout,
-                            task_id_str,
-                            super::cleanup_helpers::remove_worktree_fast(wt_path, repo_path),
-                        )
+                    .map(|((label, wt_path), step_label)| {
+                        let label_owned = label.to_string();
+                        let wt_path_owned = wt_path.clone();
+                        let step_label_owned = step_label.clone();
+                        let task_id_guard = task_id_for_step4.clone();
+                        let task_repo_step4 = Arc::clone(task_repo);
+                        let task_id_log = task_id_str_owned.clone();
+                        let repo_path_step4 = repo_path_owned.clone();
+                        async move {
+                            // Guard applies only to "merge" label — these are the worktrees
+                            // used by merge agents. Other labels (task/rebase/plan-update/
+                            // source-update) are never needed by an active merge agent.
+                            if label_owned == "merge" {
+                                match task_repo_step4.get_by_id(&task_id_guard).await {
+                                    Ok(Some(ref fresh_task))
+                                        if matches!(
+                                            fresh_task.internal_status,
+                                            InternalStatus::Merging
+                                        ) =>
+                                    {
+                                        tracing::info!(
+                                            task_id = %task_id_log,
+                                            worktree_path = %wt_path_owned.display(),
+                                            "Skipping merge worktree deletion — task is actively merging"
+                                        );
+                                        return CleanupStepResult::Ok;
+                                    }
+                                    // Error or None: proceed with deletion (safe default)
+                                    _ => {}
+                                }
+                            }
+                            run_cleanup_step(
+                                &step_label_owned,
+                                cleanup_timeout,
+                                &task_id_log,
+                                super::cleanup_helpers::remove_worktree_fast(
+                                    &wt_path_owned,
+                                    &repo_path_step4,
+                                ),
+                            )
+                            .await
+                        }
                     })
                     .collect();
 
@@ -1079,7 +1166,47 @@ impl<'a> super::TransitionHandler<'a> {
             task_id = task_id_str,
             total_elapsed_ms = cleanup_start.elapsed().as_millis() as u64,
             is_first_attempt = is_first,
+            target_branch = target_branch,
             "pre_merge_cleanup: complete"
         );
+    }
+}
+
+/// Clear `worktree_path` from the DB after a Step 2 deletion timeout.
+///
+/// Race guard: only clears if the task's current status is NOT [`InternalStatus::Merging`].
+/// When the task is actively merging, the worktree is still needed by the merge agent
+/// and must not be cleared.
+pub(crate) async fn clear_stale_worktree_path_on_timeout(
+    task_id: &TaskId,
+    task_id_str: &str,
+    task_repo: &Arc<dyn TaskRepository>,
+) {
+    match task_repo.get_by_id(task_id).await {
+        Ok(Some(mut fresh_task))
+            if !matches!(fresh_task.internal_status, InternalStatus::Merging) =>
+        {
+            fresh_task.worktree_path = None;
+            if let Err(e) = task_repo.update(&fresh_task).await {
+                tracing::warn!(
+                    task_id = task_id_str,
+                    error = %e,
+                    "Failed to clear stale worktree_path from DB after timeout (non-fatal)"
+                );
+            } else {
+                tracing::info!(
+                    task_id = task_id_str,
+                    "Cleared stale worktree_path from DB after deletion timeout"
+                );
+            }
+        }
+        Ok(Some(_)) => {
+            tracing::info!(
+                task_id = task_id_str,
+                "Skipping worktree_path clear — task is actively merging"
+            );
+        }
+        // DB error or task not found: skip silently (non-fatal)
+        _ => {}
     }
 }
