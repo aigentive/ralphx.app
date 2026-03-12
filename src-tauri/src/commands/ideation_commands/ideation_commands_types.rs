@@ -107,6 +107,9 @@ pub struct CreateProposalInput {
     pub acceptance_criteria: Option<Vec<String>>,
     pub priority: Option<String>,
     pub complexity: Option<String>,
+    /// Optional list of proposal IDs this proposal depends on
+    #[serde(default)]
+    pub depends_on: Vec<String>,
 }
 
 /// Input for updating a task proposal
@@ -119,6 +122,12 @@ pub struct UpdateProposalInput {
     pub acceptance_criteria: Option<Vec<String>>,
     pub user_priority: Option<String>,
     pub complexity: Option<String>,
+    /// Additive: proposal IDs this proposal should depend on
+    #[serde(default)]
+    pub add_depends_on: Vec<String>,
+    /// Additive: proposal IDs this proposal should block (reverse direction)
+    #[serde(default)]
+    pub add_blocks: Vec<String>,
 }
 
 /// Response for TaskProposal
@@ -145,6 +154,9 @@ pub struct TaskProposalResponse {
     pub sort_order: i32,
     pub created_at: String,
     pub updated_at: String,
+    /// Partial failure contract: non-fatal dependency errors encountered during create/update
+    #[serde(default)]
+    pub dependency_errors: Vec<String>,
 }
 
 impl From<TaskProposal> for TaskProposalResponse {
@@ -181,6 +193,7 @@ impl From<TaskProposal> for TaskProposalResponse {
             sort_order: proposal.sort_order,
             created_at: proposal.created_at.to_rfc3339(),
             updated_at: proposal.updated_at.to_rfc3339(),
+            dependency_errors: Vec::new(),
         }
     }
 }
@@ -264,7 +277,6 @@ pub struct ApplyProposalsInput {
     pub session_id: String,
     pub proposal_ids: Vec<String>,
     pub target_column: String,
-    pub preserve_dependencies: bool,
     /// Per-plan override for feature branch usage (None = use project default)
     #[serde(default)]
     pub use_feature_branch: Option<bool>,

@@ -238,6 +238,36 @@ Use dependency graph visualization:
 - Highlight critical path
 - Mark blocked tasks
 
+## Setting Dependencies via MCP Tools
+
+Dependencies are set **inline** during proposal creation/update — no background agent.
+
+### On `create_task_proposal`
+Use `depends_on: string[]` (proposal IDs) to set immediate dependencies at creation time:
+```
+create_task_proposal(session_id, title: "...", depends_on: ["<proposal-id-A>"])
+```
+
+### On `update_task_proposal`
+Use additive params (never replace-all):
+| Param | Meaning |
+|-------|---------|
+| `add_depends_on: string[]` | This proposal depends on target (target must complete first) |
+| `add_blocks: string[]` | Target depends on this proposal (this blocks target) |
+
+Example: proposal B depends on A, and A blocks C:
+```
+update_task_proposal(proposal_id=A, add_blocks=["B"])  // B depends on A
+update_task_proposal(proposal_id=B, add_depends_on=["A"])  // equivalent to above
+update_task_proposal(proposal_id=A, add_blocks=["C"])  // C depends on A
+```
+
+### Validation
+- All proposal IDs must belong to the same session
+- Cycles are detected and rejected
+- If a dep fails, the proposal still succeeds — check `dependency_errors` in response
+- Call `analyze_session_dependencies` after PROPOSE phase to verify the full graph
+
 ## Anti-Patterns
 
 ### Dependency Hoarding

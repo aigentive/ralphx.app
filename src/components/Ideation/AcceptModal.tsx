@@ -7,7 +7,7 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { Loader2, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { useVerificationGate } from "@/hooks/useVerificationGate";
 import type { TaskProposal } from "@/types/ideation";
 import type { ApplyProposalsInput, DependencyGraphResponse } from "@/api/ideation.types";
@@ -24,8 +24,6 @@ interface AcceptModalProps {
   warnings?: string[];
   /** Default value for feature branch checkbox, sourced from project settings */
   defaultUseFeatureBranch?: boolean;
-  /** True while dependency analysis agent is running — shows info banner and disables accept */
-  isAnalyzingDependencies?: boolean;
   /** Session for verification gate — shows warning and blocks accept when unverified */
   session?: Pick<IdeationSessionResponse, "verificationStatus" | "verificationInProgress"> | null;
 }
@@ -40,11 +38,9 @@ export function AcceptModal({
   isAccepting = false,
   warnings = [],
   defaultUseFeatureBranch = false,
-  isAnalyzingDependencies = false,
   session = null,
 }: AcceptModalProps) {
   const verificationGate = useVerificationGate(session);
-  const [preserveDependencies, setPreserveDependencies] = useState(true);
   const [useFeatureBranch, setUseFeatureBranch] = useState(defaultUseFeatureBranch);
 
   // Handle Escape key to close modal
@@ -79,11 +75,10 @@ export function AcceptModal({
       // - No blockers → Ready
       // - Has blockers → Blocked
       targetColumn: "auto",
-      preserveDependencies,
       useFeatureBranch,
     };
     onAccept(options);
-  }, [sessionId, proposals, preserveDependencies, useFeatureBranch, onAccept]);
+  }, [sessionId, proposals, useFeatureBranch, onAccept]);
 
   if (!isOpen) return null;
 
@@ -95,7 +90,6 @@ export function AcceptModal({
   const canAccept =
     proposalCount > 0 &&
     !isAccepting &&
-    !isAnalyzingDependencies &&
     !verificationBlocked;
 
   return (
@@ -270,7 +264,7 @@ export function AcceptModal({
         </div>
 
         {/* Git Workflow Checkbox */}
-        <div className="mb-4">
+        <div className="mb-6">
           <label className="flex items-start gap-2 cursor-pointer">
             <input
               type="checkbox"
@@ -297,34 +291,6 @@ export function AcceptModal({
           </label>
         </div>
 
-        {/* Preserve Dependencies Checkbox */}
-        <div className="mb-6">
-          <label className="flex items-start gap-2 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={preserveDependencies}
-              onChange={(e) => setPreserveDependencies(e.target.checked)}
-              disabled={isAccepting}
-              className="mt-1"
-              aria-label="Preserve dependencies between tasks"
-            />
-            <div>
-              <span
-                className="text-sm font-medium"
-                style={{ color: "var(--text-primary)" }}
-              >
-                Preserve dependencies
-              </span>
-              <p
-                className="text-xs"
-                style={{ color: "var(--text-muted)" }}
-              >
-                Create task dependencies from proposal relationships
-              </p>
-            </div>
-          </label>
-        </div>
-
         {/* Verification blocked warning */}
         {verificationBlocked && verificationGate.reason && (
           <div
@@ -338,22 +304,6 @@ export function AcceptModal({
           >
             <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
             <span>{verificationGate.reason}</span>
-          </div>
-        )}
-
-        {/* Analysis in progress info */}
-        {isAnalyzingDependencies && (
-          <div
-            data-testid="analyzing-info"
-            className="mb-4 flex items-center gap-2 p-3 rounded text-sm"
-            style={{
-              backgroundColor: "hsla(14 100% 60% / 0.06)",
-              border: "1px solid hsla(14 100% 60% / 0.2)",
-              color: "hsl(14 100% 65%)",
-            }}
-          >
-            <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-            <span>Dependency analysis in progress — accept will be available when complete</span>
           </div>
         )}
 
@@ -385,11 +335,6 @@ export function AcceptModal({
           >
             {isAccepting ? (
               "Accepting..."
-            ) : isAnalyzingDependencies ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                Checking dependencies...
-              </>
             ) : (
               `Accept Plan (${proposalCount} ${proposalCount === 1 ? "task" : "tasks"})`
             )}

@@ -63,7 +63,6 @@ const DependencyGraphResponseSchema = z.object({
   critical_path: z.array(z.string()),
   has_cycles: z.boolean(),
   cycles: z.array(z.array(z.string())).nullable(),
-  analysis_in_progress: z.boolean().optional(),
   message: z.string().nullable().optional(),
   summary: z.object({
     total_proposals: z.number(),
@@ -118,7 +117,6 @@ export interface ApplyToKanbanOptions {
   sessionId: string;
   proposalIds: string[];
   targetColumn: "draft" | "backlog" | "todo";
-  preserveDependencies: boolean;
 }
 
 // ============================================================================
@@ -180,7 +178,6 @@ function transformDependencyGraph(raw: RawGraph): DependencyGraphResponse {
     criticalPath: raw.critical_path,
     hasCycles: raw.has_cycles,
     cycles: raw.cycles,
-    ...(raw.analysis_in_progress !== undefined && { analysisInProgress: raw.analysis_in_progress }),
     ...(raw.message !== undefined && { message: raw.message }),
     ...(raw.summary !== undefined && {
       summary: raw.summary
@@ -396,7 +393,6 @@ export async function applyProposalsToKanban(
         session_id: options.sessionId,
         proposal_ids: options.proposalIds,
         target_column: options.targetColumn,
-        preserve_dependencies: options.preserveDependencies,
       },
     },
     ApplyProposalsResultResponseSchema

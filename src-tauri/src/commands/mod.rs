@@ -75,7 +75,7 @@ pub use execution_commands::{
 };
 pub use health::health_check;
 pub use ideation_commands::{
-    add_proposal_dependency, analyze_dependencies, apply_proposals_to_kanban,
+    analyze_dependencies, apply_proposals_to_kanban,
     archive_ideation_session, assess_all_priorities, assess_proposal_priority,
     count_session_messages, create_ideation_session, create_task_proposal, delete_chat_message,
     delete_ideation_session, delete_session_messages, delete_task_proposal, get_blocked_tasks,

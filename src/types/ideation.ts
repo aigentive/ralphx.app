@@ -282,7 +282,6 @@ export const ApplyProposalsInputSchema = z.object({
   sessionId: z.string().min(1),
   proposalIds: z.array(z.string().min(1)).min(1),
   targetColumn: z.string().min(1),
-  preserveDependencies: z.boolean(),
   useFeatureBranch: z.boolean().optional(),
 });
 

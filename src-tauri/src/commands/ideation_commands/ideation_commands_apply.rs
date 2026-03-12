@@ -285,33 +285,31 @@ pub async fn apply_proposals_core(
         created_tasks.push(created_task);
     }
 
-    // Create task dependencies if requested
+    // Create task dependencies from proposal dependencies
     let mut dependencies_created = 0;
-    if input.preserve_dependencies {
-        for proposal in &proposals_to_apply {
-            let deps = app_state
-                .proposal_dependency_repo
-                .get_dependencies(&proposal.id)
-                .await
-                .map_err(|e| AppError::Database(e.to_string()))?;
+    for proposal in &proposals_to_apply {
+        let deps = app_state
+            .proposal_dependency_repo
+            .get_dependencies(&proposal.id)
+            .await
+            .map_err(|e| AppError::Database(e.to_string()))?;
 
-            for dep_proposal_id in deps {
-                if let (Some(task_id), Some(dep_task_id)) = (
-                    proposal_to_task.get(&proposal.id),
-                    proposal_to_task.get(&dep_proposal_id),
-                ) {
-                    app_state
-                        .task_dependency_repo
-                        .add_dependency(task_id, dep_task_id)
-                        .await
-                        .map_err(|e| AppError::Database(e.to_string()))?;
-                    dependencies_created += 1;
-                } else {
-                    warnings.push(format!(
-                        "Dependency from {} to {} not preserved (not in selection)",
-                        proposal.id, dep_proposal_id
-                    ));
-                }
+        for dep_proposal_id in deps {
+            if let (Some(task_id), Some(dep_task_id)) = (
+                proposal_to_task.get(&proposal.id),
+                proposal_to_task.get(&dep_proposal_id),
+            ) {
+                app_state
+                    .task_dependency_repo
+                    .add_dependency(task_id, dep_task_id)
+                    .await
+                    .map_err(|e| AppError::Database(e.to_string()))?;
+                dependencies_created += 1;
+            } else {
+                warnings.push(format!(
+                    "Dependency from {} to {} not preserved (not in selection)",
+                    proposal.id, dep_proposal_id
+                ));
             }
         }
     }

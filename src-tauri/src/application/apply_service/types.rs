@@ -31,8 +31,6 @@ pub struct ApplyProposalsOptions {
     pub proposal_ids: Vec<TaskProposalId>,
     /// Target column for created tasks
     pub target_column: TargetColumn,
-    /// Whether to create task dependencies from proposal dependencies
-    pub preserve_dependencies: bool,
 }
 
 /// Result of applying proposals

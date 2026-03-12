@@ -214,51 +214,49 @@ where
             created_tasks.push(created_task);
         }
 
-        // Create task dependencies if requested
+        // Create task dependencies from proposal dependencies
         let mut dependencies_created = 0;
-        if options.preserve_dependencies {
-            let all_deps = self
-                .proposal_dep_repo
-                .get_all_for_session(session_id)
-                .await?;
+        let all_deps = self
+            .proposal_dep_repo
+            .get_all_for_session(session_id)
+            .await?;
 
-            for (from_proposal, to_proposal, _reason) in all_deps {
-                // Only create dependency if both proposals were converted
-                if let (Some(from_task), Some(to_task)) = (
-                    proposal_to_task.get(&from_proposal.to_string()),
-                    proposal_to_task.get(&to_proposal.to_string()),
-                ) {
-                    self.task_dep_repo
-                        .add_dependency(from_task, to_task)
-                        .await?;
-                    dependencies_created += 1;
-                }
+        for (from_proposal, to_proposal, _reason) in all_deps {
+            // Only create dependency if both proposals were converted
+            if let (Some(from_task), Some(to_task)) = (
+                proposal_to_task.get(&from_proposal.to_string()),
+                proposal_to_task.get(&to_proposal.to_string()),
+            ) {
+                self.task_dep_repo
+                    .add_dependency(from_task, to_task)
+                    .await?;
+                dependencies_created += 1;
             }
+        }
 
-            // Set initial Blocked/Ready status based on dependency graph
-            // Tasks with blockers start as Blocked; tasks without blockers start as Ready
-            for task in &created_tasks {
-                let blockers = self.task_dep_repo.get_blockers(&task.id).await?;
-                if !blockers.is_empty() {
-                    // Get blocker names for the blocked_reason
-                    let blocker_names: Vec<String> = blockers
-                        .iter()
-                        .filter_map(|blocker_id| {
-                            created_tasks
-                                .iter()
-                                .find(|t| t.id == *blocker_id)
-                                .map(|t| t.title.clone())
-                        })
-                        .collect();
+        // Set initial Blocked/Ready status based on dependency graph
+        // Tasks with blockers start as Blocked; tasks without blockers start as Ready
+        for task in &created_tasks {
+            let blockers = self.task_dep_repo.get_blockers(&task.id).await?;
+            if !blockers.is_empty() {
+                // Get blocker names for the blocked_reason
+                let blocker_names: Vec<String> = blockers
+                    .iter()
+                    .filter_map(|blocker_id| {
+                        created_tasks
+                            .iter()
+                            .find(|t| t.id == *blocker_id)
+                            .map(|t| t.title.clone())
+                    })
+                    .collect();
 
-                    // Update task to Blocked status with reason
-                    let mut blocked_task = task.clone();
-                    blocked_task.internal_status = crate::domain::entities::InternalStatus::Blocked;
-                    blocked_task.blocked_reason =
-                        Some(format!("Waiting for: {}", blocker_names.join(", ")));
-                    blocked_task.touch();
-                    self.task_repo.update(&blocked_task).await?;
-                }
+                // Update task to Blocked status with reason
+                let mut blocked_task = task.clone();
+                blocked_task.internal_status = crate::domain::entities::InternalStatus::Blocked;
+                blocked_task.blocked_reason =
+                    Some(format!("Waiting for: {}", blocker_names.join(", ")));
+                blocked_task.touch();
+                self.task_repo.update(&blocked_task).await?;
             }
         }
 
@@ -299,7 +297,6 @@ where
         &self,
         session_id: &IdeationSessionId,
         target_column: TargetColumn,
-        preserve_dependencies: bool,
     ) -> AppResult<ApplyProposalsResult> {
         // Get all selected proposals
         let selected = self
@@ -314,7 +311,6 @@ where
             ApplyProposalsOptions {
                 proposal_ids,
                 target_column,
-                preserve_dependencies,
             },
         )
         .await

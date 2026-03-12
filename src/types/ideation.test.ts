@@ -445,7 +445,6 @@ describe("ApplyProposalsInputSchema", () => {
     sessionId: "session-123",
     proposalIds: ["proposal-1", "proposal-2"],
     targetColumn: "backlog",
-    preserveDependencies: true,
   };
 
   it("should parse valid input", () => {

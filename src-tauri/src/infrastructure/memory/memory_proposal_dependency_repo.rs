@@ -146,10 +146,36 @@ impl ProposalDependencyRepository for MemoryProposalDependencyRepository {
 
     async fn would_create_cycle(
         &self,
-        _proposal_id: &TaskProposalId,
-        _depends_on_id: &TaskProposalId,
+        proposal_id: &TaskProposalId,
+        depends_on_id: &TaskProposalId,
     ) -> AppResult<bool> {
-        // Simple implementation for testing - always returns false
+        // Self-dependency is always a cycle
+        if proposal_id == depends_on_id {
+            return Ok(true);
+        }
+
+        // DFS from depends_on_id: if proposal_id is reachable, adding
+        // proposal_id → depends_on_id would create a cycle
+        let deps = self.dependencies.read().unwrap();
+        let mut visited = std::collections::HashSet::new();
+        let mut stack = vec![depends_on_id.as_str().to_string()];
+
+        while let Some(current) = stack.pop() {
+            if current == proposal_id.as_str() {
+                return Ok(true);
+            }
+            if visited.contains(&current) {
+                continue;
+            }
+            visited.insert(current.clone());
+
+            for (p, d, _, _) in deps.iter() {
+                if p == &current && !visited.contains(d) {
+                    stack.push(d.clone());
+                }
+            }
+        }
+
         Ok(false)
     }
 

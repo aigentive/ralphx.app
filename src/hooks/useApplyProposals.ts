@@ -24,7 +24,6 @@ import { taskKeys } from "./useTasks";
  *     sessionId: "session-123",
  *     proposalIds: ["proposal-1", "proposal-2"],
  *     targetColumn: "backlog",
- *     preserveDependencies: true,
  *   });
  *
  *   if (result.warnings.length > 0) {

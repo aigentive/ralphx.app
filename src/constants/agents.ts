@@ -15,4 +15,3 @@ export const AGENT_CHAT_TASK = "chat-task" as const;
 export const AGENT_CHAT_PROJECT = "chat-project" as const;
 export const AGENT_REVIEW_CHAT = "review-chat" as const;
 export const AGENT_SESSION_NAMER = "session-namer" as const;
-export const AGENT_DEPENDENCY_SUGGESTER = "dependency-suggester" as const;

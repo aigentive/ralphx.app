@@ -199,32 +199,6 @@ describe("AcceptModal", () => {
     });
   });
 
-  describe("Preserve Dependencies Checkbox", () => {
-    it("renders checkbox with label", () => {
-      render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByLabelText(/Preserve dependencies/i)).toBeInTheDocument();
-    });
-
-    it("checkbox is checked by default", () => {
-      render(<AcceptModal {...defaultProps} />);
-      const checkbox = screen.getByLabelText(/Preserve dependencies/i) as HTMLInputElement;
-      expect(checkbox.checked).toBe(true);
-    });
-
-    it("allows toggling checkbox", async () => {
-      const user = userEvent.setup();
-      render(<AcceptModal {...defaultProps} />);
-      const checkbox = screen.getByLabelText(/Preserve dependencies/i);
-      await user.click(checkbox);
-      expect(checkbox).not.toBeChecked();
-    });
-
-    it("shows helper text explaining the option", () => {
-      render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByText(/Create task dependencies/i)).toBeInTheDocument();
-    });
-  });
-
   describe("Feature Branch Checkbox", () => {
     it("renders checkbox with label", () => {
       render(<AcceptModal {...defaultProps} />);
@@ -357,28 +331,6 @@ describe("AcceptModal", () => {
         sessionId: "session-1",
         proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
         targetColumn: "auto",
-        preserveDependencies: true,
-        useFeatureBranch: false,
-      });
-    });
-
-    it("calls onAccept with updated dependency options", async () => {
-      const onAccept = vi.fn();
-      const user = userEvent.setup();
-      render(<AcceptModal {...defaultProps} onAccept={onAccept} />);
-
-      // Uncheck preserve dependencies
-      const checkbox = screen.getByLabelText(/Preserve dependencies/i);
-      await user.click(checkbox);
-
-      const acceptButton = screen.getByRole("button", { name: /Accept Plan/i });
-      await user.click(acceptButton);
-
-      expect(onAccept).toHaveBeenCalledWith({
-        sessionId: "session-1",
-        proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
-        targetColumn: "auto",
-        preserveDependencies: false,
         useFeatureBranch: false,
       });
     });
@@ -406,46 +358,6 @@ describe("AcceptModal", () => {
     });
   });
 
-  describe("Analyzing Dependencies State", () => {
-    it("disables accept button when isAnalyzingDependencies is true", () => {
-      render(<AcceptModal {...defaultProps} isAnalyzingDependencies={true} />);
-      const acceptButton = screen.getByRole("button", { name: /Checking dependencies/i });
-      expect(acceptButton).toBeDisabled();
-    });
-
-    it("shows analyzing banner when isAnalyzingDependencies is true", () => {
-      render(<AcceptModal {...defaultProps} isAnalyzingDependencies={true} />);
-      expect(screen.getByTestId("analyzing-info")).toBeInTheDocument();
-      expect(screen.getByText(/Dependency analysis in progress/i)).toBeInTheDocument();
-    });
-
-    it("does not show analyzing banner when isAnalyzingDependencies is false", () => {
-      render(<AcceptModal {...defaultProps} isAnalyzingDependencies={false} />);
-      expect(screen.queryByTestId("analyzing-info")).not.toBeInTheDocument();
-    });
-
-    it("does not show analyzing banner by default", () => {
-      render(<AcceptModal {...defaultProps} />);
-      expect(screen.queryByTestId("analyzing-info")).not.toBeInTheDocument();
-    });
-
-    it("does not call onAccept when analyzing even if button clicked via keyboard", async () => {
-      // Button is disabled — click should not trigger
-      const onAccept = vi.fn();
-      const user = userEvent.setup();
-      render(<AcceptModal {...defaultProps} onAccept={onAccept} isAnalyzingDependencies={true} />);
-      const acceptButton = screen.getByRole("button", { name: /Checking dependencies/i });
-      await user.click(acceptButton);
-      expect(onAccept).not.toHaveBeenCalled();
-    });
-
-    it("enables accept button when isAnalyzingDependencies is false", () => {
-      render(<AcceptModal {...defaultProps} isAnalyzingDependencies={false} />);
-      const acceptButton = screen.getByRole("button", { name: /Accept Plan/i });
-      expect(acceptButton).not.toBeDisabled();
-    });
-  });
-
   describe("Loading State", () => {
     it("shows loading state when isAccepting is true", () => {
       render(<AcceptModal {...defaultProps} isAccepting={true} />);
@@ -464,11 +376,6 @@ describe("AcceptModal", () => {
       expect(cancelButton).toBeDisabled();
     });
 
-    it("disables checkbox when accepting", () => {
-      render(<AcceptModal {...defaultProps} isAccepting={true} />);
-      const checkbox = screen.getByLabelText(/Preserve dependencies/i);
-      expect(checkbox).toBeDisabled();
-    });
   });
 
   describe("Overlay Click Behavior", () => {
@@ -515,7 +422,7 @@ describe("AcceptModal", () => {
 
     it("has proper labels for form controls", () => {
       render(<AcceptModal {...defaultProps} />);
-      expect(screen.getByLabelText(/Preserve dependencies/i)).toBeInTheDocument();
+      expect(screen.getByLabelText(/Use feature branch/i)).toBeInTheDocument();
     });
 
     it("warnings have role=alert", () => {
@@ -580,34 +487,4 @@ describe("AcceptModal", () => {
     });
   });
 
-  describe("Analysis in Progress", () => {
-    it("shows analyzing info section when isAnalyzingDependencies is true", () => {
-      render(<AcceptModal {...defaultProps} isAnalyzingDependencies={true} />);
-      expect(screen.getByTestId("analyzing-info")).toBeInTheDocument();
-    });
-
-    it("shows analysis in progress message", () => {
-      render(<AcceptModal {...defaultProps} isAnalyzingDependencies={true} />);
-      expect(
-        screen.getByText(/Dependency analysis in progress/i)
-      ).toBeInTheDocument();
-    });
-
-    it("disables accept button when analyzing", () => {
-      render(<AcceptModal {...defaultProps} isAnalyzingDependencies={true} />);
-      const acceptButton = screen.getByRole("button", { name: /Checking dependencies/i });
-      expect(acceptButton).toBeDisabled();
-    });
-
-    it("does not show analyzing info section by default", () => {
-      render(<AcceptModal {...defaultProps} />);
-      expect(screen.queryByTestId("analyzing-info")).not.toBeInTheDocument();
-    });
-
-    it("accept button is enabled when not analyzing", () => {
-      render(<AcceptModal {...defaultProps} isAnalyzingDependencies={false} />);
-      const acceptButton = screen.getByRole("button", { name: /Accept Plan/i });
-      expect(acceptButton).not.toBeDisabled();
-    });
-  });
 });

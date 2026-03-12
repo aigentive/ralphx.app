@@ -49,21 +49,6 @@ const DependencyEventSchema = z.object({
 });
 
 /**
- * Schema for dependency analysis started event payload
- */
-const DependencyAnalysisStartedEventSchema = z.object({
-  sessionId: z.string(),
-});
-
-/**
- * Schema for dependency suggestions applied event payload
- */
-const DependencySuggestionsAppliedEventSchema = z.object({
-  sessionId: z.string(),
-  appliedCount: z.number(),
-});
-
-/**
  * Schema for child session created event payload
  */
 const ChildSessionCreatedEventSchema = z.object({
@@ -182,38 +167,6 @@ export function useIdeationEvents() {
         }
 
         // Invalidate dependency graph query
-        queryClient.invalidateQueries({ queryKey: dependencyKeys.graphs() });
-      })
-    );
-
-    // Listen for dependency analysis started (AI suggestion in progress)
-    unsubscribes.push(
-      bus.subscribe<unknown>("dependencies:analysis_started", (payload) => {
-        logger.debug("[IdeationEvents] Received dependencies:analysis_started:", payload);
-        const parsed = DependencyAnalysisStartedEventSchema.safeParse(payload);
-
-        if (!parsed.success) {
-          console.error("Invalid dependencies:analysis_started event:", parsed.error.message);
-          return;
-        }
-
-        // UI components can listen for this to show loading state
-        // The event is emitted for components to handle via their own listeners
-      })
-    );
-
-    // Listen for dependency suggestions applied (AI suggestion completed)
-    unsubscribes.push(
-      bus.subscribe<unknown>("dependencies:suggestions_applied", (payload) => {
-        logger.debug("[IdeationEvents] Received dependencies:suggestions_applied:", payload);
-        const parsed = DependencySuggestionsAppliedEventSchema.safeParse(payload);
-
-        if (!parsed.success) {
-          console.error("Invalid dependencies:suggestions_applied event:", parsed.error.message);
-          return;
-        }
-
-        // Invalidate dependency graph query to show new dependencies
         queryClient.invalidateQueries({ queryKey: dependencyKeys.graphs() });
       })
     );

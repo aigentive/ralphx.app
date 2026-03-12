@@ -15,7 +15,6 @@ import {
 import {
   Trash2,
   Network,
-  Loader2,
   Check,
   AlertCircle,
   ShieldAlert,
@@ -37,7 +36,6 @@ interface ProposalsToolbarProps {
   onClearAll: () => void;
   onAcceptPlan: () => void;
   onAnalyzeDependencies?: () => void;
-  isAnalyzingDependencies?: boolean;
   /** True after the 90s frontend safety timeout or after an analysis_failed event.
    *  When true, the accept button label changes to "Accept without dependencies" to
    *  signal that the plan can be accepted despite incomplete dependency analysis. */
@@ -57,7 +55,6 @@ export function ProposalsToolbar({
   onClearAll,
   onAcceptPlan,
   onAnalyzeDependencies,
-  isAnalyzingDependencies = false,
   analysisTimedOut = false,
   session = null,
 }: ProposalsToolbarProps) {
@@ -68,7 +65,6 @@ export function ProposalsToolbar({
     totalCount > 0 &&
     !isReadOnly &&
     validation.isComplete &&
-    !isAnalyzingDependencies &&
     verificationGate.canAccept;
   const showAnalyzeButton = totalCount >= 2 && onAnalyzeDependencies && !isReadOnly;
   const acceptLabel = analysisTimedOut ? "Accept without dependencies" : `Accept Plan (${totalCount})`;
@@ -91,12 +87,6 @@ export function ProposalsToolbar({
           {" "}{totalCount === 1 ? "proposal" : "proposals"}
         </span>
 
-        {isAnalyzingDependencies && (
-          <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "hsl(14 100% 60%)" }}>
-            <Loader2 className="w-3 h-3 animate-spin" />
-            <span>Analyzing...</span>
-          </div>
-        )}
       </div>
 
       {/* Right: Actions */}
@@ -110,7 +100,6 @@ export function ProposalsToolbar({
                   variant="ghost"
                   size="icon"
                   onClick={onAnalyzeDependencies}
-                  disabled={isAnalyzingDependencies}
                   className="h-7 w-7 rounded-lg disabled:opacity-50 transition-colors duration-150"
                   style={{ color: "hsl(220 10% 50%)" }}
                   onMouseEnter={(e) => {
@@ -231,17 +220,8 @@ export function ProposalsToolbar({
               }
             }}
           >
-            {isAnalyzingDependencies ? (
-            <>
-              <Loader2 className="w-3 h-3 animate-spin" />
-              Checking dependencies...
-            </>
-          ) : (
-            <>
-              <Check className="w-3 h-3" />
-              {acceptLabel}
-            </>
-          )}
+            <Check className="w-3 h-3" />
+            {acceptLabel}
           </Button>
         )}
       </div>

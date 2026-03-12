@@ -25,7 +25,6 @@ import {
   FolderKanban,
   MessagesSquare,
   Tag,
-  GitBranch,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -41,7 +40,6 @@ import {
   AGENT_CHAT_PROJECT,
   AGENT_REVIEW_CHAT,
   AGENT_SESSION_NAMER,
-  AGENT_DEPENDENCY_SUGGESTER,
 } from "@/constants/agents";
 
 export interface OrbitingAgent {
@@ -218,17 +216,6 @@ export const ORBITING_AGENTS: OrbitingAgent[] = [
     color: "#a78bfa", // Violet (allowed, not blue)
     tier: "outer",
     startAngle: (6 * Math.PI) / 5,
-    period: 80,
-    direction: 1,
-  },
-  {
-    id: AGENT_DEPENDENCY_SUGGESTER,
-    name: "Dependencies",
-    role: "Links tasks",
-    icon: GitBranch,
-    color: "#2dd4bf", // Teal
-    tier: "outer",
-    startAngle: (8 * Math.PI) / 5,
     period: 80,
     direction: 1,
   },

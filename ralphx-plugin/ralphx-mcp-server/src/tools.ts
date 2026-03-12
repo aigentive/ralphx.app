@@ -19,7 +19,6 @@ import {
   WORKER,
   CODER,
   SESSION_NAMER,
-  DEPENDENCY_SUGGESTER,
   MERGER,
   PROJECT_ANALYZER,
   SUPERVISOR,
@@ -145,62 +144,6 @@ export const ALL_TOOLS: Tool[] = [
     },
   },
   {
-    name: "add_proposal_dependency",
-    description:
-      "Add a dependency relationship between two proposals. Use when one task must be completed before another can start.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        proposal_id: {
-          type: "string",
-          description: "The proposal that depends on another",
-        },
-        depends_on_id: {
-          type: "string",
-          description: "The proposal that must be completed first",
-        },
-      },
-      required: ["proposal_id", "depends_on_id"],
-    },
-  },
-  {
-    name: "apply_proposal_dependencies",
-    description:
-      "Apply AI-suggested dependencies directly to proposals. Clears existing dependencies and applies new ones. Used by dependency-suggester agent.",
-    inputSchema: {
-      type: "object",
-      properties: {
-        session_id: {
-          type: "string",
-          description: "The ideation session ID",
-        },
-        dependencies: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              proposal_id: {
-                type: "string",
-                description: "The proposal that depends on another",
-              },
-              depends_on_id: {
-                type: "string",
-                description: "The proposal that must be completed first",
-              },
-              reason: {
-                type: "string",
-                description: "Brief explanation of why this dependency exists",
-              },
-            },
-            required: ["proposal_id", "depends_on_id"],
-          },
-          description: "Array of dependency suggestions to apply",
-        },
-      },
-      required: ["session_id", "dependencies"],
-    },
-  },
-  {
     name: "update_session_title",
     description:
       "Update the title of an ideation session. Used by session-namer agent to set auto-generated titles.",
@@ -253,8 +196,7 @@ export const ALL_TOOLS: Tool[] = [
     name: "analyze_session_dependencies",
     description:
       "Get full dependency graph analysis including critical path, cycle detection, and blocking relationships. " +
-      "Use to provide intelligent recommendations about proposal execution order. " +
-      "If analysis_in_progress is true in the response, wait 2-3 seconds and retry for complete results.",
+      "Use to provide intelligent recommendations about proposal execution order.",
     inputSchema: {
       type: "object",
       properties: {
@@ -1332,7 +1274,6 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "create_task_proposal",
     "update_task_proposal",
     "delete_task_proposal",
-    // Note: add_proposal_dependency removed - dependencies are now auto-suggested by dependency-suggester agent
     "list_session_proposals",
     "get_proposal",
     "analyze_session_dependencies",
@@ -1510,8 +1451,6 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   ],
   // Session naming agent - generates titles for IDA sessions
   [SESSION_NAMER]: ["update_session_title"],
-  // Dependency suggester agent - analyzes proposals and auto-applies dependencies
-  [DEPENDENCY_SUGGESTER]: ["apply_proposal_dependencies"],
   // Merger agent - resolves merge conflicts when programmatic merge fails
   [MERGER]: [
     // merge tools

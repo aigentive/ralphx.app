@@ -1,7 +1,6 @@
 // Application state container for dependency injection
 // Holds repository trait objects that can be swapped for testing
 
-use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager};
@@ -11,7 +10,6 @@ use crate::application::PermissionState;
 use crate::application::QuestionState;
 use crate::application::ResumeValidator;
 use crate::domain::agents::AgenticClient;
-use crate::domain::entities::IdeationSessionId;
 use crate::domain::qa::QASettings;
 use crate::domain::repositories::{
     ActivePlanRepository, ActivityEventRepository, AgentProfileRepository, AgentRunRepository,
@@ -137,25 +135,6 @@ pub struct AppState {
     pub message_queue: Arc<MessageQueue>,
     /// Registry for tracking running agent processes
     pub running_agent_registry: Arc<dyn RunningAgentRegistry>,
-    /// Sessions currently undergoing dependency analysis (for status reporting in MCP tools).
-    ///
-    /// **Volatility note:** This is a pure in-memory set — it is NOT persisted to SQLite.
-    /// On app restart, this set starts empty. Any session whose analysis was in progress at
-    /// the time of the crash/restart will NOT appear here. This is correct behaviour:
-    /// - The backend auto-clears any stuck entries with a 60-second safety timeout.
-    /// - The frontend `isAnalyzingDependencies` state resets to `false` on component mount
-    ///   (React `useState` default), so there is no stuck loading UI after a restart.
-    /// - If the user restarts mid-analysis, they can manually trigger re-analysis from the
-    ///   UI. No manual cleanup is needed.
-    pub analyzing_dependencies: Arc<tokio::sync::RwLock<HashSet<IdeationSessionId>>>,
-    /// Generation counters for debouncing dependency analysis triggers per session.
-    ///
-    /// Each entry maps an `IdeationSessionId` to a monotonically-increasing generation number.
-    /// `maybe_trigger_dependency_analysis` increments the counter before sleeping; if the
-    /// counter changed by the time the sleep completes, the spawn is discarded as stale.
-    /// This is a `std::sync::Mutex` (not tokio) so it can be locked in both sync and async
-    /// contexts without blocking the executor.
-    pub debounce_generations: Arc<std::sync::Mutex<HashMap<IdeationSessionId, u64>>>,
     /// Plan branch repository for feature branch tracking
     pub plan_branch_repo: Arc<dyn PlanBranchRepository>,
     /// Plan selection stats repository for tracking plan selection interactions
@@ -371,8 +350,7 @@ impl AppState {
                 Arc::clone(&shared_conn),
             )),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
-            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
-            debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),
+
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: Some(app_handle),
@@ -529,8 +507,7 @@ impl AppState {
                 Arc::clone(&shared_conn),
             )),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
-            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
-            debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),
+
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: Some(app_handle),
@@ -609,8 +586,7 @@ impl AppState {
             ),
             external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
-            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
-            debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),
+
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: None,
@@ -699,8 +675,7 @@ impl AppState {
             db: crate::infrastructure::sqlite::DbConnection::from_shared(Arc::clone(&shared_conn)),
             external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
-            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
-            debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),
+
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(
                 crate::application::InteractiveProcessRegistry::new(),
@@ -783,8 +758,7 @@ impl AppState {
             ),
             external_events_repo: Arc::new(MemoryExternalEventsRepository::new()),
             running_agent_registry: Arc::new(MemoryRunningAgentRegistry::new()),
-            analyzing_dependencies: Arc::new(tokio::sync::RwLock::new(HashSet::new())),
-            debounce_generations: Arc::new(std::sync::Mutex::new(HashMap::new())),
+
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: None,

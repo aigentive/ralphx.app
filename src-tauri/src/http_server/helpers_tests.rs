@@ -70,6 +70,7 @@ async fn test_create_proposal_without_plan_artifact_returns_validation_error() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
 
     let result = create_proposal_impl(&state, session_id, options).await;
@@ -119,12 +120,13 @@ async fn test_create_proposal_with_plan_artifact_succeeds_and_auto_links() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
 
     let result = create_proposal_impl(&state, session_id, options).await;
     assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
 
-    let proposal = result.unwrap();
+    let (proposal, _dep_errors) = result.unwrap();
     assert_eq!(
         proposal.plan_artifact_id,
         Some(artifact_id),
@@ -164,9 +166,10 @@ async fn test_create_proposal_sets_plan_version_at_creation() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
 
-    let proposal = create_proposal_impl(&state, session_id, options)
+    let (proposal, _dep_errors) = create_proposal_impl(&state, session_id, options)
         .await
         .unwrap();
 
@@ -175,166 +178,6 @@ async fn test_create_proposal_sets_plan_version_at_creation() {
         Some(1),
         "Proposal should have plan_version_at_creation set to artifact's current version"
     );
-}
-
-// -------------------------------------------------------------------------
-// summarize_plan_for_dependencies tests
-// -------------------------------------------------------------------------
-
-#[test]
-fn test_summarize_empty_input_returns_empty() {
-    let result = summarize_plan_for_dependencies("");
-    assert_eq!(result, "");
-}
-
-#[test]
-fn test_summarize_extracts_phase_headings() {
-    let input = "# Title\n\n## Phase 1: Setup\nSome prose.\n\n## Phase 2: Features\nMore prose.";
-    let result = summarize_plan_for_dependencies(input);
-    assert!(
-        result.contains("## Phase 1: Setup"),
-        "Should include phase 1 heading"
-    );
-    assert!(
-        result.contains("## Phase 2: Features"),
-        "Should include phase 2 heading"
-    );
-    assert!(result.starts_with("Plan Structure:"));
-}
-
-#[test]
-fn test_summarize_extracts_numbered_items() {
-    let input = "## Overview\n1. First step\n2. Second step\n3. Third step";
-    let result = summarize_plan_for_dependencies(input);
-    assert!(result.contains("1. First step"));
-    assert!(result.contains("2. Second step"));
-    assert!(result.contains("3. Third step"));
-}
-
-#[test]
-fn test_summarize_includes_ordering_bullets() {
-    let input = "## Notes\n- This task depends on setup\n- Run after the database phase\n- Unrelated bullet point";
-    let result = summarize_plan_for_dependencies(input);
-    assert!(result.contains("- This task depends on setup"));
-    assert!(result.contains("- Run after the database phase"));
-    // Unrelated bullet without ordering keywords should be excluded
-    assert!(!result.contains("Unrelated bullet point"));
-}
-
-#[test]
-fn test_summarize_truncates_to_1500_chars() {
-    // Build a long input with many headings
-    let long_input: String = (1..=100).fold(String::new(), |mut acc, i| {
-        use std::fmt::Write;
-        writeln!(
-            acc,
-            "## Phase {}: Some very long phase title with lots of words here",
-            i
-        )
-        .unwrap();
-        acc
-    });
-    let result = summarize_plan_for_dependencies(&long_input);
-    // Result (including "Plan Structure:\n" prefix) should be bounded
-    // 1500 chars of body + "Plan Structure:\n" prefix (16 chars) = ~1516 max
-    assert!(
-        result.len() <= 1520,
-        "Result should be truncated, got {} chars",
-        result.len()
-    );
-    assert!(result.starts_with("Plan Structure:"));
-}
-
-#[test]
-fn test_summarize_no_matching_content_returns_empty() {
-    let input = "Just regular prose with no headings or numbered lists.\nAnother line of prose.";
-    let result = summarize_plan_for_dependencies(input);
-    assert_eq!(result, "");
-}
-
-#[test]
-fn test_summarize_h1_heading_excluded_h2_included() {
-    let input = "# Main Title (excluded)\n## Phase 1 (included)\n### Sub-section (included)";
-    let result = summarize_plan_for_dependencies(input);
-    assert!(
-        !result.contains("# Main Title"),
-        "H1 headings should not be included"
-    );
-    assert!(result.contains("## Phase 1"));
-    assert!(result.contains("### Sub-section"));
-}
-
-// -------------------------------------------------------------------------
-// fetch_plan_summary_for_session tests
-// -------------------------------------------------------------------------
-
-#[tokio::test]
-async fn test_fetch_plan_summary_session_not_found_returns_empty() {
-    let state = AppState::new_sqlite_test();
-    let result = fetch_plan_summary_for_session(
-        "nonexistent-session-id",
-        &state.ideation_session_repo,
-        &state.artifact_repo,
-    )
-    .await;
-    assert_eq!(result, "");
-}
-
-#[tokio::test]
-async fn test_fetch_plan_summary_session_without_plan_returns_empty() {
-    let state = AppState::new_sqlite_test();
-    let project_id = ProjectId::new();
-
-    // Session WITHOUT a plan artifact
-    let session = IdeationSession::new_with_title(project_id, "No Plan Session");
-    let session_id = session.id.as_str().to_string();
-    state.ideation_session_repo.create(session).await.unwrap();
-
-    let result = fetch_plan_summary_for_session(
-        &session_id,
-        &state.ideation_session_repo,
-        &state.artifact_repo,
-    )
-    .await;
-    assert_eq!(result, "");
-}
-
-#[tokio::test]
-async fn test_fetch_plan_summary_with_plan_returns_summary() {
-    let state = AppState::new_sqlite_test();
-    let project_id = ProjectId::new();
-
-    let plan_content = "## Phase 1: Setup\n1. Create schema\n2. Run migrations\n\n## Phase 2: Features\n1. Implement API";
-    let artifact = Artifact::new_inline(
-        "Implementation Plan",
-        ArtifactType::Specification,
-        plan_content,
-        "test",
-    );
-    let artifact_id = artifact.id.clone();
-    state.artifact_repo.create(artifact).await.unwrap();
-
-    let session = IdeationSession::builder()
-        .project_id(project_id)
-        .title("Session With Plan")
-        .plan_artifact_id(artifact_id)
-        .build();
-    let session_id = session.id.as_str().to_string();
-    state.ideation_session_repo.create(session).await.unwrap();
-
-    let result = fetch_plan_summary_for_session(
-        &session_id,
-        &state.ideation_session_repo,
-        &state.artifact_repo,
-    )
-    .await;
-
-    assert!(
-        result.starts_with("Plan Structure:"),
-        "Should start with Plan Structure:"
-    );
-    assert!(result.contains("## Phase 1: Setup"));
-    assert!(result.contains("## Phase 2: Features"));
 }
 
 // ============================================================================
@@ -396,10 +239,12 @@ async fn create_test_proposal(state: &AppState, session_id: &IdeationSessionId) 
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
     create_proposal_impl(state, session_id.clone(), options)
         .await
         .expect("test proposal creation should succeed")
+        .0
         .id
 }
 
@@ -417,6 +262,7 @@ async fn test_create_gate_blocks_unverified_when_enabled() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
 
     let result = create_proposal_impl(&state, session.id.clone(), options).await;
@@ -449,6 +295,7 @@ async fn test_create_gate_ipc_parity_same_error_as_http() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
     let http_options = CreateProposalOptions {
         title: "HTTP Proposal".to_string(),
@@ -458,6 +305,7 @@ async fn test_create_gate_ipc_parity_same_error_as_http() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
 
     let ipc_result = create_proposal_impl(&state, session.id.clone(), ipc_options).await;
@@ -580,9 +428,10 @@ async fn test_create_proposal_inserted_exactly_once() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
 
-    let proposal = create_proposal_impl(&state, session.id.clone(), options)
+    let (proposal, _dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
         .await
         .unwrap();
 
@@ -608,7 +457,7 @@ async fn test_update_ipc_sets_user_modified() {
         source: UpdateSource::TauriIpc,
         ..Default::default()
     };
-    let updated = update_proposal_impl(&state, &proposal_id, options)
+    let (updated, _dep_errors) = update_proposal_impl(&state, &proposal_id, options)
         .await
         .unwrap();
 
@@ -639,7 +488,7 @@ async fn test_update_api_does_not_set_user_modified() {
         source: UpdateSource::Api,
         ..Default::default()
     };
-    let updated = update_proposal_impl(&state, &proposal_id, options)
+    let (updated, _dep_errors) = update_proposal_impl(&state, &proposal_id, options)
         .await
         .unwrap();
 
@@ -663,8 +512,9 @@ async fn test_create_proposal_with_estimated_complexity_roundtrip() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: Some("complex".to_string()),
+        depends_on: vec![],
     };
-    let proposal = create_proposal_impl(&state, session.id.clone(), options)
+    let (proposal, _dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
         .await
         .unwrap();
 
@@ -946,6 +796,7 @@ async fn test_create_gate_off_allows_any_status() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
 
     let result = create_proposal_impl(&state, session.id.clone(), options).await;
@@ -974,6 +825,7 @@ async fn test_concurrent_creates_produce_unique_sort_orders() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
 
     // Run 3 creates concurrently via tokio::join! (they share the same mutex-serialized DB conn)
@@ -983,9 +835,9 @@ async fn test_concurrent_creates_produce_unique_sort_orders() {
         create_proposal_impl(&state, session_id.clone(), make_options(3)),
     );
 
-    let p1 = r1.expect("concurrent create 1 must succeed");
-    let p2 = r2.expect("concurrent create 2 must succeed");
-    let p3 = r3.expect("concurrent create 3 must succeed");
+    let (p1, _) = r1.expect("concurrent create 1 must succeed");
+    let (p2, _) = r2.expect("concurrent create 2 must succeed");
+    let (p3, _) = r3.expect("concurrent create 3 must succeed");
 
     // All sort_orders must be unique (no TOCTOU duplicates)
     let orders: HashSet<i32> = [p1.sort_order, p2.sort_order, p3.sort_order]
@@ -1001,6 +853,291 @@ async fn test_concurrent_creates_produce_unique_sort_orders() {
         .await
         .unwrap();
     assert_eq!(all_proposals.len(), 3, "All 3 proposals must be in DB");
+}
+
+// =========================================================================
+// Inline dependency tests — depends_on / add_depends_on / add_blocks
+// =========================================================================
+
+// Scenario 26: create with valid depends_on inserts the dependency and returns no dep_errors.
+#[tokio::test]
+async fn test_create_with_valid_depends_on_inserts_dependency() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    // Create proposal A (no deps)
+    let a_id = create_test_proposal(&state, &session.id).await;
+
+    // Create proposal B with depends_on=[A]
+    let options = CreateProposalOptions {
+        title: "Proposal B".to_string(),
+        description: None,
+        category: ProposalCategory::Feature,
+        suggested_priority: Priority::Medium,
+        steps: None,
+        acceptance_criteria: None,
+        estimated_complexity: None,
+        depends_on: vec![a_id.as_str().to_string()],
+    };
+    let (b_proposal, dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
+        .await
+        .expect("create with valid dep should succeed");
+
+    assert!(dep_errors.is_empty(), "Expected no dep errors, got: {:?}", dep_errors);
+
+    // Verify dep was inserted: B should have 1 dependency (A)
+    let dep_count = state
+        .proposal_dependency_repo
+        .count_dependencies(&b_proposal.id)
+        .await
+        .expect("count_dependencies should succeed");
+    assert_eq!(dep_count, 1, "B should have exactly 1 dependency (A)");
+}
+
+// Scenario 27: create with nonexistent dep → partial failure (proposal created, dep_errors non-empty).
+#[tokio::test]
+async fn test_create_with_nonexistent_dep_partial_failure() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let options = CreateProposalOptions {
+        title: "Proposal with bad dep".to_string(),
+        description: None,
+        category: ProposalCategory::Feature,
+        suggested_priority: Priority::Medium,
+        steps: None,
+        acceptance_criteria: None,
+        estimated_complexity: None,
+        depends_on: vec!["nonexistent-proposal-id".to_string()],
+    };
+    let (proposal, dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
+        .await
+        .expect("proposal itself should be created despite bad dep");
+
+    // Proposal was created
+    let in_db = state.task_proposal_repo.get_by_id(&proposal.id).await.unwrap();
+    assert!(in_db.is_some(), "Proposal should be in DB despite dep error");
+
+    // dep_errors has one entry for the nonexistent dep
+    assert_eq!(dep_errors.len(), 1, "Expected one dep error, got: {:?}", dep_errors);
+    assert!(
+        dep_errors[0].contains("not found"),
+        "Error should mention not found, got: {}",
+        dep_errors[0]
+    );
+}
+
+// Scenario 28: create with cross-session dep → rejected in dep_errors, proposal still created.
+#[tokio::test]
+async fn test_create_with_cross_session_dep_rejected() {
+    let state = AppState::new_sqlite_test();
+    let (session1, _) = setup_session_with_gate(&state, "verified", false).await;
+    let (session2, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    // Create proposal in session2
+    let other_proposal_id = create_test_proposal(&state, &session2.id).await;
+
+    // Try to create in session1 with dep from session2
+    let options = CreateProposalOptions {
+        title: "Cross-session dep".to_string(),
+        description: None,
+        category: ProposalCategory::Feature,
+        suggested_priority: Priority::Medium,
+        steps: None,
+        acceptance_criteria: None,
+        estimated_complexity: None,
+        depends_on: vec![other_proposal_id.as_str().to_string()],
+    };
+    let (_, dep_errors) = create_proposal_impl(&state, session1.id.clone(), options)
+        .await
+        .expect("proposal itself should be created despite cross-session dep error");
+
+    assert_eq!(dep_errors.len(), 1, "Expected one dep error");
+    assert!(
+        dep_errors[0].contains("not in same session"),
+        "Error should mention session mismatch, got: {}",
+        dep_errors[0]
+    );
+}
+
+// Scenario 29: update add_depends_on self-dep → rejected.
+#[tokio::test]
+async fn test_update_add_depends_on_self_dep_rejected() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+    let proposal_id = create_test_proposal(&state, &session.id).await;
+
+    let options = UpdateProposalOptions {
+        add_depends_on: vec![proposal_id.as_str().to_string()],
+        source: UpdateSource::Api,
+        ..Default::default()
+    };
+    let (_, dep_errors) = update_proposal_impl(&state, &proposal_id, options)
+        .await
+        .expect("update itself should succeed despite self-dep error");
+
+    assert_eq!(dep_errors.len(), 1, "Expected one dep error");
+    assert!(
+        dep_errors[0].contains("self-dependency"),
+        "Error should mention self-dependency, got: {}",
+        dep_errors[0]
+    );
+}
+
+// Scenario 30: add_depends_on cycle detection — A→B already exists, B→A rejected.
+#[tokio::test]
+async fn test_update_add_depends_on_cycle_rejected() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let a_id = create_test_proposal(&state, &session.id).await;
+    let b_id = create_test_proposal(&state, &session.id).await;
+
+    // A depends on B (A→B)
+    let (_, errs) = update_proposal_impl(
+        &state,
+        &a_id,
+        UpdateProposalOptions {
+            add_depends_on: vec![b_id.as_str().to_string()],
+            source: UpdateSource::Api,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(errs.is_empty(), "First dep (A→B) should succeed: {:?}", errs);
+
+    // Now try B depends on A (B→A) — would create cycle A→B→A
+    let (_, dep_errors) = update_proposal_impl(
+        &state,
+        &b_id,
+        UpdateProposalOptions {
+            add_depends_on: vec![a_id.as_str().to_string()],
+            source: UpdateSource::Api,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(dep_errors.len(), 1, "Expected one dep error");
+    assert!(
+        dep_errors[0].contains("would create cycle"),
+        "Error should mention cycle, got: {}",
+        dep_errors[0]
+    );
+}
+
+// Scenario 31: add_blocks cycle detection (reverse direction) — A→B exists, add_blocks=[B] on A
+// would insert B→A, creating a cycle. Rejected.
+#[tokio::test]
+async fn test_update_add_blocks_cycle_rejected() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let a_id = create_test_proposal(&state, &session.id).await;
+    let b_id = create_test_proposal(&state, &session.id).await;
+
+    // A depends on B (A→B)
+    let (_, errs) = update_proposal_impl(
+        &state,
+        &a_id,
+        UpdateProposalOptions {
+            add_depends_on: vec![b_id.as_str().to_string()],
+            source: UpdateSource::Api,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(errs.is_empty(), "First dep (A→B) should succeed: {:?}", errs);
+
+    // Update A with add_blocks=[B] → would insert B depends_on A (B→A)
+    // Cycle check: would_create_cycle(B, A) → true since A→B exists → rejected
+    let (_, dep_errors) = update_proposal_impl(
+        &state,
+        &a_id,
+        UpdateProposalOptions {
+            add_blocks: vec![b_id.as_str().to_string()],
+            source: UpdateSource::Api,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(dep_errors.len(), 1, "Expected one dep error");
+    assert!(
+        dep_errors[0].contains("would create cycle"),
+        "Error should mention cycle, got: {}",
+        dep_errors[0]
+    );
+}
+
+// Scenario 32: add_blocks self-dep → rejected.
+#[tokio::test]
+async fn test_update_add_blocks_self_dep_rejected() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+    let proposal_id = create_test_proposal(&state, &session.id).await;
+
+    let options = UpdateProposalOptions {
+        add_blocks: vec![proposal_id.as_str().to_string()],
+        source: UpdateSource::Api,
+        ..Default::default()
+    };
+    let (_, dep_errors) = update_proposal_impl(&state, &proposal_id, options)
+        .await
+        .expect("update itself should succeed despite self-dep error");
+
+    assert_eq!(dep_errors.len(), 1, "Expected one dep error");
+    assert!(
+        dep_errors[0].contains("self-dependency"),
+        "Error should mention self-dependency, got: {}",
+        dep_errors[0]
+    );
+}
+
+// Scenario 33: partial failure — valid dep + nonexistent dep → one inserted, one error.
+#[tokio::test]
+async fn test_update_add_depends_on_partial_failure() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let a_id = create_test_proposal(&state, &session.id).await;
+    let b_id = create_test_proposal(&state, &session.id).await;
+
+    // B add_depends_on: [A (valid), nonexistent (invalid)]
+    let (_, dep_errors) = update_proposal_impl(
+        &state,
+        &b_id,
+        UpdateProposalOptions {
+            add_depends_on: vec![
+                a_id.as_str().to_string(),
+                "nonexistent-id".to_string(),
+            ],
+            source: UpdateSource::Api,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+
+    // Exactly one error (for nonexistent), valid dep was inserted
+    assert_eq!(dep_errors.len(), 1, "Expected one dep error, got: {:?}", dep_errors);
+    assert!(
+        dep_errors[0].contains("not found"),
+        "Error should mention not found, got: {}",
+        dep_errors[0]
+    );
+
+    // Valid dep was inserted: B should have 1 dependency (A)
+    let dep_count = state
+        .proposal_dependency_repo
+        .count_dependencies(&b_id)
+        .await
+        .expect("count_dependencies should succeed");
+    assert_eq!(dep_count, 1, "B→A dep should have been inserted successfully (1 dep)");
 }
 
 // Scenario 25: Concurrent create during status transition — TOCTOU prevention.
@@ -1023,6 +1160,7 @@ async fn test_concurrent_create_during_status_transition_no_partial_state() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        depends_on: vec![],
     };
 
     // Concurrently: attempt create AND change status to Reviewing
@@ -1045,7 +1183,7 @@ async fn test_concurrent_create_during_status_transition_no_partial_state() {
     // Create either succeeded (ran before transition) or failed (ran after transition)
     // — never a partial/corrupt state
     match create_result {
-        Ok(proposal) => {
+        Ok((proposal, _dep_errors)) => {
             // Proposal was created; verify it's in DB (no partial write)
             let in_db = state
                 .task_proposal_repo

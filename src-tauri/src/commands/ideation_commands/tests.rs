@@ -1783,7 +1783,6 @@ async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
         session_id: session.id.as_str().to_string(),
         proposal_ids: proposal_ids.clone(),
         target_column: "auto".to_string(),
-        preserve_dependencies: false,
         use_feature_branch: Some(false),
     };
 
@@ -1828,7 +1827,6 @@ async fn test_apply_proposals_core_session_converts_to_accepted() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        preserve_dependencies: false,
         use_feature_branch: Some(false),
     };
 
@@ -1861,7 +1859,6 @@ async fn test_apply_proposals_core_partial_apply_does_not_convert_session() {
         session_id: session.id.as_str().to_string(),
         proposal_ids: vec![proposal_ids[0].clone()],
         target_column: "auto".to_string(),
-        preserve_dependencies: false,
         use_feature_branch: Some(false),
     };
 
@@ -1904,7 +1901,6 @@ async fn test_apply_proposals_core_idempotency_guard() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        preserve_dependencies: false,
         use_feature_branch: Some(false),
     };
 
@@ -1947,7 +1943,6 @@ async fn test_apply_proposals_core_rejects_inactive_session() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        preserve_dependencies: false,
         use_feature_branch: Some(false),
     };
 
@@ -1975,7 +1970,6 @@ async fn test_apply_proposals_core_rejects_unknown_proposals() {
         session_id: session.id.as_str().to_string(),
         proposal_ids: vec!["nonexistent-proposal-id".to_string()],
         target_column: "auto".to_string(),
-        preserve_dependencies: false,
         use_feature_branch: Some(false),
     };
 
@@ -2002,7 +1996,6 @@ async fn test_apply_proposals_core_result_contains_context_fields() {
         session_id: session.id.as_str().to_string(),
         proposal_ids,
         target_column: "auto".to_string(),
-        preserve_dependencies: false,
         use_feature_branch: Some(false),
     };
 
@@ -2077,7 +2070,6 @@ async fn test_apply_proposals_core_preserves_dependencies() {
             p2.id.as_str().to_string(),
         ],
         target_column: "auto".to_string(),
-        preserve_dependencies: true,
         use_feature_branch: Some(false),
     };
 
