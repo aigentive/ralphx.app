@@ -2,7 +2,7 @@ openapi: "3.0.3"
 info:
   title: RalphX External MCP API
   description: |
-    The RalphX External MCP Server exposes 27 orchestration-level tools to external agents
+    The RalphX External MCP Server exposes 33 orchestration-level tools to external agents
     via the Model Context Protocol (MCP) over HTTP using Streamable HTTP Transport.
 
     All tool calls go through the /mcp endpoint using the MCP JSON-RPC protocol.
@@ -344,6 +344,91 @@ components:
           type: integer
           description: Number of tasks queued waiting for execution slot
 
+    IdeationMessage:
+      type: object
+      properties:
+        id:
+          type: string
+        session_id:
+          type: string
+        role:
+          type: string
+          enum: [user, assistant]
+        content:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    VerificationState:
+      type: object
+      properties:
+        session_id:
+          type: string
+        status:
+          type: string
+          enum: [pending, running, converged, failed]
+        round:
+          type: integer
+          description: Current adversarial debate round (1-based)
+        gaps_remaining:
+          type: integer
+          description: Number of unresolved CRITICAL/HIGH/MEDIUM gaps
+        summary:
+          type: string
+          description: Human-readable convergence summary
+        updated_at:
+          type: string
+          format: date-time
+
+    TaskStep:
+      type: object
+      properties:
+        id:
+          type: string
+        task_id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [pending, in_progress, completed, skipped, failed]
+        sort_order:
+          type: integer
+        completion_note:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BatchTaskStatus:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              task_id:
+                type: string
+              title:
+                type: string
+              status:
+                type: string
+              found:
+                type: boolean
+        not_found:
+          type: array
+          items:
+            type: string
+          description: Task IDs that were not found or not accessible
+
 paths:
   /health:
     get:
@@ -407,7 +492,7 @@ paths:
         - Subsequent requests: include Mcp-Session-Id header to resume session.
         - Sessions are cleaned up on disconnect.
 
-        All 27 tools are routed through this single endpoint using MCP JSON-RPC protocol.
+        All 33 tools are routed through this single endpoint using MCP JSON-RPC protocol.
 
         Tool categories and their operationIds below document each tool's input/output schema.
       requestBody:
@@ -504,7 +589,7 @@ paths:
                   $ref: "#/components/schemas/PipelineStage"
 
   # -------------------------------------------------------------------------
-  # Flow 2: Ideation & Planning (9 tools)
+  # Flow 2: Ideation & Planning (13 tools)
   # -------------------------------------------------------------------------
 
   /mcp#v1_start_ideation:
@@ -743,8 +828,180 @@ paths:
                           type: string
                           enum: [blocks, blocked_by]
 
+  /mcp#v1_list_ideation_sessions:
+    post:
+      operationId: v1_list_ideation_sessions
+      summary: List ideation sessions for a project
+      description: |
+        Returns ideation sessions for the project, optionally filtered by status.
+        Useful for resuming in-progress sessions or reviewing historical ones.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_list_ideation_sessions
+              arguments:
+                project_id: "proj-abc123"
+                status: "running"
+                limit: 20
+      responses:
+        "200":
+          description: List of ideation sessions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IdeationSession"
+
+  /mcp#v1_get_ideation_messages:
+    post:
+      operationId: v1_get_ideation_messages
+      summary: Read orchestrator message history for an ideation session
+      description: |
+        Returns paginated conversation messages (user + assistant) for the session.
+        Use to read the orchestrator's responses after sending a message via
+        v1_send_ideation_message.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_ideation_messages
+              arguments:
+                session_id: "sess-xyz789"
+                limit: 50
+                offset: 0
+      responses:
+        "200":
+          description: Paginated message list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/IdeationMessage"
+
+  /mcp#v1_trigger_plan_verification:
+    post:
+      operationId: v1_trigger_plan_verification
+      summary: Trigger automated adversarial plan verification for a session
+      description: |
+        Starts the adversarial debate loop on the session's current plan artifact.
+        The verification runs asynchronously — poll v1_get_plan_verification to
+        check convergence status.
+
+        Verification runs multiple critic rounds until all CRITICAL/HIGH/MEDIUM
+        gaps are resolved (zero_blocking convergence). LOW gaps may remain.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_trigger_plan_verification
+              arguments:
+                session_id: "sess-xyz789"
+      responses:
+        "200":
+          description: Verification triggered
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  session_id:
+                    type: string
+                  triggered:
+                    type: boolean
+
+  /mcp#v1_get_plan_verification:
+    post:
+      operationId: v1_get_plan_verification
+      summary: Get plan verification status for a session
+      description: |
+        Returns the current verification state including round number, remaining gaps,
+        and convergence status. Poll after calling v1_trigger_plan_verification.
+
+        Status values:
+        - pending: not yet started
+        - running: critic rounds in progress
+        - converged: all CRITICAL/HIGH/MEDIUM gaps resolved
+        - failed: verification process errored
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_plan_verification
+              arguments:
+                session_id: "sess-xyz789"
+      responses:
+        "200":
+          description: Verification state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VerificationState"
+
   # -------------------------------------------------------------------------
-  # Flow 3: Task Pipeline Supervision (11 tools)
+  # Flow 3: Task Operations (2 tools)
+  # -------------------------------------------------------------------------
+
+  /mcp#v1_get_task_steps:
+    post:
+      operationId: v1_get_task_steps
+      summary: List all execution steps for a task
+      description: |
+        Returns the ordered list of steps for a task, including status and
+        completion notes. Useful for monitoring worker progress during execution.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_get_task_steps
+              arguments:
+                task_id: "task-abc"
+      responses:
+        "200":
+          description: Ordered list of task steps
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TaskStep"
+
+  /mcp#v1_batch_task_status:
+    post:
+      operationId: v1_batch_task_status
+      summary: Batch lookup status for up to 50 task IDs
+      description: |
+        Efficiently retrieves status for multiple tasks in a single call.
+        Maximum 50 task IDs per request. Returns results for found tasks
+        and a separate not_found list for missing or inaccessible IDs.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            example:
+              name: v1_batch_task_status
+              arguments:
+                task_ids:
+                  - "task-abc"
+                  - "task-def"
+                  - "task-ghi"
+      responses:
+        "200":
+          description: Batch status results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BatchTaskStatus"
+
+  # -------------------------------------------------------------------------
+  # Flow 4: Task Pipeline Supervision (11 tools)
   # -------------------------------------------------------------------------
 
   /mcp#v1_get_task_detail:
@@ -1044,7 +1301,7 @@ paths:
                     type: integer
 
   # -------------------------------------------------------------------------
-  # Flow 4: Events & Monitoring (4 tools)
+  # Flow 5: Events & Monitoring (4 tools)
   # -------------------------------------------------------------------------
 
   /mcp#v1_subscribe_events:
