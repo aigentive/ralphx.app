@@ -330,16 +330,12 @@ pub fn run() {
             let shared_permission_state = Arc::clone(&app_state.permission_state);
             let shared_message_queue = Arc::clone(&app_state.message_queue);
             let shared_interactive_process_registry = Arc::clone(&app_state.interactive_process_registry);
-            let shared_analyzing_dependencies = Arc::clone(&app_state.analyzing_dependencies);
-            let shared_debounce_generations = Arc::clone(&app_state.debounce_generations);
             let mut http_app_state_inner =
                 AppState::new_production_shared(app_handle, shared_db_conn).expect("Failed to initialize AppState for HTTP server");
             http_app_state_inner.question_state = shared_question_state;
             http_app_state_inner.permission_state = shared_permission_state;
             http_app_state_inner.message_queue = shared_message_queue;
             http_app_state_inner.interactive_process_registry = shared_interactive_process_registry;
-            http_app_state_inner.analyzing_dependencies = shared_analyzing_dependencies;
-            http_app_state_inner.debounce_generations = shared_debounce_generations;
             let http_app_state = Arc::new(http_app_state_inner);
             // Spawn HTTP server with pre-cloned state
             tauri::async_runtime::spawn(async move {
@@ -936,7 +932,6 @@ pub fn run() {
             commands::ideation_commands::reopen_ideation_session,
             commands::ideation_commands::update_ideation_session_title,
             commands::ideation_commands::spawn_session_namer,
-            commands::ideation_commands::spawn_dependency_suggester,
             // Task proposal commands
             commands::ideation_commands::create_task_proposal,
             commands::ideation_commands::get_task_proposal,
@@ -949,7 +944,6 @@ pub fn run() {
             commands::ideation_commands::assess_proposal_priority,
             commands::ideation_commands::assess_all_priorities,
             // Dependency and apply commands
-            commands::ideation_commands::add_proposal_dependency,
             commands::ideation_commands::remove_proposal_dependency,
             commands::ideation_commands::get_proposal_dependencies,
             commands::ideation_commands::get_proposal_dependents,

@@ -111,7 +111,6 @@ export interface DependencyGraphResponse {
   criticalPath: string[];
   hasCycles: boolean;
   cycles: string[][] | null;
-  analysisInProgress?: boolean;
   message?: string | null;
   summary?: DependencyAnalysisSummary | null;
 }
@@ -151,7 +150,6 @@ export interface ApplyProposalsInput {
   sessionId: string;
   proposalIds: string[];
   targetColumn: string;
-  preserveDependencies: boolean;
   useFeatureBranch?: boolean;
 }
 

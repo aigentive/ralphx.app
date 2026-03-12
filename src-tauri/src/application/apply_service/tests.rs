@@ -1254,7 +1254,6 @@ async fn test_apply_proposals_creates_tasks() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone(), p2.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await
@@ -1281,7 +1280,6 @@ async fn test_apply_proposals_sets_correct_status() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone()],
                 target_column: TargetColumn::Todo,
-                preserve_dependencies: false,
             },
         )
         .await
@@ -1314,7 +1312,6 @@ async fn test_apply_proposals_preserves_dependencies() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone(), p2.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: true,
             },
         )
         .await
@@ -1324,34 +1321,6 @@ async fn test_apply_proposals_preserves_dependencies() {
     assert_eq!(result.dependencies_created, 1);
 }
 
-#[tokio::test]
-async fn test_apply_proposals_no_dependencies_when_not_preserved() {
-    let project_id = ProjectId::new();
-    let session = IdeationSession::new(project_id.clone());
-    let session_id = session.id.clone();
-
-    let p1 = create_test_proposal(&session_id, "Setup");
-    let p2 = create_test_proposal(&session_id, "Feature");
-
-    let deps = vec![(p2.id.clone(), p1.id.clone())];
-
-    let service = create_service(session.clone(), vec![p1.clone(), p2.clone()], deps);
-
-    let result = service
-        .apply_proposals(
-            &session_id,
-            ApplyProposalsOptions {
-                proposal_ids: vec![p1.id.clone(), p2.id.clone()],
-                target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
-            },
-        )
-        .await
-        .unwrap();
-
-    assert_eq!(result.created_tasks.len(), 2);
-    assert_eq!(result.dependencies_created, 0);
-}
 
 #[tokio::test]
 async fn test_apply_proposals_fails_for_archived_session() {
@@ -1370,7 +1339,6 @@ async fn test_apply_proposals_fails_for_archived_session() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await;
@@ -1394,7 +1362,6 @@ async fn test_apply_proposals_fails_for_nonexistent_session() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await;
@@ -1425,7 +1392,6 @@ async fn test_apply_proposals_fails_with_circular_deps() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone(), p2.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: true,
             },
         )
         .await;
@@ -1452,7 +1418,6 @@ async fn test_apply_proposals_copies_fields_correctly() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await
@@ -1490,7 +1455,7 @@ async fn test_apply_selected_proposals() {
     );
 
     let result = service
-        .apply_selected_proposals(&session_id, TargetColumn::Backlog, false)
+        .apply_selected_proposals(&session_id, TargetColumn::Backlog)
         .await
         .unwrap();
 
@@ -1520,7 +1485,6 @@ async fn test_apply_all_converts_session() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone(), p2.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await
@@ -1547,7 +1511,6 @@ async fn test_apply_partial_does_not_convert_session() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await
@@ -1577,7 +1540,6 @@ async fn test_apply_proposals_imports_steps_from_proposal() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await
@@ -1615,7 +1577,6 @@ async fn test_apply_proposals_handles_empty_steps() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await
@@ -1646,7 +1607,6 @@ async fn test_apply_proposals_handles_no_steps() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await
@@ -1677,7 +1637,6 @@ async fn test_apply_proposals_handles_invalid_json_steps() {
             ApplyProposalsOptions {
                 proposal_ids: vec![p1.id.clone()],
                 target_column: TargetColumn::Backlog,
-                preserve_dependencies: false,
             },
         )
         .await

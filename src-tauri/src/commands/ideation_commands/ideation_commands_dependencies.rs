@@ -15,41 +15,6 @@ use super::ideation_commands_types::DependencyGraphResponse;
 // Dependency Commands
 // ============================================================================
 
-/// Add a dependency between proposals
-#[tauri::command]
-pub async fn add_proposal_dependency(
-    proposal_id: String,
-    depends_on_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
-    let from_id = TaskProposalId::from_string(proposal_id.clone());
-    let to_id = TaskProposalId::from_string(depends_on_id.clone());
-
-    // Prevent self-dependency
-    if from_id == to_id {
-        return Err("A proposal cannot depend on itself".to_string());
-    }
-
-    state
-        .proposal_dependency_repo
-        .add_dependency(&from_id, &to_id, None, Some("manual"))
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Emit event to frontend
-    if let Some(app_handle) = &state.app_handle {
-        let _ = app_handle.emit(
-            "dependency:added",
-            serde_json::json!({
-                "proposalId": proposal_id,
-                "dependsOnId": depends_on_id
-            }),
-        );
-    }
-
-    Ok(())
-}
-
 /// Remove a dependency between proposals
 #[tauri::command]
 pub async fn remove_proposal_dependency(

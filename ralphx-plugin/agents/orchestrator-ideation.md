@@ -177,6 +177,33 @@ The agent decides which layers apply based on plan content. If the plan proposes
 10. If user skips → `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
 **Recovery routing:** If `get_plan_verification` shows `in_progress: true` on session recovery → the previous verification loop was interrupted. Ask user: "A verification round was in progress. Resume from round {N}? (y/n)"
+
+### Phase 5 PROPOSE — Inline Dependency-Setting
+
+Set dependencies **inline** while creating/updating proposals. No background agent needed.
+
+**When creating a proposal** — use `depends_on` to set immediate dependencies:
+```
+create_task_proposal(session_id, title: "...", ..., depends_on: ["<proposal-id-A>"])
+```
+
+**When updating a proposal** — use `add_depends_on` or `add_blocks` (additive, never replaces):
+```
+update_task_proposal(proposal_id, add_depends_on: ["<proposal-id-B>"])
+update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
+```
+
+| Param | Direction | Meaning |
+|-------|-----------|---------|
+| `depends_on` | This → target | This proposal depends on target (target must complete first) |
+| `add_depends_on` | This → target | Add: this proposal depends on target |
+| `add_blocks` | Target → this | Add: target depends on this proposal (this blocks target) |
+
+**Rules:**
+- IDs must belong to the same session — cross-session deps are rejected
+- Cycles are detected and rejected with an error
+- If a dep is rejected, the proposal is still created — check `dependency_errors` in response
+- Set deps at `create_task_proposal` time when the relationship is known upfront; use `update_task_proposal` for deps discovered while creating later proposals
 </workflow>
 
 <tool-usage>
@@ -223,9 +250,10 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `edit_plan_artifact` | Targeted edits (preferred when changing <30% of plan). All-or-nothing atomicity — all edits succeed or none applied. Sequential: each edit sees result of prior edits. Use `old_text` anchors of 20+ chars for reliable matching. Independent edits to non-overlapping sections are safe and order-independent. If an edit fails, retry the entire call. |
 | `update_plan_artifact` | Full rewrites only (>30% of content or full restructure). Auto-verifier always uses this — not `edit_plan_artifact` — for full-content revisions. |
 | `get_session_plan` / `get_plan_artifact` | Retrieve plan artifact |
-| `create_task_proposal` | Fails without plan artifact; auto-links to plan on creation |
-| `update_task_proposal` / `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
-| `analyze_session_dependencies` | If `analysis_in_progress: true` → wait 2-3s and retry |
+| `create_task_proposal` | Fails without plan artifact; auto-links to plan on creation; optional `depends_on: string[]` for inline dep-setting |
+| `update_task_proposal` | Optional `add_depends_on: string[]` and `add_blocks: string[]` for additive dep-setting (no replace-all) |
+| `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |
+| `analyze_session_dependencies` | Read-only graph analysis — critical path, cycles, blocking relationships |
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
 | `get_parent_session_context` | Child sessions only; provides parent plan + proposals |
 | `get_session_messages` | Paginated history retrieval — use when `<session_history truncated="true">`; supports `offset` + `limit` parameters; stale session IDs auto-resolved by backend |

@@ -57,6 +57,8 @@ pub struct CreateProposalOptions {
     pub acceptance_criteria: Option<String>,
     /// Optional estimated complexity string (parsed to Complexity enum in impl)
     pub estimated_complexity: Option<String>,
+    /// List of proposal IDs to add as dependencies after creation
+    pub depends_on: Vec<String>,
 }
 
 /// Options for updating a proposal
@@ -78,6 +80,10 @@ pub struct UpdateProposalOptions {
     pub estimated_complexity: Option<String>,
     /// Source of the update — controls `user_modified` tracking and `touch()` call
     pub source: UpdateSource,
+    /// Additive: proposal IDs this proposal should depend on
+    pub add_depends_on: Vec<String>,
+    /// Additive: proposal IDs this proposal should block (reverse direction)
+    pub add_blocks: Vec<String>,
 }
 
 /// Statistics for an ideation session

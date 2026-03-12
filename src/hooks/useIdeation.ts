@@ -254,7 +254,6 @@ export function useResetAndReaccept() {
         sessionId,
         proposalIds,
         targetColumn: "backlog",
-        preserveDependencies: true,
       };
       await ideationApi.apply.toKanban(applyInput);
     },

@@ -1464,9 +1464,6 @@ pub struct ExternalApplyProposalsRequest {
     /// the dependency graph: tasks with no blockers → Ready, with blockers → Blocked.
     #[serde(default = "external_apply_default_column")]
     pub target_column: String,
-    /// Whether to preserve inter-proposal dependencies as task dependencies.
-    #[serde(default = "external_apply_default_preserve_deps")]
-    pub preserve_dependencies: bool,
     /// Per-plan override for feature branch usage. `None` uses the project default.
     #[serde(default)]
     pub use_feature_branch: Option<bool>,
@@ -1476,17 +1473,12 @@ fn external_apply_default_column() -> String {
     "auto".to_string()
 }
 
-fn external_apply_default_preserve_deps() -> bool {
-    true
-}
-
 impl From<ExternalApplyProposalsRequest> for ApplyProposalsInput {
     fn from(req: ExternalApplyProposalsRequest) -> Self {
         Self {
             session_id: req.session_id,
             proposal_ids: req.proposal_ids,
             target_column: req.target_column,
-            preserve_dependencies: req.preserve_dependencies,
             use_feature_branch: req.use_feature_branch,
         }
     }

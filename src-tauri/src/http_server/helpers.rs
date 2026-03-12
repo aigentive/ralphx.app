@@ -3,9 +3,7 @@
 //! Extracted from http_server.rs to manage file size and maintain separation of concerns.
 //! Contains parsing, transformation, and context aggregation functions.
 
-use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
 
 use crate::application::{AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource};
 use crate::domain::services::{check_proposal_verification_gate, ProposalOperation};
@@ -141,6 +139,23 @@ pub fn assert_session_mutable(session: &IdeationSession) -> AppResult<()> {
     }
 }
 
+/// Emit a `dependency:added` event to the frontend.
+///
+/// Guards with `if let Some(handle) = &state.app_handle` so tests and HTTP-only
+/// contexts don't fail. Payload matches `DependencyEventSchema` in `useIdeationEvents.ts`:
+/// `{ proposalId: String, dependsOnId: String }`.
+pub fn emit_dependency_added(state: &AppState, proposal_id: &str, depends_on_id: &str) {
+    if let Some(app_handle) = &state.app_handle {
+        let _ = app_handle.emit(
+            "dependency:added",
+            serde_json::json!({
+                "proposalId": proposal_id,
+                "dependsOnId": depends_on_id
+            }),
+        );
+    }
+}
+
 // ============================================================================
 // Proposal Implementation Functions
 // ============================================================================
@@ -159,7 +174,7 @@ pub async fn create_proposal_impl(
     state: &AppState,
     session_id: IdeationSessionId,
     options: CreateProposalOptions,
-) -> AppResult<TaskProposal> {
+) -> AppResult<(TaskProposal, Vec<String>)> {
     // Single lock: all checks + INSERT in one transaction (TOCTOU prevention).
     // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
     let proposal = state
@@ -253,10 +268,74 @@ pub async fn create_proposal_impl(
         );
     }
 
-    // Auto-trigger dependency analysis when we have 2+ proposals
-    maybe_trigger_dependency_analysis(&proposal.session_id, state).await;
 
-    Ok(proposal)
+    // Process depends_on deps in separate db.run() calls (AD5: deadlock avoidance)
+    // Each dep: validate session membership + cycle check + insert + emit
+    let mut dep_errors: Vec<String> = Vec::new();
+
+    for dep_id_str in options.depends_on {
+        let dep_id = TaskProposalId::from_string(dep_id_str.clone());
+        let proposal_id_clone = proposal.id.clone();
+        let session_id_clone = proposal.session_id.clone();
+
+        // Validate: dep proposal exists and belongs to same session
+        let dep_proposal = match state.task_proposal_repo.get_by_id(&dep_id).await {
+            Err(e) => {
+                dep_errors.push(format!("Dep on {} rejected: {}", dep_id.as_str(), e));
+                continue;
+            }
+            Ok(None) => {
+                dep_errors.push(format!("Dep on {} rejected: proposal not found", dep_id.as_str()));
+                continue;
+            }
+            Ok(Some(p)) => p,
+        };
+
+        // Session membership check
+        if dep_proposal.session_id != session_id_clone {
+            dep_errors.push(format!("Dep on {} rejected: not in same session", dep_id.as_str()));
+            continue;
+        }
+        // Self-dependency check
+        if dep_proposal.id == proposal_id_clone {
+            dep_errors.push(format!("Dep on {} rejected: self-dependency not allowed", dep_id.as_str()));
+            continue;
+        }
+
+        // Cycle check
+        match state
+            .proposal_dependency_repo
+            .would_create_cycle(&proposal_id_clone, &dep_id)
+            .await
+        {
+            Err(e) => {
+                dep_errors.push(format!("Dep on {} rejected: cycle check failed: {}", dep_id.as_str(), e));
+                continue;
+            }
+            Ok(true) => {
+                dep_errors.push(format!("Dep on {} rejected: would create cycle", dep_id.as_str()));
+                continue;
+            }
+            Ok(false) => {}
+        }
+
+        // Insert dep with source="agent"
+        match state
+            .proposal_dependency_repo
+            .add_dependency(&proposal_id_clone, &dep_id, None, Some("agent"))
+            .await
+        {
+            Err(e) => {
+                dep_errors.push(format!("Dep on {} rejected: insert failed: {}", dep_id.as_str(), e));
+                continue;
+            }
+            Ok(_) => {
+                emit_dependency_added(state, proposal_id_clone.as_str(), dep_id.as_str());
+            }
+        }
+    }
+
+    Ok((proposal, dep_errors))
 }
 
 /// Update proposal — fetch, validate, and UPDATE in a single DB transaction.
@@ -274,7 +353,7 @@ pub async fn update_proposal_impl(
     state: &AppState,
     proposal_id: &TaskProposalId,
     options: UpdateProposalOptions,
-) -> AppResult<TaskProposal> {
+) -> AppResult<(TaskProposal, Vec<String>)> {
     let pid = proposal_id.as_str().to_string();
 
     // Single lock: fetch + validate + UPDATE in one transaction.
@@ -400,10 +479,77 @@ pub async fn update_proposal_impl(
         );
     }
 
-    // Auto-trigger dependency analysis when proposals change
-    maybe_trigger_dependency_analysis(&updated.session_id, state).await;
 
-    Ok(updated)
+    // Process add_depends_on and add_blocks deps in separate db.run() calls (AD5: deadlock avoidance)
+    let mut dep_errors: Vec<String> = Vec::new();
+    let proposal_id_for_deps = updated.id.clone();
+    let session_id_for_deps = updated.session_id.clone();
+
+    // Process add_depends_on (A depends on each target)
+    for dep_id_str in options.add_depends_on {
+        let dep_id = TaskProposalId::from_string(dep_id_str.clone());
+        let pid = proposal_id_for_deps.clone();
+        let sid = session_id_for_deps.clone();
+
+        let dep_proposal = match state.task_proposal_repo.get_by_id(&dep_id).await {
+            Err(e) => { dep_errors.push(format!("add_depends_on {} rejected: {}", dep_id.as_str(), e)); continue; }
+            Ok(None) => { dep_errors.push(format!("add_depends_on {} rejected: proposal not found", dep_id.as_str())); continue; }
+            Ok(Some(p)) => p,
+        };
+
+        if dep_proposal.session_id != sid {
+            dep_errors.push(format!("add_depends_on {} rejected: not in same session", dep_id.as_str())); continue;
+        }
+        if dep_proposal.id == pid {
+            dep_errors.push(format!("add_depends_on {} rejected: self-dependency", dep_id.as_str())); continue;
+        }
+
+        match state.proposal_dependency_repo.would_create_cycle(&pid, &dep_id).await {
+            Err(e) => { dep_errors.push(format!("add_depends_on {} rejected: cycle check failed: {}", dep_id.as_str(), e)); continue; }
+            Ok(true) => { dep_errors.push(format!("add_depends_on {} rejected: would create cycle", dep_id.as_str())); continue; }
+            Ok(false) => {}
+        }
+
+        match state.proposal_dependency_repo.add_dependency(&pid, &dep_id, None, Some("agent")).await {
+            Err(e) => { dep_errors.push(format!("add_depends_on {} rejected: insert failed: {}", dep_id.as_str(), e)); continue; }
+            Ok(_) => { emit_dependency_added(state, pid.as_str(), dep_id.as_str()); }
+        }
+    }
+
+    // Process add_blocks (each target depends on A — reversed direction)
+    for blocker_id_str in options.add_blocks {
+        let blocker_id = TaskProposalId::from_string(blocker_id_str.clone());
+        let pid = proposal_id_for_deps.clone();
+        let sid = session_id_for_deps.clone();
+
+        let dep_proposal = match state.task_proposal_repo.get_by_id(&blocker_id).await {
+            Err(e) => { dep_errors.push(format!("add_blocks {} rejected: {}", blocker_id.as_str(), e)); continue; }
+            Ok(None) => { dep_errors.push(format!("add_blocks {} rejected: proposal not found", blocker_id.as_str())); continue; }
+            Ok(Some(p)) => p,
+        };
+
+        if dep_proposal.session_id != sid {
+            dep_errors.push(format!("add_blocks {} rejected: not in same session", blocker_id.as_str())); continue;
+        }
+        if dep_proposal.id == pid {
+            dep_errors.push(format!("add_blocks {} rejected: self-dependency", blocker_id.as_str())); continue;
+        }
+
+        // For add_blocks: blocker depends on pid, so cycle check is would_create_cycle(blocker, pid)
+        match state.proposal_dependency_repo.would_create_cycle(&blocker_id, &pid).await {
+            Err(e) => { dep_errors.push(format!("add_blocks {} rejected: cycle check failed: {}", blocker_id.as_str(), e)); continue; }
+            Ok(true) => { dep_errors.push(format!("add_blocks {} rejected: would create cycle", blocker_id.as_str())); continue; }
+            Ok(false) => {}
+        }
+
+        // Insert: blocker depends on pid (reversed)
+        match state.proposal_dependency_repo.add_dependency(&blocker_id, &pid, None, Some("agent")).await {
+            Err(e) => { dep_errors.push(format!("add_blocks {} rejected: insert failed: {}", blocker_id.as_str(), e)); continue; }
+            Ok(_) => { emit_dependency_added(state, blocker_id.as_str(), pid.as_str()); }
+        }
+    }
+
+    Ok((updated, dep_errors))
 }
 
 /// Delete proposal — fetch session, assert mutability, and DELETE in a single DB transaction.
@@ -490,8 +636,6 @@ pub async fn delete_proposal_impl(
         );
     }
 
-    // Auto-trigger dependency analysis after deletion (if we still have 2+ proposals)
-    maybe_trigger_dependency_analysis(&session_id, state).await;
 
     Ok(session_id)
 }
@@ -746,498 +890,6 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
     })
 }
 
-// ============================================================================
-// Dependency Analysis Auto-Trigger
-// ============================================================================
-
-/// Auto-trigger dependency analysis if session has 2+ proposals
-///
-/// Callable from both HTTP handlers and Tauri commands.
-/// Uses a 2-second debounce delay to avoid rapid re-triggers.
-pub async fn maybe_trigger_dependency_analysis(
-    session_id: &IdeationSessionId,
-    app_state: &AppState,
-) {
-    // Get proposal count
-    let count = match app_state
-        .task_proposal_repo
-        .get_by_session(session_id)
-        .await
-    {
-        Ok(proposals) => proposals.len(),
-        Err(e) => {
-            tracing::warn!("Failed to get proposals for auto-trigger: {}", e);
-            return;
-        }
-    };
-
-    // Only trigger if we have 2+ proposals
-    if count < 2 {
-        return;
-    }
-
-    // Get the app handle for emitting events
-    let app_handle = match &app_state.app_handle {
-        Some(handle) => handle.clone(),
-        None => return, // No app handle (test environment)
-    };
-
-    // Clone what we need for the async spawn
-    let session_id_str = session_id.as_str().to_string();
-    let task_proposal_repo = Arc::clone(&app_state.task_proposal_repo);
-    let proposal_dependency_repo = Arc::clone(&app_state.proposal_dependency_repo);
-    let ideation_session_repo = Arc::clone(&app_state.ideation_session_repo);
-    let artifact_repo = Arc::clone(&app_state.artifact_repo);
-    let analyzing_dependencies = Arc::clone(&app_state.analyzing_dependencies);
-    let debounce_generations = Arc::clone(&app_state.debounce_generations);
-
-    // Increment generation counter and capture value before spawning.
-    // Use a scoped block to ensure the std::sync::Mutex is released before any .await point.
-    let captured_gen = {
-        let mut gens = debounce_generations.lock().unwrap();
-        let gen = gens
-            .entry(IdeationSessionId::from_string(session_id_str.clone()))
-            .or_insert(0);
-        *gen = gen.wrapping_add(1);
-        *gen
-    };
-
-    // Spawn with debounce delay
-    tokio::spawn(async move {
-        // Debounce: wait 2 seconds before triggering
-        tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-
-        // Gate 1: gen staleness check — if a newer trigger arrived, discard this task
-        {
-            let gens = debounce_generations.lock().unwrap();
-            let current_gen = gens
-                .get(&IdeationSessionId::from_string(session_id_str.clone()))
-                .copied()
-                .unwrap_or(0);
-            if current_gen != captured_gen {
-                tracing::debug!(
-                    "Skipping stale dependency analysis trigger for session {}, gen {} != {}",
-                    session_id_str,
-                    captured_gen,
-                    current_gen
-                );
-                return;
-            }
-        }
-
-        // Gate 2: analysis already in progress — skip if another agent is running
-        {
-            let analyzing = analyzing_dependencies.read().await;
-            if analyzing.contains(&IdeationSessionId::from_string(session_id_str.clone())) {
-                tracing::debug!(
-                    "Skipping dependency analysis for session {}, analysis already in progress",
-                    session_id_str
-                );
-                return;
-            }
-        }
-
-        // Re-fetch proposals after the delay (they may have changed)
-        let proposals = match task_proposal_repo
-            .get_by_session(&IdeationSessionId::from_string(session_id_str.clone()))
-            .await
-        {
-            Ok(p) => p,
-            Err(e) => {
-                tracing::warn!("Failed to get proposals for dependency analysis: {}", e);
-                return;
-            }
-        };
-
-        // Still need 2+ proposals
-        if proposals.len() < 2 {
-            return;
-        }
-
-        // Mark session as analyzing before emitting the started event
-        {
-            let mut analyzing = analyzing_dependencies.write().await;
-            analyzing.insert(IdeationSessionId::from_string(session_id_str.clone()));
-        }
-
-        // Spawn safety timeout: auto-clear stale entry after 60 seconds
-        let timeout_analyzing = Arc::clone(&analyzing_dependencies);
-        let timeout_session_id = session_id_str.clone();
-        let timeout_app_handle = app_handle.clone();
-        tokio::spawn(async move {
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
-            let removed = {
-                let mut analyzing = timeout_analyzing.write().await;
-                analyzing.remove(&IdeationSessionId::from_string(timeout_session_id.clone()))
-            };
-            if removed {
-                let _ = timeout_app_handle.emit(
-                    "dependencies:analysis_failed",
-                    serde_json::json!({
-                        "sessionId": timeout_session_id,
-                        "error": "Dependency analysis timed out after 60 seconds",
-                    }),
-                );
-            }
-        });
-
-        // Fetch plan artifact summary for the session
-        let plan_summary =
-            fetch_plan_summary_for_session(&session_id_str, &ideation_session_repo, &artifact_repo)
-                .await;
-
-        // Get existing dependencies
-        let existing_deps = match proposal_dependency_repo
-            .get_all_for_session(&IdeationSessionId::from_string(session_id_str.clone()))
-            .await
-        {
-            Ok(deps) => deps,
-            Err(e) => {
-                tracing::warn!("Failed to get dependencies for analysis: {}", e);
-                Vec::new()
-            }
-        };
-
-        // Build proposal summaries for the prompt
-        let mut proposal_summaries = String::new();
-        for (i, proposal) in proposals.iter().enumerate() {
-            proposal_summaries.push_str(&format!(
-                "{}. ID: {}\n   Title: \"{}\"\n   Category: {}\n   Description: {}\n\n",
-                i + 1,
-                proposal.id.as_str(),
-                proposal.title,
-                proposal.category,
-                proposal.description.as_deref().unwrap_or("(none)")
-            ));
-        }
-
-        // Build existing dependencies summary with source labels when available
-        let existing_deps_summary = if existing_deps.is_empty() {
-            "None".to_string()
-        } else {
-            existing_deps
-                .iter()
-                .map(|(from, to, _reason)| format!("{} → {}", from.as_str(), to.as_str()))
-                .collect::<Vec<_>>()
-                .join(", ")
-        };
-
-        // Build plan summary section (injected before the analysis instruction)
-        let plan_section = if plan_summary.is_empty() {
-            String::new()
-        } else {
-            format!("\nImplementation Plan Summary:\n{}\n", plan_summary)
-        };
-
-        // Build the prompt
-        let prompt = format!(
-            "Session ID: {}\n\nProposals:\n{}\nExisting dependencies: {}\n{}
-Analyze these proposals and identify logical dependencies based on their content. Call the apply_proposal_dependencies tool with your findings.",
-            session_id_str, proposal_summaries, existing_deps_summary, plan_section
-        );
-
-        // Emit analysis started event
-        let _ = app_handle.emit(
-            "dependencies:analysis_started",
-            serde_json::json!({
-                "sessionId": session_id_str,
-            }),
-        );
-
-        // Find working directory (project root where ralphx-plugin exists)
-        let working_directory = find_project_root();
-        let plugin_dir =
-            crate::infrastructure::agents::claude::resolve_plugin_dir(&working_directory);
-
-        // Find Claude CLI
-        let cli_path = match crate::infrastructure::agents::claude::find_claude_cli() {
-            Some(path) => path,
-            None => {
-                tracing::warn!("Failed to spawn dependency suggester: Claude CLI not found");
-                let removed = {
-                    let mut analyzing = analyzing_dependencies.write().await;
-                    analyzing.remove(&IdeationSessionId::from_string(session_id_str.clone()))
-                };
-                if removed {
-                    let _ = app_handle.emit(
-                        "dependencies:analysis_failed",
-                        serde_json::json!({
-                            "sessionId": session_id_str,
-                            "error": "Claude CLI not found",
-                        }),
-                    );
-                }
-                return;
-            }
-        };
-
-        // Build spawnable command using the established pattern
-        let agent_name =
-            crate::infrastructure::agents::claude::agent_names::AGENT_DEPENDENCY_SUGGESTER;
-        let spawnable = match crate::infrastructure::agents::claude::build_spawnable_command(
-            &cli_path,
-            &plugin_dir,
-            &prompt,
-            Some(agent_name),
-            None, // No resume session
-            &working_directory,
-        ) {
-            Ok(cmd) => cmd,
-            Err(err) => {
-                tracing::warn!("Dependency suggester spawn blocked: {}", err);
-                let removed = {
-                    let mut analyzing = analyzing_dependencies.write().await;
-                    analyzing.remove(&IdeationSessionId::from_string(session_id_str.clone()))
-                };
-                if removed {
-                    let _ = app_handle.emit(
-                        "dependencies:analysis_failed",
-                        serde_json::json!({
-                            "sessionId": session_id_str,
-                            "error": format!("Spawn blocked: {}", err),
-                        }),
-                    );
-                }
-                return;
-            }
-        };
-
-        // Spawn the agent
-        match spawnable.spawn().await {
-            Ok(mut child) => {
-                // Wait for completion (fire-and-forget style, but log errors)
-                let inner_analyzing = Arc::clone(&analyzing_dependencies);
-                let inner_session_id = session_id_str.clone();
-                let inner_app_handle = app_handle.clone();
-                tokio::spawn(async move {
-                    match child.wait().await {
-                        Ok(status) => {
-                            if !status.success() {
-                                tracing::warn!(
-                                    "Dependency suggester agent exited with status: {}",
-                                    status
-                                );
-                                let removed = {
-                                    let mut analyzing = inner_analyzing.write().await;
-                                    analyzing.remove(&IdeationSessionId::from_string(
-                                        inner_session_id.clone(),
-                                    ))
-                                };
-                                if removed {
-                                    let _ = inner_app_handle.emit(
-                                        "dependencies:analysis_failed",
-                                        serde_json::json!({
-                                            "sessionId": inner_session_id,
-                                            "error": format!("Agent exited with status: {}", status),
-                                        }),
-                                    );
-                                }
-                            }
-                            // Success path: apply_proposal_dependencies handler removes from set
-                        }
-                        Err(e) => {
-                            tracing::warn!("Failed to wait for dependency suggester agent: {}", e);
-                            let removed = {
-                                let mut analyzing = inner_analyzing.write().await;
-                                analyzing.remove(&IdeationSessionId::from_string(
-                                    inner_session_id.clone(),
-                                ))
-                            };
-                            if removed {
-                                let _ = inner_app_handle.emit(
-                                    "dependencies:analysis_failed",
-                                    serde_json::json!({
-                                        "sessionId": inner_session_id,
-                                        "error": format!("Failed to wait for agent: {}", e),
-                                    }),
-                                );
-                            }
-                        }
-                    }
-                });
-            }
-            Err(e) => {
-                tracing::warn!("Failed to spawn dependency suggester agent: {}", e);
-                let removed = {
-                    let mut analyzing = analyzing_dependencies.write().await;
-                    analyzing.remove(&IdeationSessionId::from_string(session_id_str.clone()))
-                };
-                if removed {
-                    let _ = app_handle.emit(
-                        "dependencies:analysis_failed",
-                        serde_json::json!({
-                            "sessionId": session_id_str,
-                            "error": format!("Failed to spawn agent: {}", e),
-                        }),
-                    );
-                }
-            }
-        }
-    });
-}
-
-// ============================================================================
-// Plan Summarization for Dependency Analysis
-// ============================================================================
-
-/// Extract a structured summary of plan phases and ordering notes from markdown text.
-///
-/// Scans the text for markdown headings (`## Phase N`, `### ...`) and numbered/bullet
-/// ordering lines. Returns a "Plan Structure:" block truncated to ~1500 chars.
-/// Returns an empty string if the input is empty.
-pub fn summarize_plan_for_dependencies(text: &str) -> String {
-    if text.is_empty() {
-        return String::new();
-    }
-
-    let mut lines_out: Vec<String> = Vec::new();
-
-    for line in text.lines() {
-        let trimmed = line.trim();
-
-        // Include markdown headings (## Phase N, ### subsections)
-        if trimmed.starts_with("##") {
-            lines_out.push(trimmed.to_string());
-            continue;
-        }
-
-        // Include numbered list items (1. ..., 2. ...)
-        if trimmed
-            .chars()
-            .next()
-            .map(|c| c.is_ascii_digit())
-            .unwrap_or(false)
-        {
-            let after_digit: &str = trimmed.trim_start_matches(|c: char| c.is_ascii_digit());
-            if after_digit.starts_with(". ") || after_digit.starts_with(") ") {
-                lines_out.push(trimmed.to_string());
-                continue;
-            }
-        }
-
-        // Include bullet ordering notes with ordering keywords
-        if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
-            let content = &trimmed[2..];
-            let lower = content.to_lowercase();
-            if lower.contains("phase")
-                || lower.contains("before")
-                || lower.contains("after")
-                || lower.contains("order")
-                || lower.contains("first")
-                || lower.contains("then")
-                || lower.contains("depends")
-                || lower.contains("foundation")
-                || lower.contains("wave")
-            {
-                lines_out.push(trimmed.to_string());
-                continue;
-            }
-        }
-    }
-
-    if lines_out.is_empty() {
-        return String::new();
-    }
-
-    let body = lines_out.join("\n");
-
-    // Truncate to ~1500 chars
-    const MAX_CHARS: usize = 1500;
-    let truncated = if body.chars().count() > MAX_CHARS {
-        let cut: String = body.chars().take(MAX_CHARS).collect();
-        // Trim to last newline to avoid mid-line cut.
-        // `rfind('\n')` returns a byte index at an ASCII character boundary, so
-        // `cut[..pos]` is always a valid UTF-8 slice.
-        match cut.rfind('\n') {
-            Some(pos) => cut[..pos].to_string(),
-            None => cut,
-        }
-    } else {
-        body
-    };
-
-    format!("Plan Structure:\n{}", truncated)
-}
-
-// ============================================================================
-// Helper Functions
-// ============================================================================
-
-/// Fetch the plan artifact summary for a session, returning empty string if none exists.
-///
-/// Looks up the session by ID, retrieves its plan_artifact_id, fetches the artifact,
-/// and calls `summarize_plan_for_dependencies` on the inline content.
-async fn fetch_plan_summary_for_session(
-    session_id_str: &str,
-    ideation_session_repo: &Arc<dyn crate::domain::repositories::IdeationSessionRepository>,
-    artifact_repo: &Arc<dyn crate::domain::repositories::ArtifactRepository>,
-) -> String {
-    let session_id = IdeationSessionId::from_string(session_id_str.to_string());
-
-    // Fetch session to get plan_artifact_id
-    let session = match ideation_session_repo.get_by_id(&session_id).await {
-        Ok(Some(s)) => s,
-        Ok(None) => {
-            tracing::debug!("Session {} not found for plan summary", session_id_str);
-            return String::new();
-        }
-        Err(e) => {
-            tracing::warn!("Failed to fetch session for plan summary: {}", e);
-            return String::new();
-        }
-    };
-
-    // Extract plan artifact ID
-    let artifact_id = match session.plan_artifact_id {
-        Some(id) => id,
-        None => return String::new(),
-    };
-
-    // Fetch artifact content
-    let artifact = match artifact_repo.get_by_id(&artifact_id).await {
-        Ok(Some(a)) => a,
-        Ok(None) => {
-            tracing::debug!("Plan artifact {} not found", artifact_id);
-            return String::new();
-        }
-        Err(e) => {
-            tracing::warn!("Failed to fetch plan artifact: {}", e);
-            return String::new();
-        }
-    };
-
-    // Extract text from artifact content
-    let text = match &artifact.content {
-        ArtifactContent::Inline { text } => text.clone(),
-        ArtifactContent::File { .. } => return String::new(),
-    };
-
-    summarize_plan_for_dependencies(&text)
-}
-
-/// Find the project root directory where ralphx-plugin exists
-///
-/// Checks the current directory and parent for the presence of ralphx-plugin.
-/// Falls back to current directory if not found.
-fn find_project_root() -> PathBuf {
-    std::env::current_dir()
-        .map(|cwd| {
-            // Check if we're in project root (ralphx-plugin exists)
-            if cwd.join("ralphx-plugin").exists() {
-                cwd
-            // Check if we're in src-tauri (parent has ralphx-plugin)
-            } else if let Some(parent) = cwd.parent() {
-                if parent.join("ralphx-plugin").exists() {
-                    parent.to_path_buf()
-                } else {
-                    cwd
-                }
-            } else {
-                cwd
-            }
-        })
-        .unwrap_or_else(|_| PathBuf::from("."))
-}
 
 #[cfg(test)]
 #[path = "helpers_tests.rs"]

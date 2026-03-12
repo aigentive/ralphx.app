@@ -221,16 +221,6 @@ export const ideationApi = {
     },
 
     /**
-     * Spawn a dependency-suggester agent to analyze proposals and suggest dependencies
-     * Runs in background and returns immediately (fire-and-forget)
-     * Requires at least 2 proposals in the session.
-     * @param sessionId The session ID
-     */
-    spawnDependencySuggester: async (sessionId: string): Promise<void> => {
-      await invoke("spawn_dependency_suggester", { sessionId });
-    },
-
-    /**
      * Create a child session linked to this parent session
      * @param input Child session creation parameters
      * @returns The created child session with optional parent context
@@ -499,7 +489,6 @@ export const ideationApi = {
             session_id: input.sessionId,
             proposal_ids: input.proposalIds,
             target_column: input.targetColumn,
-            preserve_dependencies: input.preserveDependencies,
             ...(input.useFeatureBranch !== undefined && {
               use_feature_branch: input.useFeatureBranch,
             }),

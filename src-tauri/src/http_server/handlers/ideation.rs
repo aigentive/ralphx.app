@@ -25,7 +25,6 @@ use super::super::helpers::{
     update_proposal_impl,
 };
 use super::super::types::{
-    AddDependencyRequest, ApplyDependenciesResponse, ApplyDependencySuggestionsRequest,
     CreateProposalRequest, DeleteProposalRequest, GetSessionMessagesRequest,
     GetSessionMessagesResponse, HttpServerState, ListProposalsResponse, ProposalDetailResponse,
     ProposalResponse, ProposalSummary, RevertAndSkipRequest, SessionMessageResponse,
@@ -91,11 +90,12 @@ pub async fn create_task_proposal(
         steps,
         acceptance_criteria,
         estimated_complexity: None,
+        depends_on: req.depends_on,
     };
 
     // Create proposal — events and dep analysis emitted inside create_proposal_impl()
     let session_id_str = session_id.as_str().to_string();
-    let proposal = create_proposal_impl(&state.app_state, session_id, options)
+    let (proposal, dep_errors) = create_proposal_impl(&state.app_state, session_id, options)
         .await
         .map_err(|e| {
             error!(
@@ -110,7 +110,9 @@ pub async fn create_task_proposal(
             json_error(status, e.to_string())
         })?;
 
-    Ok(Json(ProposalResponse::from(proposal)))
+    let mut response = ProposalResponse::from(proposal);
+    response.dependency_errors = dep_errors;
+    Ok(Json(response))
 }
 
 pub async fn update_task_proposal(
@@ -176,10 +178,12 @@ pub async fn update_task_proposal(
         user_priority,
         estimated_complexity: None,
         source: UpdateSource::Api,
+        add_depends_on: req.add_depends_on,
+        add_blocks: req.add_blocks,
     };
 
     // Update proposal — events and dep analysis emitted inside update_proposal_impl()
-    let updated = update_proposal_impl(&state.app_state, &proposal_id, options)
+    let (updated, dep_errors) = update_proposal_impl(&state.app_state, &proposal_id, options)
         .await
         .map_err(|e| {
             error!("Failed to update proposal {}: {}", proposal_id.as_str(), e);
@@ -191,7 +195,9 @@ pub async fn update_task_proposal(
             json_error(status, e.to_string())
         })?;
 
-    Ok(Json(ProposalResponse::from(updated)))
+    let mut response = ProposalResponse::from(updated);
+    response.dependency_errors = dep_errors;
+    Ok(Json(response))
 }
 
 pub async fn delete_task_proposal(
@@ -215,34 +221,6 @@ pub async fn delete_task_proposal(
     Ok(Json(SuccessResponse {
         success: true,
         message: "Proposal deleted successfully".to_string(),
-    }))
-}
-
-pub async fn add_proposal_dependency(
-    State(state): State<HttpServerState>,
-    Json(req): Json<AddDependencyRequest>,
-) -> Result<Json<SuccessResponse>, StatusCode> {
-    let proposal_id = TaskProposalId::from_string(req.proposal_id);
-    let depends_on_id = TaskProposalId::from_string(req.depends_on_id);
-
-    state
-        .app_state
-        .proposal_dependency_repo
-        .add_dependency(&proposal_id, &depends_on_id, None, Some("manual"))
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to add dependency from {} to {}: {}",
-                proposal_id.as_str(),
-                depends_on_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    Ok(Json(SuccessResponse {
-        success: true,
-        message: "Dependency added successfully".to_string(),
     }))
 }
 
@@ -403,133 +381,6 @@ pub async fn get_proposal(
     }))
 }
 
-/// Apply AI-suggested dependencies: clear existing, add new (skip cycles)
-/// Used by dependency-suggester agent
-pub async fn apply_proposal_dependencies(
-    State(state): State<HttpServerState>,
-    Json(req): Json<ApplyDependencySuggestionsRequest>,
-) -> Result<Json<ApplyDependenciesResponse>, StatusCode> {
-    let session_id = IdeationSessionId::from_string(req.session_id.clone());
-
-    // Get existing proposals to validate IDs belong to session
-    let proposals = state
-        .app_state
-        .task_proposal_repo
-        .get_by_session(&session_id)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to get proposals for session {}: {}",
-                session_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    let valid_ids: std::collections::HashSet<String> =
-        proposals.iter().map(|p| p.id.to_string()).collect();
-
-    // Step 1: Clear all existing dependencies for this session
-    state
-        .app_state
-        .proposal_dependency_repo
-        .clear_session_dependencies(&session_id)
-        .await
-        .map_err(|e| {
-            error!(
-                "Failed to clear dependencies for session {}: {}",
-                session_id.as_str(),
-                e
-            );
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    // Step 2: Add each suggested dependency (skip if would create cycle or invalid)
-    let mut applied_count = 0;
-    let mut skipped_count = 0;
-
-    for suggestion in &req.dependencies {
-        // Validate both IDs belong to this session
-        if !valid_ids.contains(&suggestion.proposal_id)
-            || !valid_ids.contains(&suggestion.depends_on_id)
-        {
-            skipped_count += 1;
-            continue;
-        }
-
-        // Skip self-dependency
-        if suggestion.proposal_id == suggestion.depends_on_id {
-            skipped_count += 1;
-            continue;
-        }
-
-        let proposal_id = TaskProposalId::from_string(suggestion.proposal_id.clone());
-        let depends_on_id = TaskProposalId::from_string(suggestion.depends_on_id.clone());
-
-        // Check if adding this would create a cycle
-        // Simple check: would depends_on_id eventually reach proposal_id?
-        let would_cycle =
-            would_create_cycle(&state.app_state, &session_id, &proposal_id, &depends_on_id).await;
-
-        if would_cycle {
-            skipped_count += 1;
-            continue;
-        }
-
-        // Add the dependency with reason from AI suggestion
-        match state
-            .app_state
-            .proposal_dependency_repo
-            .add_dependency(
-                &proposal_id,
-                &depends_on_id,
-                suggestion.reason.as_deref(),
-                Some("auto"),
-            )
-            .await
-        {
-            Ok(_) => applied_count += 1,
-            Err(e) => {
-                error!(
-                    "Failed to add dependency {} -> {}: {}",
-                    proposal_id.as_str(),
-                    depends_on_id.as_str(),
-                    e
-                );
-                skipped_count += 1;
-            }
-        }
-    }
-
-    // Clear analyzing state: this is the success completion path for the dependency-suggester agent
-    {
-        let mut analyzing = state.app_state.analyzing_dependencies.write().await;
-        analyzing.remove(&session_id);
-    }
-
-    // Emit event for real-time UI update
-    if let Some(app_handle) = &state.app_state.app_handle {
-        let _ = app_handle.emit(
-            "dependencies:suggestions_applied",
-            serde_json::json!({
-                "sessionId": req.session_id,
-                "appliedCount": applied_count,
-                "skippedCount": skipped_count
-            }),
-        );
-    }
-
-    Ok(Json(ApplyDependenciesResponse {
-        success: true,
-        applied_count,
-        skipped_count,
-        message: format!(
-            "Applied {} dependencies, skipped {} (cycles/invalid)",
-            applied_count, skipped_count
-        ),
-    }))
-}
-
 /// Analyze dependencies for a session - returns full graph with critical path, cycles, etc.
 /// Used by chat agent to provide intelligent dependency recommendations
 pub async fn analyze_session_dependencies(
@@ -543,12 +394,6 @@ pub async fn analyze_session_dependencies(
     use crate::domain::entities::{DependencyGraph, DependencyGraphEdge, DependencyGraphNode};
 
     let session_id = IdeationSessionId::from_string(session_id.clone());
-
-    // Check if analysis is in progress for this session
-    let analysis_in_progress = {
-        let analyzing = state.app_state.analyzing_dependencies.read().await;
-        analyzing.contains(&session_id)
-    };
 
     // Get all proposals for the session
     let proposals = state
@@ -668,12 +513,6 @@ pub async fn analyze_session_dependencies(
         max_depth: critical_path.len(),
     };
 
-    let message = if analysis_in_progress {
-        Some("Background analysis in progress. Results may update shortly.".to_string())
-    } else {
-        None
-    };
-
     Ok(Json(AnalyzeDependenciesResponse {
         nodes: response_nodes,
         edges: response_edges,
@@ -681,8 +520,7 @@ pub async fn analyze_session_dependencies(
         critical_path_length: critical_path.len(),
         has_cycles: !cycles.is_empty(),
         cycles: response_cycles,
-        analysis_in_progress,
-        message,
+        message: None,
         summary,
     }))
 }
@@ -842,58 +680,6 @@ fn find_critical_path_simple(
 
     path.reverse();
     path
-}
-
-/// Check if adding proposal_id -> depends_on_id would create a cycle
-/// (i.e., if depends_on_id can already reach proposal_id through existing deps)
-async fn would_create_cycle(
-    app_state: &crate::application::AppState,
-    session_id: &IdeationSessionId,
-    proposal_id: &TaskProposalId,
-    depends_on_id: &TaskProposalId,
-) -> bool {
-    // Get all existing dependencies for the session
-    let deps = match app_state
-        .proposal_dependency_repo
-        .get_all_for_session(session_id)
-        .await
-    {
-        Ok(deps) => deps,
-        Err(_) => return false, // If we can't check, allow the dependency
-    };
-
-    // Build adjacency list: from_id -> [to_ids]
-    let mut adj: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for (from, to, _reason) in &deps {
-        adj.entry(from.to_string())
-            .or_default()
-            .push(to.to_string());
-    }
-
-    // DFS from depends_on_id to see if we can reach proposal_id
-    let mut visited = std::collections::HashSet::new();
-    let mut stack = vec![depends_on_id.to_string()];
-
-    while let Some(current) = stack.pop() {
-        if current == proposal_id.to_string() {
-            return true; // Found a path, adding would create cycle
-        }
-
-        if visited.contains(&current) {
-            continue;
-        }
-        visited.insert(current.clone());
-
-        if let Some(neighbors) = adj.get(&current) {
-            for neighbor in neighbors {
-                if !visited.contains(neighbor) {
-                    stack.push(neighbor.clone());
-                }
-            }
-        }
-    }
-
-    false // No path found, safe to add
 }
 
 /// Get messages for an ideation session (context recovery for agents)

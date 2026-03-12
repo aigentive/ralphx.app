@@ -12,7 +12,6 @@ export declare const REVIEW_HISTORY = "ralphx-review-history";
 export declare const WORKER = "ralphx-worker";
 export declare const CODER = "ralphx-coder";
 export declare const SESSION_NAMER = "session-namer";
-export declare const DEPENDENCY_SUGGESTER = "dependency-suggester";
 export declare const MERGER = "ralphx-merger";
 export declare const PROJECT_ANALYZER = "project-analyzer";
 export declare const SUPERVISOR = "supervisor";

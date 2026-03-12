@@ -490,13 +490,6 @@ agents:
     mcp_tools: [update_session_title]
     preapproved_cli_tools: []
 
-  - name: dependency-suggester
-    system_prompt_file: ralphx-plugin/agents/dependency-suggester.md
-    model: haiku
-    tools: { mcp_only: true }
-    mcp_tools: [apply_proposal_dependencies]
-    preapproved_cli_tools: []
-
   - name: chat-task
     system_prompt_file: ralphx-plugin/agents/chat-task.md
     model: sonnet

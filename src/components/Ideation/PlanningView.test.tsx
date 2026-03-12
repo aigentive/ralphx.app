@@ -108,7 +108,7 @@ vi.mock("./AcceptedSessionBanner", () => ({
 vi.mock("./AcceptModal", () => ({
   AcceptModal: ({ isOpen, onAccept, sessionId, proposals }: {
     isOpen: boolean;
-    onAccept: (options: { sessionId: string; proposalIds: string[]; targetColumn: string; preserveDependencies: boolean }) => void;
+    onAccept: (options: { sessionId: string; proposalIds: string[]; targetColumn: string }) => void;
     sessionId: string;
     proposals: Array<{ id: string }>;
   }) =>
@@ -120,7 +120,6 @@ vi.mock("./AcceptModal", () => ({
             sessionId,
             proposalIds: proposals.map((p) => p.id),
             targetColumn: "backlog",
-            preserveDependencies: true,
           })
         }
       >
@@ -325,7 +324,6 @@ describe("PlanningView", () => {
       sessionId: "session-1",
       proposalIds: ["proposal-1", "proposal-2"],
       targetColumn: "backlog",
-      preserveDependencies: true,
     });
   });
 
@@ -384,7 +382,6 @@ describe("PlanningView", () => {
         sessionId: "session-1",
         proposalIds: ["proposal-1", "proposal-2"],
         targetColumn: "backlog",
-        preserveDependencies: true,
       });
     });
 

@@ -176,7 +176,6 @@ export const DependencyGraphResponseSchema = z.object({
   critical_path: z.array(z.string()),
   has_cycles: z.boolean(),
   cycles: z.array(z.array(z.string())).nullable(),
-  analysis_in_progress: z.boolean().optional(),
   message: z.string().nullable().optional(),
   summary: DependencyAnalysisSummarySchema.nullable().optional(),
 });

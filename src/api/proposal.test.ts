@@ -448,7 +448,6 @@ describe("applyProposalsToKanban", () => {
       sessionId: "session-1",
       proposalIds: ["p1", "p2"],
       targetColumn: "backlog",
-      preserveDependencies: true,
     });
 
     expect(mockInvoke).toHaveBeenCalledWith("apply_proposals_to_kanban", {
@@ -456,7 +455,6 @@ describe("applyProposalsToKanban", () => {
         session_id: "session-1",
         proposal_ids: ["p1", "p2"],
         target_column: "backlog",
-        preserve_dependencies: true,
       },
     });
   });
@@ -475,7 +473,6 @@ describe("applyProposalsToKanban", () => {
         sessionId: "s1",
         proposalIds: ["p1"],
         targetColumn: column,
-        preserveDependencies: false,
       });
     }
 
@@ -494,7 +491,6 @@ describe("applyProposalsToKanban", () => {
       sessionId: "session-1",
       proposalIds: ["p1", "p2"],
       targetColumn: "todo",
-      preserveDependencies: true,
     });
 
     expect(result.createdTaskIds).toEqual(["task-1", "task-2"]);
@@ -515,7 +511,6 @@ describe("applyProposalsToKanban", () => {
       sessionId: "session-1",
       proposalIds: [],
       targetColumn: "draft",
-      preserveDependencies: false,
     });
 
     expect(result.createdTaskIds).toEqual([]);

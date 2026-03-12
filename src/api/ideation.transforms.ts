@@ -166,7 +166,6 @@ export function transformDependencyGraph(raw: z.infer<typeof DependencyGraphResp
     criticalPath: raw.critical_path,
     hasCycles: raw.has_cycles,
     cycles: raw.cycles,
-    ...(raw.analysis_in_progress !== undefined && { analysisInProgress: raw.analysis_in_progress }),
     ...(raw.message !== undefined && { message: raw.message }),
     ...(raw.summary !== undefined && {
       summary: raw.summary

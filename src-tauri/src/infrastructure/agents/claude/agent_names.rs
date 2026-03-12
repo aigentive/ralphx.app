@@ -16,7 +16,6 @@ pub const PLUGIN_PREFIX: &str = "ralphx:";
 pub const SHORT_ORCHESTRATOR_IDEATION: &str = "orchestrator-ideation";
 pub const SHORT_ORCHESTRATOR_IDEATION_READONLY: &str = "orchestrator-ideation-readonly";
 pub const SHORT_SESSION_NAMER: &str = "session-namer";
-pub const SHORT_DEPENDENCY_SUGGESTER: &str = "dependency-suggester";
 pub const SHORT_CHAT_TASK: &str = "chat-task";
 pub const SHORT_CHAT_PROJECT: &str = "chat-project";
 pub const SHORT_REVIEW_CHAT: &str = "ralphx-review-chat";
@@ -82,9 +81,6 @@ pub const AGENT_REVIEW_HISTORY: &str = "ralphx:ralphx-review-history";
 
 /// Session naming agent (haiku, background)
 pub const AGENT_SESSION_NAMER: &str = "ralphx:session-namer";
-
-/// Dependency suggestion agent (haiku, background)
-pub const AGENT_DEPENDENCY_SUGGESTER: &str = "ralphx:dependency-suggester";
 
 /// Project analysis agent (background)
 pub const AGENT_PROJECT_ANALYZER: &str = "ralphx:project-analyzer";

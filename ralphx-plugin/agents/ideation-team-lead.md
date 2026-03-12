@@ -300,7 +300,31 @@ The agent decides which layers apply based on plan content. If the plan proposes
 Present plan to user → wait for approval. Include: team research summary, architecture overview, key decisions, affected files, implementation phases.
 
 ### Phase 6: PROPOSE
-Create task proposals linked to plan (same as solo mode)
+
+Create task proposals linked to plan. Set dependencies **inline** — no background agent needed.
+
+**When creating a proposal** — use `depends_on` to set immediate dependencies at creation time:
+```
+create_task_proposal(session_id, title: "...", ..., depends_on: ["<proposal-id-A>"])
+```
+
+**When updating a proposal** — use `add_depends_on` or `add_blocks` (additive, never replaces existing deps):
+```
+update_task_proposal(proposal_id, add_depends_on: ["<proposal-id-B>"])
+update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
+```
+
+| Param | Direction | Meaning |
+|-------|-----------|---------|
+| `depends_on` | This → target | This proposal depends on target (target must complete first) |
+| `add_depends_on` | This → target | Add: this proposal depends on target |
+| `add_blocks` | Target → this | Add: target depends on this proposal (this blocks target) |
+
+**Rules:**
+- IDs must belong to the same session — cross-session deps are rejected
+- Cycles are detected and rejected with an error
+- If a dep is rejected, the proposal is still created — check `dependency_errors` in response
+- Set deps at `create_task_proposal` time when the relationship is known upfront; use `update_task_proposal` with `add_depends_on`/`add_blocks` for deps discovered while creating later proposals
 
 ### Phase 7: FINALIZE
 

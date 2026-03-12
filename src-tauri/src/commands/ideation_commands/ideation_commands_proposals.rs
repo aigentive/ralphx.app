@@ -52,12 +52,17 @@ pub async fn create_task_proposal(
         steps,
         acceptance_criteria,
         estimated_complexity: input.complexity,
+        depends_on: input.depends_on,
     };
 
     // Delegates all checks, INSERT, event emission, and dep analysis to shared impl
     create_proposal_impl(state.inner(), session_id, options)
         .await
-        .map(TaskProposalResponse::from)
+        .map(|(proposal, dep_errors)| {
+            let mut response = TaskProposalResponse::from(proposal);
+            response.dependency_errors = dep_errors;
+            response
+        })
         .map_err(|e| e.to_string())
 }
 
@@ -131,13 +136,19 @@ pub async fn update_task_proposal(
         user_priority,
         estimated_complexity: input.complexity,
         source: UpdateSource::TauriIpc,
+        add_depends_on: input.add_depends_on,
+        add_blocks: input.add_blocks,
     };
 
     // Delegates all checks (including assert_session_mutable), UPDATE, event emission,
     // user_modified tracking, and dep analysis to shared impl
     update_proposal_impl(state.inner(), &proposal_id, options)
         .await
-        .map(TaskProposalResponse::from)
+        .map(|(updated, dep_errors)| {
+            let mut response = TaskProposalResponse::from(updated);
+            response.dependency_errors = dep_errors;
+            response
+        })
         .map_err(|e| e.to_string())
 }
 

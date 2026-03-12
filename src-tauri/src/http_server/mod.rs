@@ -101,15 +101,6 @@ pub async fn start_http_server(
         .route("/api/create_task_proposal", post(create_task_proposal))
         .route("/api/update_task_proposal", post(update_task_proposal))
         .route("/api/delete_task_proposal", post(delete_task_proposal))
-        .route(
-            "/api/add_proposal_dependency",
-            post(add_proposal_dependency),
-        )
-        // Dependency suggester tools (dependency-suggester agent)
-        .route(
-            "/api/apply_proposal_dependencies",
-            post(apply_proposal_dependencies),
-        )
         // Proposal query tools (orchestrator-ideation agent)
         .route(
             "/api/list_session_proposals/:session_id",

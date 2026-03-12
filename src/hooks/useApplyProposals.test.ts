@@ -82,7 +82,6 @@ describe("useApplyProposals", () => {
         sessionId: "session-1",
         proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
         targetColumn: "backlog",
-        preserveDependencies: true,
       });
     });
 
@@ -91,7 +90,6 @@ describe("useApplyProposals", () => {
       sessionId: "session-1",
       proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
       targetColumn: "backlog",
-      preserveDependencies: true,
     });
   });
 
@@ -108,7 +106,6 @@ describe("useApplyProposals", () => {
         sessionId: "session-1",
         proposalIds: ["proposal-1", "proposal-2", "proposal-3"],
         targetColumn: "todo",
-        preserveDependencies: true,
       });
     });
 
@@ -129,7 +126,6 @@ describe("useApplyProposals", () => {
         sessionId: "session-1",
         proposalIds: ["proposal-1"],
         targetColumn: "draft",
-        preserveDependencies: false,
       });
     });
 
@@ -148,7 +144,6 @@ describe("useApplyProposals", () => {
         sessionId: "session-1",
         proposalIds: ["proposal-1"],
         targetColumn: "draft",
-        preserveDependencies: false,
       });
     });
 
@@ -156,7 +151,6 @@ describe("useApplyProposals", () => {
       sessionId: "session-1",
       proposalIds: ["proposal-1"],
       targetColumn: "draft",
-      preserveDependencies: false,
     });
   });
 
@@ -174,7 +168,6 @@ describe("useApplyProposals", () => {
           sessionId: "session-1",
           proposalIds: ["proposal-1"],
           targetColumn: "backlog",
-          preserveDependencies: true,
         });
       })
     ).rejects.toThrow("Failed to apply proposals");
@@ -198,7 +191,6 @@ describe("useApplyProposals", () => {
         sessionId: "session-1",
         proposalIds: ["proposal-1"],
         targetColumn: "backlog",
-        preserveDependencies: true,
       });
     });
 
@@ -230,7 +222,6 @@ describe("useApplyProposals", () => {
           sessionId: "session-1",
           proposalIds: ["proposal-1", "proposal-2"],
           targetColumn: "backlog",
-          preserveDependencies: true,
         });
       })
     ).rejects.toThrow("Circular dependencies detected in selection");
@@ -255,7 +246,6 @@ describe("useApplyProposals", () => {
         sessionId: "session-1",
         proposalIds: [],
         targetColumn: "backlog",
-        preserveDependencies: true,
       });
     });
 
