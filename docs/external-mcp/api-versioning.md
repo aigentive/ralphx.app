@@ -13,13 +13,13 @@ The external MCP server is at API version **1.0.0**. This version string is retu
 
 ## Tool Name Convention: v1_ Prefix
 
-All 27 tools are prefixed with `v1_` to encode the API version directly in the tool name. This is a deliberate MCP-compatible versioning strategy: MCP has no native concept of API versions, so the prefix makes version visible to agents listing tools.
+All 33 tools are prefixed with `v1_` to encode the API version directly in the tool name. This is a deliberate MCP-compatible versioning strategy: MCP has no native concept of API versions, so the prefix makes version visible to agents listing tools.
 
 ```
 v1_list_projects
 v1_get_project_status
 v1_start_ideation
-... (all 27 tools)
+... (all 33 tools)
 ```
 
 **Rationale:** When v2 tools are introduced, both `v1_list_projects` and `v2_list_projects` can coexist in the same server. An agent targeting v1 tools continues to work without modification.

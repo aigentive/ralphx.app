@@ -1,6 +1,6 @@
 # RalphX External MCP Server
 
-The External MCP Server (`ralphx-external-mcp`) exposes 27 orchestration-level tools to external agents via the Model Context Protocol over HTTP. It runs on port 3848 and proxies authenticated requests to the Tauri backend on port 3847.
+The External MCP Server (`ralphx-external-mcp`) exposes 33 orchestration-level tools to external agents via the Model Context Protocol over HTTP. It runs on port 3848 and proxies authenticated requests to the Tauri backend on port 3847.
 
 ## Architecture
 
@@ -64,7 +64,8 @@ curl -X POST http://localhost:3848/mcp \
 | Category | Count | Tools |
 |----------|-------|-------|
 | Discovery | 3 | v1_list_projects, v1_get_project_status, v1_get_pipeline_overview |
-| Ideation | 9 | v1_start_ideation, v1_get_ideation_status, v1_send_ideation_message, v1_list_proposals, v1_get_proposal_detail, v1_get_plan, v1_accept_plan_and_schedule, v1_modify_proposal, v1_analyze_dependencies |
+| Ideation | 13 | v1_start_ideation, v1_get_ideation_status, v1_send_ideation_message, v1_list_proposals, v1_get_proposal_detail, v1_get_plan, v1_accept_plan_and_schedule, v1_modify_proposal, v1_analyze_dependencies, v1_list_ideation_sessions, v1_get_ideation_messages, v1_trigger_plan_verification, v1_get_plan_verification |
+| Tasks | 2 | v1_get_task_steps, v1_batch_task_status |
 | Pipeline | 11 | v1_get_task_detail, v1_get_task_diff, v1_get_review_summary, v1_approve_review, v1_request_changes, v1_get_merge_pipeline, v1_resolve_escalation, v1_pause_task, v1_cancel_task, v1_retry_task, v1_resume_scheduling |
 | Events | 4 | v1_subscribe_events, v1_get_recent_events, v1_get_attention_items, v1_get_execution_capacity |
 
@@ -95,8 +96,9 @@ ralphx-plugin/ralphx-external-mcp/
 │   ├── composites/       — Multi-step saga tools
 │   └── tools/            — Tool handler implementations
 │       ├── discovery.ts  — Flow 1: 3 discovery tools
-│       ├── ideation.ts   — Flow 2: 9 ideation tools
-│       ├── pipeline.ts   — Flow 3: 11 pipeline tools
-│       └── events.ts     — Flow 4: 4 event tools
+│       ├── ideation.ts   — Flow 2: 13 ideation tools
+│       ├── tasks.ts      — Flow 3: 2 task tools
+│       ├── pipeline.ts   — Flow 4: 11 pipeline tools
+│       └── events.ts     — Flow 5: 4 event tools
 └── build/                — Compiled JS (run after npm run build)
 ```

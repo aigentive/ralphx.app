@@ -11,8 +11,10 @@ import { handleStartIdeation, handleGetIdeationStatus, handleSendIdeationMessage
 import { handleGetTaskDetail, handleGetTaskDiff, handleGetReviewSummary, handleApproveReview, handleRequestChanges, handleGetMergePipeline, handleResolveEscalation, handlePauseTask, handleCancelTask, handleRetryTask, handleResumeScheduling, } from "./pipeline.js";
 import { handleGetRecentEvents, handleSubscribeEvents, handleGetAttentionItems, handleGetExecutionCapacity, } from "./events.js";
 import { handleBatchTaskStatus, handleGetTaskSteps } from "./tasks.js";
+import { handleGetAgentGuide } from "./guide.js";
 /** Tool categories by phase */
 export const TOOL_CATEGORIES = {
+    onboarding: ["v1_get_agent_guide"],
     discovery: ["v1_list_projects", "v1_get_project_status", "v1_get_pipeline_overview"],
     ideation: [
         "v1_start_ideation",
@@ -55,6 +57,22 @@ export function registerTools(server, getKeyContext) {
     // List tools — returns all available tool definitions
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: [
+            // Flow 0: Onboarding
+            {
+                name: "v1_get_agent_guide",
+                description: "Get the complete RalphX agent workflow guide. CALL THIS FIRST. Returns tool reference, sequencing rules, patterns, and anti-patterns. Use section parameter to get focused content.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        section: {
+                            type: "string",
+                            enum: ["overview", "discovery", "ideation", "tasks", "pipeline", "events", "patterns"],
+                            description: "Optional: return only a specific section to save context window",
+                        },
+                    },
+                    required: [],
+                },
+            },
             // Flow 1: Project Discovery (Phase 4)
             {
                 name: "v1_list_projects",
@@ -471,6 +489,10 @@ export function registerTools(server, getKeyContext) {
         let text;
         let isError = false;
         switch (name) {
+            // --- Flow 0: Onboarding ---
+            case "v1_get_agent_guide":
+                text = await handleGetAgentGuide(args, context);
+                break;
             // --- Flow 1: Discovery ---
             case "v1_list_projects":
                 text = await handleListProjects(args, context);
