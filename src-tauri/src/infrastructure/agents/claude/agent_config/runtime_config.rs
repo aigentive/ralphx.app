@@ -47,7 +47,7 @@ fn default_auto_verify_stale_secs() -> u64 {
 impl Default for VerificationConfig {
     fn default() -> Self {
         Self {
-            max_rounds: 5,
+            max_rounds: 4,
             auto_verify: false,
             require_verification_for_accept: true,
             complexity_threshold: 3,

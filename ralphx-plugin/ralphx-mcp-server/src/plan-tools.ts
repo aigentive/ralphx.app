@@ -146,6 +146,11 @@ export const PLAN_TOOLS: Tool[] = [
               category: { type: "string" },
               description: { type: "string" },
               why_it_matters: { type: "string" },
+              source: {
+                type: "string",
+                enum: ["layer1", "layer2"],
+                description: "Which critic layer identified this gap (for per-critic tracking)",
+              },
             },
             required: ["severity", "category", "description"],
           },
@@ -154,7 +159,7 @@ export const PLAN_TOOLS: Tool[] = [
         convergence_reason: {
           type: "string",
           enum: [
-            "zero_critical",
+            "zero_blocking",
             "jaccard_converged",
             "max_rounds",
             "critic_parse_failure",

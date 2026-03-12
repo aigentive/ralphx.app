@@ -2576,8 +2576,9 @@ fn verification_metadata_serde_roundtrip() {
             category: "security".to_string(),
             description: "Missing auth check".to_string(),
             why_it_matters: Some("Allows unauthorized access".to_string()),
+            source: None,
         }],
-        convergence_reason: Some("zero_critical".to_string()),
+        convergence_reason: Some("zero_blocking".to_string()),
         best_round_index: Some(2),
         parse_failures: vec![1],
     };
@@ -2588,7 +2589,7 @@ fn verification_metadata_serde_roundtrip() {
     assert_eq!(restored.rounds.len(), 1);
     assert_eq!(restored.rounds[0].gap_score, 13);
     assert_eq!(restored.current_gaps[0].severity, "critical");
-    assert_eq!(restored.convergence_reason, Some("zero_critical".to_string()));
+    assert_eq!(restored.convergence_reason, Some("zero_blocking".to_string()));
 }
 
 // ===== VerificationError Tests =====

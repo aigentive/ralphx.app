@@ -27,8 +27,7 @@ allowedTools:
   - "Task(Plan)"
   - "Task(general-purpose)"
   - "Task(ralphx:plan-critic-layer1)"
-  - "Task(ralphx:plan-critic-alpha)"
-  - "Task(ralphx:plan-critic-beta)"
+  - "Task(ralphx:plan-critic-layer2)"
 model: opus
 skills:
   - task-decomposition
@@ -237,21 +236,21 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
 
 **Verification has two layers** — both run during verification rounds:
 1. **Plan completeness** — gaps in architecture, security, testing, scope (single critic agent)
-2. **Implementation feasibility** — functional gaps in proposed code changes (Alpha vs Beta adversarial debate)
+2. **Implementation feasibility** — functional gaps in proposed code changes (single Layer 2 agent applying two lenses in one pass)
 
 The agent decides which layers apply based on plan content. If the plan proposes specific code changes, file modifications, or architectural modifications → both layers. If the plan is high-level without implementation specifics → completeness only.
 
 **Pre-check (auto-verify guard):** Before starting the round loop, call `get_plan_verification(session_id)`. If `in_progress: true`, output: "Auto-verification running (round {N}/{max_rounds}). Results appear automatically when complete." and EXIT the VERIFY phase — do not start a new round.
 
 **Round Loop:**
-1. `get_plan_verification(session_id)` → get current round, gap history, best version state. **When round > 1:** Extract `current_gaps[].description` from the prior round result. Pass prior-round context **as the first section of each critic's prompt argument** (before the PLAN CONTENT line):
+1. `get_plan_verification(session_id)` → get current round, gap history. **When round > 1:** Extract `current_gaps[].description` from the prior round result. Pass prior-round context **as the first section of each critic's prompt argument** (before the PLAN CONTENT line):
    ```
    PRIOR ROUND CONTEXT (round N-1 findings that were addressed in the current plan revision):
    - [gap description 1] — ADDRESSED in revision (do not re-flag unless the fix is inadequate)
    - [gap description 2] — ADDRESSED in revision
    Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. Do not re-flag just because the code hasn't been written yet.
    ```
-   Include this section in the Layer 1 critic prompt AND inside each Alpha/Beta prompt. Omit entirely when round == 1.
+   Include this section in the Layer 1 critic prompt AND in the Layer 2 critic prompt. Omit entirely when round == 1.
 2. Read current plan: `get_session_plan(session_id)` → extract plan content (≤3000 tokens; truncate at 3000 if longer — prepend "TRUNCATED TO 3000 TOKENS:" and keep first 3000 tokens)
 3. **Layer 1 — Completeness critic:** Spawn `Task(ralphx:plan-critic-layer1)` with a prompt containing the plan content. The critic's full instructions (framing, output format, severity guide) live in `plan-critic-layer1.md` — no inline template needed.
 
@@ -262,20 +261,18 @@ The agent decides which layers apply based on plan content. If the plan proposes
    PLAN CONTENT:
    {plan_content}
    ```
-3b. **Layer 2 — Implementation feasibility (when plan proposes code changes):** Spawn two parallel critic agents, each with the same prompt format as Layer 1 (plan content + prior-round context if round > 1). Their full instructions and code-reading protocols live in the respective .md agent files:
-   - `Task(ralphx:plan-critic-alpha)` — minimal/surgical perspective
-   - `Task(ralphx:plan-critic-beta)` — comprehensive/defense-in-depth perspective
+3b. **Layer 2 — Implementation feasibility (when plan proposes code changes):** Spawn one `Task(ralphx:plan-critic-layer2)` with the same prompt format as Layer 1 (plan content + prior-round context if round > 1). The agent applies two lenses in one pass (minimal/surgical + defense-in-depth) and returns a unified JSON gap list. Its full instructions and code-reading protocols live in `plan-critic-layer2.md`.
 
-   Each agent MUST read actual code (not rely on plan descriptions). Gaps must be concrete: "if X happens, Y breaks because line Z does W." ❌ Style/preference debates — only functional and architectural gaps.
+   The agent MUST read actual code (not rely on plan descriptions). Gaps must be concrete: "if X happens, Y breaks because line Z does W." ❌ Style/preference debates — only functional and architectural gaps.
 
-   Merge Alpha + Beta findings into the gap list alongside Layer 1 results. Deduplicate by description similarity.
-
-4. Parse JSON from critic response. On parse failure: record via `update_plan_verification(session_id, status: "needs_revision", round: N, gaps: [])`. If ≥3 parse failures in last 5 rounds → convergence via "critic_parse_failure".
-5. Compute gap score: `critical * 10 + high * 3 + medium * 1`
+4. Parse JSON from critic responses. On parse failure: record via `update_plan_verification(session_id, status: "needs_revision", round: N, gaps: [])`.
+5. Tag gaps by source before submitting: Layer 1 gaps → add `source: "layer1"`, Layer 2 gaps → add `source: "layer2"`.
 6. Call `update_plan_verification(session_id, status: "reviewing", in_progress: true, round: N, gaps: [...], convergence_reason: null)`.
-   **Backend auto-transition:** The backend automatically transitions `reviewing → needs_revision` when gaps are present. Always send `status: "reviewing"` — the backend corrects to `needs_revision` when appropriate. Never send `needs_revision` directly.
-6.5. Check the API response status field. If it returns `needs_revision` (backend auto-transitioned), skip to step 9 immediately — present gaps and wait for user. Do NOT retry the call with `reviewing` or loop back.
-7. Output round progress:
+   **Backend handles all computation:** The backend computes gap score, fingerprinting, and convergence detection. Always send `status: "reviewing"` — the backend auto-transitions to `needs_revision` (gaps present) or `verified` (convergence detected). Never send `needs_revision` or `verified` directly.
+6.5. Check the API response status field:
+   - `verified` (backend detected convergence) → output "Converged: {convergence_reason from response}" → EXIT loop → proceed to CONFIRM.
+   - `needs_revision` (backend auto-transitioned) → continue to step 7. Do NOT retry or loop back.
+7. Output round progress (values from backend response):
    ```
    Verification Round {N}/{max_rounds}
    Gap score: {score} (critical: {c}, high: {h}, medium: {m}, low: {l})
@@ -285,32 +282,17 @@ The agent decides which layers apply based on plan content. If the plan proposes
    Critical gaps: {list or "None"}
    High gaps: {list or "None"}
 
-   {if converged: "Converged: {reason}" else "Continue? (y/n or describe what to fix)"}
+   Continue? (y/n or describe what to fix)
    ```
-8. Check convergence:
-
-   | Condition | convergence_reason | Action |
-   |-----------|-------------------|--------|
-   | 0 critical AND high_count ≤ previous round AND 0 medium from implementation layer | `zero_critical` | Status → verified |
-   | Jaccard(round_N, round_N+1 fingerprints) ≥ 0.8 for 2 consecutive rounds | `jaccard_converged` | Status → verified |
-   | current_round ≥ max_rounds (default 5) | `max_rounds` | Status → verified; check best version |
-   | ≥3 parse failures in last 5 rounds | `critic_parse_failure` | Status → verified; warn user |
-
-   **Implementation feasibility convergence (NON-NEGOTIABLE):** When Layer 2 is active, convergence requires ALL CRITICAL, HIGH, and MEDIUM implementation gaps resolved. LOW may be deferred. Agent limitations mean no single plan can be trusted — the adversarial debate exists because individual agents miss edge cases that competing perspectives catch.
-
-   On convergence: `update_plan_verification(session_id, status: "verified", in_progress: false, convergence_reason: "...")` → proceed to CONFIRM.
-
-9. Present gaps to user. Ask: "Shall I update the plan to address these gaps and run another round?"
-10. User approves → `edit_plan_artifact` (targeted changes <30%) or `update_plan_artifact` (full rewrites >30%) → repeat from step 1.
+8. Present gaps to user. Ask: "Shall I update the plan to address these gaps and run another round?"
+9. User approves → `edit_plan_artifact` (targeted changes <30%) or `update_plan_artifact` (full rewrites >30%) → repeat from step 1.
 
     When revising the plan to address gaps:
     - NEVER remove or modify sections that describe proposed additions (new files, new columns, new migrations) unless a critic identified that the addition itself is wrong.
     - Only ADD or CLARIFY content — do not restructure or remove existing plan sections.
     - Preserve ALL user-authored content (architecture decisions, phase descriptions, affected files).
     - If a gap says "X is missing", add X to the plan — do not remove other proposed items to make room.
-11. User skips → `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
-
-**Best-version tracking:** At hard-cap exit, if `final_gap_score > original_gap_score` → output "The current plan (gap score: {final}) is worse than the original (gap score: {original}). Consider **Revert & Skip** to restore the original plan."
+10. User skips → `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
 **Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → ask user: "A verification round was in progress. Resume from round {N}? (y/n)"
 

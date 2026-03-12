@@ -28,7 +28,7 @@ Orchestrator processes round:
         │
         ▼
 Convergence check:
-  ┌─ 0 critical AND high_count ≤ previous round → "zero_critical" ✅
+  ┌─ 0 critical AND 0 high AND 0 medium (round ≥ 2) → "zero_blocking" ✅
   ├─ Jaccard(round_N, round_N+1) ≥ 0.8 for 2 consecutive rounds → "jaccard_converged" ✅
   ├─ current_round ≥ max_rounds → "max_rounds" ✅ (hard cap)
   └─ ≥ 3 parse failures in last 5 rounds → "critic_parse_failure" ✅
@@ -58,7 +58,7 @@ Category is **excluded** from the fingerprint — it is display metadata only. T
 
 | Condition | Trigger | Reason |
 |-----------|---------|--------|
-| Zero critical | `critical_count == 0 AND high_count ≤ previous_round_high_count` | Primary exit |
+| Zero blocking | `critical_count == 0 AND high_count == 0 AND medium_count == 0` (min round 2) | Primary exit |
 | Jaccard similarity | `similarity(round_N_fingerprints, round_N+1_fingerprints) ≥ 0.8` for 2 consecutive rounds | Tolerates minor paraphrasing |
 | Hard cap | `current_round ≥ max_rounds` | Safety net — always terminates |
 | Flaky critic | `≥ 3 parse failures in last 5 rounds` | Sliding window, not strict consecutive |
@@ -144,7 +144,7 @@ Event: `plan_verification:status_changed`
   "round": 2,
   "max_rounds": 5,
   "gap_score": 23,
-  "convergence_reason": "zero_critical | jaccard_converged | max_rounds | critic_parse_failure | user_skipped | user_reverted"
+  "convergence_reason": "zero_blocking | jaccard_converged | max_rounds | critic_parse_failure | user_skipped | user_reverted"
 }
 ```
 
@@ -247,7 +247,7 @@ Structured logs at all lifecycle points:
 ```
 INFO  session_id=... "Verification started"
 INFO  session_id=... round=2 gaps=5 critical=1 "Verification round completed"
-INFO  session_id=... reason=zero_critical rounds=3 "Verification converged"
+INFO  session_id=... reason=zero_blocking rounds=3 "Verification converged"
 WARN  session_id=... round=3 "Critic output parse failure"
 ERROR session_id=... error=... "Verification agent crashed"
 INFO  session_id=... "Reconciliation reset stuck verification"

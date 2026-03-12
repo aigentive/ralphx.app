@@ -2187,20 +2187,12 @@ fn build_auto_verifier_prompt_layer1_agent_call() {
 }
 
 #[test]
-fn build_auto_verifier_prompt_alpha_agent_call() {
+fn build_auto_verifier_prompt_layer2_agent_call() {
     let prompt = build_auto_verifier_prompt("sess-abc", 1, 3, &[]);
     assert!(
-        prompt.contains("ralphx:plan-critic-alpha"),
-        "Prompt must reference the named Alpha critic agent; not found"
-    );
-}
-
-#[test]
-fn build_auto_verifier_prompt_beta_agent_call() {
-    let prompt = build_auto_verifier_prompt("sess-abc", 1, 3, &[]);
-    assert!(
-        prompt.contains("ralphx:plan-critic-beta"),
-        "Prompt must reference the named Beta critic agent; not found"
+        prompt.contains("ralphx:plan-critic-layer2"),
+        "Prompt must reference the named Layer 2 critic agent; not found in:\n{}",
+        &prompt[..prompt.len().min(500)]
     );
 }
 
