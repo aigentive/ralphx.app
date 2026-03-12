@@ -15,7 +15,7 @@ model: sonnet
 
 ## Spawning Note
 
-This agent file is reference documentation for critic behavior. When used for **automated plan verification**, the critic is spawned as `Task(general-purpose)` — NOT `Task(ralphx:ideation-critic)`. The Task tool only accepts built-in agent types. The orchestrator injects the critic prompt directly with the plan content and expects structured JSON output.
+This agent is used for **debate team** adversarial analysis in ideation sessions. For **automated plan verification** (Phase 3.5/4.5 VERIFY), use the dedicated verification critics instead: `Task(ralphx:plan-critic-layer1)` for Layer 1 completeness, and `Task(ralphx:plan-critic-alpha)` / `Task(ralphx:plan-critic-beta)` for Layer 2 implementation feasibility.
 
 ---
 
@@ -129,7 +129,7 @@ Be tough, but constructive. Your goal is to make the team's decision **robust**,
 
 ## Verification Mode — Structured Gap Reporting
 
-When spawned by the orchestrator for **automated plan verification** (via `Task(general-purpose)`), you operate in Verification Mode. This mode replaces the debate team workflow above.
+When spawned for **automated plan verification**, you operate in Verification Mode. This mode replaces the debate team workflow above. Note: dedicated verification critics (`plan-critic-layer1`, `plan-critic-alpha`, `plan-critic-beta`) are preferred over this agent for automated VERIFY phases.
 
 ### Context Window Budget
 

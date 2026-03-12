@@ -2176,129 +2176,82 @@ fn auto_verification_metadata_key_matches_format_session_history_filter() {
 // Tests for build_auto_verifier_prompt
 // ──────────────────────────────────────────────────────────────────────────────
 
-/// Extract the substring between `start_delim` and `end_delim` in `haystack`.
-/// Returns `None` if either delimiter is missing.
-fn extract_between<'a>(haystack: &'a str, start_delim: &str, end_delim: &str) -> Option<&'a str> {
-    let start_pos = haystack.find(start_delim)? + start_delim.len();
-    let end_pos = haystack[start_pos..].find(end_delim)?;
-    Some(&haystack[start_pos..start_pos + end_pos])
-}
-
 #[test]
-fn build_auto_verifier_prompt_layer1_contains_framing() {
+fn build_auto_verifier_prompt_layer1_agent_call() {
     let prompt = build_auto_verifier_prompt("sess-abc", 1, 3, &[]);
-    let layer1 = extract_between(&prompt, "---LAYER1-PROMPT-START---", "---LAYER1-PROMPT-END---")
-        .expect("LAYER1 delimiters must be present");
-    let sentinel: String = PROPOSED_VS_EXISTING_FRAMING.chars().take(50).collect();
     assert!(
-        layer1.contains(&sentinel),
-        "LAYER1 block must contain PROPOSED_VS_EXISTING_FRAMING; sentinel not found in:\n{}",
-        layer1
+        prompt.contains("ralphx:plan-critic-layer1"),
+        "Prompt must reference the named Layer 1 critic agent; not found in:\n{}",
+        &prompt[..prompt.len().min(500)]
     );
 }
 
 #[test]
-fn build_auto_verifier_prompt_alpha_contains_framing() {
+fn build_auto_verifier_prompt_alpha_agent_call() {
     let prompt = build_auto_verifier_prompt("sess-abc", 1, 3, &[]);
-    let alpha = extract_between(&prompt, "---ALPHA-PROMPT-START---", "---ALPHA-PROMPT-END---")
-        .expect("ALPHA delimiters must be present");
-    let sentinel: String = PROPOSED_VS_EXISTING_FRAMING.chars().take(50).collect();
     assert!(
-        alpha.contains(&sentinel),
-        "ALPHA block must contain PROPOSED_VS_EXISTING_FRAMING; sentinel not found in:\n{}",
-        alpha
+        prompt.contains("ralphx:plan-critic-alpha"),
+        "Prompt must reference the named Alpha critic agent; not found"
     );
 }
 
 #[test]
-fn build_auto_verifier_prompt_beta_contains_framing() {
+fn build_auto_verifier_prompt_beta_agent_call() {
     let prompt = build_auto_verifier_prompt("sess-abc", 1, 3, &[]);
-    let beta = extract_between(&prompt, "---BETA-PROMPT-START---", "---BETA-PROMPT-END---")
-        .expect("BETA delimiters must be present");
-    let sentinel: String = PROPOSED_VS_EXISTING_FRAMING.chars().take(50).collect();
     assert!(
-        beta.contains(&sentinel),
-        "BETA block must contain PROPOSED_VS_EXISTING_FRAMING; sentinel not found in:\n{}",
-        beta
+        prompt.contains("ralphx:plan-critic-beta"),
+        "Prompt must reference the named Beta critic agent; not found"
     );
 }
 
 #[test]
-fn build_auto_verifier_prompt_step_h_contains_revision_protection() {
+fn build_auto_verifier_prompt_revision_protection() {
     let prompt = build_auto_verifier_prompt("sess-abc", 1, 3, &[]);
     assert!(
         prompt.contains("NEVER remove or modify sections"),
-        "Step H revision protection text must appear in the prompt"
+        "Revision protection text must appear in the prompt"
     );
 }
 
 #[test]
-fn build_auto_verifier_prompt_prior_gaps_injected_inside_delimiter_blocks() {
+fn build_auto_verifier_prompt_prior_gaps_injected_in_prompt() {
     let gaps = vec![
         "missing null check in validate_input".to_string(),
         "migration column not queried by repository".to_string(),
     ];
     let prompt = build_auto_verifier_prompt("sess-xyz", 2, 5, &gaps);
-
-    let layer1 = extract_between(&prompt, "---LAYER1-PROMPT-START---", "---LAYER1-PROMPT-END---")
-        .expect("LAYER1 delimiters must be present");
     assert!(
-        layer1.contains("missing null check in validate_input"),
-        "LAYER1 block must contain prior gap description"
+        prompt.contains("missing null check in validate_input"),
+        "Pre-seeded prior gap must appear in the prompt"
     );
     assert!(
-        layer1.contains("migration column not queried by repository"),
-        "LAYER1 block must contain second prior gap description"
-    );
-
-    let alpha = extract_between(&prompt, "---ALPHA-PROMPT-START---", "---ALPHA-PROMPT-END---")
-        .expect("ALPHA delimiters must be present");
-    assert!(
-        alpha.contains("missing null check in validate_input"),
-        "ALPHA block must contain prior gap description"
-    );
-
-    let beta = extract_between(&prompt, "---BETA-PROMPT-START---", "---BETA-PROMPT-END---")
-        .expect("BETA delimiters must be present");
-    assert!(
-        beta.contains("missing null check in validate_input"),
-        "BETA block must contain prior gap description"
+        prompt.contains("migration column not queried by repository"),
+        "Second pre-seeded prior gap must appear in the prompt"
     );
 }
 
 #[test]
-fn proposed_vs_existing_framing_synced_to_agent_md_files() {
-    // Regression guard: the PROPOSED_VS_EXISTING_FRAMING constant must be
-    // copy-pasted verbatim into both agent .md files so human reviewers see
-    // the same framing text. If this test fails, re-copy the constant into
-    // the affected file.
-    let sentinel: String = PROPOSED_VS_EXISTING_FRAMING.chars().take(50).collect();
-    let workspace_root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("src-tauri has a parent directory");
-
-    let orchestrator_path = workspace_root
-        .join("ralphx-plugin/agents/orchestrator-ideation.md");
-    let team_lead_path = workspace_root
-        .join("ralphx-plugin/agents/ideation-team-lead.md");
-
-    let orchestrator_content = std::fs::read_to_string(&orchestrator_path)
-        .unwrap_or_else(|e| panic!("Could not read {}: {}", orchestrator_path.display(), e));
+fn build_auto_verifier_prompt_no_delimiter_blocks() {
+    let prompt = build_auto_verifier_prompt("sess-abc", 1, 3, &[]);
     assert!(
-        orchestrator_content.contains(&sentinel),
-        "orchestrator-ideation.md is missing PROPOSED_VS_EXISTING_FRAMING sentinel.\n\
-         Expected to find: {:?}\n\
-         Re-copy the constant from artifacts.rs into the Phase 3.5 section.",
-        sentinel
+        !prompt.contains("---LAYER1-PROMPT-START---"),
+        "Prompt must NOT contain old delimiter blocks; critics now use named agents"
     );
-
-    let team_lead_content = std::fs::read_to_string(&team_lead_path)
-        .unwrap_or_else(|e| panic!("Could not read {}: {}", team_lead_path.display(), e));
     assert!(
-        team_lead_content.contains(&sentinel),
-        "ideation-team-lead.md is missing PROPOSED_VS_EXISTING_FRAMING sentinel.\n\
-         Expected to find: {:?}\n\
-         Re-copy the constant from artifacts.rs into the Phase 4.5 section.",
-        sentinel
+        !prompt.contains("---ALPHA-PROMPT-START---"),
+        "Prompt must NOT contain old delimiter blocks"
+    );
+    assert!(
+        !prompt.contains("---BETA-PROMPT-START---"),
+        "Prompt must NOT contain old delimiter blocks"
+    );
+}
+
+#[test]
+fn build_auto_verifier_prompt_prior_gaps_round_gt1_instructions() {
+    let prompt = build_auto_verifier_prompt("sess-abc", 1, 3, &[]);
+    assert!(
+        prompt.contains("round > 1"),
+        "Prompt must instruct orchestrator to inject prior gaps when round > 1"
     );
 }
