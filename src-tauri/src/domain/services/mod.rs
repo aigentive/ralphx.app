@@ -4,6 +4,7 @@
 // use cases and business rules.
 
 pub mod api_key_service;
+pub mod github_service;
 pub mod artifact_flow_service;
 pub mod artifact_service;
 pub mod key_crypto;
@@ -22,6 +23,7 @@ pub mod workflow_service;
 pub mod worktree_guard;
 
 pub use artifact_flow_service::{ArtifactFlowService, FlowExecutionResult, StepExecutionResult};
+pub use github_service::{GithubServiceTrait, PrStatus};
 pub use artifact_service::ArtifactService;
 pub use bucket_classifier::BucketClassifier;
 pub use gap_fingerprint::{gap_fingerprint, gap_score, jaccard_similarity};

@@ -30,6 +30,7 @@ export const ProjectResponseSchema = z.object({
   detected_analysis: z.string().nullish(),
   custom_analysis: z.string().nullish(),
   analyzed_at: z.string().nullish(),
+  github_pr_enabled: z.boolean().default(false),
   // Accept RFC3339 timestamps with offset (e.g., +00:00) not just Z
   created_at: z.string().datetime({ offset: true }),
   updated_at: z.string().datetime({ offset: true }),
@@ -50,6 +51,7 @@ export interface Project {
   detectedAnalysis: string | null;
   customAnalysis: string | null;
   analyzedAt: string | null;
+  githubPrEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -72,6 +74,7 @@ export function transformProject(
     detectedAnalysis: response.detected_analysis ?? null,
     customAnalysis: response.custom_analysis ?? null,
     analyzedAt: response.analyzed_at ?? null,
+    githubPrEnabled: response.github_pr_enabled,
     createdAt: response.created_at,
     updatedAt: response.updated_at,
   };

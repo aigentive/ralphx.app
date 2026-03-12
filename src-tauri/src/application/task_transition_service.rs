@@ -579,6 +579,21 @@ pub struct TaskTransitionService<R: Runtime = tauri::Wry> {
     /// When set, every status change is also written to the external_events DB table
     /// so external consumers (poll/SSE) can observe transitions.
     external_events_repo: Option<Arc<dyn ExternalEventsRepository>>,
+
+    /// PR poller registry for GitHub PR polling (AD18).
+    /// Passed to TaskServices so state machine actions can start/stop polling.
+    /// None disables PR integration.
+    pr_poller_registry: Option<Arc<crate::application::PrPollerRegistry>>,
+
+    /// GitHub service for PR operations (AD17).
+    /// Passed to TaskServices so state machine actions can push branches and mark PRs ready.
+    /// None disables PR-mode merge path.
+    github_service: Option<Arc<dyn crate::domain::services::GithubServiceTrait>>,
+
+    /// Self-referential Arc for passing to TaskServices (PR merge poller pattern).
+    /// Set via `set_self_arc()` after Arc-wrapping. Uses Mutex + Any for runtime-generic storage.
+    /// Used so `on_enter(Merging)` can pass `Arc<TaskTransitionService<Wry>>` to start_polling.
+    self_arc: std::sync::Mutex<Option<Arc<dyn std::any::Any + Send + Sync>>>,
 }
 
 impl<R: Runtime> TaskTransitionService<R> {
@@ -677,7 +692,25 @@ impl<R: Runtime> TaskTransitionService<R> {
             merges_in_flight: Arc::new(std::sync::Mutex::new(HashSet::new())),
             external_events_repo: None,
             validation_tokens: Arc::new(dashmap::DashMap::new()),
+            pr_poller_registry: None,
+            github_service: None,
+            self_arc: std::sync::Mutex::new(None),
         }
+    }
+
+    /// Set the self-arc for passing to TaskServices (PR merge poller — AD17).
+    ///
+    /// Call this immediately after `Arc::new(transition_service)`:
+    /// ```ignore
+    /// let svc = Arc::new(TaskTransitionService::new(...));
+    /// svc.set_self_arc(Arc::clone(&svc));
+    /// ```
+    /// Only has effect when R: 'static (i.e., in production with Wry runtime).
+    pub fn set_self_arc(&self, arc: Arc<TaskTransitionService<R>>)
+    where
+        R: 'static,
+    {
+        *self.self_arc.lock().unwrap() = Some(arc as Arc<dyn std::any::Any + Send + Sync>);
     }
 
     /// Set the task scheduler for auto-scheduling Ready tasks (builder pattern).
@@ -737,6 +770,24 @@ impl<R: Runtime> TaskTransitionService<R> {
                 .with_external_events(Arc::clone(&repo), Arc::clone(&self.task_repo)),
         );
         self.external_events_repo = Some(repo);
+        self
+    }
+
+    /// Attach PR poller registry for GitHub PR polling (builder pattern).
+    pub fn with_pr_poller_registry(
+        mut self,
+        registry: Arc<crate::application::PrPollerRegistry>,
+    ) -> Self {
+        self.pr_poller_registry = Some(registry);
+        self
+    }
+
+    /// Attach GitHub service for PR operations (builder pattern, AD17).
+    pub fn with_github_service(
+        mut self,
+        svc: Arc<dyn crate::domain::services::GithubServiceTrait>,
+    ) -> Self {
+        self.github_service = Some(svc);
         self
     }
 
@@ -1032,6 +1083,29 @@ impl<R: Runtime> TaskTransitionService<R> {
             services = services.with_ideation_session_repo(Arc::clone(session_repo));
         }
 
+        // Pass PR poller registry for GitHub PR polling
+        if let Some(ref registry) = self.pr_poller_registry {
+            services = services
+                .with_pr_creation_guard(Arc::clone(&registry.pr_creation_guard))
+                .with_pr_poller_registry(Arc::clone(registry));
+        }
+
+        // Pass GitHub service for PR operations
+        if let Some(ref github_svc) = self.github_service {
+            services = services.with_github_service(Arc::clone(github_svc));
+        }
+
+        // Pass self-arc as transition_service for PR merge poller (AD17).
+        // Downcast from Arc<dyn Any> → Arc<TaskTransitionService<Wry>> (only succeeds for Wry runtime).
+        {
+            let locked = self.self_arc.lock().unwrap();
+            if let Some(ref any_arc) = *locked {
+                if let Ok(ts_wry) = Arc::clone(any_arc).downcast::<TaskTransitionService<tauri::Wry>>() {
+                    services = services.with_transition_service(ts_wry);
+                }
+            }
+        }
+
         // Create TaskContext
         let context = TaskContext::new(task_id.as_str(), task.project_id.as_str(), services);
 
@@ -1304,6 +1378,18 @@ impl<R: Runtime> TaskTransitionService<R> {
         // Pass activity event repository for merge pipeline audit events
         services =
             services.with_activity_event_repo(Arc::clone(&self.activity_event_repo));
+
+        // Pass PR poller registry for GitHub PR polling
+        if let Some(ref registry) = self.pr_poller_registry {
+            services = services
+                .with_pr_creation_guard(Arc::clone(&registry.pr_creation_guard))
+                .with_pr_poller_registry(Arc::clone(registry));
+        }
+
+        // Pass GitHub service for PR operations
+        if let Some(ref github_svc) = self.github_service {
+            services = services.with_github_service(Arc::clone(github_svc));
+        }
 
         // Create TaskContext
         let context = TaskContext::new(task_id.as_str(), task.project_id.as_str(), services);

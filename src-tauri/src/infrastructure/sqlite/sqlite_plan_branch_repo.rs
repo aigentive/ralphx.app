@@ -4,6 +4,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use super::DbConnection;
@@ -11,6 +12,7 @@ use crate::domain::entities::{
     ArtifactId, ExecutionPlanId, IdeationSessionId, PlanBranch, PlanBranchId, PlanBranchStatus,
     ProjectId, TaskId,
 };
+use crate::domain::entities::plan_branch::{PrPushStatus, PrStatus};
 use crate::domain::repositories::PlanBranchRepository;
 use crate::error::{AppError, AppResult};
 
@@ -56,6 +58,28 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
                 )
                 .map_err(|e| AppError::Database(format!("Failed to create plan branch: {}", e)))?;
                 Ok(branch)
+            })
+            .await
+    }
+
+    async fn get_by_id(&self, id: &PlanBranchId) -> AppResult<Option<PlanBranch>> {
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare("SELECT * FROM plan_branches WHERE id = ?1")
+                    .map_err(|e| AppError::Database(format!("Failed to prepare query: {}", e)))?;
+                let result = stmt.query_row(rusqlite::params![id.as_str()], |row| {
+                    PlanBranch::from_row(row)
+                });
+                match result {
+                    Ok(branch) => Ok(Some(branch)),
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(AppError::Database(format!(
+                        "Failed to get plan branch by id: {}",
+                        e
+                    ))),
+                }
             })
             .await
     }
@@ -321,6 +345,158 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
                         id_display
                     )));
                 }
+                Ok(())
+            })
+            .await
+    }
+
+    async fn update_pr_info(
+        &self,
+        id: &PlanBranchId,
+        pr_number: i64,
+        pr_url: String,
+        pr_status: PrStatus,
+        pr_draft: bool,
+    ) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE plan_branches SET pr_number = ?1, pr_url = ?2, pr_status = ?3, pr_draft = ?4, pr_push_status = 'pushed' WHERE id = ?5",
+                    rusqlite::params![
+                        pr_number,
+                        pr_url,
+                        pr_status.to_db_string(),
+                        pr_draft as i64,
+                        id.as_str(),
+                    ],
+                )
+                .map_err(|e| AppError::Database(format!("Failed to update PR info: {}", e)))?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn clear_pr_info(&self, id: &PlanBranchId) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE plan_branches SET pr_number = NULL, pr_url = NULL, pr_status = NULL, pr_draft = NULL, pr_push_status = 'pending', pr_polling_active = 0, last_polled_at = NULL, merge_commit_sha = NULL WHERE id = ?1",
+                    rusqlite::params![id.as_str()],
+                )
+                .map_err(|e| AppError::Database(format!("Failed to clear PR info: {}", e)))?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn update_pr_status(&self, id: &PlanBranchId, status: PrStatus) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        let status_str = status.to_db_string().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE plan_branches SET pr_status = ?1 WHERE id = ?2",
+                    rusqlite::params![status_str, id.as_str()],
+                )
+                .map_err(|e| AppError::Database(format!("Failed to update PR status: {}", e)))?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn set_merge_commit_sha(&self, id: &PlanBranchId, sha: String) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE plan_branches SET merge_commit_sha = ?1 WHERE id = ?2",
+                    rusqlite::params![sha, id.as_str()],
+                )
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to set merge commit sha: {}", e))
+                })?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn update_last_polled_at(
+        &self,
+        id: &PlanBranchId,
+        polled_at: DateTime<Utc>,
+    ) -> AppResult<()> {
+        let id = id.as_str().to_string();
+        let ts = polled_at.to_rfc3339();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE plan_branches SET last_polled_at = ?1, pr_polling_active = 1 WHERE id = ?2",
+                    rusqlite::params![ts, id.as_str()],
+                )
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to update last polled at: {}", e))
+                })?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn clear_polling_active_by_task(&self, task_id: &TaskId) -> AppResult<()> {
+        let task_id = task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE plan_branches SET pr_polling_active = 0 WHERE merge_task_id = ?1",
+                    rusqlite::params![task_id.as_str()],
+                )
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to clear polling active: {}", e))
+                })?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn find_pr_polling_task_ids(&self) -> AppResult<Vec<TaskId>> {
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn
+                    .prepare(
+                        "SELECT merge_task_id FROM plan_branches WHERE pr_polling_active = 1 AND merge_task_id IS NOT NULL",
+                    )
+                    .map_err(|e| AppError::Database(format!("Failed to prepare query: {}", e)))?;
+                let ids = stmt
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map_err(|e| {
+                        AppError::Database(format!("Failed to find polling task ids: {}", e))
+                    })?
+                    .collect::<Result<Vec<_>, _>>()?
+                    .into_iter()
+                    .map(TaskId::from_string)
+                    .collect();
+                Ok(ids)
+            })
+            .await
+    }
+
+    async fn update_pr_push_status(
+        &self,
+        id: &PlanBranchId,
+        status: PrPushStatus,
+    ) -> AppResult<()> {
+        let id_str = id.as_str().to_string();
+        let status_str = status.to_db_string().to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE plan_branches SET pr_push_status = ?1, updated_at = ?2 WHERE id = ?3",
+                    rusqlite::params![status_str, chrono::Utc::now().to_rfc3339(), id_str],
+                )
+                .map_err(|e| {
+                    AppError::Database(format!("Failed to update pr_push_status: {}", e))
+                })?;
                 Ok(())
             })
             .await

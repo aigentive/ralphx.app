@@ -1,0 +1,171 @@
+//! Shared test utilities for PR integration tests.
+//!
+//! `MockGithubService` is NOT accessible from `tests/` (it lives behind `#[cfg(test)]` in
+//! `lib.rs`), so we define an inline mock here that is usable from all integration test files
+//! via `mod common;`.
+
+use async_trait::async_trait;
+use std::collections::VecDeque;
+use std::path::Path;
+use std::sync::{Arc, Mutex};
+
+use ralphx_lib::domain::services::github_service::{GithubServiceTrait, PrStatus};
+use ralphx_lib::{AppError, AppResult};
+
+// ============================================================================
+// MockGithubService
+// ============================================================================
+
+/// Programmable mock for `GithubServiceTrait` used in PR integration tests.
+///
+/// Call counters are public so tests can assert on interaction counts.
+/// Canned responses can be pre-loaded via the `will_return_*` / `will_fail_*` helpers.
+#[allow(dead_code)]
+pub struct MockGithubService {
+    /// Status responses to return in sequence (last entry repeats when exhausted).
+    status_responses: Arc<Mutex<VecDeque<AppResult<PrStatus>>>>,
+    pub check_pr_status_calls: Arc<Mutex<u32>>,
+    pub push_branch_calls: Arc<Mutex<u32>>,
+    pub create_draft_pr_calls: Arc<Mutex<u32>>,
+    pub mark_pr_ready_calls: Arc<Mutex<u32>>,
+    pub close_pr_calls: Arc<Mutex<u32>>,
+    pub delete_remote_branch_calls: Arc<Mutex<u32>>,
+    push_branch_result: Arc<Mutex<Option<AppResult<()>>>>,
+    #[allow(clippy::type_complexity)]
+    create_draft_pr_result: Arc<Mutex<Option<AppResult<(i64, String)>>>>,
+    mark_pr_ready_result: Arc<Mutex<Option<AppResult<()>>>>,
+}
+
+#[allow(dead_code)]
+impl MockGithubService {
+    pub fn new() -> Self {
+        Self {
+            status_responses: Arc::new(Mutex::new(VecDeque::new())),
+            check_pr_status_calls: Arc::new(Mutex::new(0)),
+            push_branch_calls: Arc::new(Mutex::new(0)),
+            create_draft_pr_calls: Arc::new(Mutex::new(0)),
+            mark_pr_ready_calls: Arc::new(Mutex::new(0)),
+            close_pr_calls: Arc::new(Mutex::new(0)),
+            delete_remote_branch_calls: Arc::new(Mutex::new(0)),
+            push_branch_result: Arc::new(Mutex::new(None)),
+            create_draft_pr_result: Arc::new(Mutex::new(None)),
+            mark_pr_ready_result: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    /// Enqueue a status response. Responses are returned in FIFO order. When the
+    /// queue is exhausted, subsequent calls return `PrStatus::Open`.
+    pub fn will_return_status(&self, status: PrStatus) {
+        self.status_responses
+            .lock()
+            .unwrap()
+            .push_back(Ok(status));
+    }
+
+    /// Make the next `push_branch` call fail with the given message.
+    pub fn will_fail_push(&self, msg: impl Into<String>) {
+        *self.push_branch_result.lock().unwrap() =
+            Some(Err(AppError::Infrastructure(msg.into())));
+    }
+
+    /// Make the next `create_draft_pr` call fail with the given message.
+    pub fn will_fail_create_pr(&self, msg: impl Into<String>) {
+        *self.create_draft_pr_result.lock().unwrap() =
+            Some(Err(AppError::Infrastructure(msg.into())));
+    }
+
+    /// Make the next `mark_pr_ready` call fail with the given message.
+    pub fn will_fail_mark_ready(&self, msg: impl Into<String>) {
+        *self.mark_pr_ready_result.lock().unwrap() =
+            Some(Err(AppError::Infrastructure(msg.into())));
+    }
+
+    // --- Convenience accessors ---
+
+    pub fn check_calls(&self) -> u32 {
+        *self.check_pr_status_calls.lock().unwrap()
+    }
+    pub fn push_calls(&self) -> u32 {
+        *self.push_branch_calls.lock().unwrap()
+    }
+    pub fn create_calls(&self) -> u32 {
+        *self.create_draft_pr_calls.lock().unwrap()
+    }
+    pub fn mark_ready_calls(&self) -> u32 {
+        *self.mark_pr_ready_calls.lock().unwrap()
+    }
+    pub fn delete_branch_calls(&self) -> u32 {
+        *self.delete_remote_branch_calls.lock().unwrap()
+    }
+}
+
+impl Default for MockGithubService {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[async_trait]
+impl GithubServiceTrait for MockGithubService {
+    async fn create_draft_pr(
+        &self,
+        _wd: &Path,
+        _base: &str,
+        _head: &str,
+        _title: &str,
+        _body: &Path,
+    ) -> AppResult<(i64, String)> {
+        *self.create_draft_pr_calls.lock().unwrap() += 1;
+        if let Some(result) = self.create_draft_pr_result.lock().unwrap().take() {
+            return result;
+        }
+        Ok((1, "https://github.com/owner/repo/pull/1".to_string()))
+    }
+
+    async fn mark_pr_ready(&self, _wd: &Path, _pr_number: i64) -> AppResult<()> {
+        *self.mark_pr_ready_calls.lock().unwrap() += 1;
+        if let Some(result) = self.mark_pr_ready_result.lock().unwrap().take() {
+            return result;
+        }
+        Ok(())
+    }
+
+    async fn check_pr_status(&self, _wd: &Path, _pr_number: i64) -> AppResult<PrStatus> {
+        *self.check_pr_status_calls.lock().unwrap() += 1;
+        let mut q = self.status_responses.lock().unwrap();
+        if let Some(result) = q.pop_front() {
+            return result;
+        }
+        Ok(PrStatus::Open)
+    }
+
+    async fn push_branch(&self, _wd: &Path, _branch: &str) -> AppResult<()> {
+        *self.push_branch_calls.lock().unwrap() += 1;
+        if let Some(result) = self.push_branch_result.lock().unwrap().take() {
+            return result;
+        }
+        Ok(())
+    }
+
+    async fn close_pr(&self, _wd: &Path, _pr_number: i64) -> AppResult<()> {
+        *self.close_pr_calls.lock().unwrap() += 1;
+        Ok(())
+    }
+
+    async fn delete_remote_branch(&self, _wd: &Path, _branch: &str) -> AppResult<()> {
+        *self.delete_remote_branch_calls.lock().unwrap() += 1;
+        Ok(())
+    }
+
+    async fn fetch_remote(&self, _wd: &Path, _branch: &str) -> AppResult<()> {
+        Ok(())
+    }
+
+    async fn find_pr_by_head_branch(
+        &self,
+        _wd: &Path,
+        _head: &str,
+    ) -> AppResult<Option<(i64, String)>> {
+        Ok(None)
+    }
+}

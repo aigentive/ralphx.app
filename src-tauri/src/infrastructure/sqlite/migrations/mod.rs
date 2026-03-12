@@ -84,6 +84,7 @@ mod v60_metrics_working_days;
 mod v61_ideation_settings_verification;
 mod v62_api_key_admin_permissions;
 mod v63_auto_verify_generation;
+mod v64_github_pr_settings;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
@@ -186,7 +187,7 @@ mod v62_api_key_admin_permissions_tests;
 mod v63_auto_verify_generation_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 63;
+pub const SCHEMA_VERSION: i32 = 64;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -515,6 +516,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 63,
         name: "auto_verify_generation",
         migrate: v63_auto_verify_generation::migrate,
+    },
+    Migration {
+        version: 64,
+        name: "github_pr_settings",
+        migrate: v64_github_pr_settings::migrate,
     },
 ];
 

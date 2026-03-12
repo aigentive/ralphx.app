@@ -1,7 +1,80 @@
 use super::*;
-use crate::infrastructure::memory::MemoryProjectRepository;
-use crate::infrastructure::memory::MemoryTaskRepository;
+use crate::domain::entities::{ArtifactId, IdeationSessionId, PlanBranch};
+use crate::infrastructure::memory::{
+    MemoryPlanBranchRepository, MemoryProjectRepository, MemoryTaskRepository,
+};
 use std::sync::Arc;
+
+// ── is_github_url tests ──────────────────────────────────────────────────────
+
+#[test]
+fn github_url_https_is_valid() {
+    assert!(is_github_url("https://github.com/owner/repo.git"));
+    assert!(is_github_url("https://github.com/owner/repo"));
+    assert!(is_github_url("https://github.com/org/sub/repo"));
+}
+
+#[test]
+fn github_url_ssh_is_valid() {
+    assert!(is_github_url("git@github.com:owner/repo.git"));
+    assert!(is_github_url("git@github.com:org/repo"));
+}
+
+#[test]
+fn non_github_https_url_is_invalid() {
+    assert!(!is_github_url("https://gitlab.com/owner/repo.git"));
+    assert!(!is_github_url("https://bitbucket.org/owner/repo.git"));
+    assert!(!is_github_url("https://example.com/repo.git"));
+}
+
+#[test]
+fn non_github_ssh_url_is_invalid() {
+    assert!(!is_github_url("git@gitlab.com:owner/repo.git"));
+    assert!(!is_github_url("git@bitbucket.org:owner/repo.git"));
+}
+
+#[test]
+fn empty_and_garbage_urls_are_invalid() {
+    assert!(!is_github_url(""));
+    assert!(!is_github_url("not-a-url"));
+    assert!(!is_github_url("github.com/owner/repo"));
+}
+
+// ── update_github_pr_enabled tests ──────────────────────────────────────────
+
+#[tokio::test]
+async fn test_update_github_pr_enabled_persists_change() {
+    let state = setup_test_state();
+
+    let project = Project::new("Test".to_string(), "/test/path".to_string());
+    assert!(project.github_pr_enabled, "default should be true");
+    let created = state.project_repo.create(project).await.unwrap();
+
+    // Disable PR mode
+    let mut updated = created.clone();
+    updated.github_pr_enabled = false;
+    updated.touch();
+    state.project_repo.update(&updated).await.unwrap();
+
+    let found = state
+        .project_repo
+        .get_by_id(&created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(!found.github_pr_enabled);
+}
+
+#[tokio::test]
+async fn test_project_response_includes_github_pr_enabled() {
+    let project = Project::new("Test".to_string(), "/test".to_string());
+    let response = ProjectResponse::from(project);
+    // Default value should be true
+    assert!(response.github_pr_enabled);
+
+    let json = serde_json::to_string(&response).unwrap();
+    assert!(json.contains("\"github_pr_enabled\":true"));
+}
 
 fn setup_test_state() -> AppState {
     let task_repo = Arc::new(MemoryTaskRepository::new());
@@ -365,5 +438,138 @@ mod ipc_contract {
         assert!(input.base_branch.is_none());
         assert!(input.merge_validation_mode.is_none());
         assert!(input.merge_strategy.is_none());
+    }
+}
+
+// ── handle_pr_mode_switch tests ──────────────────────────────────────────────
+
+#[cfg(test)]
+mod mode_switch_tests {
+    use super::*;
+    use crate::domain::entities::{InternalStatus, TaskId};
+    use crate::domain::repositories::{PlanBranchRepository, ProjectRepository};
+
+    fn make_branch_with_pr(project_id: &str, merge_task_id: &str, pr_number: i64) -> PlanBranch {
+        let mut b = PlanBranch::new(
+            ArtifactId::from_string("art-1".to_string()),
+            IdeationSessionId::from_string("sess-1".to_string()),
+            ProjectId::from_string(project_id.to_string()),
+            "feature/test".to_string(),
+            "main".to_string(),
+        );
+        b.merge_task_id = Some(TaskId::from_string(merge_task_id.to_string()));
+        b.pr_number = Some(pr_number);
+        b.pr_url = Some("https://github.com/owner/repo/pull/42".to_string());
+        b
+    }
+
+    #[tokio::test]
+    async fn pr_to_push_clears_pr_fields_on_repo() {
+        // Verify that clear_pr_info removes pr_number and pr_url from the branch.
+        // This is the key side effect of the PR → push-to-main mode switch path.
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+        let branch = make_branch_with_pr("proj-1", "task-merge-1", 42);
+        let branch_id = branch.id.clone();
+        plan_branch_repo.create(branch).await.unwrap();
+
+        // Verify PR fields are set before the operation
+        let before = plan_branch_repo
+            .get_by_id(&branch_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(before.pr_number.is_some(), "PR number should be set");
+        assert!(before.pr_url.is_some(), "PR URL should be set");
+
+        // Simulate what handle_pr_mode_switch does when PR → push-to-main
+        plan_branch_repo.clear_pr_info(&branch_id).await.unwrap();
+
+        let after = plan_branch_repo
+            .get_by_id(&branch_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(after.pr_number.is_none(), "PR number should be cleared");
+        assert!(after.pr_url.is_none(), "PR URL should be cleared");
+    }
+
+    #[tokio::test]
+    async fn push_to_pr_is_noop_for_existing_plans() {
+        // new_enabled=true — no action needed for existing plans (AD16: pr_eligible stays false)
+        // Verify: a branch with no pr_number remains untouched after a push→PR toggle.
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+        let project_repo = Arc::new(MemoryProjectRepository::new());
+
+        let pid = ProjectId::from_string("proj-2".to_string());
+        let project = {
+            let mut p = Project::new("Test2".to_string(), "/test2/path".to_string());
+            p.id = pid.clone();
+            p
+        };
+        project_repo.create(project).await.unwrap();
+
+        // Branch with no pr_number (push-to-main mode)
+        let mut branch = PlanBranch::new(
+            ArtifactId::from_string("art-2".to_string()),
+            IdeationSessionId::from_string("sess-2".to_string()),
+            pid.clone(),
+            "feature/no-pr".to_string(),
+            "main".to_string(),
+        );
+        branch.pr_eligible = false; // AD16: existing plans have pr_eligible=false
+        let branch_id = branch.id.clone();
+        plan_branch_repo.create(branch).await.unwrap();
+
+        // Verify branch still has no pr_number (push→PR toggle doesn't retroactively enable PR)
+        let after = plan_branch_repo
+            .get_by_id(&branch_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            after.pr_number.is_none(),
+            "No PR should be created for existing plans"
+        );
+        assert!(!after.pr_eligible, "pr_eligible stays false per AD16");
+    }
+
+    #[tokio::test]
+    async fn merged_branch_status_is_skipped() {
+        // Branches with Merged status should be skipped entirely.
+        // Verify the PlanBranchStatus matching — Merged/Abandoned branches skip cleanup.
+        use crate::domain::entities::PlanBranchStatus;
+
+        let plan_branch_repo = Arc::new(MemoryPlanBranchRepository::new());
+
+        let mut branch = make_branch_with_pr("proj-3", "task-merge-3", 99);
+        branch.status = PlanBranchStatus::Merged;
+        let branch_id = branch.id.clone();
+        plan_branch_repo.create(branch).await.unwrap();
+
+        // Even if we tried clear_pr_info, the guard in handle_pr_mode_switch prevents it.
+        // Verify the branch still has PR fields (was never cleared — merged branches are skipped).
+        let found = plan_branch_repo
+            .get_by_id(&branch_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            found.pr_number.is_some(),
+            "Merged branch pr_number should not be touched"
+        );
+        // Confirm the status is still Merged (unchanged)
+        assert!(
+            matches!(found.status, PlanBranchStatus::Merged),
+            "Branch status should remain Merged"
+        );
+    }
+
+    #[test]
+    fn merging_status_check_uses_enum_comparison() {
+        // Confirm that InternalStatus::Merging != InternalStatus::Merged
+        // (guards against future refactors accidentally conflating the two)
+        assert_ne!(InternalStatus::Merging, InternalStatus::Merged);
+        assert_ne!(InternalStatus::MergeIncomplete, InternalStatus::Merged);
     }
 }

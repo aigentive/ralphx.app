@@ -25,6 +25,13 @@ pub struct PlanBranchResponse {
     pub merge_task_id: Option<String>,
     pub created_at: String,
     pub merged_at: Option<String>,
+    pub pr_number: Option<i64>,
+    pub pr_url: Option<String>,
+    pub pr_draft: Option<bool>,
+    pub pr_push_status: Option<String>,
+    pub pr_status: Option<String>,
+    pub pr_polling_active: bool,
+    pub pr_eligible: bool,
 }
 
 impl From<PlanBranch> for PlanBranchResponse {
@@ -40,6 +47,13 @@ impl From<PlanBranch> for PlanBranchResponse {
             merge_task_id: pb.merge_task_id.map(|id| id.as_str().to_string()),
             created_at: pb.created_at.to_rfc3339(),
             merged_at: pb.merged_at.map(|dt| dt.to_rfc3339()),
+            pr_number: pb.pr_number,
+            pr_url: pb.pr_url,
+            pr_draft: pb.pr_draft,
+            pr_push_status: Some(pb.pr_push_status.to_db_string().to_string()),
+            pr_status: pb.pr_status.as_ref().map(|s| s.to_db_string().to_string()),
+            pr_polling_active: pb.pr_polling_active,
+            pr_eligible: pb.pr_eligible,
         }
     }
 }
@@ -116,6 +130,23 @@ pub async fn get_project_plan_branches(
         .get_by_project_id(&project_id)
         .await
         .map(|branches| branches.into_iter().map(PlanBranchResponse::from).collect())
+        .map_err(|e| e.to_string())
+}
+
+/// Get plan branch by merge task ID
+///
+/// Used by detail views to fetch PR status for the current merge task.
+#[tauri::command]
+pub async fn get_plan_branch_by_task_id(
+    task_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<PlanBranchResponse>, String> {
+    let task_id = TaskId::from_string(task_id);
+    state
+        .plan_branch_repo
+        .get_by_merge_task_id(&task_id)
+        .await
+        .map(|opt| opt.map(PlanBranchResponse::from))
         .map_err(|e| e.to_string())
 }
 

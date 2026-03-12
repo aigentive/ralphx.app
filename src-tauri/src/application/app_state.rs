@@ -25,7 +25,10 @@ use crate::domain::repositories::{
     TaskRepository, TaskStepRepository, TeamMessageRepository, TeamSessionRepository,
     WorkflowRepository,
 };
-use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry};
+use crate::domain::services::{
+    GithubServiceTrait, MemoryRunningAgentRegistry, MessageQueue, RunningAgentRegistry,
+};
+use super::services::PrPollerRegistry;
 use crate::error::AppResult;
 use crate::infrastructure::memory::{
     InMemoryMemoryEntryRepository, InMemoryMemoryEventRepository, MemoryActivePlanRepository,
@@ -62,7 +65,7 @@ use crate::infrastructure::sqlite::{
     SqliteTaskStepRepository, SqliteTeamMessageRepository, SqliteTeamSessionRepository,
     SqliteWorkflowRepository,
 };
-use crate::infrastructure::{ClaudeCodeClient, MockAgenticClient};
+use crate::infrastructure::{ClaudeCodeClient, GhCliGithubService, MockAgenticClient};
 
 /// Application state container for dependency injection
 /// Holds repository trait objects that can be swapped for testing vs production
@@ -172,6 +175,10 @@ pub struct AppState {
     /// Repository for external_events table — used by TaskTransitionService to dual-emit
     /// state change events for external consumers (poll/SSE endpoints).
     pub external_events_repo: Arc<dyn ExternalEventsRepository>,
+    /// GitHub service for PR operations (create, poll, close). None disables PR integration.
+    pub github_service: Option<Arc<dyn GithubServiceTrait>>,
+    /// Registry of active GitHub PR polling tasks (AD1, AD18).
+    pub pr_poller_registry: Arc<PrPollerRegistry>,
 }
 
 impl AppState {
@@ -227,6 +234,8 @@ impl AppState {
                 .unwrap_or_else(|_| PathBuf::from("."))
         };
 
+        let gh_svc: Arc<dyn GithubServiceTrait> = Arc::new(GhCliGithubService::new());
+
         Ok(Self {
             task_repo: Arc::clone(&task_repo),
             task_step_repo: Arc::new(SqliteTaskStepRepository::from_shared(Arc::clone(
@@ -348,6 +357,13 @@ impl AppState {
             db: crate::infrastructure::sqlite::DbConnection::from_shared(Arc::clone(&shared_conn)),
             external_events_repo: Arc::new(SqliteExternalEventsRepository::from_shared(
                 Arc::clone(&shared_conn),
+            )),
+            github_service: Some(Arc::clone(&gh_svc)),
+            pr_poller_registry: Arc::new(PrPollerRegistry::new(
+                Some(gh_svc),
+                Arc::new(crate::infrastructure::sqlite::SqlitePlanBranchRepository::from_shared(
+                    Arc::clone(&shared_conn),
+                )),
             )),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
 
@@ -384,6 +400,8 @@ impl AppState {
             .app_data_dir()
             .unwrap_or_else(|_| PathBuf::from("."));
 
+        let gh_svc: Arc<dyn GithubServiceTrait> = Arc::new(GhCliGithubService::new());
+
         Ok(Self {
             task_repo: Arc::clone(&task_repo),
             task_step_repo: Arc::new(SqliteTaskStepRepository::from_shared(Arc::clone(
@@ -505,6 +523,13 @@ impl AppState {
             db: crate::infrastructure::sqlite::DbConnection::from_shared(Arc::clone(&shared_conn)),
             external_events_repo: Arc::new(SqliteExternalEventsRepository::from_shared(
                 Arc::clone(&shared_conn),
+            )),
+            github_service: Some(Arc::clone(&gh_svc)),
+            pr_poller_registry: Arc::new(PrPollerRegistry::new(
+                Some(gh_svc),
+                Arc::new(crate::infrastructure::sqlite::SqlitePlanBranchRepository::from_shared(
+                    Arc::clone(&shared_conn),
+                )),
             )),
             running_agent_registry: Arc::new(SqliteRunningAgentRegistry::new(shared_conn)),
 
@@ -590,6 +615,11 @@ impl AppState {
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: None,
+            github_service: None,
+            pr_poller_registry: Arc::new(PrPollerRegistry::new(
+                None,
+                Arc::new(MemoryPlanBranchRepository::new()),
+            )),
         }
     }
 
@@ -681,6 +711,11 @@ impl AppState {
                 crate::application::InteractiveProcessRegistry::new(),
             ),
             app_handle: None,
+            github_service: None,
+            pr_poller_registry: Arc::new(PrPollerRegistry::new(
+                None,
+                Arc::new(MemoryPlanBranchRepository::new()),
+            )),
         }
     }
 
@@ -762,6 +797,11 @@ impl AppState {
             streaming_state_cache: crate::application::chat_service::StreamingStateCache::new(),
             interactive_process_registry: Arc::new(crate::application::InteractiveProcessRegistry::new()),
             app_handle: None,
+            github_service: None,
+            pr_poller_registry: Arc::new(PrPollerRegistry::new(
+                None,
+                Arc::new(MemoryPlanBranchRepository::new()),
+            )),
         }
     }
 

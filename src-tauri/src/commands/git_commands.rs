@@ -737,7 +737,7 @@ fn create_transition_service(
     scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
     let task_scheduler: Arc<dyn TaskScheduler> = scheduler_concrete;
 
-    TaskTransitionService::new(
+    let mut svc = TaskTransitionService::new(
         Arc::clone(&state.task_repo),
         Arc::clone(&state.task_dependency_repo),
         Arc::clone(&state.project_repo),
@@ -755,7 +755,12 @@ fn create_transition_service(
     )
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry))
+    .with_pr_poller_registry(Arc::clone(&state.pr_poller_registry))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    if let Some(ref github_svc) = state.github_service {
+        svc = svc.with_github_service(Arc::clone(github_svc));
+    }
+    svc
 }
 
 /// Clean up git resources (branch/worktree) for a task

@@ -62,6 +62,10 @@ fn default_use_feature_branches() -> bool {
     true
 }
 
+fn default_github_pr_enabled() -> bool {
+    true
+}
+
 /// Merge strategy for combining branches
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
@@ -172,6 +176,9 @@ pub struct Project {
     pub custom_analysis: Option<String>,
     /// Last analysis timestamp (RFC3339)
     pub analyzed_at: Option<String>,
+    /// Whether GitHub PR workflow is enabled for this project (default: true)
+    #[serde(default = "default_github_pr_enabled")]
+    pub github_pr_enabled: bool,
     /// When the project was created
     pub created_at: DateTime<Utc>,
     /// When the project was last updated
@@ -196,6 +203,7 @@ impl Project {
             detected_analysis: None,
             custom_analysis: None,
             analyzed_at: None,
+            github_pr_enabled: true,
             created_at: now,
             updated_at: now,
         }
@@ -255,6 +263,7 @@ impl Project {
             detected_analysis: row.get("detected_analysis").unwrap_or(None),
             custom_analysis: row.get("custom_analysis").unwrap_or(None),
             analyzed_at: row.get("analyzed_at").unwrap_or(None),
+            github_pr_enabled: row.get::<_, i64>("github_pr_enabled").unwrap_or(1) != 0,
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
         })

@@ -30,6 +30,13 @@ function ensureMockData(): void {
     mergeTaskId: "task-mock-merge-1",
     createdAt: new Date().toISOString(),
     mergedAt: null,
+    prNumber: null,
+    prUrl: null,
+    prDraft: null,
+    prPushStatus: null,
+    prStatus: null,
+    prPollingActive: false,
+    prEligible: false,
   };
   mockPlanBranches.set(branch.id, branch);
 }
@@ -68,6 +75,13 @@ export const mockPlanBranchApi = {
       mergeTaskId: generateTestUuid(),
       createdAt: new Date().toISOString(),
       mergedAt: null,
+      prNumber: null,
+      prUrl: null,
+      prDraft: null,
+      prPushStatus: null,
+      prStatus: null,
+      prPollingActive: false,
+      prEligible: false,
     };
     mockPlanBranches.set(branch.id, branch);
     return branch;
@@ -106,5 +120,12 @@ export function toSnakeCasePlanBranch(b: PlanBranch) {
     merge_task_id: b.mergeTaskId,
     created_at: b.createdAt,
     merged_at: b.mergedAt,
+    pr_number: b.prNumber,
+    pr_url: b.prUrl,
+    pr_draft: b.prDraft,
+    pr_push_status: b.prPushStatus,
+    pr_status: b.prStatus,
+    pr_polling_active: b.prPollingActive,
+    pr_eligible: b.prEligible,
   };
 }

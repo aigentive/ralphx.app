@@ -4,11 +4,18 @@
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use std::process::Command;
+use std::process::Stdio;
 use std::sync::Arc;
 use tauri::{Emitter, State};
+use tokio::time::Duration;
 
-use crate::application::AppState;
-use crate::domain::entities::{GitMode, MergeStrategy, MergeValidationMode, Project, ProjectId};
+use crate::application::{AppState, TaskTransitionService};
+use crate::commands::ExecutionState;
+use crate::domain::entities::{
+    GitMode, InternalStatus, MergeStrategy, MergeValidationMode, PlanBranchStatus, Project,
+    ProjectId,
+};
+use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 
 /// Input for creating a new project
 #[derive(Debug, Deserialize)]
@@ -47,6 +54,7 @@ pub struct ProjectResponse {
     pub detected_analysis: Option<String>,
     pub custom_analysis: Option<String>,
     pub analyzed_at: Option<String>,
+    pub github_pr_enabled: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -66,6 +74,7 @@ impl From<Project> for ProjectResponse {
             detected_analysis: project.detected_analysis,
             custom_analysis: project.custom_analysis,
             analyzed_at: project.analyzed_at,
+            github_pr_enabled: project.github_pr_enabled,
             created_at: project.created_at.to_rfc3339(),
             updated_at: project.updated_at.to_rfc3339(),
         }
@@ -502,6 +511,322 @@ pub async fn reanalyze_project(id: String, state: State<'_, AppState>) -> Result
     );
 
     Ok(())
+}
+
+/// Returns true if the URL is a GitHub remote (https or ssh).
+pub(crate) fn is_github_url(url: &str) -> bool {
+    url.starts_with("https://github.com/") || url.starts_with("git@github.com:")
+}
+
+/// Get the git remote URL for a project and validate it is a GitHub URL.
+///
+/// Runs `git remote get-url origin` in the project working directory.
+/// Returns `Some(url)` if remote exists and matches the GitHub pattern, `None` otherwise.
+///
+/// # Errors
+/// Returns `Err` only when the project is not found or the working directory is inaccessible.
+#[tauri::command]
+pub async fn get_git_remote_url(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<Option<String>, String> {
+    let pid = ProjectId::from_string(project_id);
+    let project = state
+        .project_repo
+        .get_by_id(&pid)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", pid.as_str()))?;
+
+    let child = tokio::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(&project.working_directory)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+        .map_err(|e| format!("Failed to spawn git: {}", e))?;
+
+    let output = tokio::time::timeout(Duration::from_secs(10), child.wait_with_output())
+        .await
+        .map_err(|_| "git remote get-url timed out".to_string())?
+        .map_err(|e| format!("Failed to wait for git: {}", e))?;
+
+    if !output.status.success() {
+        return Ok(None);
+    }
+
+    let url = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if is_github_url(&url) {
+        Ok(Some(url))
+    } else {
+        Ok(None)
+    }
+}
+
+/// Check whether the `gh` CLI is authenticated.
+///
+/// Runs `gh auth status` and returns `true` if exit code is 0 (authenticated).
+/// Returns `false` if `gh` is not installed, not authenticated, or times out.
+///
+/// # Errors
+/// This command never returns `Err` — failures become `false`.
+#[tauri::command]
+pub async fn check_gh_auth() -> Result<bool, String> {
+    let mut child = match tokio::process::Command::new("gh")
+        .args(["auth", "status"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .kill_on_drop(true)
+        .spawn()
+    {
+        Ok(c) => c,
+        Err(_) => return Ok(false),
+    };
+
+    match tokio::time::timeout(Duration::from_secs(5), child.wait()).await {
+        Ok(Ok(status)) => Ok(status.success()),
+        _ => Ok(false),
+    }
+}
+
+/// Update the `github_pr_enabled` setting for a project.
+///
+/// After persisting to DB, calls `handle_pr_mode_switch()` to reconcile any
+/// in-progress plans.
+///
+/// # Errors
+/// Returns `Err` if the project is not found or the DB update fails.
+#[tauri::command]
+pub async fn update_github_pr_enabled(
+    project_id: String,
+    enabled: bool,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    let pid = ProjectId::from_string(project_id);
+
+    let mut project = state
+        .project_repo
+        .get_by_id(&pid)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Project not found: {}", pid.as_str()))?;
+
+    project.github_pr_enabled = enabled;
+    project.touch();
+
+    state
+        .project_repo
+        .update(&project)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    handle_pr_mode_switch(&pid, enabled, &state, &execution_state, app).await;
+
+    Ok(())
+}
+
+/// Reconcile in-progress plans after a PR mode toggle.
+///
+/// PR → Push-to-Main (new_enabled = false, branch has pr_number):
+///   - Stop the PR poller
+///   - Close the draft PR via github_service
+///   - Clear PR fields from the plan branch (pr_number, pr_url, etc.)
+///   - If merge task is in Merging state: clear merge failure metadata,
+///     set mode_switch=true, transition to MergeIncomplete
+///     → reconciler auto-retries via push-to-main path (AD12)
+///
+/// Push-to-Main → PR (new_enabled = true):
+///   - No immediate action (lazy per AD16: pr_eligible stays false for existing plans)
+///   - Only new plans accepted after the toggle get PR mode
+async fn handle_pr_mode_switch(
+    project_id: &ProjectId,
+    new_enabled: bool,
+    state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    app_handle: tauri::AppHandle,
+) {
+    let branches = match state.plan_branch_repo.get_by_project_id(project_id).await {
+        Ok(b) => b,
+        Err(e) => {
+            tracing::warn!(
+                project_id = project_id.as_str(),
+                error = %e,
+                "handle_pr_mode_switch: failed to fetch plan branches"
+            );
+            return;
+        }
+    };
+
+    // Get project working directory once (needed for github_service calls)
+    let working_dir = match state.project_repo.get_by_id(project_id).await {
+        Ok(Some(p)) => std::path::PathBuf::from(&p.working_directory),
+        _ => {
+            tracing::warn!(
+                project_id = project_id.as_str(),
+                "handle_pr_mode_switch: failed to get project working directory"
+            );
+            return;
+        }
+    };
+
+    for branch in branches {
+        // Skip branches without a merge task
+        let Some(merge_task_id) = branch.merge_task_id.clone() else {
+            continue;
+        };
+
+        // Skip already-merged or abandoned branches
+        if matches!(
+            branch.status,
+            PlanBranchStatus::Merged | PlanBranchStatus::Abandoned
+        ) {
+            continue;
+        }
+
+        let merge_task = match state.task_repo.get_by_id(&merge_task_id).await {
+            Ok(Some(t)) => t,
+            Ok(None) => {
+                tracing::warn!(
+                    task_id = merge_task_id.as_str(),
+                    "handle_pr_mode_switch: merge task not found"
+                );
+                continue;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = merge_task_id.as_str(),
+                    error = %e,
+                    "handle_pr_mode_switch: failed to fetch merge task"
+                );
+                continue;
+            }
+        };
+
+        // Skip already-merged tasks — no cleanup needed
+        if merge_task.internal_status == InternalStatus::Merged {
+            continue;
+        }
+
+        match (new_enabled, branch.pr_number) {
+            // PR → Push-to-main: close PR, stop poller, clear PR fields
+            (false, Some(pr_number)) => {
+                tracing::info!(
+                    task_id = merge_task_id.as_str(),
+                    pr_number = pr_number,
+                    merge_status = merge_task.internal_status.as_str(),
+                    "handle_pr_mode_switch: PR disabled — cleaning up PR artifacts"
+                );
+
+                // 1. Stop the poller (non-blocking, idempotent)
+                state.pr_poller_registry.stop_polling(&merge_task_id);
+
+                // 2. Close the PR via github_service (non-fatal if it fails)
+                if let Some(github_svc) = &state.github_service {
+                    if let Err(e) = github_svc.close_pr(&working_dir, pr_number).await {
+                        tracing::warn!(
+                            pr_number = pr_number,
+                            error = %e,
+                            "handle_pr_mode_switch: failed to close PR (non-fatal, continuing)"
+                        );
+                    }
+                }
+
+                // 3. Clear PR fields from the plan branch
+                if let Err(e) = state.plan_branch_repo.clear_pr_info(&branch.id).await {
+                    tracing::warn!(
+                        branch_id = branch.id.as_str(),
+                        error = %e,
+                        "handle_pr_mode_switch: failed to clear PR info (non-fatal)"
+                    );
+                }
+
+                // 4. If task is Merging: clear failure metadata + set mode_switch, transition to MergeIncomplete
+                //    Reconciler will auto-retry via push-to-main path (AD12)
+                if merge_task.internal_status == InternalStatus::Merging {
+                    let metadata = MetadataUpdate::new()
+                        .with_null("merge_failure_source")
+                        .with_null("circuit_breaker_count")
+                        .with_null("consecutive_validation_failures")
+                        .with_null("validation_revert_count")
+                        .with_bool("mode_switch", true);
+
+                    let transition_service = build_mode_switch_transition_service(
+                        state,
+                        execution_state,
+                        app_handle.clone(),
+                    );
+
+                    if let Err(e) = transition_service
+                        .transition_task_with_metadata(
+                            &merge_task_id,
+                            InternalStatus::MergeIncomplete,
+                            Some(metadata),
+                        )
+                        .await
+                    {
+                        tracing::warn!(
+                            task_id = merge_task_id.as_str(),
+                            error = %e,
+                            "handle_pr_mode_switch: failed to transition Merging → MergeIncomplete (non-fatal)"
+                        );
+                    } else {
+                        tracing::info!(
+                            task_id = merge_task_id.as_str(),
+                            "handle_pr_mode_switch: Merging → MergeIncomplete with mode_switch=true (AD12)"
+                        );
+                    }
+                }
+            }
+
+            // Push-to-main → PR: lazy — no immediate action for existing plans (AD16)
+            // pr_eligible stays false; only new plans accepted after toggle get PR mode
+            (true, _) => {
+                tracing::debug!(
+                    task_id = merge_task_id.as_str(),
+                    "handle_pr_mode_switch: push-to-main → PR is lazy (pr_eligible stays false per AD16)"
+                );
+            }
+
+            // PR disabled but no pr_number — nothing to close
+            (false, None) => {}
+        }
+    }
+}
+
+/// Build a TaskTransitionService for use in handle_pr_mode_switch.
+/// Only includes the services needed for MergeIncomplete transition (no task scheduler required).
+fn build_mode_switch_transition_service(
+    state: &AppState,
+    execution_state: &Arc<ExecutionState>,
+    app_handle: tauri::AppHandle,
+) -> TaskTransitionService {
+    let mut svc = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_attachment_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(execution_state),
+        Some(app_handle),
+        Arc::clone(&state.memory_event_repo),
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+
+    if let Some(github_svc) = &state.github_service {
+        svc = svc.with_github_service(Arc::clone(github_svc));
+    }
+
+    svc
 }
 
 #[cfg(test)]

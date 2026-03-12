@@ -217,6 +217,7 @@ pub async fn apply_proposals_core(
                 base_branch.clone(),
             );
             plan_branch.execution_plan_id = Some(execution_plan_id.clone());
+            plan_branch.pr_eligible = project.github_pr_enabled;
             let created_branch = app_state
                 .plan_branch_repo
                 .create(plan_branch)

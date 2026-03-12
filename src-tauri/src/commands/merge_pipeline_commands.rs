@@ -304,6 +304,15 @@ mod tests {
             merge_task_id: None,
             created_at: Utc::now(),
             merged_at: None,
+            pr_number: None,
+            pr_url: None,
+            pr_status: None,
+            pr_polling_active: false,
+            pr_eligible: false,
+            last_polled_at: None,
+            pr_push_status: Default::default(),
+            merge_commit_sha: None,
+            pr_draft: None,
         }
     }
 

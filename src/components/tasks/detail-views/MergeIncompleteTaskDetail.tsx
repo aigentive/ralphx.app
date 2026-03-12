@@ -18,6 +18,7 @@ import {
   XCircle,
   CheckCircle,
   Ban,
+  GitPullRequestClosed,
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { Button } from "@/components/ui/button";
@@ -38,6 +39,7 @@ import { useConfirmation } from "@/hooks/useConfirmation";
 import { api } from "@/lib/tauri";
 import { BranchBadge, BranchFlow } from "@/components/shared/BranchBadge";
 import { useMergePipeline } from "@/hooks/useMergePipeline";
+import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 
 interface MergeIncompleteTaskDetailProps {
   task: Task;
@@ -518,6 +520,7 @@ export function MergeIncompleteTaskDetail({
   const { confirm } = useConfirmation();
 
   const mergeError = parseMergeError(task.metadata);
+  const { data: planBranch } = usePlanBranchForTask(task.id);
 
   // Use merge pipeline data for correct branch resolution (metadata may have stale target_branch)
   const { data: pipelineData } = useMergePipeline(task.projectId);
@@ -668,6 +671,39 @@ export function MergeIncompleteTaskDetail({
           />
         }
       />
+
+      {/* PR Context Banner — shown when failure is PR-related */}
+      {planBranch?.prEligible && (
+        <section data-testid="pr-context-section">
+          {planBranch.prStatus === "Closed" ? (
+            <DetailCard variant="warning">
+              <div className="flex items-center gap-2">
+                <GitPullRequestClosed className="w-4 h-4" style={{ color: "#ff9f0a" }} />
+                <span className="text-[13px] text-white/70">PR closed without merging</span>
+                {planBranch.prNumber != null && (
+                  <span className="text-[12px] text-white/40">PR #{planBranch.prNumber}</span>
+                )}
+              </div>
+            </DetailCard>
+          ) : planBranch.prNumber != null ? (
+            <DetailCard variant="error">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" style={{ color: "#ff453a" }} />
+                <span className="text-[13px] text-white/70">
+                  PR operation failed (PR #{planBranch.prNumber})
+                </span>
+              </div>
+            </DetailCard>
+          ) : (
+            <DetailCard variant="error">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4" style={{ color: "#ff453a" }} />
+                <span className="text-[13px] text-white/70">PR operation failed</span>
+              </div>
+            </DetailCard>
+          )}
+        </section>
+      )}
 
       {/* Recovery Attempts Timeline or Fallback */}
       <section data-testid="recovery-attempts-section">

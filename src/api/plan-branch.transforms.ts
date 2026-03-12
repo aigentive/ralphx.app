@@ -18,5 +18,12 @@ export function transformPlanBranch(raw: RawPlanBranch): PlanBranch {
     mergeTaskId: raw.merge_task_id,
     createdAt: raw.created_at,
     mergedAt: raw.merged_at,
+    prNumber: raw.pr_number,
+    prUrl: raw.pr_url,
+    prDraft: raw.pr_draft,
+    prPushStatus: raw.pr_push_status,
+    prStatus: raw.pr_status,
+    prPollingActive: raw.pr_polling_active,
+    prEligible: raw.pr_eligible,
   };
 }

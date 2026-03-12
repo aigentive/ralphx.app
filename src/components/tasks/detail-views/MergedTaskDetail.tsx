@@ -9,6 +9,8 @@ import {
   CheckCircle2,
   GitMerge,
   GitCommit,
+  GitPullRequest,
+  ExternalLink,
   Loader2,
   Code,
 } from "lucide-react";
@@ -30,6 +32,7 @@ import type { Task } from "@/types/task";
 import { BranchBadge } from "@/components/shared/BranchBadge";
 import { ReviewDetailModal } from "@/components/reviews/ReviewDetailModal";
 import { DurationDisplay } from "./shared/DurationDisplay";
+import { usePlanBranchForTask } from "@/hooks/usePlanBranchForTask";
 
 interface MergedTaskDetailProps {
   task: Task;
@@ -173,6 +176,7 @@ function CommitSummaryCard({ taskId }: { taskId: string }) {
 export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: MergedTaskDetailProps) {
   const { data: history, isLoading } = useTaskStateHistory(task.id);
   const { data: stateTransitions = [] } = useTaskStateTransitions(task.id);
+  const { data: planBranch } = usePlanBranchForTask(task.id);
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   // Use completedAt as mergedAt (merge happens after approval which sets completedAt)
@@ -220,6 +224,37 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
             completedAt={task.completedAt}
           />
         </div>
+      )}
+
+      {/* Merged via PR */}
+      {planBranch?.prNumber != null && planBranch?.prStatus === "Merged" && (
+        <section data-testid="merged-via-pr-section">
+          <SectionTitle>Pull Request</SectionTitle>
+          <DetailCard variant="success">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <GitPullRequest className="w-4 h-4" style={{ color: "#34c759" }} />
+                <span className="text-[13px] text-white/80">
+                  Merged via PR #{planBranch.prNumber}
+                </span>
+              </div>
+              {planBranch.prUrl && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const { openUrl } = await import("@tauri-apps/plugin-opener");
+                    await openUrl(planBranch.prUrl!);
+                  }}
+                  className="flex items-center gap-1 text-[12px] cursor-pointer"
+                  style={{ color: "#34c759" }}
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  View PR
+                </button>
+              )}
+            </div>
+          </DetailCard>
+        </section>
       )}
 
       {/* Task Metrics */}

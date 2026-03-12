@@ -1,5 +1,6 @@
 // Merge-specific reconciliation handlers: Merging, PendingMerge, MergeIncomplete, MergeConflict.
 
+use std::sync::Arc;
 use tauri::Runtime;
 use tracing::{debug, warn};
 
@@ -7,6 +8,7 @@ use crate::domain::entities::{
     AgentRunStatus, ChatContextType, InternalStatus, MergeFailureSource,
 };
 use crate::domain::state_machine::transition_handler::has_branch_missing_metadata;
+use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 use crate::infrastructure::agents::claude::reconciliation_config;
 
 use super::super::policy::{
@@ -22,6 +24,74 @@ impl<R: Runtime> ReconciliationRunner<R> {
     ) -> bool {
         if status != InternalStatus::Merging {
             return false;
+        }
+
+        // PR-mode check: Merging+PR tasks have no IPR/agent — skip normal checks
+        // to prevent false escalation. Check poller liveness instead.
+        if let Some(ref repo) = self.plan_branch_repo {
+            if let Ok(Some(plan_branch)) = repo.get_by_merge_task_id(&task.id).await {
+                if plan_branch.pr_number.is_some() && plan_branch.pr_eligible {
+                    let pr_number = plan_branch.pr_number.unwrap();
+                    if let Some(ref registry) = self.pr_poller_registry {
+                        if registry.is_polling(&task.id) {
+                            // Poller alive — check for stale heartbeat (>5min)
+                            if let Some(last) = plan_branch.last_polled_at {
+                                let elapsed = chrono::Utc::now() - last;
+                                if elapsed > chrono::Duration::seconds(300) {
+                                    warn!(
+                                        task_id = task.id.as_str(),
+                                        "Stale PR poller (no heartbeat >5min) — restarting"
+                                    );
+                                    registry.stop_polling(&task.id);
+                                    // Restart: need project for working_dir + base_branch
+                                    if let (Ok(Some(project)), Some(ts_wry)) = (
+                                        self.project_repo.get_by_id(&plan_branch.project_id).await,
+                                        self.try_wry_transition_service(),
+                                    ) {
+                                        let working_dir = std::path::PathBuf::from(
+                                            &project.working_directory,
+                                        );
+                                        let base_branch = plan_branch.source_branch.clone();
+                                        registry.start_polling(
+                                            task.id.clone(),
+                                            plan_branch.id.clone(),
+                                            pr_number,
+                                            working_dir,
+                                            base_branch,
+                                            ts_wry,
+                                        );
+                                    }
+                                }
+                            }
+                            return true; // Healthy poller — skip
+                        }
+                        // Poller not running but pr_polling_active=true → dead poller, restart
+                        if plan_branch.pr_polling_active {
+                            warn!(
+                                task_id = task.id.as_str(),
+                                "Dead PR poller detected (pr_polling_active=true but not running) — restarting"
+                            );
+                            if let (Ok(Some(project)), Some(ts_wry)) = (
+                                self.project_repo.get_by_id(&plan_branch.project_id).await,
+                                self.try_wry_transition_service(),
+                            ) {
+                                let working_dir =
+                                    std::path::PathBuf::from(&project.working_directory);
+                                let base_branch = plan_branch.source_branch.clone();
+                                registry.start_polling(
+                                    task.id.clone(),
+                                    plan_branch.id.clone(),
+                                    pr_number,
+                                    working_dir,
+                                    base_branch,
+                                    ts_wry,
+                                );
+                            }
+                            return true;
+                        }
+                    }
+                }
+            }
         }
 
         // Skip if there's a live interactive process — the agent is alive between turns.
@@ -236,6 +306,20 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // PR-mode skip: if PR polling is active, this task is awaiting a GitHub PR review.
+        // PR reviews can take hours/days — do not mark the task as stale.
+        if let Some(ref repo) = self.plan_branch_repo {
+            if let Ok(Some(plan_branch)) = repo.get_by_merge_task_id(&task.id).await {
+                if plan_branch.pr_polling_active {
+                    tracing::debug!(
+                        task_id = task.id.as_str(),
+                        "Skipping PendingMerge reconciliation — PR review in progress"
+                    );
+                    return true;
+                }
+            }
+        }
+
         // Merge-pipeline-active guard: if attempt_programmatic_merge is actively running
         // (set at start, cleared at end), skip reconciliation to prevent the reconciler
         // from killing the merge mid-pipeline (cleanup 60s + freshness 60s > stale 2min).
@@ -350,9 +434,82 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
+        // mode_switch bypass: PR mode was disabled mid-plan — bypass all guards and retry PendingMerge.
+        // The user explicitly requested mode switch; normal guards (circuit_breaker, rate_limit, etc.) must not block.
+        let has_mode_switch = task
+            .metadata
+            .as_deref()
+            .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+            .and_then(|v| v.get("mode_switch").and_then(|v| v.as_bool()))
+            == Some(true);
+
+        if has_mode_switch {
+            warn!(
+                task_id = task.id.as_str(),
+                "MergeIncomplete mode_switch=true — bypassing guards, retrying PendingMerge"
+            );
+            return match self
+                .transition_service
+                .transition_task(&task.id, InternalStatus::PendingMerge)
+                .await
+            {
+                Ok(_) => true,
+                Err(e) => {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to transition MergeIncomplete -> PendingMerge during mode_switch bypass"
+                    );
+                    false
+                }
+            };
+        }
+
         // Skip retry when branch_missing flag is set - surface to user instead
         if has_branch_missing_metadata(task) {
             return false;
+        }
+
+        // Mode-switch bypass (AD12): when PR mode is disabled mid-Merging, the task is
+        // transitioned here with mode_switch=true. Bypass ALL guards — the user explicitly
+        // requested a mode change, so we retry immediately via push-to-main path.
+        if Self::is_mode_switch(task) {
+            tracing::info!(
+                task_id = task.id.as_str(),
+                "Mode switch detected — bypassing all guards, retrying via PendingMerge (AD12)"
+            );
+            let clear_meta = MetadataUpdate::new()
+                .with_null("mode_switch")
+                .with_null("merge_failure_source")
+                .with_null("circuit_breaker_count")
+                .with_null("consecutive_validation_failures")
+                .with_null("validation_revert_count");
+
+            match self
+                .transition_service
+                .transition_task_with_metadata(
+                    &task.id,
+                    InternalStatus::PendingMerge,
+                    Some(clear_meta),
+                )
+                .await
+            {
+                Ok(_) => {
+                    tracing::info!(
+                        task_id = task.id.as_str(),
+                        "Mode switch retry: MergeIncomplete → PendingMerge (AD12)"
+                    );
+                    return true;
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Mode switch retry failed: could not transition to PendingMerge"
+                    );
+                    return false;
+                }
+            }
         }
 
         // Circuit breaker active guard — fires before all other checks.
@@ -711,5 +868,23 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 false
             }
         }
+    }
+
+    /// Attempt to obtain the concrete `Arc<TaskTransitionService<tauri::Wry>>` from the
+    /// reconciler's generic `self.transition_service`. Required by `PrPollerRegistry::start_polling`,
+    /// which takes the concrete Wry type.
+    ///
+    /// Returns `None` in test environments where `R != tauri::Wry` (e.g. MockRuntime).
+    fn try_wry_transition_service(
+        &self,
+    ) -> Option<Arc<crate::application::TaskTransitionService<tauri::Wry>>> {
+        // Coerce Arc<TaskTransitionService<R>> → Arc<dyn Any + Send + Sync>
+        // then downcast to the concrete Wry type.
+        // This succeeds in production (R = tauri::Wry) and returns None in tests (R ≠ Wry).
+        let any_arc: Arc<dyn std::any::Any + Send + Sync> =
+            Arc::clone(&self.transition_service) as _;
+        any_arc
+            .downcast::<crate::application::TaskTransitionService<tauri::Wry>>()
+            .ok()
     }
 }

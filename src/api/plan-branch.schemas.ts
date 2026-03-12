@@ -15,6 +15,13 @@ export const PlanBranchSchema = z.object({
   merge_task_id: z.string().nullable(),
   created_at: z.string(),
   merged_at: z.string().nullable(),
+  pr_number: z.number().int().nullable(),
+  pr_url: z.string().nullable(),
+  pr_draft: z.boolean().nullable(),
+  pr_push_status: z.enum(["pending", "pushed", "failed"]).nullable(),
+  pr_status: z.enum(["Draft", "Open", "Merged", "Closed"]).nullable(),
+  pr_polling_active: z.boolean().default(false),
+  pr_eligible: z.boolean().default(false),
 });
 
 export const PlanBranchListSchema = z.array(PlanBranchSchema);

@@ -19,8 +19,8 @@ use crate::application::git_service::git_cmd::ENOENT_MARKER;
 use crate::application::{ChatServiceError, GitService};
 use crate::domain::entities::{
     MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
-    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, ProjectId, TaskId,
-    TaskStepStatus,
+    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, ProjectId, TaskCategory,
+    TaskId, TaskStepStatus,
 };
 use crate::domain::repositories::TaskRepository;
 use crate::error::{AppError, AppResult};
@@ -35,7 +35,7 @@ async fn get_task_plan_branch(
     plan_branch_repo: &Option<Arc<dyn crate::domain::repositories::PlanBranchRepository>>,
     task_repo: &Option<Arc<dyn TaskRepository>>,
 ) -> Option<String> {
-    let resolved = resolve_task_base_branch(task, project, plan_branch_repo, task_repo).await;
+    let resolved = resolve_task_base_branch(task, project, plan_branch_repo, task_repo, &None, &None).await;
     // resolve_task_base_branch returns the plan branch for plan tasks, or project base otherwise.
     // We only want the plan branch — check if it's different from project base.
     let project_base = project.base_branch.as_deref().unwrap_or("main");
@@ -336,8 +336,10 @@ impl<'a> super::TransitionHandler<'a> {
                             // Resolve base branch: feature branch for plan tasks, project base otherwise
                             let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
                             let task_repo_ref = &self.machine.context.services.task_repo;
+                            let pr_creation_guard_ref = &self.machine.context.services.pr_creation_guard;
+                            let github_service_ref = &self.machine.context.services.github_service;
                             let resolved_base =
-                                resolve_task_base_branch(&task, &project, plan_branch_repo, task_repo_ref).await;
+                                resolve_task_base_branch(&task, &project, plan_branch_repo, task_repo_ref, pr_creation_guard_ref, github_service_ref).await;
                             let base_branch = resolved_base.as_str();
                             let repo_path = Path::new(&project.working_directory);
 
@@ -1233,6 +1235,82 @@ impl<'a> super::TransitionHandler<'a> {
                 // OR when AutoFix validation mode detected validation failures (Phase 113)
                 let task_id = &self.machine.context.task_id;
 
+                // === PR-MODE GUARD (AD17) ===
+                // If this task is in PR mode (pr_eligible=true, pr_number IS NOT NULL),
+                // skip the worktree setup and merger agent spawn entirely.
+                // The PR poller handles merge detection; on_exit(Merging) decrements the slot.
+                if let (Some(ref plan_branch_repo), Some(ref project_repo)) = (
+                    &self.machine.context.services.plan_branch_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    let tid = TaskId::from_string(task_id.clone());
+                    let project_id = ProjectId::from_string(self.machine.context.project_id.clone());
+                    if let (Ok(Some(plan_branch)), Ok(Some(_project))) = (
+                        plan_branch_repo.get_by_merge_task_id(&tid).await,
+                        project_repo.get_by_id(&project_id).await,
+                    ) {
+                        if plan_branch.pr_eligible && plan_branch.pr_number.is_some() {
+                            let pr_number = plan_branch.pr_number.unwrap();
+                            tracing::info!(
+                                task_id = task_id.as_str(),
+                                pr_number = pr_number,
+                                "on_enter(Merging): PR mode — skipping merger agent, starting poller"
+                            );
+
+                            // PR-mode execution slot: increment running count.
+                            // Guard: only increment on first entry (re-entry from reconciler
+                            // should not double-increment if poller is already running).
+                            let already_polling = self.machine.context.services.pr_poller_registry
+                                .as_ref()
+                                .map(|r| r.is_polling(&tid))
+                                .unwrap_or(false);
+
+                            if !already_polling {
+                                if let Some(ref execution_state) = self.machine.context.services.execution_state {
+                                    execution_state.increment_running();
+                                    tracing::debug!(
+                                        task_id = task_id.as_str(),
+                                        "PR-mode Merging: incremented execution slot"
+                                    );
+                                }
+                            }
+
+                            // Start the PR merge poller.
+                            if let Some(ref registry) = self.machine.context.services.pr_poller_registry {
+                                if let Ok(Some(project_for_poller)) = project_repo.get_by_id(&project_id).await {
+                                    let working_dir = std::path::PathBuf::from(&project_for_poller.working_directory);
+                                    // source_branch = the base branch the plan branch was created from (e.g. "main")
+                                    let base_branch = plan_branch.source_branch.clone();
+                                    if let Some(ref ts) = self.machine.context.services.transition_service {
+                                        registry.start_polling(
+                                            tid.clone(),
+                                            plan_branch.id.clone(),
+                                            pr_number,
+                                            working_dir,
+                                            base_branch,
+                                            Arc::clone(ts),
+                                        );
+                                        tracing::info!(
+                                            task_id = task_id.as_str(),
+                                            pr_number = pr_number,
+                                            "on_enter(Merging): started PR merge poller"
+                                        );
+                                    } else {
+                                        tracing::warn!(
+                                            task_id = task_id.as_str(),
+                                            pr_number = pr_number,
+                                            "on_enter(Merging): PR mode but transition_service not wired — poller not started"
+                                        );
+                                    }
+                                }
+                            }
+
+                            return Ok(());
+                        }
+                    }
+                }
+                // === END PR-MODE GUARD ===
+
                 // Clean up merge worktree before spawning merger agent.
                 // - Symlink removal: ALWAYS (symlinks cause false conflicts for the agent)
                 // - Git abort: only on recovery re-entry (stale rebase/merge from prior attempt)
@@ -1594,6 +1672,35 @@ impl<'a> super::TransitionHandler<'a> {
                 }
             }
             State::Merged => {
+                // For plan merge tasks: run post_merge_cleanup to update plan branch status,
+                // delete feature branch, emit plan:merge_complete event, and cascade-stop siblings.
+                // Idempotency guard in post_merge_cleanup prevents double-execution if already
+                // called during push-to-main pipeline (plan_branch.status == Merged → early return).
+                // This call is the PRIMARY path for PR-mode merges (poller triggers Merging→Merged).
+                let task_id_str = &self.machine.context.task_id.clone();
+                let task_id = TaskId::from_string(task_id_str.clone());
+                let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+
+                if let (Some(ref task_repo), Some(ref project_repo)) = (
+                    &self.machine.context.services.task_repo,
+                    &self.machine.context.services.project_repo,
+                ) {
+                    if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await {
+                        if task.category == TaskCategory::PlanMerge {
+                            let project_id = ProjectId::from_string(self.machine.context.project_id.clone());
+                            if let Ok(Some(project)) = project_repo.get_by_id(&project_id).await {
+                                let repo_path = std::path::PathBuf::from(&project.working_directory);
+                                self.post_merge_cleanup(
+                                    task_id_str,
+                                    &task_id,
+                                    &repo_path,
+                                    plan_branch_repo,
+                                ).await;
+                            }
+                        }
+                    }
+                }
+
                 // Auto-unblock tasks that were waiting on this task
                 // This handles the HTTP handler path where transition_task triggers on_enter
                 self.machine
