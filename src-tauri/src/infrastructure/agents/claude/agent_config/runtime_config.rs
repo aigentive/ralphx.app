@@ -337,7 +337,7 @@ impl Default for GitRuntimeConfig {
             index_lock_stale_secs: 5,
             agent_kill_settle_secs: 0,
             agent_stop_timeout_secs: 3,
-            cleanup_worktree_timeout_secs: 5,
+            cleanup_worktree_timeout_secs: 15,
             cleanup_git_op_timeout_secs: 30,
             worktree_lsof_timeout_secs: 10,
             step_0b_kill_timeout_secs: 5,

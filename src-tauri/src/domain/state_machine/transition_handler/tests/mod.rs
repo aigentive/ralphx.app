@@ -214,6 +214,13 @@ mod freshness_merge_worktree_tests;
 //   5. no poller registry: cascade proceeds normally without panic
 mod cascade_poller_cleanup_tests;
 
+// TOCTOU guard tests for pre_merge_cleanup Steps 2 and 4:
+//   step2_guard_merging_skips_task_worktree_deletion
+//   step2_guard_pending_merge_proceeds_with_task_worktree_deletion
+//   step4_guard_merging_skips_merge_worktree_deletion
+//   step4_guard_pending_merge_proceeds_with_merge_worktree_deletion
+mod toctou_merge_guard_tests;
+
 // PR-mode state machine integration tests (Phase 3 GitHub PR integration):
 //   1. existing pr_number → push_branch + mark_pr_ready (no create_draft_pr)
 //   2. no pr_number → create_draft_pr + mark_pr_ready
