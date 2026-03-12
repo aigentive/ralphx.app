@@ -129,14 +129,14 @@ Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool
 
 Agent limitations mean no single plan can be trusted in full. Plans proposing code changes MUST pass adversarial debate as part of the VERIFY phase before implementation begins.
 
-**How it works:** The existing VERIFY phase (Phase 3.5/4.5) now has two layers — plan completeness (single critic) AND implementation feasibility (Alpha vs Beta adversarial debate). The agent decides which layers apply: plans proposing specific code changes, file modifications, or architectural modifications → both layers. High-level plans without implementation specifics → completeness only.
+**How it works:** The existing VERIFY phase (Phase 3.5/4.5) now has two layers — plan completeness (Layer 1 critic) AND implementation feasibility (Layer 2 dual-lens critic). The agent decides which layers apply: plans proposing specific code changes, file modifications, or architectural modifications → both layers. High-level plans without implementation specifics → completeness only.
 
 | Step | What |
 |------|------|
-| **Alpha vs Beta** | Two parallel agents — Alpha (minimal/surgical fix) vs Beta (comprehensive/defense-in-depth). Each reads actual code, finds functional gaps, rates CRITICAL/HIGH/MEDIUM/LOW |
+| **Layer 2 (dual-lens critic)** | Single agent with both minimal/surgical AND comprehensive/defense-in-depth lenses. Reads actual code, finds functional gaps, rates CRITICAL/HIGH/MEDIUM/LOW, attributes gap source |
 | **Synthesize** | Merge findings into revised plan addressing all CRITICAL and HIGH gaps |
-| **Repeat** | New adversarial agents attack revised plan each round until convergence |
-| **Converge** | ALL CRITICAL, HIGH, and MEDIUM implementation gaps must be resolved. LOW may be deferred |
+| **Repeat** | New critic attacks revised plan each round until convergence |
+| **Converge** | `zero_blocking`: ALL CRITICAL, HIGH, and MEDIUM gaps resolved. LOW may be deferred |
 | **User confirmation gate** | ❌ Implement before user confirms converged plan |
 
 **Adversarial agent rules:** Read actual code (not summaries). Concrete scenarios only ("if X then Y breaks at line Z"). ❌ Style/preference debates. Each gap: scenario + severity + blocks implementation?

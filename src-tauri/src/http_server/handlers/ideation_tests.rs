@@ -1110,12 +1110,14 @@ async fn test_get_plan_verification_round_trip_post_then_get() {
                     category: "security".to_string(),
                     description: "No authentication".to_string(),
                     why_it_matters: Some("Users can access any data".to_string()),
+                    source: None,
                 },
                 VerificationGapRequest {
                     severity: "high".to_string(),
                     category: "scalability".to_string(),
                     description: "No horizontal scaling plan".to_string(),
                     why_it_matters: None,
+                    source: None,
                 },
             ]),
             convergence_reason: None,
@@ -1177,6 +1179,7 @@ async fn test_condition6_reviewing_critical_gaps_overrides_to_needs_revision() {
                 category: "security".to_string(),
                 description: "Missing auth entirely".to_string(),
                 why_it_matters: None,
+                source: None,
             }]),
             convergence_reason: None,
             max_rounds: None,
@@ -1212,6 +1215,7 @@ async fn test_condition6_reviewing_medium_gaps_overrides_to_needs_revision() {
                 category: "performance".to_string(),
                 description: "No caching layer defined".to_string(),
                 why_it_matters: None,
+                source: None,
             }]),
             convergence_reason: None,
             max_rounds: None,
@@ -1249,6 +1253,7 @@ async fn test_condition6_convergence_takes_priority_over_reviewing_with_gaps() {
                 category: "scalability".to_string(),
                 description: "No horizontal scaling plan".to_string(),
                 why_it_matters: None,
+                source: None,
             }]),
             convergence_reason: None,
             max_rounds: Some(1),
@@ -1312,6 +1317,7 @@ async fn test_condition6_reviewing_in_progress_false_with_gaps_overrides_to_need
                 category: "documentation".to_string(),
                 description: "API docs incomplete".to_string(),
                 why_it_matters: None,
+                source: None,
             }]),
             convergence_reason: None,
             max_rounds: None,
@@ -1518,7 +1524,7 @@ async fn test_zombie_guard_skipped_when_no_generation_provided() {
 /// Empty round guard: round 1 with 0 gaps does NOT trigger convergence.
 ///
 /// A critic that finds 0 gaps in round 1 may simply be broken or confused.
-/// The server requires at least round 2 before accepting zero_critical convergence.
+/// The server requires at least round 2 before accepting zero_blocking convergence.
 /// After round 1 with 0 gaps, the status should remain reviewing (condition 6 doesn't
 /// fire because there are no gaps), not verified.
 #[tokio::test]
@@ -1528,7 +1534,7 @@ async fn test_single_round_zero_gaps_does_not_converge() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    // Round 1 with 0 gaps — zero_critical_converged would be true,
+    // Round 1 with 0 gaps — zero_blocking_converged would be true,
     // but the round guard (round >= 2) prevents convergence.
     let result = update_plan_verification(
         State(state),
@@ -1557,16 +1563,16 @@ async fn test_single_round_zero_gaps_does_not_converge() {
     assert!(resp.convergence_reason.is_none(), "no convergence_reason expected for round 1");
 }
 
-/// Iterative convergence: gaps decrease across rounds → server auto-detects zero_critical.
+/// Iterative convergence: gaps clear across rounds → server auto-detects zero_blocking.
 ///
-/// Simulates the real verification loop where the critic finds fewer critical gaps
+/// Simulates the real verification loop where the critic finds no blocking gaps
 /// after the plan is revised. The server auto-detects convergence when 0 critical AND
-/// high_count ≤ previous round's high_count AND round >= 2.
+/// 0 high AND 0 medium (zero_blocking, AD3) AND round >= 2.
 ///
 /// Flow:
 /// - Pre-state: session in Reviewing with metadata showing 1 critical + 2 high from round 1
-/// - Round 2: agent sends needs_revision (Reviewing → NeedsRevision), gaps=[0 crit, 1 high]
-///   → zero_critical_converged = (0==0 && 1 <= 2) = true, round=2 >= 2 → Verified
+/// - Round 2: agent sends needs_revision (Reviewing → NeedsRevision), gaps=[] (all cleared)
+///   → zero_blocking_converged = (0==0 && 0==0 && 0==0) = true, round=2 >= 2 → Verified
 ///
 /// The server detects convergence automatically without the agent providing convergence_reason.
 #[tokio::test]
@@ -1601,8 +1607,8 @@ async fn test_iterative_convergence_decreasing_gaps() {
         .await
         .unwrap();
 
-    // Round 2: agent sends needs_revision (valid: Reviewing → NeedsRevision) with 0 crit, 1 high
-    // Server computes: prev_high=2 (from metadata.current_gaps), curr_high=1 → zero_critical fires
+    // Round 2: agent sends needs_revision with 0 critical + 0 high + 0 medium (all cleared)
+    // Server computes: zero_blocking_converged = true, round=2 >= 2 → Verified
     let round2 = update_plan_verification(
         State(state),
         Path(session_id),
@@ -1610,12 +1616,7 @@ async fn test_iterative_convergence_decreasing_gaps() {
             status: "needs_revision".to_string(),
             in_progress: true,
             round: Some(2),
-            gaps: Some(vec![VerificationGapRequest {
-                severity: "high".to_string(),
-                category: "scalability".to_string(),
-                description: "No caching strategy".to_string(),
-                why_it_matters: None,
-            }]),
+            gaps: Some(vec![]), // all blocking gaps resolved
             convergence_reason: None,
             max_rounds: Some(5),
             parse_failed: None,
@@ -1628,12 +1629,12 @@ async fn test_iterative_convergence_decreasing_gaps() {
     let resp2 = round2.0;
     assert_eq!(
         resp2.status, "verified",
-        "0 critical + high ≤ prev_high (1 ≤ 2) at round 2 → server auto-converges to verified"
+        "0 critical + 0 high + 0 medium at round 2 → server auto-converges to verified"
     );
     assert_eq!(
         resp2.convergence_reason.as_deref(),
-        Some("zero_critical"),
-        "convergence_reason must be 'zero_critical'"
+        Some("zero_blocking"),
+        "convergence_reason must be 'zero_blocking'"
     );
 }
 
@@ -1667,12 +1668,14 @@ async fn test_jaccard_convergence_same_fingerprints() {
                 category: "scalability".to_string(),
                 description: "No horizontal scaling plan".to_string(),
                 why_it_matters: None,
+                source: None,
             },
             VerificationGapRequest {
                 severity: "medium".to_string(),
                 category: "documentation".to_string(),
                 description: "API docs are incomplete".to_string(),
                 why_it_matters: None,
+                source: None,
             },
         ]
     };
@@ -1710,7 +1713,7 @@ async fn test_jaccard_convergence_same_fingerprints() {
 
     // Round 2: Reviewing → needs_revision + different gaps (with critical), round=2
     // Before push: metadata.rounds=[fp1] (len==1) → "need 2 consecutive" → not yet converged.
-    // Using critical gaps to prevent zero_critical from firing (critical_count > 0).
+    // Using critical gaps to prevent zero_blocking from firing (critical_count > 0).
     // Using different gaps from round 1 so jaccard(fp2, fp1) < 1.0.
     let make_gaps_round2 = || {
         vec![
@@ -1719,12 +1722,14 @@ async fn test_jaccard_convergence_same_fingerprints() {
                 category: "security".to_string(),
                 description: "No authentication mechanism specified".to_string(),
                 why_it_matters: None,
+                source: None,
             },
             VerificationGapRequest {
                 severity: "high".to_string(),
                 category: "reliability".to_string(),
                 description: "No retry mechanism defined".to_string(),
                 why_it_matters: None,
+                source: None,
             },
         ]
     };
@@ -1746,7 +1751,7 @@ async fn test_jaccard_convergence_same_fingerprints() {
     .await
     .expect("round 2 must succeed");
 
-    // critical_count=1 → zero_critical=false. Jaccard: len==1 before push → not yet. → needs_revision
+    // critical_count=1 → zero_blocking=false. Jaccard: len==1 before push → not yet. → needs_revision
     assert_eq!(round2.0.status, "needs_revision", "round 2 → still needs_revision (jaccard needs 2 pairs)");
 
     // Reset status to Reviewing again (keeps 2-round metadata)
@@ -1782,7 +1787,7 @@ async fn test_jaccard_convergence_same_fingerprints() {
     .await
     .expect("round 3 must succeed");
 
-    // critical_count=1 → zero_critical=false. Jaccard fires but only 1 of 2 pairs qualifies.
+    // critical_count=1 → zero_blocking=false. Jaccard fires but only 1 of 2 pairs qualifies.
     // → needs_revision (no convergence)
     assert_eq!(
         round3.0.status, "needs_revision",
@@ -1799,7 +1804,7 @@ async fn test_jaccard_convergence_same_fingerprints() {
 /// When a critic keeps finding the same gaps unchanged for 3 rounds,
 /// the server detects that the plan has converged (can't be improved further).
 ///
-/// Uses critical gaps to prevent zero_critical from triggering first.
+/// Uses critical gaps to prevent zero_blocking from triggering first.
 /// Status is reset to Reviewing between rounds using direct repo calls
 /// (simulating the agent's needs_revision → reviewing → needs_revision cycle).
 #[tokio::test]
@@ -1810,7 +1815,7 @@ async fn test_jaccard_convergence_triggered_three_identical_rounds() {
     let session_id = session.id.as_str().to_string();
     state.app_state.ideation_session_repo.create(session).await.unwrap();
 
-    // Gaps with 1 critical → zero_critical can never fire (critical_count > 0)
+    // Gaps with 1 critical → zero_blocking can never fire (critical_count > 0)
     // Same gaps each round → fingerprints identical → Jaccard = 1.0 for all pairs
     let stable_gaps = || {
         vec![
@@ -1819,12 +1824,14 @@ async fn test_jaccard_convergence_triggered_three_identical_rounds() {
                 category: "architecture".to_string(),
                 description: "Plan has no rollback strategy".to_string(),
                 why_it_matters: None,
+                source: None,
             },
             VerificationGapRequest {
                 severity: "high".to_string(),
                 category: "operations".to_string(),
                 description: "No deployment runbook provided".to_string(),
                 why_it_matters: None,
+                source: None,
             },
         ]
     };
@@ -1858,7 +1865,7 @@ async fn test_jaccard_convergence_triggered_three_identical_rounds() {
 
     // Round 2: Reviewing → needs_revision + same gaps, round=2
     // Before push: rounds=[fp1] (len==1) → "need 2 consecutive" → not yet. After: rounds=[fp1, fp2=fp1]
-    // zero_critical: critical_count=1 > 0 → false. → needs_revision stays.
+    // zero_blocking: critical_count=1 > 0 → false. → needs_revision stays.
     let round2 = update_plan_verification(
         State(state.clone()),
         Path(session_id.clone()),
@@ -1944,6 +1951,7 @@ async fn test_max_rounds_exit_behavior() {
                 category: "security".to_string(),
                 description: "Unresolved authentication gap".to_string(),
                 why_it_matters: Some("Users remain vulnerable".to_string()),
+                source: None,
             }]),
             convergence_reason: None,
             max_rounds: Some(3),

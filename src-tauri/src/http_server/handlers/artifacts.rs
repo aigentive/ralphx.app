@@ -366,12 +366,11 @@ pub(crate) fn build_auto_verifier_prompt(
          Spawn: Agent(subagent_type: \"ralphx:plan-critic-layer1\", prompt: critic_prompt)\n\
          Wait for the result.\n\
          \n\
-         ### E. LAYER 2 — Alpha + Beta Critics (run only if plan contains code indicators)\n\
+         ### E. LAYER 2 — Dual-lens critic (run only if plan contains code indicators)\n\
          Check if the plan content matches: /(?:src[-\\/]|\\.rs\\b|\\.tsx?\\b|Affected Files|## Implementation)/\n\
-         If it matches, emit BOTH Agent calls in ONE response (parallel execution):\n\
-         Agent(subagent_type: \"ralphx:plan-critic-alpha\", prompt: critic_prompt)\n\
-         Agent(subagent_type: \"ralphx:plan-critic-beta\", prompt: critic_prompt)\n\
-         Wait for both results.\n\
+         If it matches, spawn the Layer 2 critic (single agent, dual-lens analysis):\n\
+         Agent(subagent_type: \"ralphx:plan-critic-layer2\", prompt: critic_prompt)\n\
+         Wait for the result.\n\
          \n\
          ### F. Merge and deduplicate gaps\n\
          Collect all gaps from all Agent results that completed. Deduplicate by description similarity (merge gaps where descriptions are >80% similar). Assign the higher severity when merging.\n\
@@ -430,7 +429,7 @@ pub(crate) fn build_auto_verifier_prompt(
          \n\
          ## CONVERGENCE RULES (backend computes — check get_plan_verification after each update)\n\
          \n\
-         - zero_critical: 0 critical + high_count <= prev round + 0 medium from Layer 2\n\
+         - zero_blocking: critical=0 AND high=0 AND medium=0 (round >= 2)\n\
          - jaccard_converged: Jaccard similarity >= 0.8 between consecutive rounds\n\
          - max_rounds: round >= {max_rounds}\n\
          - critic_parse_failure: >= 3 parse failures in 5 rounds\n\

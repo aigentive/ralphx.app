@@ -1373,6 +1373,9 @@ pub struct VerificationGapRequest {
     pub description: String,
     #[serde(default)]
     pub why_it_matters: Option<String>,
+    /// Which critic layer identified this gap: "layer1" | "layer2"
+    #[serde(default)]
+    pub source: Option<String>,
 }
 
 /// Request to update verification state (from MCP orchestrator)
@@ -1406,6 +1409,8 @@ pub struct VerificationGapResponse {
     pub description: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub why_it_matters: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// Per-round summary in the API response (round number derived from array index + 1)

@@ -62,18 +62,21 @@ fn test_gap_score_mixed_severities() {
             category: "security".to_string(),
             description: "No auth".to_string(),
             why_it_matters: None,
+            source: None,
         },
         VerificationGap {
             severity: "high".to_string(),
             category: "arch".to_string(),
             description: "Missing layer".to_string(),
             why_it_matters: None,
+            source: None,
         },
         VerificationGap {
             severity: "medium".to_string(),
             category: "ux".to_string(),
             description: "Unclear flow".to_string(),
             why_it_matters: None,
+            source: None,
         },
     ];
     assert_eq!(gap_score(&gaps), 14, "critical(10) + high(3) + medium(1) = 14");

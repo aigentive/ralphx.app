@@ -1088,6 +1088,7 @@ pub async fn update_plan_verification(
                 category: g.category.clone(),
                 description: g.description.clone(),
                 why_it_matters: g.why_it_matters.clone(),
+                source: g.source.clone(),
             })
             .collect();
 
@@ -1104,15 +1105,11 @@ pub async fn update_plan_verification(
         // ── Server-side convergence evaluation (D3) ──
         // Evaluate before pushing new round — metadata.current_gaps = previous round's gaps.
 
-        // Condition 1: 0 critical AND high ≤ previous round's high count (R4-H3)
+        // Condition 1: 0 critical AND 0 high AND 0 medium (zero_blocking, AD3)
         let critical_count = gaps_req.iter().filter(|g| g.severity == "critical").count() as u32;
         let high_count = gaps_req.iter().filter(|g| g.severity == "high").count() as u32;
-        let prev_high_count = metadata
-            .current_gaps
-            .iter()
-            .filter(|g| g.severity == "high")
-            .count() as u32;
-        let zero_critical_converged = critical_count == 0 && high_count <= prev_high_count;
+        let medium_count = gaps_req.iter().filter(|g| g.severity == "medium").count() as u32;
+        let zero_blocking_converged = critical_count == 0 && high_count == 0 && medium_count == 0;
 
         // Condition 2: Jaccard ≥ 0.8 for 2 consecutive rounds (R4-C2)
         let jaccard_converged = if metadata.rounds.len() >= 2 {
@@ -1170,18 +1167,18 @@ pub async fn update_plan_verification(
 
         // Auto-converge: override NeedsRevision → Verified when conditions are met
         if new_status == VerificationStatus::NeedsRevision {
-            // R1 empty round guard: require at least round 2 before zero_critical convergence.
+            // R1 empty round guard: require at least round 2 before zero_blocking convergence.
             // Round 1 with 0 gaps may be a broken critic — need round 2 to confirm.
             let current_round_for_convergence = req.round.unwrap_or(metadata.current_round);
-            if zero_critical_converged && current_round_for_convergence >= 2 {
+            if zero_blocking_converged && current_round_for_convergence >= 2 {
                 new_status = VerificationStatus::Verified;
                 if metadata.convergence_reason.is_none() {
-                    metadata.convergence_reason = Some("zero_critical".to_string());
+                    metadata.convergence_reason = Some("zero_blocking".to_string());
                 }
                 tracing::info!(
                     session_id = %session_id,
                     round = current_round_for_convergence,
-                    "Server-side convergence: 0 critical + high ≤ prev → Verified"
+                    "Server-side convergence: 0 critical + 0 high + 0 medium → Verified"
                 );
             } else if jaccard_converged {
                 new_status = VerificationStatus::Verified;
@@ -1303,6 +1300,7 @@ pub async fn update_plan_verification(
             category: g.category.clone(),
             description: g.description.clone(),
             why_it_matters: g.why_it_matters.clone(),
+            source: g.source.clone(),
         })
         .collect::<Vec<_>>();
 
@@ -1401,6 +1399,7 @@ pub async fn get_plan_verification(
                     category: g.category.clone(),
                     description: g.description.clone(),
                     why_it_matters: g.why_it_matters.clone(),
+                    source: g.source.clone(),
                 })
                 .collect::<Vec<_>>()
         })

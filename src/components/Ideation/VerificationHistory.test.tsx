@@ -67,13 +67,13 @@ describe("VerificationHistory", () => {
       <VerificationHistory
         rounds={mockRounds}
         status="verified"
-        convergenceReason="zero_critical"
+        convergenceReason="zero_blocking"
         gapScore={0}
       />
     );
 
     expect(screen.getByText("Plan verified")).toBeInTheDocument();
-    expect(screen.getByText("No critical gaps remain")).toBeInTheDocument();
+    expect(screen.getByText("No blocking gaps remain")).toBeInTheDocument();
   });
 
   it("shows needs_revision status summary with gap score", () => {

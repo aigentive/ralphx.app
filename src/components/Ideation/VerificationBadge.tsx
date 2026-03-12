@@ -69,7 +69,7 @@ const STATUS_CONFIG: Record<
 };
 
 const CONVERGENCE_REASON_LABELS: Record<string, string> = {
-  zero_critical: "No critical gaps remain",
+  zero_blocking: "No blocking gaps remain",
   jaccard_converged: "Gap list stabilized across rounds",
   max_rounds: "Maximum verification rounds reached",
   critic_parse_failure: "Critic output could not be parsed",

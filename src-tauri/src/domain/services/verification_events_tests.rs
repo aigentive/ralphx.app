@@ -62,18 +62,21 @@ fn test_some_metadata_includes_gaps_and_rounds() {
                 category: "security".to_string(),
                 description: "Missing auth".to_string(),
                 why_it_matters: None,
+                source: None,
             },
             VerificationGap {
                 severity: "high".to_string(),
                 category: "architecture".to_string(),
                 description: "No error handling".to_string(),
                 why_it_matters: Some("Causes crashes".to_string()),
+                source: None,
             },
             VerificationGap {
                 severity: "medium".to_string(),
                 category: "testing".to_string(),
                 description: "Low coverage".to_string(),
                 why_it_matters: None,
+                source: None,
             },
         ],
         rounds: vec![
@@ -170,24 +173,28 @@ fn test_gap_score_weighted_calculation() {
                 category: "c".to_string(),
                 description: "d".to_string(),
                 why_it_matters: None,
+                source: None,
             },
             VerificationGap {
                 severity: "critical".to_string(),
                 category: "c".to_string(),
                 description: "d".to_string(),
                 why_it_matters: None,
+                source: None,
             },
             VerificationGap {
                 severity: "high".to_string(),
                 category: "c".to_string(),
                 description: "d".to_string(),
                 why_it_matters: None,
+                source: None,
             },
             VerificationGap {
                 severity: "low".to_string(), // mapped to 0
                 category: "c".to_string(),
                 description: "d".to_string(),
                 why_it_matters: None,
+                source: None,
             },
         ],
         ..Default::default()
@@ -278,12 +285,14 @@ fn test_payload_shape_matches_fixture_schema() {
                 category: "security".to_string(),
                 description: "No authentication on admin endpoints".to_string(),
                 why_it_matters: Some("Allows unauthorized access".to_string()),
+                source: None,
             },
             VerificationGap {
                 severity: "high".to_string(),
                 category: "testing".to_string(),
                 description: "Missing integration tests".to_string(),
                 why_it_matters: None,
+                source: None,
             },
         ],
         rounds: vec![

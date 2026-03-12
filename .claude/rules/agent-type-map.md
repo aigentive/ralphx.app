@@ -43,6 +43,7 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 | `project-analyzer` | — | sonnet | Project analysis |
 | `memory-maintainer` | — | sonnet | Memory management |
 | `memory-capture` | — | sonnet | Memory capture |
+| `plan-critic-layer2` | — | sonnet | Dual-lens implementation critic (minimal/surgical + defense-in-depth). Read-only. No Write/Edit/Bash. |
 
 ## Agent Lifecycle Events
 

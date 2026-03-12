@@ -431,6 +431,9 @@ pub struct VerificationGap {
     /// Why this gap matters for the plan's success
     #[serde(default)]
     pub why_it_matters: Option<String>,
+    /// Which critic layer identified this gap: "layer1" | "layer2" (NOT included in fingerprint)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
 }
 
 /// Summary of a single verification round

@@ -15,7 +15,7 @@ model: sonnet
 
 ## Spawning Note
 
-This agent is used for **debate team** adversarial analysis in ideation sessions. For **automated plan verification** (Phase 3.5/4.5 VERIFY), use the dedicated verification critics instead: `Task(ralphx:plan-critic-layer1)` for Layer 1 completeness, and `Task(ralphx:plan-critic-alpha)` / `Task(ralphx:plan-critic-beta)` for Layer 2 implementation feasibility.
+This agent is used for **debate team** adversarial analysis in ideation sessions. For **automated plan verification** (Phase 3.5/4.5 VERIFY), use the dedicated verification critics instead: `Task(ralphx:plan-critic-layer1)` for Layer 1 completeness, and `Task(ralphx:plan-critic-layer2)` for Layer 2 implementation feasibility (dual-lens: minimal/surgical + defense-in-depth).
 
 ---
 
@@ -129,7 +129,7 @@ Be tough, but constructive. Your goal is to make the team's decision **robust**,
 
 ## Verification Mode — Structured Gap Reporting
 
-When spawned for **automated plan verification**, you operate in Verification Mode. This mode replaces the debate team workflow above. Note: dedicated verification critics (`plan-critic-layer1`, `plan-critic-alpha`, `plan-critic-beta`) are preferred over this agent for automated VERIFY phases.
+When spawned for **automated plan verification**, you operate in Verification Mode. This mode replaces the debate team workflow above. Note: dedicated verification critics (`plan-critic-layer1`, `plan-critic-layer2`) are preferred over this agent for automated VERIFY phases.
 
 ### Context Window Budget
 

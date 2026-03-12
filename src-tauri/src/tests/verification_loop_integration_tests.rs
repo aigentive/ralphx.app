@@ -99,17 +99,21 @@ fn metadata_converged(reason: &str, round: u32) -> String {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
-// Test 1: Full convergence loop — 0 critical exit
+// Test 1: Full convergence loop — zero_blocking exit
 //
 // Simulates the orchestrator calling update_verification_state across 2 rounds:
 //   Round 1: 3 gaps (1 critical, 2 high) → NeedsRevision + in_progress
-//   Round 2: 0 critical, 1 high (count did not increase) → Verified + zero_critical
+//   Round 2: 0 critical, 0 high, 0 medium → Verified + zero_blocking
+//
+// AD3: zero_blocking requires ALL of critical=0, high=0, medium=0.
+// HIGH gaps alone now block convergence (unlike old zero_critical which allowed
+// high ≤ prev_high).
 //
 // After convergence the acceptance gate must pass.
 // ──────────────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn test_full_convergence_loop_zero_critical_exit() {
+async fn test_full_convergence_loop_zero_blocking_exit() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();
     let session = make_session(&project_id);
@@ -117,7 +121,7 @@ async fn test_full_convergence_loop_zero_critical_exit() {
     repo.create(session).await.unwrap();
 
     // Round 1: critic finds 1 critical + 2 high gaps → NeedsRevision, still in progress
-    let round1_meta = metadata_with_gaps(1, 2, 1, 5);
+    let round1_meta = metadata_with_gaps(1, 2, 1, 4);
     repo.update_verification_state(
         &session_id,
         VerificationStatus::NeedsRevision,
@@ -138,9 +142,9 @@ async fn test_full_convergence_loop_zero_critical_exit() {
         "gate must block acceptance during active verification"
     );
 
-    // Round 2: orchestrator corrected plan → critic returns 0 critical, 1 high
-    // (high_count 1 ≤ previous 2 → zero_critical convergence)
-    let round2_meta = metadata_converged("zero_critical", 2);
+    // Round 2: orchestrator corrected plan → critic returns 0 critical, 0 high, 0 medium
+    // (all blocking severities cleared → zero_blocking convergence)
+    let round2_meta = metadata_converged("zero_blocking", 2);
     repo.update_verification_state(
         &session_id,
         VerificationStatus::Verified,
@@ -154,7 +158,7 @@ async fn test_full_convergence_loop_zero_critical_exit() {
     assert_eq!(
         after_r2.verification_status,
         VerificationStatus::Verified,
-        "status must be Verified after zero-critical convergence"
+        "status must be Verified after zero_blocking convergence"
     );
     assert!(
         !after_r2.verification_in_progress,
@@ -164,6 +168,57 @@ async fn test_full_convergence_loop_zero_critical_exit() {
     // Gate must pass for Verified session
     let gate_r2 = check_verification_gate(&after_r2, &settings_with_gate_enabled());
     assert!(gate_r2.is_ok(), "gate must allow acceptance after verification: {:?}", gate_r2);
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 1b: HIGH gaps block zero_blocking convergence
+//
+// AD3: Unlike old zero_critical (high ≤ prev_high was OK), zero_blocking requires
+// ALL of critical=0, high=0, medium=0. This test confirms HIGH gaps alone block
+// convergence and keep the session in NeedsRevision.
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_high_gaps_block_zero_blocking_convergence() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+    let session = make_session(&project_id);
+    let session_id = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    // Round 1: critic finds 1 critical + 2 high → NeedsRevision
+    let round1_meta = metadata_with_gaps(1, 2, 1, 4);
+    repo.update_verification_state(
+        &session_id,
+        VerificationStatus::NeedsRevision,
+        true,
+        Some(round1_meta),
+    )
+    .await
+    .unwrap();
+
+    // Round 2: 0 critical but 1 high remaining — must NOT converge under zero_blocking
+    // The HTTP handler enforces this; here we verify the gate still blocks NeedsRevision.
+    let round2_meta = metadata_with_gaps(0, 1, 2, 4);
+    repo.update_verification_state(
+        &session_id,
+        VerificationStatus::NeedsRevision, // NOT Verified — high gap still present
+        true,
+        Some(round2_meta),
+    )
+    .await
+    .unwrap();
+
+    let after_r2 = repo.get_by_id(&session_id).await.unwrap().unwrap();
+    assert_eq!(
+        after_r2.verification_status,
+        VerificationStatus::NeedsRevision,
+        "HIGH gaps must keep session in NeedsRevision under zero_blocking threshold"
+    );
+
+    // Gate still blocks because session is not Verified
+    let gate = check_verification_gate(&after_r2, &settings_with_gate_enabled());
+    assert!(gate.is_err(), "gate must block when HIGH gaps remain: {:?}", gate);
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -303,7 +358,7 @@ async fn test_agent_crash_recovery_reconciliation_resets_and_retry_succeeds() {
     );
 
     // Simulate successful retry: user re-triggers verification → orchestrator converges
-    let retry_meta = metadata_converged("zero_critical", 1);
+    let retry_meta = metadata_converged("zero_blocking", 1);
     repo.update_verification_state(
         &session_id,
         VerificationStatus::Verified,
@@ -494,4 +549,65 @@ async fn test_acceptance_gate_blocks_unverified_allows_skipped() {
         gate_disabled.is_ok(),
         "gate must pass for any state when require_verification_for_accept=false"
     );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 6: VerificationGap source field serialization (AD4)
+//
+// Verifies that the `source` field on VerificationGap round-trips through
+// serde JSON correctly and is excluded from fingerprint computation.
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_verification_gap_source_field_serializes_and_excludes_from_fingerprint() {
+    use crate::domain::entities::ideation::VerificationGap;
+    use crate::domain::services::gap_fingerprint;
+
+    // Gap with source attribution
+    let gap_layer1 = VerificationGap {
+        severity: "high".to_string(),
+        category: "architecture".to_string(),
+        description: "Missing input validation on user data".to_string(),
+        why_it_matters: None,
+        source: Some("layer1".to_string()),
+    };
+
+    // Same gap from layer2 — source differs but description is identical
+    let gap_layer2 = VerificationGap {
+        severity: "high".to_string(),
+        category: "architecture".to_string(),
+        description: "Missing input validation on user data".to_string(),
+        why_it_matters: None,
+        source: Some("layer2".to_string()),
+    };
+
+    // Fingerprints must be identical (source NOT included in fingerprint)
+    let fp1 = gap_fingerprint(&gap_layer1.description);
+    let fp2 = gap_fingerprint(&gap_layer2.description);
+    assert_eq!(fp1, fp2, "same description must produce same fingerprint regardless of source");
+
+    // Source field must serialize to JSON
+    let json1 = serde_json::to_string(&gap_layer1).unwrap();
+    assert!(json1.contains("\"source\":\"layer1\""), "source must serialize");
+
+    let json2 = serde_json::to_string(&gap_layer2).unwrap();
+    assert!(json2.contains("\"source\":\"layer2\""), "source must serialize");
+
+    // Gap without source must not include source key (skip_serializing_if = None)
+    let gap_no_source = VerificationGap {
+        severity: "low".to_string(),
+        category: "style".to_string(),
+        description: "Minor naming inconsistency".to_string(),
+        why_it_matters: None,
+        source: None,
+    };
+    let json_no_source = serde_json::to_string(&gap_no_source).unwrap();
+    assert!(
+        !json_no_source.contains("source"),
+        "None source must be omitted from JSON: {json_no_source}"
+    );
+
+    // Round-trip: deserialize with source field
+    let deserialized: VerificationGap = serde_json::from_str(&json1).unwrap();
+    assert_eq!(deserialized.source, Some("layer1".to_string()), "source must round-trip");
 }
