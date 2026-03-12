@@ -24,6 +24,7 @@ export async function startIdeation(input, context) {
     return {
         sessionId: body.session_id,
         status: "started",
+        agentSpawned: body.agent_spawned ?? false,
     };
 }
 //# sourceMappingURL=start-ideation.js.map

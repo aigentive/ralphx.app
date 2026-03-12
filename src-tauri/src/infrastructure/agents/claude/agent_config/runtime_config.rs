@@ -82,6 +82,8 @@ pub struct ExternalMcpConfig {
     /// Path to the Node.js binary. Resolved from `RALPHX_NODE_PATH` env var if not set.
     #[serde(default)]
     pub node_path: Option<String>,
+    /// Max concurrent external ideation sessions. Default: 1. YAML: external_mcp.max_external_ideation_sessions
+    pub max_external_ideation_sessions: u32,
 }
 
 impl Default for ExternalMcpConfig {
@@ -94,6 +96,7 @@ impl Default for ExternalMcpConfig {
             restart_delay_ms: 2000,
             auth_token: None,
             node_path: None,
+            max_external_ideation_sessions: 1,
         }
     }
 }
@@ -645,6 +648,18 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     }
     if let Some(v) = lookup("RALPHX_NODE_PATH") {
         cfg.external_mcp.node_path = Some(v);
+    }
+    if let Some(v) = lookup("RALPHX_EXTERNAL_MCP_MAX_IDEATION_SESSIONS") {
+        if let Ok(n) = v.parse::<u32>() {
+            if n == 0 {
+                warn!(
+                    "RALPHX_EXTERNAL_MCP_MAX_IDEATION_SESSIONS must be >= 1, got 0; clamping to 1"
+                );
+                cfg.external_mcp.max_external_ideation_sessions = 1;
+            } else {
+                cfg.external_mcp.max_external_ideation_sessions = n;
+            }
+        }
     }
 }
 

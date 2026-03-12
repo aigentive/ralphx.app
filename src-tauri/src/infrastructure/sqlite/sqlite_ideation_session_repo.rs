@@ -730,6 +730,34 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             })
             .await
     }
+
+    async fn get_by_project_and_status(
+        &self,
+        project_id: &str,
+        status: &str,
+        limit: u32,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let project_id = project_id.to_string();
+        let status = status.to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, \
+                     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
+                     updated_at, archived_at, converted_at, team_mode, team_config_json, \
+                     verification_status, verification_in_progress, verification_metadata, \
+                     verification_generation \
+                     FROM ideation_sessions \
+                     WHERE project_id = ?1 AND status = ?2 \
+                     ORDER BY created_at DESC LIMIT ?3",
+                )?;
+                let sessions = stmt
+                    .query_map(rusqlite::params![project_id, status, limit], IdeationSession::from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(sessions)
+            })
+            .await
+    }
 }
 
 #[cfg(test)]

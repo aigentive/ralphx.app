@@ -240,6 +240,15 @@ impl IdeationSessionRepository for MockSessionRepository {
     ) -> AppResult<Vec<IdeationSession>> {
         Ok(Vec::new())
     }
+
+    async fn get_by_project_and_status(
+        &self,
+        _project_id: &str,
+        _status: &str,
+        _limit: u32,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(Vec::new())
+    }
 }
 
 struct MockProposalRepository {

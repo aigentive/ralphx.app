@@ -12,6 +12,7 @@ export interface StartIdeationInput {
 export interface StartIdeationResult {
     sessionId: string;
     status: "started";
+    agentSpawned: boolean;
 }
 /**
  * Start an ideation session on the backend and return session_id + status.

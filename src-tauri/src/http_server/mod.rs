@@ -258,6 +258,10 @@ pub async fn start_http_server(
             get(get_ideation_status_http),
         )
         .route(
+            "/api/external/sessions/:project_id",
+            get(list_ideation_sessions_http),
+        )
+        .route(
             "/api/external/pipeline/:project_id",
             get(get_pipeline_overview_http),
         )
@@ -289,6 +293,26 @@ pub async fn start_http_server(
         .route(
             "/api/external/apply_proposals",
             post(external_apply_proposals),
+        )
+        .route(
+            "/api/external/ideation_message",
+            post(ideation_message_http),
+        )
+        .route(
+            "/api/external/trigger_verification",
+            post(trigger_verification_http),
+        )
+        .route(
+            "/api/external/plan_verification/:session_id",
+            get(get_plan_verification_external_http),
+        )
+        .route(
+            "/api/external/ideation_messages/:session_id",
+            get(get_ideation_messages_http),
+        )
+        .route(
+            "/api/external/tasks/batch_status",
+            post(batch_task_status_http),
         )
         // Team endpoints (agent teams) — two-phase plan flow
         .route("/api/team/plan/request", post(request_team_plan_register))

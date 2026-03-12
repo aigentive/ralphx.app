@@ -224,6 +224,22 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
     ) -> AppResult<Vec<IdeationSession>> {
         Ok(Vec::new())
     }
+
+    async fn get_by_project_and_status(
+        &self,
+        project_id: &str,
+        status: &str,
+        limit: u32,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let mut sessions: Vec<_> = self
+            .sessions
+            .iter()
+            .filter(|s| s.project_id.as_str() == project_id && s.status.to_string() == status)
+            .cloned()
+            .collect();
+        sessions.truncate(limit as usize);
+        Ok(sessions)
+    }
 }
 
 fn create_test_session(project_id: &ProjectId) -> IdeationSession {
