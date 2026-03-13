@@ -6602,6 +6602,413 @@ fn should_circuit_break_returns_none_without_metadata() {
     );
 }
 
+// ── TargetBranchBusy Circuit Breaker Exclusion Tests ─────────────────────────
+
+/// 3 AutoRetryTriggered events all with TargetBranchBusy source → circuit breaker must NOT fire.
+/// TargetBranchBusy uses RetryStrategy::AutoRetryNoCB, which is excluded from the CB filter
+/// (the filter requires retry_strategy() == AutoRetry).
+#[test]
+fn should_circuit_break_ignores_target_branch_busy() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Target Branch Busy Only Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 1",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:05:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 2",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:10:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 3",
+                        "failure_source": "target_branch_busy"
+                    }
+                ],
+                "last_state": "retrying"
+            }
+        })
+        .to_string(),
+    );
+
+    let result = ReconciliationRunner::<tauri::Wry>::should_circuit_break(&task, 3, 5);
+    assert!(
+        result.is_none(),
+        "Circuit breaker must NOT fire for TargetBranchBusy events (AutoRetryNoCB strategy excludes them)"
+    );
+}
+
+/// 2 TargetBranchBusy + 1 TransientGit → circuit breaker must NOT fire.
+/// Only TransientGit events count toward the threshold; TargetBranchBusy is excluded.
+/// With 1 qualifying event below threshold=3, the CB stays inactive.
+#[test]
+fn should_circuit_break_mixed_busy_and_transient() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Mixed Busy And Transient Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 1",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:05:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 2",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:10:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "transient git failure",
+                        "failure_source": "transient_git"
+                    }
+                ],
+                "last_state": "retrying"
+            }
+        })
+        .to_string(),
+    );
+
+    let result = ReconciliationRunner::<tauri::Wry>::should_circuit_break(&task, 3, 5);
+    assert!(
+        result.is_none(),
+        "Circuit breaker must NOT fire when only 1 TransientGit event is present (2 TBB excluded, 1 < threshold=3)"
+    );
+}
+
+/// 3 TargetBranchBusy + 1 TransientGit auto-retry events → count must return 1.
+/// merge_incomplete_auto_retry_count excludes TargetBranchBusy events so deferral
+/// retries do not consume the retry budget.
+#[test]
+fn merge_incomplete_auto_retry_count_excludes_target_branch_busy() {
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "Exclude TBB From Count Task".to_string(),
+    );
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 1",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:05:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 2",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:10:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 3",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:15:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "transient git retry",
+                        "failure_source": "transient_git"
+                    }
+                ],
+                "last_state": "retrying"
+            }
+        })
+        .to_string(),
+    );
+
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_auto_retry_count(&task),
+        1,
+        "merge_incomplete_auto_retry_count must exclude TargetBranchBusy events (3 TBB + 1 TransientGit = count 1)"
+    );
+}
+
+/// Integration test: reconciler classifies auto-retry as TargetBranchBusy when
+/// the most recent event is Deferred(TargetBranchBusy).
+///
+/// Fixture: task in MergeIncomplete, last event = Deferred(reason_code=TargetBranchBusy,
+/// failure_source=None) matching production behavior from defer_merge_for_blocker().
+/// All guards are bypassed: no circuit_breaker_active, no agent_reported_failure,
+/// no validation_revert_count, no merge_pipeline_active, updated_at far in the past.
+///
+/// Verifies:
+/// 1. Reconciler returns true (transitions to PendingMerge)
+/// 2. Recorded AutoRetryTriggered event has failure_source=TargetBranchBusy
+/// 3. Recorded event has reason_code=TargetBranchBusy
+/// 4. merge_incomplete_auto_retry_count returns 0 (TargetBranchBusy excluded)
+/// 5. should_circuit_break returns None (AutoRetryNoCB events excluded from filter)
+#[tokio::test]
+async fn deferred_task_reconcile_classifies_as_target_branch_busy() {
+    use crate::domain::entities::{
+        MergeFailureSource as MFS, MergeRecoveryEventKind, MergeRecoveryMetadata,
+        MergeRecoveryReasonCode,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Deferred Classification Task".to_string());
+    task.internal_status = InternalStatus::MergeIncomplete;
+    // Set updated_at far in the past to pass both the age guard and retry delay guard.
+    task.updated_at = chrono::Utc::now() - chrono::Duration::seconds(3600);
+    // Fixture metadata: last event is Deferred(TargetBranchBusy) with no failure_source,
+    // matching what defer_merge_for_blocker() writes in production.
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "deferred",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "Deferred — target branch busy (another task merging to same branch)"
+                    }
+                ],
+                "last_state": "deferred"
+            }
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let reconciled = reconciler
+        .reconcile_merge_incomplete_task(&task, InternalStatus::MergeIncomplete)
+        .await;
+
+    assert!(
+        reconciled,
+        "reconcile_merge_incomplete_task must return true (transition to PendingMerge) for deferred task"
+    );
+
+    // Fetch updated task and verify classification
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+
+    // Verify the recorded AutoRetryTriggered event has TargetBranchBusy classification
+    let recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+        .expect("metadata parse should succeed")
+        .expect("merge_recovery should exist");
+
+    let auto_retry_event = recovery
+        .events
+        .iter()
+        .find(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+        .expect("AutoRetryTriggered event must be recorded");
+
+    assert_eq!(
+        auto_retry_event.failure_source,
+        Some(MFS::TargetBranchBusy),
+        "AutoRetryTriggered event must have failure_source=TargetBranchBusy for deferred task"
+    );
+    assert_eq!(
+        auto_retry_event.reason_code,
+        MergeRecoveryReasonCode::TargetBranchBusy,
+        "AutoRetryTriggered event must have reason_code=TargetBranchBusy for deferred task"
+    );
+
+    // The TargetBranchBusy event must not count toward the retry budget
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::merge_incomplete_auto_retry_count(&updated),
+        0,
+        "merge_incomplete_auto_retry_count must return 0 for TargetBranchBusy-only events"
+    );
+
+    // The TargetBranchBusy event must not trigger the circuit breaker
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::should_circuit_break(&updated, 3, 5).is_none(),
+        "should_circuit_break must return None after a TargetBranchBusy auto-retry (AutoRetryNoCB excluded)"
+    );
+}
+
+/// Boundary test: CB fires when TransientGit events reach the threshold despite
+/// TargetBranchBusy events being present (2+3 scenario), and does NOT fire when
+/// TransientGit events are below threshold (2+2 scenario).
+#[test]
+fn circuit_breaker_fires_on_transient_git_despite_target_branch_busy_events() {
+    // Scenario A: 2 TargetBranchBusy + 3 TransientGit → CB fires
+    let mut task_a = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "CB Fires Scenario A".to_string(),
+    );
+    task_a.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 1",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:05:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 2",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:10:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "transient git 1",
+                        "failure_source": "transient_git"
+                    },
+                    {
+                        "at": "2026-02-10T00:15:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "transient git 2",
+                        "failure_source": "transient_git"
+                    },
+                    {
+                        "at": "2026-02-10T00:20:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "transient git 3",
+                        "failure_source": "transient_git"
+                    }
+                ],
+                "last_state": "retrying"
+            }
+        })
+        .to_string(),
+    );
+
+    let result_a = ReconciliationRunner::<tauri::Wry>::should_circuit_break(&task_a, 3, 5);
+    assert!(
+        result_a.is_some(),
+        "Circuit breaker MUST fire when 3 TransientGit events reach threshold=3 (2 TBB present but excluded)"
+    );
+    let reason_a = result_a.unwrap();
+    assert!(
+        reason_a.contains("Circuit breaker"),
+        "Reason must mention 'Circuit breaker', got: {}",
+        reason_a
+    );
+
+    // Scenario B: 2 TargetBranchBusy + 2 TransientGit → CB does NOT fire
+    let mut task_b = Task::new(
+        crate::domain::entities::ProjectId::new(),
+        "CB No Fire Scenario B".to_string(),
+    );
+    task_b.metadata = Some(
+        serde_json::json!({
+            "merge_recovery": {
+                "version": 1,
+                "events": [
+                    {
+                        "at": "2026-02-10T00:00:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 1",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:05:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "target_branch_busy",
+                        "message": "deferred retry 2",
+                        "failure_source": "target_branch_busy"
+                    },
+                    {
+                        "at": "2026-02-10T00:10:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "transient git 1",
+                        "failure_source": "transient_git"
+                    },
+                    {
+                        "at": "2026-02-10T00:15:00Z",
+                        "kind": "auto_retry_triggered",
+                        "source": "auto",
+                        "reason_code": "git_error",
+                        "message": "transient git 2",
+                        "failure_source": "transient_git"
+                    }
+                ],
+                "last_state": "retrying"
+            }
+        })
+        .to_string(),
+    );
+
+    let result_b = ReconciliationRunner::<tauri::Wry>::should_circuit_break(&task_b, 3, 5);
+    assert!(
+        result_b.is_none(),
+        "Circuit breaker must NOT fire when only 2 TransientGit events present (below threshold=3, 2 TBB excluded)"
+    );
+}
+
 // ── is_mode_switch tests ──────────────────────────────────────────────────────
 
 #[test]

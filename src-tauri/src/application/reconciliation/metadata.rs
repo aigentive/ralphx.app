@@ -72,7 +72,28 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .map_err(|e| e.to_string())
     }
 
+    /// Count `AutoRetryTriggered` events for circuit-breaker purposes.
+    /// Excludes events where `failure_source == Some(TargetBranchBusy)` because deferral-based
+    /// retries must never count toward the circuit breaker threshold (`AutoRetryNoCB` strategy).
     pub(crate) fn merge_incomplete_auto_retry_count(task: &Task) -> u32 {
+        MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .map(|meta| {
+                meta.events
+                    .iter()
+                    .filter(|e| {
+                        matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered)
+                            && e.failure_source != Some(MergeFailureSource::TargetBranchBusy)
+                    })
+                    .count() as u32
+            })
+            .unwrap_or(0)
+    }
+
+    /// Count ALL `AutoRetryTriggered` events including `TargetBranchBusy` deferrals.
+    /// Used for backoff delay calculation so that repeated deferrals still space out retries.
+    pub(crate) fn merge_incomplete_total_retry_count(task: &Task) -> u32 {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()
@@ -95,6 +116,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
         chrono::Duration::seconds(base_delay + jitter)
     }
 
+    /// Count `AutoRetryTriggered` events for circuit-breaker purposes.
+    /// Excludes events where `failure_source == Some(TargetBranchBusy)` because deferral-based
+    /// retries must never count toward the circuit breaker threshold (`AutoRetryNoCB` strategy).
     pub(crate) fn merge_conflict_auto_retry_count(task: &Task) -> u32 {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
@@ -102,7 +126,10 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .map(|meta| {
                 meta.events
                     .iter()
-                    .filter(|e| matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered))
+                    .filter(|e| {
+                        matches!(e.kind, MergeRecoveryEventKind::AutoRetryTriggered)
+                            && e.failure_source != Some(MergeFailureSource::TargetBranchBusy)
+                    })
                     .count() as u32
             })
             .unwrap_or(0)
@@ -297,6 +324,12 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Check if the circuit breaker should fire based on recent failure patterns.
     /// Returns Some(reason) if threshold+ of the last window failure events share the same source.
     /// Returns None if the circuit breaker should not fire.
+    ///
+    /// `AutoRetryNoCB` sources (e.g. `TargetBranchBusy`) are excluded from circuit-breaker
+    /// consideration: the filter `s.retry_strategy() == RetryStrategy::AutoRetry` naturally
+    /// excludes them because `AutoRetryNoCB != AutoRetry`. Deferral-based retries can recur
+    /// many times while other tasks hold the target branch — triggering the circuit breaker
+    /// would incorrectly block a healthy task.
     pub(crate) fn should_circuit_break(
         task: &Task,
         threshold: usize,

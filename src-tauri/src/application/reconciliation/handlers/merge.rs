@@ -6,6 +6,7 @@ use tracing::{debug, warn};
 
 use crate::domain::entities::{
     AgentRunStatus, ChatContextType, InternalStatus, MergeFailureSource,
+    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
 };
 use crate::domain::state_machine::transition_handler::has_branch_missing_metadata;
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
@@ -693,10 +694,48 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
-        let retry_delay = Self::merge_incomplete_retry_delay(retry_count);
+        // Use total retry count (including TargetBranchBusy deferrals) for backoff so that
+        // repeated deferrals still space out, even though they don't count toward the circuit breaker.
+        let total_retry_count = Self::merge_incomplete_total_retry_count(task);
+        let retry_delay = Self::merge_incomplete_retry_delay(total_retry_count);
         if age < retry_delay {
             return false;
         }
+
+        // ORDERING: must read last event AFTER rate-limit refresh and BEFORE record_retry_metadata()
+        // Classify the failure source from the most recent event so auto-retries after a deferral
+        // are recorded as TargetBranchBusy rather than TransientGit, preventing false circuit
+        // breaker activation when tasks are repeatedly deferred for a concurrent merge.
+        let last_is_target_branch_busy =
+            MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                .ok()
+                .flatten()
+                .and_then(|meta| meta.events.last().cloned())
+                .map(|e| {
+                    e.kind == MergeRecoveryEventKind::Deferred
+                        && e.reason_code == MergeRecoveryReasonCode::TargetBranchBusy
+                })
+                .unwrap_or(false);
+        let failure_source = if last_is_target_branch_busy {
+            MergeFailureSource::TargetBranchBusy
+        } else {
+            MergeFailureSource::TransientGit
+        };
+        let reason_code = if last_is_target_branch_busy {
+            Some(MergeRecoveryReasonCode::TargetBranchBusy)
+        } else {
+            None
+        };
+        let retry_reason = if last_is_target_branch_busy {
+            "MergeIncomplete auto-retry — target branch busy (deferred)"
+        } else {
+            "MergeIncomplete auto-retry — transient git failure"
+        };
+        let failure_source_str = if last_is_target_branch_busy {
+            "target_branch_busy"
+        } else {
+            "transient_git"
+        };
 
         // Record retry metadata (last_retried_at + consecutive_validation_failures tracking)
         if let Err(e) = self.record_retry_metadata(task, is_validation).await {
@@ -712,8 +751,9 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .record_merge_auto_retry_event(
                 task,
                 attempt,
-                MergeFailureSource::TransientGit,
-                "MergeIncomplete auto-retry — transient git failure",
+                failure_source,
+                retry_reason,
+                reason_code,
             )
             .await
         {
@@ -728,8 +768,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
         warn!(
             task_id = task.id.as_str(),
             attempt = attempt,
-            failure_source = "transient_git",
-            "Auto-retrying MergeIncomplete — transient git failure, transitioning to PendingMerge"
+            failure_source = failure_source_str,
+            "Auto-retrying MergeIncomplete — transitioning to PendingMerge"
         );
 
         match self
@@ -834,6 +874,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 failure_source,
                 "MergeConflict auto-retry — system-detected conflict",
                 current_sha.as_deref(),
+                None,
             )
             .await
         {

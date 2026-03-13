@@ -233,6 +233,8 @@ pub enum MergeFailureSource {
     LockContention,
     /// Provider rate limit hit — respect retry_after timestamp
     RateLimited,
+    /// Target branch is busy with another merge — deferral-based, never counts toward circuit breaker
+    TargetBranchBusy,
     /// Unrecognized failure source from stored metadata (backward compat)
     #[serde(other)]
     Unknown,
@@ -243,6 +245,8 @@ pub enum MergeFailureSource {
 pub enum RetryStrategy {
     /// System will auto-retry this failure
     AutoRetry,
+    /// System will auto-retry but does NOT count toward the circuit breaker threshold (deferral-based)
+    AutoRetryNoCB,
     /// System will NOT auto-retry; user manual retry is always allowed
     NoAutomaticRetry,
 }
@@ -252,6 +256,7 @@ impl MergeFailureSource {
     pub fn retry_strategy(&self) -> RetryStrategy {
         match self {
             Self::AgentReported | Self::ValidationFailed => RetryStrategy::NoAutomaticRetry,
+            Self::TargetBranchBusy => RetryStrategy::AutoRetryNoCB,
             _ => RetryStrategy::AutoRetry,
         }
     }
