@@ -1224,6 +1224,159 @@ async fn test_delete_worktree_succeeds_when_dir_already_gone() {
     );
 }
 
+// =========================================================================
+// cleanup_stale_worktree_artifacts Tests
+// =========================================================================
+
+/// Builds a minimal Project for testing cleanup_stale_worktree_artifacts.
+/// Uses a fixed worktree_parent_directory so task_worktree_path is deterministic.
+fn make_test_project(worktree_parent: &str) -> crate::domain::entities::project::Project {
+    use crate::domain::entities::project::{GitMode, Project};
+    use crate::domain::entities::ProjectId;
+    use chrono::Utc;
+    let now = Utc::now();
+    Project {
+        id: ProjectId::from_string("test-project-id".to_string()),
+        name: "test-project".to_string(),
+        working_directory: "/tmp/test".to_string(),
+        git_mode: GitMode::Worktree,
+        base_branch: Some("main".to_string()),
+        worktree_parent_directory: Some(worktree_parent.to_string()),
+        use_feature_branches: true,
+        merge_validation_mode: crate::domain::entities::project::MergeValidationMode::default(),
+        merge_strategy: crate::domain::entities::project::MergeStrategy::default(),
+        detected_analysis: None,
+        custom_analysis: None,
+        analyzed_at: None,
+        github_pr_enabled: true,
+        created_at: now,
+        updated_at: now,
+    }
+}
+
+/// cleanup_stale_worktree_artifacts: explicit worktree path provided, directory exists.
+/// The directory should be deleted by the cleanup (it is not in use).
+#[tokio::test]
+async fn test_cleanup_with_explicit_path() {
+    let repo_dir = tempfile::tempdir().unwrap();
+    let worktree_dir = tempfile::tempdir().unwrap();
+    init_git_repo(repo_dir.path());
+
+    // Create a stale index.lock backdated to the past so it gets removed
+    let lock_path = repo_dir.path().join(".git").join("index.lock");
+    std::fs::write(&lock_path, "stale").unwrap();
+    let _ = Command::new("touch")
+        .args(["-t", "202001010000.00", lock_path.to_str().unwrap()])
+        .output();
+
+    // Verify the worktree dir exists before cleanup
+    assert!(worktree_dir.path().exists(), "Worktree dir should exist before cleanup");
+
+    let project = make_test_project("/tmp/irrelevant");
+    let result = GitService::cleanup_stale_worktree_artifacts(
+        repo_dir.path(),
+        Some(worktree_dir.path()),
+        &project,
+        "task-test",
+    )
+    .await;
+
+    assert!(result.is_ok(), "cleanup should succeed: {:?}", result.err());
+    // Directory should be deleted (it was not in use)
+    assert!(
+        !worktree_dir.path().exists(),
+        "Worktree directory should be deleted after cleanup"
+    );
+}
+
+/// cleanup_stale_worktree_artifacts: None path → computes from project.
+/// The computed path doesn't exist on disk → Ok(()) without error.
+#[tokio::test]
+async fn test_cleanup_with_none_path_uses_project() {
+    let repo_dir = tempfile::tempdir().unwrap();
+    let parent_dir = tempfile::tempdir().unwrap();
+    init_git_repo(repo_dir.path());
+
+    let project = make_test_project(parent_dir.path().to_str().unwrap());
+    // The computed path will be something like <parent>/test-project/task-nonexistent-task-id
+    // That path does not exist, so cleanup should succeed without deleting anything.
+    let result = GitService::cleanup_stale_worktree_artifacts(
+        repo_dir.path(),
+        None,
+        &project,
+        "nonexistent-task-id",
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "cleanup with non-existent computed path should succeed: {:?}",
+        result.err()
+    );
+}
+
+/// cleanup_stale_worktree_artifacts: directory exists but WorktreePermit held → not deleted.
+#[tokio::test]
+async fn test_cleanup_skips_deletion_when_guard_active() {
+    use crate::domain::services::worktree_guard::acquire_worktree_permit;
+
+    let repo_dir = tempfile::tempdir().unwrap();
+    let worktree_dir = tempfile::tempdir().unwrap();
+    init_git_repo(repo_dir.path());
+
+    // Acquire a permit for the worktree path — this marks it as in-use
+    let _permit = acquire_worktree_permit(worktree_dir.path());
+
+    let project = make_test_project("/tmp/irrelevant");
+    let result = GitService::cleanup_stale_worktree_artifacts(
+        repo_dir.path(),
+        Some(worktree_dir.path()),
+        &project,
+        "task-guarded",
+    )
+    .await;
+
+    assert!(result.is_ok(), "cleanup should succeed even with guard: {:?}", result.err());
+    // Directory should still exist — deletion was skipped due to in-use guard
+    assert!(
+        worktree_dir.path().exists(),
+        "Worktree directory should NOT be deleted when permit is held"
+    );
+}
+
+/// cleanup_stale_worktree_artifacts: index.lock exists but is too young → not removed.
+#[tokio::test]
+async fn test_cleanup_index_lock_too_young_not_removed() {
+    let repo_dir = tempfile::tempdir().unwrap();
+    init_git_repo(repo_dir.path());
+
+    // Create a fresh index.lock — mtime is "now", well within the stale threshold
+    let lock_path = repo_dir.path().join(".git").join("index.lock");
+    std::fs::write(&lock_path, "fresh lock").unwrap();
+
+    // The worktree_dir is the explicit path but we do NOT want it deleted either.
+    // However, since it's a real dir (not in use), cleanup WILL delete it.
+    // We only care about verifying the lock file was not removed.
+    // Use a subdirectory that doesn't exist to avoid the dir-deletion assertion complicating things.
+    let nonexistent_wt = repo_dir.path().join("nonexistent-worktree");
+
+    let project = make_test_project("/tmp/irrelevant");
+    let result = GitService::cleanup_stale_worktree_artifacts(
+        repo_dir.path(),
+        Some(&nonexistent_wt),
+        &project,
+        "task-fresh-lock",
+    )
+    .await;
+
+    assert!(result.is_ok(), "cleanup should succeed: {:?}", result.err());
+    // Lock file should still exist — it was too young to be removed
+    assert!(
+        lock_path.exists(),
+        "Fresh index.lock should NOT be removed (too young)"
+    );
+}
+
 /// RC9 fix: delete_worktree runs `git worktree prune` even when the path doesn't exist.
 ///
 /// Previously, prune only ran inside `if worktree.exists()`, so a stale git metadata

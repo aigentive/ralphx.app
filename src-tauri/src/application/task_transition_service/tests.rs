@@ -1,6 +1,11 @@
 use super::*;
 use crate::application::AppState;
-use crate::domain::entities::{InternalStatus, Project, Task};
+use crate::domain::entities::{
+    ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
+    ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, InternalStatus,
+    Project, Task,
+};
+use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::services::{MemoryRunningAgentRegistry, MessageQueue};
 use crate::domain::state_machine::transition_handler::metadata_builder::MetadataUpdate;
 use serde_json::Value;
@@ -775,5 +780,107 @@ async fn test_review_passed_to_approved_transition_succeeds() {
         updated.internal_status,
         InternalStatus::Approved,
         "RC5: ReviewPassed → Approved must succeed and persist"
+    );
+}
+
+// ============================================================================
+// Wave 3: Git Isolation ExecutionRecoveryMetadata Tests
+// ============================================================================
+
+#[test]
+fn test_git_isolation_metadata_created_for_git_isolation_reason() {
+    let reason = format!("{}: could not create worktree at '/tmp/test'", GIT_ISOLATION_ERROR_PREFIX);
+    let result = create_git_isolation_recovery_metadata_json(&reason, None);
+    assert!(result.is_some(), "Expected metadata JSON for git isolation reason");
+}
+
+#[test]
+fn test_git_isolation_metadata_not_created_for_non_git_reason() {
+    let result = create_git_isolation_recovery_metadata_json("Agent error: something failed", None);
+    assert!(result.is_none(), "Expected no metadata for non-git ExecutionBlocked reason");
+}
+
+#[test]
+fn test_git_isolation_metadata_not_created_for_empty_reason() {
+    let result = create_git_isolation_recovery_metadata_json("", None);
+    assert!(result.is_none(), "Expected no metadata for empty reason");
+}
+
+#[test]
+fn test_git_isolation_metadata_last_state_is_retrying() {
+    let reason = format!("{}: could not create worktree", GIT_ISOLATION_ERROR_PREFIX);
+    let json = create_git_isolation_recovery_metadata_json(&reason, None).unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let recovery: ExecutionRecoveryMetadata =
+        serde_json::from_value(parsed["execution_recovery"].clone()).unwrap();
+
+    assert_eq!(
+        recovery.last_state,
+        ExecutionRecoveryState::Retrying,
+        "last_state must be Retrying for reconciler eligibility"
+    );
+    assert!(!recovery.stop_retrying, "stop_retrying must be false on initial failure");
+}
+
+#[test]
+fn test_git_isolation_metadata_event_has_correct_fields() {
+    let reason = format!("{}: stale index.lock detected", GIT_ISOLATION_ERROR_PREFIX);
+    let json = create_git_isolation_recovery_metadata_json(&reason, None).unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let recovery: ExecutionRecoveryMetadata =
+        serde_json::from_value(parsed["execution_recovery"].clone()).unwrap();
+
+    assert_eq!(recovery.events.len(), 1);
+    let event = &recovery.events[0];
+    assert_eq!(event.kind, ExecutionRecoveryEventKind::Failed);
+    assert_eq!(event.source, ExecutionRecoverySource::Auto);
+    assert_eq!(event.reason_code, ExecutionRecoveryReasonCode::GitIsolationFailed);
+    assert_eq!(
+        event.failure_source,
+        Some(ExecutionFailureSource::GitIsolation)
+    );
+    assert_eq!(event.message, reason);
+}
+
+#[test]
+fn test_git_isolation_metadata_deserialization_round_trip() {
+    let reason = format!("{}: leftover worktree directory exists", GIT_ISOLATION_ERROR_PREFIX);
+    let json = create_git_isolation_recovery_metadata_json(&reason, None).unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    let recovery: ExecutionRecoveryMetadata =
+        serde_json::from_value(parsed["execution_recovery"].clone()).unwrap();
+
+    // Round-trip: re-serialize and re-deserialize must produce identical struct
+    let re_json = serde_json::to_string(&recovery).unwrap();
+    let re_recovery: ExecutionRecoveryMetadata = serde_json::from_str(&re_json).unwrap();
+    assert_eq!(recovery, re_recovery, "Round-trip deserialization must be lossless");
+}
+
+#[test]
+fn test_git_isolation_metadata_preserves_existing_metadata_keys() {
+    let existing = r#"{"branch_freshness_conflict": false, "trigger_origin": "manual"}"#;
+    let reason = format!("{}: stale lock file", GIT_ISOLATION_ERROR_PREFIX);
+    let json =
+        create_git_isolation_recovery_metadata_json(&reason, Some(existing)).unwrap();
+
+    let parsed: serde_json::Value = serde_json::from_str(&json).unwrap();
+    // Existing metadata keys must be preserved
+    assert_eq!(
+        parsed["branch_freshness_conflict"],
+        serde_json::Value::Bool(false),
+        "Existing key branch_freshness_conflict must be preserved"
+    );
+    assert_eq!(
+        parsed["trigger_origin"],
+        serde_json::Value::String("manual".to_string()),
+        "Existing key trigger_origin must be preserved"
+    );
+    // execution_recovery key must be present
+    assert!(
+        parsed["execution_recovery"].is_object(),
+        "execution_recovery key must be added to existing metadata"
     );
 }

@@ -389,6 +389,68 @@ impl GitService {
         Ok(())
     }
 
+    /// Convenience wrapper that runs the three stale-artifact cleanup steps in order:
+    ///
+    /// 1. Remove stale `.git/index.lock` (using `index_lock_stale_secs` from config)
+    /// 2. Prune stale worktree metadata (`git worktree prune`)
+    /// 3. Delete the task worktree directory if it exists and is not in use
+    ///
+    /// # Arguments
+    /// * `repo` - Path to the main git repository
+    /// * `task_worktree_path` - Explicit worktree path, or `None` to compute from `project`
+    /// * `project` - Project used to compute the path when `task_worktree_path` is `None`
+    /// * `task_id` - Task ID used to compute the path when `task_worktree_path` is `None`
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if index.lock removal fails, pruning fails, or directory removal fails.
+    pub async fn cleanup_stale_worktree_artifacts(
+        repo: &Path,
+        task_worktree_path: Option<&Path>,
+        project: &crate::domain::entities::project::Project,
+        task_id: &str,
+    ) -> AppResult<()> {
+        // Resolve worktree path: use provided or compute from project
+        let computed;
+        let worktree_path: &Path = match task_worktree_path {
+            Some(p) => p,
+            None => {
+                computed = project.task_worktree_path(task_id);
+                computed.as_path()
+            }
+        };
+
+        // Get index_lock_stale_secs from config
+        let index_lock_stale_secs =
+            crate::infrastructure::agents::claude::git_runtime_config().index_lock_stale_secs;
+
+        // Remove stale index.lock (sync)
+        Self::remove_stale_index_lock(repo, index_lock_stale_secs)?;
+
+        // Prune stale worktree metadata
+        Self::prune_worktrees(repo).await?;
+
+        // Delete worktree dir if it exists and is not in use
+        if worktree_path.exists() {
+            if crate::domain::services::worktree_guard::is_worktree_in_use(worktree_path) {
+                warn!(
+                    "Worktree {} in use, skipping deletion during cleanup",
+                    worktree_path.display()
+                );
+            } else {
+                tokio::fs::remove_dir_all(worktree_path).await.map_err(|e| {
+                    AppError::GitOperation(format!(
+                        "Failed to remove stale worktree directory at '{}': {}",
+                        worktree_path.display(),
+                        e
+                    ))
+                })?;
+            }
+        }
+
+        Ok(())
+    }
+
     /// Remove a stale `.git/index.lock` file if it is older than `min_age_secs`.
     ///
     /// `index.lock` is created by git when it starts an index-modifying operation and

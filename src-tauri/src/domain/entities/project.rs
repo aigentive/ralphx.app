@@ -230,6 +230,34 @@ impl Project {
             .unwrap_or("~/ralphx-worktrees")
     }
 
+    /// Returns the full path to the task execution worktree for the given task ID.
+    ///
+    /// Convention: `{worktree_parent}/{slug}/task-{task_id}`
+    /// where `slug` is the project name lowercased with non-alphanumeric chars replaced by `-`.
+    pub fn task_worktree_path(&self, task_id: &str) -> std::path::PathBuf {
+        let parent = self.worktree_parent_or_default();
+        // Expand ~/  prefix to home directory
+        let expanded = if let Some(stripped) = parent.strip_prefix("~/") {
+            if let Ok(home) = std::env::var("HOME") {
+                format!("{}/{}", home, stripped)
+            } else {
+                parent.to_string()
+            }
+        } else {
+            parent.to_string()
+        };
+        // Slugify project name: lowercase, non-alphanumeric → '-', trim leading/trailing hyphens
+        let slug = self
+            .name
+            .to_lowercase()
+            .chars()
+            .map(|c| if c.is_alphanumeric() { c } else { '-' })
+            .collect::<String>()
+            .trim_matches('-')
+            .to_string();
+        std::path::PathBuf::from(format!("{}/{}/task-{}", expanded, slug, task_id))
+    }
+
     /// Updates the updated_at timestamp to now
     pub fn touch(&mut self) {
         self.updated_at = Utc::now();
