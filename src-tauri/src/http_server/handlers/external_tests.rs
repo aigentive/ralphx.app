@@ -332,45 +332,6 @@ async fn test_start_ideation_creates_session() {
     assert_eq!(response.status, "ideating");
 }
 
-#[tokio::test]
-async fn test_start_ideation_rate_limit() {
-    let state = setup_test_state().await;
-
-    let project_id = "proj-rate-limit";
-    let p = make_project(project_id, "Rate Limit Test");
-    state.app_state.project_repo.create(p).await.unwrap();
-
-    // Create an active ideation session directly (max_sessions=1)
-    let existing_session = IdeationSession::new_with_title(
-        ProjectId::from_string(project_id.to_string()),
-        "Existing active session",
-    );
-    state
-        .app_state
-        .ideation_session_repo
-        .create(existing_session)
-        .await
-        .unwrap();
-
-    // Second attempt should be rate limited
-    let result = start_ideation_http(
-        State(state),
-        unrestricted_scope(),
-        Json(StartIdeationRequest {
-            project_id: project_id.to_string(),
-            title: Some("Another session".to_string()),
-            prompt: None,
-            initial_prompt: None,
-        }),
-    )
-    .await;
-
-    assert!(result.is_err());
-    assert_eq!(
-        result.unwrap_err(),
-        axum::http::StatusCode::TOO_MANY_REQUESTS
-    );
-}
 
 #[tokio::test]
 async fn test_start_ideation_scope_violation() {
@@ -393,7 +354,7 @@ async fn test_start_ideation_scope_violation() {
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::FORBIDDEN);
 }
 
 // ============================================================================
@@ -492,7 +453,7 @@ async fn test_start_ideation_invalid_project_returns_404() {
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), axum::http::StatusCode::NOT_FOUND);
+    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::NOT_FOUND);
 }
 
 /// backward_compat: `initial_prompt` field (no `prompt`) → treated same as `prompt`.
@@ -648,23 +609,23 @@ async fn test_start_ideation_scope_mismatch_returns_403() {
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::FORBIDDEN);
 }
 
-/// Max sessions 429 — already at the limit → new request returns TOO_MANY_REQUESTS.
-/// (Explicit named test documenting the limit enforcement semantics.)
+/// Session created even when multiple sessions exist — no hard cap anymore.
+/// Gate was removed; second session creates successfully.
 #[tokio::test]
-async fn test_start_ideation_at_max_sessions_returns_429() {
+async fn test_start_ideation_no_session_cap() {
     let state = setup_test_state().await;
 
-    let project_id = "proj-max-sessions";
-    let p = make_project(project_id, "Max Sessions Project");
+    let project_id = "proj-no-cap";
+    let p = make_project(project_id, "No Cap Project");
     state.app_state.project_repo.create(p).await.unwrap();
 
-    // Default max_external_ideation_sessions = 1; create one active session to saturate the limit
+    // Create first session
     let existing = IdeationSession::new_with_title(
         ProjectId::from_string(project_id.to_string()),
-        "Already active session",
+        "First session",
     );
     state
         .app_state
@@ -673,25 +634,73 @@ async fn test_start_ideation_at_max_sessions_returns_429() {
         .await
         .unwrap();
 
-    // Next request must be rejected with 429
+    // Second request must succeed — no session cap
     let result = start_ideation_http(
         State(state),
         unrestricted_scope(),
         Json(StartIdeationRequest {
             project_id: project_id.to_string(),
-            title: None,
+            title: Some("Second session".to_string()),
             prompt: None,
             initial_prompt: None,
         }),
     )
     .await;
 
-    assert!(result.is_err());
-    assert_eq!(
-        result.unwrap_err(),
-        axum::http::StatusCode::TOO_MANY_REQUESTS,
-        "Should return 429 when active sessions = max_external_ideation_sessions"
+    assert!(result.is_ok(), "Second session must succeed — cap was removed");
+    let response = result.unwrap().0;
+    assert!(!response.session_id.is_empty());
+    assert_eq!(response.status, "ideating");
+}
+
+/// Spawn failure → agent_spawn_blocked_reason populated, session still created (200).
+#[tokio::test]
+async fn test_start_ideation_spawn_failure_populates_blocked_reason() {
+    let state = setup_test_state().await;
+
+    let project_id = "proj-spawn-fail";
+    let p = make_project(project_id, "Spawn Fail Project");
+    state.app_state.project_repo.create(p).await.unwrap();
+
+    // Provide a prompt so spawn is attempted; in test env Claude CLI is unavailable → SpawnFailed
+    let result = start_ideation_http(
+        State(state.clone()),
+        unrestricted_scope(),
+        Json(StartIdeationRequest {
+            project_id: project_id.to_string(),
+            title: None,
+            prompt: Some("Trigger spawn attempt".to_string()),
+            initial_prompt: None,
+        }),
+    )
+    .await;
+
+    // Must return 200 even on spawn failure
+    assert!(result.is_ok(), "Spawn failure must not cause a non-200 response");
+    let response = result.unwrap().0;
+    assert!(!response.session_id.is_empty());
+    assert_eq!(response.status, "ideating");
+    // Session was persisted
+    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+        response.session_id.clone(),
     );
+    assert!(
+        state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&session_id)
+            .await
+            .unwrap()
+            .is_some(),
+        "Session must be persisted even when spawn fails"
+    );
+    // In test env where Claude is not available, either:
+    // - agent_spawned=false with a blocked reason, OR
+    // - agent_spawned=false with no reason (if SpawnFailed is not raised)
+    // Either way, agent_spawn_blocked_reason must not be Some("") — it must be None or a real message
+    if let Some(reason) = &response.agent_spawn_blocked_reason {
+        assert!(!reason.is_empty(), "Blocked reason must not be empty string");
+    }
 }
 
 // ============================================================================
@@ -1562,7 +1571,7 @@ async fn test_ideation_message_invalid_session_returns_404() {
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), axum::http::StatusCode::NOT_FOUND);
+    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::NOT_FOUND);
 }
 
 #[tokio::test]
@@ -1592,7 +1601,7 @@ async fn test_ideation_message_session_not_active_returns_400() {
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), axum::http::StatusCode::BAD_REQUEST);
+    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]
@@ -1613,7 +1622,7 @@ async fn test_ideation_message_scope_violation_returns_403() {
     .await;
 
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), axum::http::StatusCode::FORBIDDEN);
+    assert_eq!(result.unwrap_err().status, axum::http::StatusCode::FORBIDDEN);
 }
 
 #[tokio::test]

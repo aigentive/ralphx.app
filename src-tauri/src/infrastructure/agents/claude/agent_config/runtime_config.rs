@@ -82,7 +82,9 @@ pub struct ExternalMcpConfig {
     /// Path to the Node.js binary. Resolved from `RALPHX_NODE_PATH` env var if not set.
     #[serde(default)]
     pub node_path: Option<String>,
-    /// Max concurrent external ideation sessions. Default: 1. YAML: external_mcp.max_external_ideation_sessions
+    /// **Deprecated** — no longer enforced. The session-gate was removed in favour of
+    /// always-create-session-first behaviour. Field retained permanently for backward-compatible
+    /// YAML parsing. Value is ignored at runtime.
     pub max_external_ideation_sessions: u32,
 }
 
@@ -649,17 +651,11 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     if let Some(v) = lookup("RALPHX_NODE_PATH") {
         cfg.external_mcp.node_path = Some(v);
     }
-    if let Some(v) = lookup("RALPHX_EXTERNAL_MCP_MAX_IDEATION_SESSIONS") {
-        if let Ok(n) = v.parse::<u32>() {
-            if n == 0 {
-                warn!(
-                    "RALPHX_EXTERNAL_MCP_MAX_IDEATION_SESSIONS must be >= 1, got 0; clamping to 1"
-                );
-                cfg.external_mcp.max_external_ideation_sessions = 1;
-            } else {
-                cfg.external_mcp.max_external_ideation_sessions = n;
-            }
-        }
+    if let Some(_v) = lookup("RALPHX_EXTERNAL_MCP_MAX_IDEATION_SESSIONS") {
+        warn!(
+            "RALPHX_EXTERNAL_MCP_MAX_IDEATION_SESSIONS is deprecated and has no effect. \
+             The session gate was removed; sessions are always created. Remove this env var."
+        );
     }
 }
 

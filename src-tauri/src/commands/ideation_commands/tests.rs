@@ -2094,3 +2094,62 @@ async fn test_apply_proposals_core_preserves_dependencies() {
     assert_eq!(dependent_task.internal_status, InternalStatus::Blocked, "Dependent task has blocker → Blocked");
     assert!(dependent_task.blocked_reason.is_some(), "Blocked task should have a reason");
 }
+
+// ============================================================================
+// create_ideation_session event emission tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_create_ideation_session_emits_session_created_event() {
+    use super::ideation_commands_session::create_ideation_session_impl;
+    use crate::testing::create_mock_app;
+    use std::sync::{Arc, Mutex};
+    use tauri::Listener;
+
+    let app = create_mock_app();
+    let handle = app.handle().clone();
+    let state = setup_test_state();
+
+    let captured: Arc<Mutex<Option<serde_json::Value>>> = Arc::new(Mutex::new(None));
+    let captured_clone = Arc::clone(&captured);
+
+    handle.listen("ideation:session_created", move |event| {
+        let payload: serde_json::Value =
+            serde_json::from_str(event.payload()).unwrap_or_default();
+        *captured_clone.lock().unwrap() = Some(payload);
+    });
+
+    let project_id = ProjectId::new();
+    let input = CreateSessionInput {
+        project_id: project_id.to_string(),
+        title: Some("Test Event Session".to_string()),
+        seed_task_id: None,
+        team_mode: None,
+        team_config: None,
+    };
+
+    let result = create_ideation_session_impl(&handle, &state, input)
+        .await
+        .expect("create_ideation_session_impl should succeed");
+
+    assert_eq!(result.project_id, project_id.to_string());
+    assert_eq!(result.title, Some("Test Event Session".to_string()));
+
+    let payload = captured.lock().unwrap().clone();
+    assert!(payload.is_some(), "ideation:session_created event should have been emitted");
+    let payload = payload.unwrap();
+    assert_eq!(
+        payload["projectId"].as_str().unwrap(),
+        project_id.to_string(),
+        "event payload projectId should match"
+    );
+    assert!(
+        payload["sessionId"].is_string(),
+        "event payload sessionId should be a string"
+    );
+    assert_eq!(
+        payload["sessionId"].as_str().unwrap(),
+        result.id,
+        "event payload sessionId should match created session id"
+    );
+}

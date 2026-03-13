@@ -22,11 +22,12 @@ use super::ideation_commands_types::{
 // Session Management Commands
 // ============================================================================
 
-/// Create a new ideation session
-#[tauri::command]
-pub async fn create_ideation_session(
+/// Core implementation for creating an ideation session.
+/// Generic over Runtime to enable unit testing with MockRuntime.
+pub(crate) async fn create_ideation_session_impl<R: tauri::Runtime>(
+    app: &tauri::AppHandle<R>,
+    state: &AppState,
     input: CreateSessionInput,
-    state: State<'_, AppState>,
 ) -> Result<IdeationSessionResponse, String> {
     let project_id = ProjectId::from_string(input.project_id);
     let seed_task_id = input.seed_task_id.map(TaskId::from_string);
@@ -52,12 +53,31 @@ pub async fn create_ideation_session(
 
     let session = builder.build();
 
-    state
+    let created = state
         .ideation_session_repo
         .create(session)
         .await
-        .map(IdeationSessionResponse::from)
-        .map_err(|e| e.to_string())
+        .map_err(|e| e.to_string())?;
+
+    let _ = app.emit(
+        "ideation:session_created",
+        serde_json::json!({
+            "sessionId": created.id.to_string(),
+            "projectId": created.project_id.to_string(),
+        }),
+    );
+
+    Ok(IdeationSessionResponse::from(created))
+}
+
+/// Create a new ideation session
+#[tauri::command]
+pub async fn create_ideation_session(
+    input: CreateSessionInput,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<IdeationSessionResponse, String> {
+    create_ideation_session_impl(&app, &state, input).await
 }
 
 /// Get a single ideation session by ID

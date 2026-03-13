@@ -15,14 +15,16 @@ export interface StartIdeationInput {
 
 export interface StartIdeationResult {
   sessionId: string;
-  status: "started";
+  status: "started" | "blocked";
   agentSpawned: boolean;
+  agentSpawnBlockedReason?: string;
 }
 
 interface StartIdeationBackendResponse {
   session_id: string;
   status: string;
   agent_spawned?: boolean;
+  agent_spawn_blocked_reason?: string;
 }
 
 /**
@@ -54,9 +56,15 @@ export async function startIdeation(
     throw new Error("Backend returned no session_id for start_ideation");
   }
 
+  const agentSpawned = body.agent_spawned ?? false;
+  const blocked = !agentSpawned && !!body.agent_spawn_blocked_reason;
+
   return {
     sessionId: body.session_id,
-    status: "started",
-    agentSpawned: body.agent_spawned ?? false,
+    status: blocked ? "blocked" : "started",
+    agentSpawned,
+    ...(body.agent_spawn_blocked_reason !== undefined
+      ? { agentSpawnBlockedReason: body.agent_spawn_blocked_reason }
+      : {}),
   };
 }
