@@ -24,7 +24,8 @@ ralphx/
 ├─ src-tauri/             # Backend (Rust/Tauri) → src-tauri/CLAUDE.md
 │  └─ ralphx.db           # SQLite (dev)
 ├─ ralphx-plugin/         # Claude plugin (agents/skills/hooks)
-└─ ralphx-mcp-server/     # TS proxy → Tauri :3847
+│  ├─ ralphx-mcp-server/  # Internal agent MCP (stdio → :3847)
+│  └─ ralphx-external-mcp/# External API MCP (HTTP :3848 → :3847)
 ```
 
 ## Context Window Preservation (NON-NEGOTIABLE)
@@ -85,11 +86,13 @@ RalphX agent teams use a **dual-spawn model**. Both components are required:
 ✅ Debug logs: `scripts/find-debug-logs.sh -s "session title"` to find agent debug files + conversation JSONLs
 
 ## MCP Architecture
+Two MCP servers — different audiences. Full disambiguation: `.claude/rules/mcp-servers.md`
 ```
-Claude Agent → MCP Protocol → ralphx-mcp-server (TS) → HTTP :3847 → Tauri Backend
+Internal: Claude Agent → stdio → ralphx-mcp-server → HTTP :3847 → Tauri Backend
+External: Third-party bot → Bearer token → ralphx-external-mcp (:3848) → HTTP :3847 → Tauri Backend
 ```
 Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md`
-**MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `ralphx-plugin/ralphx-mcp-server/src/`, run `cd ralphx-plugin/ralphx-mcp-server && npm run build` to rebuild assets. ❌ Committing without rebuilding.
+**MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `ralphx-plugin/ralphx-mcp-server/src/` or `ralphx-plugin/ralphx-external-mcp/src/`, rebuild the respective server. ❌ Committing without rebuilding.
 **mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `ralphx.yaml` does NOT merge `mcp_tools` — it fully overrides. If `ideation-team-lead` extends `orchestrator-ideation`, its `mcp_tools` must list ALL required tools independently. ❌ Assuming inherited tools are present.
 
 | Agent | MCP Tools |
