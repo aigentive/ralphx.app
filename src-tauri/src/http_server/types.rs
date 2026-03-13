@@ -232,6 +232,14 @@ pub struct TaskResponse {
 // Request/Response Types - Projects
 // ============================================================================
 
+/// Request body for POST /api/external/projects
+/// Registers a directory as a RalphX project (creates dir + git if needed).
+#[derive(Debug, Deserialize)]
+pub struct RegisterProjectExternalRequest {
+    pub working_directory: String,
+    pub name: Option<String>,
+}
+
 #[derive(Debug, Deserialize)]
 pub struct ListTasksRequest {
     pub project_id: String,

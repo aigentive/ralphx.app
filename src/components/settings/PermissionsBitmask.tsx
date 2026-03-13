@@ -5,7 +5,7 @@
  * Renders three toggle pills. Admin implies read+write.
  */
 
-import { PERM_READ, PERM_WRITE, PERM_ADMIN, hasPermission } from "@/types/api-key";
+import { PERM_READ, PERM_WRITE, PERM_ADMIN, PERM_CREATE_PROJECT, hasPermission } from "@/types/api-key";
 
 // ============================================================================
 // Props
@@ -27,6 +27,7 @@ const PERMISSION_BITS = [
   { bit: PERM_READ, label: "Read", description: "List projects & task status" },
   { bit: PERM_WRITE, label: "Write", description: "Create tasks & send messages" },
   { bit: PERM_ADMIN, label: "Admin", description: "Manage keys & settings" },
+  { bit: PERM_CREATE_PROJECT, label: "Create Project", description: "Register new projects via external API" },
 ] as const;
 
 // ============================================================================

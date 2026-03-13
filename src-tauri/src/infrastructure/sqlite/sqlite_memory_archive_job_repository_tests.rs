@@ -17,10 +17,11 @@ fn setup_test_db() -> Connection {
 
 fn create_test_project(conn: &Connection) -> ProjectId {
     let id = ProjectId::new();
+    let working_dir = format!("/tmp/test/{}", id.as_str());
     conn.execute(
         "INSERT INTO projects (id, name, working_directory, git_mode, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        rusqlite::params![id.as_str(), "Test Project", "/tmp/test", "local"],
+        rusqlite::params![id.as_str(), "Test Project", working_dir, "local"],
     )
     .unwrap();
     id

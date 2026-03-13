@@ -8,16 +8,17 @@
 import { render, screen, fireEvent } from "@testing-library/react";
 import { describe, it, expect, vi } from "vitest";
 import { PermissionsBitmask } from "./PermissionsBitmask";
-import { PERM_READ, PERM_WRITE, PERM_ADMIN } from "@/types/api-key";
+import { PERM_READ, PERM_WRITE, PERM_ADMIN, PERM_CREATE_PROJECT } from "@/types/api-key";
 
 describe("PermissionsBitmask", () => {
   describe("rendering", () => {
-    it("renders all three permission pills", () => {
+    it("renders all four permission pills", () => {
       render(<PermissionsBitmask value={0} onChange={vi.fn()} />);
 
       expect(screen.getByTestId("perm-toggle-read")).toBeInTheDocument();
       expect(screen.getByTestId("perm-toggle-write")).toBeInTheDocument();
       expect(screen.getByTestId("perm-toggle-admin")).toBeInTheDocument();
+      expect(screen.getByTestId("perm-toggle-create project")).toBeInTheDocument();
     });
 
     it("shows the permissions-bitmask container", () => {
@@ -44,11 +45,26 @@ describe("PermissionsBitmask", () => {
       expect(adminBtn.className).toMatch(/accent-primary/);
     });
 
-    it("shows all three active when value=7 (all bits set)", () => {
+    it("shows first three active and create-project inactive when value=7", () => {
       render(<PermissionsBitmask value={7} onChange={vi.fn()} />);
       expect(screen.getByTestId("perm-toggle-read").className).toMatch(/accent-primary/);
       expect(screen.getByTestId("perm-toggle-write").className).toMatch(/accent-primary/);
       expect(screen.getByTestId("perm-toggle-admin").className).toMatch(/accent-primary/);
+      expect(screen.getByTestId("perm-toggle-create project").className).not.toMatch(/accent-primary/);
+    });
+
+    it("shows all four active when value=15 (all bits set)", () => {
+      render(<PermissionsBitmask value={15} onChange={vi.fn()} />);
+      expect(screen.getByTestId("perm-toggle-read").className).toMatch(/accent-primary/);
+      expect(screen.getByTestId("perm-toggle-write").className).toMatch(/accent-primary/);
+      expect(screen.getByTestId("perm-toggle-admin").className).toMatch(/accent-primary/);
+      expect(screen.getByTestId("perm-toggle-create project").className).toMatch(/accent-primary/);
+    });
+
+    it("shows CreateProject as active when PERM_CREATE_PROJECT bit is set", () => {
+      render(<PermissionsBitmask value={PERM_CREATE_PROJECT} onChange={vi.fn()} />);
+      const createProjectBtn = screen.getByTestId("perm-toggle-create project");
+      expect(createProjectBtn.className).toMatch(/accent-primary/);
     });
 
     it("shows all inactive when value=0", () => {
@@ -56,6 +72,7 @@ describe("PermissionsBitmask", () => {
       expect(screen.getByTestId("perm-toggle-read").className).not.toMatch(/accent-primary/);
       expect(screen.getByTestId("perm-toggle-write").className).not.toMatch(/accent-primary/);
       expect(screen.getByTestId("perm-toggle-admin").className).not.toMatch(/accent-primary/);
+      expect(screen.getByTestId("perm-toggle-create project").className).not.toMatch(/accent-primary/);
     });
   });
 
@@ -87,6 +104,15 @@ describe("PermissionsBitmask", () => {
       expect(onChange).toHaveBeenCalledWith(PERM_ADMIN);
     });
 
+    it("calls onChange with XOR result when Create Project clicked", () => {
+      const onChange = vi.fn();
+      render(<PermissionsBitmask value={0} onChange={onChange} />);
+
+      fireEvent.click(screen.getByTestId("perm-toggle-create project"));
+
+      expect(onChange).toHaveBeenCalledWith(PERM_CREATE_PROJECT);
+    });
+
     it("toggles off when active bit clicked", () => {
       const onChange = vi.fn();
       render(<PermissionsBitmask value={PERM_READ} onChange={onChange} />);
@@ -114,6 +140,7 @@ describe("PermissionsBitmask", () => {
       expect(screen.getByTestId("perm-toggle-read")).toBeDisabled();
       expect(screen.getByTestId("perm-toggle-write")).toBeDisabled();
       expect(screen.getByTestId("perm-toggle-admin")).toBeDisabled();
+      expect(screen.getByTestId("perm-toggle-create project")).toBeDisabled();
     });
   });
 

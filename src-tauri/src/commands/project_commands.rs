@@ -154,6 +154,78 @@ fn ensure_git_initialized(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Async, idempotent version of ensure_git_initialized for use in HTTP handlers.
+/// Uses TokioCommand to avoid blocking the async runtime.
+///
+/// Handles all 4 directory/git states:
+/// - No .git → git init + empty commit
+/// - .git exists, no commits → empty commit only
+/// - .git exists, has commits → no-op
+///
+/// Note: directory must already exist before calling this function.
+/// Known limitation: if no global git user.name/email is configured, the
+/// empty commit will fail. Same limitation as the sync version.
+pub(crate) async fn ensure_git_initialized_async(path: &str) -> Result<(), String> {
+    use tokio::process::Command as TokioCommand;
+
+    // Check if .git directory exists
+    let git_dir = std::path::Path::new(path).join(".git");
+    if !git_dir.exists() {
+        // Run git init
+        let output = TokioCommand::new("git")
+            .args(["init"])
+            .current_dir(path)
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run git init: {}", e))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(format!("git init failed: {}", stderr));
+        }
+    }
+
+    // Check if HEAD has any commits (git log returns success only if commits exist)
+    let has_commits = TokioCommand::new("git")
+        .args(["log", "--oneline", "-1"])
+        .current_dir(path)
+        .output()
+        .await
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+
+    if !has_commits {
+        // Create empty initial commit so HEAD is valid for worktree operations
+        let commit_result = TokioCommand::new("git")
+            .args([
+                "commit",
+                "--allow-empty",
+                "-m",
+                "Initial commit (auto-created by RalphX)",
+            ])
+            .current_dir(path)
+            .output()
+            .await;
+        if let Ok(output) = &commit_result {
+            if !output.status.success() {
+                tracing::warn!(
+                    path = %path,
+                    stderr = %String::from_utf8_lossy(&output.stderr),
+                    "ensure_git_initialized_async: empty commit failed (git user.name/email may be unconfigured) — HEAD may be unborn"
+                );
+            }
+        } else if let Err(e) = &commit_result {
+            tracing::warn!(
+                path = %path,
+                error = %e,
+                "ensure_git_initialized_async: failed to spawn git commit"
+            );
+        }
+    }
+
+    Ok(())
+}
+
 /// Create a new project
 #[tauri::command]
 pub async fn create_project(

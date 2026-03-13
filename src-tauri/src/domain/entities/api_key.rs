@@ -17,6 +17,9 @@ pub struct AuditLogEntry {
 pub const PERMISSION_READ: i32 = 1;
 pub const PERMISSION_WRITE: i32 = 2;
 pub const PERMISSION_ADMIN: i32 = 4;
+pub const PERMISSION_CREATE_PROJECT: i32 = 8;
+/// Maximum valid permissions value (all bits set: read | write | admin | create_project)
+pub const PERMISSION_MAX: i32 = 15;
 
 /// An API key for external access to RalphX
 #[derive(Debug, Clone, Serialize, Deserialize)]

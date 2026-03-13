@@ -29,6 +29,7 @@ fn setup_repo_with_conn() -> (SqliteApiKeyRepository, Arc<Mutex<Connection>>) {
 }
 
 async fn insert_test_project(conn: &Arc<Mutex<Connection>>, project_id: &str) {
+    let working_dir = format!("/tmp/test/{}", project_id);
     conn.lock()
         .await
         .execute(
@@ -37,7 +38,7 @@ async fn insert_test_project(conn: &Arc<Mutex<Connection>>, project_id: &str) {
             rusqlite::params![
                 project_id,
                 "test-project",
-                "/tmp/test",
+                working_dir,
                 "2026-01-01T00:00:00Z",
                 "2026-01-01T00:00:00Z"
             ],

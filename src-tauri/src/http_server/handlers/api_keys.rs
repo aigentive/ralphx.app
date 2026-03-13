@@ -7,7 +7,7 @@ use axum::{
 };
 
 use super::*;
-use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
+use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_CREATE_PROJECT, PERMISSION_MAX, PERMISSION_READ, PERMISSION_WRITE};
 use crate::domain::services::api_key_service::{ApiKeyService, KeySource};
 
 /// Response for GET /api/validate_key
@@ -98,6 +98,11 @@ pub async fn create_api_key(
     State(state): State<HttpServerState>,
     Json(req): Json<CreateApiKeyRequest>,
 ) -> Result<Json<CreateApiKeyResponse>, StatusCode> {
+    if let Some(p) = req.permissions {
+        if !(0..=PERMISSION_MAX).contains(&p) {
+            return Err(StatusCode::UNPROCESSABLE_ENTITY);
+        }
+    }
     let project_ids = req.project_ids.unwrap_or_default();
     let result = ApiKeyService::create_key(
         state.app_state.api_key_repo.as_ref(),
@@ -281,7 +286,7 @@ pub async fn update_key_permissions(
     Path(id): Path<String>,
     Json(req): Json<UpdatePermissionsRequest>,
 ) -> Result<Json<SuccessResponse>, StatusCode> {
-    if req.permissions < 0 {
+    if req.permissions < 0 || req.permissions > PERMISSION_MAX as i64 {
         return Err(StatusCode::UNPROCESSABLE_ENTITY);
     }
 
@@ -424,6 +429,9 @@ fn permission_names(permissions: i32) -> Vec<String> {
     }
     if permissions & PERMISSION_ADMIN != 0 {
         names.push("admin".to_string());
+    }
+    if permissions & PERMISSION_CREATE_PROJECT != 0 {
+        names.push("create_project".to_string());
     }
     names
 }

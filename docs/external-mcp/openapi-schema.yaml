@@ -480,6 +480,74 @@ paths:
                     type: string
                     enum: [unreachable]
 
+  /api/external/projects:
+    post:
+      operationId: registerProject
+      summary: Register a folder as a RalphX project
+      description: |
+        Creates or registers a directory as a RalphX project. Handles all directory/git states:
+        - Directory doesn't exist: creates it, git init, empty commit, project record
+        - Directory exists, no git: git init, empty commit, project record
+        - Directory exists, git but no commits: empty commit, project record
+        - Directory exists, git with commits: project record only
+
+        Requires CREATE_PROJECT permission (bit 8). The creating key is automatically
+        added to the new project's scope.
+      tags: [Setup]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [workingDirectory]
+              properties:
+                workingDirectory:
+                  type: string
+                  description: Absolute path to the project directory (under user home dir)
+                  example: /Users/alice/Code/my-project
+                name:
+                  type: string
+                  description: Project display name (defaults to directory basename)
+                  example: my-project
+      responses:
+        "200":
+          description: Project registered successfully
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Project"
+        "400":
+          description: Invalid path (outside home dir, rejected path, or parent doesn't exist)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: Missing or invalid API key
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: Key lacks CREATE_PROJECT permission (bit 8)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: Project with this working directory already exists
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: Unprocessable request (e.g., git operation failed)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /mcp:
     post:
       operationId: mcpToolCall

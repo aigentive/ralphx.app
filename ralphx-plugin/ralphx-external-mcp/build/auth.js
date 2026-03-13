@@ -17,6 +17,16 @@ export function configureAuth(options) {
 export function invalidateCacheEntry(rawKey) {
     cache.delete(rawKey);
 }
+/** Invalidate cache entries by key ID (call after project registration to pick up new scope) */
+export function invalidateCacheByKeyId(keyId) {
+    if (!keyId)
+        return;
+    for (const [rawKey, entry] of cache) {
+        if (entry.context.keyId === keyId) {
+            cache.delete(rawKey);
+        }
+    }
+}
 /** Clear entire cache (for testing) */
 export function clearAuthCache() {
     cache.clear();

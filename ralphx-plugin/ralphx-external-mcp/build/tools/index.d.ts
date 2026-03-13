@@ -9,6 +9,7 @@ import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import type { ApiKeyContext } from "../types.js";
 /** Tool categories by phase */
 export declare const TOOL_CATEGORIES: {
+    readonly setup: readonly ["v1_register_project"];
     readonly onboarding: readonly ["v1_get_agent_guide"];
     readonly discovery: readonly ["v1_list_projects", "v1_get_project_status", "v1_get_pipeline_overview"];
     readonly ideation: readonly ["v1_start_ideation", "v1_get_ideation_status", "v1_send_ideation_message", "v1_get_ideation_messages", "v1_list_proposals", "v1_get_proposal_detail", "v1_get_plan", "v1_accept_plan_and_schedule", "v1_modify_proposal", "v1_analyze_dependencies", "v1_trigger_plan_verification", "v1_get_plan_verification", "v1_list_ideation_sessions"];
