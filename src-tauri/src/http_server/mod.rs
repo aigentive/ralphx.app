@@ -250,7 +250,10 @@ pub async fn start_http_server(
             get(get_conversation_active_state),
         )
         // External API endpoints (Phase 4 — external MCP server consumers)
-        .route("/api/external/projects", get(list_projects_http))
+        .route(
+            "/api/external/projects",
+            get(list_projects_http).post(register_project_external),
+        )
         .route("/api/external/project/:id/status", get(get_project_status_http))
         .route("/api/external/start_ideation", post(start_ideation_http))
         .route(

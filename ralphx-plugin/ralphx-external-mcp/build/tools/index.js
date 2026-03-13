@@ -12,8 +12,10 @@ import { handleGetTaskDetail, handleGetTaskDiff, handleGetReviewSummary, handleA
 import { handleGetRecentEvents, handleSubscribeEvents, handleGetAttentionItems, handleGetExecutionCapacity, } from "./events.js";
 import { handleBatchTaskStatus, handleGetTaskSteps } from "./tasks.js";
 import { handleGetAgentGuide } from "./guide.js";
+import { handleRegisterProject } from "./projects.js";
 /** Tool categories by phase */
 export const TOOL_CATEGORIES = {
+    setup: ["v1_register_project"],
     onboarding: ["v1_get_agent_guide"],
     discovery: ["v1_list_projects", "v1_get_project_status", "v1_get_pipeline_overview"],
     ideation: [
@@ -57,6 +59,25 @@ export function registerTools(server, getKeyContext) {
     // List tools — returns all available tool definitions
     server.setRequestHandler(ListToolsRequestSchema, async () => ({
         tools: [
+            // Setup: Project registration (requires CREATE_PROJECT permission)
+            {
+                name: "v1_register_project",
+                description: "Register a folder as a RalphX project. Creates the directory if it doesn't exist, initializes git if needed. Requires CREATE_PROJECT permission (bit 8). The creating key automatically gets access to the new project.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        working_directory: {
+                            type: "string",
+                            description: "Absolute path to the project directory (will be created if it doesn't exist)",
+                        },
+                        name: {
+                            type: "string",
+                            description: "Optional project name (defaults to directory basename)",
+                        },
+                    },
+                    required: ["working_directory"],
+                },
+            },
             // Flow 0: Onboarding
             {
                 name: "v1_get_agent_guide",
@@ -66,7 +87,7 @@ export function registerTools(server, getKeyContext) {
                     properties: {
                         section: {
                             type: "string",
-                            enum: ["overview", "discovery", "ideation", "tasks", "pipeline", "events", "patterns"],
+                            enum: ["setup", "overview", "discovery", "ideation", "tasks", "pipeline", "events", "patterns"],
                             description: "Optional: return only a specific section to save context window",
                         },
                     },
@@ -489,6 +510,10 @@ export function registerTools(server, getKeyContext) {
         let text;
         let isError = false;
         switch (name) {
+            // --- Setup: Project registration ---
+            case "v1_register_project":
+                text = await handleRegisterProject(args, context);
+                break;
             // --- Flow 0: Onboarding ---
             case "v1_get_agent_guide":
                 text = await handleGetAgentGuide(args, context);

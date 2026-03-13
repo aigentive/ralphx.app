@@ -4,10 +4,12 @@ use axum::{
     Json,
 };
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 use tauri::Emitter;
 
 use super::*;
-use crate::domain::entities::{InternalStatus, ProjectId, TaskId};
+use crate::domain::entities::{InternalStatus, Project, ProjectId, TaskId};
+use crate::error::AppError;
 
 pub async fn list_tasks(
     State(state): State<HttpServerState>,
@@ -249,6 +251,209 @@ pub async fn save_project_analysis(
     }))
 }
 
+// ============================================================================
+// External Project Registration
+// ============================================================================
+
+/// Response for POST /api/external/projects
+#[derive(Debug, Serialize)]
+pub struct RegisterProjectExternalResponse {
+    pub id: String,
+    pub name: String,
+    pub working_directory: String,
+    pub created_at: String,
+}
+
+/// POST /api/external/projects
+///
+/// Registers a directory as a RalphX project. Handles all directory/git states:
+/// - Path doesn't exist → create directory + git init + empty commit
+/// - Path exists, no .git → git init + empty commit
+/// - Path exists, .git exists, no commits → empty commit
+/// - Path exists, .git + commits → project record only
+///
+/// Requires CREATE_PROJECT permission (enforced by ValidatedExternalKey extractor).
+/// Auto-adds the creating key to the new project's scope.
+pub async fn register_project_external(
+    State(state): State<HttpServerState>,
+    validated_key: ValidatedExternalKey,
+    Json(req): Json<RegisterProjectExternalRequest>,
+) -> Result<Json<RegisterProjectExternalResponse>, HttpError> {
+    // 1. Canonicalize path
+    let input_path = std::path::Path::new(&req.working_directory);
+    let canonical = if input_path.exists() {
+        std::fs::canonicalize(input_path).map_err(|e| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some(format!("Failed to canonicalize path: {e}")),
+        })?
+    } else {
+        // Path doesn't exist: canonicalize parent + append basename
+        let parent = input_path.parent().ok_or_else(|| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some("Invalid path: no parent directory".to_string()),
+        })?;
+        let canonical_parent = std::fs::canonicalize(parent).map_err(|_| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some("Parent directory does not exist".to_string()),
+        })?;
+        let basename = input_path.file_name().ok_or_else(|| HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some("Invalid path: no basename component".to_string()),
+        })?;
+        canonical_parent.join(basename)
+    };
+
+    let canonical_str = canonical.to_string_lossy().to_string();
+
+    // 2. Allowlist: path must be under user's home directory
+    let home = std::env::var("HOME")
+        .map(std::path::PathBuf::from)
+        .map_err(|_| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: Some("Cannot determine home directory".to_string()),
+        })?;
+    if !canonical.starts_with(&home) {
+        return Err(HttpError {
+            status: StatusCode::UNPROCESSABLE_ENTITY,
+            message: Some("Path must be within the user's home directory".to_string()),
+        });
+    }
+
+    // 3. Blocklist: reject system paths
+    const BLOCKED_PREFIXES: &[&str] = &[
+        "/etc", "/usr", "/var", "/tmp", "/private", "/System", "/Library", "/Volumes",
+    ];
+    for blocked in BLOCKED_PREFIXES {
+        if canonical_str.starts_with(blocked) {
+            return Err(HttpError {
+                status: StatusCode::UNPROCESSABLE_ENTITY,
+                message: Some(format!("Path is in a restricted system directory: {blocked}")),
+            });
+        }
+    }
+
+    // 4. Duplicate check → 409 Conflict
+    let existing = state
+        .app_state
+        .project_repo
+        .get_by_working_directory(&canonical_str)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    if existing.is_some() {
+        return Err(HttpError {
+            status: StatusCode::CONFLICT,
+            message: Some(format!("Project already exists at: {canonical_str}")),
+        });
+    }
+
+    // 5. Create directory if it doesn't exist
+    let created_dir = !canonical.exists();
+    if created_dir {
+        std::fs::create_dir_all(&canonical).map_err(|e| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: Some(format!("Failed to create directory: {e}")),
+        })?;
+    }
+
+    // 6. Ensure git is initialized (git-first: before DB to avoid zombie records)
+    let ran_git_init = !canonical.join(".git").exists();
+    crate::commands::project_commands::ensure_git_initialized_async(&canonical_str)
+        .await
+        .map_err(|e| HttpError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            message: Some(format!("Git initialization failed: {e}")),
+        })?;
+
+    // 7. Construct project with domain defaults (Project::new handles UUID, timestamps, etc.)
+    let name = req.name.unwrap_or_else(|| {
+        canonical
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "Unnamed Project".to_string())
+    });
+    let project = Project::new(name, canonical_str.clone());
+
+    // Extract response data before moving project into transaction closure
+    let response_id = project.id.as_str().to_string();
+    let response_name = project.name.clone();
+    let response_created_at = project.created_at.to_rfc3339();
+    let key_id = validated_key.key_id.clone();
+
+    // 8. Atomic DB transaction: INSERT project + INSERT OR IGNORE api_key_projects
+    state
+        .app_state
+        .db
+        .run_transaction(move |conn| {
+            conn.execute(
+                "INSERT INTO projects (id, name, working_directory, git_mode, base_branch, \
+                 worktree_parent_directory, use_feature_branches, merge_validation_mode, \
+                 merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, \
+                 updated_at, github_pr_enabled) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                rusqlite::params![
+                    project.id.as_str(),
+                    project.name,
+                    project.working_directory,
+                    project.git_mode.to_string(),
+                    project.base_branch,
+                    project.worktree_parent_directory,
+                    project.use_feature_branches as i64,
+                    project.merge_validation_mode.to_string(),
+                    project.merge_strategy.to_string(),
+                    project.detected_analysis,
+                    project.custom_analysis,
+                    project.analyzed_at,
+                    project.created_at.to_rfc3339(),
+                    project.updated_at.to_rfc3339(),
+                    project.github_pr_enabled as i64,
+                ],
+            )
+            .map_err(|e| AppError::Database(format!("Insert project failed: {e}")))?;
+
+            // Auto-add creating key to new project's scope (INSERT OR IGNORE handles races)
+            conn.execute(
+                "INSERT OR IGNORE INTO api_key_projects (api_key_id, project_id) VALUES (?1, ?2)",
+                rusqlite::params![key_id, project.id.as_str()],
+            )
+            .map_err(|e| AppError::Database(format!("Insert api_key_projects failed: {e}")))?;
+
+            Ok(())
+        })
+        .await
+        .map_err(|e| {
+            tracing::error!("DB transaction failed for register_project_external: {e}");
+            HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some("Failed to save project".to_string()),
+            }
+        })?;
+
+    // 9. Audit log
+    tracing::info!(
+        key_id = %validated_key.key_id,
+        project_id = %response_id,
+        path = %canonical_str,
+        dir_created = %created_dir,
+        git_initialized = %ran_git_init,
+        "External project registered"
+    );
+
+    // 10. Fire-and-forget: spawn project analyzer (non-blocking)
+    crate::commands::project_commands::spawn_project_analyzer(
+        &response_id,
+        &canonical_str,
+        Arc::clone(&state.app_state.agent_client),
+        state.app_state.app_handle.clone(),
+    );
+
+    Ok(Json(RegisterProjectExternalResponse {
+        id: response_id,
+        name: response_name,
+        working_directory: canonical_str,
+        created_at: response_created_at,
+    }))
+}
+
 /// Resolve template variables in analysis entries
 fn resolve_template_vars(
     entries: Vec<AnalysisEntry>,
@@ -274,3 +479,7 @@ fn resolve_template_vars(
         })
         .collect()
 }
+
+#[cfg(test)]
+#[path = "projects_tests.rs"]
+mod projects_tests;

@@ -53,6 +53,7 @@ export const Permission = {
   READ: 1,
   WRITE: 2,
   ADMIN: 4,
+  CREATE_PROJECT: 8,
 } as const;
 
 export function hasPermission(permissions: number, flag: number): boolean {

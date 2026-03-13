@@ -11,6 +11,8 @@ export declare function configureAuth(options: {
 }): void;
 /** Invalidate a specific key from cache (call on rotation/revocation events) */
 export declare function invalidateCacheEntry(rawKey: string): void;
+/** Invalidate cache entries by key ID (call after project registration to pick up new scope) */
+export declare function invalidateCacheByKeyId(keyId: string): void;
 /** Clear entire cache (for testing) */
 export declare function clearAuthCache(): void;
 /**

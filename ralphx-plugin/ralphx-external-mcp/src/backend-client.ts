@@ -14,6 +14,9 @@ export const PROJECT_SCOPE_HEADER = "X-RalphX-Project-Scope";
 /** Header used to mark requests coming from external MCP */
 export const EXTERNAL_MCP_HEADER = "X-RalphX-External-MCP";
 
+/** Header for propagating the API key ID to the backend (for permission enforcement) */
+export const KEY_ID_HEADER = "X-RalphX-Key-Id";
+
 export interface BackendClientOptions {
   baseUrl: string;
   /** Timeout in milliseconds (default: 30000) */
@@ -89,6 +92,9 @@ export class BackendClient {
       "Content-Type": "application/json",
       [EXTERNAL_MCP_HEADER]: "1",
     };
+
+    // Inject key ID header — allows backend to identify the calling key for permission enforcement
+    headers[KEY_ID_HEADER] = keyContext.keyId;
 
     // Inject project scope header — comma-separated list of project IDs
     if (keyContext.projectIds.length > 0) {

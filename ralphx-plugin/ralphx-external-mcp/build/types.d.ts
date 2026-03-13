@@ -47,6 +47,7 @@ export declare const Permission: {
     readonly READ: 1;
     readonly WRITE: 2;
     readonly ADMIN: 4;
+    readonly CREATE_PROJECT: 8;
 };
 export declare function hasPermission(permissions: number, flag: number): boolean;
 //# sourceMappingURL=types.d.ts.map

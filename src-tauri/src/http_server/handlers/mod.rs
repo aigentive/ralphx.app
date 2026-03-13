@@ -1,5 +1,6 @@
 pub mod api_keys;
 pub mod external;
+pub mod external_auth;
 pub mod artifacts;
 pub mod conversations;
 pub mod execution;
@@ -19,6 +20,8 @@ pub mod worker;
 
 pub use api_keys::*;
 pub use external::*;
+#[allow(unused_imports)]
+pub use external_auth::*;
 pub use artifacts::*;
 pub use conversations::*;
 pub use execution::*;

@@ -46,9 +46,10 @@ fn test_v26_accepts_valid_values() {
     run_migrations(&conn).unwrap();
 
     for (id, strategy) in [("p1", "rebase"), ("p2", "merge")] {
+        let path = format!("/path/{}", id);
         conn.execute(
-            "INSERT INTO projects (id, name, working_directory, merge_strategy) VALUES (?1, 'Test', '/path', ?2)",
-            rusqlite::params![id, strategy],
+            "INSERT INTO projects (id, name, working_directory, merge_strategy) VALUES (?1, 'Test', ?3, ?2)",
+            rusqlite::params![id, strategy, path],
         )
         .unwrap();
 

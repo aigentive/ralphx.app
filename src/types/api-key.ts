@@ -12,6 +12,7 @@ import { z } from "zod";
 export const PERM_READ = 1;
 export const PERM_WRITE = 2;
 export const PERM_ADMIN = 4;
+export const PERM_CREATE_PROJECT = 8;
 
 export function hasPermission(permissions: number, bit: number): boolean {
   return (permissions & bit) !== 0;
@@ -31,8 +32,8 @@ export const ApiKeySchema = z.object({
   name: z.string().min(1),
   /** Short prefix shown for identification, e.g. "rxk_live_a3f2" */
   keyPrefix: z.string().min(1),
-  /** Bitmask: 1=read, 2=write, 4=admin */
-  permissions: z.number().int().min(0).max(7),
+  /** Bitmask: 1=read, 2=write, 4=admin, 8=create_project */
+  permissions: z.number().int().min(0).max(15),
   createdAt: z.string(),
   revokedAt: z.string().nullable(),
   lastUsedAt: z.string().nullable(),

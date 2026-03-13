@@ -6,6 +6,22 @@
  * The bidirectional sync test validates: TOOL_CATEGORIES ↔ ALL_TOOL_NAMES ↔ FULL_GUIDE content.
  */
 export const GUIDE_SECTIONS = {
+    setup: `## Setup: Project Registration (1 tool)
+
+| Tool | Purpose | Required Args | Permission | Next Step |
+|------|---------|---------------|------------|-----------|
+| v1_register_project | Register a folder as a RalphX project | working_directory | CREATE_PROJECT (bit 8) | v1_list_projects |
+
+### Notes
+
+- Requires \`CREATE_PROJECT\` permission (bit 8). Keys with only READ/WRITE/ADMIN cannot call this tool.
+- \`working_directory\` must be an absolute path under the user's home directory. System paths (/etc, /usr, /var, /tmp, /private) are rejected.
+- Directory is created automatically if it doesn't exist (including parent directories).
+- Git is initialized automatically if no \`.git\` directory exists. An empty initial commit is created if no commits exist.
+- The creating API key automatically gets access to the new project — no need to update key scope manually.
+- **Stale permission cache**: Permission changes take up to 30s to take effect (TTL cache). If you just granted CREATE_PROJECT to a key, wait 30s before calling this tool.
+- After successful registration, the scope cache is immediately invalidated — subsequent calls see the new project scope without waiting for TTL expiry.
+`,
     overview: `## Overview: How RalphX Works
 
 RalphX is an autonomous software development platform. You are an engineer-agent connecting via the External MCP API. RalphX manages the full dev lifecycle: ideation → task creation → autonomous code execution → review → merge.
@@ -248,6 +264,8 @@ ${Object.values(GUIDE_SECTIONS).join("\n\n---\n\n")}`;
  * When adding new tools: update TOOL_CATEGORIES in index.ts AND add here AND document in GUIDE_SECTIONS.
  */
 export const ALL_TOOL_NAMES = [
+    // Setup: Project registration (1)
+    "v1_register_project",
     // Flow 0: Onboarding (1)
     "v1_get_agent_guide",
     // Flow 1: Discovery (3)
