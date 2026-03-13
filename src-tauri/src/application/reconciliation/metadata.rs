@@ -486,16 +486,37 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .unwrap_or(0)
     }
 
+    /// Count `AutoRetryTriggered` events filtered by failure source.
+    /// Used for per-source retry budgets — keeps GitIsolation and timeout budgets independent.
+    pub(crate) fn execution_failed_auto_retry_count_for_source(
+        task: &Task,
+        source: ExecutionFailureSource,
+    ) -> u32 {
+        ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+            .ok()
+            .flatten()
+            .map(|meta| meta.auto_retry_count_for_source(source))
+            .unwrap_or(0)
+    }
+
     /// Exponential backoff with jitter for failed execution retries.
     /// Formula: `min(2^retry_count * base_secs, max_secs) + random jitter (0–25%)`.
+    /// When `failure_source` is `Some(GitIsolation)`, uses `git_isolation_retry_base_secs`
+    /// (shorter — git transient issues resolve quickly after cleanup).
     /// Mirrors `merge_incomplete_retry_delay()`.
-    pub(crate) fn execution_failed_retry_delay(retry_count: u32) -> chrono::Duration {
+    pub(crate) fn execution_failed_retry_delay(
+        retry_count: u32,
+        failure_source: Option<ExecutionFailureSource>,
+    ) -> chrono::Duration {
         use rand::Rng;
+        let cfg = reconciliation_config();
+        let base_secs = match failure_source {
+            Some(ExecutionFailureSource::GitIsolation) => cfg.git_isolation_retry_base_secs as i64,
+            _ => cfg.execution_failed_retry_base_secs as i64,
+        };
         let exponent = retry_count.min(6);
-        let scaled = (reconciliation_config().execution_failed_retry_base_secs as i64)
-            .saturating_mul(1_i64 << exponent);
-        let base_delay =
-            scaled.min(reconciliation_config().execution_failed_retry_max_secs as i64);
+        let scaled = base_secs.saturating_mul(1_i64 << exponent);
+        let base_delay = scaled.min(cfg.execution_failed_retry_max_secs as i64);
         let jitter = rand::thread_rng().gen_range(0..=base_delay / 4);
         chrono::Duration::seconds(base_delay + jitter)
     }
@@ -579,8 +600,11 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Returns the timestamp of the last `AutoRetryTriggered` event plus the
     /// backoff delay for the current retry count. Returns `None` if no retry
     /// events exist yet (GAPs M6, M8).
+    /// `failure_source` is passed through to `execution_failed_retry_delay()` so that
+    /// git-isolation tasks use the shorter base delay.
     pub(crate) fn execution_next_retry_at(
         task: &Task,
+        failure_source: Option<ExecutionFailureSource>,
     ) -> Option<chrono::DateTime<chrono::Utc>> {
         let recovery = ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
@@ -598,7 +622,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .filter(|e| matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered))
             .count() as u32;
 
-        let delay = Self::execution_failed_retry_delay(retry_count);
+        let delay = Self::execution_failed_retry_delay(retry_count, failure_source);
         Some(last_retry_event.at + delay)
     }
 
@@ -738,10 +762,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Append an `AutoRetryTriggered` event with `Startup` source to the task's execution recovery metadata.
     /// Also creates an initial `Failed` event if no recovery metadata exists yet (legacy migration — GAP M2).
     /// Uses targeted `update_metadata()` SQL path to prevent metadata write races (GAP H7).
+    ///
+    /// `failure_source` and `reason_code` are passed explicitly so that git-isolation and
+    /// timeout startup recoveries record the correct source in the event log.
     pub(crate) async fn record_execution_startup_retry_event(
         &self,
         task: &Task,
         attempt: u32,
+        failure_source: ExecutionFailureSource,
+        reason_code: ExecutionRecoveryReasonCode,
     ) -> Result<(), String> {
         let mut recovery =
             ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
@@ -751,24 +780,25 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // For legacy tasks (no prior execution_recovery), create an initial Failed event
         // to record the historical failure before migrating to the new format.
         if recovery.events.is_empty() {
+            let legacy_reason_code = Self::failure_source_to_reason_code(failure_source);
             let failed_event = ExecutionRecoveryEvent::new(
                 ExecutionRecoveryEventKind::Failed,
                 ExecutionRecoverySource::System,
-                ExecutionRecoveryReasonCode::Timeout,
-                "Legacy timeout failure — migrated to structured recovery metadata",
+                legacy_reason_code,
+                "Legacy failure — migrated to structured recovery metadata",
             )
-            .with_failure_source(ExecutionFailureSource::TransientTimeout);
+            .with_failure_source(failure_source);
             recovery.append_event(failed_event);
         }
 
         let retry_event = ExecutionRecoveryEvent::new(
             ExecutionRecoveryEventKind::AutoRetryTriggered,
             ExecutionRecoverySource::Startup,
-            ExecutionRecoveryReasonCode::Timeout,
-            format!("Startup recovery: re-queuing timeout-failed task (attempt {attempt})"),
+            reason_code,
+            format!("Startup recovery: re-queuing failed task (attempt {attempt})"),
         )
         .with_attempt(attempt)
-        .with_failure_source(ExecutionFailureSource::TransientTimeout);
+        .with_failure_source(failure_source);
 
         recovery.append_event_with_state(retry_event, ExecutionRecoveryState::Retrying);
 
@@ -794,6 +824,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
             ExecutionFailureSource::WallClockTimeout => {
                 ExecutionRecoveryReasonCode::WallClockExceeded
             }
+            ExecutionFailureSource::GitIsolation => ExecutionRecoveryReasonCode::GitIsolationFailed,
             ExecutionFailureSource::Unknown => ExecutionRecoveryReasonCode::Unknown,
         }
     }

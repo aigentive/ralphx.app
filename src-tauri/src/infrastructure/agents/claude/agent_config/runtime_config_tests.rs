@@ -600,3 +600,108 @@ fn test_validate_external_mcp_config_disabled_non_local_no_tls_ok() {
     };
     assert!(validate_external_mcp_config(&cfg).is_ok());
 }
+
+// ── GitIsolation config tests ─────────────────────────────────────────────────
+
+#[test]
+fn test_git_isolation_config_defaults() {
+    let cfg = ReconciliationConfig::default();
+    assert_eq!(cfg.git_isolation_retry_base_secs, 5, "default base should be 5s (shorter than execution_failed_retry_base_secs=30)");
+    assert_eq!(cfg.git_isolation_max_retries, 3, "default max retries should be 3");
+}
+
+#[test]
+fn test_git_isolation_config_backward_compat_deserialization() {
+    // YAML without git_isolation keys must still deserialize via serde defaults.
+    let yaml_without_new_keys = r#"
+merger_timeout_secs: 1200
+merging_max_retries: 3
+pending_merge_stale_minutes: 2
+qa_stale_minutes: 5
+merge_incomplete_retry_base_secs: 5
+merge_incomplete_retry_max_secs: 1800
+merge_incomplete_max_retries: 5
+validation_revert_max_count: 2
+merge_conflict_retry_base_secs: 60
+merge_conflict_retry_max_secs: 600
+merge_conflict_max_retries: 3
+executing_max_retries: 5
+reviewing_max_retries: 3
+qa_max_retries: 3
+executing_max_wall_clock_minutes: 60
+reviewing_max_wall_clock_minutes: 30
+qa_max_wall_clock_minutes: 15
+pre_merge_cleanup_timeout_secs: 60
+attempt_merge_deadline_secs: 60
+validation_deadline_secs: 1200
+merge_registry_grace_period_secs: 60
+validation_retry_min_cooldown_secs: 120
+validation_failure_circuit_breaker_count: 3
+merge_starvation_guard_secs: 60
+branch_freshness_timeout_secs: 60
+merge_watcher_grace_secs: 30
+merge_watcher_poll_secs: 15
+execution_failed_max_retries: 3
+execution_failed_retry_base_secs: 30
+execution_failed_retry_max_secs: 600
+"#;
+    let cfg: ReconciliationConfig =
+        serde_yaml::from_str(yaml_without_new_keys).expect("deserialize without git_isolation keys");
+    assert_eq!(
+        cfg.git_isolation_retry_base_secs, 5,
+        "serde default should apply when key is absent"
+    );
+    assert_eq!(
+        cfg.git_isolation_max_retries, 3,
+        "serde default should apply when key is absent"
+    );
+}
+
+#[test]
+fn test_git_isolation_env_overrides() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_RECONCILIATION_GIT_ISOLATION_RETRY_BASE_SECS" => Some("10".to_string()),
+        "RALPHX_RECONCILIATION_GIT_ISOLATION_MAX_RETRIES" => Some("5".to_string()),
+        _ => None,
+    });
+
+    assert_eq!(cfg.reconciliation.git_isolation_retry_base_secs, 10);
+    assert_eq!(cfg.reconciliation.git_isolation_max_retries, 5);
+}
+
+#[test]
+fn test_validate_git_isolation_max_retries_zero_clamped() {
+    let mut cfg = ReconciliationConfig {
+        git_isolation_max_retries: 0,
+        ..ReconciliationConfig::default()
+    };
+    validate_reconciliation_config(&mut cfg);
+    assert!(
+        cfg.git_isolation_max_retries > 0,
+        "zero git_isolation_max_retries should be clamped to default"
+    );
+}
+
+#[test]
+fn test_validate_git_isolation_retry_base_secs_zero_clamped() {
+    let mut cfg = ReconciliationConfig {
+        git_isolation_retry_base_secs: 0,
+        ..ReconciliationConfig::default()
+    };
+    validate_reconciliation_config(&mut cfg);
+    assert!(
+        cfg.git_isolation_retry_base_secs > 0,
+        "zero git_isolation_retry_base_secs should be clamped to default"
+    );
+}

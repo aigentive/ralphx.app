@@ -1210,3 +1210,136 @@ fn test_retry_strategy() {
         RetryStrategy::AutoRetry
     );
 }
+
+// ── GitIsolation tests ────────────────────────────────────────────────────────
+
+#[test]
+fn git_isolation_error_prefix_constant_is_correct() {
+    assert_eq!(GIT_ISOLATION_ERROR_PREFIX, "Git isolation failed");
+}
+
+#[test]
+fn execution_failure_source_git_isolation_is_transient() {
+    assert!(
+        ExecutionFailureSource::GitIsolation.is_transient(),
+        "GitIsolation should be transient (safe to auto-retry)"
+    );
+}
+
+#[test]
+fn execution_failure_source_all_variants_is_transient_coverage() {
+    // Non-transient variants
+    assert!(!ExecutionFailureSource::ProviderError.is_transient());
+    assert!(!ExecutionFailureSource::WallClockTimeout.is_transient());
+    assert!(!ExecutionFailureSource::Unknown.is_transient());
+    // Transient variants
+    assert!(ExecutionFailureSource::TransientTimeout.is_transient());
+    assert!(ExecutionFailureSource::ParseStall.is_transient());
+    assert!(ExecutionFailureSource::AgentCrash.is_transient());
+    assert!(ExecutionFailureSource::GitIsolation.is_transient());
+}
+
+#[test]
+fn execution_failure_source_git_isolation_serde_round_trip() {
+    let source = ExecutionFailureSource::GitIsolation;
+    let json = serde_json::to_string(&source).expect("serialize");
+    assert_eq!(json, "\"git_isolation\"");
+    let deserialized: ExecutionFailureSource = serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(deserialized, ExecutionFailureSource::GitIsolation);
+}
+
+#[test]
+fn execution_recovery_reason_code_git_isolation_failed_serde_round_trip() {
+    let code = ExecutionRecoveryReasonCode::GitIsolationFailed;
+    let json = serde_json::to_string(&code).expect("serialize");
+    assert_eq!(json, "\"git_isolation_failed\"");
+    let deserialized: ExecutionRecoveryReasonCode =
+        serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(deserialized, ExecutionRecoveryReasonCode::GitIsolationFailed);
+}
+
+#[test]
+fn execution_recovery_metadata_backward_compat_deserializes_without_new_fields() {
+    // Old metadata JSON that does NOT contain git_isolation events — should still parse.
+    let old_json = r#"{
+        "execution_recovery": {
+            "version": 1,
+            "events": [
+                {
+                    "at": "2026-01-01T00:00:00Z",
+                    "kind": "auto_retry_triggered",
+                    "source": "auto",
+                    "reason_code": "timeout",
+                    "message": "retry 1",
+                    "failure_source": "transient_timeout"
+                }
+            ],
+            "last_state": "retrying",
+            "stop_retrying": false
+        }
+    }"#;
+    let recovery =
+        ExecutionRecoveryMetadata::from_json(old_json).expect("parse").expect("some");
+    assert_eq!(recovery.events.len(), 1);
+    assert_eq!(
+        recovery.events[0].failure_source,
+        Some(ExecutionFailureSource::TransientTimeout)
+    );
+}
+
+#[test]
+fn auto_retry_count_for_source_counts_only_matching_source() {
+    let mut recovery = ExecutionRecoveryMetadata::new();
+
+    // Add 2 GitIsolation retries
+    for i in 1..=2u32 {
+        let ev = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::AutoRetryTriggered,
+            ExecutionRecoverySource::Auto,
+            ExecutionRecoveryReasonCode::GitIsolationFailed,
+            format!("git retry {i}"),
+        )
+        .with_failure_source(ExecutionFailureSource::GitIsolation);
+        recovery.append_event(ev);
+    }
+    // Add 1 TransientTimeout retry
+    let timeout_ev = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Auto,
+        ExecutionRecoveryReasonCode::Timeout,
+        "timeout retry",
+    )
+    .with_failure_source(ExecutionFailureSource::TransientTimeout);
+    recovery.append_event(timeout_ev);
+
+    assert_eq!(
+        recovery.auto_retry_count_for_source(ExecutionFailureSource::GitIsolation),
+        2,
+        "should count only GitIsolation retries"
+    );
+    assert_eq!(
+        recovery.auto_retry_count_for_source(ExecutionFailureSource::TransientTimeout),
+        1,
+        "should count only TransientTimeout retries"
+    );
+}
+
+#[test]
+fn auto_retry_count_for_source_ignores_non_auto_retry_events() {
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    // Add a Failed event with GitIsolation source — should NOT be counted
+    let failed_ev = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::Failed,
+        ExecutionRecoverySource::System,
+        ExecutionRecoveryReasonCode::GitIsolationFailed,
+        "failed",
+    )
+    .with_failure_source(ExecutionFailureSource::GitIsolation);
+    recovery.append_event(failed_ev);
+
+    assert_eq!(
+        recovery.auto_retry_count_for_source(ExecutionFailureSource::GitIsolation),
+        0,
+        "Failed events should not be counted as retries"
+    );
+}

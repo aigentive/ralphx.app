@@ -383,6 +383,18 @@ impl ExecutionRecoveryMetadata {
         }
     }
 
+    /// Count `AutoRetryTriggered` events filtered by failure source.
+    /// Used for per-source retry budgets (e.g. GitIsolation has its own cap, separate from timeout retries).
+    pub fn auto_retry_count_for_source(&self, source: ExecutionFailureSource) -> u32 {
+        self.events
+            .iter()
+            .filter(|e| {
+                matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered)
+                    && e.failure_source == Some(source)
+            })
+            .count() as u32
+    }
+
     /// Returns true if the last recorded failure is transient (safe to auto-retry)
     /// Checks only the most recent event — not historical ones — to avoid stale state.
     pub fn last_failure_is_transient(&self) -> bool {
@@ -505,6 +517,11 @@ impl ExecutionRecoveryEvent {
     }
 }
 
+/// Error prefix for git isolation failures.
+/// Use this constant at both the generation site (on_enter_states.rs) and
+/// classification site (task_transition_service.rs) to avoid fragile string matching.
+pub const GIT_ISOLATION_ERROR_PREFIX: &str = "Git isolation failed";
+
 /// Classification of why an execution failure occurred.
 /// Used by the reconciler to decide whether auto-retry is safe.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -520,6 +537,8 @@ pub enum ExecutionFailureSource {
     ProviderError,
     /// Wall-clock (C5) timeout fired — do NOT auto-retry (would loop infinitely)
     WallClockTimeout,
+    /// Transient git isolation failure (stale index.lock, leftover worktree dir, concurrent git op) — safe to auto-retry after cleanup
+    GitIsolation,
     /// Unknown/unclassified failure
     Unknown,
 }
@@ -532,6 +551,7 @@ impl ExecutionFailureSource {
             ExecutionFailureSource::TransientTimeout
                 | ExecutionFailureSource::ParseStall
                 | ExecutionFailureSource::AgentCrash
+                | ExecutionFailureSource::GitIsolation
         )
     }
 }
@@ -586,6 +606,8 @@ pub enum ExecutionRecoveryReasonCode {
     MaxRetriesExceeded,
     /// User explicitly stopped retrying
     UserStopped,
+    /// Git isolation failure (stale index.lock, leftover worktree dir, concurrent git op)
+    GitIsolationFailed,
     /// Unknown/unclassified reason
     Unknown,
 }

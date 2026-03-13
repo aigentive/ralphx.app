@@ -17,7 +17,12 @@ use tauri::{AppHandle, Emitter, Runtime};
 
 use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
-use crate::domain::entities::{InternalStatus, Task, TaskId};
+use crate::domain::entities::{
+    ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+    ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource, InternalStatus,
+    Task, TaskId,
+};
+use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, ExternalEventsRepository,
@@ -1119,7 +1124,7 @@ impl<R: Runtime> TaskTransitionService<R> {
             tracing::error!(error = %e, "on_enter failed");
 
             // If execution was blocked (e.g., git isolation failure), transition task to Failed
-            if matches!(&e, AppError::ExecutionBlocked(_)) {
+            if let AppError::ExecutionBlocked(ref blocked_reason) = e {
                 tracing::warn!(
                     task_id = task_id.as_str(),
                     error = %e,
@@ -1171,6 +1176,32 @@ impl<R: Runtime> TaskTransitionService<R> {
                                         "reason": e.to_string(),
                                     }),
                                 );
+                            }
+                            // Create ExecutionRecoveryMetadata for git isolation failures.
+                            // Written ONLY here (Ok(true) branch) — optimistic lock succeeded,
+                            // task IS now in Failed state. Ok(false) branch skips to prevent
+                            // orphaned metadata on a task that didn't transition.
+                            if let Some(recovery_json) =
+                                create_git_isolation_recovery_metadata_json(
+                                    blocked_reason,
+                                    failed_task.metadata.as_deref(),
+                                )
+                            {
+                                if let Err(meta_err) = self
+                                    .task_repo
+                                    .update_metadata(task_id, Some(recovery_json))
+                                    .await
+                                {
+                                    tracing::error!(
+                                        error = %meta_err,
+                                        "Failed to persist ExecutionRecoveryMetadata after git isolation ExecutionBlocked"
+                                    );
+                                } else {
+                                    tracing::info!(
+                                        task_id = task_id.as_str(),
+                                        "ExecutionRecoveryMetadata persisted for git isolation failure — task eligible for auto-recovery"
+                                    );
+                                }
                             }
                         }
                     }
@@ -1443,6 +1474,44 @@ impl<R: Runtime> crate::application::TaskStopper for TaskTransitionService<R> {
         self.transition_to_stopped_with_context(task_id, from_status, reason)
             .await
             .map(|_| ())
+    }
+}
+
+/// Build `ExecutionRecoveryMetadata` JSON for a git isolation failure.
+///
+/// Returns `Some(json)` if `blocked_reason` starts with `GIT_ISOLATION_ERROR_PREFIX`,
+/// meaning this is a transient git isolation failure eligible for auto-recovery.
+/// Returns `None` for all other `ExecutionBlocked` reasons (no recovery metadata needed).
+///
+/// The returned JSON merges the new `execution_recovery` key into `existing_metadata`,
+/// preserving any other metadata keys already present on the task.
+pub(crate) fn create_git_isolation_recovery_metadata_json(
+    blocked_reason: &str,
+    existing_metadata: Option<&str>,
+) -> Option<String> {
+    if !blocked_reason.starts_with(GIT_ISOLATION_ERROR_PREFIX) {
+        return None;
+    }
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    // last_state defaults to Retrying (required by recover_timeout_failures() eligibility check)
+    // stop_retrying defaults to false
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::Failed,
+        ExecutionRecoverySource::Auto,
+        ExecutionRecoveryReasonCode::GitIsolationFailed,
+        blocked_reason,
+    )
+    .with_failure_source(ExecutionFailureSource::GitIsolation);
+    recovery.append_event(event);
+    match recovery.update_task_metadata(existing_metadata) {
+        Ok(json) => Some(json),
+        Err(e) => {
+            tracing::error!(
+                error = %e,
+                "Failed to serialize ExecutionRecoveryMetadata for git isolation"
+            );
+            None
+        }
     }
 }
 

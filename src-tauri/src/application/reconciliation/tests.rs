@@ -5108,8 +5108,8 @@ fn execution_failed_retry_delay_increases_with_retry_count() {
     // We check base values without jitter: base * 2^count.
     // With default base=30s: retry0 → 30s, retry1 → 60s, retry2 → 120s, ...
     // Since jitter adds 0–25%, the lower bound at retry N+1 is always > base at retry N.
-    let delay0 = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(0).num_seconds();
-    let delay3 = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(3).num_seconds();
+    let delay0 = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(0, None).num_seconds();
+    let delay3 = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(3, None).num_seconds();
     assert!(
         delay3 > delay0,
         "delay at retry 3 ({delay3}s) should exceed delay at retry 0 ({delay0}s)"
@@ -5120,7 +5120,7 @@ fn execution_failed_retry_delay_increases_with_retry_count() {
 fn execution_failed_retry_delay_is_capped_at_max() {
     // Delay at a very high retry count should be <= max_secs + 25% jitter.
     let max_secs = reconciliation_config().execution_failed_retry_max_secs as i64;
-    let delay = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(20).num_seconds();
+    let delay = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(20, None).num_seconds();
     assert!(
         delay <= max_secs + max_secs / 4 + 1,
         "delay at retry 20 ({delay}s) should not far exceed max ({max_secs}s)"
@@ -5168,7 +5168,7 @@ fn execution_next_retry_at_returns_none_without_events() {
         "test".into(),
     );
     assert!(
-        ReconciliationRunner::<tauri::Wry>::execution_next_retry_at(&task).is_none(),
+        ReconciliationRunner::<tauri::Wry>::execution_next_retry_at(&task, None).is_none(),
         "should return None when no AutoRetryTriggered events"
     );
 }
@@ -5195,7 +5195,7 @@ fn execution_next_retry_at_returns_future_timestamp() {
     );
     task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
 
-    let next_at = ReconciliationRunner::<tauri::Wry>::execution_next_retry_at(&task);
+    let next_at = ReconciliationRunner::<tauri::Wry>::execution_next_retry_at(&task, None);
     assert!(next_at.is_some(), "should return Some when AutoRetryTriggered event exists");
     assert!(
         next_at.unwrap() > chrono::Utc::now(),
@@ -6652,5 +6652,597 @@ fn is_mode_switch_returns_false_with_other_metadata() {
     assert!(
         !ReconciliationRunner::<tauri::Wry>::is_mode_switch(&task),
         "is_mode_switch should return false when mode_switch key is absent"
+    );
+}
+
+// ── GitIsolation metadata helpers ─────────────────────────────────────────────
+
+#[test]
+fn execution_failed_auto_retry_count_for_source_counts_git_isolation_only() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource,
+    };
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+
+    // 2 GitIsolation retries
+    for i in 1..=2u32 {
+        recovery.append_event(
+            ExecutionRecoveryEvent::new(
+                ExecutionRecoveryEventKind::AutoRetryTriggered,
+                ExecutionRecoverySource::Auto,
+                ExecutionRecoveryReasonCode::GitIsolationFailed,
+                format!("git retry {i}"),
+            )
+            .with_failure_source(ExecutionFailureSource::GitIsolation),
+        );
+    }
+    // 1 TransientTimeout retry
+    recovery.append_event(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::AutoRetryTriggered,
+            ExecutionRecoverySource::Auto,
+            ExecutionRecoveryReasonCode::Timeout,
+            "timeout retry",
+        )
+        .with_failure_source(ExecutionFailureSource::TransientTimeout),
+    );
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    task.metadata = Some(
+        recovery
+            .update_task_metadata(None)
+            .expect("serialize recovery"),
+    );
+
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::execution_failed_auto_retry_count_for_source(
+            &task,
+            ExecutionFailureSource::GitIsolation
+        ),
+        2,
+        "should count only GitIsolation retries"
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::execution_failed_auto_retry_count_for_source(
+            &task,
+            ExecutionFailureSource::TransientTimeout
+        ),
+        1,
+        "should count only TransientTimeout retries"
+    );
+}
+
+#[test]
+fn execution_failed_auto_retry_count_for_source_returns_zero_without_metadata() {
+    use crate::domain::entities::ExecutionFailureSource;
+
+    let task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    assert_eq!(
+        ReconciliationRunner::<tauri::Wry>::execution_failed_auto_retry_count_for_source(
+            &task,
+            ExecutionFailureSource::GitIsolation
+        ),
+        0
+    );
+}
+
+#[test]
+fn execution_next_retry_at_git_isolation_uses_shorter_delay() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState,
+    };
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Auto,
+        ExecutionRecoveryReasonCode::GitIsolationFailed,
+        "git isolation retry",
+    )
+    .with_failure_source(ExecutionFailureSource::GitIsolation);
+    recovery.append_event_with_state(event, ExecutionRecoveryState::Retrying);
+
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId("proj".into()),
+        "test".into(),
+    );
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+
+    let git_next = ReconciliationRunner::<tauri::Wry>::execution_next_retry_at(
+        &task,
+        Some(ExecutionFailureSource::GitIsolation),
+    );
+    let timeout_next = ReconciliationRunner::<tauri::Wry>::execution_next_retry_at(
+        &task,
+        Some(ExecutionFailureSource::TransientTimeout),
+    );
+
+    let git_delay = git_next.expect("git_isolation next_retry_at should be Some");
+    let timeout_delay = timeout_next.expect("timeout next_retry_at should be Some");
+
+    // GitIsolation base=5s should produce earlier retry than TransientTimeout base=30s
+    assert!(
+        git_delay < timeout_delay,
+        "GitIsolation next_retry_at ({git_delay}) should be earlier than TransientTimeout ({timeout_delay})"
+    );
+}
+
+#[test]
+fn execution_failed_retry_delay_git_isolation_shorter_than_default() {
+    use crate::domain::entities::ExecutionFailureSource;
+
+    let git_delay = ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(
+        0,
+        Some(ExecutionFailureSource::GitIsolation),
+    )
+    .num_seconds();
+    let default_delay =
+        ReconciliationRunner::<tauri::Wry>::execution_failed_retry_delay(0, None).num_seconds();
+
+    assert!(
+        git_delay < default_delay,
+        "GitIsolation retry delay ({git_delay}s) should be shorter than default ({default_delay}s)"
+    );
+}
+
+#[test]
+fn execution_recovery_reason_code_git_isolation_failed_serde_round_trip() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryReasonCode,
+        ExecutionRecoverySource,
+    };
+    // Test GitIsolationFailed reason_code serde round-trip via an event (tests the exhaustive
+    // failure_source_to_reason_code match arm indirectly through record_execution_auto_retry_event).
+    let event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::AutoRetryTriggered,
+        ExecutionRecoverySource::Auto,
+        ExecutionRecoveryReasonCode::GitIsolationFailed,
+        "test",
+    );
+    let json = serde_json::to_string(&event).expect("serialize");
+    assert!(
+        json.contains("\"git_isolation_failed\""),
+        "GitIsolationFailed should serialize to 'git_isolation_failed'"
+    );
+    let deserialized: crate::domain::entities::ExecutionRecoveryEvent =
+        serde_json::from_str(&json).expect("deserialize");
+    assert_eq!(
+        deserialized.reason_code,
+        ExecutionRecoveryReasonCode::GitIsolationFailed
+    );
+}
+
+// ── Wave 4: Git Isolation Reconciler + Startup Recovery Tests ─────────────────
+
+/// Helper: build an ExecutionRecoveryMetadata seeded with a GitIsolation Failed event.
+fn make_git_isolation_recovery() -> ExecutionRecoveryMetadata {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState,
+    };
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    recovery.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::Failed,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::GitIsolationFailed,
+            "Git isolation failed: index.lock exists",
+        )
+        .with_failure_source(ExecutionFailureSource::GitIsolation),
+        ExecutionRecoveryState::Retrying,
+    );
+    recovery
+}
+
+/// Integration test: GitIsolation recovery metadata → reconciler → task transitions to Ready.
+/// No real filesystem ops needed — project dir is /tmp (no worktree to clean up).
+#[tokio::test]
+async fn reconcile_failed_git_isolation_task_transitions_to_ready() {
+    use crate::domain::entities::Project;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let recovery = make_git_isolation_recovery();
+    let task = make_task_with_recovery(&project.id, recovery);
+    // No worktree_path — cleanup_stale_worktree_artifacts is a no-op (dir doesn't exist)
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler
+        .reconcile_failed_execution_task(&task, InternalStatus::Failed)
+        .await;
+
+    assert!(result, "git-isolation task should be retried");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "git-isolation task must transition Failed → Ready"
+    );
+}
+
+/// Integration test: GitIsolation cleanup — stale worktree dir removed before retry.
+/// Uses a real tempdir to verify filesystem cleanup.
+#[tokio::test]
+async fn reconcile_failed_git_isolation_removes_stale_worktree_dir() {
+    let temp = tempfile::tempdir().unwrap();
+    let repo_path = temp.path().join("repo");
+    let worktree_path = temp.path().join("worktree");
+    std::fs::create_dir_all(&repo_path).unwrap();
+    std::fs::create_dir_all(&worktree_path).unwrap();
+
+    // Set up a minimal git repo
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::fs::write(repo_path.join("init.txt"), "init").unwrap();
+    std::process::Command::new("git")
+        .args(["add", ".", "-A"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+
+    use crate::domain::entities::Project;
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let mut project = Project::new("Git Isolation Project".into(), repo_path.to_str().unwrap().to_string());
+    project.worktree_parent_directory = Some(temp.path().to_str().unwrap().to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let recovery = make_git_isolation_recovery();
+    let mut task = make_task_with_recovery(&project.id, recovery);
+    task.worktree_path = Some(worktree_path.to_str().unwrap().to_string());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    assert!(worktree_path.exists(), "pre-condition: worktree dir exists");
+
+    let result = reconciler
+        .reconcile_failed_execution_task(&task, InternalStatus::Failed)
+        .await;
+
+    assert!(result, "git-isolation task with real worktree dir should be retried");
+
+    // Verify stale worktree directory was removed
+    assert!(
+        !worktree_path.exists(),
+        "cleanup_stale_worktree_artifacts must remove the stale worktree dir"
+    );
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(updated.internal_status, InternalStatus::Ready);
+    // task_branch and worktree_path in DB should NOT be cleared (git-isolation skips steps 1-3)
+    assert_eq!(
+        updated.worktree_path,
+        task.worktree_path,
+        "git-isolation recovery must NOT clear worktree_path from DB"
+    );
+}
+
+/// Max-retries test: git-isolation exhaustion returns false WITHOUT setting stop_retrying.
+/// Subsequent timeout retry budget must remain independent.
+#[tokio::test]
+async fn reconcile_failed_git_isolation_exhaustion_skips_without_stop_retrying() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let git_max = crate::infrastructure::agents::claude::reconciliation_config()
+        .git_isolation_max_retries as u32;
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    // Seed initial failure
+    recovery.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::Failed,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::GitIsolationFailed,
+            "Git isolation failed",
+        )
+        .with_failure_source(ExecutionFailureSource::GitIsolation),
+        ExecutionRecoveryState::Retrying,
+    );
+    // Exhaust git isolation budget
+    for i in 0..git_max {
+        recovery.append_event(
+            ExecutionRecoveryEvent::new(
+                ExecutionRecoveryEventKind::AutoRetryTriggered,
+                ExecutionRecoverySource::Auto,
+                ExecutionRecoveryReasonCode::GitIsolationFailed,
+                format!("Git retry {}", i + 1),
+            )
+            .with_attempt(i + 1)
+            .with_failure_source(ExecutionFailureSource::GitIsolation),
+        );
+    }
+    recovery.last_state = ExecutionRecoveryState::Retrying;
+
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let result = reconciler
+        .reconcile_failed_execution_task(&task, InternalStatus::Failed)
+        .await;
+
+    assert!(!result, "git-isolation budget exhausted: should return false");
+
+    // CRITICAL: stop_retrying must NOT be set — timeout retries have their own budget
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let updated_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery should exist");
+    assert!(
+        !updated_recovery.stop_retrying,
+        "git-isolation exhaustion must NOT set stop_retrying (independent retry budgets)"
+    );
+}
+
+/// Cross-contamination test: task with both timeout and git-isolation events — counters independent.
+#[tokio::test]
+async fn reconcile_failed_cross_contamination_independent_retry_budgets() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+        ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState,
+    };
+
+    // Build a task with 1 timeout retry + git_isolation_max_retries git isolation retries.
+    // Even though global count = 1 + git_max, the git budget check should fire first.
+    let git_max = crate::infrastructure::agents::claude::reconciliation_config()
+        .git_isolation_max_retries as u32;
+
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    // One timeout retry
+    recovery.append_event(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::AutoRetryTriggered,
+            ExecutionRecoverySource::Auto,
+            ExecutionRecoveryReasonCode::Timeout,
+            "timeout retry 1",
+        )
+        .with_attempt(1)
+        .with_failure_source(ExecutionFailureSource::TransientTimeout),
+    );
+    // Exhaust git-isolation budget
+    for i in 0..git_max {
+        recovery.append_event(
+            ExecutionRecoveryEvent::new(
+                ExecutionRecoveryEventKind::AutoRetryTriggered,
+                ExecutionRecoverySource::Auto,
+                ExecutionRecoveryReasonCode::GitIsolationFailed,
+                format!("git retry {}", i + 1),
+            )
+            .with_attempt(i + 1)
+            .with_failure_source(ExecutionFailureSource::GitIsolation),
+        );
+    }
+    // Last event is a git-isolation failure so the reconciler routes to git branch
+    recovery.append_event_with_state(
+        ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::Failed,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::GitIsolationFailed,
+            "git isolation failed again",
+        )
+        .with_failure_source(ExecutionFailureSource::GitIsolation),
+        ExecutionRecoveryState::Retrying,
+    );
+
+    // git-isolation count = git_max (exhausted), timeout count = 1 (not exhausted)
+    // Use a fresh task to test the static helper
+    let project_id = crate::domain::entities::ProjectId::from_string("cross-proj".into());
+    let mut task = Task::new(project_id.clone(), "Cross Task".into());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(recovery.update_task_metadata(None).expect("serialize"));
+
+    let git_count = ReconciliationRunner::<tauri::Wry>::execution_failed_auto_retry_count_for_source(
+        &task,
+        ExecutionFailureSource::GitIsolation,
+    );
+    let timeout_count = ReconciliationRunner::<tauri::Wry>::execution_failed_auto_retry_count_for_source(
+        &task,
+        ExecutionFailureSource::TransientTimeout,
+    );
+    let total_count = ReconciliationRunner::<tauri::Wry>::execution_failed_auto_retry_count(&task);
+
+    assert_eq!(
+        git_count, git_max,
+        "git-isolation count must equal git_max (exhausted)"
+    );
+    assert_eq!(timeout_count, 1, "timeout count must be 1 (independent budget)");
+    assert_eq!(
+        total_count,
+        git_max + 1,
+        "total auto-retry count = git_max + 1 timeout retries"
+    );
+}
+
+/// Startup recovery: recover_timeout_failures() picks up a git-isolation Failed task.
+#[tokio::test]
+async fn recover_timeout_failures_picks_up_git_isolation_task() {
+    use crate::domain::entities::Project;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let mut project = Project::new("Startup Recovery Project".into(), "/tmp".into());
+    project.worktree_parent_directory = Some("/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let recovery = make_git_isolation_recovery();
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler.recover_timeout_failures().await;
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Ready,
+        "startup recovery must transition git-isolation Failed task to Ready"
+    );
+
+    // Verify the startup retry event recorded GitIsolation source
+    let updated_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery should exist");
+    let has_startup_git_isolation_event = updated_recovery.events.iter().any(|e| {
+        use crate::domain::entities::{ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoverySource};
+        matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered)
+            && matches!(e.source, ExecutionRecoverySource::Startup)
+            && matches!(e.failure_source, Some(ExecutionFailureSource::GitIsolation))
+    });
+    assert!(
+        has_startup_git_isolation_event,
+        "startup recovery must record AutoRetryTriggered with Startup source and GitIsolation failure source"
+    );
+}
+
+/// record_execution_startup_retry_event: records correct source for git isolation.
+#[tokio::test]
+async fn record_execution_startup_retry_event_records_git_isolation_source() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoveryReasonCode,
+        ExecutionRecoverySource, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    let recovery = make_git_isolation_recovery();
+    let task = make_task_with_recovery(&project.id, recovery);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler
+        .record_execution_startup_retry_event(
+            &task,
+            1,
+            ExecutionFailureSource::GitIsolation,
+            ExecutionRecoveryReasonCode::GitIsolationFailed,
+        )
+        .await
+        .expect("should succeed");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let updated_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery should exist");
+
+    let startup_event = updated_recovery.events.iter().find(|e| {
+        matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered)
+            && matches!(e.source, ExecutionRecoverySource::Startup)
+    });
+    assert!(startup_event.is_some(), "Startup AutoRetryTriggered event must exist");
+    let event = startup_event.unwrap();
+    assert_eq!(
+        event.failure_source,
+        Some(ExecutionFailureSource::GitIsolation),
+        "startup retry event must record GitIsolation as failure_source"
+    );
+    assert_eq!(
+        event.reason_code,
+        ExecutionRecoveryReasonCode::GitIsolationFailed,
+        "startup retry event must record GitIsolationFailed as reason_code"
+    );
+}
+
+/// record_execution_startup_retry_event: records correct source for timeout (backward compat).
+#[tokio::test]
+async fn record_execution_startup_retry_event_records_timeout_source_backward_compat() {
+    use crate::domain::entities::{
+        ExecutionFailureSource, ExecutionRecoveryEventKind, ExecutionRecoveryReasonCode,
+        ExecutionRecoverySource, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Legacy task — no prior recovery metadata
+    let mut task = Task::new(project.id.clone(), "Legacy timeout task".into());
+    task.internal_status = InternalStatus::Failed;
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    reconciler
+        .record_execution_startup_retry_event(
+            &task,
+            1,
+            ExecutionFailureSource::TransientTimeout,
+            ExecutionRecoveryReasonCode::Timeout,
+        )
+        .await
+        .expect("should succeed");
+
+    let updated = app_state.task_repo.get_by_id(&task.id).await.unwrap().unwrap();
+    let updated_recovery =
+        ExecutionRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
+            .expect("parse metadata")
+            .expect("execution_recovery should exist");
+
+    let startup_event = updated_recovery.events.iter().find(|e| {
+        matches!(e.kind, ExecutionRecoveryEventKind::AutoRetryTriggered)
+            && matches!(e.source, ExecutionRecoverySource::Startup)
+    });
+    assert!(startup_event.is_some(), "Startup AutoRetryTriggered event must exist");
+    let event = startup_event.unwrap();
+    assert_eq!(
+        event.failure_source,
+        Some(ExecutionFailureSource::TransientTimeout),
+        "timeout startup retry must record TransientTimeout"
+    );
+    assert_eq!(
+        event.reason_code,
+        ExecutionRecoveryReasonCode::Timeout,
+        "timeout startup retry must record Timeout reason_code"
     );
 }

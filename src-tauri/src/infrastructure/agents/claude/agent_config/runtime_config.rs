@@ -233,6 +233,14 @@ pub struct ReconciliationConfig {
     /// Cooldown (seconds) before auto-resetting a freshness-blocked task. Default: 600.
     #[serde(default = "default_freshness_auto_reset_cooldown_secs")]
     pub freshness_auto_reset_cooldown_secs: u64,
+    /// Initial backoff before retrying a git-isolation Failed task (seconds). Default: 5.
+    /// Shorter than `execution_failed_retry_base_secs` because git transient issues resolve quickly.
+    #[serde(default = "default_git_isolation_retry_base_secs")]
+    pub git_isolation_retry_base_secs: u64,
+    /// Max auto-retry attempts for Failed tasks with git isolation failures. Default: 3.
+    /// Independent budget from `execution_failed_max_retries` (timeout/crash retries).
+    #[serde(default = "default_git_isolation_max_retries")]
+    pub git_isolation_max_retries: u32,
 }
 
 fn default_merge_circuit_breaker_threshold() -> u64 {
@@ -258,6 +266,12 @@ fn default_freshness_backoff_max_secs() -> u64 {
 }
 fn default_freshness_auto_reset_cooldown_secs() -> u64 {
     600
+}
+fn default_git_isolation_retry_base_secs() -> u64 {
+    5
+}
+fn default_git_isolation_max_retries() -> u32 {
+    3
 }
 
 impl Default for ReconciliationConfig {
@@ -301,6 +315,8 @@ impl Default for ReconciliationConfig {
             freshness_backoff_base_secs: 60,
             freshness_backoff_max_secs: 600,
             freshness_auto_reset_cooldown_secs: 600,
+            git_isolation_retry_base_secs: 5,
+            git_isolation_max_retries: 3,
         }
     }
 }
@@ -510,6 +526,12 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
             cfg.reconciliation.freshness_max_conflict_retries = n;
         }
     }
+    env_u64!(cfg.reconciliation.git_isolation_retry_base_secs, "RALPHX_RECONCILIATION_GIT_ISOLATION_RETRY_BASE_SECS");
+    if let Some(v) = lookup("RALPHX_RECONCILIATION_GIT_ISOLATION_MAX_RETRIES") {
+        if let Ok(n) = v.parse::<u32>() {
+            cfg.reconciliation.git_isolation_max_retries = n;
+        }
+    }
 
     validate_reconciliation_config(&mut cfg.reconciliation);
 
@@ -685,6 +707,19 @@ pub fn validate_reconciliation_config(cfg: &mut ReconciliationConfig) {
         );
         cfg.execution_failed_retry_base_secs = DEFAULT_BASE;
         cfg.execution_failed_retry_max_secs = DEFAULT_MAX;
+    }
+
+    if cfg.git_isolation_max_retries == 0 {
+        warn!(
+            "git_isolation_max_retries must be > 0, got 0; clamping to {}",
+            DEFAULT_MAX_RETRIES
+        );
+        cfg.git_isolation_max_retries = DEFAULT_MAX_RETRIES as u32;
+    }
+
+    if cfg.git_isolation_retry_base_secs == 0 {
+        warn!("git_isolation_retry_base_secs must be > 0, got 0; clamping to 5");
+        cfg.git_isolation_retry_base_secs = 5;
     }
 }
 

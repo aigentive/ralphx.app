@@ -127,19 +127,38 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     continue;
                 }
 
-                // Determine current attempt count from whichever format is active.
-                // Legacy uses the flat counter; new uses event log.
-                let attempt_count = if is_new_retrying {
-                    Self::execution_failed_auto_retry_count(&task)
+                // Detect failure source from last recovery event (for per-source routing).
+                let startup_failure_source = new_recovery.as_ref().and_then(|r| {
+                    r.events.last().and_then(|e| e.failure_source)
+                });
+                let is_git_isolation_startup =
+                    matches!(startup_failure_source, Some(ExecutionFailureSource::GitIsolation));
+
+                // Determine current attempt count and max retries per-source.
+                let (attempt_count, task_max_retries) = if is_git_isolation_startup {
+                    let git_count = Self::execution_failed_auto_retry_count_for_source(
+                        &task,
+                        ExecutionFailureSource::GitIsolation,
+                    );
+                    let git_max =
+                        crate::infrastructure::agents::claude::reconciliation_config()
+                            .git_isolation_max_retries as u32;
+                    (git_count, git_max)
+                } else if is_new_retrying {
+                    let count = Self::execution_failed_auto_retry_count(&task);
+                    (count, max_retries)
                 } else {
-                    Self::auto_retry_count_for_status(&task, InternalStatus::Executing)
+                    let count =
+                        Self::auto_retry_count_for_status(&task, InternalStatus::Executing);
+                    (count, max_retries)
                 };
 
-                if attempt_count >= max_retries {
+                if attempt_count >= task_max_retries {
                     tracing::debug!(
                         task_id = task.id.as_str(),
                         attempt_count = attempt_count,
-                        max_retries = max_retries,
+                        task_max_retries = task_max_retries,
+                        is_git_isolation = is_git_isolation_startup,
                         "Startup recovery: skipping task — max retries reached"
                     );
                     continue;
@@ -149,14 +168,73 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     task_id = task.id.as_str(),
                     attempt_count = attempt_count,
                     is_legacy = is_legacy_timeout,
-                    "Startup recovery: re-queuing timeout-failed task"
+                    is_git_isolation = is_git_isolation_startup,
+                    "Startup recovery: re-queuing failed task"
                 );
+
+                // For git isolation tasks: run cleanup BEFORE transitioning to Ready.
+                // This mirrors the reconciler's cleanup path and ensures stale worktree
+                // artifacts are removed before on_enter_executing runs again.
+                if is_git_isolation_startup {
+                    // Need project data for cleanup
+                    match self.project_repo.get_by_id(&task.project_id).await {
+                        Ok(Some(project_data)) => {
+                            let repo_path =
+                                std::path::Path::new(&project_data.working_directory);
+                            if let Err(e) = GitService::cleanup_stale_worktree_artifacts(
+                                repo_path,
+                                task.worktree_path.as_deref().map(std::path::Path::new),
+                                &project_data,
+                                task.id.as_str(),
+                            )
+                            .await
+                            {
+                                warn!(
+                                    task_id = task.id.as_str(),
+                                    error = %e,
+                                    "Startup recovery: failed to cleanup stale worktree artifacts — continuing"
+                                );
+                            }
+                        }
+                        Ok(None) => {
+                            warn!(
+                                task_id = task.id.as_str(),
+                                "Startup recovery: project not found for git-isolation cleanup — continuing"
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                task_id = task.id.as_str(),
+                                error = %e,
+                                "Startup recovery: failed to get project for git-isolation cleanup — continuing"
+                            );
+                        }
+                    }
+                }
+
+                // Determine failure_source and reason_code for the startup retry event.
+                let (startup_src, startup_reason) = if is_git_isolation_startup {
+                    (
+                        ExecutionFailureSource::GitIsolation,
+                        ExecutionRecoveryReasonCode::GitIsolationFailed,
+                    )
+                } else {
+                    (
+                        ExecutionFailureSource::TransientTimeout,
+                        ExecutionRecoveryReasonCode::Timeout,
+                    )
+                };
 
                 // Record structured AutoRetryTriggered event with Startup source (GAP M5 sentinel).
                 // For legacy tasks, this also creates the initial ExecutionRecoveryMetadata
                 // with a Failed event, migrating them to the new format (GAP M2).
                 if let Err(e) = self
-                    .record_execution_startup_retry_event(&task, attempt_count + 1)
+                    .record_execution_startup_retry_event(
+                        &task,
+                        attempt_count + 1,
+                        startup_src,
+                        startup_reason,
+                    )
                     .await
                 {
                     warn!(
@@ -652,28 +730,62 @@ impl<R: Runtime> ReconciliationRunner<R> {
             return false;
         }
 
-        // Check max retries — record permanent failure if budget exhausted
-        let retry_count = Self::execution_failed_auto_retry_count(&task);
-        let max_retries = reconciliation_config().execution_failed_max_retries as u32;
-        if retry_count >= max_retries {
-            warn!(
-                task_id = task.id.as_str(),
-                retry_count = retry_count,
-                max_retries = max_retries,
-                "Failed execution max retries exceeded — marking permanent failure"
+        // Extract failure source from last recovery event — used for per-source retry budgets
+        // and backoff calculation. Must be extracted BEFORE max-retries check.
+        let last_failure_source = recovery.events.last().and_then(|e| e.failure_source);
+        let is_git_isolation = matches!(last_failure_source, Some(ExecutionFailureSource::GitIsolation));
+
+        // Compute retry_count and max_retries for use in activity messages below.
+        // For git isolation, count only git-isolation events; for others, use global count.
+        let (retry_count, max_retries) = if is_git_isolation {
+            let count = Self::execution_failed_auto_retry_count_for_source(
+                &task,
+                ExecutionFailureSource::GitIsolation,
             );
-            if let Err(e) = self.set_execution_stop_retrying(&task).await {
+            let max = reconciliation_config().git_isolation_max_retries as u32;
+            (count, max)
+        } else {
+            let count = Self::execution_failed_auto_retry_count(&task);
+            let max = reconciliation_config().execution_failed_max_retries as u32;
+            (count, max)
+        };
+
+        // Per-source max-retries check for GitIsolation (runs BEFORE global check).
+        // GitIsolation uses an independent retry budget — exhaustion does NOT set stop_retrying,
+        // preserving the separate budget for timeout/crash failures.
+        if is_git_isolation {
+            // retry_count / max_retries already scoped to git-isolation budget (computed above)
+            if retry_count >= max_retries {
+                tracing::debug!(
+                    task_id = task.id.as_str(),
+                    git_isolation_count = retry_count,
+                    git_isolation_max = max_retries,
+                    "Skipping failed execution reconciliation: git-isolation retry budget exhausted (stop_retrying NOT set)"
+                );
+                return false;
+            }
+        } else {
+            // Check global max retries — record permanent failure if budget exhausted
+            if retry_count >= max_retries {
                 warn!(
                     task_id = task.id.as_str(),
-                    error = %e,
-                    "Failed to set stop_retrying flag after max retries"
+                    retry_count = retry_count,
+                    max_retries = max_retries,
+                    "Failed execution max retries exceeded — marking permanent failure"
                 );
+                if let Err(e) = self.set_execution_stop_retrying(&task).await {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        error = %e,
+                        "Failed to set stop_retrying flag after max retries"
+                    );
+                }
+                return false;
             }
-            return false;
         }
 
         // GAPs M6, M8: Check backoff elapsed — computed dynamically from last retry event
-        if let Some(next_retry_at) = Self::execution_next_retry_at(&task) {
+        if let Some(next_retry_at) = Self::execution_next_retry_at(&task, last_failure_source) {
             if chrono::Utc::now() < next_retry_at {
                 tracing::debug!(
                     task_id = task.id.as_str(),
@@ -714,48 +826,71 @@ impl<R: Runtime> ReconciliationRunner<R> {
         };
         let repo_path = std::path::Path::new(&project_data.working_directory);
 
-        // (1) Delete worktree FIRST — must happen before branch deletion (GAP H8)
-        //     git refuses to delete a branch checked out in a worktree.
-        if let Some(worktree_path_str) = task.worktree_path.as_deref() {
-            let worktree_path = std::path::Path::new(worktree_path_str);
-            if worktree_path.exists() {
-                if let Err(e) = GitService::delete_worktree(repo_path, worktree_path).await {
-                    warn!(
-                        task_id = task.id.as_str(),
-                        worktree = worktree_path_str,
-                        error = %e,
-                        "Failed to delete worktree during execution recovery — continuing"
-                    );
-                }
-            }
-        }
-
-        // (2) Delete branch — log warn and continue if it fails (GAP M9)
-        //     on_enter_executing() handles branch_exists=true as fallback
-        if let Some(branch) = task.task_branch.as_deref() {
-            if let Err(e) = GitService::delete_branch(repo_path, branch, true).await {
+        if is_git_isolation {
+            // GitIsolation cleanup: remove stale artifacts (index.lock, worktree dir) without
+            // deleting the branch or clearing DB fields. The branch may not exist yet
+            // (ExecutionBlocked fires before on_enter_executing creates it), and on_enter_executing
+            // handles branch creation/checkout fresh on retry.
+            if let Err(e) = GitService::cleanup_stale_worktree_artifacts(
+                repo_path,
+                task.worktree_path.as_deref().map(std::path::Path::new),
+                &project_data,
+                task.id.as_str(),
+            )
+            .await
+            {
                 warn!(
                     task_id = task.id.as_str(),
-                    branch = branch,
                     error = %e,
-                    "Failed to delete task branch during execution recovery — on_enter_executing handles branch_exists (M9)"
+                    "Failed to cleanup stale worktree artifacts during git-isolation recovery — continuing"
                 );
-                // Non-fatal: on_enter_executing will check out existing branch as fallback
             }
-        }
+        } else {
+            // Standard cleanup for timeout/crash failures:
 
-        // (3) Clear task_branch + worktree_path in DB so on_enter_executing gets a fresh start
-        let mut updated_task = task.clone();
-        updated_task.task_branch = None;
-        updated_task.worktree_path = None;
-        updated_task.touch();
-        if let Err(e) = self.task_repo.update(&updated_task).await {
-            warn!(
-                task_id = task.id.as_str(),
-                error = %e,
-                "Failed to clear task_branch/worktree_path in DB during execution recovery"
-            );
-            // Continue — transition will still work, on_enter_executing recomputes branch name
+            // (1) Delete worktree FIRST — must happen before branch deletion (GAP H8)
+            //     git refuses to delete a branch checked out in a worktree.
+            if let Some(worktree_path_str) = task.worktree_path.as_deref() {
+                let worktree_path = std::path::Path::new(worktree_path_str);
+                if worktree_path.exists() {
+                    if let Err(e) = GitService::delete_worktree(repo_path, worktree_path).await {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            worktree = worktree_path_str,
+                            error = %e,
+                            "Failed to delete worktree during execution recovery — continuing"
+                        );
+                    }
+                }
+            }
+
+            // (2) Delete branch — log warn and continue if it fails (GAP M9)
+            //     on_enter_executing() handles branch_exists=true as fallback
+            if let Some(branch) = task.task_branch.as_deref() {
+                if let Err(e) = GitService::delete_branch(repo_path, branch, true).await {
+                    warn!(
+                        task_id = task.id.as_str(),
+                        branch = branch,
+                        error = %e,
+                        "Failed to delete task branch during execution recovery — on_enter_executing handles branch_exists (M9)"
+                    );
+                    // Non-fatal: on_enter_executing will check out existing branch as fallback
+                }
+            }
+
+            // (3) Clear task_branch + worktree_path in DB so on_enter_executing gets a fresh start
+            let mut updated_task = task.clone();
+            updated_task.task_branch = None;
+            updated_task.worktree_path = None;
+            updated_task.touch();
+            if let Err(e) = self.task_repo.update(&updated_task).await {
+                warn!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to clear task_branch/worktree_path in DB during execution recovery"
+                );
+                // Continue — transition will still work, on_enter_executing recomputes branch name
+            }
         }
 
         // (4) GAP B7: Clear stale flat metadata (is_timeout, failure_error) to prevent

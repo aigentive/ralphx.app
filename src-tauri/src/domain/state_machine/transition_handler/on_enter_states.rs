@@ -17,6 +17,7 @@ use super::merge_helpers::{
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::git_service::git_cmd::ENOENT_MARKER;
 use crate::application::{ChatServiceError, GitService};
+use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::entities::{
     MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
     MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, ProjectId, TaskCategory,
@@ -400,7 +401,7 @@ impl<'a> super::TransitionHandler<'a> {
                                     Ok(_) => Ok(Some((branch.clone(), Some(worktree_path)))),
                                     Err(e) => {
                                         return Err(AppError::ExecutionBlocked(
-                                            format!("Git isolation failed: could not create worktree at '{}': {}", worktree_path, e)
+                                            format!("{}: could not create worktree at '{}': {}", GIT_ISOLATION_ERROR_PREFIX, worktree_path, e)
                                         ));
                                     }
                                 }
@@ -463,7 +464,8 @@ impl<'a> super::TransitionHandler<'a> {
                                         }
                                         Err(e) => {
                                             return Err(AppError::ExecutionBlocked(format!(
-                                                "Git isolation failed: could not re-create missing worktree for task with existing branch: {}",
+                                                "{}: could not re-create missing worktree for task with existing branch: {}",
+                                                GIT_ISOLATION_ERROR_PREFIX,
                                                 e
                                             )));
                                         }
