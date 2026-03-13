@@ -16,6 +16,7 @@ use tracing::{debug, warn};
 
 use crate::domain::services::github_service::{GithubServiceTrait, PrStatus};
 use crate::error::AppError;
+use crate::utils::secret_redactor::redact;
 use crate::AppResult;
 
 const SUBPROCESS_TIMEOUT: Duration = Duration::from_secs(30);
@@ -185,8 +186,9 @@ impl Default for GhCliGithubService {
 }
 
 /// Sanitize a single stderr line:
-/// 1. Filter lines containing secret keywords (case-insensitive)
+/// 1. Filter lines containing secret keywords (case-insensitive) — full-line suppression
 /// 2. Scrub token-embedded URLs: `https://<token>@github.com` → `https://***@github.com`
+/// 3. Apply `redact()` as a second pass for any remaining regex-pattern secrets
 pub(crate) fn sanitize_stderr_line(line: &str) -> String {
     let lower = line.to_lowercase();
     for keyword in SECRET_KEYWORDS {
@@ -194,7 +196,8 @@ pub(crate) fn sanitize_stderr_line(line: &str) -> String {
             return "[REDACTED: potential secret in stderr]".to_string();
         }
     }
-    scrub_token_urls(line)
+    let url_scrubbed = scrub_token_urls(line);
+    redact(&url_scrubbed)
 }
 
 /// Replace `https://<anything>@github.com` with `https://***@github.com`

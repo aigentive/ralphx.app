@@ -10,6 +10,7 @@
  * The Tauri backend emits a Tauri event that triggers the PermissionDialog
  * in the frontend, allowing the user to approve or deny the tool call.
  */
+import { safeError } from "./redact.js";
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
 /**
  * MCP tool definition for permission handling
@@ -65,7 +66,7 @@ function normalizePermissionArgs(args) {
 export async function handlePermissionRequest(args) {
     const { tool_name, tool_input, context } = normalizePermissionArgs(args);
     if (!tool_name) {
-        console.error("[RalphX MCP] Permission request missing tool name", args);
+        safeError("[RalphX MCP] Permission request missing tool name", args);
         return {
             content: [
                 {
@@ -78,7 +79,7 @@ export async function handlePermissionRequest(args) {
             ],
         };
     }
-    console.error(`[RalphX MCP] Permission request for tool: ${tool_name}`);
+    safeError(`[RalphX MCP] Permission request for tool: ${tool_name}`);
     // 1. Register permission request with Tauri backend
     let request_id;
     try {
@@ -98,10 +99,10 @@ export async function handlePermissionRequest(args) {
         }
         const result = (await registerResponse.json());
         request_id = result.request_id;
-        console.error(`[RalphX MCP] Permission request registered: ${request_id}`);
+        safeError(`[RalphX MCP] Permission request registered: ${request_id}`);
     }
     catch (error) {
-        console.error(`[RalphX MCP] Failed to register permission request:`, error);
+        safeError(`[RalphX MCP] Failed to register permission request:`, error);
         return {
             content: [
                 {
@@ -126,7 +127,7 @@ export async function handlePermissionRequest(args) {
         if (!decisionResponse.ok) {
             if (decisionResponse.status === 408) {
                 // Timeout - treat as deny
-                console.error(`[RalphX MCP] Permission request ${request_id} timed out`);
+                safeError(`[RalphX MCP] Permission request ${request_id} timed out`);
                 return {
                     content: [
                         {
@@ -142,7 +143,7 @@ export async function handlePermissionRequest(args) {
             throw new Error(`Permission decision error: ${decisionResponse.statusText}`);
         }
         const decision = (await decisionResponse.json());
-        console.error(`[RalphX MCP] Permission ${decision.decision} for tool: ${tool_name}`);
+        safeError(`[RalphX MCP] Permission ${decision.decision} for tool: ${tool_name}`);
         // Claude CLI expects permission-prompt-tool result to be a union:
         // - allow: { behavior: "allow", updatedInput: <record> }
         // - deny:  { behavior: "deny", message: <string> }
@@ -164,7 +165,7 @@ export async function handlePermissionRequest(args) {
     catch (error) {
         clearTimeout(timeoutId);
         if (error instanceof Error && error.name === "AbortError") {
-            console.error(`[RalphX MCP] Permission request ${request_id} aborted`);
+            safeError(`[RalphX MCP] Permission request ${request_id} aborted`);
             return {
                 content: [
                     {
@@ -177,7 +178,7 @@ export async function handlePermissionRequest(args) {
                 ],
             };
         }
-        console.error(`[RalphX MCP] Permission request error:`, error);
+        safeError(`[RalphX MCP] Permission request error:`, error);
         throw error;
     }
 }

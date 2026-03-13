@@ -10,6 +10,8 @@
  * Backend always fires first, returning a structured 408 response.
  */
 
+import { safeError } from "./redact.js";
+
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
 
 /** Timeout for long-polling (15 minutes — staggered 1 min above backend's 14 min) */
@@ -76,14 +78,14 @@ export async function handleRequestTeamPlan(
       const configContent = JSON.parse(fs.readFileSync(configPath, "utf-8"));
       if (configContent.leadSessionId) {
         resolvedLeadSessionId = configContent.leadSessionId;
-        console.error(`[RalphX MCP] lead_session_id resolved from team config: ${resolvedLeadSessionId}`);
+        safeError(`[RalphX MCP] lead_session_id resolved from team config: ${resolvedLeadSessionId}`);
       }
     } catch (e) {
-      console.error(`[RalphX MCP] Warning: could not read team config for lead_session_id fallback: ${e}`);
+      safeError(`[RalphX MCP] Warning: could not read team config for lead_session_id fallback: ${e}`);
     }
   }
 
-  console.error(
+  safeError(
     `[RalphX MCP] request_team_plan: lead_session_id=${resolvedLeadSessionId ?? "NULL"}, env_var=${leadSessionId ?? "NOT_SET"}, team=${teamName}, context_id=${contextId || "EMPTY"}`
   );
 
@@ -114,9 +116,9 @@ export async function handleRequestTeamPlan(
     const result = (await registerResponse.json()) as TeamPlanRequestResult;
     plan_id = result.plan_id;
 
-    console.error(`[RalphX MCP] Team plan registered: ${plan_id}`);
+    safeError(`[RalphX MCP] Team plan registered: ${plan_id}`);
   } catch (error) {
-    console.error(`[RalphX MCP] Failed to register team plan:`, error);
+    safeError(`[RalphX MCP] Failed to register team plan:`, error);
     return {
       content: [
         {
@@ -151,7 +153,7 @@ export async function handleRequestTeamPlan(
     if (!awaitResponse.ok) {
       if (awaitResponse.status === 408) {
         // Timeout from backend — structured response, not an error
-        console.error(`[RalphX MCP] Team plan ${plan_id} timed out (backend)`);
+        safeError(`[RalphX MCP] Team plan ${plan_id} timed out (backend)`);
         return {
           content: [
             {
@@ -173,7 +175,7 @@ export async function handleRequestTeamPlan(
 
     const approvalResult = await awaitResponse.json();
 
-    console.error(`[RalphX MCP] Team plan ${plan_id} resolved`);
+    safeError(`[RalphX MCP] Team plan ${plan_id} resolved`);
 
     return {
       content: [
@@ -188,7 +190,7 @@ export async function handleRequestTeamPlan(
 
     if (error instanceof Error && error.name === "AbortError") {
       // Client-side timeout (safety net — backend should fire first)
-      console.error(`[RalphX MCP] Team plan ${plan_id} timed out (client)`);
+      safeError(`[RalphX MCP] Team plan ${plan_id} timed out (client)`);
       return {
         content: [
           {
@@ -205,7 +207,7 @@ export async function handleRequestTeamPlan(
       };
     }
 
-    console.error(`[RalphX MCP] Team plan await error:`, error);
+    safeError(`[RalphX MCP] Team plan await error:`, error);
     throw error;
   }
 }

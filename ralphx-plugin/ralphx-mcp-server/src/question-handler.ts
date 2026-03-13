@@ -7,6 +7,8 @@
  * 3. Returns answer to agent as tool result
  */
 
+import { safeError } from "./redact.js";
+
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
 
 /** Timeout for long-polling (15 minutes — staggered 1 min above backend's 14 min) */
@@ -42,7 +44,7 @@ interface QuestionAnswer {
 export async function handleAskUserQuestion(
   args: AskUserQuestionArgs
 ): Promise<{ content: Array<{ type: "text"; text: string }> }> {
-  console.error(
+  safeError(
     `[RalphX MCP] ask_user_question for session: ${args.session_id}`
   );
 
@@ -78,11 +80,11 @@ export async function handleAskUserQuestion(
     const result = (await registerResponse.json()) as { request_id: string };
     request_id = result.request_id;
 
-    console.error(
+    safeError(
       `[RalphX MCP] Question registered: ${request_id}`
     );
   } catch (error) {
-    console.error(`[RalphX MCP] Failed to register question:`, error);
+    safeError(`[RalphX MCP] Failed to register question:`, error);
     return {
       content: [
         {
@@ -116,7 +118,7 @@ export async function handleAskUserQuestion(
     if (!answerResponse.ok) {
       if (answerResponse.status === 408) {
         // Timeout from backend
-        console.error(
+        safeError(
           `[RalphX MCP] Question ${request_id} timed out (backend)`
         );
         return {
@@ -137,7 +139,7 @@ export async function handleAskUserQuestion(
 
     const answer = (await answerResponse.json()) as QuestionAnswer;
 
-    console.error(
+    safeError(
       `[RalphX MCP] Question ${request_id} answered`
     );
 
@@ -153,7 +155,7 @@ export async function handleAskUserQuestion(
     clearTimeout(timeoutId);
 
     if (error instanceof Error && error.name === "AbortError") {
-      console.error(
+      safeError(
         `[RalphX MCP] Question ${request_id} timed out (client)`
       );
       return {
@@ -169,7 +171,7 @@ export async function handleAskUserQuestion(
       };
     }
 
-    console.error(`[RalphX MCP] Question await error:`, error);
+    safeError(`[RalphX MCP] Question await error:`, error);
     throw error;
   }
 }

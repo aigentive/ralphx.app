@@ -20,6 +20,7 @@ use crate::domain::repositories::{
     ActivityEventRepository, ChatMessageRepository, IdeationSessionRepository, TaskRepository,
 };
 use crate::domain::services::MessageQueue;
+use crate::utils::secret_redactor::redact;
 use tokio_util::sync::CancellationToken;
 
 /// Process all queued messages for a context with retry loop.
@@ -355,7 +356,7 @@ pub(super) async fn process_queued_messages<R: Runtime + 'static>(
                             // to prevent UI flickering between messages.
                         }
                         Err(e) => {
-                            let error_string = e.to_string();
+                            let error_string = redact(&e.to_string());
                             tracing::error!(
                                 "Failed to process queued message stream: {}",
                                 error_string

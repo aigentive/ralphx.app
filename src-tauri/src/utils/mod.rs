@@ -1,5 +1,8 @@
 // Shared utility functions used across layers.
 
+pub mod secret_redactor;
+pub mod redacting_writer;
+
 /// Truncate a UTF-8 string to at most `max_bytes` bytes, respecting char boundaries.
 ///
 /// Unlike `&s[..n]`, this never panics on multi-byte characters.

@@ -15,6 +15,7 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
 import { callTauri, callTauriGet, TauriClientError } from "./tauri-client.js";
+import { safeError } from "./redact.js";
 import { getFilteredTools, isToolAllowed, getAllowedToolNames, parseAllowedToolsFromArgs, logAllTools, getToolsByAgent, setAgentType, } from "./tools.js";
 import { permissionRequestTool, handlePermissionRequest, } from "./permission-handler.js";
 import { handleAskUserQuestion } from "./question-handler.js";
@@ -44,13 +45,13 @@ const AGENT_TYPE = cliAgentType || process.env.RALPHX_AGENT_TYPE || "unknown";
 setAgentType(AGENT_TYPE);
 // Log how agent type was determined
 if (cliAgentType) {
-    console.error(`[RalphX MCP] Agent type from CLI args: ${AGENT_TYPE}`);
+    safeError(`[RalphX MCP] Agent type from CLI args: ${AGENT_TYPE}`);
 }
 else if (process.env.RALPHX_AGENT_TYPE) {
-    console.error(`[RalphX MCP] Agent type from env: ${AGENT_TYPE}`);
+    safeError(`[RalphX MCP] Agent type from env: ${AGENT_TYPE}`);
 }
 else {
-    console.error(`[RalphX MCP] Agent type unknown (no CLI arg or env var)`);
+    safeError(`[RalphX MCP] Agent type unknown (no CLI arg or env var)`);
 }
 // Task ID from environment (for task-level scoping enforcement)
 const RALPHX_TASK_ID = process.env.RALPHX_TASK_ID;
@@ -162,10 +163,10 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     const allTools = [...tools, permissionRequestTool];
     // Log tool scoping for debugging
     if (cliToolsArg !== undefined) {
-        console.error(`[RalphX MCP] Tools from --allowed-tools: ${cliToolsArg.length > 0 ? cliToolsArg.join(", ") : "none (explicit __NONE__)"}`);
+        safeError(`[RalphX MCP] Tools from --allowed-tools: ${cliToolsArg.length > 0 ? cliToolsArg.join(", ") : "none (explicit __NONE__)"}`);
     }
     const toolNames = tools.map((t) => t.name);
-    console.error(`[RalphX MCP] Agent type: ${AGENT_TYPE}, Tools: ${toolNames.length > 0 ? toolNames.join(", ") : "none"} + permission_request`);
+    safeError(`[RalphX MCP] Agent type: ${AGENT_TYPE}, Tools: ${toolNames.length > 0 ? toolNames.join(", ") : "none"} + permission_request`);
     return { tools: allTools };
 });
 /**
@@ -216,7 +217,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const errorMessage = allowedNames.length > 0
             ? `Tool "${name}" is not available for agent type "${AGENT_TYPE}". Allowed tools: ${allowedNames.join(", ")}`
             : `Agent type "${AGENT_TYPE}" has no MCP tools available. This agent should use filesystem tools (Read, Grep, Glob, Bash, Edit, Write) instead.`;
-        console.error(`[RalphX MCP] Unauthorized tool call: ${name}`);
+        safeError(`[RalphX MCP] Unauthorized tool call: ${name}`);
         return {
             content: [
                 {
@@ -230,7 +231,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Task scope validation
     const scopeError = validateTaskScope(name, args || {});
     if (scopeError) {
-        console.error(`[RalphX MCP] Task scope violation: ${name}`);
+        safeError(`[RalphX MCP] Task scope violation: ${name}`);
         return {
             content: [
                 {
@@ -244,7 +245,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Project scope validation
     const projectScopeError = validateProjectScope(name, args || {});
     if (projectScopeError) {
-        console.error(`[RalphX MCP] Project scope violation: ${name}`);
+        safeError(`[RalphX MCP] Project scope violation: ${name}`);
         return {
             content: [
                 {
@@ -257,7 +258,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     }
     try {
         // Forward to Tauri backend
-        console.error(`[RalphX MCP] Calling Tauri: ${name} with args:`, JSON.stringify(args));
+        safeError(`[RalphX MCP] Calling Tauri: ${name} with args:`, JSON.stringify(args));
         let result;
         // Special handling for GET endpoints with path parameters
         if (name === "get_task_context") {
@@ -447,7 +448,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             // Default: POST request
             result = await callTauri(name, args || {});
         }
-        console.error(`[RalphX MCP] Success: ${name}`);
+        safeError(`[RalphX MCP] Success: ${name}`);
         // Return result as JSON text
         return {
             content: [
@@ -459,7 +460,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
     }
     catch (error) {
-        console.error(`[RalphX MCP] Error calling ${name}:`, error);
+        safeError(`[RalphX MCP] Error calling ${name}:`, error);
         if (error instanceof TauriClientError) {
             return {
                 content: [
@@ -487,14 +488,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
  */
 async function main() {
     console.error("[RalphX MCP] Starting server...");
-    console.error(`[RalphX MCP] Agent type: ${AGENT_TYPE}`);
+    safeError(`[RalphX MCP] Agent type: ${AGENT_TYPE}`);
     if (RALPHX_TASK_ID) {
-        console.error(`[RalphX MCP] Task scope: ${RALPHX_TASK_ID}`);
+        safeError(`[RalphX MCP] Task scope: ${RALPHX_TASK_ID}`);
     }
     if (RALPHX_PROJECT_ID) {
-        console.error(`[RalphX MCP] Project scope: ${RALPHX_PROJECT_ID}`);
+        safeError(`[RalphX MCP] Project scope: ${RALPHX_PROJECT_ID}`);
     }
-    console.error(`[RalphX MCP] Tauri API URL: ${process.env.TAURI_API_URL || "http://127.0.0.1:3847"}`);
+    safeError(`[RalphX MCP] Tauri API URL: ${process.env.TAURI_API_URL || "http://127.0.0.1:3847"}`);
     // Log all tools if in debug mode or if RALPHX_DEBUG_TOOLS is set
     if (AGENT_TYPE === "debug" || process.env.RALPHX_DEBUG_TOOLS === "1") {
         logAllTools();
@@ -502,13 +503,18 @@ async function main() {
     // Always log available tools for this agent
     const toolsByAgent = getToolsByAgent();
     const agentTools = toolsByAgent[AGENT_TYPE] || [];
-    console.error(`[RalphX MCP] Tools for ${AGENT_TYPE}: ${agentTools.length > 0 ? agentTools.join(", ") : "(none - using filesystem tools)"}`);
+    safeError(`[RalphX MCP] Tools for ${AGENT_TYPE}: ${agentTools.length > 0 ? agentTools.join(", ") : "(none - using filesystem tools)"}`);
     const transport = new StdioServerTransport();
     await server.connect(transport);
     console.error("[RalphX MCP] Server running on stdio");
 }
+// Global handler for unhandled promise rejections.
+// Prevents secrets in HTTP error bodies or rejected promises from leaking via Node's default stderr handler.
+process.on("unhandledRejection", (reason) => {
+    safeError("[RalphX MCP] Unhandled rejection:", reason);
+});
 main().catch((error) => {
-    console.error("[RalphX MCP] Fatal error:", error);
+    safeError("[RalphX MCP] Fatal error:", error);
     process.exit(1);
 });
 //# sourceMappingURL=index.js.map

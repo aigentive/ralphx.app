@@ -484,7 +484,18 @@ pub fn create_mcp_config(plugin_dir: &Path, agent_type: &str) -> Option<PathBuf>
         std::process::id(),
         uuid::Uuid::new_v4().simple()
     ));
-    std::fs::write(&temp_path, &config_json).ok()?;
+    {
+        use std::io::Write as _;
+        use std::os::unix::fs::OpenOptionsExt as _;
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(&temp_path)
+            .ok()?;
+        f.write_all(config_json.as_bytes()).ok()?;
+    }
     Some(temp_path)
 }
 

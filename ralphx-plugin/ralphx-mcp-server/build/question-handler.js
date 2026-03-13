@@ -6,6 +6,7 @@
  * 2. GET /api/question/await/:request_id — long-polls for user answer (5 min timeout)
  * 3. Returns answer to agent as tool result
  */
+import { safeError } from "./redact.js";
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
 /** Timeout for long-polling (15 minutes — staggered 1 min above backend's 14 min) */
 const QUESTION_TIMEOUT_MS = 15 * 60 * 1000;
@@ -18,7 +19,7 @@ const QUESTION_TIMEOUT_MS = 15 * 60 * 1000;
  * 3. Return the answer JSON to the agent
  */
 export async function handleAskUserQuestion(args) {
-    console.error(`[RalphX MCP] ask_user_question for session: ${args.session_id}`);
+    safeError(`[RalphX MCP] ask_user_question for session: ${args.session_id}`);
     // 1. Register question with Tauri backend
     let request_id;
     try {
@@ -43,10 +44,10 @@ export async function handleAskUserQuestion(args) {
         }
         const result = (await registerResponse.json());
         request_id = result.request_id;
-        console.error(`[RalphX MCP] Question registered: ${request_id}`);
+        safeError(`[RalphX MCP] Question registered: ${request_id}`);
     }
     catch (error) {
-        console.error(`[RalphX MCP] Failed to register question:`, error);
+        safeError(`[RalphX MCP] Failed to register question:`, error);
         return {
             content: [
                 {
@@ -71,7 +72,7 @@ export async function handleAskUserQuestion(args) {
         if (!answerResponse.ok) {
             if (answerResponse.status === 408) {
                 // Timeout from backend
-                console.error(`[RalphX MCP] Question ${request_id} timed out (backend)`);
+                safeError(`[RalphX MCP] Question ${request_id} timed out (backend)`);
                 return {
                     content: [
                         {
@@ -88,7 +89,7 @@ export async function handleAskUserQuestion(args) {
             throw new Error(`Question await error: ${errorText}`);
         }
         const answer = (await answerResponse.json());
-        console.error(`[RalphX MCP] Question ${request_id} answered`);
+        safeError(`[RalphX MCP] Question ${request_id} answered`);
         return {
             content: [
                 {
@@ -101,7 +102,7 @@ export async function handleAskUserQuestion(args) {
     catch (error) {
         clearTimeout(timeoutId);
         if (error instanceof Error && error.name === "AbortError") {
-            console.error(`[RalphX MCP] Question ${request_id} timed out (client)`);
+            safeError(`[RalphX MCP] Question ${request_id} timed out (client)`);
             return {
                 content: [
                     {
@@ -114,7 +115,7 @@ export async function handleAskUserQuestion(args) {
                 ],
             };
         }
-        console.error(`[RalphX MCP] Question await error:`, error);
+        safeError(`[RalphX MCP] Question await error:`, error);
         throw error;
     }
 }
