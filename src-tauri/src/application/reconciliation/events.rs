@@ -152,16 +152,22 @@ impl<R: Runtime> ReconciliationRunner<R> {
         failure_source: MergeFailureSource,
         retry_reason: &str,
         source_sha: Option<&str>,
+        reason_code: Option<MergeRecoveryReasonCode>,
     ) -> Result<(), String> {
         let mut updated = task.clone();
         let mut recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
             .unwrap_or(None)
             .unwrap_or_default();
 
+        let reason = if failure_source == MergeFailureSource::TargetBranchBusy {
+            MergeRecoveryReasonCode::TargetBranchBusy
+        } else {
+            reason_code.unwrap_or(MergeRecoveryReasonCode::GitError)
+        };
         let mut event = MergeRecoveryEvent::new(
             MergeRecoveryEventKind::AutoRetryTriggered,
             MergeRecoverySource::Auto,
-            MergeRecoveryReasonCode::GitError,
+            reason,
             format!(
                 "Auto-retry triggered (attempt {}, source={:?}): {}",
                 attempt, failure_source, retry_reason
@@ -231,16 +237,22 @@ impl<R: Runtime> ReconciliationRunner<R> {
         attempt: u32,
         failure_source: MergeFailureSource,
         retry_reason: &str,
+        reason_code: Option<MergeRecoveryReasonCode>,
     ) -> Result<(), String> {
         let mut updated = task.clone();
         let mut recovery = MergeRecoveryMetadata::from_task_metadata(updated.metadata.as_deref())
             .unwrap_or(None)
             .unwrap_or_default();
 
+        let reason = if failure_source == MergeFailureSource::TargetBranchBusy {
+            MergeRecoveryReasonCode::TargetBranchBusy
+        } else {
+            reason_code.unwrap_or(MergeRecoveryReasonCode::GitError)
+        };
         let mut event = MergeRecoveryEvent::new(
             MergeRecoveryEventKind::AutoRetryTriggered,
             MergeRecoverySource::Auto,
-            MergeRecoveryReasonCode::GitError,
+            reason,
             format!(
                 "Auto-retry triggered (attempt {}, source={:?}): {}",
                 attempt, failure_source, retry_reason
