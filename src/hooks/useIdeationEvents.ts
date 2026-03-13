@@ -58,6 +58,14 @@ const ChildSessionCreatedEventSchema = z.object({
 });
 
 /**
+ * Schema for session created event payload
+ */
+const SessionCreatedEventSchema = z.object({
+  sessionId: z.string(),
+  projectId: z.string(),
+});
+
+/**
  * Hook to listen for ideation events from the backend
  *
  * Listens to 'ideation:session_title_updated' events and updates the
@@ -168,6 +176,22 @@ export function useIdeationEvents() {
 
         // Invalidate dependency graph query
         queryClient.invalidateQueries({ queryKey: dependencyKeys.graphs() });
+      })
+    );
+
+    // Listen for new session created (external MCP or internal)
+    unsubscribes.push(
+      bus.subscribe<unknown>("ideation:session_created", (payload) => {
+        logger.debug("[IdeationEvents] Received ideation:session_created:", payload);
+        const parsed = SessionCreatedEventSchema.safeParse(payload);
+
+        if (!parsed.success) {
+          console.error("Invalid ideation:session_created event:", parsed.error.message);
+          return;
+        }
+
+        // Refresh session list so newly created session appears in sidebar
+        queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
       })
     );
 

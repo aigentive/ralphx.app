@@ -19,8 +19,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::error;
+use tauri::Emitter;
 
-use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
+use crate::application::chat_service::{ChatService, ChatServiceError, ClaudeChatService, SendMessageOptions};
 use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput};
 use crate::domain::entities::{
     ideation::IdeationSession, types::ProjectId, ChatContextType, IdeationSessionId, InternalStatus,
@@ -92,6 +93,8 @@ pub struct StartIdeationResponse {
     pub session_id: String,
     pub status: String,
     pub agent_spawned: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub agent_spawn_blocked_reason: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -365,7 +368,7 @@ pub async fn start_ideation_http(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
     Json(req): Json<StartIdeationRequest>,
-) -> Result<Json<StartIdeationResponse>, StatusCode> {
+) -> Result<Json<StartIdeationResponse>, HttpError> {
     let project_id = ProjectId::from_string(req.project_id.clone());
 
     // Load project to validate it exists and enforce scope
@@ -376,40 +379,30 @@ pub async fn start_ideation_http(
         .await
         .map_err(|e| {
             error!("Failed to get project {}: {}", project_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some("Failed to get project".to_string()),
+            }
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or(HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: Some("Project not found".to_string()),
+        })?;
 
     project
         .assert_project_scope(&scope)
-        .map_err(|e| e.status)?;
-
-    // Check max_external_ideation_sessions limit (from runtime config)
-    let max_sessions = crate::infrastructure::agents::claude::external_mcp_config().max_external_ideation_sessions;
-    let active_count = state
-        .app_state
-        .ideation_session_repo
-        .count_by_status(
-            &project_id,
-            crate::domain::entities::ideation::IdeationSessionStatus::Active,
-        )
-        .await
-        .map_err(|e| {
-            error!("Failed to count active sessions: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+        .map_err(|e| HttpError {
+            status: e.status,
+            message: e.message,
         })?;
-
-    if active_count >= max_sessions {
-        return Err(StatusCode::TOO_MANY_REQUESTS);
-    }
 
     // Resolve effective prompt: prefer `prompt`, fall back to `initial_prompt`
     let effective_prompt = req.prompt.clone().or_else(|| req.initial_prompt.clone());
 
     // Create the ideation session — title is optional
     let session = match req.title.clone() {
-        None => IdeationSession::new(project_id),
-        Some(t) => IdeationSession::new_with_title(project_id, t),
+        None => IdeationSession::new(project_id.clone()),
+        Some(t) => IdeationSession::new_with_title(project_id.clone(), t),
     };
     let created = state
         .app_state
@@ -418,13 +411,25 @@ pub async fn start_ideation_http(
         .await
         .map_err(|e| {
             error!("Failed to create ideation session: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some("Failed to create ideation session".to_string()),
+            }
         })?;
 
     let session_id_str = created.id.to_string();
 
+    // Emit ideation:session_created event for frontend
+    if let Some(ref handle) = state.app_state.app_handle {
+        let _ = handle.emit("ideation:session_created", serde_json::json!({
+            "sessionId": session_id_str,
+            "projectId": project_id.to_string(),
+        }));
+    }
+
     // If a prompt was provided, spawn the orchestrator agent (external sessions are always solo mode)
     let mut agent_spawned = false;
+    let mut agent_spawn_blocked_reason: Option<String> = None;
     if let Some(ref prompt_str) = effective_prompt {
         let app = &state.app_state;
         let mut chat_service = ClaudeChatService::new(
@@ -523,11 +528,16 @@ pub async fn start_ideation_http(
                     }
                 });
             }
+            Err(ChatServiceError::AgentAlreadyRunning(_)) => {
+                // Agent is running, message was queued — treat as success
+                agent_spawned = true;
+            }
             Err(e) => {
                 error!(
                     "Failed to auto-spawn agent on external ideation session {}: {}",
                     session_id_str, e
                 );
+                agent_spawn_blocked_reason = Some(e.to_string());
             }
         }
     }
@@ -536,6 +546,7 @@ pub async fn start_ideation_http(
         session_id: session_id_str,
         status: "ideating".to_string(),
         agent_spawned,
+        agent_spawn_blocked_reason,
     }))
 }
 
@@ -545,7 +556,7 @@ pub async fn get_ideation_status_http(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
     Path(id): Path<String>,
-) -> Result<Json<IdeationStatusResponse>, StatusCode> {
+) -> Result<Json<IdeationStatusResponse>, HttpError> {
     let session_id = IdeationSessionId::from_string(id);
 
     let session = state
@@ -555,14 +566,23 @@ pub async fn get_ideation_status_http(
         .await
         .map_err(|e| {
             error!("Failed to get ideation session {}: {}", session_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some("Failed to get ideation session".to_string()),
+            }
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or(HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: Some("Session not found".to_string()),
+        })?;
 
     // Enforce scope
     session
         .assert_project_scope(&scope)
-        .map_err(|e| e.status)?;
+        .map_err(|e| HttpError {
+            status: e.status,
+            message: e.message,
+        })?;
 
     // Count proposals for this session
     let proposal_count = state
@@ -572,7 +592,10 @@ pub async fn get_ideation_status_http(
         .await
         .map_err(|e| {
             error!("Failed to count proposals: {}", e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some("Failed to count proposals".to_string()),
+            }
         })?;
 
     // Check if agent is running for this session
@@ -1838,7 +1861,7 @@ pub async fn ideation_message_http(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
     Json(req): Json<IdeationMessageRequest>,
-) -> Result<Json<IdeationMessageResponse>, StatusCode> {
+) -> Result<Json<IdeationMessageResponse>, HttpError> {
     let session_id = IdeationSessionId::from_string(req.session_id.clone());
 
     // Validate session exists
@@ -1849,16 +1872,28 @@ pub async fn ideation_message_http(
         .await
         .map_err(|e| {
             error!("Failed to get ideation session {}: {}", session_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
+            HttpError {
+                status: StatusCode::INTERNAL_SERVER_ERROR,
+                message: Some("Failed to get ideation session".to_string()),
+            }
         })?
-        .ok_or(StatusCode::NOT_FOUND)?;
+        .ok_or(HttpError {
+            status: StatusCode::NOT_FOUND,
+            message: Some("Session not found".to_string()),
+        })?;
 
     // Enforce project scope
-    session.assert_project_scope(&scope).map_err(|e| e.status)?;
+    session.assert_project_scope(&scope).map_err(|e| HttpError {
+        status: e.status,
+        message: e.message,
+    })?;
 
     // Enforce Active status
     if session.status != crate::domain::entities::ideation::IdeationSessionStatus::Active {
-        return Err(StatusCode::BAD_REQUEST);
+        return Err(HttpError {
+            status: StatusCode::BAD_REQUEST,
+            message: Some("Session is not active".to_string()),
+        });
     }
 
     let session_id_str = session_id.as_str().to_string();

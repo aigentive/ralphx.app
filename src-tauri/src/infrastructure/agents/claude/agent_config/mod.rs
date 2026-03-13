@@ -437,6 +437,13 @@ fn parse_config_with_lookup(
         verification: parsed.ideation.verification,
         external_mcp: parsed.external_mcp,
     };
+    if runtime.external_mcp.max_external_ideation_sessions != 1 {
+        tracing::warn!(
+            value = runtime.external_mcp.max_external_ideation_sessions,
+            "ralphx.yaml: external_mcp.max_external_ideation_sessions is deprecated and has no \
+             effect. The session gate was removed; sessions are always created. Remove this field."
+        );
+    }
     runtime_config::apply_env_overrides(&mut runtime);
 
     Some(LoadedConfig {
