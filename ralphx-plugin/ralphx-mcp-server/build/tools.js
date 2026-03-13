@@ -2,6 +2,7 @@
  * MCP tool definitions for RalphX
  * All tools are proxies that forward to Tauri backend via HTTP
  */
+import { safeError } from "./redact.js";
 import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
@@ -1592,7 +1593,7 @@ export function parseAllowedToolsFromArgs() {
             // Validate names — skip invalid, warn
             const validated = tools.filter(t => {
                 if (!TOOL_NAME_PATTERN.test(t)) {
-                    console.error(`[RalphX MCP] WARN: Invalid tool name in --allowed-tools: "${t}" (skipped)`);
+                    safeError(`[RalphX MCP] WARN: Invalid tool name in --allowed-tools: "${t}" (skipped)`);
                     return false;
                 }
                 return true;
@@ -1601,7 +1602,7 @@ export function parseAllowedToolsFromArgs() {
             const knownTools = new Set(ALL_TOOLS.map(t => t.name));
             for (const t of validated) {
                 if (!knownTools.has(t)) {
-                    console.error(`[RalphX MCP] WARN: --allowed-tools contains unknown tool "${t}" (not in ALL_TOOLS registry)`);
+                    safeError(`[RalphX MCP] WARN: --allowed-tools contains unknown tool "${t}" (not in ALL_TOOLS registry)`);
                 }
             }
             return validated;
@@ -1670,8 +1671,8 @@ export function logAllTools() {
     console.error("\n=== RalphX MCP Server - All Available Tools ===\n");
     for (const [agentType, tools] of Object.entries(TOOL_ALLOWLIST)) {
         if (tools.length > 0) {
-            console.error(`[${agentType}]`);
-            tools.forEach((t) => console.error(`  - ${t}`));
+            safeError(`[${agentType}]`);
+            tools.forEach((t) => safeError(`  - ${t}`));
             console.error("");
         }
     }

@@ -1,4 +1,5 @@
 use super::*;
+use crate::application::chat_service::StreamError;
 
 #[test]
 fn test_timeout_config_task_execution() {
@@ -695,6 +696,135 @@ fn test_re_increment_skip_scoped_to_ideation_only() {
     assert!(
         !should_re_increment_held(&ChatContextType::TaskExecution),
         "Slot still held → no re-increment needed (on_exit handles decrement)"
+    );
+}
+
+// ============================================================================
+// Stderr redaction tests
+// ============================================================================
+// These tests verify that secrets in agent stderr are redacted before they
+// reach downstream consumers (AgentExit construction, debug file payloads,
+// tracing::warn previews).
+
+/// Verifies that `redact()` sanitises secrets in stderr before they are stored
+/// in `StreamError::AgentExit`. The `to_string()` of the error must not leak.
+#[test]
+fn test_agent_exit_stderr_redacted_before_construction() {
+    use crate::utils::secret_redactor::redact;
+
+    let raw_stderr = "Error: ANTHROPIC_AUTH_TOKEN=sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz01234567890123456789 not accepted";
+    let redacted_stderr = redact(raw_stderr);
+
+    // The redacted stderr must not contain the secret
+    assert!(
+        !redacted_stderr.contains("sk-ant-api03"),
+        "Redacted stderr must not contain Anthropic API key prefix"
+    );
+    assert!(
+        !redacted_stderr.contains("AbCdEfGhIjKlMnOpQrStUvWxYz01234567890123456789"),
+        "Redacted stderr must not contain raw key material"
+    );
+    assert!(
+        redacted_stderr.contains("***REDACTED***"),
+        "Redacted stderr must contain placeholder"
+    );
+
+    // Constructing AgentExit with redacted stderr — to_string() is safe
+    let err = StreamError::AgentExit {
+        exit_code: Some(1),
+        stderr: redacted_stderr.clone(),
+    };
+    let err_str = err.to_string();
+    assert!(
+        !err_str.contains("sk-ant-api03"),
+        "AgentExit.to_string() must not expose Anthropic API key"
+    );
+    assert!(
+        !err_str.contains("AbCdEfGhIjKlMnOpQrStUvWxYz01234567890123456789"),
+        "AgentExit.to_string() must not expose raw key material"
+    );
+}
+
+/// Verifies redaction of an OpenRouter key appearing in stderr.
+#[test]
+fn test_agent_exit_openrouter_key_redacted() {
+    use crate::utils::secret_redactor::redact;
+
+    let raw_stderr =
+        "API call failed: sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789abcdef returned 401";
+    let redacted = redact(raw_stderr);
+
+    assert!(
+        !redacted.contains("abcdefghijklmnopqrstuvwxyz0123456789abcdef"),
+        "OpenRouter key body must be redacted"
+    );
+    assert!(
+        redacted.contains("sk-or-v1-***REDACTED***"),
+        "OpenRouter key must be replaced with placeholder"
+    );
+
+    let err = StreamError::AgentExit {
+        exit_code: Some(1),
+        stderr: redacted.clone(),
+    };
+    assert!(
+        !err.to_string().contains("abcdefghijklmnopqrstuvwxyz"),
+        "AgentExit with OpenRouter key must be safe to display"
+    );
+}
+
+/// Verifies that the debug file payload (built from stderr) contains no secrets
+/// when redaction is applied before payload assembly.
+#[test]
+fn test_debug_file_payload_contains_redacted_stderr() {
+    use crate::utils::secret_redactor::redact;
+
+    let raw_stderr = "fatal: Bearer sk-ant-api03-XxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXx01234567890 rejected";
+    let redacted_stderr = redact(raw_stderr);
+
+    // Simulate how the debug file payload is assembled in process_stream_background
+    let payload = format!(
+        "no stdout lines captured\n\nexit_code: {:?}\nexit_signal: {:?}\n\nstderr:\n{}",
+        Some(1i32),
+        None::<i32>,
+        redacted_stderr.trim(),
+    );
+
+    assert!(
+        !payload.contains("sk-ant-api03"),
+        "Debug file payload must not contain raw Anthropic key prefix"
+    );
+    assert!(
+        !payload.contains("XxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXx01234567890"),
+        "Debug file payload must not contain raw key material"
+    );
+    assert!(
+        payload.contains("***REDACTED***"),
+        "Debug file payload must contain redaction placeholder"
+    );
+}
+
+/// Verifies that the stderr_preview used in tracing::warn is sanitised
+/// when redaction is applied before constructing the preview slice.
+#[test]
+fn test_stderr_preview_for_warn_contains_redacted_content() {
+    use crate::utils::secret_redactor::redact;
+
+    let raw_stderr = "sk-ant-api03-AAABBBCCC111222333444555666777888999000aabbccddee error in provider call".to_string();
+    let redacted = redact(&raw_stderr);
+    let preview = &redacted[..redacted.len().min(2000)];
+
+    assert!(
+        !preview.contains("sk-ant-api03"),
+        "stderr_preview must not expose the Anthropic key prefix"
+    );
+    assert!(
+        !preview.contains("AAABBBCCC111222333444555666777888999000aabbccddee"),
+        "stderr_preview must not expose raw key material"
+    );
+    assert!(
+        preview.contains("sk-ant-***REDACTED***"),
+        "stderr_preview must show redaction placeholder"
     );
 }
 

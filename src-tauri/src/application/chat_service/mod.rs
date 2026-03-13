@@ -1486,3 +1486,6 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 // ============================================================================
 // Module re-exports are at the top of this file
 // ============================================================================
+
+#[cfg(test)]
+mod chat_service_redaction_tests;

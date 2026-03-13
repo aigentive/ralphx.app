@@ -1526,7 +1526,10 @@ pub async fn process_stream_background<R: Runtime>(
     let result = processor.finish();
 
     // Wait for stderr task
-    let stderr_content = stderr_task.await.unwrap_or_default();
+    let stderr_content = {
+        let raw = stderr_task.await.unwrap_or_default();
+        crate::utils::secret_redactor::redact(&raw)
+    };
 
     // Wait for process
     let status = child.wait().await.map_err(|e| StreamError::AgentExit {
@@ -1618,12 +1621,33 @@ pub async fn process_stream_background<R: Runtime>(
                 outcome.stderr_text.trim()
             )
         };
-        let _ = std::fs::write(&debug_path, payload);
-        info!(
-            path = %debug_path.display(),
-            conversation_id = %conversation_id_str,
-            "Wrote stream debug log"
-        );
+        {
+            use std::io::Write;
+            use std::os::unix::fs::OpenOptionsExt;
+            let _ = std::fs::remove_file(&debug_path);
+            match std::fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .mode(0o600)
+                .open(&debug_path)
+            {
+                Ok(mut f) => {
+                    let _ = f.write_all(payload.as_bytes());
+                    info!(
+                        path = %debug_path.display(),
+                        conversation_id = %conversation_id_str,
+                        "Wrote stream debug log"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        path = %debug_path.display(),
+                        error = %e,
+                        "Failed to write stream debug log"
+                    );
+                }
+            }
+        }
     }
 
     if result.is_error {

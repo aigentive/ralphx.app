@@ -45,6 +45,8 @@ use tauri::Manager;
 use tracing::{info, warn};
 use tracing_subscriber::{fmt, prelude::*, EnvFilter, Registry};
 
+use crate::utils::redacting_writer::RedactingMakeWriter;
+
 use crate::infrastructure::{ExternalMcpHandle, ExternalMcpSupervisor};
 
 use application::{
@@ -152,7 +154,7 @@ pub fn run() {
 
         let (non_blocking_writer, guard) = tracing_appender::non_blocking(log_file);
         let layer = fmt::layer()
-            .with_writer(non_blocking_writer)
+            .with_writer(RedactingMakeWriter::new(non_blocking_writer))
             .with_ansi(false);
 
         // Log path is printed after subscriber init below
@@ -163,7 +165,7 @@ pub fn run() {
         (None, None)
     };
 
-    let console_layer = fmt::layer().with_writer(std::io::stdout);
+    let console_layer = fmt::layer().with_writer(RedactingMakeWriter::new(std::io::stdout));
 
     Registry::default()
         .with(env_filter)

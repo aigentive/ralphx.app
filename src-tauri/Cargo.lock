@@ -3120,6 +3120,7 @@ dependencies = [
  "lazy_static",
  "nix",
  "rand 0.8.5",
+ "regex",
  "rusqlite",
  "scopeguard",
  "serde",

@@ -329,7 +329,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 let tool_calls = outcome.tool_calls;
                 let content_blocks = outcome.content_blocks;
                 let claude_session_id = outcome.session_id;
-                let stderr_text = outcome.stderr_text;
+                let stderr_text = crate::utils::secret_redactor::redact(&outcome.stderr_text);
                 let turns_finalized = outcome.turns_finalized;
                 // Debug: Log what we got from stream processing
                 tracing::info!(

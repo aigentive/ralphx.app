@@ -37,6 +37,7 @@ use super::chat_service_errors::{classify_agent_error, StreamError};
 use super::chat_service_helpers::get_assistant_role;
 use super::chat_service_types::AgentErrorPayload;
 use super::EventContextPayload;
+use crate::utils::secret_redactor::redact;
 
 /// Returns true if all steps for `task_id` are Completed or Skipped (and at least one
 /// step exists). Safe-fallback: returns false if repo is None or returns an error.
@@ -791,22 +792,25 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
     }
 
     // Standard error handling (reached if recovery not attempted or failed)
+    // Redact secrets from error string before propagating to non-tracing sinks
+    let redacted_error = redact(error);
+
     // Fail the agent run
     let _ = agent_run_repo
-        .fail(&AgentRunId::from_string(agent_run_id), error)
+        .fail(&AgentRunId::from_string(agent_run_id), &redacted_error)
         .await;
 
     // Read existing content before overwriting — append error to any content already flushed
     let (existing_content, existing_tool_calls) =
         read_existing_message_content(chat_message_repo, pre_assistant_msg_id).await;
     let error_note = if existing_content.is_empty() {
-        format!("{} {}]", super::AGENT_ERROR_PREFIX, error)
+        format!("{} {}]", super::AGENT_ERROR_PREFIX, redacted_error)
     } else {
         format!(
             "{}\n\n{} {}]",
             existing_content,
             super::AGENT_ERROR_PREFIX,
-            error
+            redacted_error
         )
     };
     super::chat_service_send_background::finalize_assistant_message(
@@ -829,8 +833,8 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 conversation_id: Some(conversation_id.as_str().to_string()),
                 context_type: context_type.to_string(),
                 context_id: context_id.to_string(),
-                error: error.to_string(),
-                stderr: Some(error.to_string()),
+                error: redacted_error.clone(),
+                stderr: Some(redacted_error.clone()),
             },
         );
     }
@@ -857,7 +861,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
                             .unwrap_or_else(|| serde_json::json!({}));
                         if let Some(obj) = metadata_obj.as_object_mut() {
-                            obj.insert("last_agent_error".to_string(), serde_json::json!(error));
+                            obj.insert("last_agent_error".to_string(), serde_json::json!(redacted_error));
                             obj.insert(
                                 "last_agent_error_context".to_string(),
                                 serde_json::json!("execution"),
@@ -870,7 +874,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                             // Pre-compute failure metadata for timeouts so on_enter(Failed)
                             // skip guard preserves is_timeout=true via the failure_error key
                             if matches!(stream_error, Some(StreamError::Timeout { .. })) {
-                                obj.insert("failure_error".to_string(), serde_json::json!(error));
+                                obj.insert("failure_error".to_string(), serde_json::json!(redacted_error));
                                 obj.insert("is_timeout".to_string(), serde_json::json!(true));
                             }
 
@@ -901,7 +905,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                         ExecutionRecoveryEventKind::Failed,
                                         ExecutionRecoverySource::System,
                                         reason_code,
-                                        error.chars().take(500).collect::<String>(),
+                                        redacted_error.chars().take(500).collect::<String>(),
                                     )
                                     .with_failure_source(failure_source);
                                     let mut recovery =
@@ -954,6 +958,9 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                                 {
                                     meta.resume_attempts = existing.resume_attempts;
                                 }
+
+                                // Redact secrets from provider error message before storing/emitting
+                                meta.message = redact(&meta.message);
 
                                 // Write both legacy provider_error and new pause_reason keys
                                 let pause_reason = super::PauseReason::ProviderError {

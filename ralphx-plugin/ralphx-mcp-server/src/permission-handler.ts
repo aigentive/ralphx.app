@@ -12,6 +12,7 @@
  */
 
 import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { safeError } from "./redact.js";
 
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
 
@@ -85,7 +86,7 @@ export async function handlePermissionRequest(
   const { tool_name, tool_input, context } = normalizePermissionArgs(args);
 
   if (!tool_name) {
-    console.error("[RalphX MCP] Permission request missing tool name", args);
+    safeError("[RalphX MCP] Permission request missing tool name", args);
     return {
       content: [
         {
@@ -99,7 +100,7 @@ export async function handlePermissionRequest(
     };
   }
 
-  console.error(`[RalphX MCP] Permission request for tool: ${tool_name}`);
+  safeError(`[RalphX MCP] Permission request for tool: ${tool_name}`);
 
   // 1. Register permission request with Tauri backend
   let request_id: string;
@@ -128,11 +129,11 @@ export async function handlePermissionRequest(
     const result = (await registerResponse.json()) as { request_id: string };
     request_id = result.request_id;
 
-    console.error(
+    safeError(
       `[RalphX MCP] Permission request registered: ${request_id}`
     );
   } catch (error) {
-    console.error(`[RalphX MCP] Failed to register permission request:`, error);
+    safeError(`[RalphX MCP] Failed to register permission request:`, error);
     return {
       content: [
         {
@@ -166,7 +167,7 @@ export async function handlePermissionRequest(
     if (!decisionResponse.ok) {
       if (decisionResponse.status === 408) {
         // Timeout - treat as deny
-        console.error(
+        safeError(
           `[RalphX MCP] Permission request ${request_id} timed out`
         );
         return {
@@ -187,7 +188,7 @@ export async function handlePermissionRequest(
 
     const decision = (await decisionResponse.json()) as PermissionDecision;
 
-    console.error(
+    safeError(
       `[RalphX MCP] Permission ${decision.decision} for tool: ${tool_name}`
     );
 
@@ -214,7 +215,7 @@ export async function handlePermissionRequest(
   } catch (error) {
     clearTimeout(timeoutId);
     if (error instanceof Error && error.name === "AbortError") {
-      console.error(`[RalphX MCP] Permission request ${request_id} aborted`);
+      safeError(`[RalphX MCP] Permission request ${request_id} aborted`);
       return {
         content: [
           {
@@ -227,7 +228,7 @@ export async function handlePermissionRequest(
         ],
       };
     }
-    console.error(`[RalphX MCP] Permission request error:`, error);
+    safeError(`[RalphX MCP] Permission request error:`, error);
     throw error;
   }
 }
