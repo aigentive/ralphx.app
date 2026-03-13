@@ -93,16 +93,17 @@ External: Third-party bot → Bearer token → ralphx-external-mcp (:3848) → H
 ```
 Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md`
 **MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `ralphx-plugin/ralphx-mcp-server/src/` or `ralphx-plugin/ralphx-external-mcp/src/`, rebuild the respective server. ❌ Committing without rebuilding.
-**mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `ralphx.yaml` does NOT merge `mcp_tools` — it fully overrides. If `ideation-team-lead` extends `orchestrator-ideation`, its `mcp_tools` must list ALL required tools independently. ❌ Assuming inherited tools are present.
+**mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `ralphx.yaml`: specifying `mcp_tools` fully replaces parent (no merge) — child must list ALL tools. Omitting `mcp_tools` inherits parent's list. ❌ Assuming partial inheritance when you specify the key.
 
 | Agent | MCP Tools |
 |-------|-----------|
 | orchestrator-ideation | *_task_proposal, *_plan_artifact |
 | chat-task | update_task, add_task_note, get_task_details |
 | chat-project | suggest_task, list_tasks |
-| worker / coder | get_task_context, get_artifact*, *_step, execution_complete |
-| reviewer | complete_review |
-| merger | report_conflict, report_incomplete, get_merge_target, get_task_context |
+| worker | get_task_context, get_artifact*, *_step, execution_complete |
+| coder | get_task_context, get_artifact*, *_step (❌ no execution_complete) |
+| reviewer | complete_review, get_task_context |
+| merger | report_conflict, report_incomplete, get_merge_target, get_task_context, complete_merge |
 
 ## Key Principles
 

@@ -14,7 +14,7 @@ Two MCP servers exist in this repo. They serve **different audiences** and must 
 | **Audience** | Internal RalphX agents only |
 | **Port** | N/A (stdio) — proxies to Tauri backend `:3847` |
 | **Auth** | Agent-type filtering via `RALPHX_AGENT_TYPE` env + `ralphx.yaml` `mcp_tools` |
-| **Tools** | ~50, filtered per agent type (see `agent-mcp-tools.md`) |
+| **Tools** | ~42 (41 base + `permission_request`), filtered per agent type (see `agent-mcp-tools.md`) |
 | **Config** | `.mcp.json` registers it; `ralphx.yaml` controls per-agent tool access |
 | **Build** | `cd ralphx-plugin/ralphx-mcp-server && npm run build` (NON-NEGOTIABLE after source changes) |
 
@@ -24,7 +24,7 @@ Claude CLI → stdio → ralphx-mcp-server → HTTP :3847 → Tauri Backend
 
 ## 2. External API MCP — `ralphx-plugin/ralphx-external-mcp/`
 
-**Purpose:** HTTP+SSE MCP server exposing orchestration tools to external agents (e.g., reefbot.ai) over the network. Standalone service started manually.
+**Purpose:** HTTP+SSE MCP server exposing orchestration tools to external agents (e.g., reefbot.ai) over the network. Auto-started by Tauri app when enabled.
 
 | Aspect | Detail |
 |--------|--------|
@@ -33,8 +33,9 @@ Claude CLI → stdio → ralphx-mcp-server → HTTP :3847 → Tauri Backend
 | **Port** | `:3848` (configurable via `EXTERNAL_MCP_PORT`) |
 | **Auth** | Bearer tokens (`rxk_live_` prefix), 30s TTL cache, TLS required for non-localhost |
 | **Rate limiting** | Token bucket (10 req/s per key) + IP-based auth throttle |
-| **Tools** | 33 tools (`v1_` prefixed): discovery, ideation, tasks, pipeline, events, onboarding |
-| **Config** | Environment variables (`EXTERNAL_MCP_PORT`, `EXTERNAL_MCP_HOST`, TLS cert/key) |
+| **Tools** | 34 tools (`v1_` prefixed): discovery(3), ideation(13), tasks(2), pipeline(11), events(4), onboarding(1) |
+| **Startup** | Auto-managed by `ExternalMcpSupervisor` when `external_mcp.enabled = true` in `ralphx.yaml`. Health checks + auto-restart (up to 3x) |
+| **Config** | `ralphx.yaml` (`external_mcp` section) + env vars (`EXTERNAL_MCP_PORT`, `EXTERNAL_MCP_HOST`, TLS cert/key) |
 | **Build** | `cd ralphx-plugin/ralphx-external-mcp && npm run build` |
 | **Docs** | `docs/external-mcp/README.md`, `docs/external-mcp/api-versioning.md`, `docs/external-mcp/operational-runbook.md` |
 
@@ -47,7 +48,7 @@ External Agent → Bearer token → ralphx-external-mcp (:3848) → HTTP :3847 �
 | Question | Internal (`ralphx-mcp-server`) | External (`ralphx-external-mcp`) |
 |----------|-------------------------------|----------------------------------|
 | Who calls it? | RalphX's own Claude agents | Third-party bots, external integrations |
-| How is it started? | Automatically by Claude CLI | Manually (`node build/index.js`) |
+| How is it started? | Registered via `claude mcp add-json` by Tauri app | Auto-started by `ExternalMcpSupervisor` (when enabled in `ralphx.yaml`) |
 | Where are tools defined? | `src/tools.ts` + `ralphx.yaml` | `src/tools/*.ts` (discovery, ideation, pipeline, events, tasks, guide) |
 | Domain logic? | ❌ Pure proxy + authz | ❌ Pure proxy + authz + rate limiting |
 | Both proxy to? | Tauri backend `:3847` | Tauri backend `:3847` |
