@@ -1444,3 +1444,91 @@ async fn test_delete_worktree_prunes_even_when_path_missing() {
          (RC9 fix: prune now runs outside if-path-exists block)"
     );
 }
+
+// =========================================================================
+// branches_have_same_content guard in try_merge_in_worktree
+// =========================================================================
+
+/// Verify that `try_merge_in_worktree` early-returns when branches are identical
+/// (same tree content), without creating the merge worktree or a new commit.
+#[tokio::test]
+async fn test_try_merge_in_worktree_skips_when_branches_identical() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+    Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
+    Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+
+    std::fs::write(repo.join("file.txt"), "hello\n").unwrap();
+    Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+    Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+    let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+    // Create task branch pointing at the same commit — identical content
+    Command::new("git").args(["branch", "task-branch"]).current_dir(repo).output().unwrap();
+
+    let merge_wt = temp_dir.path().join("merge-wt");
+    let result = GitService::try_merge_in_worktree(repo, "task-branch", "main", &merge_wt).await;
+
+    assert!(result.is_ok(), "Should succeed: {:?}", result.err());
+    assert!(
+        matches!(result.unwrap(), MergeAttemptResult::Success { .. }),
+        "Identical branches should return Success"
+    );
+    // Worktree must NOT be created — branches were identical, early return fires before Step 1
+    assert!(
+        !merge_wt.exists(),
+        "Merge worktree should NOT be created when branches are already identical"
+    );
+}
+
+// =========================================================================
+// branches_have_same_content guard in try_rebase_and_merge_in_worktree
+// =========================================================================
+
+/// Verify that `try_rebase_and_merge_in_worktree` early-returns when branches are
+/// identical, without creating either worktree or a new commit.
+#[tokio::test]
+async fn test_try_rebase_and_merge_in_worktree_skips_when_branches_identical() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    Command::new("git").args(["init"]).current_dir(repo).output().unwrap();
+    Command::new("git").args(["config", "user.email", "test@example.com"]).current_dir(repo).output().unwrap();
+    Command::new("git").args(["config", "user.name", "Test User"]).current_dir(repo).output().unwrap();
+
+    std::fs::write(repo.join("file.txt"), "hello\n").unwrap();
+    Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+    Command::new("git").args(["commit", "-m", "initial"]).current_dir(repo).output().unwrap();
+    // Second commit so base_commit_count > 1 (avoids early fallback to try_merge_in_worktree)
+    std::fs::write(repo.join("file2.txt"), "world\n").unwrap();
+    Command::new("git").args(["add", "."]).current_dir(repo).output().unwrap();
+    Command::new("git").args(["commit", "-m", "second"]).current_dir(repo).output().unwrap();
+    let _ = Command::new("git").args(["branch", "-M", "main"]).current_dir(repo).output();
+
+    // Create task branch pointing at the same commit — identical content
+    Command::new("git").args(["branch", "task-branch"]).current_dir(repo).output().unwrap();
+
+    let rebase_wt = temp_dir.path().join("rebase-wt");
+    let merge_wt = temp_dir.path().join("merge-wt");
+    let result = GitService::try_rebase_and_merge_in_worktree(
+        repo, "task-branch", "main", &rebase_wt, &merge_wt,
+    )
+    .await;
+
+    assert!(result.is_ok(), "Should succeed: {:?}", result.err());
+    assert!(
+        matches!(result.unwrap(), MergeAttemptResult::Success { .. }),
+        "Identical branches should return Success"
+    );
+    // Neither worktree should be created — early return fires before any worktree ops
+    assert!(
+        !rebase_wt.exists(),
+        "Rebase worktree should NOT be created when branches are already identical"
+    );
+    assert!(
+        !merge_wt.exists(),
+        "Merge worktree should NOT be created when branches are already identical"
+    );
+}

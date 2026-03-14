@@ -121,7 +121,8 @@ function TimelineItem({
   resolutionTrail = [],
 }: TimelineItemProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const isApproved = entry.outcome === "approved";
+  const isApproved = entry.outcome === "approved" || entry.outcome === "approved_no_changes";
+  const isNoChanges = entry.outcome === "approved_no_changes";
   const isChangesRequested = entry.outcome === "changes_requested";
   const isHuman = entry.reviewer === "human";
   const isSystem = entry.reviewer === "system";
@@ -172,6 +173,9 @@ function TimelineItem({
   const getLabel = () => {
     if (attemptNumber !== undefined && isChangesRequested) {
       return `Attempt #${attemptNumber}: Changes requested`;
+    }
+    if (isNoChanges) {
+      return `${reviewerLabel} approved (no changes)`;
     }
     if (isApproved) {
       return `${reviewerLabel} approved`;

@@ -28,6 +28,7 @@ const OUTCOME_CONFIG: Record<
   { label: string; color: string }
 > = {
   approved: { label: "Approved", color: "var(--status-success)" },
+  approved_no_changes: { label: "No Changes", color: "var(--status-info)" },
   changes_requested: { label: "Changes Requested", color: "var(--status-warning)" },
   rejected: { label: "Rejected", color: "var(--status-error)" },
 };
