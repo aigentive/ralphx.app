@@ -8,6 +8,8 @@ tools:
   - Grep
   - Glob
   - Bash
+mcpServers:
+  - ralphx
 allowedTools:
   - "mcp__ralphx__*"
 model: haiku

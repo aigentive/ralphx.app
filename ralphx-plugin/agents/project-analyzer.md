@@ -6,6 +6,8 @@ tools:
   - Glob
   - Bash
   - Grep
+mcpServers:
+  - ralphx
 allowedTools:
   - "mcp__ralphx__*"
   - Read

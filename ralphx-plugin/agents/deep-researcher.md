@@ -2,6 +2,8 @@
 name: ralphx-deep-researcher
 description: Conducts thorough research and analysis
 tools: Read, Write, Grep, Glob, Bash, WebFetch, WebSearch, Task, TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, KillShell, MCPSearch
+mcpServers:
+  - ralphx
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"

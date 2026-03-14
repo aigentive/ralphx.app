@@ -5,6 +5,8 @@ tools:
   - Read
   - Grep
   - Glob
+mcpServers:
+  - ralphx
 allowedTools:
   - "mcp__ralphx__*"
 model: haiku

@@ -3,6 +3,8 @@ name: session-namer
 description: Generates concise titles for ideation sessions based on user's first message or imported plan content
 tools:
   - mcp__ralphx__update_session_title
+mcpServers:
+  - ralphx
 allowedTools:
   - "mcp__ralphx__*"
 model: haiku

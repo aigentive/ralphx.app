@@ -7,6 +7,8 @@ tools:
   - Glob
   - WebFetch
   - WebSearch
+mcpServers:
+  - ralphx
 disallowedTools: Write, Edit, NotebookEdit, Bash
 allowedTools:
   - "mcp__ralphx__*"
