@@ -12,7 +12,7 @@ use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskCategory, Tas
 use crate::domain::state_machine::transition_handler::metadata_builder::build_restart_metadata;
 use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
 use std::sync::Arc;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 /// Create a new task
 #[tauri::command]
@@ -374,17 +374,19 @@ pub async fn inject_task(
         .map_err(|e| e.to_string())?;
 
     // Emit task:created event
-    let _ = app.emit(
-        "task:created",
-        serde_json::json!({
-            "taskId": created.id.as_str(),
-            "projectId": created.project_id.as_str(),
-            "title": created.title,
-            "status": created.internal_status.as_str(),
-            "priority": created.priority,
-            "injected": true,
-        }),
-    );
+    let created_payload = serde_json::json!({
+        "taskId": created.id.as_str(),
+        "projectId": created.project_id.as_str(),
+        "title": created.title,
+        "status": created.internal_status.as_str(),
+        "priority": created.priority,
+        "injected": true,
+    });
+    if let Some(throttled) = app.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>() {
+        throttled.emit("task:created", created_payload);
+    } else {
+        let _ = app.emit("task:created", created_payload);
+    }
 
     let target = if input.target == "planned" {
         // Emit queue_changed since we're adding a task to Ready status

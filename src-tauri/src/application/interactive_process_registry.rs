@@ -129,6 +129,12 @@ impl InteractiveProcessRegistry {
         processes.len()
     }
 
+    /// Return all registered process keys for shutdown diagnostics.
+    pub async fn dump_state(&self) -> Vec<InteractiveProcessKey> {
+        let processes = self.processes.lock().await;
+        processes.keys().cloned().collect()
+    }
+
     /// Log all registered process keys at info level for diagnostics.
     pub async fn log_registered_keys(&self, label: &str) {
         let processes = self.processes.lock().await;
@@ -192,6 +198,30 @@ mod tests {
         let removed = registry.remove(&key).await;
         assert!(removed.is_some());
         assert!(!registry.has_process(&key).await);
+    }
+
+    #[tokio::test]
+    async fn test_dump_state_empty() {
+        let registry = InteractiveProcessRegistry::new();
+        let keys = registry.dump_state().await;
+        assert!(keys.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_dump_state_returns_all_keys() {
+        let (stdin1, _child1) = create_test_stdin().await;
+        let (stdin2, _child2) = create_test_stdin().await;
+        let registry = InteractiveProcessRegistry::new();
+
+        let key1 = InteractiveProcessKey::new("ideation", "session-1");
+        let key2 = InteractiveProcessKey::new("task_execution", "task-2");
+        registry.register(key1.clone(), stdin1).await;
+        registry.register(key2.clone(), stdin2).await;
+
+        let keys = registry.dump_state().await;
+        assert_eq!(keys.len(), 2);
+        assert!(keys.contains(&key1));
+        assert!(keys.contains(&key2));
     }
 
     #[tokio::test]

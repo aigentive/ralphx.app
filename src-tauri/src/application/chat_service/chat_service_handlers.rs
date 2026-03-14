@@ -35,7 +35,7 @@ use crate::error::AppError;
 use super::chat_service_context;
 use super::chat_service_errors::{classify_agent_error, StreamError};
 use super::chat_service_helpers::get_assistant_role;
-use super::chat_service_types::AgentErrorPayload;
+use super::chat_service_types::{AgentErrorPayload, AgentRunCompletedPayload};
 use super::EventContextPayload;
 use crate::utils::secret_redactor::redact;
 
@@ -552,6 +552,29 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 review_repo,
             )
             .await;
+
+            // Emit run_completed to reset frontend from "generating" → "idle".
+            // This is a success path — the agent completed work before the stream
+            // was cancelled. Without this emission, the UI stays stuck in "generating".
+            // Do NOT emit agent:error here — that would destroy pending plans.
+            tracing::info!(
+                context_type = %context_type,
+                context_id,
+                turns_finalized,
+                "[LIFECYCLE] Cancelled+turns_finalized>0 — emitting run_completed (success path)"
+            );
+            if let Some(ref handle) = app_handle {
+                let _ = handle.emit(
+                    "agent:run_completed",
+                    AgentRunCompletedPayload {
+                        conversation_id: conversation_id.as_str().to_string(),
+                        context_type: context_type.to_string(),
+                        context_id: context_id.to_string(),
+                        claude_session_id: stored_session_id.map(|s| s.to_string()),
+                        run_chain_id: run_chain_id.clone(),
+                    },
+                );
+            }
             return false;
         }
 

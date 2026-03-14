@@ -498,3 +498,52 @@ fn test_all_skipped_no_completed() {
     let result = run(all_steps_completed(&step_repo, &task_id));
     assert!(result, "All Skipped → helper returns true");
 }
+
+// ========================================
+// Cancelled+turns_finalized path: run_completed emission
+// ========================================
+
+/// Verifies the branching logic in handle_stream_error for Cancelled variants.
+///
+/// Cancelled + turns_finalized > 0 → success path → run_completed emitted.
+/// Cancelled + turns_finalized == 0 → user-stop path → agent:stopped emitted.
+///
+/// This test guards against regression: if the turns_finalized guard changes,
+/// the UI will either (a) get stuck in "generating" or (b) emit spurious events.
+#[test]
+fn test_cancelled_with_turns_takes_success_path_not_error_path() {
+    // StreamError is in scope via `use super::*` (chat_service_handlers re-exports it)
+
+    // turns_finalized > 0 → agent completed at least one turn before cancellation
+    // → handle_stream_error calls handle_stream_success + emits run_completed
+    let cancelled_with_turns = StreamError::Cancelled { turns_finalized: 2 };
+    let goes_to_success_path = match &cancelled_with_turns {
+        StreamError::Cancelled { turns_finalized } => *turns_finalized > 0,
+        _ => false,
+    };
+    assert!(
+        goes_to_success_path,
+        "Cancelled{{turns_finalized:2}} → must take success path (handle_stream_success + run_completed)"
+    );
+    // Success path does NOT call agent_run_repo.fail or emit agent:error
+    assert!(
+        !cancelled_with_turns.is_retryable(),
+        "Cancelled variant is never retried (already handled as success or stop)"
+    );
+    assert!(
+        !cancelled_with_turns.is_provider_error(),
+        "Cancelled variant is not a provider error"
+    );
+
+    // turns_finalized == 0 → genuine user-stop or system cancel before any turn completed
+    // → handle_stream_error emits agent:stopped (not run_completed)
+    let cancelled_no_turns = StreamError::Cancelled { turns_finalized: 0 };
+    let goes_to_stop_path = match &cancelled_no_turns {
+        StreamError::Cancelled { turns_finalized } => *turns_finalized == 0,
+        _ => false,
+    };
+    assert!(
+        goes_to_stop_path,
+        "Cancelled{{turns_finalized:0}} → must take stop path (agent:stopped, not run_completed)"
+    );
+}

@@ -252,6 +252,7 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         .await;
 
         // Clean up team state when lead stream ends (success, error, or timeout)
+        let mut team_still_active = false;
         if team_mode {
             if let Some(ref service) = team_service {
                 let teams = service.list_teams().await;
@@ -259,7 +260,18 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     if let Ok(status) = service.get_team_status(tn).await {
                         if status.context_id == context_id {
                             // Disband the team via TeamService (stops teammates + persists + emits events)
-                            let _ = service.disband_team(tn).await;
+                            if let Err(e) = service.disband_team(tn).await {
+                                tracing::error!(
+                                    team_name = %tn,
+                                    error = %e,
+                                    "[TEAM_DISBAND_FAIL] Failed to disband team — IPR will still be removed (dead stdin is useless)"
+                                );
+                                // Disband failed: team is still registered, but we must still
+                                // remove the IPR — a dead process's stdin is useless.
+                                // Teammates will trigger re-spawn via the IPR-miss path.
+                                team_still_active = true;
+                            }
+                            // If disband succeeded, team_still_active stays false
                         }
                     }
                 }
@@ -269,45 +281,24 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
         // Unregister the process when done (ownership check: only removes our own slot)
         running_agent_registry.unregister(&registry_key, &agent_run_id).await;
 
-        // Remove interactive stdin handle so future messages trigger a new spawn.
-        // EXCEPTION: if a team is still active for this context, keep the IPR entry
-        // so teammate→lead nudges can still attempt delivery. The entry will be
-        // cleaned up when the team is disbanded or the next send_message detects
-        // a broken pipe and removes it.
+        // Always remove the IPR entry on stream exit — a dead process's stdin is useless.
+        // Even if teammates are still registered, they will trigger re-spawn via the
+        // standard IPR-miss path when they try to nudge the lead.
         if let Some(ref ipr) = interactive_process_registry {
             let ipr_key = InteractiveProcessKey::new(
                 context_type.to_string(),
                 &context_id,
             );
 
-            let team_still_active = if team_mode {
-                if let Some(ref service) = team_service {
-                    let teams = service.list_teams().await;
-                    let mut found = false;
-                    for tn in &teams {
-                        if let Ok(status) = service.get_team_status(tn).await {
-                            if status.context_id == context_id {
-                                found = true;
-                                break;
-                            }
-                        }
-                    }
-                    found
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
+            ipr.remove(&ipr_key).await;
             if team_still_active {
-                tracing::warn!(
+                tracing::info!(
                     %context_type,
                     context_id = %context_id,
-                    "[IPR_KEEP] Keeping interactive process stdin — team still active for context"
+                    "[IPR_REMOVE_TEAM] Removed IPR — team active but lead exited. \
+                     Teammate nudges trigger re-spawn via standard IPR-miss path."
                 );
             } else {
-                ipr.remove(&ipr_key).await;
                 tracing::info!(
                     %context_type,
                     context_id = %context_id,
@@ -436,6 +427,16 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 let has_output = has_meaningful_output(&response_text, tool_calls.len(), &stderr_text);
                 let skip_post_loop_finalization = turns_finalized > 0 && !has_output;
 
+                tracing::info!(
+                    context_type = %context_type,
+                    context_id = %context_id,
+                    turns_finalized,
+                    has_output,
+                    skip_post_loop_finalization,
+                    silent_interactive_exit = outcome.silent_interactive_exit,
+                    "[LIFECYCLE] skip_post_loop_finalization decision"
+                );
+
                 let assistant_role = get_assistant_role(&context_type).to_string();
                 if skip_post_loop_finalization {
                     tracing::debug!(
@@ -541,6 +542,22 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 )
                 .await;
 
+                // Detect and log the "Cancelled + turns_finalized > 0" path.
+                // In this scenario: agent did useful work (turns finalized in stream loop)
+                // but the process was cancelled before returning. The subsequent
+                // will_emit_run_completed check depends on silent_interactive_exit;
+                // if that flag is false, run_completed may be skipped entirely.
+                if cancellation_token.is_cancelled() && turns_finalized > 0 {
+                    tracing::info!(
+                        context_type = %context_type,
+                        context_id = %context_id,
+                        turns_finalized,
+                        skip_post_loop_finalization,
+                        silent_interactive_exit = outcome.silent_interactive_exit,
+                        "[LIFECYCLE] Cancelled stream with turns_finalized>0 — run_completed emission depends on silent_interactive_exit"
+                    );
+                }
+
                 // Staleness guard (defense-in-depth): drop stale queued messages before
                 // processing on ANY process exit. Catches OOM/SIGKILL scenarios where
                 // silent_interactive_exit flag cannot be set.
@@ -568,6 +585,18 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 let has_session_for_queue = effective_session_id.is_some();
                 let will_process_queue = initial_queue_count > 0 && has_session_for_queue && !outcome.silent_interactive_exit;
 
+                tracing::info!(
+                    context_type = %context_type,
+                    context_id = %context_id,
+                    turns_finalized,
+                    skip_post_loop_finalization,
+                    silent_interactive_exit = outcome.silent_interactive_exit,
+                    initial_queue_count,
+                    has_session_for_queue,
+                    will_process_queue,
+                    "[LIFECYCLE] will_process_queue decision"
+                );
+
                 if initial_queue_count > 0 && claude_session_id.is_none() && stored_session_id.is_some() {
                     tracing::info!(
                         "[QUEUE] Stream had no session_id, using stored session_id from conversation for queue processing"
@@ -582,7 +611,19 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     let conv_id_str = conversation_id.as_str();
                     streaming_state_cache.clear(&conv_id_str).await;
 
-                    if !skip_post_loop_finalization || outcome.silent_interactive_exit {
+                    let will_emit_run_completed = !skip_post_loop_finalization || outcome.silent_interactive_exit;
+                    tracing::info!(
+                        context_type = %context_type,
+                        context_id = %context_id,
+                        turns_finalized,
+                        skip_post_loop_finalization,
+                        silent_interactive_exit = outcome.silent_interactive_exit,
+                        will_process_queue,
+                        will_emit_run_completed,
+                        "[LIFECYCLE] run_completed emission decision (no-queue path)"
+                    );
+
+                    if will_emit_run_completed {
                         if let Some(ref handle) = app_handle {
                             let _ = handle.emit(
                                 "agent:run_completed",
@@ -645,26 +686,45 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     )
                     .await;
 
-                    // After ALL queue processing is done, emit the final run_completed
-                    if total_processed > 0 {
-                        tracing::info!("[QUEUE] Emitting final run_completed after processing {} queued messages", total_processed);
+                    // After ALL queue processing is done, emit the final run_completed.
+                    // Always emit regardless of total_processed — if will_process_queue=true,
+                    // the pre-queue run_completed was skipped. We must emit here even when
+                    // total_processed=0 (race, spawn failure, or cancellation).
+                    tracing::info!(
+                        context_type = %context_type,
+                        context_id = %context_id,
+                        turns_finalized,
+                        skip_post_loop_finalization,
+                        will_process_queue,
+                        total_processed,
+                        will_emit_run_completed = true,
+                        "[LIFECYCLE] run_completed emission decision (queue path)"
+                    );
+                    if total_processed == 0 && initial_queue_count > 0 {
+                        tracing::warn!(
+                            context_type = %context_type,
+                            context_id = %context_id,
+                            initial_queue_count,
+                            "[LIFECYCLE] run_completed emitting after queue processing but total_processed=0 (race/spawn failure/cancellation)"
+                        );
+                    }
+                    tracing::info!("[QUEUE] Emitting final run_completed after processing {} queued messages", total_processed);
 
-                        // Clear streaming state cache - queue processing completed
-                        let conv_id_str = conversation_id.as_str();
-                        streaming_state_cache.clear(&conv_id_str).await;
+                    // Clear streaming state cache - queue processing completed
+                    let conv_id_str = conversation_id.as_str();
+                    streaming_state_cache.clear(&conv_id_str).await;
 
-                        if let Some(ref handle) = app_handle {
-                            let _ = handle.emit(
-                                "agent:run_completed",
-                                AgentRunCompletedPayload {
-                                    conversation_id: conversation_id.as_str().to_string(),
-                                    context_type: context_type.to_string(),
-                                    context_id: context_id.clone(),
-                                    claude_session_id: Some(sess_id.clone()),
-                                    run_chain_id: run_chain_id.clone(),
-                                },
-                            );
-                        }
+                    if let Some(ref handle) = app_handle {
+                        let _ = handle.emit(
+                            "agent:run_completed",
+                            AgentRunCompletedPayload {
+                                conversation_id: conversation_id.as_str().to_string(),
+                                context_type: context_type.to_string(),
+                                context_id: context_id.clone(),
+                                claude_session_id: Some(sess_id.clone()),
+                                run_chain_id: run_chain_id.clone(),
+                            },
+                        );
                     }
 
                     // Trigger memory pipelines after queue processing completes
@@ -683,7 +743,16 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                     .await;
                 } else {
                     // effective_session_id is None - no session ID from stream OR stored conversation
+                    // run_completed was emitted via the no-queue path above (if not skipped)
                     let queue_count = message_queue.get_queued(context_type, &context_id).len();
+                    tracing::warn!(
+                        context_type = %context_type,
+                        context_id = %context_id,
+                        turns_finalized,
+                        skip_post_loop_finalization,
+                        queue_count,
+                        "[LIFECYCLE] effective_session_id=None: queue processing skipped, run_completed handled by no-queue path"
+                    );
                     if queue_count > 0 {
                         tracing::warn!(
                             "[QUEUE] SKIPPING {} queued messages because no session_id available (neither from stream nor stored)!",

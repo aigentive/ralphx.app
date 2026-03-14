@@ -77,6 +77,8 @@ interface ChatState {
   isSending: Record<string, boolean>;
   /** Whether a team is active for a context key (enables team UI) */
   isTeamActive: Record<string, boolean>;
+  /** Last agent event timestamp per context key — used by watchdog for stuck-generating recovery */
+  lastAgentEventTimestamp: Record<string, number>;
 }
 
 // ============================================================================
@@ -120,6 +122,8 @@ interface ChatActions {
   stopEditingQueuedMessage: (contextKey: string, id: string) => void;
   /** Set team active state for a context */
   setTeamActive: (contextKey: string, isActive: boolean) => void;
+  /** Update last agent event timestamp for watchdog tracking */
+  updateLastAgentEvent: (key: string) => void;
 }
 
 // ============================================================================
@@ -138,6 +142,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
     agentStatus: {},
     isSending: {},
     isTeamActive: {},
+    lastAgentEventTimestamp: {},
 
     // Actions
     setContext: (context) =>
@@ -295,6 +300,11 @@ export const useChatStore = create<ChatState & ChatActions>()(
         }
       }),
 
+    updateLastAgentEvent: (key) =>
+      set((state) => {
+        state.lastAgentEventTimestamp[key] = Date.now();
+      }),
+
     processQueue: async (contextKey) => {
       const state = get();
       const messages = state.queuedMessages[contextKey];
@@ -417,6 +427,16 @@ export const selectIsTeamActive =
   (contextKey: string) =>
   (state: ChatState): boolean =>
     state.isTeamActive[contextKey] ?? false;
+
+/**
+ * Select last agent event timestamp for a context (for watchdog use)
+ * @param contextKey - The context key to get timestamp for
+ * @returns Selector function returning timestamp (ms) or 0 if never set
+ */
+export const selectLastAgentEventTimestamp =
+  (contextKey: string) =>
+  (state: ChatState): number =>
+    state.lastAgentEventTimestamp[contextKey] ?? 0;
 
 // Stable empty arrays to avoid creating new references
 const EMPTY_MESSAGES: ChatMessage[] = [];

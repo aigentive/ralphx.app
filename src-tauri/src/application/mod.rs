@@ -33,6 +33,7 @@ pub mod task_cleanup_service;
 pub mod task_context_service;
 pub mod task_scheduler_service;
 pub mod task_transition_service;
+pub mod throttled_emitter;
 pub mod team_events;
 pub mod team_service;
 pub mod team_state_tracker;
@@ -81,6 +82,7 @@ pub use task_cleanup_service::{
 pub use task_context_service::TaskContextService;
 pub use task_scheduler_service::{ReadyWatchdog, TaskSchedulerService};
 pub use task_transition_service::TaskTransitionService;
+pub use throttled_emitter::ThrottledEmitter;
 pub use team_service::TeamService;
 pub use team_state_tracker::TeamStateTracker;
 
@@ -88,6 +90,8 @@ pub use team_state_tracker::TeamStateTracker;
 mod app_state_shared_state_tests;
 #[cfg(test)]
 mod prune_engine_tests;
+#[cfg(test)]
+mod throttled_emitter_tests;
 
 // Unified chat service (handles all chat contexts: ideation, task, project, task_execution)
 pub use chat_service::{
