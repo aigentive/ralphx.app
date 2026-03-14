@@ -16,6 +16,8 @@ use std::str::FromStr;
 pub enum ReviewToolOutcome {
     /// Work verified, task complete - transitions to approved
     Approved,
+    /// Task intentionally produced no code changes (research, docs, planning). Skips merge pipeline.
+    ApprovedNoChanges,
     /// Issues found that can be fixed - creates fix task
     NeedsChanges,
     /// Needs human review (security-sensitive, design decision, unclear requirements)
@@ -26,6 +28,7 @@ impl std::fmt::Display for ReviewToolOutcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ReviewToolOutcome::Approved => write!(f, "approved"),
+            ReviewToolOutcome::ApprovedNoChanges => write!(f, "approved_no_changes"),
             ReviewToolOutcome::NeedsChanges => write!(f, "needs_changes"),
             ReviewToolOutcome::Escalate => write!(f, "escalate"),
         }
@@ -38,6 +41,7 @@ impl FromStr for ReviewToolOutcome {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "approved" => Ok(ReviewToolOutcome::Approved),
+            "approved_no_changes" => Ok(ReviewToolOutcome::ApprovedNoChanges),
             "needs_changes" => Ok(ReviewToolOutcome::NeedsChanges),
             "escalate" => Ok(ReviewToolOutcome::Escalate),
             _ => Err(ParseReviewToolOutcomeError(s.to_string())),
@@ -53,7 +57,7 @@ impl std::fmt::Display for ParseReviewToolOutcomeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
             f,
-            "invalid review tool outcome: '{}', expected 'approved', 'needs_changes', or 'escalate'",
+            "invalid review tool outcome: '{}', expected 'approved', 'approved_no_changes', 'needs_changes', or 'escalate'",
             self.0
         )
     }
@@ -360,6 +364,11 @@ impl CompleteReviewInput {
                 // Issues are optional for approved
                 Ok(())
             }
+            ReviewToolOutcome::ApprovedNoChanges => {
+                // No additional validation — issues must be empty, fix_description None
+                // (same as Approved; no code issues to report for no-changes tasks)
+                Ok(())
+            }
             ReviewToolOutcome::NeedsChanges => {
                 // fix_description is required
                 match &self.fix_description {
@@ -397,7 +406,7 @@ impl CompleteReviewInput {
 
     /// Check if this is an approval
     pub fn is_approved(&self) -> bool {
-        self.outcome == ReviewToolOutcome::Approved
+        matches!(self.outcome, ReviewToolOutcome::Approved | ReviewToolOutcome::ApprovedNoChanges)
     }
 
     /// Check if this needs changes

@@ -426,6 +426,8 @@ impl std::fmt::Display for ReviewNoteId {
 pub enum ReviewOutcome {
     /// Review approved the work
     Approved,
+    /// Task intentionally produced no code changes (research, docs, planning)
+    ApprovedNoChanges,
     /// Reviewer requested changes
     ChangesRequested,
     /// Review rejected the work
@@ -436,6 +438,7 @@ impl std::fmt::Display for ReviewOutcome {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ReviewOutcome::Approved => write!(f, "approved"),
+            ReviewOutcome::ApprovedNoChanges => write!(f, "approved_no_changes"),
             ReviewOutcome::ChangesRequested => write!(f, "changes_requested"),
             ReviewOutcome::Rejected => write!(f, "rejected"),
         }
@@ -448,6 +451,7 @@ impl FromStr for ReviewOutcome {
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
             "approved" => Ok(ReviewOutcome::Approved),
+            "approved_no_changes" => Ok(ReviewOutcome::ApprovedNoChanges),
             "changes_requested" => Ok(ReviewOutcome::ChangesRequested),
             "rejected" => Ok(ReviewOutcome::Rejected),
             _ => Err(ParseReviewOutcomeError(s.to_string())),
@@ -566,7 +570,10 @@ impl ReviewNote {
 
     /// Check if the review was positive (approved)
     pub fn is_positive(&self) -> bool {
-        self.outcome == ReviewOutcome::Approved
+        matches!(
+            self.outcome,
+            ReviewOutcome::Approved | ReviewOutcome::ApprovedNoChanges
+        )
     }
 
     /// Check if the review was negative (changes requested or rejected)

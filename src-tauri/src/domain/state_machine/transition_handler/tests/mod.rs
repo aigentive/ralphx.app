@@ -44,6 +44,7 @@ mod metadata_builder_tests;
 mod metadata_builder_tests_2;
 mod on_enter_states_tests;
 mod symlink_idempotent;
+mod worktree_setup_collision;
 
 // Tests for has_prior_validation_failure guard (validation metadata checks)
 mod merge_helpers_validation_guard;
