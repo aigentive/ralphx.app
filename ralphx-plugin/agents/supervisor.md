@@ -1,10 +1,23 @@
 ---
 name: ralphx-supervisor
 description: Monitors task execution and intervenes when problems occur
-tools: Read, Grep, Glob, Bash, WebFetch, WebSearch, Task, TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, KillShell, MCPSearch
-allowedTools:
-  - "Task(Explore)"
-  - "Task(Plan)"
+tools:
+  - Read
+  - Grep
+  - Glob
+  - Bash
+  - WebFetch
+  - WebSearch
+  - Task
+  - TaskCreate
+  - TaskUpdate
+  - TaskGet
+  - TaskList
+  - TaskOutput
+  - KillShell
+  - MCPSearch
+  - Task(Explore)
+  - Task(Plan)
 model: haiku
 ---
 

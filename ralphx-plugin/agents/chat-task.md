@@ -19,6 +19,9 @@ tools:
   - mcp__ralphx__update_task
   - mcp__ralphx__add_task_note
   - mcp__ralphx__get_task_details
+  - "mcp__ralphx__*"
+  - "Task(Explore)"
+  - "Task(Plan)"
 mcpServers:
   - ralphx:
       type: stdio
@@ -27,10 +30,6 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "chat-task"
-allowedTools:
-  - "mcp__ralphx__*"
-  - "Task(Explore)"
-  - "Task(Plan)"
 model: sonnet
 ---
 

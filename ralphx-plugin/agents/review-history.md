@@ -13,6 +13,9 @@ tools:
   - TaskOutput
   - KillShell
   - MCPSearch
+  - "mcp__ralphx__*"
+  - "Task(Explore)"
+  - "Task(Plan)"
 mcpServers:
   - ralphx:
       type: stdio
@@ -21,10 +24,6 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "ralphx-review-history"
-allowedTools:
-  - "mcp__ralphx__*"
-  - "Task(Explore)"
-  - "Task(Plan)"
 model: sonnet
 ---
 

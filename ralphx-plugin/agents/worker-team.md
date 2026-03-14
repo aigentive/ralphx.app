@@ -19,6 +19,8 @@ tools:
   - TeamCreate
   - TeamDelete
   - SendMessage
+  - "mcp__ralphx__*"
+  - "Task(general-purpose)"
 mcpServers:
   - ralphx:
       type: stdio
@@ -28,9 +30,6 @@ mcpServers:
         - "--agent-type"
         - "ralphx-worker-team"
 disallowedTools: Write, Edit, NotebookEdit
-allowedTools:
-  - "mcp__ralphx__*"
-  - "Task(general-purpose)"
 model: opus
 skills:
   - task-decomposition

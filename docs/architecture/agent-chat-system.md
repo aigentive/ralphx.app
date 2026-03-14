@@ -206,7 +206,7 @@ Each agent's tool access is restricted at three independent layers. All three mu
 
 | Layer | Location | Mechanism | Granularity |
 |-------|----------|-----------|-------------|
-| 1. YAML Config | `ralphx-plugin/agents/<agent>.md` frontmatter | `allowedTools:` / `disallowedTools:` lists | Per-agent file |
+| 1. YAML Config | `ralphx-plugin/agents/<agent>.md` frontmatter | `tools:` list (incl. `"mcp__ralphx__*"`) / `disallowedTools:` | Per-agent file |
 | 2. MCP Server Filter | `ralphx-mcp-server/src/tools.ts` | `TOOL_ALLOWLIST[agentType]` → filters `listTools` response | Per-agent-type at runtime |
 | 3. Agent System Prompt | Agent `.md` body instructions | Natural language guidance on which tools to use | Behavioral (soft) |
 

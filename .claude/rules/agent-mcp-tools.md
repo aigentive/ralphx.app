@@ -21,7 +21,7 @@ Tool allowlists are now driven by **`ralphx.yaml` → `--allowed-tools` CLI arg 
 
 **How it works:** Rust `create_mcp_config()` reads `mcp_tools` from `ralphx.yaml` and injects `--allowed-tools=tool1,tool2,...` into the MCP config JSON args. MCP server parses this at startup — no TOOL_ALLOWLIST lookup needed.
 
-**Agent `.md` frontmatter** → `mcp__ralphx__*` wildcard covers all MCP tools automatically (Layer 3 is no longer agent-specific).
+**Agent `.md` frontmatter** → add `"mcp__ralphx__*"` to the `tools` list (NOT `allowedTools` — that key is invalid in frontmatter; only `tools` and `disallowedTools` are valid).
 
 ## How to Add a New MCP Tool — Checklist
 
@@ -36,7 +36,7 @@ Tool allowlists are now driven by **`ralphx.yaml` → `--allowed-tools` CLI arg 
 **What you NO LONGER need to do:**
 - ~~Edit `TOOL_ALLOWLIST` in `tools.ts`~~ (bypassed by `--allowed-tools`)
 - ~~Edit Rust `AGENT_CONFIGS` `allowed_mcp_tools`~~ (removed — `ralphx.yaml` is now the single source of truth)
-- ~~Edit agent `.md` frontmatter `allowedTools`~~ (wildcard `mcp__ralphx__*` covers all MCP tools)
+- ~~Edit agent `.md` frontmatter `allowedTools`~~ (`allowedTools` is NOT a valid frontmatter field — add `"mcp__ralphx__*"` to `tools` instead)
 
 ## How to Add a Completely New Tool
 
@@ -79,7 +79,7 @@ After adding a tool, verify MCP server stderr shows:
 |---------|--------|---------|
 | `ralphx.yaml` `mcp_tools` | bare name | `get_merge_target` |
 | TS `ALL_TOOLS` definition | bare name | `name: "get_merge_target"` |
-| Agent frontmatter `allowedTools` | wildcard | `mcp__ralphx__*` |
+| Agent frontmatter `tools` | wildcard | `"mcp__ralphx__*"` |
 
 ## Common Failure Modes
 
@@ -89,7 +89,7 @@ After adding a tool, verify MCP server stderr shows:
 | Tool listed but "not available" | Handler missing from `ALL_TOOLS` or `index.ts` dispatch | Register handler + rebuild |
 | MCP server logs "using fallback TOOL_ALLOWLIST" | `--allowed-tools` not injected | Check `ralphx.yaml` syntax; rebuild Rust |
 | Tool allowed but 404 | Handler missing or wrong route | Check `index.ts` dispatch + `mod.rs` route |
-| Subagent can't use tool | Agent `.md` doesn't have `mcp__ralphx__*` wildcard | Add wildcard to frontmatter `allowedTools` |
+| Subagent can't use tool | Agent `.md` doesn't have `"mcp__ralphx__*"` in `tools` | Add wildcard to frontmatter `tools` list |
 
 ## Current Tool Grants (per-agent reference)
 
@@ -140,40 +140,45 @@ Then rebuild: `cd ralphx-plugin/ralphx-mcp-server && npm run build`
 
 ### mcpServers Frontmatter Field
 
-Any agent that has MCP tools in `allowedTools` MUST also include `mcpServers` in frontmatter:
+Any agent that uses MCP tools MUST also include `mcpServers` in frontmatter:
 
 ```yaml
 mcpServers:
   - ralphx          # reference by name (from .mcp.json)
 ```
 
-Without `mcpServers`, the subagent has zero MCP tools — `allowedTools` filters are ignored because there's no MCP server connected.
+Without `mcpServers`, the subagent has zero MCP tools — `tools` entries for `mcp__ralphx__*` are ignored because there's no MCP server connected.
 
 **Three fields work together:**
 
 | Field | Purpose | Without It |
 |-------|---------|------------|
 | `mcpServers` | Connects to MCP server | Zero MCP tools available |
-| `allowedTools` | Filters which MCP tools are exposed | All MCP tools from connected servers available |
+| `tools` (with `"mcp__ralphx__*"`) | Allowlists which MCP tools are exposed | All MCP tools from connected servers available |
 | `disallowedTools` | Blocks specific MCP tools | All allowed MCP tools available |
 
-❌ Adding MCP tools to `allowedTools` without `mcpServers` — tools will not be available
-✅ Always pair `mcpServers: [ralphx]` with any `mcp__ralphx__*` allowedTools entries
+❌ `allowedTools` is NOT a valid frontmatter field — Claude Code silently ignores it
+✅ Add `"mcp__ralphx__*"` to the `tools` list AND include `mcpServers`
 
 ```yaml
-# ✅ Correct — mcpServers paired with allowedTools
+# ✅ Correct — mcpServers + MCP wildcard in tools
 ---
 name: my-agent
 tools:
   - Read
   - Grep
-mcpServers:
-  - ralphx
-allowedTools:
   - "mcp__ralphx__*"
+mcpServers:
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "my-agent"
 ---
 
-# ❌ Wrong — allowedTools without mcpServers (zero MCP tools at runtime)
+# ❌ Wrong — allowedTools is not a valid frontmatter field (silently ignored)
 ---
 name: my-agent
 tools:
