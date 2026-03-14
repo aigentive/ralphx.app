@@ -5,9 +5,11 @@
  * and smooth spring animations. Warm orange accent (#ff6b35).
  *
  * Five semantic groups: Drafts, In Progress, Accepted, Done, Archived.
+ * Uses server-side paginated queries per group, lazy-loaded on expand
+ * with infinite scroll. Groups default to collapsed except In Progress.
  */
 
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import {
   MessageSquare,
@@ -19,19 +21,20 @@ import {
   CircleCheck,
   Archive,
 } from "lucide-react";
-import type { IdeationSession } from "@/types/ideation";
+import type { IdeationSessionWithProgress } from "@/types/ideation";
 import { ideationApi } from "@/api/ideation";
 import { PlanItem } from "./PlanItem";
 import { SessionGroupHeader } from "./SessionGroupHeader";
-import { groupSessions, type SessionGroup } from "./planBrowserUtils";
-import { useSessionProgress } from "@/hooks/useSessionProgress";
+import { SessionGroupSkeleton } from "./SessionGroupSkeleton";
+import { GROUP_KEY_TO_API, type SessionGroup } from "./planBrowserUtils";
+import { useSessionGroupCounts } from "@/hooks/useIdeation";
+import { useInfiniteSessionsQuery, flattenSessionPages } from "@/hooks/useInfiniteSessionsQuery";
 
 // ============================================================================
 // Types
 // ============================================================================
 
 interface PlanBrowserProps {
-  sessions: IdeationSession[];
   projectId: string;
   currentPlanId: string | null;
   onSelectPlan: (planId: string) => void;
@@ -51,21 +54,136 @@ const GROUP_CONFIG: {
   label: string;
   icon: typeof Pencil;
   accentColor?: string;
-  defaultOpen: boolean;
 }[] = [
-  { key: "drafts", label: "Drafts", icon: Pencil, defaultOpen: true },
-  { key: "in-progress", label: "In Progress", icon: Zap, accentColor: "hsl(14 100% 60%)", defaultOpen: true },
-  { key: "accepted", label: "Accepted", icon: CheckCircle, accentColor: "hsl(145 70% 45%)", defaultOpen: true },
-  { key: "done", label: "Done", icon: CircleCheck, accentColor: "hsl(220 10% 45%)", defaultOpen: false },
-  { key: "archived", label: "Archived", icon: Archive, accentColor: "hsl(220 10% 45%)", defaultOpen: false },
+  { key: "drafts", label: "Drafts", icon: Pencil },
+  { key: "in-progress", label: "In Progress", icon: Zap, accentColor: "hsl(14 100% 60%)" },
+  { key: "accepted", label: "Accepted", icon: CheckCircle, accentColor: "hsl(145 70% 45%)" },
+  { key: "done", label: "Done", icon: CircleCheck, accentColor: "hsl(220 10% 45%)" },
+  { key: "archived", label: "Archived", icon: Archive, accentColor: "hsl(220 10% 45%)" },
 ];
+
+// ============================================================================
+// Per-Group Section Component
+// ============================================================================
+
+interface GroupSectionProps {
+  groupKey: SessionGroup;
+  projectId: string;
+  isOpen: boolean;
+  onToggle: (open: boolean) => void;
+  icon: typeof Pencil;
+  label: string;
+  accentColor?: string;
+  count: number;
+  renderItem: (plan: IdeationSessionWithProgress, group: SessionGroup) => React.ReactNode;
+}
+
+function GroupSection({
+  groupKey,
+  projectId,
+  isOpen,
+  onToggle,
+  icon,
+  label,
+  accentColor,
+  count,
+  renderItem,
+}: GroupSectionProps) {
+  const apiKey = GROUP_KEY_TO_API[groupKey];
+  const {
+    data,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+    isLoading,
+  } = useInfiniteSessionsQuery(projectId, apiKey, { enabled: isOpen });
+
+  const sessions = flattenSessionPages(data);
+
+  // Intersection observer for infinite scroll
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+  const fetchNextPageRef = useRef(fetchNextPage);
+  const hasNextPageRef = useRef(hasNextPage);
+  useEffect(() => {
+    fetchNextPageRef.current = fetchNextPage;
+    hasNextPageRef.current = hasNextPage;
+  }, [fetchNextPage, hasNextPage]);
+
+  useEffect(() => {
+    if (!sentinelRef.current || !isOpen) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const first = entries[0];
+        if (first?.isIntersecting && hasNextPageRef.current && !isFetchingNextPage) {
+          fetchNextPageRef.current();
+        }
+      },
+      { threshold: 0.1 }
+    );
+
+    observer.observe(sentinelRef.current);
+    return () => observer.disconnect();
+  }, [isOpen, isFetchingNextPage]);
+
+  if (count === 0) return null;
+
+  // Drafts group renders flat (no collapsible header)
+  if (groupKey === "drafts") {
+    return (
+      <div className="space-y-1">
+        {isLoading ? (
+          <SessionGroupSkeleton count={Math.min(count, 3)} />
+        ) : (
+          <>
+            {sessions.map((plan) => renderItem(plan, groupKey))}
+            {hasNextPage && (
+              <div ref={sentinelRef} className="h-2" />
+            )}
+            {isFetchingNextPage && (
+              <SessionGroupSkeleton count={1} />
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <SessionGroupHeader
+      icon={icon}
+      label={label}
+      count={count}
+      isOpen={isOpen}
+      onToggle={onToggle}
+      {...(accentColor != null && { accentColor })}
+    >
+      {isOpen && (
+        <>
+          {isLoading ? (
+            <SessionGroupSkeleton count={Math.min(count, 3)} />
+          ) : (
+            <>
+              {sessions.map((plan) => renderItem(plan, groupKey))}
+              {hasNextPage && (
+                <div ref={sentinelRef} className="h-2" />
+              )}
+              {isFetchingNextPage && (
+                <SessionGroupSkeleton count={1} />
+              )}
+            </>
+          )}
+        </>
+      )}
+    </SessionGroupHeader>
+  );
+}
 
 // ============================================================================
 // Component
 // ============================================================================
 
 export function PlanBrowser({
-  sessions,
   projectId,
   currentPlanId,
   onSelectPlan,
@@ -75,19 +193,35 @@ export function PlanBrowser({
   onReopenPlan,
   onResetReacceptPlan,
 }: PlanBrowserProps) {
-  const { progressMap } = useSessionProgress(projectId, sessions);
-  const grouped = useMemo(() => groupSessions(sessions, progressMap), [sessions, progressMap]);
+  const { data: counts } = useSessionGroupCounts(projectId);
+
+  const totalCount = counts
+    ? counts.drafts + counts.inProgress + counts.accepted + counts.done + counts.archived
+    : 0;
+
+  // Default expand state: all collapsed except In Progress (if count > 0)
+  const [groupOpen, setGroupOpen] = useState<Record<SessionGroup, boolean>>(() => ({
+    drafts: true, // always show drafts flat (no header toggle)
+    "in-progress": false, // will be updated once counts load
+    accepted: false,
+    done: false,
+    archived: false,
+  }));
+
+  // Open In Progress automatically once counts load and inProgress > 0
+  const countsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (counts && !countsLoadedRef.current) {
+      countsLoadedRef.current = true;
+      if (counts.inProgress > 0) {
+        setGroupOpen((prev) => ({ ...prev, "in-progress": true }));
+      }
+    }
+  }, [counts]);
 
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-  const [groupOpen, setGroupOpen] = useState<Record<SessionGroup, boolean>>({
-    drafts: true,
-    "in-progress": true,
-    accepted: true,
-    done: false,
-    archived: false,
-  });
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -97,17 +231,17 @@ export function PlanBrowser({
     }
   }, [editingPlanId]);
 
-  const handleStartRename = (plan: IdeationSession) => {
+  const handleStartRename = useCallback((plan: IdeationSessionWithProgress) => {
     setEditingPlanId(plan.id);
     setEditingTitle(plan.title || "");
-  };
+  }, []);
 
-  const handleCancelRename = () => {
+  const handleCancelRename = useCallback(() => {
     setEditingPlanId(null);
     setEditingTitle("");
-  };
+  }, []);
 
-  const handleConfirmRename = async (planId: string) => {
+  const handleConfirmRename = useCallback(async (planId: string) => {
     const trimmedTitle = editingTitle.trim();
     if (trimmedTitle) {
       try {
@@ -118,9 +252,9 @@ export function PlanBrowser({
     }
     setEditingPlanId(null);
     setEditingTitle("");
-  };
+  }, [editingTitle]);
 
-  const handleKeyDown = (e: React.KeyboardEvent, planId: string) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent, planId: string) => {
     if (e.key === "Enter") {
       e.preventDefault();
       handleConfirmRename(planId);
@@ -128,45 +262,51 @@ export function PlanBrowser({
       e.preventDefault();
       handleCancelRename();
     }
-  };
+  }, [handleConfirmRename, handleCancelRename]);
 
-  const handleGroupToggle = (group: SessionGroup, open: boolean) => {
-    setGroupOpen((prev: Record<SessionGroup, boolean>) => ({ ...prev, [group]: open }));
-  };
+  const handleGroupToggle = useCallback((group: SessionGroup, open: boolean) => {
+    setGroupOpen((prev) => ({ ...prev, [group]: open }));
+  }, []);
 
-  const renderPlanItem = (plan: IdeationSession, group: SessionGroup) => {
-    const progress = progressMap.get(plan.id);
-    const parentSession = plan.parentSessionId
-      ? sessions.find((s) => s.id === plan.parentSessionId)
-      : undefined;
-    return (
-      <PlanItem
-        key={plan.id}
-        plan={plan}
-        isSelected={plan.id === currentPlanId}
-        group={group}
-        {...(progress != null && { progress })}
-        {...(parentSession && { parentSession })}
-        isEditing={editingPlanId === plan.id}
-        editingTitle={editingTitle}
-        isMenuOpen={openMenuId === plan.id}
-        inputRef={inputRef}
-        onSelect={() => onSelectPlan(plan.id)}
-        onStartRename={() => handleStartRename(plan)}
-        onCancelRename={handleCancelRename}
-        onConfirmRename={() => handleConfirmRename(plan.id)}
-        onTitleChange={setEditingTitle}
-        onKeyDown={(e) => handleKeyDown(e, plan.id)}
-        onMenuOpenChange={(open) => setOpenMenuId(open ? plan.id : null)}
-        onArchive={() => onArchivePlan?.(plan.id)}
-        onDelete={() => onDeletePlan?.(plan.id)}
-        onReopen={() => onReopenPlan?.(plan.id)}
-        onResetReaccept={() => onResetReacceptPlan?.(plan.id)}
-      />
-    );
-  };
+  const renderPlanItem = useCallback((plan: IdeationSessionWithProgress, group: SessionGroup) => (
+    <PlanItem
+      key={plan.id}
+      plan={plan}
+      isSelected={plan.id === currentPlanId}
+      group={group}
+      isEditing={editingPlanId === plan.id}
+      editingTitle={editingTitle}
+      isMenuOpen={openMenuId === plan.id}
+      inputRef={inputRef}
+      onSelect={() => onSelectPlan(plan.id)}
+      onStartRename={() => handleStartRename(plan)}
+      onCancelRename={handleCancelRename}
+      onConfirmRename={() => handleConfirmRename(plan.id)}
+      onTitleChange={setEditingTitle}
+      onKeyDown={(e) => handleKeyDown(e, plan.id)}
+      onMenuOpenChange={(open) => setOpenMenuId(open ? plan.id : null)}
+      onArchive={() => onArchivePlan?.(plan.id)}
+      onDelete={() => onDeletePlan?.(plan.id)}
+      onReopen={() => onReopenPlan?.(plan.id)}
+      onResetReaccept={() => onResetReacceptPlan?.(plan.id)}
+    />
+  ), [
+    currentPlanId,
+    editingPlanId,
+    editingTitle,
+    openMenuId,
+    onSelectPlan,
+    handleStartRename,
+    handleCancelRename,
+    handleConfirmRename,
+    handleKeyDown,
+    onArchivePlan,
+    onDeletePlan,
+    onReopenPlan,
+    onResetReacceptPlan,
+  ]);
 
-  const hasAnySessions = sessions.length > 0;
+  const hasAnySessions = totalCount > 0;
 
   return (
     <div
@@ -219,7 +359,7 @@ export function PlanBrowser({
                 className="text-[11px] tracking-[-0.005em]"
                 style={{ color: "hsl(220 10% 50%)" }}
               >
-                {sessions.length} {sessions.length === 1 ? "plan" : "plans"}
+                {totalCount} {totalCount === 1 ? "plan" : "plans"}
               </p>
             </div>
           </div>
@@ -267,30 +407,31 @@ export function PlanBrowser({
           ) : (
             <>
               {GROUP_CONFIG.map(({ key, label, icon, accentColor }) => {
-                const items = grouped[key];
-                if (items.length === 0) return null;
-
-                // Drafts group renders flat (always expanded, no collapsible header)
-                if (key === "drafts") {
-                  return (
-                    <div key={key} className="space-y-1">
-                      {items.map((plan) => renderPlanItem(plan, key))}
-                    </div>
-                  );
-                }
+                const count = counts
+                  ? key === "drafts"
+                    ? counts.drafts
+                    : key === "in-progress"
+                      ? counts.inProgress
+                      : key === "accepted"
+                        ? counts.accepted
+                        : key === "done"
+                          ? counts.done
+                          : counts.archived
+                  : 0;
 
                 return (
-                  <SessionGroupHeader
+                  <GroupSection
                     key={key}
-                    icon={icon}
-                    label={label}
-                    count={items.length}
+                    groupKey={key}
+                    projectId={projectId}
                     isOpen={groupOpen[key]}
                     onToggle={(open) => handleGroupToggle(key, open)}
+                    icon={icon}
+                    label={label}
+                    count={count}
                     {...(accentColor != null && { accentColor })}
-                  >
-                    {items.map((plan) => renderPlanItem(plan, key))}
-                  </SessionGroupHeader>
+                    renderItem={renderPlanItem}
+                  />
                 );
               })}
             </>

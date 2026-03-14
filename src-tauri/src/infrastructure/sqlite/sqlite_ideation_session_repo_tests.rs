@@ -1340,3 +1340,447 @@ fn test_insert_sync_and_get_by_id_sync() {
     assert_eq!(fetched.verification_status, VerificationStatus::ImportedVerified);
     assert_eq!(fetched.source_session_id, Some("source-sess-456".to_string()));
 }
+
+// ==================== GROUP COUNT TESTS ====================
+
+use std::sync::Arc;
+use tokio::sync::Mutex as TokioMutex;
+
+fn setup_shared_test_db() -> (Arc<TokioMutex<Connection>>, SqliteIdeationSessionRepository) {
+    let conn = setup_test_db();
+    let shared = Arc::new(TokioMutex::new(conn));
+    let repo = SqliteIdeationSessionRepository::from_shared(Arc::clone(&shared));
+    (shared, repo)
+}
+
+async fn create_task_in_db(
+    shared: &Arc<TokioMutex<Connection>>,
+    id: &str,
+    project_id: &str,
+    session_id: &str,
+    internal_status: &str,
+) {
+    let id = id.to_string();
+    let project_id = project_id.to_string();
+    let session_id = session_id.to_string();
+    let internal_status = internal_status.to_string();
+    let conn = shared.lock().await;
+    conn.execute(
+        "INSERT INTO tasks (id, project_id, category, title, internal_status, ideation_session_id, created_at, updated_at) \
+         VALUES (?1, ?2, 'regular', 'Test Task', ?3, ?4, strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+        rusqlite::params![id, project_id, internal_status, session_id],
+    )
+    .unwrap();
+}
+
+async fn update_session_status(
+    shared: &Arc<TokioMutex<Connection>>,
+    session_id: &str,
+    status: &str,
+) {
+    let conn = shared.lock().await;
+    conn.execute(
+        "UPDATE ideation_sessions SET status = ?1 WHERE id = ?2",
+        rusqlite::params![status, session_id],
+    )
+    .unwrap();
+}
+
+#[tokio::test]
+async fn test_get_group_counts_empty_project() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let counts = repo.get_group_counts(&project_id).await.unwrap();
+
+    assert_eq!(counts.drafts, 0);
+    assert_eq!(counts.in_progress, 0);
+    assert_eq!(counts.accepted, 0);
+    assert_eq!(counts.done, 0);
+    assert_eq!(counts.archived, 0);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_active_sessions_drafts() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+    let s1 = create_test_session(&project_id, Some("Draft 1"));
+    let s2 = create_test_session(&project_id, Some("Draft 2"));
+    repo.create(s1).await.unwrap();
+    repo.create(s2).await.unwrap();
+
+    let counts = repo.get_group_counts(&project_id).await.unwrap();
+
+    assert_eq!(counts.drafts, 2);
+    assert_eq!(counts.in_progress, 0);
+    assert_eq!(counts.accepted, 0);
+    assert_eq!(counts.done, 0);
+    assert_eq!(counts.archived, 0);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_accepted_with_active_tasks_in_progress() {
+    let project_id = ProjectId::new();
+    let (shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("Accepted Session"));
+    let session_id = session.id.as_str().to_string();
+    repo.create(session).await.unwrap();
+
+    // Mark as accepted
+    update_session_status(&shared, &session_id, "accepted").await;
+
+    // Add an executing task (active status — not idle, not terminal)
+    create_task_in_db(&shared, "task-001", project_id.as_str(), &session_id, "executing").await;
+
+    let counts = repo.get_group_counts(&project_id).await.unwrap();
+
+    assert_eq!(counts.drafts, 0);
+    assert_eq!(counts.in_progress, 1);
+    assert_eq!(counts.accepted, 0);
+    assert_eq!(counts.done, 0);
+    assert_eq!(counts.archived, 0);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_accepted_with_all_terminal_tasks_done() {
+    let project_id = ProjectId::new();
+    let (shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("Done Session"));
+    let session_id = session.id.as_str().to_string();
+    repo.create(session).await.unwrap();
+
+    update_session_status(&shared, &session_id, "accepted").await;
+
+    // All tasks are terminal
+    create_task_in_db(&shared, "task-002", project_id.as_str(), &session_id, "merged").await;
+
+    let counts = repo.get_group_counts(&project_id).await.unwrap();
+
+    assert_eq!(counts.drafts, 0);
+    assert_eq!(counts.in_progress, 0);
+    assert_eq!(counts.accepted, 0);
+    assert_eq!(counts.done, 1);
+    assert_eq!(counts.archived, 0);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_accepted_no_tasks_accepted() {
+    let project_id = ProjectId::new();
+    let (shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("Accepted No Tasks"));
+    let session_id = session.id.as_str().to_string();
+    repo.create(session).await.unwrap();
+
+    update_session_status(&shared, &session_id, "accepted").await;
+
+    // No tasks — falls into accepted sub-group
+    let counts = repo.get_group_counts(&project_id).await.unwrap();
+
+    assert_eq!(counts.drafts, 0);
+    assert_eq!(counts.in_progress, 0);
+    assert_eq!(counts.accepted, 1);
+    assert_eq!(counts.done, 0);
+    assert_eq!(counts.archived, 0);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_accepted_with_mix_active_and_idle() {
+    let project_id = ProjectId::new();
+    let (shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("Mix Active Idle"));
+    let session_id = session.id.as_str().to_string();
+    repo.create(session).await.unwrap();
+
+    update_session_status(&shared, &session_id, "accepted").await;
+
+    // Mix: one active (executing) + one idle (backlog) — active takes precedence
+    create_task_in_db(&shared, "task-003", project_id.as_str(), &session_id, "executing").await;
+    create_task_in_db(&shared, "task-004", project_id.as_str(), &session_id, "backlog").await;
+
+    let counts = repo.get_group_counts(&project_id).await.unwrap();
+
+    assert_eq!(counts.in_progress, 1, "Session with active tasks should be in_progress");
+    assert_eq!(counts.accepted, 0);
+    assert_eq!(counts.done, 0);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_multiple_groups_simultaneously() {
+    let project_id = ProjectId::new();
+    let (shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    // Draft (active)
+    let draft = create_test_session(&project_id, Some("Draft"));
+    repo.create(draft).await.unwrap();
+
+    // Archived
+    let archived = create_test_session(&project_id, Some("Archived"));
+    let archived_id = archived.id.as_str().to_string();
+    repo.create(archived).await.unwrap();
+    update_session_status(&shared, &archived_id, "archived").await;
+
+    // In progress (accepted + active task)
+    let in_prog = create_test_session(&project_id, Some("In Progress"));
+    let in_prog_id = in_prog.id.as_str().to_string();
+    repo.create(in_prog).await.unwrap();
+    update_session_status(&shared, &in_prog_id, "accepted").await;
+    create_task_in_db(&shared, "task-005", project_id.as_str(), &in_prog_id, "reviewing").await;
+
+    // Accepted (no tasks)
+    let accepted = create_test_session(&project_id, Some("Accepted"));
+    let accepted_id = accepted.id.as_str().to_string();
+    repo.create(accepted).await.unwrap();
+    update_session_status(&shared, &accepted_id, "accepted").await;
+
+    // Done (all terminal)
+    let done = create_test_session(&project_id, Some("Done"));
+    let done_id = done.id.as_str().to_string();
+    repo.create(done).await.unwrap();
+    update_session_status(&shared, &done_id, "accepted").await;
+    create_task_in_db(&shared, "task-006", project_id.as_str(), &done_id, "approved").await;
+
+    let counts = repo.get_group_counts(&project_id).await.unwrap();
+
+    assert_eq!(counts.drafts, 1);
+    assert_eq!(counts.in_progress, 1);
+    assert_eq!(counts.accepted, 1);
+    assert_eq!(counts.done, 1);
+    assert_eq!(counts.archived, 1);
+}
+
+#[tokio::test]
+async fn test_get_group_counts_archived() {
+    let project_id = ProjectId::new();
+    let (shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("Archived Session"));
+    let session_id = session.id.as_str().to_string();
+    repo.create(session).await.unwrap();
+
+    update_session_status(&shared, &session_id, "archived").await;
+
+    let counts = repo.get_group_counts(&project_id).await.unwrap();
+
+    assert_eq!(counts.archived, 1);
+    assert_eq!(counts.drafts, 0);
+}
+
+// ==================== LIST BY GROUP TESTS ====================
+
+#[tokio::test]
+async fn test_list_by_group_pagination_first_page() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+
+    // Create 25 draft sessions
+    for i in 0..25 {
+        let session = create_test_session(&project_id, Some(&format!("Draft {i}")));
+        repo.create(session).await.unwrap();
+    }
+
+    let (sessions, total) = repo
+        .list_by_group(&project_id, "drafts", 0, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(total, 25);
+    assert_eq!(sessions.len(), 20);
+}
+
+#[tokio::test]
+async fn test_list_by_group_empty_group() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+
+    let (sessions, total) = repo
+        .list_by_group(&project_id, "drafts", 0, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(total, 0);
+    assert!(sessions.is_empty());
+}
+
+#[tokio::test]
+async fn test_list_by_group_invalid_group_returns_error() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+
+    let result = repo
+        .list_by_group(&project_id, "nonexistent_group", 0, 20)
+        .await;
+
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("Unknown session group"),
+        "Expected 'Unknown session group' error, got: {err_msg}"
+    );
+}
+
+#[tokio::test]
+async fn test_list_by_group_sort_order_updated_at_desc() {
+    let project_id = ProjectId::new();
+    let (shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let s1 = create_test_session(&project_id, Some("First Created"));
+    let s2 = create_test_session(&project_id, Some("Second Created"));
+    let s1_id = s1.id.as_str().to_string();
+    let s2_id = s2.id.as_str().to_string();
+    repo.create(s1).await.unwrap();
+    repo.create(s2).await.unwrap();
+
+    // Update s1 after s2 so it has a later updated_at
+    tokio::time::sleep(tokio::time::Duration::from_millis(10)).await;
+    {
+        let conn = shared.lock().await;
+        conn.execute(
+            "UPDATE ideation_sessions SET updated_at = strftime('%Y-%m-%dT%H:%M:%f+00:00', 'now') WHERE id = ?1",
+            rusqlite::params![s1_id],
+        )
+        .unwrap();
+    }
+
+    let (sessions, _) = repo
+        .list_by_group(&project_id, "drafts", 0, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(sessions.len(), 2);
+    assert_eq!(
+        sessions[0].session.id.as_str(),
+        s1_id,
+        "Most recently updated session should be first"
+    );
+    assert_eq!(sessions[1].session.id.as_str(), s2_id);
+}
+
+#[tokio::test]
+async fn test_list_by_group_progress_data_for_accepted_subgroups() {
+    let project_id = ProjectId::new();
+    let (shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = create_test_session(&project_id, Some("In Progress Session"));
+    let session_id = session.id.as_str().to_string();
+    repo.create(session).await.unwrap();
+
+    update_session_status(&shared, &session_id, "accepted").await;
+
+    // Add tasks: 1 active, 1 idle, 1 terminal
+    create_task_in_db(&shared, "task-p1", project_id.as_str(), &session_id, "executing").await;
+    create_task_in_db(&shared, "task-p2", project_id.as_str(), &session_id, "backlog").await;
+    create_task_in_db(&shared, "task-p3", project_id.as_str(), &session_id, "merged").await;
+
+    let (sessions, total) = repo
+        .list_by_group(&project_id, "in_progress", 0, 20)
+        .await
+        .unwrap();
+
+    assert_eq!(total, 1);
+    assert_eq!(sessions.len(), 1);
+
+    let progress = sessions[0].progress.as_ref().expect("Progress should be populated for in_progress group");
+    assert_eq!(progress.active, 1, "Should have 1 active task");
+    assert_eq!(progress.idle, 1, "Should have 1 idle task");
+    assert_eq!(progress.done, 1, "Should have 1 done task");
+    assert_eq!(progress.total, 3, "Should have 3 total tasks");
+}
+
+#[tokio::test]
+async fn test_list_by_group_parent_title_resolved() {
+    let project_id = ProjectId::new();
+    let (shared, repo) = setup_shared_test_db();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let parent = create_test_session(&project_id, Some("Parent Session Title"));
+    let parent_id = parent.id.as_str().to_string();
+    repo.create(parent).await.unwrap();
+
+    // Child session linked to parent
+    let child = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .title("Child Session")
+        .build();
+    let child_id = child.id.as_str().to_string();
+    repo.create(child).await.unwrap();
+
+    // Set parent relationship
+    {
+        let conn = shared.lock().await;
+        conn.execute(
+            "UPDATE ideation_sessions SET parent_session_id = ?1 WHERE id = ?2",
+            rusqlite::params![parent_id, child_id],
+        )
+        .unwrap();
+    }
+
+    let (sessions, _) = repo
+        .list_by_group(&project_id, "drafts", 0, 20)
+        .await
+        .unwrap();
+
+    // Find the child session in results
+    let child_result = sessions
+        .iter()
+        .find(|s| s.session.id.as_str() == child_id)
+        .expect("Child session should be in results");
+
+    assert_eq!(
+        child_result.parent_session_title.as_deref(),
+        Some("Parent Session Title"),
+        "Parent session title should be resolved"
+    );
+}

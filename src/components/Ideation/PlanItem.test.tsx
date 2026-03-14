@@ -3,11 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, it, expect, vi } from "vitest";
 import { PlanItem } from "./PlanItem";
 import type { PlanItemProps } from "./PlanItem";
-import type { IdeationSession } from "@/types/ideation";
+import type { IdeationSessionWithProgress, SessionProgress } from "@/types/ideation";
 import type { SessionGroup } from "./planBrowserUtils";
-import type { SessionProgress } from "@/hooks/useSessionProgress";
 
-function createSession(overrides: Partial<IdeationSession> = {}): IdeationSession {
+function createProgress(overrides: Partial<SessionProgress> = {}): SessionProgress {
+  return { idle: 0, active: 0, done: 0, total: 0, ...overrides };
+}
+
+function createSession(overrides: Partial<IdeationSessionWithProgress> = {}): IdeationSessionWithProgress {
   return {
     id: "session-1",
     projectId: "project-1",
@@ -20,12 +23,10 @@ function createSession(overrides: Partial<IdeationSession> = {}): IdeationSessio
     updatedAt: "2026-01-24T12:00:00Z",
     archivedAt: null,
     convertedAt: null,
+    progress: null,
+    parentSessionTitle: null,
     ...overrides,
   };
-}
-
-function createProgress(overrides: Partial<SessionProgress> = {}): SessionProgress {
-  return { idle: 0, active: 0, done: 0, total: 0, ...overrides };
 }
 
 const defaultProps: PlanItemProps = {
@@ -83,8 +84,7 @@ describe("PlanItem", () => {
     it("in-progress: shows progress counts with colored text", () => {
       renderItem({
         group: "in-progress",
-        plan: createSession({ status: "accepted" }),
-        progress: createProgress({ done: 3, active: 2, total: 7 }),
+        plan: createSession({ status: "accepted", progress: createProgress({ done: 3, active: 2, total: 7 }) }),
       });
       expect(screen.getByText("3/7 done")).toBeInTheDocument();
       expect(screen.getByText("2 active")).toBeInTheDocument();
@@ -93,8 +93,7 @@ describe("PlanItem", () => {
     it("in-progress: hides active count when 0", () => {
       renderItem({
         group: "in-progress",
-        plan: createSession({ status: "accepted" }),
-        progress: createProgress({ done: 3, active: 0, total: 7 }),
+        plan: createSession({ status: "accepted", progress: createProgress({ done: 3, active: 0, total: 7 }) }),
       });
       expect(screen.getByText("3/7 done")).toBeInTheDocument();
       expect(screen.queryByText(/active/)).not.toBeInTheDocument();
@@ -103,8 +102,7 @@ describe("PlanItem", () => {
     it("accepted: shows task count and convertedAt date", () => {
       renderItem({
         group: "accepted",
-        plan: createSession({ status: "accepted", convertedAt: "2026-01-20T10:00:00Z" }),
-        progress: createProgress({ idle: 5, total: 5 }),
+        plan: createSession({ status: "accepted", convertedAt: "2026-01-20T10:00:00Z", progress: createProgress({ idle: 5, total: 5 }) }),
       });
       expect(screen.getByText("5 tasks")).toBeInTheDocument();
       // Date formatting is locale-dependent, so just check it's present
@@ -114,8 +112,7 @@ describe("PlanItem", () => {
     it("accepted: shows singular 'task' for 1 task", () => {
       renderItem({
         group: "accepted",
-        plan: createSession({ status: "accepted" }),
-        progress: createProgress({ idle: 1, total: 1 }),
+        plan: createSession({ status: "accepted", progress: createProgress({ idle: 1, total: 1 }) }),
       });
       expect(screen.getByText("1 task")).toBeInTheDocument();
     });
@@ -123,8 +120,7 @@ describe("PlanItem", () => {
     it("done: shows Completed text", () => {
       renderItem({
         group: "done",
-        plan: createSession({ status: "accepted" }),
-        progress: createProgress({ done: 5, total: 5 }),
+        plan: createSession({ status: "accepted", progress: createProgress({ done: 5, total: 5 }) }),
       });
       expect(screen.getByText("Completed")).toBeInTheDocument();
     });

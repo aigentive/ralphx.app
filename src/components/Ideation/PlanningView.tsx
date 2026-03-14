@@ -60,7 +60,7 @@ import { ideationApi, type SessionWithDataResponse } from "@/api/ideation";
 import { chatApi } from "@/api/chat";
 import { ReopenSessionDialog } from "./ReopenSessionDialog";
 import type { ReopenMode } from "./ReopenSessionDialog";
-import { useReopenSession, useResetAndReaccept, ideationKeys } from "@/hooks/useIdeation";
+import { useReopenSession, useResetAndReaccept, ideationKeys, useIdeationSessions } from "@/hooks/useIdeation";
 import { ExportPlanDialog } from "./ExportPlanDialog";
 
 
@@ -70,7 +70,6 @@ import { ExportPlanDialog } from "./ExportPlanDialog";
 
 interface PlanningViewProps {
   session: IdeationSession | null;
-  sessions: IdeationSession[];
   proposals: TaskProposal[];
   isSessionLoading?: boolean;
   onNewSession: () => void;
@@ -133,7 +132,6 @@ export function AnalysisBanner() {
 
 export function PlanningView({
   session,
-  sessions,
   proposals,
   isSessionLoading = false,
   onNewSession,
@@ -217,6 +215,10 @@ export function PlanningView({
   const clearActivePlan = usePlanStore((state) => state.clearActivePlan);
   const activePlanByProject = usePlanStore((state) => state.activePlanByProject);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
+
+  // Sessions list for breadcrumb parent resolution — deduped by React Query (shared cache with App.tsx)
+  const projectIdForSessions = activeProjectId || session?.projectId || "";
+  const { data: allSessionsForBreadcrumb = [] } = useIdeationSessions(projectIdForSessions);
 
   const canReopen = isReadOnly && (session?.status === "accepted" || session?.status === "archived");
   const canResetReaccept = session?.status === "accepted";
@@ -731,7 +733,6 @@ export function PlanningView({
         <div className="flex flex-1 overflow-hidden">
           {/* Plan Browser Sidebar */}
           <PlanBrowser
-            sessions={sessions}
             projectId={activeProjectId || session?.projectId || ""}
             currentPlanId={session?.id ?? null}
             onSelectPlan={onSelectSession}
@@ -765,7 +766,7 @@ export function PlanningView({
               <div className="flex items-center gap-2">
                 {/* Parent session breadcrumb */}
                 {session.parentSessionId && (() => {
-                  const parentSession = sessions.find((s) => s.id === session.parentSessionId);
+                  const parentSession = allSessionsForBreadcrumb.find((s) => s.id === session.parentSessionId);
                   if (parentSession) {
                     return (
                       <button

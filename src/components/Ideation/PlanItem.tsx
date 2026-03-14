@@ -27,9 +27,8 @@ import {
   ArrowDownToLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { IdeationSession } from "@/types/ideation";
+import type { IdeationSessionWithProgress } from "@/types/ideation";
 import type { SessionGroup } from "./planBrowserUtils";
-import type { SessionProgress } from "@/hooks/useSessionProgress";
 
 // ============================================================================
 // Helpers
@@ -65,11 +64,9 @@ function formatDate(dateString: string): string {
 // ============================================================================
 
 export interface PlanItemProps {
-  plan: IdeationSession;
+  plan: IdeationSessionWithProgress;
   isSelected: boolean;
   group: SessionGroup;
-  progress?: SessionProgress;
-  parentSession?: IdeationSession;
   isEditing: boolean;
   editingTitle: string;
   isMenuOpen: boolean;
@@ -92,21 +89,22 @@ export interface PlanItemProps {
 // Metadata Line
 // ============================================================================
 
-function MetadataLine({ group, plan, progress, parentSession }: {
+function MetadataLine({ group, plan }: {
   group: SessionGroup;
-  plan: IdeationSession;
-  progress?: SessionProgress;
-  parentSession?: IdeationSession;
+  plan: IdeationSessionWithProgress;
 }) {
+  const progress = plan.progress;
+  const parentSessionTitle = plan.parentSessionTitle;
+
   // Show parent session indicator if this is a child session
-  if (parentSession) {
+  if (parentSessionTitle) {
     return (
       <div
         className="flex items-center gap-1 text-[10px]"
         style={{ color: "hsl(220 10% 45%)" }}
       >
         <CornerDownRight className="w-2.5 h-2.5" />
-        <span className="truncate">Follow-up of: {parentSession.title || "Untitled"}</span>
+        <span className="truncate">Follow-up of: {parentSessionTitle}</span>
       </div>
     );
   }
@@ -305,8 +303,6 @@ export function PlanItem({
   plan,
   isSelected,
   group,
-  progress,
-  parentSession,
   isEditing,
   editingTitle,
   isMenuOpen,
@@ -431,7 +427,7 @@ export function PlanItem({
                   </button>
                 )}
               </div>
-              <MetadataLine group={group} plan={plan} {...(progress != null && { progress })} {...(parentSession && { parentSession })} />
+              <MetadataLine group={group} plan={plan} />
             </>
           )}
         </div>

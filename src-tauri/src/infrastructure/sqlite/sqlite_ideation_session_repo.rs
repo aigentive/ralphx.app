@@ -11,10 +11,22 @@ use rusqlite::Connection;
 use crate::domain::entities::{
     IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationStatus,
 };
+use crate::domain::repositories::ideation_session_repository::{
+    IdeationSessionWithProgress, SessionGroupCounts, SessionProgress,
+};
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::error::{AppError, AppResult};
 
 use super::DbConnection;
+
+// Status classification constants — keep in sync with src/types/status.ts:47-82 (categorizeStatus)
+// IDLE: tasks that haven't started yet
+const _IDLE_STATUSES: &[&str] = &["backlog", "ready", "blocked"];
+// TERMINAL: tasks that have reached a final state
+const _TERMINAL_STATUSES: &[&str] = &["approved", "merged", "failed", "cancelled", "stopped"];
+// ACTIVE: any status NOT in IDLE or TERMINAL (catch-all, matches categorizeStatus() logic)
+// The SQL queries use NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')
+// to identify active statuses implicitly.
 
 /// SQLite implementation of IdeationSessionRepository for production use
 pub struct SqliteIdeationSessionRepository {
@@ -862,6 +874,188 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     .query_map(rusqlite::params![project_id, status, limit], IdeationSession::from_row)?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(sessions)
+            })
+            .await
+    }
+
+    async fn get_group_counts(&self, project_id: &ProjectId) -> AppResult<SessionGroupCounts> {
+        let project_id = project_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let row = conn.query_row(
+                    "SELECT \
+                      COALESCE(SUM(CASE WHEN s.status = 'active' THEN 1 ELSE 0 END), 0) as drafts, \
+                      COALESCE(SUM(CASE WHEN s.status = 'archived' THEN 1 ELSE 0 END), 0) as archived, \
+                      COALESCE(SUM(CASE WHEN s.status = 'accepted' THEN 1 ELSE 0 END), 0) as total_accepted, \
+                      COALESCE(SUM(CASE WHEN s.status = 'accepted' AND EXISTS ( \
+                        SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
+                          AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped') \
+                      ) THEN 1 ELSE 0 END), 0) as in_progress, \
+                      COALESCE(SUM(CASE WHEN s.status = 'accepted' \
+                        AND EXISTS (SELECT 1 FROM tasks t2 WHERE t2.ideation_session_id = s.id) \
+                        AND NOT EXISTS ( \
+                          SELECT 1 FROM tasks t3 WHERE t3.ideation_session_id = s.id \
+                            AND t3.internal_status NOT IN ('approved','merged','failed','cancelled','stopped') \
+                        ) \
+                      THEN 1 ELSE 0 END), 0) as done \
+                    FROM ideation_sessions s \
+                    WHERE s.project_id = ?1",
+                    [&project_id],
+                    |row| {
+                        let drafts: u32 = row.get::<_, i64>(0)? as u32;
+                        let archived: u32 = row.get::<_, i64>(1)? as u32;
+                        let total_accepted: u32 = row.get::<_, i64>(2)? as u32;
+                        let in_progress: u32 = row.get::<_, i64>(3)? as u32;
+                        let done: u32 = row.get::<_, i64>(4)? as u32;
+                        let accepted = total_accepted.saturating_sub(in_progress).saturating_sub(done);
+                        Ok(SessionGroupCounts {
+                            drafts,
+                            in_progress,
+                            accepted,
+                            done,
+                            archived,
+                        })
+                    },
+                )?;
+                Ok(row)
+            })
+            .await
+    }
+
+    async fn list_by_group(
+        &self,
+        project_id: &ProjectId,
+        group: &str,
+        offset: u32,
+        limit: u32,
+    ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)> {
+        let project_id = project_id.as_str().to_string();
+        let group = group.to_string();
+
+        self.db
+            .run(move |conn| {
+                // Validate group and build WHERE clause
+                let where_clause = match group.as_str() {
+                    "drafts" => "s.status = 'active' AND s.project_id = ?1",
+                    "archived" => "s.status = 'archived' AND s.project_id = ?1",
+                    "in_progress" => {
+                        "s.status = 'accepted' AND s.project_id = ?1 \
+                         AND EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
+                           AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped'))"
+                    }
+                    "done" => {
+                        "s.status = 'accepted' AND s.project_id = ?1 \
+                         AND EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id) \
+                         AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
+                           AND t.internal_status NOT IN ('approved','merged','failed','cancelled','stopped'))"
+                    }
+                    "accepted" => {
+                        "s.status = 'accepted' AND s.project_id = ?1 \
+                         AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
+                           AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')) \
+                         AND NOT (EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id) \
+                           AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
+                             AND t.internal_status NOT IN ('approved','merged','failed','cancelled','stopped')))"
+                    }
+                    _ => {
+                        return Err(AppError::Validation(format!(
+                            "Unknown session group: '{}'. Valid groups: drafts, in_progress, accepted, done, archived",
+                            group
+                        )));
+                    }
+                };
+
+                let include_progress = matches!(group.as_str(), "in_progress" | "accepted" | "done");
+
+                // Count query
+                let count_sql = format!(
+                    "SELECT COUNT(*) FROM ideation_sessions s WHERE {}",
+                    where_clause
+                );
+                let total: u32 = conn.query_row(&count_sql, [&project_id], |row| {
+                    row.get::<_, i64>(0)
+                })? as u32;
+
+                // Data query with LEFT JOIN for parent title and correlated subqueries for progress
+                // Columns 0-20: standard session columns (matching IdeationSession::from_row exactly)
+                // Column 21: parent_session_title
+                // Columns 22-24: active_count, done_count, total_count (for progress)
+                let data_sql = if include_progress {
+                    format!(
+                        "SELECT s.id, s.project_id, s.title, s.title_source, s.status, s.plan_artifact_id, \
+                         s.inherited_plan_artifact_id, s.seed_task_id, s.parent_session_id, s.created_at, \
+                         s.updated_at, s.archived_at, s.converted_at, s.team_mode, s.team_config_json, \
+                         s.verification_status, s.verification_in_progress, s.verification_metadata, \
+                         s.verification_generation, s.source_project_id, s.source_session_id, \
+                         parent.title as parent_session_title, \
+                         (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id \
+                           AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')) as active_count, \
+                         (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id \
+                           AND t.internal_status IN ('approved','merged','failed','cancelled','stopped')) as done_count, \
+                         (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id) as total_count \
+                         FROM ideation_sessions s \
+                         LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
+                         WHERE {} \
+                         ORDER BY s.updated_at DESC \
+                         LIMIT ?3 OFFSET ?2",
+                        where_clause
+                    )
+                } else {
+                    format!(
+                        "SELECT s.id, s.project_id, s.title, s.title_source, s.status, s.plan_artifact_id, \
+                         s.inherited_plan_artifact_id, s.seed_task_id, s.parent_session_id, s.created_at, \
+                         s.updated_at, s.archived_at, s.converted_at, s.team_mode, s.team_config_json, \
+                         s.verification_status, s.verification_in_progress, s.verification_metadata, \
+                         s.verification_generation, s.source_project_id, s.source_session_id, \
+                         parent.title as parent_session_title, \
+                         NULL as active_count, NULL as done_count, NULL as total_count \
+                         FROM ideation_sessions s \
+                         LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
+                         WHERE {} \
+                         ORDER BY s.updated_at DESC \
+                         LIMIT ?3 OFFSET ?2",
+                        where_clause
+                    )
+                };
+
+                let mut stmt = conn.prepare(&data_sql)?;
+                let sessions = stmt
+                    .query_map(
+                        rusqlite::params![project_id, offset, limit],
+                        |row| {
+                            let session = IdeationSession::from_row(row)?;
+                            let parent_session_title: Option<String> = row.get(21)?;
+                            let active_count: Option<i64> = row.get(22)?;
+                            let done_count: Option<i64> = row.get(23)?;
+                            let total_count: Option<i64> = row.get(24)?;
+
+                            let progress = if let (Some(active), Some(done_ct), Some(total)) =
+                                (active_count, done_count, total_count)
+                            {
+                                let active = active as u32;
+                                let done_ct = done_ct as u32;
+                                let total = total as u32;
+                                let idle = total.saturating_sub(active).saturating_sub(done_ct);
+                                Some(SessionProgress {
+                                    idle,
+                                    active,
+                                    done: done_ct,
+                                    total,
+                                })
+                            } else {
+                                None
+                            };
+
+                            Ok(IdeationSessionWithProgress {
+                                session,
+                                progress,
+                                parent_session_title,
+                            })
+                        },
+                    )?
+                    .collect::<Result<Vec<_>, _>>()?;
+
+                Ok((sessions, total))
             })
             .await
     }

@@ -461,3 +461,36 @@ export const TeamConfigSchema = z.object({
 });
 
 export type TeamConfig = z.infer<typeof TeamConfigSchema>;
+
+// ============================================================================
+// Paginated Session Group Types (server-side grouping and pagination)
+// ============================================================================
+
+export type SessionGroupKey = "drafts" | "in_progress" | "accepted" | "done" | "archived";
+
+export interface SessionGroupCounts {
+  drafts: number;
+  inProgress: number;
+  accepted: number;
+  done: number;
+  archived: number;
+}
+
+export interface SessionProgress {
+  idle: number;
+  active: number;
+  done: number;
+  total: number;
+}
+
+export interface IdeationSessionWithProgress extends IdeationSession {
+  progress: SessionProgress | null;
+  parentSessionTitle: string | null;
+}
+
+export interface SessionListResponse {
+  sessions: IdeationSessionWithProgress[];
+  total: number;
+  hasMore: boolean;
+  offset: number;
+}

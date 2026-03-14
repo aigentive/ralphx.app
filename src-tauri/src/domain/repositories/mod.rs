@@ -63,7 +63,9 @@ pub use external_events_repository::{ExternalEventRecord, ExternalEventsReposito
 pub use execution_settings_repository::{
     ExecutionSettingsRepository, GlobalExecutionSettingsRepository,
 };
-pub use ideation_session_repository::IdeationSessionRepository;
+pub use ideation_session_repository::{
+    IdeationSessionRepository, IdeationSessionWithProgress, SessionGroupCounts, SessionProgress,
+};
 pub use ideation_settings_repository::IdeationSettingsRepository;
 pub use memory_archive_job_repository::MemoryArchiveJobRepository;
 pub use memory_archive_repository::MemoryArchiveRepository;

@@ -11,6 +11,35 @@ use crate::domain::entities::{
 };
 use crate::error::AppResult;
 
+/// Session group counts for the plan browser sidebar
+#[derive(Debug, Clone)]
+pub struct SessionGroupCounts {
+    pub drafts: u32,
+    pub in_progress: u32,
+    pub accepted: u32,
+    pub done: u32,
+    pub archived: u32,
+}
+
+/// Task progress summary for an ideation session
+#[derive(Debug, Clone)]
+pub struct SessionProgress {
+    pub idle: u32,
+    pub active: u32,
+    pub done: u32,
+    pub total: u32,
+}
+
+/// Ideation session with optional task progress (for accepted sub-groups)
+#[derive(Debug, Clone)]
+pub struct IdeationSessionWithProgress {
+    pub session: IdeationSession,
+    /// Populated for accepted sub-groups (in_progress, accepted, done); None for drafts/archived
+    pub progress: Option<SessionProgress>,
+    /// Resolved server-side via LEFT JOIN on parent_session_id
+    pub parent_session_title: Option<String>,
+}
+
 /// Repository trait for IdeationSession persistence.
 /// Implementations can use SQLite, PostgreSQL, in-memory, etc.
 #[async_trait]
@@ -150,6 +179,22 @@ pub trait IdeationSessionRepository: Send + Sync {
         status: &str,
         limit: u32,
     ) -> AppResult<Vec<IdeationSession>>;
+
+    /// Get counts of sessions in each display group for a project.
+    /// Groups: drafts (active), in_progress (accepted+active tasks), accepted (accepted+no active tasks+not all done),
+    /// done (accepted+all tasks terminal), archived.
+    async fn get_group_counts(&self, project_id: &ProjectId) -> AppResult<SessionGroupCounts>;
+
+    /// List sessions in a specific display group with pagination.
+    /// group must be one of: "drafts", "in_progress", "accepted", "done", "archived"
+    /// Returns (sessions_with_progress, total_count).
+    async fn list_by_group(
+        &self,
+        project_id: &ProjectId,
+        group: &str,
+        offset: u32,
+        limit: u32,
+    ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)>;
 }
 
 #[cfg(test)]
