@@ -15,6 +15,7 @@ export const VERIFICATION_STATUS_VALUES = [
   "verified",
   "needs_revision",
   "skipped",
+  "imported_verified",
 ] as const;
 
 export const VerificationStatusSchema = z.enum(VERIFICATION_STATUS_VALUES);
@@ -100,6 +101,8 @@ export const IdeationSessionSchema = z.object({
   verificationInProgress: z.boolean().optional().default(false),
   gapScore: z.number().int().nullable().optional(),
   verificationUpdateSeq: z.number().int().optional(),
+  sourceProjectId: z.string().nullable().optional(),
+  sourceSessionId: z.string().nullable().optional(),
 });
 
 export type IdeationSession = z.infer<typeof IdeationSessionSchema>;

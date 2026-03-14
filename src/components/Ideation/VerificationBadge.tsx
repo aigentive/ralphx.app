@@ -24,6 +24,8 @@ export interface VerificationBadgeProps {
   currentRound?: number;
   maxRounds?: number;
   convergenceReason?: string;
+  /** Source project name — used for imported_verified tooltip */
+  sourceProjectName?: string;
   /** Called when user clicks Retry on a stuck session */
   onRetry?: () => void | Promise<void>;
 }
@@ -66,6 +68,12 @@ const STATUS_CONFIG: Record<
     border: "hsla(45 93% 50% / 0.25)",
     color: "hsl(45 93% 60%)",
   },
+  imported_verified: {
+    label: "Verified (imported)",
+    bg: "hsla(145 70% 45% / 0.1)",
+    border: "hsla(145 70% 45% / 0.25)",
+    color: "hsl(145 70% 50%)",
+  },
 };
 
 const CONVERGENCE_REASON_LABELS: Record<string, string> = {
@@ -87,6 +95,7 @@ export function VerificationBadge({
   currentRound,
   maxRounds,
   convergenceReason,
+  sourceProjectName,
   onRetry,
 }: VerificationBadgeProps) {
   const isRetryingRef = useRef(false);
@@ -95,9 +104,14 @@ export function VerificationBadge({
   const showProgress = inProgress && currentRound !== undefined && maxRounds !== undefined;
   // A session is "stuck" when it is reviewing+inProgress but there's a retry callback
   const isStuck = status === "reviewing" && inProgress && onRetry !== undefined;
-  const tooltipText = convergenceReason
-    ? (CONVERGENCE_REASON_LABELS[convergenceReason] ?? convergenceReason)
+  const importedTooltip = status === "imported_verified"
+    ? sourceProjectName
+      ? `This plan was verified in ${sourceProjectName} and imported`
+      : "This plan was verified in another project and imported"
     : undefined;
+  const tooltipText = importedTooltip ?? (convergenceReason
+    ? (CONVERGENCE_REASON_LABELS[convergenceReason] ?? convergenceReason)
+    : undefined);
 
   const badge = (
     <span

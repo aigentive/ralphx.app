@@ -458,6 +458,10 @@ agents:
         search_memories,
         get_memory,
         get_memories_for_paths,
+        # cross-project tools
+        list_projects,
+        create_cross_project_session,
+        cross_project_guide,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -838,6 +842,10 @@ agents:
         search_memories,
         get_memory,
         get_memories_for_paths,
+        # cross-project tools
+        list_projects,
+        create_cross_project_session,
+        cross_project_guide,
       ]
 
   - name: ralphx-worker-team

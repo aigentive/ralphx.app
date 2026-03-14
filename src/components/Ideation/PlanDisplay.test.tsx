@@ -805,4 +805,63 @@ describe("PlanDisplay", () => {
       expect(screen.queryByRole("button", { name: /re-verify plan/i })).not.toBeInTheDocument();
     });
   });
+
+  // ============================================================================
+  // imported_verified status
+  // ============================================================================
+
+  describe("imported_verified status", () => {
+    it("shows 'Verified (imported)' badge for imported_verified status", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          verificationStatus="imported_verified"
+          verificationInProgress={false}
+        />,
+      );
+      expect(screen.getByText("Verified (imported)")).toBeInTheDocument();
+    });
+
+    it("shows tooltip with source project name when sourceProjectName provided", () => {
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          verificationStatus="imported_verified"
+          verificationInProgress={false}
+          sourceProjectName="Project Alpha"
+        />,
+      );
+      expect(screen.getByText("Verified (imported)")).toBeInTheDocument();
+    });
+
+    it("shows 'Create Proposals' button for imported_verified status", () => {
+      const onCreateProposals = vi.fn();
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="imported_verified"
+          verificationInProgress={false}
+          onCreateProposals={onCreateProposals}
+          linkedProposalsCount={0}
+        />,
+      );
+      expect(screen.getByRole("button", { name: /create proposals/i })).toBeInTheDocument();
+    });
+
+    it("does not show 'Create Proposals' for imported_verified when proposals already exist", () => {
+      const onCreateProposals = vi.fn();
+      render(
+        <PlanDisplay
+          plan={mockPlan}
+          isExpanded={true}
+          verificationStatus="imported_verified"
+          verificationInProgress={false}
+          onCreateProposals={onCreateProposals}
+          linkedProposalsCount={3}
+        />,
+      );
+      expect(screen.queryByRole("button", { name: /create proposals/i })).not.toBeInTheDocument();
+    });
+  });
 });

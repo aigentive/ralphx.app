@@ -368,6 +368,8 @@ pub enum VerificationStatus {
     NeedsRevision,
     /// User explicitly skipped verification
     Skipped,
+    /// Plan was imported from another project and is pre-verified
+    ImportedVerified,
 }
 
 impl Default for VerificationStatus {
@@ -384,6 +386,7 @@ impl std::fmt::Display for VerificationStatus {
             VerificationStatus::Verified => write!(f, "verified"),
             VerificationStatus::NeedsRevision => write!(f, "needs_revision"),
             VerificationStatus::Skipped => write!(f, "skipped"),
+            VerificationStatus::ImportedVerified => write!(f, "imported_verified"),
         }
     }
 }
@@ -412,6 +415,7 @@ impl FromStr for VerificationStatus {
             "verified" => Ok(VerificationStatus::Verified),
             "needs_revision" => Ok(VerificationStatus::NeedsRevision),
             "skipped" => Ok(VerificationStatus::Skipped),
+            "imported_verified" => Ok(VerificationStatus::ImportedVerified),
             _ => Err(ParseVerificationStatusError {
                 value: s.to_string(),
             }),

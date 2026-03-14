@@ -198,6 +198,8 @@ pub async fn create_child_session(
         verification_in_progress: false,
         verification_metadata: None,
         verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
     };
 
     let child_id = child_session.id.clone();

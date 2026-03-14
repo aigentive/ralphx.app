@@ -4,6 +4,7 @@
 // use cases and business rules.
 
 pub mod api_key_service;
+pub mod project_validation;
 pub mod github_service;
 pub mod artifact_flow_service;
 pub mod artifact_service;
@@ -48,3 +49,4 @@ pub use workflow_service::{
     AppliedColumn, AppliedWorkflow, ColumnMappingError, ValidationResult, WorkflowService,
 };
 pub use worktree_guard::{acquire_worktree_permit, is_worktree_in_use};
+pub use project_validation::validate_project_path;

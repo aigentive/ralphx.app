@@ -43,6 +43,43 @@ impl SqliteIdeationSessionRepository {
     // Async trait methods wrap these in db.run() for single-operation use.
     // ============================================================================
 
+    /// Insert a session into the database synchronously (for use inside db.run() closures).
+    /// Returns the inserted session unchanged (no re-fetch needed — all fields are set by caller).
+    pub(crate) fn insert_sync(
+        conn: &Connection,
+        session: &IdeationSession,
+    ) -> AppResult<IdeationSession> {
+        conn.execute(
+            "INSERT INTO ideation_sessions \
+             (id, project_id, title, title_source, status, plan_artifact_id, \
+              inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
+              updated_at, archived_at, converted_at, team_mode, team_config_json, \
+              verification_status, source_project_id, source_session_id) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+            rusqlite::params![
+                session.id.as_str(),
+                session.project_id.as_str(),
+                session.title,
+                session.title_source,
+                session.status.to_string(),
+                session.plan_artifact_id.as_ref().map(|id| id.as_str()),
+                session.inherited_plan_artifact_id.as_ref().map(|id| id.as_str()),
+                session.seed_task_id.as_ref().map(|id| id.as_str()),
+                session.parent_session_id.as_ref().map(|id| id.as_str()),
+                session.created_at.to_rfc3339(),
+                session.updated_at.to_rfc3339(),
+                session.archived_at.map(|dt| dt.to_rfc3339()),
+                session.converted_at.map(|dt| dt.to_rfc3339()),
+                session.team_mode,
+                session.team_config_json,
+                session.verification_status.to_string(),
+                session.source_project_id,
+                session.source_session_id,
+            ],
+        )?;
+        Ok(session.clone())
+    }
+
     /// Fetch a single session by ID; returns None if not found.
     pub(crate) fn get_by_id_sync(
         conn: &Connection,
@@ -53,7 +90,7 @@ impl SqliteIdeationSessionRepository {
              inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
              updated_at, archived_at, converted_at, team_mode, team_config_json, \
              verification_status, verification_in_progress, verification_metadata, \
-             verification_generation \
+             verification_generation, source_project_id, source_session_id \
              FROM ideation_sessions WHERE id = ?1",
             [id],
             |row| IdeationSession::from_row(row),
@@ -74,7 +111,7 @@ impl SqliteIdeationSessionRepository {
              inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
              updated_at, archived_at, converted_at, team_mode, team_config_json, \
              verification_status, verification_in_progress, verification_metadata, \
-             verification_generation \
+             verification_generation, source_project_id, source_session_id \
              FROM ideation_sessions WHERE plan_artifact_id = ?1",
         )?;
         let sessions = stmt
@@ -93,7 +130,7 @@ impl SqliteIdeationSessionRepository {
              inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
              updated_at, archived_at, converted_at, team_mode, team_config_json, \
              verification_status, verification_in_progress, verification_metadata, \
-             verification_generation \
+             verification_generation, source_project_id, source_session_id \
              FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1",
         )?;
         let sessions = stmt
@@ -148,12 +185,14 @@ impl SqliteIdeationSessionRepository {
 
     /// Reset verification status to 'unverified' if verification is not in progress.
     /// Returns true if the row was updated (verification was reset).
+    /// ImportedVerified sessions are never reset — their pre-verified status must be preserved.
     pub(crate) fn reset_verification_sync(conn: &Connection, id: &str) -> AppResult<bool> {
         let now = Utc::now();
         let rows = conn.execute(
             "UPDATE ideation_sessions SET verification_status = 'unverified', \
              verification_in_progress = 0, verification_metadata = NULL, \
-             updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0",
+             updated_at = ?2 WHERE id = ?1 AND verification_in_progress = 0 \
+             AND verification_status != 'imported_verified'",
             rusqlite::params![id, now.to_rfc3339()],
         )?;
         Ok(rows > 0)
@@ -162,7 +201,10 @@ impl SqliteIdeationSessionRepository {
     /// Atomically trigger auto-verification: sets verification_status=reviewing,
     /// in_progress=1, and increments verification_generation — only when in_progress=0.
     ///
-    /// Returns `Some(new_generation)` if the trigger was applied, `None` if already in_progress.
+    /// ImportedVerified sessions are never auto-verified — their pre-verified status is preserved.
+    ///
+    /// Returns `Some(new_generation)` if the trigger was applied, `None` if already in_progress
+    /// or if the session is `imported_verified`.
     pub(crate) fn trigger_auto_verify_sync(
         conn: &Connection,
         id: &str,
@@ -174,7 +216,8 @@ impl SqliteIdeationSessionRepository {
              verification_in_progress = 1, \
              verification_generation = verification_generation + 1, \
              updated_at = ?2 \
-             WHERE id = ?1 AND verification_in_progress = 0",
+             WHERE id = ?1 AND verification_in_progress = 0 \
+             AND verification_status != 'imported_verified'",
             rusqlite::params![id, now.to_rfc3339()],
         )?;
         if rows == 0 {
@@ -189,7 +232,8 @@ impl SqliteIdeationSessionRepository {
     }
 
     /// Reset auto-verify state after a spawn failure.
-    /// Sets in_progress=0 and verification_status=unverified unconditionally (no guard).
+    /// Sets in_progress=0 and verification_status=unverified.
+    /// ImportedVerified sessions are never reset — their pre-verified status must be preserved.
     pub(crate) fn reset_auto_verify_sync(conn: &Connection, id: &str) -> AppResult<()> {
         let now = Utc::now();
         conn.execute(
@@ -197,9 +241,69 @@ impl SqliteIdeationSessionRepository {
              verification_in_progress = 0, \
              verification_status = 'unverified', \
              updated_at = ?2 \
-             WHERE id = ?1",
+             WHERE id = ?1 AND verification_status != 'imported_verified'",
             rusqlite::params![id, now.to_rfc3339()],
         )?;
+        Ok(())
+    }
+
+    /// Validate that creating a cross-project session from `source_session_id` into
+    /// `target_project_id` does not introduce a circular import chain.
+    ///
+    /// Walks the chain: source_session → source_session.source_session_id → … up to `max_depth`.
+    ///
+    /// **MUST use `get_by_id_sync` (not async `get_by_id`)** — this runs inside a `db.run()`
+    /// closure alongside the INSERT; using the async variant would deadlock.
+    ///
+    /// Error codes embedded in the message (checked by callers / tests):
+    /// - `SELF_REFERENCE` — source is in the same project as the target
+    /// - `CIRCULAR_IMPORT` — chain leads back to the target project
+    /// - `CHAIN_TOO_DEEP` — chain exceeds `max_depth` (default: 10)
+    pub(crate) fn validate_no_circular_import_sync(
+        conn: &Connection,
+        source_session_id: &str,
+        target_project_id: &str,
+        max_depth: usize,
+    ) -> AppResult<()> {
+        // Fetch the source session to check its project membership
+        let source_session = Self::get_by_id_sync(conn, source_session_id)?
+            .ok_or_else(|| AppError::Validation(format!("Source session not found: {source_session_id}")))?;
+
+        // SELF_REFERENCE: source session is in the target project (can't import from yourself)
+        if source_session.project_id.as_str() == target_project_id {
+            return Err(AppError::Validation(
+                "SELF_REFERENCE: source session belongs to the same project as the target".to_string(),
+            ));
+        }
+
+        // Walk the import chain: source.source_session_id → grandparent → …
+        let mut current_source_id = source_session.source_session_id;
+        let mut depth = 0usize;
+
+        while let Some(ref chain_id) = current_source_id {
+            depth += 1;
+            if depth >= max_depth {
+                return Err(AppError::Validation(format!(
+                    "CHAIN_TOO_DEEP: import chain exceeds maximum depth of {max_depth}"
+                )));
+            }
+
+            match Self::get_by_id_sync(conn, chain_id)? {
+                None => {
+                    // Dangling reference — source was deleted; chain ends gracefully
+                    break;
+                }
+                Some(ancestor) => {
+                    if ancestor.project_id.as_str() == target_project_id {
+                        return Err(AppError::Validation(
+                            "CIRCULAR_IMPORT: import chain creates a cycle through the target project".to_string(),
+                        ));
+                    }
+                    current_source_id = ancestor.source_session_id;
+                }
+            }
+        }
+
         Ok(())
     }
 }
@@ -210,8 +314,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "INSERT INTO ideation_sessions (id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                    "INSERT INTO ideation_sessions (id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, source_project_id, source_session_id)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
                     rusqlite::params![
                         session.id.as_str(),
                         session.project_id.as_str(),
@@ -228,6 +332,9 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         session.converted_at.map(|dt| dt.to_rfc3339()),
                         session.team_mode,
                         session.team_config_json,
+                        session.verification_status.to_string(),
+                        session.source_project_id,
+                        session.source_session_id,
                     ],
                 )?;
                 Ok(session)
@@ -240,7 +347,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
                      FROM ideation_sessions WHERE id = ?1",
                     [&id],
                     |row| IdeationSession::from_row(row),
@@ -254,7 +361,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
                      FROM ideation_sessions WHERE project_id = ?1 ORDER BY updated_at DESC",
                 )?;
                 let sessions = stmt
@@ -372,7 +479,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
                      FROM ideation_sessions
                      WHERE project_id = ?1 AND status = 'active'
                      ORDER BY updated_at DESC",
@@ -412,7 +519,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
                      FROM ideation_sessions WHERE plan_artifact_id = ?1",
                 )?;
                 let sessions = stmt
@@ -431,7 +538,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
                      FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1",
                 )?;
                 let sessions = stmt
@@ -447,7 +554,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
                      FROM ideation_sessions WHERE parent_session_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let sessions = stmt
@@ -471,7 +578,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                 // Walk up the parent chain iteratively
                 loop {
                     let result = conn.query_row(
-                        "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation
+                        "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
                          FROM ideation_sessions WHERE id = ?1",
                         [&current_id],
                         |row| IdeationSession::from_row(row),
@@ -719,7 +826,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                      inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
                      updated_at, archived_at, converted_at, team_mode, team_config_json, \
                      verification_status, verification_in_progress, verification_metadata, \
-                     verification_generation \
+                     verification_generation, source_project_id, source_session_id \
                      FROM ideation_sessions \
                      WHERE verification_in_progress = 1 AND updated_at < ?1",
                 )?;
@@ -746,7 +853,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                      inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
                      updated_at, archived_at, converted_at, team_mode, team_config_json, \
                      verification_status, verification_in_progress, verification_metadata, \
-                     verification_generation \
+                     verification_generation, source_project_id, source_session_id \
                      FROM ideation_sessions \
                      WHERE project_id = ?1 AND status = ?2 \
                      ORDER BY created_at DESC LIMIT ?3",

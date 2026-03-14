@@ -24,6 +24,7 @@ import {
   RefreshCw,
   CircleCheck,
   CornerDownRight,
+  ArrowDownToLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { IdeationSession } from "@/types/ideation";
@@ -84,6 +85,7 @@ export interface PlanItemProps {
   onDelete?: () => void;
   onReopen?: () => void;
   onResetReaccept?: () => void;
+  onNavigateToSource?: () => void;
 }
 
 // ============================================================================
@@ -320,6 +322,7 @@ export function PlanItem({
   onDelete,
   onReopen,
   onResetReaccept,
+  onNavigateToSource,
 }: PlanItemProps) {
   const muted = isMutedGroup(group);
 
@@ -407,6 +410,26 @@ export function PlanItem({
                 >
                   {plan.title || "Untitled Plan"}
                 </span>
+                {plan.sourceProjectId && (
+                  <button
+                    type="button"
+                    data-testid="import-badge"
+                    className="inline-flex items-center gap-0.5 text-[9px] font-medium px-1 py-0.5 rounded flex-shrink-0 select-none transition-opacity hover:opacity-80"
+                    style={{
+                      background: "hsla(145 70% 45% / 0.1)",
+                      border: "1px solid hsla(145 70% 45% / 0.25)",
+                      color: "hsl(145 70% 50%)",
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onNavigateToSource?.();
+                    }}
+                    title="Navigate to source session"
+                  >
+                    <ArrowDownToLine className="w-2 h-2" />
+                    Imported
+                  </button>
+                )}
               </div>
               <MetadataLine group={group} plan={plan} {...(progress != null && { progress })} {...(parentSession && { parentSession })} />
             </>

@@ -147,6 +147,48 @@ describe("PlanItem", () => {
     });
   });
 
+  describe("import badge", () => {
+    it("shows import badge when sourceProjectId is present", () => {
+      renderItem({
+        plan: createSession({ sourceProjectId: "project-other", sourceSessionId: "session-other" }),
+      });
+      expect(screen.getByTestId("import-badge")).toBeInTheDocument();
+      expect(screen.getByText("Imported")).toBeInTheDocument();
+    });
+
+    it("hides import badge when sourceProjectId is absent", () => {
+      renderItem({ plan: createSession() });
+      expect(screen.queryByTestId("import-badge")).not.toBeInTheDocument();
+      expect(screen.queryByText("Imported")).not.toBeInTheDocument();
+    });
+
+    it("hides import badge when sourceProjectId is null", () => {
+      renderItem({ plan: createSession({ sourceProjectId: null }) });
+      expect(screen.queryByTestId("import-badge")).not.toBeInTheDocument();
+    });
+
+    it("calls onNavigateToSource when import badge is clicked", async () => {
+      const onNavigateToSource = vi.fn();
+      const onSelect = vi.fn();
+      renderItem({
+        plan: createSession({ sourceProjectId: "project-other" }),
+        onNavigateToSource,
+        onSelect,
+      });
+      await userEvent.click(screen.getByTestId("import-badge"));
+      expect(onNavigateToSource).toHaveBeenCalledOnce();
+      // Should NOT trigger onSelect (stopPropagation)
+      expect(onSelect).not.toHaveBeenCalled();
+    });
+
+    it("does not call onNavigateToSource when badge is absent", () => {
+      const onNavigateToSource = vi.fn();
+      renderItem({ plan: createSession(), onNavigateToSource });
+      expect(screen.queryByTestId("import-badge")).not.toBeInTheDocument();
+      expect(onNavigateToSource).not.toHaveBeenCalled();
+    });
+  });
+
   describe("muted styling for done/archived groups", () => {
     it("done items have reduced opacity when not selected", () => {
       renderItem({ group: "done" });

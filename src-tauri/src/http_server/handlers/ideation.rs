@@ -827,6 +827,8 @@ pub async fn update_plan_verification(
         (VerificationStatus::NeedsRevision, VerificationStatus::Reviewing) => true,
         // Allow needs_revision → verified ONLY when convergence_reason is provided
         (VerificationStatus::NeedsRevision, VerificationStatus::Verified) => has_convergence_reason,
+        // ImportedVerified can transition to Reviewing to re-run verification if desired
+        (VerificationStatus::ImportedVerified, VerificationStatus::Reviewing) => true,
         _ => false,
     };
 

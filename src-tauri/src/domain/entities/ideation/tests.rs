@@ -2515,12 +2515,30 @@ fn verification_status_display_roundtrip() {
         (VerificationStatus::Verified, "verified"),
         (VerificationStatus::NeedsRevision, "needs_revision"),
         (VerificationStatus::Skipped, "skipped"),
+        (VerificationStatus::ImportedVerified, "imported_verified"),
     ];
     for (status, expected) in cases {
         assert_eq!(format!("{}", status), expected);
         let parsed: VerificationStatus = expected.parse().expect("should parse");
         assert_eq!(parsed, status);
     }
+}
+
+#[test]
+fn imported_verified_display_and_from_str_round_trip() {
+    let status = VerificationStatus::ImportedVerified;
+    let s = status.to_string();
+    assert_eq!(s, "imported_verified");
+    let parsed: VerificationStatus = s.parse().unwrap();
+    assert_eq!(parsed, VerificationStatus::ImportedVerified);
+}
+
+#[test]
+fn imported_verified_serializes_to_snake_case() {
+    let json = serde_json::to_string(&VerificationStatus::ImportedVerified).unwrap();
+    assert_eq!(json, "\"imported_verified\"");
+    let back: VerificationStatus = serde_json::from_str(&json).unwrap();
+    assert_eq!(back, VerificationStatus::ImportedVerified);
 }
 
 #[test]

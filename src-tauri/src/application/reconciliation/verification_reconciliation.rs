@@ -100,6 +100,15 @@ impl VerificationReconciliationService {
 
         let mut reset_count = 0u32;
         for session in &stale_sessions {
+            // Never reset ImportedVerified sessions — their pre-verified status must be preserved.
+            if session.verification_status == VerificationStatus::ImportedVerified {
+                tracing::debug!(
+                    session_id = %session.id.as_str(),
+                    "Skipping imported_verified session — not eligible for reconciliation reset"
+                );
+                continue;
+            }
+
             // Dual threshold: manual sessions need the longer stale period before reset.
             // Auto-verify sessions (generation > 0) are already filtered by auto_stale_before.
             if session.verification_generation == 0 && session.updated_at > manual_stale_before {

@@ -399,8 +399,8 @@ fn test_v24_fresh_db_creation() {
         .unwrap();
 
     assert_eq!(
-        version, 65,
-        "Schema version should be 65 after fresh install"
+        version, 66,
+        "Schema version should be 66 after fresh install"
     );
 
     // Verify all memory tables exist

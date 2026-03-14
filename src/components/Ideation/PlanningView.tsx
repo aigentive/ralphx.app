@@ -61,6 +61,7 @@ import { chatApi } from "@/api/chat";
 import { ReopenSessionDialog } from "./ReopenSessionDialog";
 import type { ReopenMode } from "./ReopenSessionDialog";
 import { useReopenSession, useResetAndReaccept, ideationKeys } from "@/hooks/useIdeation";
+import { ExportPlanDialog } from "./ExportPlanDialog";
 
 
 // ============================================================================
@@ -199,6 +200,9 @@ export function PlanningView({
   // Reopen/Reset dialog state
   const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
   const [reopenDialogMode, setReopenDialogMode] = useState<ReopenMode>("reopen");
+
+  // Export plan dialog state
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const reopenMutation = useReopenSession();
   const resetMutation = useResetAndReaccept();
 
@@ -1051,6 +1055,7 @@ export function PlanningView({
                             showApprove={ideationSettings?.requirePlanApproval ?? false}
                             linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
                             onEdit={() => {}}
+                            onExport={() => setExportDialogOpen(true)}
                             isExpanded={isPlanExpanded}
                             onExpandedChange={handlePlanExpandedChange}
                             {...(teamMetadata !== undefined && { teamMetadata })}
@@ -1078,6 +1083,14 @@ export function PlanningView({
                           />
                         </div>
                       )}
+
+                      <ExportPlanDialog
+                        open={exportDialogOpen}
+                        onOpenChange={setExportDialogOpen}
+                        sessionId={session?.id ?? ""}
+                        sessionTitle={session?.title ?? null}
+                        verificationStatus={session?.verificationStatus ?? "unverified"}
+                      />
 
                       {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (
                         <div className="flex flex-col items-center justify-center h-full p-8">

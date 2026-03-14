@@ -9,6 +9,7 @@ use tauri::Emitter;
 
 use super::*;
 use crate::domain::entities::{InternalStatus, Project, ProjectId, TaskId};
+use crate::domain::services::validate_project_path;
 use crate::error::AppError;
 
 pub async fn list_tasks(
@@ -279,58 +280,13 @@ pub async fn register_project_external(
     validated_key: ValidatedExternalKey,
     Json(req): Json<RegisterProjectExternalRequest>,
 ) -> Result<Json<RegisterProjectExternalResponse>, HttpError> {
-    // 1. Canonicalize path
-    let input_path = std::path::Path::new(&req.working_directory);
-    let canonical = if input_path.exists() {
-        std::fs::canonicalize(input_path).map_err(|e| HttpError {
-            status: StatusCode::BAD_REQUEST,
-            message: Some(format!("Failed to canonicalize path: {e}")),
-        })?
-    } else {
-        // Path doesn't exist: canonicalize parent + append basename
-        let parent = input_path.parent().ok_or_else(|| HttpError {
-            status: StatusCode::BAD_REQUEST,
-            message: Some("Invalid path: no parent directory".to_string()),
-        })?;
-        let canonical_parent = std::fs::canonicalize(parent).map_err(|_| HttpError {
-            status: StatusCode::BAD_REQUEST,
-            message: Some("Parent directory does not exist".to_string()),
-        })?;
-        let basename = input_path.file_name().ok_or_else(|| HttpError {
-            status: StatusCode::BAD_REQUEST,
-            message: Some("Invalid path: no basename component".to_string()),
-        })?;
-        canonical_parent.join(basename)
-    };
+    // 1-3. Validate path: canonicalize, blocklist, home directory check (shared helper)
+    let canonical = validate_project_path(&req.working_directory).map_err(|e| HttpError {
+        status: StatusCode::UNPROCESSABLE_ENTITY,
+        message: Some(e.to_string()),
+    })?;
 
     let canonical_str = canonical.to_string_lossy().to_string();
-
-    // 2. Allowlist: path must be under user's home directory
-    let home = std::env::var("HOME")
-        .map(std::path::PathBuf::from)
-        .map_err(|_| HttpError {
-            status: StatusCode::INTERNAL_SERVER_ERROR,
-            message: Some("Cannot determine home directory".to_string()),
-        })?;
-    if !canonical.starts_with(&home) {
-        return Err(HttpError {
-            status: StatusCode::UNPROCESSABLE_ENTITY,
-            message: Some("Path must be within the user's home directory".to_string()),
-        });
-    }
-
-    // 3. Blocklist: reject system paths
-    const BLOCKED_PREFIXES: &[&str] = &[
-        "/etc", "/usr", "/var", "/tmp", "/private", "/System", "/Library", "/Volumes",
-    ];
-    for blocked in BLOCKED_PREFIXES {
-        if canonical_str.starts_with(blocked) {
-            return Err(HttpError {
-                status: StatusCode::UNPROCESSABLE_ENTITY,
-                message: Some(format!("Path is in a restricted system directory: {blocked}")),
-            });
-        }
-    }
 
     // 4. Duplicate check → 409 Conflict
     let existing = state

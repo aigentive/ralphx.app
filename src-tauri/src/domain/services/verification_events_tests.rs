@@ -340,3 +340,49 @@ fn test_payload_shape_matches_fixture_schema() {
         serialized.len()
     );
 }
+
+// ===== ImportedVerified Tests =====
+
+/// ImportedVerified: build_verification_payload produces a valid payload (no panic).
+/// The emit_verification_status_changed function skips emission entirely for ImportedVerified
+/// (returns early before reaching build_verification_payload), but the payload builder itself
+/// must handle it correctly if called directly.
+#[test]
+fn test_imported_verified_payload_does_not_panic() {
+    let payload = build_verification_payload(
+        "sess-imported",
+        VerificationStatus::ImportedVerified,
+        false,
+        None,
+        None,
+    );
+    assert_eq!(payload["session_id"], "sess-imported");
+    assert_eq!(payload["status"], "imported_verified");
+    assert_eq!(payload["in_progress"], false);
+    // All numeric fields are null when metadata is None
+    assert_eq!(payload["round"], serde_json::Value::Null);
+    assert_eq!(payload["max_rounds"], serde_json::Value::Null);
+    assert_eq!(payload["gap_score"], serde_json::Value::Null);
+    assert_eq!(payload["current_gaps"], serde_json::Value::Array(vec![]));
+    assert_eq!(payload["rounds"], serde_json::Value::Array(vec![]));
+}
+
+/// ImportedVerified with metadata: status field is serialized as "imported_verified".
+#[test]
+fn test_imported_verified_payload_with_metadata() {
+    let metadata = VerificationMetadata {
+        current_round: 0,
+        max_rounds: 0,
+        ..Default::default()
+    };
+    let payload = build_verification_payload(
+        "sess-imported-meta",
+        VerificationStatus::ImportedVerified,
+        false,
+        Some(&metadata),
+        None,
+    );
+    assert_eq!(payload["status"], "imported_verified");
+    assert_eq!(payload["gap_score"], 0u32);
+    assert_eq!(payload["current_gaps"], serde_json::Value::Array(vec![]));
+}
