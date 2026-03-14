@@ -89,6 +89,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | PreMergeCleanup | Kill agents + kill_worktree_processes BEFORE git worktree ops (TOCTOU race prevention) |
 | MergeDeadline | `attempt_programmatic_merge` wraps cleanup + strategy in bounded deadline (`attempt_merge_deadline_secs`) |
 | No Inline Timeout Consts | All durations → `runtime_config` + `ralphx.yaml`, never Rust `const` |
+| Tokio spawn | `tokio::spawn` → async fn ONLY. Sync code → `std::thread::spawn` \| `tauri::async_runtime::spawn`. See `.claude/rules/tokio-runtime-safety.md` |
 
 ## Code Quality
 Multi-stream workflow: `.claude/rules/stream-*.md` (features/refactor/polish). File limits + migration rules: `.claude/rules/code-quality-standards.md`.

@@ -126,6 +126,7 @@ Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool
 | 14 | Tauri invoke: camelCase fields. ✅ `contextId` ❌ `context_id` |
 | 15 | New `.claude/rules/*.md` \| `**/CLAUDE.md` → include this maintainer note at top |
 | 16 | **DbConnection (NON-NEGOTIABLE):** All SQLite repo methods MUST use `db.run(\|conn\| { ... })` via `DbConnection` for non-blocking access. ❌ Direct `conn.lock().await` / `conn.query_row()` in async methods. See `db_connection.rs`. |
+| 17 | **Tokio spawn safety (NON-NEGOTIABLE):** `tokio::spawn` / `tokio::task::spawn` / `spawn_blocking` → async context ONLY. Sync constructors & Tauri setup → `std::thread::spawn` or `tauri::async_runtime::spawn`. Details: `.claude/rules/tokio-runtime-safety.md` |
 
 ## Adversarial Plan Convergence (NON-NEGOTIABLE)
 
