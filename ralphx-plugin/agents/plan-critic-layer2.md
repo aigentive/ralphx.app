@@ -8,7 +8,13 @@ tools:
   - WebFetch
   - WebSearch
 mcpServers:
-  - ralphx
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "plan-critic-layer2"
 allowedTools:
   - "mcp__ralphx__get_session_plan"
   - "mcp__ralphx__get_artifact"
