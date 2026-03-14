@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tauri::{Manager, State};
 
-use crate::application::{AppState, TaskSchedulerService};
+use crate::application::{AppState, TaskCleanupService, TaskSchedulerService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ArtifactId, ExecutionPlan, IdeationSessionId, IdeationSessionStatus, InternalStatus,
@@ -524,6 +524,29 @@ pub async fn apply_proposals_to_kanban(
     let result = apply_proposals_core(&state, input)
         .await
         .map_err(|e| e.to_string())?;
+
+    // IPR cleanup: stop the ideation session's interactive Claude CLI process
+    // now that the session has been accepted (terminal state).
+    // Best-effort: if no process is found, GC will eventually clean up.
+    if result.session_converted {
+        let task_cleanup = TaskCleanupService::new(
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.running_agent_registry),
+            Some(app.clone()),
+        )
+        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+
+        let stopped = task_cleanup
+            .stop_ideation_session_agent(&result.session_id)
+            .await;
+        if !stopped {
+            tracing::warn!(
+                "IPR cleanup: no running process found for accepted session {}",
+                result.session_id
+            );
+        }
+    }
 
     // Re-trigger session-namer if title was not manually set by user.
     // At acceptance, proposals are finalized — namer generates a commit-ready title
