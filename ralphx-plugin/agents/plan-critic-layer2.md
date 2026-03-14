@@ -7,6 +7,8 @@ tools:
   - Glob
   - WebFetch
   - WebSearch
+mcpServers:
+  - ralphx
 allowedTools:
   - "mcp__ralphx__get_session_plan"
   - "mcp__ralphx__get_plan_artifact"

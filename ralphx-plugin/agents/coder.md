@@ -19,6 +19,8 @@ tools:
   - KillShell
   - MCPSearch
   - LSP
+mcpServers:
+  - ralphx
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"

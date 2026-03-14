@@ -16,6 +16,8 @@ tools:
   - TaskOutput
   - KillShell
   - MCPSearch
+mcpServers:
+  - ralphx
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"

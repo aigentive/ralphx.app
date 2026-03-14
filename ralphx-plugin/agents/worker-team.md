@@ -19,6 +19,8 @@ tools:
   - TeamCreate
   - TeamDelete
   - SendMessage
+mcpServers:
+  - ralphx
 disallowedTools: Write, Edit, NotebookEdit
 allowedTools:
   - "mcp__ralphx__*"

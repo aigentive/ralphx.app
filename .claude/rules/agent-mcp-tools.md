@@ -130,3 +130,56 @@ case "get_merge_target":
 ```
 
 Then rebuild: `cd ralphx-plugin/ralphx-mcp-server && npm run build`
+
+## Subagent MCP Access — Two Spawning Paths (NON-NEGOTIABLE)
+
+| Path | How Agent Gets MCP | `mcpServers` in Frontmatter? |
+|------|-------------------|------------------------------|
+| **Backend-spawned** (ClaudeCodeClient) | Rust `create_mcp_config()` injects `--allowed-tools` into temp MCP config | Not used for own access, BUT needed for Task-tool subagents it spawns |
+| **Task-tool-spawned** (in-process subagent) | Frontmatter `mcpServers` field connects to MCP server | ✅ Required — without it, zero MCP tools |
+
+### mcpServers Frontmatter Field
+
+Any agent that has MCP tools in `allowedTools` MUST also include `mcpServers` in frontmatter:
+
+```yaml
+mcpServers:
+  - ralphx          # reference by name (from .mcp.json)
+```
+
+Without `mcpServers`, the subagent has zero MCP tools — `allowedTools` filters are ignored because there's no MCP server connected.
+
+**Three fields work together:**
+
+| Field | Purpose | Without It |
+|-------|---------|------------|
+| `mcpServers` | Connects to MCP server | Zero MCP tools available |
+| `allowedTools` | Filters which MCP tools are exposed | All MCP tools from connected servers available |
+| `disallowedTools` | Blocks specific MCP tools | All allowed MCP tools available |
+
+❌ Adding MCP tools to `allowedTools` without `mcpServers` — tools will not be available
+✅ Always pair `mcpServers: [ralphx]` with any `mcp__ralphx__*` allowedTools entries
+
+```yaml
+# ✅ Correct — mcpServers paired with allowedTools
+---
+name: my-agent
+tools:
+  - Read
+  - Grep
+mcpServers:
+  - ralphx
+allowedTools:
+  - "mcp__ralphx__*"
+---
+
+# ❌ Wrong — allowedTools without mcpServers (zero MCP tools at runtime)
+---
+name: my-agent
+tools:
+  - Read
+  - Grep
+allowedTools:
+  - "mcp__ralphx__*"
+---
+```

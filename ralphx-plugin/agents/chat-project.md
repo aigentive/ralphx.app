@@ -18,6 +18,8 @@ tools:
   - MCPSearch
   - mcp__ralphx__suggest_task
   - mcp__ralphx__list_tasks
+mcpServers:
+  - ralphx
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"
