@@ -11,7 +11,7 @@ mcpServers:
   - ralphx
 allowedTools:
   - "mcp__ralphx__get_session_plan"
-  - "mcp__ralphx__get_plan_artifact"
+  - "mcp__ralphx__get_artifact"
 disallowedTools:
   - Write
   - Edit
@@ -37,7 +37,7 @@ Before any analysis, fetch the plan content via MCP:
 
 1. Extract the `SESSION_ID` from your prompt (format: `SESSION_ID: <id>`)
 2. Call `get_session_plan(session_id)` to retrieve the full plan content
-3. Use `get_plan_artifact` only if you need a specific historical version (e.g., comparing current vs previous)
+3. Use `get_artifact` only if you need a specific historical version (e.g., comparing current vs previous)
 
 If `get_session_plan` fails, return immediately with:
 ```

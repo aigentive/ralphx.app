@@ -5,6 +5,7 @@ use axum::{
 };
 
 use super::*;
+use tracing::error;
 use crate::domain::entities::{
     Artifact, ArtifactContent, ArtifactId, ArtifactSummary, ArtifactType, TaskContext, TaskId,
 };
@@ -42,7 +43,10 @@ pub async fn get_artifact_full(
         .artifact_repo
         .get_by_id(&artifact_id)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .map_err(|e| {
+            error!("Failed to get artifact {}: {}", artifact_id.as_str(), e);
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?
         .ok_or(StatusCode::NOT_FOUND)?;
 
     Ok(Json(ArtifactResponse::from(artifact)))

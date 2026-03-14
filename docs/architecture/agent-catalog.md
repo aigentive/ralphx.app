@@ -46,8 +46,8 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | **Disallowed CLI tools** | Write, Edit, NotebookEdit |
 | **Preapproved** | Task(Explore), Task(Plan) |
 
-**MCP Tools (16):**
-`create_task_proposal`, `update_task_proposal`, `delete_task_proposal`, `list_session_proposals`, `get_proposal`, `analyze_session_dependencies`, `create_plan_artifact`, `update_plan_artifact`, `get_plan_artifact`, `link_proposals_to_plan`, `get_session_plan`, `ask_user_question`, `create_child_session`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths`
+**MCP Tools (15):**
+`create_task_proposal`, `update_task_proposal`, `delete_task_proposal`, `list_session_proposals`, `get_proposal`, `analyze_session_dependencies`, `create_plan_artifact`, `update_plan_artifact`, `link_proposals_to_plan`, `get_session_plan`, `ask_user_question`, `create_child_session`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths`
 
 **Purpose:** The primary ideation agent. Facilitates structured ideation sessions through a 6-phase gated workflow: RECOVER → UNDERSTAND → EXPLORE → PLAN → CONFIRM → PROPOSE → FINALIZE. Transforms user ideas into well-defined task proposals with implementation plans.
 
@@ -73,8 +73,8 @@ Complete catalog of all 20 agent definitions in `ralphx.yaml`. Each agent is a C
 | **Disallowed CLI tools** | Write, Edit, NotebookEdit |
 | **Preapproved** | Task(Explore), Task(Plan) |
 
-**MCP Tools (9 — read-only subset):**
-`list_session_proposals`, `get_proposal`, `get_plan_artifact`, `get_session_plan`, `get_parent_session_context`, `create_child_session`, `search_memories`, `get_memory`, `get_memories_for_paths`
+**MCP Tools (8 — read-only subset):**
+`list_session_proposals`, `get_proposal`, `get_session_plan`, `get_parent_session_context`, `create_child_session`, `search_memories`, `get_memory`, `get_memories_for_paths`
 
 **Purpose:** Serves accepted (finalized) ideation sessions. Cannot mutate proposals or plans. Helps users understand completed plans, explore related code, and delegates new work to child sessions via `create_child_session`.
 
@@ -489,7 +489,7 @@ Most agents extend `base_tools` and add Write, Edit, or Task as needed.
 | `create_task_proposal` / `update_task_proposal` / `delete_task_proposal` | orchestrator-ideation only |
 | `create_plan_artifact` / `update_plan_artifact` | orchestrator-ideation only |
 | `list_session_proposals` / `get_proposal` | orchestrator-ideation, orchestrator-ideation-readonly |
-| `get_session_plan` / `get_plan_artifact` | orchestrator-ideation, orchestrator-ideation-readonly |
+| `get_session_plan` | orchestrator-ideation, orchestrator-ideation-readonly |
 | `create_child_session` | orchestrator-ideation, orchestrator-ideation-readonly |
 | `analyze_session_dependencies` | orchestrator-ideation only |
 | `update_session_title` | session-namer only |

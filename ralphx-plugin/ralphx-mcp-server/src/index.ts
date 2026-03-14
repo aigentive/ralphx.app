@@ -356,9 +356,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { artifact_id } = args as { artifact_id: string };
       result = await callTauriGet(`artifact/${artifact_id}/related`);
     } else if (name === "get_plan_artifact") {
-      // Also handle get_plan_artifact as GET
+      // DEPRECATED: alias for backward compat — routes to get_artifact handler
       const { artifact_id } = args as { artifact_id: string };
-      result = await callTauriGet(`get_plan_artifact/${artifact_id}`);
+      result = await callTauriGet(`artifact/${artifact_id}`);
     } else if (name === "get_session_plan") {
       // Also handle get_session_plan as GET
       const { session_id } = args as { session_id: string };

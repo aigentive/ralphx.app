@@ -39,7 +39,7 @@ This document specifies test cases for the new team coordination tools and agent
   - `get_team_artifacts`
   - `get_session_plan`
   - `list_session_proposals`
-  - `get_plan_artifact`
+  - `get_artifact`
   - Memory read tools (search_memories, get_memory, get_memories_for_paths)
 
 - **Expected:** Tools list does NOT include:
@@ -129,7 +129,7 @@ This document specifies test cases for the new team coordination tools and agent
 - **Expected:** Tools list does NOT include other team-member tools:
   - `get_team_artifacts`
   - `list_session_proposals`
-  - `get_plan_artifact`
+  - `get_artifact`
 
 - Attempt to call `get_team_artifacts` tool (not in env var list)
 - **Expected:** Error response:

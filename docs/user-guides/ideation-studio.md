@@ -533,7 +533,6 @@ team_constraints:
     mcp_tool_ceiling:
       - get_session_plan
       - list_session_proposals
-      - get_plan_artifact
       - create_team_artifact
       - get_team_artifacts
     bash_allowed: true

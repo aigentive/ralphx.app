@@ -148,12 +148,8 @@ pub async fn start_http_server(
         .route("/api/update_plan_artifact", post(update_plan_artifact))
         .route("/api/edit_plan_artifact", post(edit_plan_artifact))
         .route(
-            "/api/get_plan_artifact/:artifact_id",
-            get(get_plan_artifact),
-        )
-        .route(
-            "/api/get_plan_artifact/:artifact_id/history",
-            get(get_plan_artifact_history),
+            "/api/artifact/:artifact_id/history",
+            get(get_artifact_history),
         )
         .route("/api/link_proposals_to_plan", post(link_proposals_to_plan))
         .route("/api/get_session_plan/:session_id", get(get_session_plan))

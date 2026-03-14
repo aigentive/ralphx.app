@@ -171,7 +171,7 @@ VERIFICATION: After completing, run [lint command] on modified files only.
 |--------|------|-------------|
 | View plan | `get_session_plan` | "What was the implementation approach?" |
 | View proposals | `list_session_proposals`, `get_proposal` | "Show me task #2's acceptance criteria" |
-| View plan artifact | `get_plan_artifact` | "What's the full plan content?" |
+| View plan artifact | `get_artifact` | "What's the full plan content?" |
 | Explore codebase | `Task(Explore)`, Read, Grep, Glob | "How does the auth module work?" |
 | Search memories | `search_memories`, `get_memory` | "What do we know about this pattern?" |
 | Get parent context | `get_parent_session_context` | "What did the parent session plan?" |

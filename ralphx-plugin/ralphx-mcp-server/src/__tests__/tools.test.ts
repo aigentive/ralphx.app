@@ -127,7 +127,7 @@ describe('getFilteredTools', () => {
     // Should include read-only access tools
     expect(toolNames).toContain('get_session_plan');
     expect(toolNames).toContain('list_session_proposals');
-    expect(toolNames).toContain('get_plan_artifact');
+    expect(toolNames).toContain('get_artifact');
 
     // Should NOT include lead-only tools
     expect(toolNames).not.toContain('request_team_plan');
