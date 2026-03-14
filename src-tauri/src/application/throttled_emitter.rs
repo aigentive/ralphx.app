@@ -7,8 +7,9 @@
 // Non-batchable events pass through immediately.
 
 use std::sync::{Arc, Mutex};
+use std::thread;
+use std::time::Duration;
 use tauri::{AppHandle, Emitter, Runtime};
-use tokio::time::{interval, Duration};
 
 pub struct ThrottledEmitter<R: Runtime = tauri::Wry> {
     handle: AppHandle<R>,
@@ -27,11 +28,9 @@ impl<R: Runtime> ThrottledEmitter<R> {
 
         let weak = Arc::downgrade(&emitter);
         let handle_clone = emitter.handle.clone();
-        tokio::spawn(async move {
-            let mut ticker = interval(Duration::from_millis(100));
-            ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        thread::spawn(move || {
             loop {
-                ticker.tick().await;
+                thread::sleep(Duration::from_millis(100));
                 let Some(strong) = weak.upgrade() else {
                     break;
                 };
