@@ -29,6 +29,8 @@ import {
   DEEP_RESEARCHER,
   MEMORY_MAINTAINER,
   MEMORY_CAPTURE,
+  PLAN_CRITIC_LAYER1,
+  PLAN_CRITIC_LAYER2,
   IDEATION_TEAM_LEAD,
   IDEATION_TEAM_MEMBER,
   WORKER_TEAM_LEAD,
@@ -1714,6 +1716,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_memory",
     "get_memories_for_paths",
   ],
+  // Plan critic agents - read-only, only need plan access tools
+  [PLAN_CRITIC_LAYER1]: ["get_session_plan", "get_plan_artifact"],
+  [PLAN_CRITIC_LAYER2]: ["get_session_plan", "get_plan_artifact"],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),
 };

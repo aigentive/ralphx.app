@@ -37,6 +37,10 @@ pub const SHORT_MEMORY_CAPTURE: &str = "memory-capture";
 pub const SHORT_IDEATION_TEAM_LEAD: &str = "ideation-team-lead";
 pub const SHORT_WORKER_TEAM: &str = "ralphx-worker-team";
 
+// ── Plan critic agents (read-only, plan verification) ───────────────────
+pub const SHORT_PLAN_CRITIC_LAYER1: &str = "plan-critic-layer1";
+pub const SHORT_PLAN_CRITIC_LAYER2: &str = "plan-critic-layer2";
+
 // ── ChatService team agents (team_mode=true → resolve_agent_with_team_mode) ──
 
 /// Ideation team lead (ChatContextType::Ideation + team_mode)

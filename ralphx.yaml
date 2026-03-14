@@ -799,6 +799,22 @@ agents:
     preapproved_cli_tools:
       [Read, Grep, Glob, WebFetch, WebSearch, Bash, Write, Edit]
 
+  # --- Plan critic agents (read-only, MCP tools for plan verification) ---
+
+  - name: plan-critic-layer1
+    system_prompt_file: ralphx-plugin/agents/plan-critic-layer1.md
+    model: sonnet
+    tools: { extends: base_tools }
+    mcp_tools: [get_session_plan, get_plan_artifact]
+    preapproved_cli_tools: []
+
+  - name: plan-critic-layer2
+    system_prompt_file: ralphx-plugin/agents/plan-critic-layer2.md
+    model: sonnet
+    tools: { extends: base_tools }
+    mcp_tools: [get_session_plan, get_plan_artifact]
+    preapproved_cli_tools: []
+
   # --- Team lead variants (extends base agents) ---
 
   - name: ideation-team-lead
