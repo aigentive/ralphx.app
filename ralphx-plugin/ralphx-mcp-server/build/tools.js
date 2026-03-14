@@ -7,7 +7,7 @@ import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
-import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, CODER, SESSION_NAMER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, } from "./agentNames.js";
+import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, CODER, SESSION_NAMER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, PLAN_CRITIC_LAYER1, PLAN_CRITIC_LAYER2, IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, } from "./agentNames.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
@@ -1621,6 +1621,9 @@ export const TOOL_ALLOWLIST = {
         "get_memory",
         "get_memories_for_paths",
     ],
+    // Plan critic agents - read-only, only need plan access tools
+    [PLAN_CRITIC_LAYER1]: ["get_session_plan", "get_plan_artifact"],
+    [PLAN_CRITIC_LAYER2]: ["get_session_plan", "get_plan_artifact"],
     // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
     debug: ALL_TOOLS.map((t) => t.name),
 };
