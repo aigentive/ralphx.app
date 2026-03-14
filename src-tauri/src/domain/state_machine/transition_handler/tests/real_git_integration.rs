@@ -381,3 +381,119 @@ async fn test_trivial_merge_does_not_use_project_root_as_merge_path() {
         updated.metadata,
     );
 }
+
+/// Verify that identical branches with Merge strategy complete without creating an empty commit.
+///
+/// With the `branches_have_same_content()` guard added to `try_merge_in_worktree()`,
+/// the merge worktree is never created and git is never asked to merge — no empty commit.
+#[tokio::test]
+async fn test_identical_branches_merge_strategy_no_empty_commit() {
+    use crate::application::GitService;
+
+    let git_repo = setup_real_git_repo();
+    let repo = git_repo.path();
+
+    // Fast-forward main to match task branch → branches now identical
+    let _ = std::process::Command::new("git")
+        .args(["merge", &git_repo.task_branch, "--ff-only"])
+        .current_dir(repo)
+        .output();
+
+    let same_content = GitService::branches_have_same_content(repo, &git_repo.task_branch, "main")
+        .await
+        .unwrap();
+    assert!(
+        same_content,
+        "Precondition: branches should be identical after fast-forward"
+    );
+
+    let main_sha_before = GitService::get_branch_sha(repo, "main").await.unwrap();
+
+    let setup = setup_pending_merge_with_real_repo(
+        "Identical branches Merge strategy test",
+        &git_repo.task_branch,
+        &git_repo.path_string(),
+        MergeStrategy::Merge,
+    )
+    .await;
+
+    let task_id = setup.task_id.clone();
+    let task_repo = Arc::clone(&setup.task_repo);
+    let (mut machine, _task_repo, _task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merged,
+        "Task should reach Merged with identical branches (Merge strategy), got {:?}",
+        updated.internal_status,
+    );
+
+    // Verify no new commit was created on main
+    let main_sha_after = GitService::get_branch_sha(repo, "main").await.unwrap();
+    assert_eq!(
+        main_sha_before, main_sha_after,
+        "No new commit should be created on main when branches are already identical"
+    );
+}
+
+/// Verify that identical branches with Rebase strategy complete without creating an empty commit.
+///
+/// With the `branches_have_same_content()` guard added to `try_rebase_and_merge_in_worktree()`,
+/// no worktrees are created and git is never asked to rebase or merge — no empty commit.
+#[tokio::test]
+async fn test_identical_branches_rebase_strategy_no_empty_commit() {
+    use crate::application::GitService;
+
+    let git_repo = setup_real_git_repo();
+    let repo = git_repo.path();
+
+    // Fast-forward main to match task branch → branches now identical
+    let _ = std::process::Command::new("git")
+        .args(["merge", &git_repo.task_branch, "--ff-only"])
+        .current_dir(repo)
+        .output();
+
+    let same_content = GitService::branches_have_same_content(repo, &git_repo.task_branch, "main")
+        .await
+        .unwrap();
+    assert!(
+        same_content,
+        "Precondition: branches should be identical after fast-forward"
+    );
+
+    let main_sha_before = GitService::get_branch_sha(repo, "main").await.unwrap();
+
+    let setup = setup_pending_merge_with_real_repo(
+        "Identical branches Rebase strategy test",
+        &git_repo.task_branch,
+        &git_repo.path_string(),
+        MergeStrategy::Rebase,
+    )
+    .await;
+
+    let task_id = setup.task_id.clone();
+    let task_repo = Arc::clone(&setup.task_repo);
+    let (mut machine, _task_repo, _task_id) = setup.into_machine();
+    let handler = TransitionHandler::new(&mut machine);
+
+    let _ = handler.on_enter(&State::PendingMerge).await;
+
+    let updated = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Merged,
+        "Task should reach Merged with identical branches (Rebase strategy), got {:?}",
+        updated.internal_status,
+    );
+
+    // Verify no new commit was created on main
+    let main_sha_after = GitService::get_branch_sha(repo, "main").await.unwrap();
+    assert_eq!(
+        main_sha_before, main_sha_after,
+        "No new commit should be created on main when branches are already identical"
+    );
+}

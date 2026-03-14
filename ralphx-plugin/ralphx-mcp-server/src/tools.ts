@@ -918,9 +918,9 @@ export const ALL_TOOLS: Tool[] = [
         },
         decision: {
           type: "string",
-          enum: ["approved", "needs_changes", "escalate"],
+          enum: ["approved", "needs_changes", "escalate", "approved_no_changes"],
           description:
-            "Review decision: approved (ship it), needs_changes (fixable issues), escalate (major concerns)",
+            "Review decision: approved (ship it), needs_changes (fixable issues), escalate (major concerns), approved_no_changes (use when task intentionally produced no code changes — research, docs, planning — skips merge pipeline)",
         },
         feedback: {
           type: "string",

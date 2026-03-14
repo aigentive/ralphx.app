@@ -447,3 +447,114 @@ async fn test_complete_review_ipr_removed_on_escalate() {
         .await;
     let _ = child.kill().await;
 }
+
+// ============================================================================
+// approved_no_changes handler tests
+// ============================================================================
+
+/// approved_no_changes decision — string parses correctly and handler proceeds past guard.
+///
+/// Verifies that "approved_no_changes" is a valid decision string (not rejected with 400),
+/// and that the handler proceeds past the Reviewing-state guard.
+///
+/// Note: In the in-memory test setup, the project is not seeded, so the git diff validation
+/// takes the defensive path (no project found → proceed with no-changes path). The transition
+/// may succeed or fail depending on in-memory repo behavior — we only check the guard doesn't
+/// fire for a Reviewing task.
+#[tokio::test]
+async fn test_approved_no_changes_string_parsed_correctly() {
+    let state = setup_review_test_state().await;
+    let task = seed_task_with_status(&state, InternalStatus::Reviewing).await;
+    let task_id = task.id.as_str().to_string();
+
+    let req = CompleteReviewRequest {
+        task_id,
+        decision: "approved_no_changes".to_string(),
+        summary: Some("Research task — no code changes".to_string()),
+        feedback: None,
+        issues: None,
+        escalation_reason: None,
+    };
+
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
+
+    // The guard-specific 400 must NOT be returned — "approved_no_changes" is a valid decision.
+    // Handler may return 200 or a non-guard error from the transition itself.
+    if let Err((status, msg)) = &result {
+        assert_ne!(
+            *status,
+            StatusCode::BAD_REQUEST,
+            "approved_no_changes must not be rejected as an invalid decision. \
+             Got 400: {msg}",
+        );
+    }
+}
+
+/// approved_no_changes — invalid decision string still returns 400.
+///
+/// Verifies the fallthrough case in the string match gate.
+#[tokio::test]
+async fn test_invalid_decision_still_rejected() {
+    let state = setup_review_test_state().await;
+    let task = seed_task_with_status(&state, InternalStatus::Reviewing).await;
+    let task_id = task.id.as_str().to_string();
+
+    let req = CompleteReviewRequest {
+        task_id,
+        decision: "approve_no_changes_typo".to_string(),
+        summary: None,
+        feedback: None,
+        issues: None,
+        escalation_reason: None,
+    };
+
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
+
+    match result {
+        Err((status, msg)) => {
+            assert_eq!(
+                status,
+                StatusCode::BAD_REQUEST,
+                "Typo in decision must return 400. Got: {status}",
+            );
+            assert!(
+                msg.contains("Invalid decision"),
+                "Error must mention 'Invalid decision'. Got: {msg}",
+            );
+        }
+        Ok(_) => panic!("Invalid decision must return 400"),
+    }
+}
+
+/// approved_no_changes error message now includes 'approved_no_changes' in the valid list.
+///
+/// When an invalid decision is provided, the error message must include the new variant.
+#[tokio::test]
+async fn test_invalid_decision_error_lists_approved_no_changes() {
+    let state = setup_review_test_state().await;
+    let task = seed_task_with_status(&state, InternalStatus::Reviewing).await;
+    let task_id = task.id.as_str().to_string();
+
+    let req = CompleteReviewRequest {
+        task_id,
+        decision: "bad_decision".to_string(),
+        summary: None,
+        feedback: None,
+        issues: None,
+        escalation_reason: None,
+    };
+
+    let result = complete_review(State(state), ProjectScope(None), Json(req)).await;
+
+    match result {
+        Err((status, msg)) => {
+            assert_eq!(status, StatusCode::BAD_REQUEST);
+            assert!(
+                msg.contains("approved_no_changes"),
+                "Error message for invalid decision must include 'approved_no_changes' \
+                 in the valid options list. Got: {msg}",
+            );
+        }
+        Ok(_) => panic!("Invalid decision must return 400"),
+    }
+}

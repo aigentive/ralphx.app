@@ -151,7 +151,7 @@ Start with `get_review_notes(task_id)`:
 ```typescript
 complete_review({
   task_id: string,          // RALPHX_TASK_ID env var
-  outcome: "approved" | "needs_changes" | "escalate",
+  outcome: "approved" | "needs_changes" | "escalate" | "approved_no_changes",
   notes: string,            // Specific, actionable, balanced, constructive
   fix_description?: string, // needs_changes only
   issues?: Array<{          // REQUIRED for needs_changes (non-empty)
@@ -173,6 +173,18 @@ complete_review({
 | `approved` | Criteria met, tests pass, no security issues, quality good |
 | `needs_changes` | Fixable bugs, test failures, logic errors — **non-empty `issues` required** |
 | `escalate` | Architectural concerns, breaking changes, unclear requirements — **`escalation_reason` required** |
+| `approved_no_changes` | Task intentionally produced no code changes (research, docs, planning) — skips merge pipeline |
+
+### approved_no_changes Decision Guide
+
+**When to use:**
+1. Run `git diff <base_branch>..HEAD --stat` (base_branch from `get_task_context` → `task.base_branch`; if absent, use project default branch e.g. `main`)
+2. If diff is **empty** AND task type is research/docs/planning → use `approved_no_changes`
+3. If diff is **empty** BUT acceptance criteria expect code changes → use `needs_changes` (execution failure, not a no-change task)
+
+**Base branch selection:**
+- Check `get_task_context` result for `task.base_branch`
+- If absent, fall back to `main` (or project default)
 
 ### Example: Approved
 ```typescript

@@ -359,6 +359,19 @@ impl GitService {
             return Ok(not_found);
         }
 
+        // Early return: if branches are already identical, skip merge entirely
+        if Self::branches_have_same_content(repo, source_branch, target_branch)
+            .await
+            .unwrap_or(false)
+        {
+            debug!(
+                "Source '{}' and target '{}' already identical, skipping worktree merge",
+                source_branch, target_branch
+            );
+            let commit_sha = Self::get_branch_sha(repo, target_branch).await?;
+            return Ok(MergeAttemptResult::Success { commit_sha });
+        }
+
         // Step 1: Create merge worktree checking out the target branch
         Self::checkout_existing_branch_worktree(repo, merge_worktree_path, target_branch).await?;
 
@@ -437,6 +450,19 @@ impl GitService {
             Self::validate_merge_branches(repo, source_branch, target_branch).await
         {
             return Ok(not_found);
+        }
+
+        // Early return: if branches are already identical, skip merge entirely
+        if Self::branches_have_same_content(repo, source_branch, target_branch)
+            .await
+            .unwrap_or(false)
+        {
+            debug!(
+                "Source '{}' and target '{}' already identical, skipping worktree rebase-and-merge",
+                source_branch, target_branch
+            );
+            let commit_sha = Self::get_branch_sha(repo, target_branch).await?;
+            return Ok(MergeAttemptResult::Success { commit_sha });
         }
 
         // Step 2: Check if base branch is empty (0 or 1 commits)
