@@ -301,6 +301,39 @@ pub fn clear_pending_cleanup_metadata(task: &mut Task) {
 }
 
 // ==================
+// No-code-changes metadata helpers
+// ==================
+
+/// Set `no_code_changes` flag in task metadata.
+///
+/// Called by the `complete_review` handler when reviewer uses `approved_no_changes`
+/// decision and git diff confirms no code changes. Marks that merge pipeline should
+/// be skipped for this task.
+pub fn set_no_code_changes_metadata(task: &mut Task) {
+    let mut meta = task
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+    if let Some(obj) = meta.as_object_mut() {
+        obj.insert("no_code_changes".to_string(), serde_json::json!(true));
+    }
+    task.metadata = Some(meta.to_string());
+}
+
+/// Check if task has `no_code_changes` metadata flag set.
+///
+/// Used by `transition_handler/mod.rs` skip check to detect tasks that should
+/// bypass the merge pipeline and transition directly from Approved → Merged.
+pub fn has_no_code_changes_metadata(task: &Task) -> bool {
+    task.metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .and_then(|v| v.get("no_code_changes")?.as_bool())
+        .unwrap_or(false)
+}
+
+// ==================
 // Phase 3: Deferred merge cleanup
 // ==================
 
@@ -608,5 +641,61 @@ mod tests {
             !String::from_utf8_lossy(&branch_check_after.stdout).contains(branch_name),
             "Branch should be deleted from git after cleanup"
         );
+    }
+
+    // ===== No-code-changes metadata helper tests =====
+
+    #[test]
+    fn test_set_no_code_changes_metadata_sets_flag() {
+        let project_id = ProjectId::from_string("proj-test".to_string());
+        let mut task = Task::new(project_id, "test task".to_string());
+        assert!(!has_no_code_changes_metadata(&task), "should be false before setting");
+
+        set_no_code_changes_metadata(&mut task);
+        assert!(has_no_code_changes_metadata(&task), "should be true after setting");
+    }
+
+    #[test]
+    fn test_has_no_code_changes_metadata_false_for_empty_metadata() {
+        let project_id = ProjectId::from_string("proj-test2".to_string());
+        let task = Task::new(project_id, "test task".to_string());
+        // Task has no metadata set
+        assert!(!has_no_code_changes_metadata(&task));
+    }
+
+    #[test]
+    fn test_has_no_code_changes_metadata_false_for_none_metadata() {
+        let project_id = ProjectId::from_string("proj-test3".to_string());
+        let mut task = Task::new(project_id, "test task".to_string());
+        task.metadata = None;
+        assert!(!has_no_code_changes_metadata(&task));
+    }
+
+    #[test]
+    fn test_set_no_code_changes_metadata_preserves_existing_metadata() {
+        let project_id = ProjectId::from_string("proj-test4".to_string());
+        let mut task = Task::new(project_id, "test task".to_string());
+        // Pre-set some existing metadata
+        task.metadata = Some(r#"{"existing_key": "existing_value"}"#.to_string());
+
+        set_no_code_changes_metadata(&mut task);
+
+        assert!(has_no_code_changes_metadata(&task), "no_code_changes should be set");
+        // Existing key should still be there
+        let meta: serde_json::Value =
+            serde_json::from_str(task.metadata.as_deref().unwrap()).unwrap();
+        assert_eq!(meta["existing_key"], "existing_value", "existing metadata should be preserved");
+    }
+
+    #[test]
+    fn test_set_no_code_changes_and_pending_cleanup_coexist() {
+        let project_id = ProjectId::from_string("proj-test5".to_string());
+        let mut task = Task::new(project_id, "test task".to_string());
+
+        set_no_code_changes_metadata(&mut task);
+        set_pending_cleanup_metadata(&mut task);
+
+        assert!(has_no_code_changes_metadata(&task));
+        assert!(has_pending_cleanup_metadata(&task));
     }
 }
