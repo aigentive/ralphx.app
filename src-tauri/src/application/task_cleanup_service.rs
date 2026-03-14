@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 use tauri::AppHandle;
 
+use crate::application::chat_service::AgentRunCompletedPayload;
 use crate::application::git_service::GitService;
 use crate::commands::execution_commands::AGENT_ACTIVE_STATUSES;
 use crate::domain::entities::{
@@ -325,6 +326,89 @@ impl TaskCleanupService {
         Ok(self
             .cleanup_tasks(&filtered, StopMode::Graceful, true)
             .await)
+    }
+
+    /// Stop the interactive Claude CLI process associated with an ideation session.
+    ///
+    /// Probes both `"ideation"` (Tauri IPC path) and `"session"` (HTTP external path)
+    /// IPR keys, since the context_type string differs by spawn path. At most one will
+    /// exist per session.
+    ///
+    /// Returns `true` if a process was found and cleaned up, `false` otherwise.
+    pub async fn stop_ideation_session_agent(&self, session_id: &str) -> bool {
+        let ipr = match self.interactive_process_registry.as_ref() {
+            Some(ipr) => ipr,
+            None => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    "IPR cleanup: interactive_process_registry not set; \
+                     call .with_interactive_process_registry() on TaskCleanupService"
+                );
+                return false;
+            }
+        };
+
+        // Try "ideation" key first (Tauri IPC spawn path), then "session" (HTTP spawn path).
+        let context_types = ["ideation", "session"];
+        let mut matched_context_type: Option<&str> = None;
+
+        for ct in &context_types {
+            let key = InteractiveProcessKey::new(*ct, session_id);
+            if ipr.has_process(&key).await {
+                ipr.remove(&key).await;
+                matched_context_type = Some(ct);
+                break;
+            }
+        }
+
+        let matched_context_type = match matched_context_type {
+            Some(ct) => ct,
+            None => return false,
+        };
+
+        // Stop agent in running_agent_registry (SIGTERM + unregister).
+        let registry_key = RunningAgentKey::new(matched_context_type, session_id);
+        match self.running_agent_registry.stop(&registry_key).await {
+            Ok(Some(info)) => {
+                if let Some(app) = self.app_handle.as_ref() {
+                    use tauri::Emitter;
+                    let _ = app.emit(
+                        "agent:stopped",
+                        serde_json::json!({
+                            "conversation_id": info.conversation_id,
+                            "agent_run_id": info.agent_run_id,
+                            "context_type": matched_context_type,
+                            "context_id": session_id,
+                        }),
+                    );
+                    let _ = app.emit(
+                        "agent:run_completed",
+                        AgentRunCompletedPayload {
+                            conversation_id: info.conversation_id,
+                            context_type: matched_context_type.to_string(),
+                            context_id: session_id.to_string(),
+                            claude_session_id: None,
+                            run_chain_id: None,
+                        },
+                    );
+                }
+            }
+            Ok(None) => {
+                tracing::debug!(
+                    session_id = %session_id,
+                    "IPR cleanup: no running agent registry entry for session"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    session_id = %session_id,
+                    error = %e,
+                    "IPR cleanup: failed to stop agent for session"
+                );
+            }
+        }
+
+        true
     }
 
     // ── Private helpers ──────────────────────────────────────────────────

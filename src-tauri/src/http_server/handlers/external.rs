@@ -22,6 +22,7 @@ use tracing::error;
 use tauri::Emitter;
 
 use crate::application::chat_service::{ChatService, ChatServiceError, ClaudeChatService, SendMessageOptions};
+use crate::application::task_cleanup_service::TaskCleanupService;
 use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput};
 use crate::domain::entities::{
     ideation::IdeationSession, types::ProjectId, ChatContextType, IdeationSessionId, InternalStatus,
@@ -1834,6 +1835,29 @@ pub async fn external_apply_proposals(
             error!("apply_proposals_core failed: {}", e);
             HttpError::validation(e.to_string())
         })?;
+
+    // IPR cleanup — stop the ideation session's interactive CLI process (if any)
+    if result.session_converted {
+        let task_cleanup = TaskCleanupService::new(
+            Arc::clone(&state.app_state.task_repo),
+            Arc::clone(&state.app_state.project_repo),
+            Arc::clone(&state.app_state.running_agent_registry),
+            None, // No AppHandle in HTTP context
+        )
+        .with_interactive_process_registry(Arc::clone(
+            &state.app_state.interactive_process_registry,
+        ));
+
+        let stopped = task_cleanup
+            .stop_ideation_session_agent(&result.session_id)
+            .await;
+        if !stopped {
+            tracing::warn!(
+                session_id = %result.session_id,
+                "IPR cleanup: no running process found for accepted session (HTTP path)"
+            );
+        }
+    }
 
     tracing::info!(
         session_id = %session_id.as_str(),

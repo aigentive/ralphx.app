@@ -167,8 +167,25 @@ pub async fn list_ideation_sessions(
 pub async fn archive_ideation_session(
     id: String,
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let session_id = IdeationSessionId::from_string(id);
+    let session_id = IdeationSessionId::from_string(id.clone());
+
+    // Stop any running ideation agent before archiving
+    let cleanup = TaskCleanupService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.running_agent_registry),
+        Some(app),
+    )
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let found = cleanup.stop_ideation_session_agent(&id).await;
+    if !found {
+        tracing::debug!(
+            session_id = id.as_str(),
+            "archive_ideation_session: no running agent found in IPR (expected for sessions without active agents)"
+        );
+    }
 
     state
         .ideation_session_repo
@@ -289,6 +306,23 @@ pub async fn reopen_ideation_session(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Session not found: {}", id))?;
     let project_id_str = session.project_id.as_str().to_string();
+
+    // Stop any running ideation agent before reopening (separate instance; task_cleanup is consumed
+    // by SessionReopenService::new() and all deps are Arc<> clones so two instances are cheap)
+    let stop_cleanup = TaskCleanupService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.running_agent_registry),
+        Some(app.clone()),
+    )
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+    let found = stop_cleanup.stop_ideation_session_agent(&id).await;
+    if !found {
+        tracing::debug!(
+            session_id = id.as_str(),
+            "reopen_ideation_session: no running agent found in IPR (expected for sessions without active agents)"
+        );
+    }
 
     let task_cleanup = TaskCleanupService::new(
         Arc::clone(&state.task_repo),
