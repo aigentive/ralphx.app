@@ -19,6 +19,7 @@ use super::merge_helpers::{
     parse_metadata, task_targets_branch,
 };
 use super::merge_outcome_handler::{MergeContext, MergeHandlerOptions};
+use super::merge_strategies::MergeOutcome;
 use crate::application::GitService;
 use crate::domain::entities::{
     task_metadata::{
@@ -996,6 +997,35 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Phase 1: Run git strategy under merge deadline (fast, seconds only)
         let git_result = tokio::time::timeout(remaining, async {
+            // Early return: if branches are already identical, skip merge entirely (prevents empty
+            // commits on main). Covers all strategies including plan merge path.
+            if GitService::branches_have_same_content(repo_path, source_branch, target_branch)
+                .await
+                .unwrap_or(false)
+            {
+                tracing::debug!(
+                    task_id = task_id_str,
+                    source_branch = %source_branch,
+                    target_branch = %target_branch,
+                    "branches already identical — skipping merge strategy dispatch to prevent empty commit"
+                );
+                let commit_sha = match GitService::get_branch_sha(repo_path, target_branch).await {
+                    Ok(sha) => sha,
+                    Err(e) => return (MergeOutcome::GitError(e), MergeHandlerOptions::merge()),
+                };
+                let opts = match project.merge_strategy {
+                    MergeStrategy::Merge => MergeHandlerOptions::merge(),
+                    MergeStrategy::Rebase => MergeHandlerOptions::rebase(),
+                    MergeStrategy::Squash | MergeStrategy::RebaseSquash => {
+                        MergeHandlerOptions::squash()
+                    }
+                };
+                // Branches are identical — no merge performed, no worktree needed.
+                // Validation (if any) runs in the project root; this is safe because no code
+                // changed and the repo state is identical to what a worktree would contain.
+                return (MergeOutcome::Success { commit_sha, merge_path: repo_path.to_path_buf() }, opts);
+            }
+
             match project.merge_strategy {
                 MergeStrategy::Merge => {
                     let outcome = self

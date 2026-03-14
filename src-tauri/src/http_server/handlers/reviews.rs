@@ -6,11 +6,14 @@ use axum::{
 use tauri::Emitter;
 
 use super::*;
-use crate::application::{TaskSchedulerService, TaskTransitionService};
+use crate::application::{GitService, TaskSchedulerService, TaskTransitionService};
 use crate::domain::entities::{
     InternalStatus, Review, ReviewIssue, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
 };
 use crate::domain::state_machine::services::TaskScheduler;
+use crate::domain::state_machine::transition_handler::{
+    deferred_merge_cleanup, set_no_code_changes_metadata, set_pending_cleanup_metadata,
+};
 use crate::domain::tools::complete_review::ReviewToolOutcome;
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
 use std::sync::Arc;
@@ -48,13 +51,15 @@ pub async fn complete_review(
     // 2. Parse and map decision to ReviewToolOutcome
     let outcome = match req.decision.as_str() {
         "approved" => ReviewToolOutcome::Approved,
+        "approved_no_changes" => ReviewToolOutcome::ApprovedNoChanges,
         "needs_changes" => ReviewToolOutcome::NeedsChanges,
         "escalate" => ReviewToolOutcome::Escalate,
         _ => {
             return Err((
                 StatusCode::BAD_REQUEST,
                 format!(
-                    "Invalid decision: '{}'. Expected 'approved', 'needs_changes', or 'escalate'",
+                    "Invalid decision: '{}'. Expected 'approved', 'approved_no_changes', \
+                     'needs_changes', or 'escalate'",
                     req.decision
                 ),
             ))
@@ -84,6 +89,8 @@ pub async fn complete_review(
     // 5. Process the review result based on outcome
     let review_outcome = match outcome {
         ReviewToolOutcome::Approved => ReviewOutcome::Approved,
+        // Phase 3 will implement the full approved_no_changes path (skip merge pipeline)
+        ReviewToolOutcome::ApprovedNoChanges => ReviewOutcome::ApprovedNoChanges,
         ReviewToolOutcome::NeedsChanges => ReviewOutcome::ChangesRequested,
         ReviewToolOutcome::Escalate => ReviewOutcome::Rejected,
     };
@@ -91,6 +98,10 @@ pub async fn complete_review(
     // Update review status
     match outcome {
         ReviewToolOutcome::Approved => {
+            review.approve(feedback.clone());
+        }
+        // Phase 3 will implement the full approved_no_changes path (skip merge pipeline)
+        ReviewToolOutcome::ApprovedNoChanges => {
             review.approve(feedback.clone());
         }
         ReviewToolOutcome::NeedsChanges => {
@@ -245,6 +256,132 @@ pub async fn complete_review(
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             InternalStatus::Escalated
         }
+        ReviewToolOutcome::ApprovedNoChanges => {
+            // Extract fields BEFORE transition (transition may clear these from task)
+            let task_branch = task.task_branch.clone();
+            let worktree_path = task.worktree_path.clone();
+
+            let require_human = state
+                .app_state
+                .review_settings_repo
+                .get_settings()
+                .await
+                .map(|s| s.require_human_review)
+                .unwrap_or(false);
+
+            // Fetch project for repo_path and working_directory (needed for git diff + cleanup)
+            let project_opt = state
+                .app_state
+                .project_repo
+                .get_by_id(&task.project_id)
+                .await
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+            // Git diff validation safety gate (BEFORE metadata persistence).
+            // If the branch has code changes, fall back to standard Approved flow.
+            let has_code_changes =
+                if let (Some(ref project), Some(ref branch)) = (&project_opt, &task_branch) {
+                    let repo_path = std::path::Path::new(&project.working_directory);
+                    let base = project.base_branch_or_default();
+                    match GitService::branches_have_same_content(repo_path, branch, base).await {
+                        Ok(false) => {
+                            // Not same content → branch has code changes
+                            tracing::warn!(
+                                task_id = %task_id.as_str(),
+                                branch = %branch,
+                                base_branch = %base,
+                                "Reviewer marked approved_no_changes but branch has code changes \
+                                 — falling back to standard Approved flow"
+                            );
+                            true
+                        }
+                        Ok(true) => false, // Same content — no changes, proceed with no-changes path
+                        Err(e) => {
+                            // Git error — defensive: proceed with no-changes path
+                            tracing::warn!(
+                                task_id = %task_id.as_str(),
+                                error = %e,
+                                "Git diff validation failed — proceeding with \
+                                 no-changes path (defensive)"
+                            );
+                            false
+                        }
+                    }
+                } else {
+                    // No project or no branch — proceed with no-changes path (defensive)
+                    false
+                };
+
+            if has_code_changes {
+                // Fall back to standard Approved flow (reviewer decision treated as regular Approved)
+                let target_status = if require_human {
+                    InternalStatus::ReviewPassed
+                } else {
+                    InternalStatus::Approved
+                };
+                transition_service
+                    .transition_task(&task_id, target_status.clone())
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+                target_status
+            } else {
+                // No code changes confirmed — set metadata and skip merge pipeline.
+                // Re-fetch task for a fresh mutable copy to avoid borrow conflicts.
+                let mut fresh_task = state
+                    .app_state
+                    .task_repo
+                    .get_by_id(&task_id)
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?
+                    .ok_or_else(|| {
+                        (StatusCode::NOT_FOUND, "Task not found after review bookkeeping".to_string())
+                    })?;
+
+                set_no_code_changes_metadata(&mut fresh_task);
+                set_pending_cleanup_metadata(&mut fresh_task);
+                fresh_task.touch();
+
+                state
+                    .app_state
+                    .task_repo
+                    .update(&fresh_task)
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+                let target_status = if require_human {
+                    InternalStatus::ReviewPassed
+                } else {
+                    InternalStatus::Merged
+                };
+
+                transition_service
+                    .transition_task(&task_id, target_status.clone())
+                    .await
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+                // Direct-to-Merged path: clear merge progress + spawn deferred cleanup
+                if !require_human {
+                    crate::domain::entities::merge_progress_event::clear_merge_progress(
+                        task_id.as_str(),
+                    );
+
+                    let project_working_dir = project_opt
+                        .as_ref()
+                        .map(|p| p.working_directory.clone())
+                        .unwrap_or_default();
+
+                    tokio::spawn(deferred_merge_cleanup(
+                        task_id.clone(),
+                        Arc::clone(&state.app_state.task_repo),
+                        project_working_dir,
+                        task_branch,
+                        worktree_path,
+                    ));
+                }
+
+                target_status
+            }
+        }
     };
 
     // 7. Close stdin via IPR to signal EOF to the reviewer agent
@@ -274,6 +411,15 @@ pub async fn complete_review(
                 "new_status": new_status.as_str(),
             }),
         );
+        // For direct-to-Merged (approved_no_changes, no human review gate), emit task:merged
+        if new_status == InternalStatus::Merged {
+            let _ = app_handle.emit(
+                "task:merged",
+                serde_json::json!({
+                    "task_id": task_id.as_str(),
+                }),
+            );
+        }
     }
 
     // 9. Return response
@@ -415,6 +561,32 @@ pub async fn approve_task(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // 3. Transition to Approved
+    let approve_scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&state.execution_state),
+            Arc::clone(&state.app_state.project_repo),
+            Arc::clone(&state.app_state.task_repo),
+            Arc::clone(&state.app_state.task_dependency_repo),
+            Arc::clone(&state.app_state.chat_message_repo),
+            Arc::clone(&state.app_state.chat_attachment_repo),
+            Arc::clone(&state.app_state.chat_conversation_repo),
+            Arc::clone(&state.app_state.agent_run_repo),
+            Arc::clone(&state.app_state.ideation_session_repo),
+            Arc::clone(&state.app_state.activity_event_repo),
+            Arc::clone(&state.app_state.message_queue),
+            Arc::clone(&state.app_state.running_agent_registry),
+            Arc::clone(&state.app_state.memory_event_repo),
+            state.app_state.app_handle.as_ref().cloned(),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(
+            &state.app_state.interactive_process_registry,
+        )),
+    );
+    approve_scheduler_concrete
+        .set_self_ref(Arc::clone(&approve_scheduler_concrete) as Arc<dyn TaskScheduler>);
+    let approve_task_scheduler: Arc<dyn TaskScheduler> = approve_scheduler_concrete;
+
     let transition_service = TaskTransitionService::new(
         Arc::clone(&state.app_state.task_repo),
         Arc::clone(&state.app_state.task_dependency_repo),
@@ -431,6 +603,7 @@ pub async fn approve_task(
         state.app_state.app_handle.as_ref().cloned(),
         Arc::clone(&state.app_state.memory_event_repo),
     )
+    .with_task_scheduler(approve_task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
 

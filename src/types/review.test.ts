@@ -22,6 +22,7 @@ import {
   needsHumanReview,
   needsFixApproval,
   exceededMaxAttempts,
+  isOutcomePositive,
 } from "./review";
 
 describe("ReviewerTypeSchema", () => {
@@ -79,12 +80,13 @@ describe("ReviewActionTypeSchema", () => {
 });
 
 describe("ReviewOutcomeSchema", () => {
-  it("should have 3 outcomes", () => {
-    expect(REVIEW_OUTCOME_VALUES.length).toBe(3);
+  it("should have 4 outcomes", () => {
+    expect(REVIEW_OUTCOME_VALUES.length).toBe(4);
   });
 
   it("should parse valid outcomes", () => {
     expect(ReviewOutcomeSchema.parse("approved")).toBe("approved");
+    expect(ReviewOutcomeSchema.parse("approved_no_changes")).toBe("approved_no_changes");
     expect(ReviewOutcomeSchema.parse("changes_requested")).toBe("changes_requested");
     expect(ReviewOutcomeSchema.parse("rejected")).toBe("rejected");
   });
@@ -92,6 +94,21 @@ describe("ReviewOutcomeSchema", () => {
   it("should reject invalid outcomes", () => {
     expect(() => ReviewOutcomeSchema.parse("pending")).toThrow();
     expect(() => ReviewOutcomeSchema.parse("Approved")).toThrow();
+  });
+});
+
+describe("isOutcomePositive", () => {
+  it("should return true for approved", () => {
+    expect(isOutcomePositive("approved")).toBe(true);
+  });
+
+  it("should return true for approved_no_changes", () => {
+    expect(isOutcomePositive("approved_no_changes")).toBe(true);
+  });
+
+  it("should return false for negative outcomes", () => {
+    expect(isOutcomePositive("changes_requested")).toBe(false);
+    expect(isOutcomePositive("rejected")).toBe(false);
   });
 });
 

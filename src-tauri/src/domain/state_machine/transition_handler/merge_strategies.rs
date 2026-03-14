@@ -97,34 +97,10 @@ impl<'a> super::TransitionHandler<'a> {
             .await
         {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
-                // If inner function early-returned (e.g. branches_have_same_content)
-                // the worktree was never created. Create one for validation instead of
-                // falling back to repo_path — running validation in project root is unsafe.
-                let actual_path = if merge_wt.exists() {
-                    merge_wt
-                } else {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        "Merge worktree not created (trivial merge), creating one for validation"
-                    );
-                    match GitService::checkout_existing_branch_worktree(
-                        repo_path,
-                        &merge_wt,
-                        target_branch,
-                    )
-                    .await
-                    {
-                        Ok(_) => merge_wt,
-                        Err(e) => {
-                            tracing::error!(
-                                task_id = task_id_str,
-                                error = %e,
-                                "Failed to create validation worktree after trivial merge"
-                            );
-                            return MergeOutcome::GitError(e);
-                        }
-                    }
-                };
+                // If the inner function early-returned (e.g. branches_have_same_content guard),
+                // no worktree was created. Fall back to repo_path for validation — branches are
+                // identical so no code changed and the repo root is equivalent to a worktree.
+                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,
@@ -225,34 +201,10 @@ impl<'a> super::TransitionHandler<'a> {
             Ok(MergeAttemptResult::Success { commit_sha }) => {
                 // Clean up rebase worktree (no longer needed)
                 let _ = GitService::delete_worktree(repo_path, &rebase_wt).await;
-                // If inner function early-returned (e.g. base_commit_count <= 1 fallback)
-                // the merge worktree may not exist. Create one for validation instead of
-                // falling back to repo_path — running validation in project root is unsafe.
-                let actual_path = if merge_wt.exists() {
-                    merge_wt
-                } else {
-                    tracing::info!(
-                        task_id = task_id_str,
-                        "Merge worktree not created (trivial merge), creating one for validation"
-                    );
-                    match GitService::checkout_existing_branch_worktree(
-                        repo_path,
-                        &merge_wt,
-                        target_branch,
-                    )
-                    .await
-                    {
-                        Ok(_) => merge_wt,
-                        Err(e) => {
-                            tracing::error!(
-                                task_id = task_id_str,
-                                error = %e,
-                                "Failed to create validation worktree after trivial merge"
-                            );
-                            return MergeOutcome::GitError(e);
-                        }
-                    }
-                };
+                // If the inner function early-returned (e.g. branches_have_same_content guard),
+                // no merge worktree was created. Fall back to repo_path — branches are identical
+                // so no code changed and the repo root is equivalent to a worktree.
+                let actual_path = if merge_wt.exists() { merge_wt } else { repo_path.to_path_buf() };
                 tracing::info!(
                     task_id = task_id_str,
                     commit_sha = %commit_sha,

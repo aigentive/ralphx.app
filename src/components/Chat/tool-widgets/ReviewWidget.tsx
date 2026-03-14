@@ -90,6 +90,14 @@ const OUTCOME_STYLES = {
     label: "Approved",
     Icon: CheckCircle,
   },
+  approved_no_changes: {
+    bg: "hsla(142, 70%, 45%, 0.12)",
+    border: "hsla(142, 70%, 45%, 0.25)",
+    accent: "hsl(142, 70%, 55%)",
+    text: "hsl(142, 70%, 70%)",
+    label: "No Changes",
+    Icon: CheckCircle,
+  },
   needs_changes: {
     bg: "hsla(25, 95%, 53%, 0.12)",
     border: "hsla(25, 95%, 53%, 0.25)",
