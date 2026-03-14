@@ -21,7 +21,13 @@ tools:
   - TeamDelete
   - SendMessage
 mcpServers:
-  - ralphx
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "ideation-team-lead"
 disallowedTools: Write, Edit, NotebookEdit
 allowedTools:
   - "mcp__ralphx__*"

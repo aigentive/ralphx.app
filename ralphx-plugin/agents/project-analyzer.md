@@ -7,7 +7,13 @@ tools:
   - Bash
   - Grep
 mcpServers:
-  - ralphx
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "project-analyzer"
 allowedTools:
   - "mcp__ralphx__*"
   - Read

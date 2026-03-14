@@ -7,7 +7,7 @@ import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
-import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, CODER, SESSION_NAMER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, PLAN_CRITIC_LAYER1, PLAN_CRITIC_LAYER2, IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, } from "./agentNames.js";
+import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, CODER, SESSION_NAMER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, PLAN_CRITIC_LAYER1, PLAN_CRITIC_LAYER2, IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_CRITIC, IDEATION_ADVOCATE, } from "./agentNames.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
@@ -1545,6 +1545,52 @@ export const TOOL_ALLOWLIST = {
         "list_session_proposals",
         "get_artifact",
         // Memory read tools
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+    ],
+    // Ideation specialist agents - domain research (read-only)
+    [IDEATION_SPECIALIST_BACKEND]: [
+        "get_session_plan",
+        "get_artifact",
+        "list_session_proposals",
+        "get_proposal",
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+    ],
+    [IDEATION_SPECIALIST_FRONTEND]: [
+        "get_session_plan",
+        "get_artifact",
+        "list_session_proposals",
+        "get_proposal",
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+    ],
+    [IDEATION_SPECIALIST_INFRA]: [
+        "get_session_plan",
+        "get_artifact",
+        "list_session_proposals",
+        "get_proposal",
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+    ],
+    [IDEATION_CRITIC]: [
+        "get_session_plan",
+        "get_artifact",
+        "list_session_proposals",
+        "get_proposal",
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+    ],
+    [IDEATION_ADVOCATE]: [
+        "get_session_plan",
+        "get_artifact",
+        "list_session_proposals",
+        "get_proposal",
         "search_memories",
         "get_memory",
         "get_memories_for_paths",

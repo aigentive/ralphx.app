@@ -20,7 +20,13 @@ tools:
   - MCPSearch
   - LSP
 mcpServers:
-  - ralphx
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "ralphx-worker"
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"

@@ -3,7 +3,13 @@ name: ralphx-deep-researcher
 description: Conducts thorough research and analysis
 tools: Read, Write, Grep, Glob, Bash, WebFetch, WebSearch, Task, TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, KillShell, MCPSearch
 mcpServers:
-  - ralphx
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "ralphx-deep-researcher"
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"
