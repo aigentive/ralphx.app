@@ -2249,3 +2249,81 @@ fn build_auto_verifier_prompt_prior_gaps_round_gt1_instructions() {
         "Prompt must instruct orchestrator to inject prior gaps when round > 1"
     );
 }
+
+#[test]
+fn test_auto_verifier_prompt_uses_session_id() {
+    let session_id = "test-session-xyz";
+    let prompt = build_auto_verifier_prompt(session_id, 1, 3, &[]);
+
+    // Step C critic_prompt template must reference SESSION_ID
+    assert!(
+        prompt.contains("SESSION_ID:"),
+        "Critic prompt template must contain SESSION_ID: marker"
+    );
+
+    // The actual session_id value must appear in the Step C block
+    let session_id_line = format!("SESSION_ID: {session_id}");
+    assert!(
+        prompt.contains(&session_id_line),
+        "Critic prompt template must contain the actual session_id value: {session_id_line}"
+    );
+
+    // Step C must NOT reference PLAN CONTENT as the critic prompt value
+    // (PLAN CONTENT may appear in Step E for the guard regex check, but not as critic_prompt assignment)
+    let step_c_start = prompt
+        .find("### C. Build critic prompt")
+        .expect("Step C must exist in prompt");
+    let step_d_start = prompt
+        .find("### D. LAYER 1")
+        .expect("Step D must exist in prompt");
+    let step_c_section = &prompt[step_c_start..step_d_start];
+
+    assert!(
+        !step_c_section.contains("PLAN CONTENT:"),
+        "Step C must NOT contain 'PLAN CONTENT:' — critics fetch plan via MCP using SESSION_ID"
+    );
+    assert!(
+        !step_c_section.contains("just the plan content"),
+        "Step C must NOT say 'just the plan content' — critics fetch plan via MCP using SESSION_ID"
+    );
+}
+
+#[test]
+fn test_auto_verifier_prompt_prior_round_context() {
+    let session_id = "test-session-prior";
+    let prior_gaps = vec![
+        "Missing error handling for network failures".to_string(),
+        "No rollback mechanism defined".to_string(),
+    ];
+    let prompt = build_auto_verifier_prompt(session_id, 1, 3, &prior_gaps);
+
+    // PRIOR ROUND CONTEXT block must be present (from pre-seeded gaps)
+    assert!(
+        prompt.contains("PRIOR ROUND CONTEXT"),
+        "Prompt must contain PRIOR ROUND CONTEXT block when prior_gaps is non-empty"
+    );
+
+    // Each gap description must appear as an ADDRESSED line
+    assert!(
+        prompt.contains("Missing error handling for network failures — ADDRESSED"),
+        "Prior gap 1 must appear as ADDRESSED line"
+    );
+    assert!(
+        prompt.contains("No rollback mechanism defined — ADDRESSED"),
+        "Prior gap 2 must appear as ADDRESSED line"
+    );
+
+    // SESSION_ID line must appear after the PRIOR ROUND CONTEXT block
+    let prior_ctx_pos = prompt
+        .find("PRIOR ROUND CONTEXT")
+        .expect("PRIOR ROUND CONTEXT must exist");
+    let session_id_line = format!("SESSION_ID: {session_id}");
+    let session_id_pos = prompt
+        .rfind(&session_id_line)
+        .expect("SESSION_ID line must exist");
+
+    assert!(
+        session_id_pos > prior_ctx_pos,
+        "SESSION_ID line must appear AFTER the PRIOR ROUND CONTEXT block"
+    );
+}

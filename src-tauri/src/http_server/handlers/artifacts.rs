@@ -332,7 +332,7 @@ pub(crate) fn build_auto_verifier_prompt(
          \n\
          Call get_session_plan(session_id: \"{session_id}\") to read the current plan.\n\
          Store the artifact_id from the response (you will need it for update_plan_artifact calls).\n\
-         If the plan content exceeds 3000 tokens, truncate it and prepend: \"TRUNCATED TO 3000 TOKENS:\"\n\
+         Use the plan content for the Layer 2 guard regex check in Step E ONLY — do NOT embed plan content in the critic prompt.\n\
          \n\
          ## VERIFICATION LOOP\n\
          \n\
@@ -349,7 +349,8 @@ pub(crate) fn build_auto_verifier_prompt(
          Compose the critic_prompt string to pass to each Agent:\n\
          - If round == 1 and there are pre-seeded prior gaps, start with:\n\
            {initial_prior_gaps_block}\
-         - If round > 1, prepend the following section BEFORE the plan content (using gap descriptions from the previous get_plan_verification response):\n\
+           SESSION_ID: {session_id}\n\
+         - If round > 1, prepend the following section BEFORE the SESSION_ID line (using gap descriptions from the previous get_plan_verification response):\n\
            ```\n\
            PRIOR ROUND CONTEXT (gaps from round N-1 addressed in the current plan revision):\n\
            - <gap1 description> — ADDRESSED in revision (do not re-flag unless the fix is inadequate)\n\
@@ -357,10 +358,9 @@ pub(crate) fn build_auto_verifier_prompt(
            ...\n\
            Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. Do not re-flag just because the code has not been written yet.\n\
            \n\
-           PLAN CONTENT:\n\
-           <plan content here>\n\
+           SESSION_ID: {session_id}\n\
            ```\n\
-         - If round == 1 (no pre-seeded gaps), critic_prompt = just the plan content.\n\
+         - If round == 1 (no pre-seeded gaps), critic_prompt = SESSION_ID: {session_id}\n\
          \n\
          ### D. LAYER 1 — Completeness Critic (always run)\n\
          Spawn: Agent(subagent_type: \"ralphx:plan-critic-layer1\", prompt: critic_prompt)\n\
