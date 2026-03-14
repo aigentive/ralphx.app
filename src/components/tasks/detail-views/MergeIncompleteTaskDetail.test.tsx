@@ -26,6 +26,11 @@ vi.mock("@/hooks/useMergePipeline", () => ({
   useMergePipeline: vi.fn().mockReturnValue({ data: undefined }),
 }));
 
+// Mock usePlanBranchForTask to avoid consuming mockRejectedValueOnce
+vi.mock("@/hooks/usePlanBranchForTask", () => ({
+  usePlanBranchForTask: vi.fn().mockReturnValue({ data: undefined }),
+}));
+
 // Mock useUiStore
 vi.mock("@/stores/uiStore", () => ({
   useUiStore: vi.fn((selector) => {

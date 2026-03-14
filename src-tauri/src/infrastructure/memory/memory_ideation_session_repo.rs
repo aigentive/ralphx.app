@@ -10,8 +10,11 @@ use chrono::{DateTime, Utc};
 use crate::domain::entities::{
     IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationStatus,
 };
+use crate::domain::repositories::ideation_session_repository::{
+    IdeationSessionWithProgress, SessionGroupCounts,
+};
 use crate::domain::repositories::IdeationSessionRepository;
-use crate::error::AppResult;
+use crate::error::{AppError, AppResult};
 
 /// In-memory implementation of IdeationSessionRepository for testing
 pub struct MemoryIdeationSessionRepository {
@@ -377,6 +380,88 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
         sessions.sort_by(|a, b| b.created_at.cmp(&a.created_at));
         sessions.truncate(limit as usize);
         Ok(sessions)
+    }
+
+    async fn get_group_counts(&self, project_id: &ProjectId) -> AppResult<SessionGroupCounts> {
+        let sessions = self.sessions.read().unwrap();
+        let project_sessions: Vec<_> = sessions
+            .values()
+            .filter(|s| &s.project_id == project_id)
+            .collect();
+
+        let drafts = project_sessions
+            .iter()
+            .filter(|s| s.status == IdeationSessionStatus::Active)
+            .count() as u32;
+        let archived = project_sessions
+            .iter()
+            .filter(|s| s.status == IdeationSessionStatus::Archived)
+            .count() as u32;
+        // Simplified: memory repo can't classify in_progress/done sub-groups without task repo access.
+        // All accepted sessions are counted under accepted.
+        let accepted = project_sessions
+            .iter()
+            .filter(|s| s.status == IdeationSessionStatus::Accepted)
+            .count() as u32;
+
+        Ok(SessionGroupCounts {
+            drafts,
+            in_progress: 0,
+            accepted,
+            done: 0,
+            archived,
+        })
+    }
+
+    async fn list_by_group(
+        &self,
+        project_id: &ProjectId,
+        group: &str,
+        offset: u32,
+        limit: u32,
+    ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)> {
+        // Validate group
+        if !matches!(group, "drafts" | "in_progress" | "accepted" | "done" | "archived") {
+            return Err(AppError::Validation(format!(
+                "Unknown session group: '{}'. Valid groups: drafts, in_progress, accepted, done, archived",
+                group
+            )));
+        }
+
+        let sessions = self.sessions.read().unwrap();
+
+        // Simplified classification: no task repo access, so in_progress/done always empty
+        let mut matching: Vec<_> = sessions
+            .values()
+            .filter(|s| {
+                if s.project_id != *project_id {
+                    return false;
+                }
+                match group {
+                    "drafts" => s.status == IdeationSessionStatus::Active,
+                    "archived" => s.status == IdeationSessionStatus::Archived,
+                    "accepted" => s.status == IdeationSessionStatus::Accepted,
+                    "in_progress" | "done" => false, // requires task repo — not available in memory repo
+                    _ => false,
+                }
+            })
+            .cloned()
+            .collect();
+
+        matching.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+        let total = matching.len() as u32;
+        let page: Vec<_> = matching
+            .into_iter()
+            .skip(offset as usize)
+            .take(limit as usize)
+            .map(|session| IdeationSessionWithProgress {
+                session,
+                progress: None,
+                parent_session_title: None,
+            })
+            .collect();
+
+        Ok((page, total))
     }
 }
 

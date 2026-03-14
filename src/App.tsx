@@ -1052,7 +1052,6 @@ function AppContent() {
               {currentView === "ideation" && (
                 <IdeationView
                   session={resolvedSession}
-                  sessions={allSessions}
                   proposals={proposals}
                   isSessionLoading={isSessionLoading}
                   onNewSession={handleNewSession}

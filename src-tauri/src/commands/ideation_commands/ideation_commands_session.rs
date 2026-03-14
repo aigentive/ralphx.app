@@ -14,8 +14,9 @@ use crate::domain::entities::{
 };
 
 use super::ideation_commands_types::{
-    ChatMessageResponse, CreateSessionInput, IdeationSessionResponse, SessionWithDataResponse,
-    TaskProposalResponse,
+    ChatMessageResponse, CreateSessionInput, IdeationSessionResponse,
+    IdeationSessionWithProgressResponse, SessionGroupCountsResponse, SessionListResponse,
+    SessionWithDataResponse, TaskProposalResponse,
 };
 
 // ============================================================================
@@ -446,4 +447,77 @@ pub async fn spawn_session_namer(
     });
 
     Ok(())
+}
+
+/// Get group counts for all 5 session display groups for a project
+///
+/// Returns counts for: drafts (active sessions), in_progress (accepted + has active tasks),
+/// accepted (accepted + no active tasks), done (accepted + all tasks terminal), archived.
+#[tauri::command]
+pub async fn get_session_group_counts(
+    project_id: String,
+    state: State<'_, AppState>,
+) -> Result<SessionGroupCountsResponse, String> {
+    let project_id = crate::domain::entities::ProjectId::from_string(project_id);
+    let counts = state
+        .ideation_session_repo
+        .get_group_counts(&project_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(SessionGroupCountsResponse {
+        drafts: counts.drafts,
+        in_progress: counts.in_progress,
+        accepted: counts.accepted,
+        done: counts.done,
+        archived: counts.archived,
+    })
+}
+
+/// List paginated sessions for a specific group
+///
+/// Valid groups: "drafts", "in_progress", "accepted", "done", "archived".
+/// Returns sessions with server-computed progress data and parent session title.
+#[tauri::command]
+pub async fn list_sessions_by_group(
+    project_id: String,
+    group: String,
+    offset: Option<u32>,
+    limit: Option<u32>,
+    state: State<'_, AppState>,
+) -> Result<SessionListResponse, String> {
+    // Validate group early for a clear error message
+    match group.as_str() {
+        "drafts" | "in_progress" | "accepted" | "done" | "archived" => {}
+        _ => {
+            return Err(format!(
+                "Unknown session group: '{}'. Valid groups: drafts, in_progress, accepted, done, archived",
+                group
+            ))
+        }
+    }
+
+    let project_id = crate::domain::entities::ProjectId::from_string(project_id);
+    let offset = offset.unwrap_or(0);
+    let limit = limit.unwrap_or(20);
+
+    let (sessions, total) = state
+        .ideation_session_repo
+        .list_by_group(&project_id, &group, offset, limit)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let has_more = (offset + sessions.len() as u32) < total;
+
+    let response_sessions = sessions
+        .into_iter()
+        .map(IdeationSessionWithProgressResponse::from)
+        .collect();
+
+    Ok(SessionListResponse {
+        sessions: response_sessions,
+        total,
+        has_more,
+        offset,
+    })
 }

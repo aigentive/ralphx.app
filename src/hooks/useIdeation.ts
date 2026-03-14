@@ -6,8 +6,10 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { invoke } from "@tauri-apps/api/core";
 import { ideationApi, type SessionWithDataResponse, type IdeationSessionResponse, type ApplyProposalsInput } from "@/api/ideation";
 import { taskKeys } from "@/hooks/useTasks";
+import type { SessionGroupCounts } from "@/types/ideation";
 
 /**
  * Query key factory for ideation
@@ -19,6 +21,8 @@ export const ideationKeys = {
   sessionDetails: () => [...ideationKeys.sessions(), "detail"] as const,
   sessionDetail: (sessionId: string) => [...ideationKeys.sessionDetails(), sessionId] as const,
   sessionWithData: (sessionId: string) => [...ideationKeys.sessionDetail(sessionId), "with-data"] as const,
+  sessionGroupCounts: (projectId: string) => [...ideationKeys.sessions(), "counts", projectId] as const,
+  sessionsByGroup: (projectId: string, group: string) => [...ideationKeys.sessions(), "group", projectId, group] as const,
   proposals: () => [...ideationKeys.all, "proposals"] as const,
 };
 
@@ -125,10 +129,10 @@ export function useCreateIdeationSession() {
 
   return useMutation<IdeationSessionResponse, Error, CreateSessionInput>({
     mutationFn: ({ projectId, title, seedTaskId, teamMode, teamConfig }) => ideationApi.sessions.create(projectId, title, seedTaskId, teamMode, teamConfig),
-    onSuccess: (newSession) => {
-      // Invalidate session list for the project to trigger refetch
+    onSuccess: () => {
+      // Broad invalidation: covers sessionList, sessionGroupCounts, and sessionsByGroup
       queryClient.invalidateQueries({
-        queryKey: ideationKeys.sessionList(newSession.projectId),
+        queryKey: ideationKeys.sessions(),
       });
     },
   });
@@ -235,6 +239,24 @@ export function useReopenSession() {
 interface ResetAndReacceptInput {
   sessionId: string;
   proposalIds: string[];
+}
+
+/**
+ * Hook to fetch session group counts for a project
+ *
+ * Returns counts for all five session groups (drafts, in_progress, accepted, done, archived).
+ * Used for displaying badge counts on collapsed group headers in PlanBrowser.
+ *
+ * @param projectId - The project ID to fetch counts for
+ * @returns TanStack Query result with SessionGroupCounts
+ */
+export function useSessionGroupCounts(projectId: string) {
+  return useQuery<SessionGroupCounts>({
+    queryKey: ideationKeys.sessionGroupCounts(projectId),
+    queryFn: () => invoke<SessionGroupCounts>("get_session_group_counts", { projectId }),
+    enabled: Boolean(projectId),
+    staleTime: 30_000, // 30s — counts change less frequently
+  });
 }
 
 /**

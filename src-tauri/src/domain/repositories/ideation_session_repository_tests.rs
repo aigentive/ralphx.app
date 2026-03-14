@@ -240,6 +240,20 @@ impl IdeationSessionRepository for MockIdeationSessionRepository {
         sessions.truncate(limit as usize);
         Ok(sessions)
     }
+
+    async fn get_group_counts(&self, _project_id: &ProjectId) -> AppResult<SessionGroupCounts> {
+        unimplemented!()
+    }
+
+    async fn list_by_group(
+        &self,
+        _project_id: &ProjectId,
+        _group: &str,
+        _offset: u32,
+        _limit: u32,
+    ) -> AppResult<(Vec<IdeationSessionWithProgress>, u32)> {
+        unimplemented!()
+    }
 }
 
 fn create_test_session(project_id: &ProjectId) -> IdeationSession {

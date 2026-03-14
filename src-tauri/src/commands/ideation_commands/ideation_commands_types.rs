@@ -114,6 +114,89 @@ pub struct SessionWithDataResponse {
 }
 
 // ============================================================================
+// Session Group Types (for paginated session browser)
+// ============================================================================
+
+/// Response for session group counts (counts of sessions per display group)
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionGroupCountsResponse {
+    pub drafts: u32,
+    pub in_progress: u32,
+    pub accepted: u32,
+    pub done: u32,
+    pub archived: u32,
+}
+
+impl From<crate::domain::repositories::ideation_session_repository::SessionGroupCounts>
+    for SessionGroupCountsResponse
+{
+    fn from(
+        c: crate::domain::repositories::ideation_session_repository::SessionGroupCounts,
+    ) -> Self {
+        Self {
+            drafts: c.drafts,
+            in_progress: c.in_progress,
+            accepted: c.accepted,
+            done: c.done,
+            archived: c.archived,
+        }
+    }
+}
+
+/// Task progress summary included in paginated session responses
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionProgressResponse {
+    pub idle: u32,
+    pub active: u32,
+    pub done: u32,
+    pub total: u32,
+}
+
+/// Ideation session with optional progress data and parent title
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct IdeationSessionWithProgressResponse {
+    #[serde(flatten)]
+    pub session: IdeationSessionResponse,
+    /// Task progress — populated for accepted sub-groups (in_progress, accepted, done); None otherwise
+    pub progress: Option<SessionProgressResponse>,
+    /// Parent session title resolved server-side via LEFT JOIN
+    pub parent_session_title: Option<String>,
+}
+
+impl From<crate::domain::repositories::ideation_session_repository::IdeationSessionWithProgress>
+    for IdeationSessionWithProgressResponse
+{
+    fn from(
+        item: crate::domain::repositories::ideation_session_repository::IdeationSessionWithProgress,
+    ) -> Self {
+        let progress = item.progress.map(|p| SessionProgressResponse {
+            idle: p.idle,
+            active: p.active,
+            done: p.done,
+            total: p.total,
+        });
+        Self {
+            session: IdeationSessionResponse::from(item.session),
+            progress,
+            parent_session_title: item.parent_session_title,
+        }
+    }
+}
+
+/// Paginated list of sessions in a display group
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionListResponse {
+    pub sessions: Vec<IdeationSessionWithProgressResponse>,
+    pub total: u32,
+    pub has_more: bool,
+    pub offset: u32,
+}
+
+// ============================================================================
 // Proposal Types
 // ============================================================================
 
@@ -347,6 +430,7 @@ impl From<ApplyProposalsResult> for ApplyProposalsResultResponse {
         }
     }
 }
+
 
 // ============================================================================
 // Chat Message Types

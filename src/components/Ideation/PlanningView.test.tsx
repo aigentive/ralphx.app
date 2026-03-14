@@ -30,6 +30,15 @@ const mockResetMutate = vi.fn();
 vi.mock("@/hooks/useIdeation", () => ({
   useReopenSession: () => ({ mutate: mockReopenMutate, isPending: false }),
   useResetAndReaccept: () => ({ mutate: mockResetMutate, isPending: false }),
+  useIdeationSessions: () => ({ data: [] }),
+  ideationKeys: {
+    sessions: () => ["ideation", "sessions"],
+    sessionList: (projectId: string) => ["ideation", "sessions", "list", projectId],
+    sessionWithData: (sessionId: string) => ["ideation", "sessions", "detail", sessionId, "with-data"],
+    sessionGroupCounts: (projectId: string) => ["ideation", "sessions", "counts", projectId],
+    sessionsByGroup: (projectId: string, group: string) => ["ideation", "sessions", "group", projectId, group],
+    proposals: () => ["ideation", "proposals"],
+  },
 }));
 
 vi.mock("@/hooks/useFileDrop", () => ({
@@ -258,7 +267,6 @@ function render(ui: ReactElement) {
 describe("PlanningView", () => {
   const defaultProps = {
     session: mockSession,
-    sessions: [mockSession],
     proposals: mockProposals,
     onNewSession: vi.fn(),
     onSelectSession: vi.fn(),
@@ -340,7 +348,6 @@ describe("PlanningView", () => {
       <PlanningView
         {...defaultProps}
         session={null}
-        sessions={[]}
         onNewSession={onNewSession}
       />
     );
@@ -522,7 +529,6 @@ describe("PlanningView", () => {
       <PlanningView
         {...defaultProps}
         session={null}
-        sessions={[]}
         footer={footer}
       />
     );

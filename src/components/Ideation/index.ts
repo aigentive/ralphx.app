@@ -12,4 +12,5 @@ export type { ProposalDetailEnrichment } from "./ProposalDetailSheet";
 export { ProposalList } from "./ProposalList";
 export { ProposalsToolbar } from "./ProposalsToolbar";
 export { PlanBrowser } from "./PlanBrowser";
+export { SessionGroupSkeleton } from "./SessionGroupSkeleton";
 export { SessionSelector } from "./SessionSelector";

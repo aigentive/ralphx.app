@@ -155,13 +155,13 @@ describe("ApiKeySchema", () => {
     expect(result.success).toBe(false);
   });
 
-  it("rejects key with permissions above 7", () => {
-    const result = ApiKeySchema.safeParse({ ...validKey, permissions: 8 });
+  it("rejects key with permissions above 15", () => {
+    const result = ApiKeySchema.safeParse({ ...validKey, permissions: 16 });
     expect(result.success).toBe(false);
   });
 
-  it("accepts all valid permission values (0-7)", () => {
-    for (let perms = 0; perms <= 7; perms++) {
+  it("accepts all valid permission values (0-15)", () => {
+    for (let perms = 0; perms <= 15; perms++) {
       const result = ApiKeySchema.safeParse({ ...validKey, permissions: perms });
       expect(result.success).toBe(true);
     }
