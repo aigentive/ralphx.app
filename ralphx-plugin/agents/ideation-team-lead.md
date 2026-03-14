@@ -251,17 +251,16 @@ The agent decides which layers apply based on plan content. If the plan proposes
    Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. Do not re-flag just because the code hasn't been written yet.
    ```
    Include this section in the Layer 1 critic prompt AND in the Layer 2 critic prompt. Omit entirely when round == 1.
-2. Read current plan: `get_session_plan(session_id)` → extract plan content (≤3000 tokens; truncate at 3000 if longer — prepend "TRUNCATED TO 3000 TOKENS:" and keep first 3000 tokens)
-3. **Layer 1 — Completeness critic:** Spawn `Task(ralphx:plan-critic-layer1)` with a prompt containing the plan content. The critic's full instructions (framing, output format, severity guide) live in `plan-critic-layer1.md` — no inline template needed.
+2. `get_session_plan(session_id)` → inspect plan content to determine whether it proposes specific code changes (for the Layer 2 guard). Do NOT extract or pass plan content to critics — they fetch it themselves via MCP using the session_id.
+3. **Layer 1 — Completeness critic:** Spawn `Task(ralphx:plan-critic-layer1)` with a prompt containing the session_id. The critic's full instructions (framing, output format, severity guide) live in `plan-critic-layer1.md` — no inline template needed.
 
    Prompt format:
    ```
    {prior_round_context_block — include only when round > 1; omit entirely when round == 1}
 
-   PLAN CONTENT:
-   {plan_content}
+   SESSION_ID: {session_id}
    ```
-3b. **Layer 2 — Implementation feasibility (when plan proposes code changes):** Spawn one `Task(ralphx:plan-critic-layer2)` with the same prompt format as Layer 1 (plan content + prior-round context if round > 1). The agent applies two lenses in one pass (minimal/surgical + defense-in-depth) and returns a unified JSON gap list. Its full instructions and code-reading protocols live in `plan-critic-layer2.md`.
+3b. **Layer 2 — Implementation feasibility (when plan proposes code changes):** Spawn one `Task(ralphx:plan-critic-layer2)` with the same prompt format as Layer 1 (session_id + prior-round context if round > 1). The agent applies two lenses in one pass (minimal/surgical + defense-in-depth) and returns a unified JSON gap list. Its full instructions and code-reading protocols live in `plan-critic-layer2.md`.
 
    The agent MUST read actual code (not rely on plan descriptions). Gaps must be concrete: "if X happens, Y breaks because line Z does W." ❌ Style/preference debates — only functional and architectural gaps.
 
