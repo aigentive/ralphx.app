@@ -241,6 +241,10 @@ pub struct ReconciliationConfig {
     /// Independent budget from `execution_failed_max_retries` (timeout/crash retries).
     #[serde(default = "default_git_isolation_max_retries")]
     pub git_isolation_max_retries: u32,
+    /// Tasks whose `failed_at` metadata timestamp is older than this many seconds are skipped
+    /// by both startup recovery and the reconciler retry loop. Default: 86400 (24 hours).
+    #[serde(default = "default_recovery_staleness_secs")]
+    pub recovery_staleness_secs: u64,
 }
 
 fn default_merge_circuit_breaker_threshold() -> u64 {
@@ -272,6 +276,9 @@ fn default_git_isolation_retry_base_secs() -> u64 {
 }
 fn default_git_isolation_max_retries() -> u32 {
     3
+}
+fn default_recovery_staleness_secs() -> u64 {
+    86400 // 24 hours
 }
 
 impl Default for ReconciliationConfig {
@@ -317,6 +324,7 @@ impl Default for ReconciliationConfig {
             freshness_auto_reset_cooldown_secs: 600,
             git_isolation_retry_base_secs: 5,
             git_isolation_max_retries: 3,
+            recovery_staleness_secs: 86400,
         }
     }
 }
@@ -516,6 +524,7 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     env_u64!(cfg.reconciliation.execution_failed_max_retries, "RALPHX_RECONCILIATION_EXECUTION_FAILED_MAX_RETRIES");
     env_u64!(cfg.reconciliation.execution_failed_retry_base_secs, "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_BASE_SECS");
     env_u64!(cfg.reconciliation.execution_failed_retry_max_secs, "RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_MAX_SECS");
+    env_u64!(cfg.reconciliation.recovery_staleness_secs, "RALPHX_RECONCILIATION_RECOVERY_STALENESS_SECS");
     env_u64!(cfg.reconciliation.merge_circuit_breaker_threshold, "RALPHX_MERGE_CIRCUIT_BREAKER_THRESHOLD");
     env_u64!(cfg.reconciliation.merge_circuit_breaker_window, "RALPHX_MERGE_CIRCUIT_BREAKER_WINDOW");
     env_u64!(cfg.reconciliation.freshness_backoff_base_secs, "RALPHX_RECONCILIATION_FRESHNESS_BACKOFF_BASE_SECS");

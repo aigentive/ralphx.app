@@ -7653,3 +7653,175 @@ async fn record_execution_startup_retry_event_records_timeout_source_backward_co
         "timeout startup retry must record Timeout reason_code"
     );
 }
+
+// ── E7 Retry-Limit Path Tests ─────────────────────────────────────────────────
+//
+// Tests for the E7 pre-write fix: execution_recovery with stop_retrying=true must
+// be written BEFORE apply_recovery_decision(Transition(Failed)) when the executing
+// retry limit is exhausted.
+
+/// E7 path: when executing retry limit is exhausted, reconcile_completed_execution
+/// must pre-write execution_recovery with stop_retrying=true BEFORE transitioning
+/// to Failed. After the transition, the task metadata must contain the terminal
+/// recovery metadata so reconcile_failed_execution_task skips it permanently.
+#[tokio::test]
+async fn reconcile_completed_execution_e7_prewrite_stop_retrying() {
+    use crate::domain::entities::Project;
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("E7 Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Set retry count exactly at the limit so E7 triggers on the next reconcile cycle.
+    let max_retries = reconciliation_config().executing_max_retries as u32;
+    let mut task = Task::new(project.id.clone(), "E7 Retry Limit Task".into());
+    task.internal_status = InternalStatus::Executing;
+    task.metadata = Some(
+        serde_json::json!({
+            "auto_retry_count_executing": max_retries,
+        })
+        .to_string(),
+    );
+    app_state.task_repo.create(task.clone()).await.unwrap();
+    // updated_at is Utc::now() so wall-clock timeout (60 min) does not fire.
+
+    let reconciled = reconciler
+        .reconcile_completed_execution(&task, InternalStatus::Executing)
+        .await;
+
+    assert!(reconciled, "E7 path should take action and escalate to Failed");
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should still exist after E7 path");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "E7 path must transition task to Failed"
+    );
+
+    let meta_str = updated.metadata.expect("metadata must exist after E7 pre-write");
+    let meta: serde_json::Value = serde_json::from_str(&meta_str).expect("metadata must be valid JSON");
+
+    let recovery = &meta["execution_recovery"];
+    assert!(
+        recovery.is_object(),
+        "E7 path must write execution_recovery into task metadata"
+    );
+    assert_eq!(
+        recovery["stop_retrying"],
+        serde_json::json!(true),
+        "E7 path must set execution_recovery.stop_retrying=true (terminal failure)"
+    );
+    assert_eq!(
+        recovery["last_state"],
+        serde_json::json!("failed"),
+        "E7 path must set execution_recovery.last_state=failed"
+    );
+    assert_eq!(
+        meta["failure_source"],
+        serde_json::json!("max_retries_exceeded"),
+        "E7 path must write flat failure_source=max_retries_exceeded"
+    );
+    assert!(
+        meta["failed_at"].is_string(),
+        "E7 path must write flat failed_at RFC3339 timestamp"
+    );
+}
+
+/// E7 no-overwrite: once the E7 path pre-writes terminal execution_recovery
+/// (stop_retrying=true, last_state=failed), reconcile_failed_execution_task must
+/// return false without modifying the metadata. The stop_retrying flag must survive
+/// the reconciler's Failed-task handling loop.
+#[tokio::test]
+async fn reconcile_failed_execution_e7_terminal_metadata_not_overwritten() {
+    use crate::domain::entities::{
+        ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryReasonCode,
+        ExecutionRecoverySource, ExecutionRecoveryState, Project,
+    };
+
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("E7 No-Overwrite Test Project".into(), "/tmp".into());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Build the exact metadata that the E7 path writes before transitioning to Failed.
+    let mut recovery = ExecutionRecoveryMetadata::new();
+    recovery.stop_retrying = true;
+    let stop_event = ExecutionRecoveryEvent::new(
+        ExecutionRecoveryEventKind::StopRetrying,
+        ExecutionRecoverySource::System,
+        ExecutionRecoveryReasonCode::MaxRetriesExceeded,
+        "Max retries exceeded — stopping auto-retry",
+    );
+    recovery.append_event_with_state(stop_event, ExecutionRecoveryState::Failed);
+
+    let base_metadata = recovery
+        .update_task_metadata(None)
+        .expect("serialize recovery metadata");
+    // Also embed the flat keys that E7 writes alongside execution_recovery.
+    let mut meta_json: serde_json::Value =
+        serde_json::from_str(&base_metadata).expect("valid JSON");
+    if let Some(obj) = meta_json.as_object_mut() {
+        obj.insert("failure_source".into(), serde_json::json!("max_retries_exceeded"));
+        obj.insert("failed_at".into(), serde_json::json!("2026-03-14T10:00:00Z"));
+    }
+    let full_metadata = serde_json::to_string(&meta_json).expect("serialize full metadata");
+
+    let mut task = Task::new(project.id.clone(), "E7 Terminal Failed Task".into());
+    task.internal_status = InternalStatus::Failed;
+    task.metadata = Some(full_metadata.clone());
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let recovered = reconciler
+        .reconcile_failed_execution_task(&task, InternalStatus::Failed)
+        .await;
+
+    assert!(
+        !recovered,
+        "reconcile_failed_execution_task must return false for E7 terminal task (stop_retrying=true)"
+    );
+
+    // Verify the task stayed in Failed and the pre-written metadata was not modified.
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should still exist");
+
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::Failed,
+        "E7 terminal task must remain in Failed state"
+    );
+
+    let updated_meta: serde_json::Value =
+        serde_json::from_str(updated.metadata.as_deref().expect("metadata must exist"))
+            .expect("metadata must be valid JSON");
+
+    assert_eq!(
+        updated_meta["execution_recovery"]["stop_retrying"],
+        serde_json::json!(true),
+        "stop_retrying must not be overwritten by reconcile_failed_execution_task"
+    );
+    assert_eq!(
+        updated_meta["execution_recovery"]["last_state"],
+        serde_json::json!("failed"),
+        "last_state must not be overwritten by reconcile_failed_execution_task"
+    );
+    assert_eq!(
+        updated_meta["failure_source"],
+        serde_json::json!("max_retries_exceeded"),
+        "flat failure_source must not be overwritten"
+    );
+}

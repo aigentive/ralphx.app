@@ -5,3 +5,6 @@
 
 mod execution;
 mod merge;
+
+#[cfg(test)]
+mod execution_tests;

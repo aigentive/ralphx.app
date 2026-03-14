@@ -19,9 +19,11 @@ use crate::application::git_service::git_cmd::ENOENT_MARKER;
 use crate::application::{ChatServiceError, GitService};
 use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::entities::{
-    MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata,
-    MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState, ProjectId, TaskCategory,
-    TaskId, TaskStepStatus,
+    ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+    ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
+    ExecutionRecoveryState, MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind,
+    MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
+    ProjectId, TaskCategory, TaskId, TaskStepStatus,
 };
 use crate::domain::repositories::TaskRepository;
 use crate::error::{AppError, AppResult};
@@ -1115,7 +1117,8 @@ impl<'a> super::TransitionHandler<'a> {
                                     })
                                     .unwrap_or(0) as u32;
 
-                            if MetadataUpdate::key_exists_in(
+                            // Compute base metadata (without persisting yet — fallback check runs after)
+                            let merged_metadata: String = if MetadataUpdate::key_exists_in(
                                 "failure_error",
                                 task.metadata.as_deref(),
                             ) {
@@ -1125,37 +1128,68 @@ impl<'a> super::TransitionHandler<'a> {
                                     "failure_error already present (pre-computed); writing attempt_count only"
                                 );
                                 // Write attempt_count even when other failure metadata was pre-computed
-                                let metadata_update =
-                                    MetadataUpdate::new().with_u32("attempt_count", attempt_count);
-                                let merged_metadata =
-                                    metadata_update.merge_into(task.metadata.as_deref());
-                                if let Err(e) = task_repo
-                                    .update_metadata(&task_id_typed, Some(merged_metadata))
-                                    .await
-                                {
-                                    tracing::error!(
-                                        task_id = task_id,
-                                        error = %e,
-                                        "Failed to write attempt_count to failure metadata"
-                                    );
-                                }
+                                MetadataUpdate::new()
+                                    .with_u32("attempt_count", attempt_count)
+                                    .merge_into(task.metadata.as_deref())
                             } else {
                                 // Fallback: metadata not pre-computed, write it now for backward compatibility
                                 let enriched_data = data.clone().with_attempt_count(attempt_count);
-                                let metadata_update = build_failed_metadata(&enriched_data);
-                                let merged_metadata =
-                                    metadata_update.merge_into(task.metadata.as_deref());
+                                build_failed_metadata(&enriched_data)
+                                    .merge_into(task.metadata.as_deref())
+                            };
 
-                                if let Err(e) = task_repo
-                                    .update_metadata(&task_id_typed, Some(merged_metadata))
-                                    .await
-                                {
-                                    tracing::error!(
-                                        task_id = task_id,
-                                        error = %e,
-                                        "Failed to update task with failure metadata"
-                                    );
+                            // Fallback safety net: ensure execution_recovery exists.
+                            // Terminal paths (E7, wall-clock, paths 8-9) pre-write execution_recovery
+                            // with stop_retrying=true before transition, so is_none() check skips them.
+                            // This catches path #5 (empty output) and any future unknown paths.
+                            let mut metadata_obj: serde_json::Map<String, serde_json::Value> =
+                                serde_json::from_str(&merged_metadata).unwrap_or_default();
+
+                            if ExecutionRecoveryMetadata::from_task_metadata(Some(&merged_metadata))
+                                .unwrap_or(None)
+                                .is_none()
+                            {
+                                let mut recovery = ExecutionRecoveryMetadata::new();
+                                recovery.append_event_with_state(
+                                    ExecutionRecoveryEvent::new(
+                                        ExecutionRecoveryEventKind::Failed,
+                                        ExecutionRecoverySource::System,
+                                        ExecutionRecoveryReasonCode::Unknown,
+                                        "Failed without pre-written recovery metadata (fallback)",
+                                    )
+                                    .with_failure_source(ExecutionFailureSource::Unknown),
+                                    ExecutionRecoveryState::Retrying,
+                                );
+                                // stop_retrying stays false (default) — conservative, gives task
+                                // a recovery chance via reconciler's reconcile_failed_execution_task
+                                if let Ok(recovery_value) = serde_json::to_value(&recovery) {
+                                    metadata_obj
+                                        .insert("execution_recovery".to_string(), recovery_value);
                                 }
+                            }
+
+                            // Add failed_at if absent (merge-safe, used for staleness tracking)
+                            if !metadata_obj.contains_key("failed_at") {
+                                metadata_obj.insert(
+                                    "failed_at".to_string(),
+                                    serde_json::json!(Utc::now().to_rfc3339()),
+                                );
+                            }
+
+                            let final_metadata = serde_json::to_string(
+                                &serde_json::Value::Object(metadata_obj),
+                            )
+                            .unwrap_or(merged_metadata);
+
+                            if let Err(e) = task_repo
+                                .update_metadata(&task_id_typed, Some(final_metadata))
+                                .await
+                            {
+                                tracing::error!(
+                                    task_id = task_id,
+                                    error = %e,
+                                    "Failed to update task failure metadata"
+                                );
                             }
                         }
                         Ok(None) => {
