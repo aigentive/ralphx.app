@@ -318,7 +318,7 @@ Default: `http://127.0.0.1:3847` (overridable via `TAURI_API_URL`)
 | Category | Routes | Agent(s) |
 |----------|--------|----------|
 | Ideation | `create/update/delete_task_proposal`, `list_session_proposals`, `analyze_dependencies` | orchestrator-ideation |
-| Plans | `create/update/get_plan_artifact`, `get_session_plan`, `link_proposals_to_plan` | orchestrator-ideation |
+| Plans | `create/update_plan_artifact`, `get_session_plan`, `link_proposals_to_plan` | orchestrator-ideation |
 | Tasks | `update_task`, `add_task_note`, `get_task_details` | chat-task |
 | Projects | `list_tasks`, `suggest_task` | chat-project |
 | Reviews | `complete_review`, `get_review_notes`, `approve_task`, `request_task_changes` | reviewer, review-chat |

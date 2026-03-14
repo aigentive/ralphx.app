@@ -95,7 +95,7 @@ After adding a tool, verify MCP server stderr shows:
 
 | Agent | Tools in `ralphx.yaml` `mcp_tools` |
 |-------|--------------------------------------|
-| `orchestrator-ideation` | `*_task_proposal`, `*_plan_artifact` (incl. `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `get_plan_artifact`, `link_proposals_to_plan`), `get_session_plan`, `list_session_proposals`, `update_plan_verification`, `get_plan_verification`, `analyze_session_dependencies`, `get_parent_session_context`, `create_child_session`, `get_session_messages` |
+| `orchestrator-ideation` | `*_task_proposal`, `*_plan_artifact` (incl. `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `link_proposals_to_plan`), `get_session_plan`, `list_session_proposals`, `update_plan_verification`, `get_plan_verification`, `analyze_session_dependencies`, `get_parent_session_context`, `create_child_session`, `get_session_messages` |
 | `ideation-team-lead` | Same as `orchestrator-ideation` (listed separately — `mcp_tools` is full-override, not merged) |
 | `ralphx-worker` / `ralphx-coder` | `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `*_step`, `execution_complete`, `get_project_analysis` |
 | `ralphx-reviewer` | `complete_review`, `get_task_context` |

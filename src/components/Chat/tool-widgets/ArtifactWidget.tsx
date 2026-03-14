@@ -1,5 +1,5 @@
 /**
- * ArtifactWidget — Artifact preview card for get_artifact, get_artifact_version, get_plan_artifact,
+ * ArtifactWidget — Artifact preview card for get_artifact, get_artifact_version,
  * get_related_artifacts, and search_project_artifacts.
  *
  * Single artifact: type badge + title + markdown preview (collapsible).
@@ -43,7 +43,7 @@ function parseArtifact(toolCall: ToolCall): ParsedArtifact | null {
 
   const r = result as Record<string, unknown>;
 
-  // get_artifact / get_plan_artifact: { id, title, artifact_type, content, content_preview, version }
+  // get_artifact: { id, title, artifact_type, content, content_preview, version }
   // get_artifact_version: same shape, with explicit version param in args
   const title =
     (typeof r.title === "string" ? r.title : null) ??
@@ -231,7 +231,7 @@ export const ArtifactWidget = React.memo(function ArtifactWidget({
     return <ArtifactListView toolCall={toolCall} compact={compact} />;
   }
 
-  // Single artifact tools (get_artifact, get_artifact_version, get_plan_artifact)
+  // Single artifact tools (get_artifact, get_artifact_version)
   const parsed = parseArtifact(toolCall);
   if (!parsed) return null;
 

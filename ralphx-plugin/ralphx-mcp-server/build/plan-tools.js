@@ -49,20 +49,6 @@ export const PLAN_TOOLS = [
         },
     },
     {
-        name: "get_plan_artifact",
-        description: "Retrieve a plan artifact's content by version ID. Returns the content of the specific version requested (not necessarily the latest). Use get_session_plan to find the current latest version for a session. Note: unlike update_plan_artifact and link_proposals_to_plan, this does NOT auto-resolve stale IDs.",
-        inputSchema: {
-            type: "object",
-            properties: {
-                artifact_id: {
-                    type: "string",
-                    description: "The artifact ID of the specific version to retrieve. Returns that version's content, not the latest.",
-                },
-            },
-            required: ["artifact_id"],
-        },
-    },
-    {
         name: "link_proposals_to_plan",
         description: "Link multiple task proposals to an implementation plan. Use after creating proposals to establish the connection between the plan and its derived tasks. Stale artifact IDs are auto-resolved: you can pass any previous version's ID and it will resolve to the latest before linking. This enables traceability and allows the system to suggest updates when the plan changes.",
         inputSchema: {

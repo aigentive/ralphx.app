@@ -444,7 +444,7 @@ agents:
         create_plan_artifact,
         update_plan_artifact,
         edit_plan_artifact,
-        get_plan_artifact,
+        get_artifact,
         link_proposals_to_plan,
         get_session_plan,
         ask_user_question,
@@ -474,7 +474,7 @@ agents:
     mcp_tools: [
         list_session_proposals,
         get_proposal,
-        get_plan_artifact,
+        get_artifact,
         get_session_plan,
         get_parent_session_context,
         # session linking tools
@@ -805,14 +805,14 @@ agents:
     system_prompt_file: ralphx-plugin/agents/plan-critic-layer1.md
     model: sonnet
     tools: { extends: base_tools }
-    mcp_tools: [get_session_plan, get_plan_artifact]
+    mcp_tools: [get_session_plan, get_artifact]
     preapproved_cli_tools: []
 
   - name: plan-critic-layer2
     system_prompt_file: ralphx-plugin/agents/plan-critic-layer2.md
     model: sonnet
     tools: { extends: base_tools }
-    mcp_tools: [get_session_plan, get_plan_artifact]
+    mcp_tools: [get_session_plan, get_artifact]
     preapproved_cli_tools: []
 
   # --- Team lead variants (extends base agents) ---
@@ -845,7 +845,7 @@ agents:
         create_plan_artifact,
         update_plan_artifact,
         edit_plan_artifact,
-        get_plan_artifact,
+        get_artifact,
         link_proposals_to_plan,
         get_session_plan,
         ask_user_question,

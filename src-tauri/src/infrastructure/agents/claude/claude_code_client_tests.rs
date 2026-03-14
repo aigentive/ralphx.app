@@ -729,7 +729,7 @@ fn test_build_teammate_cli_args_full_integration() {
     ])
     .with_mcp_tools(vec![
         "get_session_plan".to_string(),
-        "get_plan_artifact".to_string(),
+        "get_artifact".to_string(),
     ])
     .with_color("green")
     .with_working_dir("/Users/test/project");
@@ -781,7 +781,7 @@ fn test_build_teammate_cli_args_full_integration() {
     let allowed_idx = args.iter().position(|a| a == "--allowedTools").unwrap();
     assert_eq!(
         args[allowed_idx + 1],
-        "mcp__ralphx__get_session_plan,mcp__ralphx__get_plan_artifact"
+        "mcp__ralphx__get_session_plan,mcp__ralphx__get_artifact"
     );
 }
 

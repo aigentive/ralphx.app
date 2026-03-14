@@ -1352,7 +1352,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "create_plan_artifact",
     "update_plan_artifact",
     "edit_plan_artifact",
-    "get_plan_artifact",
+    "get_artifact",
     "link_proposals_to_plan",
     "get_session_plan",
     "ask_user_question",
@@ -1379,7 +1379,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   [ORCHESTRATOR_IDEATION_READONLY]: [
     "list_session_proposals",
     "get_proposal",
-    "get_plan_artifact",
+    "get_artifact",
     "get_session_plan",
     "get_parent_session_context",
     // session linking tools
@@ -1608,7 +1608,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "create_plan_artifact",
     "update_plan_artifact",
     "edit_plan_artifact",
-    "get_plan_artifact",
+    "get_artifact",
     "link_proposals_to_plan",
     "get_session_plan",
     "ask_user_question",
@@ -1638,7 +1638,7 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // Plan/proposal access (read-only)
     "get_session_plan",
     "list_session_proposals",
-    "get_plan_artifact",
+    "get_artifact",
     // Memory read tools
     "search_memories",
     "get_memory",
@@ -1717,8 +1717,8 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_memories_for_paths",
   ],
   // Plan critic agents - read-only, only need plan access tools
-  [PLAN_CRITIC_LAYER1]: ["get_session_plan", "get_plan_artifact"],
-  [PLAN_CRITIC_LAYER2]: ["get_session_plan", "get_plan_artifact"],
+  [PLAN_CRITIC_LAYER1]: ["get_session_plan", "get_artifact"],
+  [PLAN_CRITIC_LAYER2]: ["get_session_plan", "get_artifact"],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),
 };

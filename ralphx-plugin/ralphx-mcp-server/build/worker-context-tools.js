@@ -23,7 +23,7 @@ export const WORKER_CONTEXT_TOOLS = [
     },
     {
         name: "get_artifact",
-        description: "Fetch the full content of an artifact by ID. Use after get_task_context reveals a plan_artifact_id to read the complete implementation plan with architectural decisions, coding patterns, and constraints.",
+        description: "Retrieve the full content of any artifact by ID. Use after get_task_context reveals a plan_artifact_id to read the complete implementation plan with architectural decisions, coding patterns, and constraints.",
         inputSchema: {
             type: "object",
             properties: {

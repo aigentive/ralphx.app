@@ -262,7 +262,7 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `create_plan_artifact` | Required before any `create_task_proposal` |
 | `edit_plan_artifact` | Targeted edits (preferred when changing <30% of plan). All-or-nothing atomicity — all edits succeed or none applied. Sequential: each edit sees result of prior edits. Use `old_text` anchors of 20+ chars for reliable matching. Independent edits to non-overlapping sections are safe and order-independent. If an edit fails, retry the entire call. |
 | `update_plan_artifact` | Full rewrites only (>30% of content or full restructure). Auto-verifier always uses this — not `edit_plan_artifact` — for full-content revisions. |
-| `get_session_plan` / `get_plan_artifact` | Retrieve plan artifact |
+| `get_session_plan` / `get_artifact` | Retrieve plan artifact |
 | `create_task_proposal` | Fails without plan artifact; auto-links to plan on creation; optional `depends_on: string[]` for inline dep-setting |
 | `update_task_proposal` | Optional `add_depends_on: string[]` and `add_blocks: string[]` for additive dep-setting (no replace-all) |
 | `delete_task_proposal` / `list_session_proposals` / `get_proposal` | Manage proposals |

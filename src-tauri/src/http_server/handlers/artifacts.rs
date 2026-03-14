@@ -740,26 +740,6 @@ pub async fn edit_plan_artifact(
     Ok(Json(response))
 }
 
-pub async fn get_plan_artifact(
-    State(state): State<HttpServerState>,
-    Path(artifact_id): Path<String>,
-) -> Result<Json<ArtifactResponse>, StatusCode> {
-    let artifact_id = ArtifactId::from_string(artifact_id);
-
-    let artifact = state
-        .app_state
-        .artifact_repo
-        .get_by_id(&artifact_id)
-        .await
-        .map_err(|e| {
-            error!("Failed to get artifact {}: {}", artifact_id.as_str(), e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    Ok(Json(ArtifactResponse::from(artifact)))
-}
-
 pub async fn link_proposals_to_plan(
     State(state): State<HttpServerState>,
     Json(req): Json<LinkProposalsToPlanRequest>,
@@ -867,7 +847,7 @@ pub async fn get_session_plan(
 #[path = "artifacts_tests.rs"]
 mod tests;
 
-pub async fn get_plan_artifact_history(
+pub async fn get_artifact_history(
     State(state): State<HttpServerState>,
     Path(artifact_id): Path<String>,
 ) -> Result<Json<Vec<ArtifactVersionSummaryResponse>>, StatusCode> {
