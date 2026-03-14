@@ -32,6 +32,7 @@ export function useAgentEvents(activeConversationId: string | null) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
   const setAgentStatus = useChatStore((s) => s.setAgentStatus);
+  const updateLastAgentEvent = useChatStore((s) => s.updateLastAgentEvent);
   const deleteQueuedMessage = useChatStore((s) => s.deleteQueuedMessage);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const clearActiveQuestion = useUiStore((s) => s.clearActiveQuestion);
@@ -65,6 +66,14 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Build context key from the event payload
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
+        // Update watchdog timestamp only for initial spawns, not queue re-runs.
+        // Queue re-runs emit run_started while already in "generating" state —
+        // resetting the timestamp there would mask a real stuck-generating condition.
+        const currentStatus = useChatStore.getState().agentStatus[eventContextKey];
+        if (currentStatus !== "generating") {
+          updateLastAgentEvent(eventContextKey);
+        }
+
         // Set agent as generating for this context
         setAgentStatus(eventContextKey, "generating");
 
@@ -97,6 +106,11 @@ export function useAgentEvents(activeConversationId: string | null) {
         metadata?: string | null;
       }>("agent:message_created", (payload) => {
         const { conversation_id, message_id, role, content, created_at } = payload;
+
+        // Heartbeat: update watchdog timestamp on every message (active event flow).
+        // Prevents watchdog from firing during normal streaming bursts.
+        const msgContextKey = buildStoreKey(payload.context_type as ContextType, payload.context_id);
+        updateLastAgentEvent(msgContextKey);
 
         // Always invalidate the conversation query for this message's conversation.
         // This handles both lead and teammate conversations — teammate messages
@@ -159,6 +173,9 @@ export function useAgentEvents(activeConversationId: string | null) {
         // Build context key from the event payload
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
 
+        // Final heartbeat — clears the "stuck" condition before transitioning to idle.
+        updateLastAgentEvent(eventContextKey);
+
         // Clear agent status for the specific context (run is done)
         setAgentStatus(eventContextKey, "idle");
 
@@ -202,6 +219,10 @@ export function useAgentEvents(activeConversationId: string | null) {
 
         // Agent is still alive but waiting for user input — transition from "generating" to "waiting_for_input"
         const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+
+        // Heartbeat: agent is alive between turns, reset watchdog timer.
+        updateLastAgentEvent(eventContextKey);
+
         setAgentStatus(eventContextKey, "waiting_for_input");
 
         // Invalidate using conversation_id from payload to avoid stale closure mismatch
@@ -328,5 +349,32 @@ export function useAgentEvents(activeConversationId: string | null) {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, activeConversationId, queryClient, setAgentStatus, deleteQueuedMessage, setActiveConversation, clearActiveQuestion, clearPendingPlan]);
+  }, [bus, activeConversationId, queryClient, setAgentStatus, updateLastAgentEvent, deleteQueuedMessage, setActiveConversation, clearActiveQuestion, clearPendingPlan]);
+
+  // Global singleton watchdog — defense-in-depth for stuck generating state.
+  // If the backend misses run_completed for any reason, this forces idle after
+  // 5 minutes of no agent events for a context still in "generating" state.
+  // Runs once per hook mount (empty deps) and checks all contexts every 30s.
+  useEffect(() => {
+    const WATCHDOG_TIMEOUT_MS = 300_000; // 5 minutes
+    const CHECK_INTERVAL_MS = 30_000;    // Check every 30s
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const state = useChatStore.getState();
+
+      for (const [key, status] of Object.entries(state.agentStatus)) {
+        if (status !== "generating") continue;
+        const lastEvent = state.lastAgentEventTimestamp[key] ?? 0;
+        if (now - lastEvent > WATCHDOG_TIMEOUT_MS) {
+          console.warn(
+            `[WATCHDOG] Agent ${key} stuck in generating for ${Math.round((now - lastEvent) / 1000)}s — forcing idle`
+          );
+          state.setAgentStatus(key, "idle");
+        }
+      }
+    }, CHECK_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, []); // Empty deps — runs once globally, reads fresh state via getState()
 }

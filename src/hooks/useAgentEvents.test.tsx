@@ -10,7 +10,7 @@
  */
 
 import { renderHook, act } from "@testing-library/react";
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { ReactNode } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { useAgentEvents } from "./useAgentEvents";
@@ -100,6 +100,7 @@ describe("useAgentEvents", () => {
       queuedMessages: {},
       agentStatus: {},
       isSending: {},
+      lastAgentEventTimestamp: {},
     });
   });
 
@@ -924,6 +925,117 @@ describe("useAgentEvents", () => {
       unmount();
 
       expect(listeners.get("agent:turn_completed")?.size ?? 0).toBe(0);
+    });
+  });
+
+  describe("watchdog — stuck generating state recovery", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("fires after 5 minutes of inactivity and forces idle", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      // Put a context into generating with a timestamp at t=0
+      act(() => {
+        useChatStore.getState().setAgentStatus("session:abc", "generating");
+        useChatStore.getState().updateLastAgentEvent("session:abc");
+      });
+
+      expect(useChatStore.getState().agentStatus["session:abc"]).toBe("generating");
+
+      // Advance 5 min (300s) — check at 300s: elapsed = 300000, NOT > 300000, no fire
+      act(() => {
+        vi.advanceTimersByTime(300_000);
+      });
+      expect(useChatStore.getState().agentStatus["session:abc"]).toBe("generating");
+
+      // Advance one more interval (30s) — check at 330s: elapsed = 330000 > 300000 → fires
+      act(() => {
+        vi.advanceTimersByTime(30_000);
+      });
+
+      // Watchdog should have forced idle
+      expect(useChatStore.getState().agentStatus["session:abc"]).toBeUndefined();
+    });
+
+    it("resets on message_created — does NOT fire while events keep coming", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      // Start generating at t=0
+      act(() => {
+        useChatStore.getState().setAgentStatus("session:xyz", "generating");
+        useChatStore.getState().updateLastAgentEvent("session:xyz");
+      });
+
+      // Advance 4 min without a watchdog-triggering gap
+      act(() => {
+        vi.advanceTimersByTime(240_000);
+      });
+
+      // Emit message_created at t=240s — resets the watchdog timer for this context
+      act(() => {
+        emitEvent("agent:message_created", {
+          context_type: "ideation",
+          context_id: "xyz",
+          conversation_id: "conv-1",
+          message_id: "msg-heartbeat",
+          role: "assistant",
+          content: "still alive",
+        });
+      });
+
+      // Advance another 4 min (to t=480s) — only 240s since the reset → no fire
+      act(() => {
+        vi.advanceTimersByTime(240_000);
+      });
+
+      // Should still be generating: last event was at t=240s, only 240s ago
+      expect(useChatStore.getState().agentStatus["session:xyz"]).toBe("generating");
+    });
+
+    it("does NOT fire during active event flow", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents("conv-1"), { wrapper });
+
+      // Start with run_started at t=0
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "ideation",
+          context_id: "active-session",
+          conversation_id: "conv-1",
+        });
+      });
+
+      expect(useChatStore.getState().agentStatus["session:active-session"]).toBe("generating");
+
+      // Emit a message every 30s for 10 intervals (5 min total)
+      // Each message resets the watchdog timer so it never fires
+      for (let i = 0; i < 10; i++) {
+        act(() => {
+          // Advance one watchdog interval
+          vi.advanceTimersByTime(30_000);
+          // Emit a message to reset the timer (simulates active streaming)
+          emitEvent("agent:message_created", {
+            context_type: "ideation",
+            context_id: "active-session",
+            conversation_id: "conv-1",
+            message_id: `msg-${i}`,
+            role: "assistant",
+            content: `chunk ${i}`,
+          });
+        });
+      }
+
+      // 5 min passed, but events came every 30s — watchdog should NOT have fired
+      expect(useChatStore.getState().agentStatus["session:active-session"]).toBe("generating");
     });
   });
 });

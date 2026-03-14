@@ -13,7 +13,7 @@
 use async_trait::async_trait;
 use std::collections::HashSet;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 use crate::application::{ChatService, ClaudeChatService, InteractiveProcessRegistry};
 use crate::commands::ExecutionState;
@@ -132,13 +132,17 @@ impl<R: Runtime> TauriEventEmitter<R> {
 impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
     async fn emit(&self, event_type: &str, task_id: &str) {
         if let Some(ref handle) = self.app_handle {
-            let _ = handle.emit(
-                event_type,
-                serde_json::json!({
-                    "taskId": task_id,
-                    "timestamp": chrono::Utc::now().to_rfc3339(),
-                }),
-            );
+            let payload = serde_json::json!({
+                "taskId": task_id,
+                "timestamp": chrono::Utc::now().to_rfc3339(),
+            });
+            if crate::application::ThrottledEmitter::<R>::is_batchable(event_type) {
+                if let Some(throttled) = handle.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>() {
+                    throttled.emit(event_type, payload);
+                    return;
+                }
+            }
+            let _ = handle.emit(event_type, payload);
         }
     }
 
@@ -157,14 +161,16 @@ impl<R: Runtime> EventEmitter for TauriEventEmitter<R> {
 
     async fn emit_status_change(&self, task_id: &str, old_status: &str, new_status: &str) {
         if let Some(ref handle) = self.app_handle {
-            let _ = handle.emit(
-                "task:status_changed",
-                serde_json::json!({
-                    "task_id": task_id,
-                    "old_status": old_status,
-                    "new_status": new_status,
-                }),
-            );
+            let payload = serde_json::json!({
+                "task_id": task_id,
+                "old_status": old_status,
+                "new_status": new_status,
+            });
+            if let Some(throttled) = handle.try_state::<std::sync::Arc<crate::application::ThrottledEmitter>>() {
+                throttled.emit("task:status_changed", payload);
+            } else {
+                let _ = handle.emit("task:status_changed", payload);
+            }
         }
         // Dual-emit: write to external_events table for external consumers.
         self.write_external_event(task_id, old_status, new_status).await;

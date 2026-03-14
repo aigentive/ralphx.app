@@ -813,6 +813,11 @@ pub fn run() {
             let team_session_repo = Arc::clone(&app_state.team_session_repo);
             let team_message_repo = Arc::clone(&app_state.team_message_repo);
 
+            // Register ThrottledEmitter for batching rapid event emissions.
+            // Must be registered before app_state since services read it via try_state().
+            let throttled_emitter = application::ThrottledEmitter::new(app.handle().clone());
+            app.manage(throttled_emitter);
+
             // Register app_state with Tauri's state management
             app.manage(app_state);
 
@@ -1115,6 +1120,7 @@ pub fn run() {
             commands::api_key_commands::update_api_key_projects,
             commands::api_key_commands::update_api_key_permissions,
             commands::api_key_commands::get_api_key_audit_log,
+            commands::diagnostic_commands::get_agent_health,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
@@ -1129,6 +1135,12 @@ pub fn run() {
                 // If agents are slow, they are abandoned and the OS will clean up.
                 tauri::async_runtime::block_on(async {
                     let _ = tokio::time::timeout(Duration::from_millis(2500), async move {
+                        let ipr_dump = interactive.dump_state().await;
+                        tracing::info!(
+                            count = ipr_dump.len(),
+                            "[IPR_EXIT_DUMP] IPR entries at shutdown: {:?}",
+                            ipr_dump
+                        );
                         interactive.clear().await;
                         let stopped = registry.stop_all().await;
                         crate::infrastructure::agents::claude::kill_all_tracked_processes().await;
