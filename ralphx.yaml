@@ -180,6 +180,8 @@ reconciliation:
   execution_failed_retry_base_secs: 30 # Env: RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_BASE_SECS
   # execution recovery — cap on execution retry exponential backoff (seconds)
   execution_failed_retry_max_secs: 600 # Env: RALPHX_RECONCILIATION_EXECUTION_FAILED_RETRY_MAX_SECS
+  # execution recovery — Failed tasks older than this (seconds) are skipped at startup (stale guard)
+  recovery_staleness_secs: 86400 # Env: RALPHX_RECONCILIATION_RECOVERY_STALENESS_SECS
 
 git:
   # git_service/git_cmd.rs — per-command timeout to prevent hung git processes

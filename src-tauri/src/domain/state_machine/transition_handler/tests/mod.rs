@@ -19,6 +19,7 @@ mod execution_state;
 mod integration_branch_discovery;
 mod merge_retry;
 mod merge_workflow;
+mod execution_recovery_fallback_tests;
 mod metadata_skip_guard;
 mod transitions_agents;
 mod transitions_basic;

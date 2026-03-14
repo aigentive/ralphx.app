@@ -21,7 +21,13 @@ import {
   ResumeValidationDialog,
   type ValidationWarning,
 } from "@/components/ui/ResumeValidationDialog";
-import { parseStopMetadata, type Task, type StopMetadata } from "@/types/task";
+import {
+  parseStopMetadata,
+  type Task,
+  type StopMetadata,
+  type FailureSource,
+  TRANSIENT_FAILURE_SOURCES,
+} from "@/types/task";
 import { stopExecutionRetry } from "@/lib/task-actions/task-actions";
 import {
   FRESHNESS_BLOCKED_PREFIX,
@@ -68,6 +74,17 @@ type ExecutionMode = "solo" | "team";
 
 // Task statuses that can be restarted
 const RESTARTABLE_STATUSES = new Set(["failed", "stopped", "cancelled", "paused"]);
+
+// Human-readable labels for failure source codes
+const FAILURE_SOURCE_LABELS: Record<string, string> = {
+  transient_timeout: "transient timeout",
+  agent_crash: "agent crash",
+  parse_stall: "parse stall",
+  git_isolation: "git isolation",
+  wall_clock_timeout: "wall-clock timeout",
+  max_retries_exceeded: "retry limit reached",
+  provider_error: "provider error",
+};
 
 // States that need validation before resuming (merge-related states)
 const VALIDATED_RESUME_STATES = new Set([
@@ -721,6 +738,8 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
     failure_details?: string;
     is_timeout: boolean;
     attempt_count: number;
+    failure_source?: FailureSource;
+    failed_at?: string;
   } | null = null;
 
   const isFailed = task.internalStatus === "failed" || task.internalStatus === "qa_failed";
@@ -736,9 +755,11 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
               : 0;
           failureInfo = {
             failure_error: metadata.failure_error,
-            failure_details: metadata.failure_details,
             is_timeout: metadata.is_timeout || false,
             attempt_count: attemptCount,
+            ...(metadata.failure_details !== undefined && { failure_details: metadata.failure_details as string }),
+            ...(typeof metadata.failure_source === "string" && { failure_source: metadata.failure_source as FailureSource }),
+            ...(typeof metadata.failed_at === "string" && { failed_at: metadata.failed_at }),
           };
         }
       } catch {
@@ -926,6 +947,33 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
                 </span>
               </div>
             )}
+            {/* Failure source badge — amber for transient (auto-retrying), red for terminal */}
+            {failureInfo.failure_source && failureInfo.failure_source !== "unknown" && (() => {
+              const isTerminal =
+                executionRecovery?.stop_retrying === true ||
+                !TRANSIENT_FAILURE_SOURCES.has(failureInfo.failure_source!);
+              const label = FAILURE_SOURCE_LABELS[failureInfo.failure_source!] ?? failureInfo.failure_source;
+              return (
+                <div data-testid="failure-source-badge" className="flex items-center gap-2">
+                  <span
+                    className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                    style={
+                      isTerminal
+                        ? { backgroundColor: "hsla(0 70% 55% / 0.25)", color: "hsl(0 70% 75%)" }
+                        : { backgroundColor: "hsla(38 92% 50% / 0.2)", color: "hsl(38 92% 65%)" }
+                    }
+                  >
+                    {isTerminal ? "Manual retry required" : "Auto-retrying"}
+                  </span>
+                  <span
+                    className="text-[10px]"
+                    style={{ color: "hsl(0 70% 65% / 0.65)" }}
+                  >
+                    {label}
+                  </span>
+                </div>
+              );
+            })()}
             {/* Error message */}
             <p
               data-testid="failure-error-message"
@@ -934,6 +982,16 @@ export function BasicTaskDetail({ task, isHistorical = false }: BasicTaskDetailP
             >
               {failureInfo.failure_error}
             </p>
+            {/* Failed at relative timestamp */}
+            {failureInfo.failed_at && (
+              <p
+                data-testid="failed-at-timestamp"
+                className="text-[11px]"
+                style={{ color: "hsl(0 70% 65% / 0.6)" }}
+              >
+                Failed {getTimeAgo(failureInfo.failed_at)}
+              </p>
+            )}
             {/* Details */}
             {failureInfo.failure_details && (
               <p

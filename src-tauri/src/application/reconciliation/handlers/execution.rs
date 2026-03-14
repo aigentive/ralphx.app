@@ -127,6 +127,41 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     continue;
                 }
 
+                // Staleness check: skip tasks whose failed_at is older than threshold
+                {
+                    let staleness_threshold =
+                        crate::infrastructure::agents::claude::reconciliation_config()
+                            .recovery_staleness_secs;
+                    if let Some(failed_at_str) = task
+                        .metadata
+                        .as_deref()
+                        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                        .and_then(|v| {
+                            v.get("failed_at")
+                                .and_then(|s| s.as_str())
+                                .map(|s| s.to_string())
+                        })
+                    {
+                        if let Ok(failed_at) =
+                            chrono::DateTime::parse_from_rfc3339(&failed_at_str)
+                        {
+                            let age_secs =
+                                (chrono::Utc::now() - failed_at.with_timezone(&chrono::Utc))
+                                    .num_seconds();
+                            if age_secs > staleness_threshold as i64 {
+                                warn!(
+                                    task_id = %task.id,
+                                    age_secs,
+                                    threshold = staleness_threshold,
+                                    "Skipping stale failed task in recover_timeout_failures"
+                                );
+                                continue;
+                            }
+                        }
+                    }
+                    // Absent failed_at = non-stale (pre-existing tasks get one recovery attempt)
+                }
+
                 // Detect failure source from last recovery event (for per-source routing).
                 let startup_failure_source = new_recovery.as_ref().and_then(|r| {
                     r.events.last().and_then(|e| e.failure_source)
@@ -591,6 +626,61 @@ impl<R: Runtime> ReconciliationRunner<R> {
                     max = reconciliation_config().executing_max_retries,
                     "Execution retry limit reached — escalating to Failed"
                 );
+                // Pre-write terminal execution_recovery for path #7 (E7: executing retry limit
+                // exhausted). This must happen BEFORE apply_recovery_decision so that
+                // reconcile_failed_execution_task sees stop_retrying=true and skips the task
+                // permanently, and so that the on_enter(Failed) fallback (Task 1.1) sees the
+                // pre-write and does NOT overwrite it with retryable metadata.
+                {
+                    let mut recovery =
+                        ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                            .unwrap_or(None)
+                            .unwrap_or_default();
+                    let stop_event = ExecutionRecoveryEvent::new(
+                        ExecutionRecoveryEventKind::StopRetrying,
+                        ExecutionRecoverySource::System,
+                        ExecutionRecoveryReasonCode::MaxRetriesExceeded,
+                        "Max retries exceeded — stopping auto-retry",
+                    );
+                    recovery.stop_retrying = true;
+                    recovery.append_event_with_state(stop_event, ExecutionRecoveryState::Failed);
+                    if let Ok(recovery_json_str) =
+                        recovery.update_task_metadata(task.metadata.as_deref())
+                    {
+                        if let Ok(mut json) =
+                            serde_json::from_str::<serde_json::Value>(&recovery_json_str)
+                        {
+                            if let Some(obj) = json.as_object_mut() {
+                                obj.insert(
+                                    "failure_source".to_string(),
+                                    serde_json::json!("max_retries_exceeded"),
+                                );
+                                obj.insert(
+                                    "failed_at".to_string(),
+                                    serde_json::json!(chrono::Utc::now().to_rfc3339()),
+                                );
+                            }
+                            if let Ok(final_str) = serde_json::to_string(&json) {
+                                if let Err(e) = self
+                                    .task_repo
+                                    .update_metadata(&task.id, Some(final_str))
+                                    .await
+                                {
+                                    warn!(
+                                        task_id = task.id.as_str(),
+                                        error = %e,
+                                        "Failed to write E7 terminal recovery metadata (path #7)"
+                                    );
+                                }
+                            }
+                        }
+                    } else {
+                        warn!(
+                            task_id = task.id.as_str(),
+                            "Failed to serialize E7 terminal recovery metadata (path #7)"
+                        );
+                    }
+                }
                 return self
                     .apply_recovery_decision(
                         task,
@@ -694,6 +784,37 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 "Skipping failed execution reconciliation: stop_retrying=true"
             );
             return false;
+        }
+
+        // Staleness check: skip tasks whose failed_at is older than threshold
+        {
+            let staleness_threshold =
+                reconciliation_config().recovery_staleness_secs;
+            if let Some(failed_at_str) = task
+                .metadata
+                .as_deref()
+                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+                .and_then(|v| {
+                    v.get("failed_at")
+                        .and_then(|s| s.as_str())
+                        .map(|s| s.to_string())
+                })
+            {
+                if let Ok(failed_at) = chrono::DateTime::parse_from_rfc3339(&failed_at_str) {
+                    let age_secs =
+                        (chrono::Utc::now() - failed_at.with_timezone(&chrono::Utc)).num_seconds();
+                    if age_secs > staleness_threshold as i64 {
+                        warn!(
+                            task_id = %task.id,
+                            age_secs,
+                            threshold = staleness_threshold,
+                            "Skipping stale failed task in reconcile_failed_execution_task"
+                        );
+                        return false;
+                    }
+                }
+            }
+            // Absent failed_at = non-stale (pre-existing tasks get one recovery attempt)
         }
 
         // GAP M5: Skip if startup recovery handled this task within the last 60s —

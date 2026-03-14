@@ -306,6 +306,28 @@ export function parseStopMetadata(metadata: string | null | undefined): StopMeta
 }
 
 /**
+ * Failure source classification — matches Rust ExecutionFailureSource enum.
+ * Transient sources are auto-retryable; terminal sources require manual intervention.
+ */
+export type FailureSource =
+  | "transient_timeout"
+  | "agent_crash"
+  | "parse_stall"
+  | "git_isolation"
+  | "wall_clock_timeout"
+  | "max_retries_exceeded"
+  | "provider_error"
+  | "unknown";
+
+/** Sources that are transient (auto-retrying, shown as amber badge) */
+export const TRANSIENT_FAILURE_SOURCES = new Set<FailureSource>([
+  "transient_timeout",
+  "agent_crash",
+  "parse_stall",
+  "git_isolation",
+]);
+
+/**
  * Extended metadata structure with merge recovery and stop info
  */
 export interface TaskMetadata {
