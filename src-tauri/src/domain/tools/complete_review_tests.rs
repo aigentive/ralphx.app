@@ -495,3 +495,79 @@ fn test_validation_error_display() {
         "issues are required when outcome is 'needs_changes'"
     );
 }
+
+// ===== ReviewToolOutcome::ApprovedNoChanges Tests =====
+
+#[test]
+fn test_review_tool_outcome_approved_no_changes_display() {
+    assert_eq!(
+        format!("{}", ReviewToolOutcome::ApprovedNoChanges),
+        "approved_no_changes"
+    );
+}
+
+#[test]
+fn test_review_tool_outcome_approved_no_changes_from_str_lowercase() {
+    assert_eq!(
+        ReviewToolOutcome::from_str("approved_no_changes").unwrap(),
+        ReviewToolOutcome::ApprovedNoChanges
+    );
+}
+
+#[test]
+fn test_review_tool_outcome_approved_no_changes_from_str_uppercase() {
+    assert_eq!(
+        ReviewToolOutcome::from_str("APPROVED_NO_CHANGES").unwrap(),
+        ReviewToolOutcome::ApprovedNoChanges
+    );
+}
+
+#[test]
+fn test_review_tool_outcome_approved_no_changes_from_str_mixed_case() {
+    assert_eq!(
+        ReviewToolOutcome::from_str("Approved_No_Changes").unwrap(),
+        ReviewToolOutcome::ApprovedNoChanges
+    );
+}
+
+#[test]
+fn test_complete_review_input_approved_no_changes_validate_ok() {
+    let input = CompleteReviewInput {
+        outcome: ReviewToolOutcome::ApprovedNoChanges,
+        notes: "No code changes — this was a research task".to_string(),
+        issues: vec![],
+        fix_description: None,
+        escalation_reason: None,
+    };
+    assert!(input.validate().is_ok(), "ApprovedNoChanges with empty issues and no fix_description should be valid");
+}
+
+#[test]
+fn test_complete_review_input_approved_no_changes_validate_err_with_issues() {
+    let issue = ReviewIssueInput::new("some issue", IssueSeverity::Minor)
+        .with_no_step_reason("n/a");
+    let input = CompleteReviewInput {
+        outcome: ReviewToolOutcome::ApprovedNoChanges,
+        notes: "No code changes".to_string(),
+        issues: vec![issue],
+        fix_description: None,
+        escalation_reason: None,
+    };
+    // With issues present: ApprovedNoChanges should still be Ok (issues are optional for approval)
+    // It's the same behavior as Approved — issues are allowed but not required
+    assert!(input.validate().is_ok(), "ApprovedNoChanges with issues should still be Ok (issues optional)");
+}
+
+#[test]
+fn test_complete_review_input_is_approved_for_approved_no_changes() {
+    let input = CompleteReviewInput {
+        outcome: ReviewToolOutcome::ApprovedNoChanges,
+        notes: "No changes".to_string(),
+        issues: vec![],
+        fix_description: None,
+        escalation_reason: None,
+    };
+    assert!(input.is_approved(), "is_approved() should return true for ApprovedNoChanges");
+    assert!(!input.is_needs_changes());
+    assert!(!input.is_escalation());
+}

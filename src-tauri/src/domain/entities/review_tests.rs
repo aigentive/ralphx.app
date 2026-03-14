@@ -487,3 +487,67 @@ fn test_review_note_serialization() {
     assert_eq!(note.outcome, parsed.outcome);
     assert_eq!(note.notes, parsed.notes);
 }
+
+// ===== ReviewOutcome::ApprovedNoChanges Tests =====
+
+#[test]
+fn test_review_outcome_approved_no_changes_display() {
+    assert_eq!(
+        format!("{}", ReviewOutcome::ApprovedNoChanges),
+        "approved_no_changes"
+    );
+}
+
+#[test]
+fn test_review_outcome_approved_no_changes_from_str() {
+    let result = ReviewOutcome::from_str("approved_no_changes");
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), ReviewOutcome::ApprovedNoChanges);
+}
+
+#[test]
+fn test_review_outcome_approved_no_changes_from_str_case_insensitive() {
+    // ReviewOutcome::from_str uses to_lowercase() so it IS case-insensitive
+    let result = ReviewOutcome::from_str("APPROVED_NO_CHANGES");
+    assert!(result.is_ok());
+    assert_eq!(result.unwrap(), ReviewOutcome::ApprovedNoChanges);
+}
+
+#[test]
+fn test_review_outcome_approved_no_changes_serde_roundtrip() {
+    let outcome = ReviewOutcome::ApprovedNoChanges;
+    let json = serde_json::to_string(&outcome).unwrap();
+    assert_eq!(json, "\"approved_no_changes\"");
+    let parsed: ReviewOutcome = serde_json::from_str(&json).unwrap();
+    assert_eq!(outcome, parsed);
+}
+
+#[test]
+fn test_review_note_is_positive_for_approved_no_changes() {
+    let task_id = TaskId::from_string("task-test".to_string());
+    let note = ReviewNote::new(
+        task_id,
+        ReviewerType::Ai,
+        ReviewOutcome::ApprovedNoChanges,
+    );
+    assert!(note.is_positive(), "ApprovedNoChanges should be positive");
+    assert!(!note.is_negative(), "ApprovedNoChanges should not be negative");
+}
+
+#[test]
+fn test_review_note_is_positive_still_true_for_approved() {
+    let task_id = TaskId::from_string("task-test2".to_string());
+    let note = ReviewNote::new(task_id, ReviewerType::Ai, ReviewOutcome::Approved);
+    assert!(note.is_positive());
+}
+
+#[test]
+fn test_review_note_is_negative_false_for_approved_no_changes() {
+    let task_id = TaskId::from_string("task-test3".to_string());
+    let note = ReviewNote::new(
+        task_id,
+        ReviewerType::Ai,
+        ReviewOutcome::ApprovedNoChanges,
+    );
+    assert!(!note.is_negative());
+}

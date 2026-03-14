@@ -90,6 +90,21 @@ impl<R: ReviewRepository, T: TaskRepository> ReviewService<R, T> {
                     .await?;
                 Ok(None)
             }
+            // Phase 3 will implement the full approved_no_changes path (skip merge pipeline)
+            ReviewToolOutcome::ApprovedNoChanges => {
+                review.approve(Some(input.notes.clone()));
+                self.review_repo.update(review).await?;
+                self.add_review_note(
+                    &review.task_id,
+                    ReviewerType::Ai,
+                    ReviewOutcome::ApprovedNoChanges,
+                    &input.notes,
+                )
+                .await?;
+                self.add_action(&review.id, ReviewActionType::Approved, None)
+                    .await?;
+                Ok(None)
+            }
             ReviewToolOutcome::NeedsChanges => {
                 let fix_desc = input
                     .fix_description

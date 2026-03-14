@@ -53,7 +53,7 @@ mod tests;
 pub use merge_completion::complete_merge_internal;
 pub use merge_completion::{
     deferred_merge_cleanup, has_pending_cleanup_metadata, set_pending_cleanup_metadata,
-    clear_pending_cleanup_metadata,
+    clear_pending_cleanup_metadata, has_no_code_changes_metadata, set_no_code_changes_metadata,
 };
 pub use merge_helpers::resolve_merge_branches;
 pub use metadata_builder::{build_failed_metadata, build_trigger_origin_metadata, MetadataUpdate};
@@ -182,9 +182,11 @@ impl<'a> TransitionHandler<'a> {
                             exit_actions::check_revision_cap_or_fail(&ctx, auto_state).await;
                     }
 
-                    // Skip merge pipeline for branchless tasks (e.g., external repo work).
-                    // If the task has no task_branch, there's nothing to merge —
-                    // go directly to Merged.
+                    // Skip merge pipeline for branchless tasks or no-code-changes tasks.
+                    // - Branchless: task has no task_branch (e.g., external repo work).
+                    // - No-code-changes: reviewer used approved_no_changes and confirmed
+                    //   no code diff exists (metadata set by complete_review handler).
+                    // Both cases bypass PendingMerge and go directly to Merged.
                     if matches!(new_state, State::Approved)
                         && matches!(auto_state, State::PendingMerge)
                     {
@@ -196,13 +198,62 @@ impl<'a> TransitionHandler<'a> {
                             );
                             if let Ok(Some(task)) = task_repo.get_by_id(&task_id).await
                             {
-                                if task.task_branch.is_none() {
+                                let is_branchless = task.task_branch.is_none();
+                                let has_no_changes = has_no_code_changes_metadata(&task);
+
+                                if is_branchless || has_no_changes {
+                                    let reason = if has_no_changes {
+                                        "no_code_changes metadata"
+                                    } else {
+                                        "no task branch"
+                                    };
                                     tracing::info!(
                                         task_id = %self.machine.context.task_id,
-                                        "No task branch — skipping merge pipeline, \
-                                         auto-transitioning to Merged"
+                                        reason = %reason,
+                                        "Skipping merge pipeline, auto-transitioning to Merged"
                                     );
                                     auto_state = State::Merged;
+
+                                    // For no-code-changes path: clear merge progress and
+                                    // spawn deferred cleanup (branch/worktree deletion).
+                                    // Branchless tasks have no branch/worktree to clean up.
+                                    if has_no_changes && !is_branchless {
+                                        let task_id_str = task_id.as_str().to_string();
+                                        crate::domain::entities::merge_progress_event::clear_merge_progress(&task_id_str);
+
+                                        let task_branch = task.task_branch.clone();
+                                        let worktree_path = task.worktree_path.clone();
+
+                                        // Fetch project for working_directory
+                                        if let Some(ref project_repo) =
+                                            self.machine.context.services.project_repo
+                                        {
+                                            match project_repo.get_by_id(&task.project_id).await {
+                                                Ok(Some(project)) => {
+                                                    tokio::spawn(deferred_merge_cleanup(
+                                                        task_id.clone(),
+                                                        Arc::clone(task_repo),
+                                                        project.working_directory.clone(),
+                                                        task_branch,
+                                                        worktree_path,
+                                                    ));
+                                                }
+                                                Ok(None) => {
+                                                    tracing::warn!(
+                                                        task_id = %task_id_str,
+                                                        "Project not found for no-code-changes cleanup (non-fatal)"
+                                                    );
+                                                }
+                                                Err(e) => {
+                                                    tracing::warn!(
+                                                        task_id = %task_id_str,
+                                                        error = %e,
+                                                        "Failed to fetch project for no-code-changes cleanup (non-fatal)"
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

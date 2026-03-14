@@ -42,6 +42,7 @@ export type ReviewActionType = z.infer<typeof ReviewActionTypeSchema>;
  */
 export const REVIEW_OUTCOME_VALUES = [
   "approved",
+  "approved_no_changes",
   "changes_requested",
   "rejected",
 ] as const;
@@ -157,7 +158,7 @@ export function isReviewApproved(status: ReviewStatus): boolean {
  * Check if a review outcome is positive
  */
 export function isOutcomePositive(outcome: ReviewOutcome): boolean {
-  return outcome === "approved";
+  return outcome === "approved" || outcome === "approved_no_changes";
 }
 
 /**

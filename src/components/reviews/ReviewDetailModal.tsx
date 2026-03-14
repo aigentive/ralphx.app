@@ -229,7 +229,7 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
           }}
         >
           {/* Icon based on outcome */}
-          {entry.outcome === "approved" ? (
+          {entry.outcome === "approved" || entry.outcome === "approved_no_changes" ? (
             <CheckCircle2
               className="w-3.5 h-3.5 mt-0.5 shrink-0"
               style={{ color: "var(--status-success)" }}
@@ -259,6 +259,8 @@ function ReviewHistorySection({ history }: { history: ReviewNoteResponse[] }) {
                 {entry.reviewer === "ai" ? "AI" : entry.reviewer === "system" ? "System" : "Human"}{" "}
                 {entry.outcome === "approved"
                   ? "approved"
+                  : entry.outcome === "approved_no_changes"
+                  ? "approved (no changes)"
                   : entry.outcome === "changes_requested"
                   ? "requested changes"
                   : "rejected"}
@@ -369,7 +371,7 @@ export function ReviewDetailModal({
 
   // Get latest approved review for summary
   const latestApproved = useMemo(() => {
-    const approved = history.filter((h) => h.outcome === "approved");
+    const approved = history.filter((h) => h.outcome === "approved" || h.outcome === "approved_no_changes");
     return approved.length > 0 ? approved[0] : null;
   }, [history]);
 
