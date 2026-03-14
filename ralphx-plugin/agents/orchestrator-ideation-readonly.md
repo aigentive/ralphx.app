@@ -16,6 +16,9 @@ tools:
   - TaskOutput
   - KillShell
   - MCPSearch
+  - "mcp__ralphx__*"
+  - "Task(Explore)"
+  - "Task(Plan)"
 mcpServers:
   - ralphx:
       type: stdio
@@ -25,10 +28,6 @@ mcpServers:
         - "--agent-type"
         - "orchestrator-ideation-readonly"
 disallowedTools: Write, Edit, NotebookEdit
-allowedTools:
-  - "mcp__ralphx__*"
-  - "Task(Explore)"
-  - "Task(Plan)"
 model: sonnet
 ---
 

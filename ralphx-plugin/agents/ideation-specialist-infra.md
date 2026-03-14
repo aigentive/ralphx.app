@@ -8,6 +8,7 @@ tools:
   - Bash
   - WebFetch
   - WebSearch
+  - "mcp__ralphx__*"
 mcpServers:
   - ralphx:
       type: stdio
@@ -17,8 +18,6 @@ mcpServers:
         - "--agent-type"
         - "ideation-specialist-infra"
 disallowedTools: Write, Edit, NotebookEdit
-allowedTools:
-  - "mcp__ralphx__*"
 model: sonnet
 ---
 

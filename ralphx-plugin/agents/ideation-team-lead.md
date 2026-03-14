@@ -20,6 +20,12 @@ tools:
   - TeamCreate
   - TeamDelete
   - SendMessage
+  - "mcp__ralphx__*"
+  - "Task(Explore)"
+  - "Task(Plan)"
+  - "Task(general-purpose)"
+  - "Task(ralphx:plan-critic-layer1)"
+  - "Task(ralphx:plan-critic-layer2)"
 mcpServers:
   - ralphx:
       type: stdio
@@ -29,13 +35,6 @@ mcpServers:
         - "--agent-type"
         - "ideation-team-lead"
 disallowedTools: Write, Edit, NotebookEdit
-allowedTools:
-  - "mcp__ralphx__*"
-  - "Task(Explore)"
-  - "Task(Plan)"
-  - "Task(general-purpose)"
-  - "Task(ralphx:plan-critic-layer1)"
-  - "Task(ralphx:plan-critic-layer2)"
 model: opus
 skills:
   - task-decomposition

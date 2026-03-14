@@ -8,6 +8,7 @@ tools:
   - Grep
   - Glob
   - Bash
+  - "mcp__ralphx__*"
 mcpServers:
   - ralphx:
       type: stdio
@@ -16,8 +17,6 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "memory-maintainer"
-allowedTools:
-  - "mcp__ralphx__*"
 model: haiku
 ---
 

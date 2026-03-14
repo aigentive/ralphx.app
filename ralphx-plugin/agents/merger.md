@@ -17,6 +17,9 @@ tools:
   - TaskOutput
   - KillShell
   - MCPSearch
+  - "mcp__ralphx__*"
+  - "Task(Explore)"
+  - "Task(Plan)"
 mcpServers:
   - ralphx:
       type: stdio
@@ -25,10 +28,6 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "ralphx-merger"
-allowedTools:
-  - "mcp__ralphx__*"
-  - "Task(Explore)"
-  - "Task(Plan)"
 model: opus
 ---
 

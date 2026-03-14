@@ -7,6 +7,8 @@ tools:
   - Glob
   - WebFetch
   - WebSearch
+  - "mcp__ralphx__get_session_plan"
+  - "mcp__ralphx__get_artifact"
 mcpServers:
   - ralphx:
       type: stdio
@@ -15,9 +17,6 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "plan-critic-layer1"
-allowedTools:
-  - "mcp__ralphx__get_session_plan"
-  - "mcp__ralphx__get_artifact"
 disallowedTools:
   - Write
   - Edit

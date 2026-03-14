@@ -94,6 +94,7 @@ External: Third-party bot → Bearer token → ralphx-external-mcp (:3848) → H
 Plugin: `claude --plugin-dir ./ralphx-plugin --agent worker -p "Execute"` | Tool config: `.claude/rules/agent-mcp-tools.md`
 **MCP server build (NON-NEGOTIABLE):** After modifying ANY source in `ralphx-plugin/ralphx-mcp-server/src/` or `ralphx-plugin/ralphx-external-mcp/src/`, rebuild the respective server. ❌ Committing without rebuilding.
 **mcp_tools override semantics (NON-NEGOTIABLE):** `extends` in `ralphx.yaml`: specifying `mcp_tools` fully replaces parent (no merge) — child must list ALL tools. Omitting `mcp_tools` inherits parent's list. ❌ Assuming partial inheritance when you specify the key.
+**Agent frontmatter tool fields (NON-NEGOTIABLE):** Only `tools` and `disallowedTools` are valid in agent `.md` frontmatter. ❌ `allowedTools` — silently ignored by Claude Code. Add MCP tools (e.g., `"mcp__ralphx__*"`) to the `tools` list. Note: `--allowedTools` IS valid as a CLI flag at spawn time — only invalid as frontmatter.
 
 | Agent | MCP Tools |
 |-------|-----------|

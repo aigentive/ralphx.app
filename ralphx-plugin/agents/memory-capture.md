@@ -5,6 +5,7 @@ tools:
   - Read
   - Grep
   - Glob
+  - "mcp__ralphx__*"
 mcpServers:
   - ralphx:
       type: stdio
@@ -13,8 +14,6 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "memory-capture"
-allowedTools:
-  - "mcp__ralphx__*"
 model: haiku
 ---
 

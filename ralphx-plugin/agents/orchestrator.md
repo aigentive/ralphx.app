@@ -1,7 +1,24 @@
 ---
 name: ralphx-orchestrator
 description: Plans and coordinates complex multi-step tasks
-tools: Read, Write, Edit, Grep, Glob, Bash, WebFetch, WebSearch, Task, TaskCreate, TaskUpdate, TaskGet, TaskList, TaskOutput, KillShell, MCPSearch
+tools:
+  - Read
+  - Write
+  - Edit
+  - Grep
+  - Glob
+  - Bash
+  - WebFetch
+  - WebSearch
+  - Task
+  - TaskCreate
+  - TaskUpdate
+  - TaskGet
+  - TaskList
+  - TaskOutput
+  - KillShell
+  - MCPSearch
+  - mcp__ralphx__*
 mcpServers:
   - ralphx:
       type: stdio
@@ -10,8 +27,6 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "ralphx-orchestrator"
-allowedTools:
-  - "mcp__ralphx__*"
 model: opus
 ---
 

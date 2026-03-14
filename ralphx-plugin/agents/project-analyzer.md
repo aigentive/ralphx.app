@@ -6,6 +6,7 @@ tools:
   - Glob
   - Bash
   - Grep
+  - "mcp__ralphx__*"
 mcpServers:
   - ralphx:
       type: stdio
@@ -14,12 +15,6 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "project-analyzer"
-allowedTools:
-  - "mcp__ralphx__*"
-  - Read
-  - Glob
-  - Bash
-  - Grep
 model: haiku
 ---
 
