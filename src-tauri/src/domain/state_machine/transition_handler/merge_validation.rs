@@ -137,14 +137,14 @@ pub(crate) async fn spawn_cancellable_command(
 /// Analysis entry for path-scoped build/validation commands.
 /// Mirrors the HTTP handler's AnalysisEntry but kept local to avoid cross-module coupling.
 #[derive(Debug, Clone, serde::Deserialize)]
-struct MergeAnalysisEntry {
-    path: String,
+pub(super) struct MergeAnalysisEntry {
+    pub(super) path: String,
     #[allow(dead_code)]
-    label: String,
+    pub(super) label: String,
     #[serde(default)]
-    validate: Vec<String>,
+    pub(super) validate: Vec<String>,
     #[serde(default)]
-    worktree_setup: Vec<String>,
+    pub(super) worktree_setup: Vec<String>,
 }
 
 /// Analysis entry for pre-execution setup commands.
@@ -186,7 +186,7 @@ pub struct ValidationLogEntry {
 impl ValidationLogEntry {
     /// Create a new ValidationLogEntry with all required fields.
     /// Sets retried=false, stdout_log_path=None, stderr_log_path=None by default.
-    fn new(
+    pub(super) fn new(
         phase: impl Into<String>,
         command: impl Into<String>,
         path: impl Into<String>,
@@ -354,6 +354,49 @@ pub(super) fn emit_merge_progress<R: tauri::Runtime>(
     }
 }
 
+/// Parse an `ln -s` or `ln -sfn` command to extract `(source, target)` as absolute PathBufs.
+///
+/// Resolves relative paths against `cwd`. Returns `None` for non-symlink commands
+/// or commands that can't be parsed (wrong arg count, missing -s flag, etc.).
+///
+/// This is the canonical parser used by both `try_handle_symlink_idempotent` and the
+/// collision detection pre-scan — a single source of truth for symlink argument extraction.
+pub(super) fn parse_symlink_command(cmd: &str, cwd: &Path) -> Option<(PathBuf, PathBuf)> {
+    let parts: Vec<&str> = cmd.split_whitespace().collect();
+    if parts.is_empty() || parts[0] != "ln" {
+        return None;
+    }
+
+    // Must have -s flag (could be -s, -sf, -sn, -sfn, etc.)
+    let has_symlink_flag = parts.iter().any(|p| p.starts_with('-') && p.contains('s'));
+    if !has_symlink_flag {
+        return None;
+    }
+
+    // Extract non-flag arguments (source and target)
+    let args: Vec<&str> = parts
+        .iter()
+        .filter(|p| !p.starts_with('-') && **p != "ln")
+        .copied()
+        .collect();
+    if args.len() != 2 {
+        return None;
+    }
+
+    let source = if Path::new(args[0]).is_absolute() {
+        PathBuf::from(args[0])
+    } else {
+        cwd.join(args[0])
+    };
+    let target = if Path::new(args[1]).is_absolute() {
+        PathBuf::from(args[1])
+    } else {
+        cwd.join(args[1])
+    };
+
+    Some((source, target))
+}
+
 /// Idempotent symlink handling for worktree setup commands.
 ///
 /// Parses `ln -s[f] <source> <target>` commands and handles existing targets:
@@ -428,7 +471,7 @@ pub(super) fn try_handle_symlink_idempotent(
     if target_path.is_symlink() {
         if let Ok(existing_target) = std::fs::read_link(&target_path) {
             // Layer 3: Detect and remove circular self-symlinks left by previous runs.
-            if existing_target == target_path || existing_target == PathBuf::from(args[1]) {
+            if existing_target == target_path || existing_target == Path::new(args[1]) {
                 tracing::warn!(
                     command = %cmd,
                     target = %target_path.display(),
@@ -529,6 +572,11 @@ async fn run_setup_phase(
         );
     }
 
+    // --- Collision detection pre-scan ---
+    // Build a map from resolved symlink target → [(entry_path, full_resolved_cmd)]
+    // to detect when multiple entries map to the same target path.
+    use std::collections::{HashMap, HashSet};
+    let mut target_to_entries: HashMap<PathBuf, Vec<(String, String)>> = HashMap::new();
     for entry in entries {
         for cmd_str in &entry.worktree_setup {
             let resolved_cmd = resolve(cmd_str);
@@ -538,6 +586,125 @@ async fn run_setup_phase(
             } else {
                 merge_cwd.join(&resolved_path)
             };
+            if let Some((_src, target)) = parse_symlink_command(&resolved_cmd, &cmd_cwd) {
+                target_to_entries
+                    .entry(target)
+                    .or_default()
+                    .push((resolved_path.clone(), resolved_cmd.clone()));
+            }
+        }
+    }
+
+    // Find targets claimed by more than one entry (collisions).
+    // Determine the winner for each colliding target:
+    //   - If the root entry (entry.path == ".") is a collider → root wins
+    //   - Otherwise → first collider by JSON order wins
+    let mut collision_targets: HashSet<PathBuf> = HashSet::new();
+    let mut collision_winners: HashMap<PathBuf, String> = HashMap::new(); // target → winning entry_path
+    for (target, claimants) in &target_to_entries {
+        if claimants.len() > 1 {
+            collision_targets.insert(target.clone());
+            // Winner: root entry ("." after resolve) if present, else first by JSON order
+            let winner_path = claimants
+                .iter()
+                .find(|(ep, _)| ep == ".")
+                .map(|(ep, _)| ep.clone())
+                .unwrap_or_else(|| claimants[0].0.clone());
+            collision_winners.insert(target.clone(), winner_path);
+        }
+    }
+
+    // Track which collision targets have already been claimed (to handle the case
+    // where the same winner has multiple commands mapping to the same target).
+    let mut claimed_targets: HashSet<PathBuf> = HashSet::new();
+
+    for entry in entries {
+        for cmd_str in &entry.worktree_setup {
+            let resolved_cmd = resolve(cmd_str);
+            let resolved_path = resolve(&entry.path);
+            let cmd_cwd = if resolved_path == "." {
+                merge_cwd.to_path_buf()
+            } else {
+                merge_cwd.join(&resolved_path)
+            };
+
+            // --- Collision check ---
+            // If this command's target collides with another entry, apply winner-based skipping.
+            if let Some((_src, target)) = parse_symlink_command(&resolved_cmd, &cmd_cwd) {
+                if collision_targets.contains(&target) {
+                    let winner_path = collision_winners.get(&target).cloned().unwrap_or_default();
+                    let is_winner = resolved_path == winner_path;
+                    let already_claimed = claimed_targets.contains(&target);
+
+                    if is_winner && !already_claimed {
+                        // This entry wins the collision — let it proceed, mark target claimed
+                        claimed_targets.insert(target.clone());
+                        // (fall through to normal processing below)
+                    } else {
+                        // Loser or duplicate winner claim — skip
+                        tracing::warn!(
+                            entry_path = %resolved_path,
+                            target = %target.display(),
+                            winner_path = %winner_path,
+                            "Skipping colliding worktree_setup for entry '{}' — target '{}' collides with entry '{}'",
+                            resolved_path,
+                            target.display(),
+                            winner_path,
+                        );
+                        let skip_entry = ValidationLogEntry::new(
+                            "setup",
+                            &resolved_cmd,
+                            &resolved_path,
+                            &entry.label,
+                            "skipped",
+                            Some(0),
+                            String::new(),
+                            format!(
+                                "Skipped: target '{}' collides with entry '{}'",
+                                target.display(),
+                                winner_path,
+                            ),
+                            0,
+                        );
+                        if let Some(handle) = app_handle {
+                            let mut event_data = serde_json::json!({
+                                "task_id": task_id_str,
+                                "phase": skip_entry.phase,
+                                "command": skip_entry.command,
+                                "path": skip_entry.path,
+                                "label": skip_entry.label,
+                                "status": skip_entry.status,
+                                "exit_code": skip_entry.exit_code,
+                                "stderr": skip_entry.stderr,
+                                "duration_ms": skip_entry.duration_ms,
+                            });
+                            if let Some(ctx) = context {
+                                event_data["context"] = serde_json::json!(ctx);
+                            }
+                            let _ = handle.emit("merge:validation_step", event_data);
+                        }
+                        log.push(skip_entry);
+                        continue;
+                    }
+                }
+            }
+
+            // --- Parent directory creation ---
+            // Ensure the symlink target's parent directory exists before running the command.
+            if let Some((_src, target)) = parse_symlink_command(&resolved_cmd, &cmd_cwd) {
+                if let Some(parent) = target.parent() {
+                    if !parent.exists() {
+                        if let Err(e) = std::fs::create_dir_all(parent) {
+                            tracing::warn!(
+                                command = %resolved_cmd,
+                                parent = %parent.display(),
+                                error = %e,
+                                "Worktree setup: failed to create parent dir for symlink target (continuing)"
+                            );
+                        }
+                    }
+                }
+            }
 
             // Idempotent symlink handling: skip if correct symlink exists,
             // remove stale target if wrong, pass through for non-symlink commands
