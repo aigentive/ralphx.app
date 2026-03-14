@@ -89,7 +89,27 @@ pub async fn start_http_server(
                 .allow_headers(Any),
         );
 
-    let app = Router::new()
+    // Internal routes — NO CORS.
+    // Accessed only by the internal MCP server (ralphx-mcp-server) running as a
+    // child process on the same machine. Non-browser HTTP clients do not perform
+    // CORS preflight requests, so adding a CORS layer here is both unnecessary
+    // and undesirable (it would allow browser pages to call these routes).
+    let internal_routes = Router::new()
+        .route(
+            "/api/internal/projects",
+            get(list_projects_internal),
+        )
+        .route(
+            "/api/internal/cross_project/create_session",
+            post(create_cross_project_session_http),
+        );
+
+    // Public API routes — permissive CORS.
+    // Includes all existing MCP tool endpoints and external API endpoints.
+    // The CorsLayer is applied only to this sub-router so the permissive
+    // allow_origin(Any) does NOT bleed into management_routes (which use a
+    // restrictive localhost-only CORS) or internal_routes (which need no CORS).
+    let public_routes = Router::new()
         // Health check — unauthenticated, no auth middleware
         .route("/health", get(health_handler))
         .merge(management_routes)
@@ -331,13 +351,20 @@ pub async fn start_http_server(
             get(get_team_session_state),
         )
         .route("/api/team/session_state", post(save_team_session_state))
-        .with_state(state)
+        // Permissive CORS applied only to public routes — does NOT apply to
+        // internal_routes (which need no CORS) or management_routes (which have
+        // their own restrictive CorsLayer already).
         .layer(
             CorsLayer::new()
                 .allow_origin(Any)
                 .allow_methods(Any)
                 .allow_headers(Any),
         );
+
+    let app = Router::new()
+        .merge(internal_routes)
+        .merge(public_routes)
+        .with_state(state);
 
     let listener = bind_with_retry("127.0.0.1:3847", 5, Duration::from_millis(250)).await?;
 

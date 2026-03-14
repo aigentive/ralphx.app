@@ -78,6 +78,10 @@ pub struct IdeationSession {
     /// Generation counter for zombie protection (incremented on each auto-verify trigger)
     #[serde(default)]
     pub verification_generation: i32,
+    /// Source project ID when this session was imported from another project
+    pub source_project_id: Option<String>,
+    /// Source session ID when this session was imported from another project
+    pub source_session_id: Option<String>,
 }
 
 /// Builder for creating IdeationSession instances
@@ -102,6 +106,8 @@ pub struct IdeationSessionBuilder {
     verification_in_progress: Option<bool>,
     verification_metadata: Option<String>,
     verification_generation: Option<i32>,
+    source_project_id: Option<String>,
+    source_session_id: Option<String>,
 }
 
 impl IdeationSessionBuilder {
@@ -200,9 +206,27 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the verification status
+    pub fn verification_status(mut self, verification_status: VerificationStatus) -> Self {
+        self.verification_status = Some(verification_status);
+        self
+    }
+
     /// Set the verification generation counter
     pub fn verification_generation(mut self, generation: i32) -> Self {
         self.verification_generation = Some(generation);
+        self
+    }
+
+    /// Set the source project ID (cross-project import provenance)
+    pub fn source_project_id(mut self, source_project_id: impl Into<String>) -> Self {
+        self.source_project_id = Some(source_project_id.into());
+        self
+    }
+
+    /// Set the source session ID (cross-project import provenance)
+    pub fn source_session_id(mut self, source_session_id: impl Into<String>) -> Self {
+        self.source_session_id = Some(source_session_id.into());
         self
     }
 
@@ -230,6 +254,8 @@ impl IdeationSessionBuilder {
             verification_in_progress: self.verification_in_progress.unwrap_or(false),
             verification_metadata: self.verification_metadata,
             verification_generation: self.verification_generation.unwrap_or(0),
+            source_project_id: self.source_project_id,
+            source_session_id: self.source_session_id,
         }
     }
 }
@@ -360,6 +386,12 @@ impl IdeationSession {
                 .unwrap_or(None)
                 .map(|v| v as i32)
                 .unwrap_or(0),
+            source_project_id: row
+                .get::<_, Option<String>>("source_project_id")
+                .unwrap_or(None),
+            source_session_id: row
+                .get::<_, Option<String>>("source_session_id")
+                .unwrap_or(None),
         })
     }
 

@@ -109,6 +109,8 @@ pub fn make_session_no_title(session_id: &str) -> IdeationSession {
         verification_in_progress: false,
         verification_metadata: None,
         verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
     }
 }
 
@@ -134,6 +136,8 @@ pub fn make_session_with_title_for_test(session_id: &str, title: &str) -> Ideati
         verification_in_progress: false,
         verification_metadata: None,
         verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
     }
 }
 

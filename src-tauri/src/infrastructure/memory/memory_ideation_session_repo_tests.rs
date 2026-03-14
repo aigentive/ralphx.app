@@ -269,3 +269,37 @@ async fn test_get_verification_status_returns_none_for_nonexistent() {
     let result = repo.get_verification_status(&id).await.unwrap();
     assert!(result.is_none());
 }
+
+/// ImportedVerified sessions must not be reset by reset_verification —
+/// their pre-verified status must be preserved across plan artifact changes.
+#[tokio::test]
+async fn test_reset_verification_is_noop_for_imported_verified() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    // Set to ImportedVerified, not in progress
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::ImportedVerified,
+        false,
+        Some(r#"{"v":1}"#.to_string()),
+    )
+    .await
+    .unwrap();
+
+    // reset_verification should return false (no-op) for ImportedVerified
+    let result = repo.reset_verification(&session.id).await.unwrap();
+    assert!(!result, "reset_verification must return false for ImportedVerified");
+
+    let found = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(
+        found.verification_status,
+        VerificationStatus::ImportedVerified,
+        "ImportedVerified status must not be changed by reset_verification"
+    );
+    assert!(!found.verification_in_progress);
+    // Metadata is preserved (reset was skipped entirely)
+    assert_eq!(found.verification_metadata, Some(r#"{"v":1}"#.to_string()));
+}

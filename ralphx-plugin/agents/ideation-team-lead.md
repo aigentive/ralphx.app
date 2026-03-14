@@ -296,6 +296,18 @@ The agent decides which layers apply based on plan content. If the plan proposes
 
 **Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → ask user: "A verification round was in progress. Resume from round {N}? (y/n)"
 
+### Cross-Project Plan Detection
+
+After creating or verifying a plan, check if it proposes changes spanning multiple projects:
+- File paths referencing different project roots
+- Architecture decisions affecting multiple codebases
+- Proposals that naturally belong to different project scopes
+
+If cross-project paths detected → call `cross_project_guide({ sessionId })` for contextual guidance on:
+1. How to split proposals across projects
+2. When to use `create_cross_project_session` to spawn sessions in target projects
+3. How to create task proposals for each involved project's session
+
 ### Phase 5: CONFIRM
 Present plan to user → wait for approval. Include: team research summary, architecture overview, key decisions, affected files, implementation phases.
 

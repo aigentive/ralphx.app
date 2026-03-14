@@ -455,6 +455,65 @@ fn test_verification_gate_in_progress_before_status_check() {
     );
 }
 
+/// Test: ImportedVerified sessions pass the acceptance gate (they are pre-verified by import).
+#[test]
+fn test_gate_allows_imported_verified() {
+    let session = make_session(VerificationStatus::ImportedVerified);
+    let settings = settings_with_required(true);
+    assert!(
+        check_verification_gate(&session, &settings).is_ok(),
+        "ImportedVerified should pass the acceptance gate"
+    );
+}
+
+/// Test: ImportedVerified passes all three proposal operations.
+#[test]
+fn test_proposal_gate_imported_verified_allows_all_operations() {
+    let settings = proposal_gate_settings(true);
+    let session = make_session_with_own_plan(VerificationStatus::ImportedVerified);
+    for op in [
+        ProposalOperation::Create,
+        ProposalOperation::Update,
+        ProposalOperation::Delete,
+    ] {
+        assert!(
+            check_proposal_verification_gate(&session, &settings, None, op).is_ok(),
+            "ImportedVerified should allow op={:?}",
+            op
+        );
+    }
+}
+
+/// Test: Child session with inherited ImportedVerified parent allows all operations.
+#[test]
+fn test_proposal_gate_inherited_plan_parent_imported_verified_allows() {
+    let settings = proposal_gate_settings(true);
+    let session = make_inherited_plan_session();
+    let parent_status = Some(VerificationStatus::ImportedVerified);
+    for op in [
+        ProposalOperation::Create,
+        ProposalOperation::Update,
+        ProposalOperation::Delete,
+    ] {
+        assert!(
+            check_proposal_verification_gate(&session, &settings, parent_status, op).is_ok(),
+            "ImportedVerified parent should allow op={:?}",
+            op
+        );
+    }
+}
+
+/// Test: gate passes for ImportedVerified when gate is disabled (config bypass).
+#[test]
+fn test_gate_passes_imported_verified_when_not_required() {
+    let settings = settings_with_required(false);
+    let session = make_session(VerificationStatus::ImportedVerified);
+    assert!(
+        check_verification_gate(&session, &settings).is_ok(),
+        "ImportedVerified must pass when require_verification=false"
+    );
+}
+
 /// Test: session with in_progress=false and status=Reviewing falls through to status match.
 #[test]
 fn test_verification_gate_reviewing_status_without_in_progress() {

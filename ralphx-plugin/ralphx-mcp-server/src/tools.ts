@@ -1264,6 +1264,75 @@ export const ALL_TOOLS: Tool[] = [
       required: ["project_id", "entries"],
     },
   },
+  // ========================================================================
+  // CROSS-PROJECT TOOLS (orchestrator-ideation + ideation-team-lead)
+  // ========================================================================
+  {
+    name: "list_projects",
+    description:
+      "List all RalphX projects on this instance. Returns project id, name, working_directory, and status for each project. " +
+      "Use to discover existing projects before creating cross-project sessions.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "create_cross_project_session",
+    description:
+      "Create a new ideation session in a target project with an inherited plan from the current project. " +
+      "The backend resolves the target project by filesystem path (auto-creates a RalphX project if none exists at that path). " +
+      "The inherited plan is set to 'imported_verified' status — no auto-verify triggered. " +
+      "Use when exporting a verified plan to another project for execution.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        target_project_path: {
+          type: "string",
+          description:
+            "Absolute filesystem path to the target project root. Backend resolves or auto-creates the RalphX project.",
+        },
+        source_session_id: {
+          type: "string",
+          description:
+            "ID of the source ideation session whose verified plan will be inherited.",
+        },
+        title: {
+          type: "string",
+          description:
+            "Optional title for the new session. Defaults to 'Imported: {source session title}'.",
+        },
+      },
+      required: ["target_project_path", "source_session_id"],
+    },
+  },
+  {
+    name: "cross_project_guide",
+    description:
+      "Analyze a plan for cross-project paths and return structured guidance for multi-project orchestration. " +
+      "Detects file paths referencing different project roots, suggests how to split proposals across projects, " +
+      "and provides step-by-step instructions for creating sessions in target projects. " +
+      "This tool runs locally in the MCP server — no backend call needed.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        session_id: {
+          type: "string",
+          description:
+            "Session ID to fetch the plan content from (uses get_session_plan internally). " +
+            "Provide either session_id or plan_content, not both.",
+        },
+        plan_content: {
+          type: "string",
+          description:
+            "Raw plan text to analyze directly. " +
+            "Provide either plan_content or session_id, not both.",
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 /**
@@ -1300,6 +1369,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_memories",
     "get_memory",
     "get_memories_for_paths",
+    // cross-project tools
+    "list_projects",
+    "create_cross_project_session",
+    "cross_project_guide",
   ],
   [ORCHESTRATOR_IDEATION_READONLY]: [
     "list_session_proposals",
@@ -1550,6 +1623,10 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "search_memories",
     "get_memory",
     "get_memories_for_paths",
+    // Cross-project tools
+    "list_projects",
+    "create_cross_project_session",
+    "cross_project_guide",
   ],
   // Ideation team members - research and analysis (read-only)
   [IDEATION_TEAM_MEMBER]: [

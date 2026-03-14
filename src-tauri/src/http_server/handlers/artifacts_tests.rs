@@ -60,6 +60,8 @@ fn make_active_session() -> IdeationSession {
         verification_in_progress: false,
         verification_metadata: None,
         verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
     }
 }
 

@@ -20,6 +20,9 @@ export interface IdeationSessionResponse {
   verificationStatus: VerificationStatus;
   verificationInProgress: boolean;
   gapScore: number | null;
+  sourceProjectId?: string | null;
+  sourceSessionId?: string | null;
+  inheritedPlanArtifactId?: string | null;
 }
 
 export interface VerificationStatusResponse {
@@ -186,4 +189,10 @@ export interface CreateChildSessionInput {
   title?: string;
   description?: string;
   inheritContext?: boolean;
+}
+
+export interface CrossProjectSessionInput {
+  targetProjectPath: string;
+  sourceSessionId: string;
+  title?: string;
 }

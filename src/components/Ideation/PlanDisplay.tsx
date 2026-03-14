@@ -83,6 +83,8 @@ export interface PlanDisplayProps {
   onAddressGaps?: (selectedGapDescriptions: string[]) => void;
   /** Called when user clicks "Create Proposals" — triggers orchestrator to decompose plan into tasks */
   onCreateProposals?: () => void;
+  /** Source project name — shown in imported_verified tooltip */
+  sourceProjectName?: string;
   /** Current plan artifact version — used with verificationPlanVersion to detect stale gaps */
   planVersion?: number;
   /** Plan artifact version at time of verification — used to detect stale gaps */
@@ -260,6 +262,7 @@ export function PlanDisplay({
   onCreateProposals,
   planVersion,
   verificationPlanVersion,
+  sourceProjectName,
 }: PlanDisplayProps) {
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
@@ -303,7 +306,7 @@ export function PlanDisplay({
     onSkipVerification;
   const showCreateProposals =
     onCreateProposals &&
-    (verificationStatus === "verified" || verificationStatus === "skipped") &&
+    (verificationStatus === "verified" || verificationStatus === "skipped" || verificationStatus === "imported_verified") &&
     !verificationInProgress &&
     (linkedProposalsCount === undefined || linkedProposalsCount === 0);
   // Show history tab when rounds exist and verification is not actively in progress
@@ -501,6 +504,7 @@ export function PlanDisplay({
                         {...(currentRound !== undefined && { currentRound })}
                         {...(maxRounds !== undefined && { maxRounds })}
                         {...(convergenceReason !== undefined && { convergenceReason })}
+                        {...(sourceProjectName !== undefined && { sourceProjectName })}
                         {...(onRetryVerification !== undefined && { onRetry: onRetryVerification })}
                       />
                     )}

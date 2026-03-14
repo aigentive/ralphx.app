@@ -249,6 +249,72 @@ async fn test_reconciler_auto_verify_shorter_threshold() {
     );
 }
 
+/// ImportedVerified sessions must never be reset by the reconciler.
+/// They appear in the stale-sessions query (in_progress=true, old enough) but should be
+/// skipped because their pre-verified status must be preserved.
+#[tokio::test]
+async fn test_reconciler_skips_imported_verified_sessions() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // ImportedVerified session that would otherwise be considered stale (> 90 min old, in_progress=true)
+    let mut imported_session = IdeationSession::new(project_id.clone());
+    imported_session.verification_status = VerificationStatus::ImportedVerified;
+    imported_session.verification_in_progress = true;
+    imported_session.updated_at = Utc::now() - Duration::hours(3);
+    let imported_id = imported_session.id.clone();
+    repo.create(imported_session).await.unwrap();
+
+    // A normal Reviewing session that IS stale — should be reset
+    let mut stuck_session = IdeationSession::new(project_id.clone());
+    stuck_session.verification_status = VerificationStatus::Reviewing;
+    stuck_session.verification_in_progress = true;
+    stuck_session.updated_at = Utc::now() - Duration::hours(3);
+    let stuck_id = stuck_session.id.clone();
+    repo.create(stuck_session).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    let count = svc.scan_and_reset().await;
+
+    // Only the Reviewing session should be reset; ImportedVerified is preserved
+    assert_eq!(count, 1, "only the stuck Reviewing session should be reset");
+
+    let imported_after = repo.get_by_id(&imported_id).await.unwrap().unwrap();
+    assert_eq!(
+        imported_after.verification_status,
+        VerificationStatus::ImportedVerified,
+        "ImportedVerified status must not be changed by reconciler"
+    );
+
+    let stuck_after = repo.get_by_id(&stuck_id).await.unwrap().unwrap();
+    assert_eq!(
+        stuck_after.verification_status,
+        VerificationStatus::Unverified,
+        "Stuck Reviewing session must be reset to Unverified"
+    );
+}
+
+/// ImportedVerified-only repo: reconciler resets 0 sessions.
+#[tokio::test]
+async fn test_reconciler_only_imported_verified_resets_zero() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Two ImportedVerified sessions, both stale
+    for _ in 0..2 {
+        let mut session = IdeationSession::new(project_id.clone());
+        session.verification_status = VerificationStatus::ImportedVerified;
+        session.verification_in_progress = true;
+        session.updated_at = Utc::now() - Duration::hours(5);
+        repo.create(session).await.unwrap();
+    }
+
+    let svc = make_service(repo.clone(), default_config());
+    let count = svc.scan_and_reset().await;
+
+    assert_eq!(count, 0, "no ImportedVerified sessions should be reset");
+}
+
 #[tokio::test]
 async fn test_reconciler_manual_session_reset_after_long_threshold() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());

@@ -21,6 +21,21 @@ pub struct TeamConfigInput {
     pub composition_mode: String,
 }
 
+/// Input for creating a cross-project session (imports a verified plan from another project).
+///
+/// The target project is identified by filesystem path; it will be auto-created if not found.
+/// The source session must have a verified plan (Verified | Skipped | ImportedVerified).
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateCrossProjectSessionInput {
+    /// Absolute filesystem path of the target project's working directory
+    pub target_project_path: String,
+    /// ID of the source ideation session whose plan is being inherited
+    pub source_session_id: String,
+    /// Optional human-readable title for the new session
+    pub title: Option<String>,
+}
+
 /// Input for creating a new ideation session
 #[derive(Debug, Deserialize)]
 pub struct CreateSessionInput {
@@ -51,6 +66,9 @@ pub struct IdeationSessionResponse {
     pub verification_status: String,
     pub verification_in_progress: bool,
     pub gap_score: Option<i32>,
+    pub inherited_plan_artifact_id: Option<String>,
+    pub source_project_id: Option<String>,
+    pub source_session_id: Option<String>,
 }
 
 impl From<IdeationSession> for IdeationSessionResponse {
@@ -80,6 +98,9 @@ impl From<IdeationSession> for IdeationSessionResponse {
             verification_status: session.verification_status.to_string(),
             verification_in_progress: session.verification_in_progress,
             gap_score,
+            inherited_plan_artifact_id: session.inherited_plan_artifact_id.map(|id| id.as_str().to_string()),
+            source_project_id: session.source_project_id,
+            source_session_id: session.source_session_id,
         }
     }
 }

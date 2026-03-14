@@ -25,6 +25,11 @@ pub fn emit_verification_status_changed<R: Runtime>(
     metadata: Option<&VerificationMetadata>,
     convergence_reason: Option<&str>,
 ) {
+    // ImportedVerified is a terminal import state — no UI event emitted.
+    // The frontend learns this status via polling/initial load, not via real-time events.
+    if status == VerificationStatus::ImportedVerified {
+        return;
+    }
     let payload = build_verification_payload(session_id, status, in_progress, metadata, convergence_reason);
     let _ = app_handle.emit("plan_verification:status_changed", payload);
 }

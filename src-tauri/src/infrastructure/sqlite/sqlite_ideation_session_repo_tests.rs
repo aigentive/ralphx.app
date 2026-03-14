@@ -1044,3 +1044,299 @@ async fn test_get_verification_status_returns_none_for_nonexistent_session() {
     let result = repo.get_verification_status(&id).await.unwrap();
     assert!(result.is_none());
 }
+
+// ==================== CIRCULAR IMPORT VALIDATION TESTS ====================
+
+fn create_test_session_with_source(
+    conn: &Connection,
+    project_id: &ProjectId,
+    source_session_id: Option<&str>,
+    source_project_id: Option<&str>,
+) -> IdeationSession {
+    let mut builder = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .verification_status(VerificationStatus::Verified);
+
+    if let Some(sid) = source_session_id {
+        builder = builder.source_session_id(sid.to_string());
+    }
+    if let Some(pid) = source_project_id {
+        builder = builder.source_project_id(pid.to_string());
+    }
+
+    let session = builder.build();
+    SqliteIdeationSessionRepository::insert_sync(conn, &session).unwrap();
+    session
+}
+
+#[test]
+fn test_validate_no_circular_import_happy_path() {
+    let conn = setup_test_db();
+    let source_project_id = ProjectId::new();
+    let target_project_id = ProjectId::new();
+    create_test_project(&conn, &source_project_id, "Source", "/source");
+    create_test_project(&conn, &target_project_id, "Target", "/target");
+
+    let source = create_test_session_with_source(&conn, &source_project_id, None, None);
+
+    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+        &conn,
+        source.id.as_str(),
+        target_project_id.as_str(),
+        10,
+    );
+
+    assert!(result.is_ok(), "Simple cross-project import should be allowed");
+}
+
+#[test]
+fn test_validate_no_circular_import_self_reference() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Project", "/project");
+
+    let session = create_test_session_with_source(&conn, &project_id, None, None);
+
+    // Trying to import from the same project (self-reference)
+    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+        &conn,
+        session.id.as_str(),
+        project_id.as_str(), // target == source project
+        10,
+    );
+
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("SELF_REFERENCE"),
+        "Expected SELF_REFERENCE error, got: {err_msg}"
+    );
+}
+
+#[test]
+fn test_validate_no_circular_import_a_to_b_to_a() {
+    let conn = setup_test_db();
+    let project_a = ProjectId::new();
+    let project_b = ProjectId::new();
+    create_test_project(&conn, &project_a, "Project A", "/project-a");
+    create_test_project(&conn, &project_b, "Project B", "/project-b");
+
+    // Session in B that was imported from A
+    let _session_b =
+        create_test_session_with_source(&conn, &project_b, None, Some(project_a.as_str()));
+
+    // Now trying to import from session_b into project_a would create A→B→A
+    // session_b is in project_b, which is NOT project_a, so no SELF_REFERENCE.
+    // But session_b.source_project_id == project_a → CIRCULAR_IMPORT.
+    // Note: validate_no_circular_import walks session_b.source_session_id (which is None here).
+    // The cycle is detected via project membership checks.
+    // Source session_b.project_id = project_b ≠ project_a → ok on first check.
+    // session_b.source_session_id = None → chain ends.
+    // No cycle detected at the session-chain level (because source_project_id is not walked).
+    //
+    // Actually: the CIRCULAR_IMPORT detection works when session_b has a source_session_id
+    // pointing to a session in project_a. Let's set up a proper 2-hop cycle.
+
+    // Create a session in project_a (the "original") with no parent
+    let session_a_original = create_test_session_with_source(&conn, &project_a, None, None);
+
+    // session_b2 was imported from session_a_original
+    let session_b2 = create_test_session_with_source(
+        &conn,
+        &project_b,
+        Some(session_a_original.id.as_str()),
+        Some(project_a.as_str()),
+    );
+
+    // Now project_a tries to import from session_b2 (which itself came from project_a)
+    // Walk: session_b2.source_session_id = session_a_original, which is in project_a = target
+    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+        &conn,
+        session_b2.id.as_str(),
+        project_a.as_str(),
+        10,
+    );
+
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("CIRCULAR_IMPORT"),
+        "Expected CIRCULAR_IMPORT error for A→B→A cycle, got: {err_msg}"
+    );
+}
+
+#[test]
+fn test_validate_no_circular_import_three_hop_cycle() {
+    let conn = setup_test_db();
+    let project_a = ProjectId::new();
+    let project_b = ProjectId::new();
+    let project_c = ProjectId::new();
+    create_test_project(&conn, &project_a, "A", "/a");
+    create_test_project(&conn, &project_b, "B", "/b");
+    create_test_project(&conn, &project_c, "C", "/c");
+
+    // session_a in A
+    let session_a = create_test_session_with_source(&conn, &project_a, None, None);
+    // session_b in B, imported from session_a
+    let session_b = create_test_session_with_source(
+        &conn,
+        &project_b,
+        Some(session_a.id.as_str()),
+        Some(project_a.as_str()),
+    );
+    // session_c in C, imported from session_b
+    let session_c = create_test_session_with_source(
+        &conn,
+        &project_c,
+        Some(session_b.id.as_str()),
+        Some(project_b.as_str()),
+    );
+
+    // Now A tries to import from session_c: A→C→B→A (3-hop)
+    // Walk: session_c.source_session_id = session_b (project_b ≠ project_a → ok)
+    //       session_b.source_session_id = session_a (project_a == target → CIRCULAR_IMPORT)
+    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+        &conn,
+        session_c.id.as_str(),
+        project_a.as_str(),
+        10,
+    );
+
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("CIRCULAR_IMPORT"),
+        "Expected CIRCULAR_IMPORT for 3-hop cycle, got: {err_msg}"
+    );
+}
+
+#[test]
+fn test_validate_no_circular_import_depth_limit_9_ok() {
+    let conn = setup_test_db();
+
+    // Build a chain of 9 projects: P1 ← P2 ← P3 ← … ← P9 ← P10
+    // Then P10 tries to import from the end of the chain (depth = 9 hops): should PASS
+    let projects: Vec<ProjectId> = (0..10).map(|_| ProjectId::new()).collect();
+    for (i, pid) in projects.iter().enumerate() {
+        create_test_project(&conn, pid, &format!("P{i}"), &format!("/p{i}"));
+    }
+
+    // Create sessions: each session points to the previous project's session
+    let session_0 = create_test_session_with_source(&conn, &projects[0], None, None);
+    let mut prev_session = session_0;
+    for i in 1..9 {
+        let s = create_test_session_with_source(
+            &conn,
+            &projects[i],
+            Some(prev_session.id.as_str()),
+            Some(projects[i - 1].as_str()),
+        );
+        prev_session = s;
+    }
+
+    // session at depth 9 (prev_session), target = projects[9]
+    // Walk depth 9 (should succeed since max is 10)
+    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+        &conn,
+        prev_session.id.as_str(),
+        projects[9].as_str(),
+        10,
+    );
+
+    assert!(result.is_ok(), "9-hop chain should be within depth limit of 10");
+}
+
+#[test]
+fn test_validate_no_circular_import_depth_limit_exceeded() {
+    let conn = setup_test_db();
+
+    // Build a chain of 11 projects so the walk exceeds depth 10
+    let projects: Vec<ProjectId> = (0..12).map(|_| ProjectId::new()).collect();
+    for (i, pid) in projects.iter().enumerate() {
+        create_test_project(&conn, pid, &format!("P{i}"), &format!("/p{i}"));
+    }
+
+    let session_0 = create_test_session_with_source(&conn, &projects[0], None, None);
+    let mut prev_session = session_0;
+    for i in 1..11 {
+        let s = create_test_session_with_source(
+            &conn,
+            &projects[i],
+            Some(prev_session.id.as_str()),
+            Some(projects[i - 1].as_str()),
+        );
+        prev_session = s;
+    }
+
+    // Session at depth 11, target = projects[11] (no cycle, just too deep)
+    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+        &conn,
+        prev_session.id.as_str(),
+        projects[11].as_str(),
+        10,
+    );
+
+    assert!(result.is_err());
+    let err_msg = result.unwrap_err().to_string();
+    assert!(
+        err_msg.contains("CHAIN_TOO_DEEP"),
+        "Expected CHAIN_TOO_DEEP error, got: {err_msg}"
+    );
+}
+
+#[test]
+fn test_validate_no_circular_import_dangling_source_is_ok() {
+    let conn = setup_test_db();
+    let source_project = ProjectId::new();
+    let target_project = ProjectId::new();
+    create_test_project(&conn, &source_project, "Source", "/source");
+    create_test_project(&conn, &target_project, "Target", "/target");
+
+    // Source session points to a non-existent (deleted) session — dangling reference
+    let nonexistent_id = IdeationSessionId::new();
+    let source = create_test_session_with_source(
+        &conn,
+        &source_project,
+        Some(nonexistent_id.as_str()),
+        None,
+    );
+
+    let result = SqliteIdeationSessionRepository::validate_no_circular_import_sync(
+        &conn,
+        source.id.as_str(),
+        target_project.as_str(),
+        10,
+    );
+
+    assert!(
+        result.is_ok(),
+        "Dangling source reference should be handled gracefully"
+    );
+}
+
+#[test]
+fn test_insert_sync_and_get_by_id_sync() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+
+    let session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .title("Cross-project session")
+        .verification_status(VerificationStatus::ImportedVerified)
+        .source_project_id("source-proj-123")
+        .source_session_id("source-sess-456")
+        .build();
+
+    let inserted = SqliteIdeationSessionRepository::insert_sync(&conn, &session).unwrap();
+    assert_eq!(inserted.id, session.id);
+    assert_eq!(inserted.verification_status, VerificationStatus::ImportedVerified);
+    assert_eq!(inserted.source_project_id, Some("source-proj-123".to_string()));
+    assert_eq!(inserted.source_session_id, Some("source-sess-456".to_string()));
+
+    let fetched = SqliteIdeationSessionRepository::get_by_id_sync(&conn, session.id.as_str())
+        .unwrap()
+        .unwrap();
+    assert_eq!(fetched.verification_status, VerificationStatus::ImportedVerified);
+    assert_eq!(fetched.source_session_id, Some("source-sess-456".to_string()));
+}

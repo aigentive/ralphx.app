@@ -257,6 +257,10 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             if session.verification_in_progress {
                 return Ok(false);
             }
+            // ImportedVerified sessions are never reset — their pre-verified status must be preserved.
+            if session.verification_status == VerificationStatus::ImportedVerified {
+                return Ok(false);
+            }
             session.verification_status = VerificationStatus::Unverified;
             session.verification_in_progress = false;
             session.verification_metadata = None;

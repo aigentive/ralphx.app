@@ -45,7 +45,7 @@ pub fn check_verification_gate(
         return Err(VerificationError::InProgress { round, max_rounds });
     }
     match session.verification_status {
-        VerificationStatus::Verified | VerificationStatus::Skipped => Ok(()),
+        VerificationStatus::Verified | VerificationStatus::Skipped | VerificationStatus::ImportedVerified => Ok(()),
         // Defense-in-depth: Reviewing arm still present in case in_progress flag is inconsistent
         VerificationStatus::Reviewing => {
             let (round, max_rounds) = parse_round_info(&session.verification_metadata);
@@ -113,8 +113,8 @@ pub fn check_proposal_verification_gate(
     let op_str = operation.to_string();
 
     match (operation, effective_status) {
-        // Verified or Skipped always allow
-        (_, VerificationStatus::Verified | VerificationStatus::Skipped) => Ok(()),
+        // Verified, Skipped, or ImportedVerified always allow
+        (_, VerificationStatus::Verified | VerificationStatus::Skipped | VerificationStatus::ImportedVerified) => Ok(()),
 
         // Create blocks Unverified
         (ProposalOperation::Create, VerificationStatus::Unverified) => {

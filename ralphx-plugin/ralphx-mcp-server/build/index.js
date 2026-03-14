@@ -444,6 +444,81 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             const { task_id, summary } = args;
             result = await callTauri(`execution/tasks/${task_id}/complete`, { summary: summary || "" });
         }
+        else if (name === "list_projects") {
+            // GET /api/internal/projects
+            result = await callTauriGet("internal/projects");
+        }
+        else if (name === "create_cross_project_session") {
+            // POST /api/internal/cross_project/create_session
+            const { target_project_path, source_session_id, title } = args;
+            result = await callTauri("internal/cross_project/create_session", {
+                targetProjectPath: target_project_path,
+                sourceSessionId: source_session_id,
+                title,
+            });
+        }
+        else if (name === "cross_project_guide") {
+            // MCP-server-only: analyze plan for cross-project paths and return guidance
+            const { session_id, plan_content } = args;
+            let planText = plan_content ?? "";
+            // If session_id provided, fetch plan content via get_session_plan
+            if (session_id && !planText) {
+                try {
+                    const planData = await callTauriGet(`get_session_plan/${session_id}`);
+                    planText = planData?.content ?? "";
+                }
+                catch (err) {
+                    planText = "";
+                    safeError(`[RalphX MCP] cross_project_guide: failed to fetch plan for session ${session_id}:`, err);
+                }
+            }
+            // Heuristic: detect cross-project paths (absolute paths, ../relative paths, paths with project-like names)
+            const crossProjectPatterns = [
+                /(?:^|\s|["'`])(\/(home|Users|workspace|projects|srv|opt)\/[^\s"'`]+)/gm,
+                /(?:^|\s|["'`])(\.\.\/?[^\s"'`]+)/gm,
+                /(?:target[_-]?project[_-]?path|project[_-]?path|working[_-]?directory)[:\s]+["']?([^\s"'`,\n]+)/gim,
+            ];
+            const detectedPaths = [];
+            for (const pattern of crossProjectPatterns) {
+                const matches = [...planText.matchAll(pattern)];
+                for (const m of matches) {
+                    const p = (m[1] || m[0]).trim().replace(/^["'`]|["'`]$/g, "");
+                    if (p && !detectedPaths.includes(p)) {
+                        detectedPaths.push(p);
+                    }
+                }
+            }
+            const hasCrossProjectContent = detectedPaths.length > 0 ||
+                /cross[- ]?project|multi[- ]?project|target project|another project|different project|project[_ ]?b\b/i.test(planText);
+            result = {
+                has_cross_project_paths: hasCrossProjectContent,
+                detected_paths: detectedPaths,
+                guidance: hasCrossProjectContent
+                    ? {
+                        summary: "This plan contains cross-project references. Follow these steps to orchestrate multi-project execution:",
+                        steps: [
+                            "1. Call list_projects to discover existing RalphX projects and their filesystem paths.",
+                            "2. For each target project, call create_cross_project_session({ target_project_path, source_session_id }) to create a new session with the inherited plan.",
+                            "3. In each target session, use create_task_proposal to create proposals specific to that project's scope.",
+                            "4. Call accept_plan_and_schedule (or equivalent) in each target session to push tasks to kanban.",
+                        ],
+                        notes: [
+                            "The target project is auto-created if no RalphX project exists at the given path.",
+                            "The inherited plan is read-only in the target session. Call create_plan_artifact to create a writable copy if modifications are needed.",
+                            "The inherited plan status is set to 'imported_verified' — no re-verification is triggered.",
+                        ],
+                        detected_paths: detectedPaths,
+                    }
+                    : {
+                        summary: "No cross-project paths detected in this plan.",
+                        steps: [],
+                        notes: [
+                            "If you believe there are cross-project references, try providing the plan_content directly or check the session_id.",
+                        ],
+                        detected_paths: [],
+                    },
+            };
+        }
         else {
             // Default: POST request
             result = await callTauri(name, args || {});

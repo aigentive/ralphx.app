@@ -29,6 +29,9 @@ export const IdeationSessionResponseSchema = z.object({
   verification_status: z.string().optional(),
   verification_in_progress: z.boolean().optional(),
   gap_score: z.number().int().nullable().optional(),
+  source_project_id: z.string().nullable().optional(),
+  source_session_id: z.string().nullable().optional(),
+  inherited_plan_artifact_id: z.string().nullable().optional(),
 });
 
 /**
