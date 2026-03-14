@@ -20,7 +20,13 @@ tools:
   - mcp__ralphx__add_task_note
   - mcp__ralphx__get_task_details
 mcpServers:
-  - ralphx
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "chat-task"
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"

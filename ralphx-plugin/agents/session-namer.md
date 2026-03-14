@@ -4,7 +4,13 @@ description: Generates concise titles for ideation sessions based on user's firs
 tools:
   - mcp__ralphx__update_session_title
 mcpServers:
-  - ralphx
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "session-namer"
 allowedTools:
   - "mcp__ralphx__*"
 model: haiku

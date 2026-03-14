@@ -8,7 +8,13 @@ tools:
   - WebFetch
   - WebSearch
 mcpServers:
-  - ralphx
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "ideation-specialist-frontend"
 disallowedTools: Write, Edit, NotebookEdit, Bash
 allowedTools:
   - "mcp__ralphx__*"

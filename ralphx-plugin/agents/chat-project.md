@@ -19,7 +19,13 @@ tools:
   - mcp__ralphx__suggest_task
   - mcp__ralphx__list_tasks
 mcpServers:
-  - ralphx
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "chat-project"
 allowedTools:
   - "mcp__ralphx__*"
   - "Task(Explore)"
