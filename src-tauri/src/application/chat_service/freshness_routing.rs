@@ -1,0 +1,291 @@
+// Shared freshness return-routing logic used by BOTH:
+//  - `complete_merge` HTTP handler (http_server/handlers/git.rs)
+//  - `attempt_merge_auto_complete` in `chat_service_merge.rs`
+//
+// When the merger agent resolves a plan←main freshness conflict (not the actual
+// task merge), the task should be routed back to its origin state instead of
+// completing the merge and potentially losing the task's work.
+
+use std::path::PathBuf;
+use std::sync::Arc;
+use tauri::Runtime;
+
+use crate::application::git_service::GitService;
+use crate::application::interactive_process_registry::{
+    InteractiveProcessKey, InteractiveProcessRegistry,
+};
+use crate::application::task_transition_service::TaskTransitionService;
+use crate::domain::entities::{InternalStatus, Project, Task};
+use crate::domain::repositories::TaskRepository;
+use crate::error::{AppError, AppResult};
+
+/// Outcome returned by [`freshness_return_route`].
+pub(crate) enum FreshnessRouteResult {
+    /// Freshness intercept triggered — the task was routed back to its origin
+    /// state. The contained string is the origin state name (e.g. `"reviewing"`).
+    /// **Callers must return early** and not proceed with the normal merge path.
+    FreshnessRouted(String),
+
+    /// No freshness intercept needed — `plan_update_conflict` was absent or
+    /// `false`. Callers should proceed with the normal merge pipeline.
+    NormalMerge,
+}
+
+/// Shared freshness routing logic for merge completion.
+///
+/// Checks whether `plan_update_conflict=true` in the task metadata, indicating
+/// the merger was resolving a plan←main freshness conflict rather than the
+/// actual task→plan squash merge. If so, routes the task back to its origin
+/// state (Reviewing → PendingReview, Executing → Ready) to prevent work loss.
+///
+/// Called from BOTH:
+/// - `complete_merge` HTTP handler — primary bug fix (Bug 1)
+/// - `attempt_merge_auto_complete` — secondary guard replacement
+///
+/// # Arguments
+/// * `task` — Current task snapshot (used for initial `plan_update_conflict`
+///   check and worktree path; the DB copy is re-read before mutation).
+/// * `task_repo` — Repository for DB read-modify-write.
+/// * `transition_service` — Service to transition the task to its origin state.
+/// * `project` — Project providing the main repo path for worktree cleanup.
+/// * `interactive_process_registry` — IPR for closing the merger agent.
+///   `None` is allowed: logs a warning and skips IPR removal (agent times out).
+///
+/// # Errors
+/// Returns `Err` if the DB update or task transition fails. On transition
+/// failure the function re-inserts `plan_update_conflict` and
+/// `branch_freshness_conflict` so the next attempt can retry.
+pub(crate) async fn freshness_return_route<R: Runtime>(
+    task: &Task,
+    task_repo: Arc<dyn TaskRepository>,
+    transition_service: &TaskTransitionService<R>,
+    project: &Project,
+    interactive_process_registry: Option<&InteractiveProcessRegistry>,
+) -> AppResult<FreshnessRouteResult> {
+    // -----------------------------------------------------------------------
+    // Step 1: Check plan_update_conflict in task metadata.
+    // We use plan_update_conflict (NOT branch_freshness_conflict) because the
+    // branch_freshness_conflict flag may have been cleared by set_source_conflict_resolved,
+    // while plan_update_conflict is cleared only by this function.
+    // -----------------------------------------------------------------------
+    let initial_meta: serde_json::Value = task
+        .metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let plan_update_conflict = initial_meta
+        .get("plan_update_conflict")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    // -----------------------------------------------------------------------
+    // Step 2: Not a freshness-routed merge — proceed with normal merge path.
+    // -----------------------------------------------------------------------
+    if !plan_update_conflict {
+        return Ok(FreshnessRouteResult::NormalMerge);
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 3: Determine target status from freshness_origin_state.
+    // Defaults to PendingReview (review is safer — prevents work loss if the
+    // original state was Reviewing; Ready would re-execute from scratch).
+    // -----------------------------------------------------------------------
+    let origin_state_opt = initial_meta
+        .get("freshness_origin_state")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned);
+
+    let (target_status, origin_state_name) = match origin_state_opt.as_deref() {
+        Some("executing") | Some("re_executing") => {
+            let name = origin_state_opt.as_deref().unwrap_or("executing").to_owned();
+            tracing::info!(
+                task_id = %task.id,
+                origin = %name,
+                "freshness_return_route: routing to Ready (execution origin)"
+            );
+            (InternalStatus::Ready, name)
+        }
+        Some("reviewing") => {
+            tracing::info!(
+                task_id = %task.id,
+                "freshness_return_route: routing to PendingReview (review origin)"
+            );
+            (InternalStatus::PendingReview, "reviewing".to_owned())
+        }
+        Some(unknown) => {
+            tracing::warn!(
+                task_id = %task.id,
+                origin = unknown,
+                "freshness_return_route: unknown freshness_origin_state — defaulting to PendingReview"
+            );
+            (InternalStatus::PendingReview, unknown.to_owned())
+        }
+        None => {
+            tracing::error!(
+                task_id = %task.id,
+                "freshness_return_route: freshness_origin_state absent — defaulting to PendingReview (review is safer: prevents work loss)"
+            );
+            (InternalStatus::PendingReview, "PendingReview".to_owned())
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // Step 4: Re-read task from DB for atomic read-modify-write.
+    // Captures any metadata changes the merger agent wrote during its run.
+    // -----------------------------------------------------------------------
+    let mut fresh_task = match task_repo.get_by_id(&task.id).await? {
+        Some(t) => t,
+        None => {
+            tracing::warn!(
+                task_id = %task.id,
+                "freshness_return_route: task not found in DB during metadata refresh"
+            );
+            return Err(AppError::NotFound(format!(
+                "freshness_return_route: task {} not found",
+                task.id
+            )));
+        }
+    };
+
+    let mut meta_val: serde_json::Value = fresh_task
+        .metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    // -----------------------------------------------------------------------
+    // Step 4 (continued): Targeted metadata cleanup BEFORE transition.
+    //
+    // Remove ONLY the routing-trigger flags. We do NOT use
+    // FreshnessCleanupScope::RoutingOnly here because that scope clears ALL
+    // routing flags (including freshness_origin_state) atomically — if the
+    // subsequent transition_task() call fails we would have no way to retry.
+    //
+    // Strategy: remove the minimum set of fields, then re-insert on failure.
+    // - plan_update_conflict → remove (routing trigger)
+    // - branch_freshness_conflict → remove (prevents stale flag from triggering
+    //   redundant freshness cycle when on_enter of origin state calls
+    //   ensure_branches_fresh())
+    // - freshness_backoff_until → remove (stale after conflict resolution)
+    // - freshness_origin_state and other fields → leave intact for audit/debug
+    // -----------------------------------------------------------------------
+    if let Some(obj) = meta_val.as_object_mut() {
+        obj.remove("plan_update_conflict");
+        obj.remove("branch_freshness_conflict");
+        obj.remove("freshness_backoff_until");
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 5: Persist metadata update to DB.
+    // -----------------------------------------------------------------------
+    fresh_task.metadata = Some(meta_val.to_string());
+    fresh_task.touch();
+
+    if let Err(e) = task_repo.update(&fresh_task).await {
+        tracing::error!(
+            task_id = %task.id,
+            error = %e,
+            "freshness_return_route: failed to persist metadata cleanup"
+        );
+        return Err(e);
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 6: Transition the task back to its origin state.
+    // -----------------------------------------------------------------------
+    let transition_result = transition_service
+        .transition_task(&task.id, target_status)
+        .await;
+
+    if let Err(e) = transition_result {
+        // -----------------------------------------------------------------------
+        // Step 8: Transition failed — re-insert routing flags so the next
+        // invocation can retry. We intentionally do NOT propagate a re-insert
+        // failure (best-effort: if this also fails we log and move on).
+        // -----------------------------------------------------------------------
+        tracing::error!(
+            task_id = %task.id,
+            error = %e,
+            target = ?target_status,
+            "freshness_return_route: transition failed — re-inserting routing flags for retry"
+        );
+
+        if let Ok(Some(mut rollback_task)) = task_repo.get_by_id(&task.id).await {
+            let mut rollback_meta: serde_json::Value = rollback_task
+                .metadata
+                .as_deref()
+                .and_then(|s| serde_json::from_str(s).ok())
+                .unwrap_or_else(|| serde_json::json!({}));
+
+            if let Some(obj) = rollback_meta.as_object_mut() {
+                obj.insert(
+                    "plan_update_conflict".to_owned(),
+                    serde_json::Value::Bool(true),
+                );
+                obj.insert(
+                    "branch_freshness_conflict".to_owned(),
+                    serde_json::Value::Bool(true),
+                );
+            }
+
+            rollback_task.metadata = Some(rollback_meta.to_string());
+            rollback_task.touch();
+            if let Err(re_err) = task_repo.update(&rollback_task).await {
+                tracing::warn!(
+                    task_id = %task.id,
+                    error = %re_err,
+                    "freshness_return_route: failed to re-insert routing flags (best-effort)"
+                );
+            }
+        } else {
+            tracing::warn!(
+                task_id = %task.id,
+                "freshness_return_route: could not re-read task for routing flag rollback"
+            );
+        }
+
+        return Err(e);
+    }
+
+    // -----------------------------------------------------------------------
+    // Step 7: Transition succeeded — clean up merge worktree and close IPR.
+    // -----------------------------------------------------------------------
+
+    // Worktree cleanup (idempotent — safe if worktree does not exist).
+    if let Some(ref worktree_path_str) = task.worktree_path {
+        let repo_path = PathBuf::from(&project.working_directory);
+        let worktree_path = PathBuf::from(worktree_path_str);
+        if let Err(e) = GitService::delete_worktree(&repo_path, &worktree_path).await {
+            // Non-fatal: log and continue. The worktree may already be gone or
+            // may be cleaned up by the next git worktree prune.
+            tracing::warn!(
+                task_id = %task.id,
+                error = %e,
+                "freshness_return_route: failed to delete merge worktree (non-fatal)"
+            );
+        }
+    }
+
+    // Close IPR entry to stop the running merger agent by closing its stdin pipe.
+    match interactive_process_registry {
+        Some(ipr) => {
+            let ipr_key = InteractiveProcessKey::new("merge", task.id.as_str());
+            ipr.remove(&ipr_key).await;
+        }
+        None => {
+            tracing::warn!(
+                task_id = %task.id,
+                "freshness_return_route: no InteractiveProcessRegistry provided — merger agent will time out naturally"
+            );
+        }
+    }
+
+    tracing::info!(
+        task_id = %task.id,
+        origin_state = %origin_state_name,
+        "freshness_return_route: task successfully routed back to origin state"
+    );
+
+    Ok(FreshnessRouteResult::FreshnessRouted(origin_state_name))
+}

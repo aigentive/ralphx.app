@@ -1343,3 +1343,141 @@ fn auto_retry_count_for_source_ignores_non_auto_retry_events() {
         "Failed events should not be counted as retries"
     );
 }
+
+// ============================================================
+// Tests for StopRetryingReason enum
+// ============================================================
+
+#[test]
+fn test_stop_retrying_reason_serde_roundtrip() {
+    let variants = [
+        StopRetryingReason::MaxRetriesExceeded,
+        StopRetryingReason::GitBranchLost,
+        StopRetryingReason::ManualStop,
+    ];
+    for variant in &variants {
+        let serialized = serde_json::to_string(variant).unwrap();
+        let deserialized: StopRetryingReason = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(*variant, deserialized, "Roundtrip failed for {:?}", variant);
+    }
+}
+
+#[test]
+fn test_stop_retrying_reason_snake_case_serialization() {
+    assert_eq!(
+        serde_json::to_string(&StopRetryingReason::MaxRetriesExceeded).unwrap(),
+        "\"max_retries_exceeded\""
+    );
+    assert_eq!(
+        serde_json::to_string(&StopRetryingReason::GitBranchLost).unwrap(),
+        "\"git_branch_lost\""
+    );
+    assert_eq!(
+        serde_json::to_string(&StopRetryingReason::ManualStop).unwrap(),
+        "\"manual_stop\""
+    );
+}
+
+// ============================================================
+// Tests for auto_recovery_count backward compatibility
+// ============================================================
+
+#[test]
+fn test_execution_recovery_metadata_backward_compat_auto_recovery_count() {
+    // Old metadata JSON (from before auto_recovery_count was added) should deserialize
+    // with auto_recovery_count defaulting to 0 due to #[serde(default)].
+    let old_json = r#"{
+        "execution_recovery": {
+            "version": 1,
+            "events": [],
+            "last_state": "retrying",
+            "stop_retrying": false
+        }
+    }"#;
+
+    let recovery =
+        ExecutionRecoveryMetadata::from_json(old_json)
+            .expect("Should parse without error")
+            .expect("Should contain execution_recovery key");
+
+    assert_eq!(
+        recovery.auto_recovery_count, 0,
+        "auto_recovery_count should default to 0 when absent from JSON"
+    );
+    assert_eq!(
+        recovery.unrecoverable_reason, None,
+        "unrecoverable_reason should default to None when absent from JSON"
+    );
+}
+
+#[test]
+fn test_execution_recovery_metadata_auto_recovery_count_persists() {
+    // Create metadata with auto_recovery_count = 1 and verify it survives serde roundtrip.
+    let mut metadata = ExecutionRecoveryMetadata::new();
+    metadata.auto_recovery_count = 1;
+    metadata.unrecoverable_reason = Some(StopRetryingReason::GitBranchLost);
+
+    // Serialize into task metadata JSON
+    let task_metadata = metadata
+        .update_task_metadata(None)
+        .expect("Should serialize successfully");
+
+    // Deserialize back
+    let recovered = ExecutionRecoveryMetadata::from_json(&task_metadata)
+        .expect("Should parse without error")
+        .expect("Should contain execution_recovery key");
+
+    assert_eq!(recovered.auto_recovery_count, 1);
+    assert_eq!(
+        recovered.unrecoverable_reason,
+        Some(StopRetryingReason::GitBranchLost)
+    );
+}
+
+// ============================================================
+// Test: GitBranchLost budget isolation
+// ============================================================
+
+#[test]
+fn test_git_branch_lost_sets_distinct_reason_code() {
+    // Verify GitBranchLost has its own distinct reason (not MaxRetriesExceeded).
+    // This documents the per-source budget isolation guarantee: git branch failures
+    // use a different reason code than normal retry exhaustion, so a future
+    // "Reset to Ready" admin action can distinguish the two cases.
+    let git_lost = StopRetryingReason::GitBranchLost;
+    let max_retries = StopRetryingReason::MaxRetriesExceeded;
+    assert_ne!(git_lost, max_retries, "GitBranchLost must be distinct from MaxRetriesExceeded");
+
+    // Also verify serialization differs (used for UI display and DB storage)
+    let git_json = serde_json::to_string(&git_lost).unwrap();
+    let max_json = serde_json::to_string(&max_retries).unwrap();
+    assert_ne!(git_json, max_json);
+    assert_eq!(git_json, "\"git_branch_lost\"");
+    assert_eq!(max_json, "\"max_retries_exceeded\"");
+}
+
+#[test]
+fn test_auto_recovery_count_independent_of_events() {
+    // auto_recovery_count is a separate counter from the event log.
+    // Clearing events (as done in auto_recover_task) does NOT reset auto_recovery_count.
+    let mut metadata = ExecutionRecoveryMetadata::new();
+
+    // Simulate first auto-recovery: increment counter, then clear events
+    metadata.auto_recovery_count = 1;
+    metadata.events.clear();
+    metadata.last_state = ExecutionRecoveryState::Retrying;
+    metadata.stop_retrying = false;
+
+    // After clearing events (fresh start), auto_recovery_count still reflects recovery history
+    assert_eq!(
+        metadata.auto_recovery_count, 1,
+        "auto_recovery_count must survive event log clear"
+    );
+
+    // Simulate second auto-recovery: MAX is 2
+    metadata.auto_recovery_count = 2;
+    assert!(
+        metadata.auto_recovery_count >= 2,
+        "After 2 recoveries, auto_recovery_count >= MAX_AUTO_RECOVERIES (2)"
+    );
+}

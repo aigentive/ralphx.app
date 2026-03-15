@@ -376,6 +376,7 @@ pub async fn complete_review(
                         project_working_dir,
                         task_branch,
                         worktree_path,
+                        None,
                     ));
                 }
 

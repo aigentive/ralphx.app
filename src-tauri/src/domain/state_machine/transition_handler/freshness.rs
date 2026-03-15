@@ -104,7 +104,7 @@ pub enum FreshnessCleanupScope {
 
 impl FreshnessMetadata {
     /// All JSON keys managed by FreshnessMetadata.
-    const KEYS: &'static [&'static str] = &[
+    pub(crate) const KEYS: &'static [&'static str] = &[
         "branch_freshness_conflict",
         "freshness_origin_state",
         "freshness_conflict_count",

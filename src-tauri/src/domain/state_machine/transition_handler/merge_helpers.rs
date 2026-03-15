@@ -191,7 +191,7 @@ pub(crate) async fn validate_plan_merge_preconditions(
 
     // Check 3: Feature branch must exist in git
     let repo_path = Path::new(&project.working_directory);
-    if !GitService::branch_exists(repo_path, &pb.branch_name).await {
+    if !GitService::branch_exists(repo_path, &pb.branch_name).await.unwrap_or(false) {
         return Err(PreMergeValidationError::FeatureBranchMissing {
             branch_name: pb.branch_name.clone(),
         });
@@ -683,7 +683,7 @@ pub(super) async fn resolve_task_base_branch(
         Ok(Some(pb)) if pb.status == PlanBranchStatus::Active => {
             let repo_path = Path::new(&project.working_directory);
             // Lazily create git branch on first task execution
-            if !GitService::branch_exists(repo_path, &pb.branch_name).await {
+            if !GitService::branch_exists(repo_path, &pb.branch_name).await.unwrap_or(false) {
                 match GitService::create_feature_branch(
                     repo_path,
                     &pb.branch_name,
@@ -700,7 +700,7 @@ pub(super) async fn resolve_task_base_branch(
                     }
                     Err(e) => {
                         // Race condition: another task may have created it concurrently
-                        if GitService::branch_exists(repo_path, &pb.branch_name).await {
+                        if GitService::branch_exists(repo_path, &pb.branch_name).await.unwrap_or(false) {
                             tracing::info!(
                                 branch = %pb.branch_name,
                                 "Deferred plan branch created by concurrent task"
@@ -1107,7 +1107,7 @@ pub(super) async fn discover_and_attach_task_branch(
 
     // Check if branch exists in the repository
     let repo_path = Path::new(&project.working_directory);
-    if !GitService::branch_exists(repo_path, &branch_name).await {
+    if !GitService::branch_exists(repo_path, &branch_name).await.unwrap_or(false) {
         return Ok(false);
     }
 

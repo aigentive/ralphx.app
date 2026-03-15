@@ -665,7 +665,7 @@ async fn test_worktree_recovery_existing_branch_checkout() {
         .unwrap();
 
     // Verify branch exists
-    let branch_exists = GitService::branch_exists(repo, task_branch).await;
+    let branch_exists = GitService::branch_exists(repo, task_branch).await.unwrap_or(false);
     assert!(
         branch_exists,
         "Task branch should exist from previous attempt"
@@ -734,7 +734,7 @@ async fn test_worktree_creation_new_branch_when_not_exists() {
     let new_branch = "ralphx/test-project/task-new";
 
     // Verify branch does NOT exist
-    let branch_exists = GitService::branch_exists(repo, new_branch).await;
+    let branch_exists = GitService::branch_exists(repo, new_branch).await.unwrap_or(true);
     assert!(!branch_exists, "New task branch should not exist yet");
 
     // Create worktree with new branch
@@ -754,7 +754,7 @@ async fn test_worktree_creation_new_branch_when_not_exists() {
     assert_eq!(branch, new_branch, "Should be on the new task branch");
 
     // Verify branch now exists
-    let branch_exists_after = GitService::branch_exists(repo, new_branch).await;
+    let branch_exists_after = GitService::branch_exists(repo, new_branch).await.unwrap_or(false);
     assert!(branch_exists_after, "Branch should exist after creation");
 }
 

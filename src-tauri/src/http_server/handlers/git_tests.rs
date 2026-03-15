@@ -1025,3 +1025,490 @@ mod source_update_conflict {
         assert_eq!(err.0, StatusCode::BAD_REQUEST);
     }
 }
+
+// ============================================================================
+// Integration test #5 — Freshness routing via complete_merge HTTP handler
+// ============================================================================
+//
+// Bug 1 primary fix: complete_merge HTTP handler freshness intercept.
+//
+// When a task is in Merging with plan_update_conflict=true AND
+// branch_freshness_conflict=true (merged into Merging due to a plan←main
+// freshness conflict), the merger agent resolves the plan branch conflict and
+// calls complete_merge. Before this fix the handler would fall through to the
+// normal Merged path, losing the task's work. After this fix, the handler
+// routes the task back to its origin state (Reviewing/PendingReview) via
+// freshness_return_route() at step 5a.
+mod freshness_routing_integration {
+    use super::*;
+    use crate::application::AppState;
+    use crate::commands::ExecutionState;
+    use crate::domain::entities::{InternalStatus, Project, ProjectId, Task};
+    use crate::domain::state_machine::transition_handler::parse_metadata;
+    use std::sync::Arc;
+
+    async fn setup_state() -> HttpServerState {
+        let app_state = Arc::new(AppState::new_test());
+        let execution_state = Arc::new(ExecutionState::new());
+        let tracker = crate::application::TeamStateTracker::new();
+        let team_service = Arc::new(crate::application::TeamService::new_without_events(
+            Arc::new(tracker.clone()),
+        ));
+        HttpServerState {
+            app_state,
+            execution_state,
+            team_tracker: tracker,
+            team_service,
+        }
+    }
+
+    /// Set up a minimal real git repo with a task branch (not merged into plan branch).
+    /// Returns (TempDir, task_branch_sha).
+    fn setup_freshness_repo() -> (tempfile::TempDir, String) {
+        let dir = tempfile::tempdir().expect("create temp dir for freshness test");
+        let repo = dir.path();
+
+        for args in &[
+            vec!["init"],
+            vec!["config", "user.email", "t@t.com"],
+            vec!["config", "user.name", "T"],
+        ] {
+            std::process::Command::new("git")
+                .args(args)
+                .current_dir(repo)
+                .output()
+                .unwrap();
+        }
+
+        // Initial commit on main
+        std::fs::write(repo.join("readme.md"), "# repo").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "init"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["branch", "-M", "main"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // Create task-branch with a commit — NOT merged into main/plan branch.
+        // In the freshness scenario the merger was resolving plan←main only,
+        // so the task's actual work is only on task-branch.
+        std::process::Command::new("git")
+            .args(["checkout", "-b", "task-branch"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::fs::write(repo.join("task-work.txt"), "task work").unwrap();
+        std::process::Command::new("git")
+            .args(["add", "."])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["commit", "-m", "task work"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+
+        // SHA of the task-branch HEAD — NOT on main
+        let sha_bytes = std::process::Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap()
+            .stdout;
+        let sha = String::from_utf8(sha_bytes).unwrap().trim().to_string();
+
+        // Leave task-branch checked out (doesn't matter for the test — we pass SHA anyway)
+        (dir, sha)
+    }
+
+    /// Seed a project + Merging task with freshness metadata in the test state.
+    async fn seed_freshness_task(
+        state: &HttpServerState,
+        repo_path: &std::path::Path,
+        metadata: &str,
+    ) -> TaskId {
+        let project_id = ProjectId::new();
+        let mut project = Project::new(
+            "freshness-test-project".to_string(),
+            repo_path.to_string_lossy().to_string(),
+        );
+        project.id = project_id.clone();
+        project.base_branch = Some("main".to_string());
+        state.app_state.project_repo.create(project).await.unwrap();
+
+        let mut task = Task::new(project_id, "Freshness routing test".to_string());
+        task.internal_status = InternalStatus::Merging;
+        task.task_branch = Some("task-branch".to_string());
+        task.metadata = Some(metadata.to_string());
+        let task_id = task.id.clone();
+        state.app_state.task_repo.create(task).await.unwrap();
+
+        task_id
+    }
+
+    /// Integration test #5: complete_merge with plan_update_conflict=true AND
+    /// branch_freshness_conflict=true → freshness intercept fires, task routed
+    /// back to reviewing, merge_commit_sha NOT set, IPR removed.
+    ///
+    /// Assertions:
+    /// - Handler returns success=true with new_status NOT "merged"
+    /// - Task internal_status transitions to PendingReview (not Merged)
+    /// - task.merge_commit_sha is NOT set (intercept fired before SHA assignment)
+    /// - plan_update_conflict cleared from metadata
+    /// - branch_freshness_conflict cleared from metadata
+    /// - IPR entry removed
+    /// - task_branch NOT deleted (preserved for re-execution)
+    #[tokio::test]
+    async fn test_complete_merge_freshness_routes_to_reviewing() {
+        let (dir, _task_sha) = setup_freshness_repo();
+        let state = setup_state().await;
+
+        let metadata = serde_json::json!({
+            "plan_update_conflict": true,
+            "branch_freshness_conflict": true,
+            "freshness_origin_state": "reviewing",
+        })
+        .to_string();
+        let task_id = seed_freshness_task(&state, dir.path(), &metadata).await;
+
+        // Register IPR entry for the merger agent
+        let mut child = tokio::process::Command::new("cat")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .expect("spawn cat for freshness IPR test");
+        let stdin = child.stdin.take().expect("cat stdin");
+        let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
+            "merge",
+            task_id.as_str(),
+        );
+        state
+            .app_state
+            .interactive_process_registry
+            .register(key.clone(), stdin)
+            .await;
+
+        // Any valid 40-char SHA — handler must exit at step 5a freshness check
+        // before reaching SHA verification (step 6).
+        let dummy_sha = "f".repeat(40);
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: dummy_sha,
+            }),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "complete_merge should succeed for freshness-routed task: {:?}",
+            result
+        );
+
+        let resp = result.unwrap().0;
+        assert!(resp.success, "response.success must be true");
+        assert_ne!(
+            resp.new_status, "merged",
+            "Freshness-routed task must NOT reach 'merged'"
+        );
+
+        // Task should be in PendingReview (origin state was "reviewing")
+        let task = state
+            .app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
+
+        // The transition goes to PendingReview (auto-route from Reviewing origin).
+        // In the in-memory test environment the on_enter for PendingReview may
+        // auto-advance to Reviewing, so we accept both.
+        assert!(
+            task.internal_status == InternalStatus::PendingReview
+                || task.internal_status == InternalStatus::Reviewing,
+            "Task must be in PendingReview or Reviewing after freshness routing. Got: {:?}",
+            task.internal_status
+        );
+
+        // merge_commit_sha must NOT be set (intercept fires before SHA assignment at step 6)
+        assert!(
+            task.merge_commit_sha.is_none(),
+            "merge_commit_sha must NOT be set when freshness intercept fires"
+        );
+
+        // Freshness routing flags must be cleared
+        let meta = parse_metadata(&task).unwrap_or_else(|| serde_json::json!({}));
+        assert!(
+            meta.get("plan_update_conflict").is_none()
+                || meta
+                    .get("plan_update_conflict")
+                    .and_then(|v| v.as_bool())
+                    == Some(false),
+            "plan_update_conflict must be cleared after freshness routing"
+        );
+        assert!(
+            meta.get("branch_freshness_conflict").is_none()
+                || meta
+                    .get("branch_freshness_conflict")
+                    .and_then(|v| v.as_bool())
+                    == Some(false),
+            "branch_freshness_conflict must be cleared after freshness routing"
+        );
+
+        // IPR must be removed (merger agent should get EOF and exit)
+        assert!(
+            !state
+                .app_state
+                .interactive_process_registry
+                .has_process(&key)
+                .await,
+            "IPR must be removed after freshness routing"
+        );
+
+        // task_branch must NOT be deleted — worktree cleanup in freshness_return_route
+        // only deletes the merge worktree, not the task branch itself.
+        let task_branch = task.task_branch.as_deref().unwrap_or("task-branch");
+        let branch_exists = std::process::Command::new("git")
+            .args(["rev-parse", "--verify", &format!("refs/heads/{}", task_branch)])
+            .current_dir(dir.path())
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        assert!(
+            branch_exists,
+            "task_branch '{}' must NOT be deleted when freshness intercept fires",
+            task_branch
+        );
+
+        let _ = child.kill().await;
+    }
+
+    /// Integration test: complete_merge WITHOUT freshness flags → normal merge path,
+    /// freshness intercept does NOT fire. This verifies that normal merges are
+    /// unaffected by the new freshness check.
+    #[tokio::test]
+    async fn test_complete_merge_no_freshness_flags_normal_path() {
+        let (dir, merge_sha) = {
+            // We need a SHA that IS on main — reuse setup_complete_merge_repo logic
+            let dir = tempfile::tempdir().expect("create temp dir");
+            let repo = dir.path();
+            for args in &[
+                vec!["init"],
+                vec!["config", "user.email", "t@t.com"],
+                vec!["config", "user.name", "T"],
+            ] {
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(repo)
+                    .output()
+                    .unwrap();
+            }
+            std::fs::write(repo.join("readme.md"), "# test").unwrap();
+            std::process::Command::new("git")
+                .args(["add", "."])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["commit", "-m", "init"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["branch", "-M", "main"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["checkout", "-b", "task-branch"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::fs::write(repo.join("feat.txt"), "feature").unwrap();
+            std::process::Command::new("git")
+                .args(["add", "."])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["commit", "-m", "feat"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["checkout", "main"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["merge", "task-branch", "--no-edit"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            let sha_bytes = std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(repo)
+                .output()
+                .unwrap()
+                .stdout;
+            let sha = String::from_utf8(sha_bytes).unwrap().trim().to_string();
+            (dir, sha)
+        };
+
+        let state = setup_state().await;
+        // No freshness flags in metadata
+        let metadata = r#"{"some_other_key": "value"}"#;
+        let task_id = seed_freshness_task(&state, dir.path(), metadata).await;
+
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: merge_sha,
+            }),
+        )
+        .await;
+
+        // Normal merge path should succeed and transition to Merged
+        assert!(
+            result.is_ok(),
+            "Normal merge (no freshness flags) should succeed: {:?}",
+            result
+        );
+
+        let resp = result.unwrap().0;
+        assert_eq!(
+            resp.new_status, "merged",
+            "Normal merge without freshness flags must reach 'merged'"
+        );
+
+        let task = state
+            .app_state
+            .task_repo
+            .get_by_id(&task_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            task.internal_status,
+            InternalStatus::Merged,
+            "Task must be Merged on normal path"
+        );
+
+        // merge_commit_sha MUST be set (normal path completed)
+        assert!(
+            task.merge_commit_sha.is_some(),
+            "merge_commit_sha must be set on normal merge path"
+        );
+    }
+
+    /// Integration test: complete_merge with plan_update_conflict=false → normal path,
+    /// freshness intercept does NOT fire even if the key exists.
+    #[tokio::test]
+    async fn test_complete_merge_plan_update_conflict_false_normal_path() {
+        let (dir, merge_sha) = {
+            let dir = tempfile::tempdir().expect("create temp dir");
+            let repo = dir.path();
+            for args in &[
+                vec!["init"],
+                vec!["config", "user.email", "t@t.com"],
+                vec!["config", "user.name", "T"],
+            ] {
+                std::process::Command::new("git")
+                    .args(args)
+                    .current_dir(repo)
+                    .output()
+                    .unwrap();
+            }
+            std::fs::write(repo.join("readme.md"), "# test").unwrap();
+            std::process::Command::new("git")
+                .args(["add", "."])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["commit", "-m", "init"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["branch", "-M", "main"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["checkout", "-b", "task-branch"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::fs::write(repo.join("feat.txt"), "feature").unwrap();
+            std::process::Command::new("git")
+                .args(["add", "."])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["commit", "-m", "feat"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["checkout", "main"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            std::process::Command::new("git")
+                .args(["merge", "task-branch", "--no-edit"])
+                .current_dir(repo)
+                .output()
+                .unwrap();
+            let sha_bytes = std::process::Command::new("git")
+                .args(["rev-parse", "HEAD"])
+                .current_dir(repo)
+                .output()
+                .unwrap()
+                .stdout;
+            let sha = String::from_utf8(sha_bytes).unwrap().trim().to_string();
+            (dir, sha)
+        };
+
+        let state = setup_state().await;
+        // plan_update_conflict explicitly set to false → no freshness intercept
+        let metadata = r#"{"plan_update_conflict": false}"#;
+        let task_id = seed_freshness_task(&state, dir.path(), metadata).await;
+
+        let result = complete_merge(
+            State(state.clone()),
+            Path(task_id.as_str().to_string()),
+            Json(CompleteMergeRequest {
+                commit_sha: merge_sha,
+            }),
+        )
+        .await;
+
+        assert!(
+            result.is_ok(),
+            "Merge with plan_update_conflict=false should succeed: {:?}",
+            result
+        );
+
+        let resp = result.unwrap().0;
+        assert_eq!(
+            resp.new_status, "merged",
+            "plan_update_conflict=false must not trigger freshness intercept"
+        );
+    }
+}

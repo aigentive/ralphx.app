@@ -17,6 +17,7 @@ mod chat_service_handlers;
 mod chat_service_helpers;
 mod chat_service_merge;
 mod chat_service_mock;
+pub mod freshness_routing;
 mod chat_service_queue;
 mod chat_service_recovery;
 mod chat_service_replay;
@@ -1489,3 +1490,5 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
 
 #[cfg(test)]
 mod chat_service_redaction_tests;
+#[cfg(test)]
+mod freshness_routing_tests;

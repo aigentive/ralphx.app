@@ -2320,7 +2320,7 @@ async fn validate_resume(task: &Task, state: &AppState) -> ResumeValidationResul
     let repo_path = Path::new(&project.working_directory);
 
     // Check branch exists
-    if !GitService::branch_exists(repo_path, &branch_name).await {
+    if !GitService::branch_exists(repo_path, &branch_name).await.unwrap_or(false) {
         warnings.push(ResumeValidationWarning {
             code: "branch_not_found".to_string(),
             message: format!("Task branch '{}' does not exist", branch_name),

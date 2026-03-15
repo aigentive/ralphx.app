@@ -530,6 +530,7 @@ pub fn run() {
                     Arc::clone(&startup_active_project_state),
                     startup_app_state_repo,
                     startup_execution_settings_repo,
+                    Some(Arc::clone(&startup_plan_branch_repo)),
                 )
                 .with_task_scheduler(Arc::clone(&task_scheduler))
                 .with_app_handle(startup_runner_app_handle);

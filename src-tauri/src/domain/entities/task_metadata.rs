@@ -346,6 +346,15 @@ pub struct ExecutionRecoveryMetadata {
     pub last_state: ExecutionRecoveryState,
     /// When true, reconciler will not auto-retry (user stopped retrying or max retries exceeded)
     pub stop_retrying: bool,
+    /// How many times this task has been auto-recovered from permanent git errors.
+    /// Incremented each time auto_recover_task() resets the task to Ready.
+    /// Capped at MAX_AUTO_RECOVERIES before permanently failing.
+    #[serde(default)]
+    pub auto_recovery_count: u32,
+    /// Reason why stop_retrying was set to true (for diagnostics/UI display).
+    /// None if stop_retrying is false or was set before this field existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unrecoverable_reason: Option<StopRetryingReason>,
 }
 
 impl ExecutionRecoveryMetadata {
@@ -356,6 +365,8 @@ impl ExecutionRecoveryMetadata {
             events: Vec::new(),
             last_state: ExecutionRecoveryState::Retrying,
             stop_retrying: false,
+            auto_recovery_count: 0,
+            unrecoverable_reason: None,
         }
     }
 
@@ -377,6 +388,11 @@ impl ExecutionRecoveryMetadata {
     ) {
         self.append_event(event);
         self.last_state = state;
+    }
+
+    /// Returns the number of times this task has been auto-recovered from permanent git errors.
+    pub fn get_auto_recovery_count(&self) -> u32 {
+        self.auto_recovery_count
     }
 
     /// Trim events if count exceeds MAX_EVENTS
@@ -613,6 +629,8 @@ pub enum ExecutionRecoveryReasonCode {
     UserStopped,
     /// Git isolation failure (stale index.lock, leftover worktree dir, concurrent git op)
     GitIsolationFailed,
+    /// Permanent git error — branch lost or deleted, auto-recovery exhausted
+    GitBranchLost,
     /// Unknown/unclassified reason
     Unknown,
 }
@@ -627,6 +645,19 @@ pub enum ExecutionRecoveryState {
     Failed,
     /// Execution completed successfully after retries
     Succeeded,
+}
+
+/// Reason why auto-retry was permanently stopped.
+/// Stored in `ExecutionRecoveryMetadata.unrecoverable_reason` for diagnostics.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StopRetryingReason {
+    /// Normal retry budget exhaustion
+    MaxRetriesExceeded,
+    /// Branch deleted/corrupted, auto-recovery exhausted
+    GitBranchLost,
+    /// User-initiated stop
+    ManualStop,
 }
 
 #[cfg(test)]

@@ -85,7 +85,7 @@ pub(super) async fn ensure_plan_branch_exists(
     };
     if pb.status != PlanBranchStatus::Active
         || pb.branch_name != target_branch
-        || GitService::branch_exists(repo_path, target_branch).await
+        || GitService::branch_exists(repo_path, target_branch).await.unwrap_or(false)
     {
         return;
     }
@@ -100,7 +100,7 @@ pub(super) async fn ensure_plan_branch_exists(
                 "Lazily created plan branch for merge target"
             );
         }
-        Err(_) if GitService::branch_exists(repo_path, &pb.branch_name).await => {
+        Err(_) if GitService::branch_exists(repo_path, &pb.branch_name).await.unwrap_or(false) => {
             // Intentional: race condition — concurrent task already created the branch
         }
         Err(e) => {

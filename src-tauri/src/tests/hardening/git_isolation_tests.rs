@@ -335,6 +335,109 @@ async fn test_a6_execution_failed_event_transitions_executing_to_failed() {
 }
 
 // ============================================================================
+// A7: Missing task branch during worktree recreation -> ExecutionBlocked
+// ============================================================================
+
+#[tokio::test]
+async fn test_a7_missing_branch_returns_execution_blocked_with_no_longer_exists() {
+    // Scenario A7: Task has task_branch set but the branch was deleted from git
+    // (e.g., during prior merge cleanup). Worktree is also missing.
+    //
+    // Expected: ExecutionBlocked error with "no longer exists" in the message,
+    // which causes the task to transition to Failed via auto-dispatch.
+
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo_path = temp_dir.path().join("repo");
+    let worktrees_dir = temp_dir.path().join("worktrees");
+    std::fs::create_dir_all(&repo_path).unwrap();
+    std::fs::create_dir_all(&worktrees_dir).unwrap();
+
+    // Initialize a real git repo with an initial commit
+    std::process::Command::new("git")
+        .args(["init"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::fs::write(repo_path.join("test.txt"), "initial").unwrap();
+    std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    std::process::Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["branch", "-M", "main"])
+        .current_dir(&repo_path)
+        .output();
+
+    let svc = create_hardening_services();
+
+    let mut project = create_test_project_with_git_mode("missing-branch-proj", GitMode::Worktree);
+    project.working_directory = repo_path.to_str().unwrap().to_string();
+    project.worktree_parent_directory = Some(worktrees_dir.to_str().unwrap().to_string());
+    let project_id = project.id.clone();
+    svc.project_repo.create(project).await.unwrap();
+
+    // Create task with task_branch pointing to a branch that does NOT exist in the repo
+    let mut task = create_test_task(&project_id, "Task with deleted branch");
+    task.internal_status = InternalStatus::Ready;
+    let task_id_str = task.id.as_str().to_string();
+    // Set task_branch to a branch name that was never created in git (simulating post-merge deletion)
+    task.task_branch = Some(format!("ralphx/missing-branch-proj/task-{}", task_id_str));
+    task.worktree_path = None; // No worktree exists either
+    svc.task_repo.create(task).await.unwrap();
+
+    let services = build_task_services(&svc);
+    let mut machine = create_state_machine(&task_id_str, project_id.as_str(), services);
+    let mut handler = create_transition_handler(&mut machine);
+
+    let result = handler
+        .handle_transition(&State::Ready, &TaskEvent::StartExecution)
+        .await;
+
+    // ExecutionBlocked triggers auto-dispatch of ExecutionFailed → Failed state
+    assert!(
+        result.is_success(),
+        "TransitionHandler should return Success after auto-dispatching ExecutionFailed"
+    );
+    assert!(
+        matches!(result.state(), Some(State::Failed(_))),
+        "State should be Failed after missing branch is detected: {:?}",
+        result.state()
+    );
+
+    // The Failed state should contain "no longer exists" from the branch check error
+    if let Some(State::Failed(data)) = result.state() {
+        assert!(
+            data.error.contains("no longer exists"),
+            "Failed state error should mention 'no longer exists', got: {}",
+            data.error
+        );
+    }
+
+    // Agent was NOT spawned — branch check fires before agent spawn
+    assert_eq!(
+        svc.chat_service.call_count(),
+        0,
+        "send_message should not be called when branch no longer exists"
+    );
+}
+
+// ============================================================================
 // A8: Base branch doesn't exist — partial coverage
 // ============================================================================
 

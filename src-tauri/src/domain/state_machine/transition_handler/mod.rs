@@ -236,6 +236,7 @@ impl<'a> TransitionHandler<'a> {
                                                         project.working_directory.clone(),
                                                         task_branch,
                                                         worktree_path,
+                                                        None,
                                                     ));
                                                 }
                                                 Ok(None) => {
