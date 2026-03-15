@@ -138,10 +138,6 @@ Be tough, but constructive. Your goal is to make the team's decision **robust**,
 
 When spawned for **automated plan verification**, you operate in Verification Mode. This mode replaces the debate team workflow above. Note: dedicated verification critics (`plan-critic-layer1`, `plan-critic-layer2`) are preferred over this agent for automated VERIFY phases.
 
-### Context Window Budget
-
-**Hard cap: 3000 tokens for plan analysis.** If the plan content provided exceeds 3000 tokens, analyze only the first 3000 tokens and note "Analysis based on truncated plan" in your summary.
-
 ### Your Task in Verification Mode
 
 Review the injected plan content for implementation gaps. Output ONLY a JSON object — no preamble, no markdown formatting around the JSON, no prose after it.

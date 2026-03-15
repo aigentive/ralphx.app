@@ -175,7 +175,3 @@ If no gaps are found, return: `{"gaps": [], "summary": "No significant gaps from
 | `scalability` | Single-process bottlenecks, no horizontal scaling path |
 | `maintainability` | Hard-to-read code patterns, duplicated logic, no error types |
 | `completeness` | Missing steps, undefined edge cases, no rollback strategy |
-
-## Hard Cap
-
-Analyze at most 3000 tokens of plan content. If the plan fetched via `get_session_plan` exceeds this, analyze the first 3000 tokens and note "Analysis based on truncated plan (first 3000 tokens)" in the summary field.
