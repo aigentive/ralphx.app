@@ -1,10 +1,11 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PlanItem } from "./PlanItem";
 import type { PlanItemProps } from "./PlanItem";
 import type { IdeationSessionWithProgress, SessionProgress } from "@/types/ideation";
 import type { SessionGroup } from "./planBrowserUtils";
+import { useChatStore } from "@/stores/chatStore";
 
 function createProgress(overrides: Partial<SessionProgress> = {}): SessionProgress {
   return { idle: 0, active: 0, done: 0, total: 0, ...overrides };
@@ -55,6 +56,10 @@ function renderItem(overrides: Partial<PlanItemProps> = {}) {
 }
 
 describe("PlanItem", () => {
+  beforeEach(() => {
+    useChatStore.setState({ agentStatus: {} });
+  });
+
   it("renders the session title", () => {
     renderItem();
     expect(screen.getByText("Test Session")).toBeInTheDocument();
@@ -182,6 +187,48 @@ describe("PlanItem", () => {
       renderItem({ plan: createSession(), onNavigateToSource });
       expect(screen.queryByTestId("import-badge")).not.toBeInTheDocument();
       expect(onNavigateToSource).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("agent status indicators", () => {
+    it("idle: shows no spinner and no 'Agent working' text", () => {
+      renderItem({ group: "drafts" });
+      expect(document.querySelector(".animate-spin")).not.toBeInTheDocument();
+      expect(screen.queryByText(/Agent working/)).not.toBeInTheDocument();
+    });
+
+    it("generating: shows Loader2 spinner and 'Agent working...' text", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      renderItem({ group: "drafts" });
+      expect(document.querySelector(".animate-spin")).toBeInTheDocument();
+      expect(screen.getByText("Agent working...")).toBeInTheDocument();
+    });
+
+    it("waiting_for_input: shows no spinner and 'Awaiting input' text", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "waiting_for_input" } });
+      renderItem({ group: "drafts" });
+      expect(document.querySelector(".animate-spin")).not.toBeInTheDocument();
+      expect(screen.getByText("Awaiting input")).toBeInTheDocument();
+    });
+
+    it("in-progress with null progress + active agent shows 'Agent working...' (no early return null)", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      renderItem({
+        group: "in-progress",
+        plan: createSession({ status: "accepted", progress: null }),
+      });
+      expect(screen.getByText("Agent working...")).toBeInTheDocument();
+    });
+
+    it("in-progress with progress + active agent shows Agent working, progress stats", () => {
+      useChatStore.setState({ agentStatus: { "session:session-1": "generating" } });
+      renderItem({
+        group: "in-progress",
+        plan: createSession({ status: "accepted", progress: createProgress({ done: 2, active: 1, total: 5 }) }),
+      });
+      expect(screen.getByText("Agent working")).toBeInTheDocument();
+      expect(screen.getByText("2/5 done")).toBeInTheDocument();
+      expect(screen.getByText("1 active")).toBeInTheDocument();
     });
   });
 
