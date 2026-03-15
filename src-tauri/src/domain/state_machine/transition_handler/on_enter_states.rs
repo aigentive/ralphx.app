@@ -401,6 +401,26 @@ impl<'a> super::TransitionHandler<'a> {
                 // Plan branch guard: block execution on merged/abandoned branches
                 self.check_plan_branch_active(task_id_str).await?;
 
+                // Reset stale steps from previous execution
+                if let Some(ref step_repo) = self.machine.context.services.step_repo {
+                    let task_id_typed = TaskId::from_string(task_id_str.clone());
+                    match step_repo.reset_all_to_pending(&task_id_typed).await {
+                        Ok(count) if count > 0 => {
+                            tracing::info!(task_id = task_id_str, count, "Reset stale steps to Pending on re-entry");
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit("step:updated", task_id_str)
+                                .await;
+                        }
+                        Err(e) => {
+                            tracing::warn!(task_id = task_id_str, error = %e, "Failed to reset steps on re-entry");
+                        }
+                        _ => {}
+                    }
+                }
+
                 // Setup branch/worktree for task isolation (Phase 66)
                 // Only setup if task_repo and project_repo are available
                 if let (Some(ref task_repo), Some(ref project_repo)) = (
@@ -1095,6 +1115,26 @@ impl<'a> super::TransitionHandler<'a> {
                 // Plan branch guard: block re-execution on merged/abandoned branches
                 let task_id_str = &self.machine.context.task_id;
                 self.check_plan_branch_active(task_id_str).await?;
+
+                // Reset stale steps from previous execution
+                if let Some(ref step_repo) = self.machine.context.services.step_repo {
+                    let task_id_typed = TaskId::from_string(task_id_str.clone());
+                    match step_repo.reset_all_to_pending(&task_id_typed).await {
+                        Ok(count) if count > 0 => {
+                            tracing::info!(task_id = task_id_str, count, "Reset stale steps to Pending on re-entry");
+                            self.machine
+                                .context
+                                .services
+                                .event_emitter
+                                .emit("step:updated", task_id_str)
+                                .await;
+                        }
+                        Err(e) => {
+                            tracing::warn!(task_id = task_id_str, error = %e, "Failed to reset steps on re-entry");
+                        }
+                        _ => {}
+                    }
+                }
 
                 // Freshness check: ensure branches are up-to-date before re-executing
                 // Runs AFTER plan branch guard but BEFORE pre-execution setup and agent spawn.

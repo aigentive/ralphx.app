@@ -366,3 +366,109 @@ async fn test_reorder_rollback_on_error() {
     assert_eq!(steps[1].id, step2_id);
     assert_eq!(steps[1].sort_order, 2);
 }
+
+#[tokio::test]
+async fn test_reset_all_to_pending_resets_non_pending_steps() {
+    let conn = setup_test_db();
+    let task_id = TaskId::new();
+    create_test_task(&conn, &task_id);
+    let repo = SqliteTaskStepRepository::new(conn);
+
+    let mut step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
+    let mut step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
+    let mut step3 = TaskStep::new(task_id.clone(), "Step 3".to_string(), 2, "user".to_string());
+    let step4 = TaskStep::new(task_id.clone(), "Step 4".to_string(), 3, "user".to_string());
+
+    step1.status = TaskStepStatus::Completed;
+    step2.status = TaskStepStatus::InProgress;
+    step3.status = TaskStepStatus::Failed;
+
+    repo.create(step1).await.unwrap();
+    repo.create(step2).await.unwrap();
+    repo.create(step3).await.unwrap();
+    repo.create(step4).await.unwrap();
+
+    let count = repo.reset_all_to_pending(&task_id).await.unwrap();
+    assert_eq!(count, 3, "Should reset exactly 3 non-Pending steps");
+
+    let steps = repo.get_by_task(&task_id).await.unwrap();
+    for step in &steps {
+        assert_eq!(step.status, TaskStepStatus::Pending, "All steps should be Pending");
+        assert!(step.started_at.is_none(), "started_at should be cleared");
+        assert!(step.completed_at.is_none(), "completed_at should be cleared");
+        assert!(step.completion_note.is_none(), "completion_note should be cleared");
+    }
+}
+
+#[tokio::test]
+async fn test_reset_all_to_pending_noop_when_all_pending() {
+    let conn = setup_test_db();
+    let task_id = TaskId::new();
+    create_test_task(&conn, &task_id);
+    let repo = SqliteTaskStepRepository::new(conn);
+
+    let step1 = TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string());
+    let step2 = TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string());
+
+    repo.create(step1).await.unwrap();
+    repo.create(step2).await.unwrap();
+
+    let count = repo.reset_all_to_pending(&task_id).await.unwrap();
+    assert_eq!(count, 0, "No steps should be reset when all are already Pending");
+}
+
+#[tokio::test]
+async fn test_reset_all_to_pending_mixed_statuses() {
+    let conn = setup_test_db();
+    let task_id = TaskId::new();
+    create_test_task(&conn, &task_id);
+    let repo = SqliteTaskStepRepository::new(conn);
+
+    let pending_step = TaskStep::new(task_id.clone(), "Pending".to_string(), 0, "user".to_string());
+    let pending_id = pending_step.id.clone();
+    let mut completed = TaskStep::new(task_id.clone(), "Completed".to_string(), 1, "user".to_string());
+    completed.status = TaskStepStatus::Completed;
+    let mut cancelled = TaskStep::new(task_id.clone(), "Cancelled".to_string(), 2, "user".to_string());
+    cancelled.status = TaskStepStatus::Cancelled;
+
+    repo.create(pending_step).await.unwrap();
+    repo.create(completed).await.unwrap();
+    repo.create(cancelled).await.unwrap();
+
+    let count = repo.reset_all_to_pending(&task_id).await.unwrap();
+    assert_eq!(count, 2, "Only non-Pending steps should be reset");
+
+    // Pending step should remain unchanged
+    let pending_after = repo.get_by_id(&pending_id).await.unwrap().unwrap();
+    assert_eq!(pending_after.status, TaskStepStatus::Pending);
+
+    // All steps now Pending
+    let steps = repo.get_by_task(&task_id).await.unwrap();
+    for step in &steps {
+        assert_eq!(step.status, TaskStepStatus::Pending);
+    }
+}
+
+#[tokio::test]
+async fn test_reset_all_to_pending_preserves_structural_fields() {
+    let conn = setup_test_db();
+    let task_id = TaskId::new();
+    create_test_task(&conn, &task_id);
+    let repo = SqliteTaskStepRepository::new(conn);
+
+    let mut step = TaskStep::new(task_id.clone(), "Important Step".to_string(), 5, "user".to_string());
+    step.status = TaskStepStatus::Completed;
+    step.description = Some("Step description".to_string());
+    step.scope_context = Some(r#"{"files":["src/foo.rs"]}"#.to_string());
+    let step_id = step.id.clone();
+
+    repo.create(step).await.unwrap();
+    repo.reset_all_to_pending(&task_id).await.unwrap();
+
+    let after = repo.get_by_id(&step_id).await.unwrap().unwrap();
+    assert_eq!(after.title, "Important Step", "title preserved");
+    assert_eq!(after.sort_order, 5, "sort_order preserved");
+    assert_eq!(after.description, Some("Step description".to_string()), "description preserved");
+    assert_eq!(after.scope_context, Some(r#"{"files":["src/foo.rs"]}"#.to_string()), "scope_context preserved");
+    assert_eq!(after.status, TaskStepStatus::Pending);
+}

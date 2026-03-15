@@ -260,6 +260,20 @@ impl TaskStepRepository for SqliteTaskStepRepository {
             })
             .await
     }
+
+    async fn reset_all_to_pending(&self, task_id: &TaskId) -> AppResult<u32> {
+        let task_id = task_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let now = chrono::Utc::now().to_rfc3339();
+                let count = conn.execute(
+                    "UPDATE task_steps SET status = 'pending', started_at = NULL, completed_at = NULL, completion_note = NULL, updated_at = ?1 WHERE task_id = ?2 AND status != 'pending'",
+                    rusqlite::params![now, task_id],
+                )?;
+                Ok(count as u32)
+            })
+            .await
+    }
 }
 
 #[cfg(test)]

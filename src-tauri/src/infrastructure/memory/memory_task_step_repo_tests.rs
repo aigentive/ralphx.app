@@ -225,3 +225,95 @@ async fn reorder_updates_sort_order() {
     assert_eq!(steps[2].id, id2);
     assert_eq!(steps[2].sort_order, 2);
 }
+
+#[tokio::test]
+async fn reset_all_to_pending_resets_non_pending_steps() {
+    let repo = MemoryTaskStepRepository::new();
+    let task_id = TaskId::new();
+
+    let step1 = TaskStep::new(task_id.clone(), "Pending".to_string(), 0, "user".to_string());
+    let mut step2 = TaskStep::new(task_id.clone(), "Completed".to_string(), 1, "user".to_string());
+    step2.status = TaskStepStatus::Completed;
+    let mut step3 = TaskStep::new(task_id.clone(), "InProgress".to_string(), 2, "user".to_string());
+    step3.status = TaskStepStatus::InProgress;
+    let mut step4 = TaskStep::new(task_id.clone(), "Failed".to_string(), 3, "user".to_string());
+    step4.status = TaskStepStatus::Failed;
+    let mut step5 = TaskStep::new(task_id.clone(), "Cancelled".to_string(), 4, "user".to_string());
+    step5.status = TaskStepStatus::Cancelled;
+
+    repo.create(step1).await.unwrap();
+    repo.create(step2).await.unwrap();
+    repo.create(step3).await.unwrap();
+    repo.create(step4).await.unwrap();
+    repo.create(step5).await.unwrap();
+
+    let count = repo.reset_all_to_pending(&task_id).await.unwrap();
+    assert_eq!(count, 4, "Should reset 4 non-Pending steps");
+
+    let steps = repo.get_by_task(&task_id).await.unwrap();
+    for step in &steps {
+        assert_eq!(step.status, TaskStepStatus::Pending);
+        assert!(step.started_at.is_none());
+        assert!(step.completed_at.is_none());
+        assert!(step.completion_note.is_none());
+    }
+}
+
+#[tokio::test]
+async fn reset_all_to_pending_noop_when_all_pending() {
+    let repo = MemoryTaskStepRepository::new();
+    let task_id = TaskId::new();
+
+    repo.create(TaskStep::new(task_id.clone(), "Step 1".to_string(), 0, "user".to_string()))
+        .await.unwrap();
+    repo.create(TaskStep::new(task_id.clone(), "Step 2".to_string(), 1, "user".to_string()))
+        .await.unwrap();
+
+    let count = repo.reset_all_to_pending(&task_id).await.unwrap();
+    assert_eq!(count, 0);
+}
+
+#[tokio::test]
+async fn reset_all_to_pending_only_affects_target_task() {
+    let repo = MemoryTaskStepRepository::new();
+    let task_id = TaskId::new();
+    let other_task_id = TaskId::new();
+
+    let mut step_target = TaskStep::new(task_id.clone(), "Target".to_string(), 0, "user".to_string());
+    step_target.status = TaskStepStatus::Completed;
+    let mut step_other = TaskStep::new(other_task_id.clone(), "Other".to_string(), 0, "user".to_string());
+    step_other.status = TaskStepStatus::Completed;
+    let other_id = step_other.id.clone();
+
+    repo.create(step_target).await.unwrap();
+    repo.create(step_other).await.unwrap();
+
+    let count = repo.reset_all_to_pending(&task_id).await.unwrap();
+    assert_eq!(count, 1, "Only steps of target task should be reset");
+
+    // Other task's step should remain Completed
+    let other_step = repo.get_by_id(&other_id).await.unwrap().unwrap();
+    assert_eq!(other_step.status, TaskStepStatus::Completed, "Other task's step should not be touched");
+}
+
+#[tokio::test]
+async fn reset_all_to_pending_preserves_structural_fields() {
+    let repo = MemoryTaskStepRepository::new();
+    let task_id = TaskId::new();
+
+    let mut step = TaskStep::new(task_id.clone(), "Structural".to_string(), 7, "user".to_string());
+    step.status = TaskStepStatus::Skipped;
+    step.description = Some("desc".to_string());
+    step.scope_context = Some("scope".to_string());
+    let step_id = step.id.clone();
+
+    repo.create(step).await.unwrap();
+    repo.reset_all_to_pending(&task_id).await.unwrap();
+
+    let after = repo.get_by_id(&step_id).await.unwrap().unwrap();
+    assert_eq!(after.title, "Structural");
+    assert_eq!(after.sort_order, 7);
+    assert_eq!(after.description, Some("desc".to_string()));
+    assert_eq!(after.scope_context, Some("scope".to_string()));
+    assert_eq!(after.status, TaskStepStatus::Pending);
+}

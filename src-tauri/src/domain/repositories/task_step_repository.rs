@@ -62,4 +62,15 @@ pub trait TaskStepRepository: Send + Sync {
     /// Updates sort_order for each step based on the provided order of IDs
     /// step_ids[0] gets sort_order 0, step_ids[1] gets sort_order 1, etc.
     async fn reorder(&self, task_id: &TaskId, step_ids: Vec<TaskStepId>) -> AppResult<()>;
+
+    /// Reset all steps for a task back to Pending status, clearing runtime fields
+    /// (`started_at`, `completed_at`, `completion_note`). Preserves structural fields
+    /// (`title`, `description`, `sort_order`, `scope_context`, `depends_on`).
+    ///
+    /// Resets ALL non-Pending statuses (Completed, Skipped, Failed, InProgress, Cancelled).
+    /// Returns 0 if all steps are already Pending (no-op for first execution).
+    ///
+    /// Use this for re-execution entry; use `delete_by_task()` only when steps themselves
+    /// should be removed (e.g., task deletion).
+    async fn reset_all_to_pending(&self, task_id: &TaskId) -> AppResult<u32>;
 }

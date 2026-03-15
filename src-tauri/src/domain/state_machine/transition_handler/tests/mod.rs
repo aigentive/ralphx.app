@@ -156,6 +156,10 @@ mod post_merge_cascade_tests;
 // Plan branch status guard tests: on_enter(Executing/ReExecuting) blocks Merged/Abandoned branches
 mod plan_branch_guard_tests;
 
+// Step reset on re-execution entry tests: reset_all_to_pending called in Executing/ReExecuting
+// Verifies stale steps are reset to Pending and step:updated event is emitted
+mod step_reset_on_enter_tests;
+
 // Integration tests: merged-branch guards working together (cascade + on_enter + base branch)
 // Tests Guards B/C/D/E cooperating across multi-task plan scenarios
 mod merged_branch_guard_integration;

@@ -1000,6 +1000,21 @@ impl TaskStepRepository for MockTaskStepRepository {
         }
         Ok(())
     }
+
+    async fn reset_all_to_pending(&self, task_id: &TaskId) -> AppResult<u32> {
+        use crate::domain::entities::TaskStepStatus;
+        let mut count = 0u32;
+        for step in self.steps.lock().unwrap().values_mut() {
+            if &step.task_id == task_id && step.status != TaskStepStatus::Pending {
+                step.status = TaskStepStatus::Pending;
+                step.started_at = None;
+                step.completed_at = None;
+                step.completion_note = None;
+                count += 1;
+            }
+        }
+        Ok(count)
+    }
 }
 
 #[async_trait]
