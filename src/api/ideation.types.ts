@@ -23,6 +23,7 @@ export interface IdeationSessionResponse {
   sourceProjectId?: string | null;
   sourceSessionId?: string | null;
   inheritedPlanArtifactId?: string | null;
+  sessionPurpose: "general" | "verification";
 }
 
 export interface VerificationStatusResponse {

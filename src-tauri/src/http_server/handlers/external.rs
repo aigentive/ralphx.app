@@ -2059,8 +2059,8 @@ pub async fn trigger_verification_http(
     scope: ProjectScope,
     Json(req): Json<TriggerVerificationRequest>,
 ) -> Result<Json<TriggerVerificationResponse>, StatusCode> {
-    use crate::http_server::handlers::artifacts::spawn_auto_verifier;
     use crate::infrastructure::sqlite::sqlite_ideation_session_repo::SqliteIdeationSessionRepository as SessionRepo;
+    use crate::infrastructure::agents::claude::verification_config;
 
     let session_id = req.session_id.clone();
     let session_id_obj = IdeationSessionId::from_string(session_id.clone());
@@ -2108,21 +2108,40 @@ pub async fn trigger_verification_http(
     };
 
     // Spawn verifier; reset on failure
-    if let Err(e) = spawn_auto_verifier(&state, &session_id, generation).await {
-        error!("spawn_auto_verifier failed for session {}: {}", session_id, e);
-        let sid_reset = session_id.clone();
-        if let Err(reset_err) = state
-            .app_state
-            .db
-            .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_reset))
-            .await
-        {
+    let cfg = verification_config();
+    let title = format!("Auto-verification (gen {generation})");
+    let description = format!(
+        "Run verification round loop. parent_session_id: {session_id}, generation: {generation}, max_rounds: {}",
+        cfg.max_rounds
+    );
+    match crate::http_server::handlers::session_linking::create_verification_child_session(
+        &state,
+        &session_id,
+        &description,
+        &title,
+    )
+    .await
+    {
+        Ok(true) => {} // orchestration triggered — success
+        Ok(false) | Err(_) => {
             error!(
-                "Failed to reset auto-verify state for session {} after spawn failure: {}",
-                session_id, reset_err
+                "Verification agent failed to spawn for session {}",
+                session_id
             );
+            let sid_reset = session_id.clone();
+            if let Err(reset_err) = state
+                .app_state
+                .db
+                .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_reset))
+                .await
+            {
+                error!(
+                    "Failed to reset auto-verify state for session {} after spawn failure: {}",
+                    session_id, reset_err
+                );
+            }
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
     Ok(Json(TriggerVerificationResponse {
@@ -2224,8 +2243,7 @@ fn default_messages_limit() -> u32 {
 /// GET /api/external/ideation_messages/:session_id
 ///
 /// Returns orchestrator and user messages for an ideation session.
-/// Two-pass filter: (1) User + Orchestrator roles only (Orchestrator → "assistant"),
-/// (2) messages tagged with AUTO_VERIFICATION_KEY metadata are excluded.
+/// Filter: User + Orchestrator roles only (Orchestrator → "assistant").
 pub async fn get_ideation_messages_http(
     State(state): State<HttpServerState>,
     scope: ProjectScope,
@@ -2233,7 +2251,6 @@ pub async fn get_ideation_messages_http(
     Query(params): Query<GetIdeationMessagesQuery>,
 ) -> Result<Json<GetIdeationMessagesResponse>, StatusCode> {
     use crate::domain::entities::ideation::MessageRole;
-    use crate::http_server::handlers::artifacts::AUTO_VERIFICATION_KEY;
 
     let session_id = IdeationSessionId::from_string(session_id);
 
@@ -2271,19 +2288,10 @@ pub async fn get_ideation_messages_http(
         &raw_messages[..]
     };
 
-    // Two-pass filter:
-    // Pass 1: role filter — User and Orchestrator only (SQL already does this, but be defensive)
-    // Pass 2: exclude auto-verification messages
+    // Role filter — User and Orchestrator only (SQL already does this, but be defensive)
     let messages: Vec<IdeationMessageSummary> = messages_slice
         .iter()
         .filter(|msg| matches!(msg.role, MessageRole::User | MessageRole::Orchestrator))
-        .filter(|msg| {
-            msg.metadata
-                .as_ref()
-                .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
-                .and_then(|v| v.get(AUTO_VERIFICATION_KEY).cloned())
-                .is_none()
-        })
         .map(|msg| {
             let role = match msg.role {
                 MessageRole::Orchestrator => "assistant".to_string(),

@@ -466,7 +466,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       result = await callTauri("mark_issue_addressed", { issue_id, resolution_notes, attempt_number });
     } else if (name === "create_child_session") {
       // POST /api/create_child_session
-      const { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config } = args as {
+      const { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config, purpose } = args as {
         parent_session_id: string;
         title?: string;
         description?: string;
@@ -479,8 +479,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           budget_limit?: number;
           composition_mode?: string;
         };
+        purpose?: string;
       };
-      result = await callTauri("create_child_session", { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config });
+      result = await callTauri("create_child_session", { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config, purpose });
     } else if (name === "get_parent_session_context") {
       // GET /api/parent_session_context/:session_id
       const { session_id } = args as { session_id: string };

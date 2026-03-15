@@ -172,6 +172,13 @@ pub trait IdeationSessionRepository: Send + Sync {
         stale_before: DateTime<Utc>,
     ) -> AppResult<Vec<IdeationSession>>;
 
+    /// Get active (non-archived) verification child sessions for a parent session.
+    /// Returns at most 1 session (the most recent), ordered by created_at DESC.
+    async fn get_verification_children(
+        &self,
+        parent_session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>>;
+
     /// Get sessions for a project filtered by status, ordered by created_at DESC with a limit.
     async fn get_by_project_and_status(
         &self,

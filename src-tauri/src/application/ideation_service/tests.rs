@@ -259,6 +259,13 @@ impl IdeationSessionRepository for MockSessionRepository {
             .collect())
     }
 
+    async fn get_verification_children(
+        &self,
+        _parent_session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        Ok(Vec::new())
+    }
+
     async fn get_by_project_and_status(
         &self,
         project_id: &str,

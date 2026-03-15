@@ -16,7 +16,7 @@ use std::sync::Arc;
 
 use chrono::Utc;
 
-use crate::domain::entities::VerificationStatus;
+use crate::domain::entities::{IdeationSessionStatus, VerificationStatus};
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::emit_verification_status_changed;
 
@@ -157,6 +157,44 @@ impl VerificationReconciliationService {
                             None,
                             None,
                         );
+                    }
+                    // Archive any orphaned verification children for this parent session
+                    match self
+                        .ideation_session_repo
+                        .get_verification_children(&session.id)
+                        .await
+                    {
+                        Ok(children) => {
+                            for child in &children {
+                                match self
+                                    .ideation_session_repo
+                                    .update_status(&child.id, IdeationSessionStatus::Archived)
+                                    .await
+                                {
+                                    Ok(()) => {
+                                        tracing::info!(
+                                            child_session_id = %child.id.as_str(),
+                                            parent_session_id = %session.id.as_str(),
+                                            "Archived orphaned verification child session"
+                                        );
+                                    }
+                                    Err(e) => {
+                                        tracing::warn!(
+                                            child_session_id = %child.id.as_str(),
+                                            error = %e,
+                                            "Failed to archive orphaned verification child session"
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            tracing::warn!(
+                                session_id = %session.id.as_str(),
+                                error = %e,
+                                "Failed to query verification children during reconciliation"
+                            );
+                        }
                     }
                     reset_count += 1;
                 }

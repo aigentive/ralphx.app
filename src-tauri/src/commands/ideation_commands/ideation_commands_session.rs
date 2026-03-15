@@ -142,10 +142,11 @@ pub async fn get_ideation_session_with_data(
     }))
 }
 
-/// List all ideation sessions for a project
+/// List all ideation sessions for a project, optionally filtered by purpose
 #[tauri::command]
 pub async fn list_ideation_sessions(
     project_id: String,
+    purpose: Option<String>,
     state: State<'_, AppState>,
 ) -> Result<Vec<IdeationSessionResponse>, String> {
     let project_id = ProjectId::from_string(project_id);
@@ -156,6 +157,13 @@ pub async fn list_ideation_sessions(
         .map(|sessions| {
             sessions
                 .into_iter()
+                .filter(|s| {
+                    if let Some(ref p) = purpose {
+                        s.session_purpose.to_string() == p.as_str()
+                    } else {
+                        true
+                    }
+                })
                 .map(IdeationSessionResponse::from)
                 .collect()
         })

@@ -31,6 +31,7 @@ import {
   MEMORY_CAPTURE,
   PLAN_CRITIC_LAYER1,
   PLAN_CRITIC_LAYER2,
+  PLAN_VERIFIER,
   IDEATION_TEAM_LEAD,
   IDEATION_TEAM_MEMBER,
   WORKER_TEAM_LEAD,
@@ -335,6 +336,11 @@ export const ALL_TOOLS: Tool[] = [
               description: "dynamic: ad-hoc teammate selection, constrained: use predefined presets",
             },
           },
+        },
+        purpose: {
+          type: "string",
+          enum: ["general", "verification"],
+          description: "Purpose of the child session. 'general' for regular follow-on sessions (default), 'verification' for plan verification sessions that run in the background.",
         },
       },
       required: ["parent_session_id"],
@@ -1770,6 +1776,15 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
   // Plan critic agents - read-only, only need plan access tools
   [PLAN_CRITIC_LAYER1]: ["get_session_plan", "get_artifact"],
   [PLAN_CRITIC_LAYER2]: ["get_session_plan", "get_artifact"],
+  // Plan verifier agent - owns the verification round loop
+  [PLAN_VERIFIER]: [
+    "get_session_plan",
+    "get_parent_session_context",
+    "update_plan_verification",
+    "get_plan_verification",
+    "update_plan_artifact",
+    "edit_plan_artifact",
+  ],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),
 };

@@ -795,6 +795,8 @@ pub struct CreateChildSessionRequest {
     /// Team constraints override (max_teammates, model_ceiling, etc.)
     /// If omitted and inherit_context=true, inherits from parent session
     pub team_config: Option<TeamConfigInput>,
+    /// Purpose of the child session: "general" (default) or "verification"
+    pub purpose: Option<String>,
 }
 
 /// Team configuration input for create_child_session

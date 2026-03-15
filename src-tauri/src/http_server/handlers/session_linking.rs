@@ -12,7 +12,7 @@ use tracing::error;
 use crate::application::chat_service::{ChatService, ClaudeChatService};
 use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink,
-    SessionRelationship, VerificationStatus,
+    SessionPurpose, SessionRelationship, VerificationStatus,
 };
 use crate::infrastructure::agents::claude::{
     get_team_constraints, team_constraints_config, validate_child_team_config, TeamConstraints,
@@ -200,6 +200,11 @@ pub async fn create_child_session(
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,
+        session_purpose: req
+            .purpose
+            .as_deref()
+            .and_then(|p| p.parse::<SessionPurpose>().ok())
+            .unwrap_or_default(),
     };
 
     let child_id = child_session.id.clone();
@@ -402,7 +407,8 @@ pub async fn create_child_session(
         let mut event_payload = serde_json::json!({
             "sessionId": child_session_str,
             "parentSessionId": parent_session_str,
-            "title": title
+            "title": title,
+            "purpose": created_session.session_purpose.to_string()
         });
         if let Some(ref prompt) = req.initial_prompt {
             event_payload["initialPrompt"] = serde_json::json!(prompt);
@@ -551,6 +557,144 @@ pub async fn get_parent_session_context(
 /// "solo" and None are treated as non-team; any other value ("research", "debate", etc.) is team.
 fn session_is_team_mode(session: &IdeationSession) -> bool {
     session.team_mode.as_deref().is_some_and(|m| m != "solo")
+}
+
+/// Create a verification child session for auto-verification.
+///
+/// Simplified internal variant of `create_child_session` for spawning plan-verifier agents.
+/// Skips cycle detection and team config inheritance — verification sessions always run in
+/// solo mode and are routed to the `plan-verifier` agent via `session_purpose = Verification`.
+///
+/// Returns `Ok(orchestration_triggered)` where `orchestration_triggered` is `true` when the
+/// plan-verifier agent was successfully enqueued, `false` on agent spawn failure.
+pub(crate) async fn create_verification_child_session(
+    state: &HttpServerState,
+    parent_session_id: &str,
+    description: &str,
+    title: &str,
+) -> Result<bool, String> {
+    let parent_id = IdeationSessionId::from_string(parent_session_id.to_string());
+
+    // Fetch parent to inherit plan artifact
+    let parent = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&parent_id)
+        .await
+        .map_err(|e| format!("Failed to fetch parent session: {}", e))?
+        .ok_or_else(|| format!("Parent session {} not found", parent_session_id))?;
+
+    let child_session = IdeationSession {
+        id: IdeationSessionId::new(),
+        project_id: parent.project_id.clone(),
+        title: Some(title.to_string()),
+        status: IdeationSessionStatus::Active,
+        plan_artifact_id: None,
+        inherited_plan_artifact_id: parent.plan_artifact_id.clone(),
+        seed_task_id: None,
+        parent_session_id: Some(parent_id.clone()),
+        created_at: chrono::Utc::now(),
+        updated_at: chrono::Utc::now(),
+        archived_at: None,
+        converted_at: None,
+        team_mode: None,
+        team_config_json: None,
+        title_source: None,
+        verification_status: VerificationStatus::default(),
+        verification_in_progress: false,
+        verification_metadata: None,
+        verification_generation: 0,
+        source_project_id: None,
+        source_session_id: None,
+        session_purpose: SessionPurpose::Verification,
+    };
+
+    let child_id = child_session.id.clone();
+    let child_session_str = child_id.as_str().to_string();
+    let parent_session_str = parent_session_id.to_string();
+
+    // Insert child session
+    let created_session = state
+        .app_state
+        .ideation_session_repo
+        .create(child_session)
+        .await
+        .map_err(|e| format!("Failed to create verification child session: {}", e))?;
+
+    // Create SessionLink
+    let link = SessionLink::new(
+        parent_id.clone(),
+        child_id.clone(),
+        SessionRelationship::FollowOn,
+    );
+    state
+        .app_state
+        .session_link_repo
+        .create(link)
+        .await
+        .map_err(|e| format!("Failed to create session link: {}", e))?;
+
+    // Spawn plan-verifier agent via send_message (non-blocking)
+    let app = &state.app_state;
+    let mut chat_service = ClaudeChatService::new(
+        Arc::clone(&app.chat_message_repo),
+        Arc::clone(&app.chat_attachment_repo),
+        Arc::clone(&app.chat_conversation_repo),
+        Arc::clone(&app.agent_run_repo),
+        Arc::clone(&app.project_repo),
+        Arc::clone(&app.task_repo),
+        Arc::clone(&app.task_dependency_repo),
+        Arc::clone(&app.ideation_session_repo),
+        Arc::clone(&app.activity_event_repo),
+        Arc::clone(&app.message_queue),
+        Arc::clone(&app.running_agent_registry),
+        Arc::clone(&app.memory_event_repo),
+    )
+    .with_execution_state(Arc::clone(&state.execution_state))
+    .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
+    .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
+    .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
+    if let Some(ref handle) = app.app_handle {
+        chat_service = chat_service.with_app_handle(handle.clone());
+    }
+
+    let orchestration_triggered = match chat_service
+        .send_message(
+            ChatContextType::Ideation,
+            &child_session_str,
+            description,
+            Default::default(),
+        )
+        .await
+    {
+        Ok(_) => true,
+        Err(e) => {
+            error!(
+                "Failed to spawn plan-verifier on verification child session {}: {}",
+                child_session_str, e
+            );
+            false
+        }
+    };
+
+    // Emit event so frontend can suppress notification for verification children
+    if let Some(app_handle) = &state.app_state.app_handle {
+        let session_title = created_session
+            .title
+            .clone()
+            .unwrap_or_else(|| title.to_string());
+        let _ = app_handle.emit(
+            "ideation:child_session_created",
+            serde_json::json!({
+                "sessionId": child_session_str,
+                "parentSessionId": parent_session_str,
+                "title": session_title,
+                "purpose": "verification"
+            }),
+        );
+    }
+
+    Ok(orchestration_triggered)
 }
 
 #[cfg(test)]

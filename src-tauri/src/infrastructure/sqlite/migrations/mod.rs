@@ -88,6 +88,7 @@ mod v64_github_pr_settings;
 mod v65_unique_working_directory;
 mod v66_cross_project_import;
 mod v67_tasks_session_status_index;
+mod v68_session_purpose;
 mod v5_add_review_summary_issues;
 mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
@@ -194,9 +195,11 @@ mod v65_unique_working_directory_tests;
 mod v66_cross_project_import_tests;
 #[cfg(test)]
 mod v67_tasks_session_status_index_tests;
+#[cfg(test)]
+mod v68_session_purpose_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 67;
+pub const SCHEMA_VERSION: i32 = 68;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -545,6 +548,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 67,
         name: "tasks_session_status_index",
         migrate: v67_tasks_session_status_index::migrate,
+    },
+    Migration {
+        version: 68,
+        name: "session_purpose",
+        migrate: v68_session_purpose::migrate,
     },
 ];
 

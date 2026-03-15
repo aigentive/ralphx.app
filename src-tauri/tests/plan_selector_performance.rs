@@ -61,6 +61,7 @@ async fn create_accepted_session(
         verification_generation: 0,
         source_project_id: None,
         source_session_id: None,
+        session_purpose: Default::default(),
     };
 
     state

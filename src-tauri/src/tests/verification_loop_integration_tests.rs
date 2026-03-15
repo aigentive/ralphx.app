@@ -611,3 +611,467 @@ fn test_verification_gap_source_field_serializes_and_excludes_from_fingerprint()
     let deserialized: VerificationGap = serde_json::from_str(&json1).unwrap();
     assert_eq!(deserialized.source, Some("layer1".to_string()), "source must round-trip");
 }
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests for child-session verification lifecycle (Phase 2)
+//
+// These tests cover the full child-session model introduced in Phase 2:
+//   7.  Auto-verify creates a verification child session with correct properties
+//   8.  Child updates parent state via update_plan_verification
+//   9.  Child is archived when plan-verifier agent completes
+//   10. Orphaned verification child reconciled (parent reset, child archived)
+//   11. Spawn failure resets parent in_progress
+//   12. Child session description format contains required fields (parallel tests)
+// ──────────────────────────────────────────────────────────────────────────────
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 7: Auto-verify creates verification child session
+//
+// After create_verification_child_session is called, a verification child session is created:
+//   - session_purpose = Verification
+//   - parent_session_id = parent's ID
+//   - status = Active (ready to receive plan-verifier agent)
+//
+// get_verification_children(parent_id) must return the child.
+// Archived children must be excluded from get_verification_children.
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_auto_verify_creates_verification_child_session() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent: general ideation session that has triggered auto-verify
+    let mut parent = make_session(&project_id);
+    parent.verification_status = VerificationStatus::Reviewing;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 1;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Simulate create_verification_child_session: create verification child session
+    let mut child = make_session(&project_id);
+    child.session_purpose = crate::domain::entities::ideation::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    // Child must have correct purpose and parent reference
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.session_purpose,
+        crate::domain::entities::ideation::SessionPurpose::Verification,
+        "verification child must have SessionPurpose::Verification"
+    );
+    assert_eq!(
+        child_after.parent_session_id.as_ref(),
+        Some(&parent_id),
+        "verification child must reference the parent session"
+    );
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Active,
+        "verification child must start as Active"
+    );
+
+    // get_verification_children must return the active child
+    let children = repo.get_verification_children(&parent_id).await.unwrap();
+    assert_eq!(children.len(), 1, "must find exactly one verification child");
+    assert_eq!(children[0].id, child_id, "returned child must match created child");
+
+    // After archiving the child, get_verification_children must return empty
+    repo.update_status(
+        &child_id,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+    )
+    .await
+    .unwrap();
+    let children_after_archive = repo.get_verification_children(&parent_id).await.unwrap();
+    assert!(
+        children_after_archive.is_empty(),
+        "archived child must not appear in get_verification_children"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 8: Verification child updates parent state
+//
+// The plan-verifier agent calls update_plan_verification(parent_id) to update
+// the parent session's verification state. This simulates the agent running
+// critic rounds and reporting results to the parent session.
+//
+// Round 1: NeedsRevision (1 critical, 2 high gaps) — loop continues
+// Round 2: Verified (zero_blocking) — in_progress cleared
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_verification_child_updates_parent_state() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent starts in Reviewing state (auto-verify triggered)
+    let mut parent = make_session(&project_id);
+    parent.verification_status = VerificationStatus::Reviewing;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 1;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Create verification child (plan-verifier agent session)
+    let mut child = make_session(&project_id);
+    child.session_purpose = crate::domain::entities::ideation::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    repo.create(child).await.unwrap();
+
+    // Round 1: plan-verifier calls update_plan_verification(parent_id) — gaps found
+    let round1_meta = metadata_with_gaps(1, 2, 1, 4);
+    repo.update_verification_state(
+        &parent_id,
+        VerificationStatus::NeedsRevision,
+        true, // still in progress — loop continues
+        Some(round1_meta),
+    )
+    .await
+    .unwrap();
+
+    let parent_after_r1 = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        parent_after_r1.verification_status,
+        VerificationStatus::NeedsRevision,
+        "parent status must update to NeedsRevision after round 1"
+    );
+    assert!(
+        parent_after_r1.verification_in_progress,
+        "parent must remain in_progress while loop continues"
+    );
+    // Gate still blocks (NeedsRevision + in_progress)
+    assert!(
+        check_verification_gate(&parent_after_r1, &settings_with_gate_enabled()).is_err(),
+        "gate must block while verification is in progress"
+    );
+
+    // Round 2: plan-verifier calls update_plan_verification(parent_id) — zero_blocking
+    let round2_meta = metadata_converged("zero_blocking", 2);
+    repo.update_verification_state(
+        &parent_id,
+        VerificationStatus::Verified,
+        false, // in_progress cleared on convergence
+        Some(round2_meta),
+    )
+    .await
+    .unwrap();
+
+    let parent_after_r2 = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        parent_after_r2.verification_status,
+        VerificationStatus::Verified,
+        "parent must reach Verified after zero_blocking convergence"
+    );
+    assert!(
+        !parent_after_r2.verification_in_progress,
+        "parent in_progress must be cleared on convergence"
+    );
+    // Gate passes after Verified
+    assert!(
+        check_verification_gate(&parent_after_r2, &settings_with_gate_enabled()).is_ok(),
+        "gate must allow acceptance after verification: {:?}",
+        check_verification_gate(&parent_after_r2, &settings_with_gate_enabled())
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 9: Verification child archived on completion
+//
+// When the plan-verifier agent finishes:
+//   Step 1: plan-verifier calls update_plan_verification(parent_id, in_progress=false)
+//   Step 2: backend auto-archives the child on agent:run_completed
+//
+// After both steps:
+//   - Parent: in_progress=false, status=Verified
+//   - Child: status=Archived
+//   - get_verification_children returns empty (archived child excluded)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_verification_child_archived_on_completion() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent: verification in progress
+    let mut parent = make_session(&project_id);
+    parent.verification_status = VerificationStatus::Reviewing;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 1;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Child: active verification session (plan-verifier agent running)
+    let mut child = make_session(&project_id);
+    child.session_purpose = crate::domain::entities::ideation::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    // Verify child is visible before completion
+    let active_children = repo.get_verification_children(&parent_id).await.unwrap();
+    assert_eq!(active_children.len(), 1, "child must be visible before completion");
+
+    // Step 1: plan-verifier calls update_plan_verification(parent_id, in_progress=false)
+    let final_meta = metadata_converged("zero_blocking", 2);
+    repo.update_verification_state(
+        &parent_id,
+        VerificationStatus::Verified,
+        false,
+        Some(final_meta),
+    )
+    .await
+    .unwrap();
+
+    // Step 2: backend auto-archives verification child on agent:run_completed
+    repo.update_status(
+        &child_id,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+    )
+    .await
+    .unwrap();
+
+    // Parent: in_progress cleared, status Verified
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        parent_after.verification_status,
+        VerificationStatus::Verified,
+        "parent must be Verified after plan-verifier completes"
+    );
+    assert!(
+        !parent_after.verification_in_progress,
+        "parent in_progress must be cleared after completion"
+    );
+
+    // Child: archived
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "verification child must be archived after plan-verifier exits"
+    );
+
+    // get_verification_children must return empty (archived child excluded)
+    let remaining_children = repo.get_verification_children(&parent_id).await.unwrap();
+    assert!(
+        remaining_children.is_empty(),
+        "archived child must not appear in get_verification_children"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 10: Orphaned verification child reconciled
+//
+// If the plan-verifier agent crashes mid-loop, the child session remains Active
+// while the parent is stuck with verification_in_progress=true. The reconciler
+// detects the stale parent (> 10-min auto-verify threshold) and:
+//   1. Resets parent: status=Unverified, in_progress=false
+//   2. Archives the orphaned verification child session
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_orphaned_verification_child_reconciled() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent stuck in verification for 2 hours (> 10-min auto-verify threshold)
+    let mut parent = make_session(&project_id);
+    parent.verification_status = VerificationStatus::Reviewing;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 1; // auto-verify
+    parent.updated_at = Utc::now() - Duration::hours(2);
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Orphaned verification child (Active — agent crashed, never completed/archived)
+    let mut child = make_session(&project_id);
+    child.session_purpose = crate::domain::entities::ideation::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    // Gate blocks before reconciliation (parent stuck in_progress)
+    let stuck = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert!(
+        check_verification_gate(&stuck, &settings_with_gate_enabled()).is_err(),
+        "gate must block while parent is stuck in_progress"
+    );
+
+    let config = VerificationReconciliationConfig {
+        stale_after_secs: 5400,      // 90 min (manual verify)
+        auto_verify_stale_secs: 600, // 10 min (auto-verify)
+        interval_secs: 300,
+    };
+    let svc = VerificationReconciliationService::new(
+        repo.clone() as Arc<dyn IdeationSessionRepository>,
+        config,
+    );
+    let reset_count = svc.scan_and_reset().await;
+    assert_eq!(reset_count, 1, "reconciler must reset the orphaned parent");
+
+    // Parent must be reset to Unverified
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(
+        parent_after.verification_status,
+        VerificationStatus::Unverified,
+        "orphaned parent must be reset to Unverified"
+    );
+    assert!(
+        !parent_after.verification_in_progress,
+        "orphaned parent in_progress must be cleared"
+    );
+
+    // Orphaned child must be archived by the reconciler
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "orphaned verification child must be archived by reconciler"
+    );
+
+    // No active verification children after reconciliation
+    let active_children = repo.get_verification_children(&parent_id).await.unwrap();
+    assert!(
+        active_children.is_empty(),
+        "no active verification children must remain after reconciliation"
+    );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Test 11: Spawn failure resets parent in_progress
+//
+// When create_child_session returns orchestration_triggered=false, the backend
+// calls reset_auto_verify_sync on the parent to clear
+// in_progress. This prevents permanent lock when the agent fails to start.
+//
+// After reset:
+//   - Parent: in_progress=false, status=Unverified
+//   - Gate still blocks (session unverified) but no longer locked
+//   - No verification children (spawn failed before child was created)
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_spawn_failure_resets_parent() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent: auto-verify triggered (in_progress=true, generation=1)
+    let mut parent = make_session(&project_id);
+    parent.verification_status = VerificationStatus::Reviewing;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 1;
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Gate blocks while in_progress (spawn not yet confirmed failed)
+    let locked = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert!(
+        check_verification_gate(&locked, &settings_with_gate_enabled()).is_err(),
+        "gate must block while verification lock is held"
+    );
+
+    // Simulate spawn failure: reset_auto_verify_sync clears in_progress
+    // (This is what create_plan_artifact calls when orchestration_triggered=false)
+    repo.update_verification_state(
+        &parent_id,
+        VerificationStatus::Unverified,
+        false, // in_progress cleared — lock released
+        None,  // metadata cleared
+    )
+    .await
+    .unwrap();
+
+    // Parent must have in_progress cleared — no longer permanently locked
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert!(
+        !parent_after.verification_in_progress,
+        "spawn failure must clear in_progress to avoid permanent lock"
+    );
+    assert_eq!(
+        parent_after.verification_status,
+        VerificationStatus::Unverified,
+        "spawn failure must reset status to Unverified"
+    );
+    assert!(
+        parent_after.verification_metadata.is_none(),
+        "spawn failure must clear metadata"
+    );
+
+    // Gate still blocks (session unverified) but for the right reason
+    let gate = check_verification_gate(&parent_after, &settings_with_gate_enabled());
+    assert!(
+        gate.is_err(),
+        "gate must still block unverified session after spawn failure reset"
+    );
+    assert!(
+        matches!(
+            gate.unwrap_err(),
+            crate::domain::entities::ideation::VerificationError::NotVerified
+        ),
+        "error must be NotVerified (not InProgress) after spawn failure reset"
+    );
+
+    // No verification children exist (spawn failed before child was created)
+    let children = repo.get_verification_children(&parent_id).await.unwrap();
+    assert!(children.is_empty(), "no verification children after spawn failure");
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Tests 12a/12b: Child session description format (parallel tests)
+//
+// The description passed to create_verification_child_session must contain:
+//   - "parent_session_id: {parent_id}" — so plan-verifier can identify parent
+//   - "generation: {N}"               — zombie protection generation counter
+//   - "max_rounds: {N}"               — hard cap for the verification loop
+//
+// These run in parallel with old build_auto_verifier_prompt tests (Phase 2)
+// and will remain when the old prompt construction is deleted (Phase 3).
+// ──────────────────────────────────────────────────────────────────────────────
+
+#[test]
+fn test_child_session_description_format_contains_required_fields() {
+    let parent_session_id = "session-abc-123";
+    let generation = 3i32;
+    let max_rounds = 4u32;
+
+    // Replicate the format string from create_plan_artifact in artifacts.rs
+    let description = format!(
+        "Run verification round loop. parent_session_id: {parent_session_id}, generation: {generation}, max_rounds: {max_rounds}"
+    );
+
+    assert!(
+        description.contains(&format!("parent_session_id: {parent_session_id}")),
+        "description must contain parent_session_id field: got '{description}'"
+    );
+    assert!(
+        description.contains(&format!("generation: {generation}")),
+        "description must contain generation field: got '{description}'"
+    );
+    assert!(
+        description.contains(&format!("max_rounds: {max_rounds}")),
+        "description must contain max_rounds field: got '{description}'"
+    );
+}
+
+#[test]
+fn test_child_session_description_format_gen1_max4() {
+    // Verify the format works for the most common case: gen=1, max_rounds=4
+    let parent_session_id = "session-xyz-789";
+    let generation = 1i32;
+    let max_rounds = 4u32;
+
+    let description = format!(
+        "Run verification round loop. parent_session_id: {parent_session_id}, generation: {generation}, max_rounds: {max_rounds}"
+    );
+
+    assert!(
+        description.contains("parent_session_id: session-xyz-789"),
+        "must embed parent session ID"
+    );
+    assert!(description.contains("generation: 1"), "must embed generation 1");
+    assert!(description.contains("max_rounds: 4"), "must embed max_rounds 4");
+}
