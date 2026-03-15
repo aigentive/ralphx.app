@@ -303,6 +303,9 @@ impl TaskStepRepository for StubTaskStepRepo {
     async fn reorder(&self, _: &TaskId, _: Vec<TaskStepId>) -> AppResult<()> {
         Ok(())
     }
+    async fn reset_all_to_pending(&self, _: &TaskId) -> AppResult<u32> {
+        Ok(0)
+    }
 }
 
 /// Stub that always returns a DB error for get_by_task.
@@ -343,6 +346,9 @@ impl TaskStepRepository for StubErrorTaskStepRepo {
     }
     async fn reorder(&self, _: &TaskId, _: Vec<TaskStepId>) -> AppResult<()> {
         Ok(())
+    }
+    async fn reset_all_to_pending(&self, _: &TaskId) -> AppResult<u32> {
+        Ok(0)
     }
 }
 

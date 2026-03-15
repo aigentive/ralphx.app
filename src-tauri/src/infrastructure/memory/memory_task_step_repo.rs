@@ -140,6 +140,25 @@ impl TaskStepRepository for MemoryTaskStepRepository {
 
         Ok(())
     }
+
+    async fn reset_all_to_pending(&self, task_id: &TaskId) -> AppResult<u32> {
+        let mut steps = self.steps.write().await;
+        let now = chrono::Utc::now();
+        let mut count = 0u32;
+
+        for step in steps.values_mut() {
+            if step.task_id == *task_id && step.status != TaskStepStatus::Pending {
+                step.status = TaskStepStatus::Pending;
+                step.started_at = None;
+                step.completed_at = None;
+                step.completion_note = None;
+                step.updated_at = now;
+                count += 1;
+            }
+        }
+
+        Ok(count)
+    }
 }
 
 #[cfg(test)]

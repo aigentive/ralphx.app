@@ -596,6 +596,10 @@ impl TaskStepRepository for MockTaskStepRepository {
     async fn reorder(&self, _task_id: &TaskId, _step_ids: Vec<TaskStepId>) -> AppResult<()> {
         Ok(())
     }
+
+    async fn reset_all_to_pending(&self, _task_id: &TaskId) -> AppResult<u32> {
+        Ok(0)
+    }
 }
 
 #[tokio::test]
