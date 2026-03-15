@@ -66,8 +66,8 @@ impl SqliteIdeationSessionRepository {
              (id, project_id, title, title_source, status, plan_artifact_id, \
               inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
               updated_at, archived_at, converted_at, team_mode, team_config_json, \
-              verification_status, source_project_id, source_session_id) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+              verification_status, source_project_id, source_session_id, session_purpose) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
             rusqlite::params![
                 session.id.as_str(),
                 session.project_id.as_str(),
@@ -87,6 +87,7 @@ impl SqliteIdeationSessionRepository {
                 session.verification_status.to_string(),
                 session.source_project_id,
                 session.source_session_id,
+                session.session_purpose.to_string(),
             ],
         )?;
         Ok(session.clone())
@@ -102,7 +103,7 @@ impl SqliteIdeationSessionRepository {
              inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
              updated_at, archived_at, converted_at, team_mode, team_config_json, \
              verification_status, verification_in_progress, verification_metadata, \
-             verification_generation, source_project_id, source_session_id \
+             verification_generation, source_project_id, source_session_id, session_purpose \
              FROM ideation_sessions WHERE id = ?1",
             [id],
             |row| IdeationSession::from_row(row),
@@ -123,7 +124,7 @@ impl SqliteIdeationSessionRepository {
              inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
              updated_at, archived_at, converted_at, team_mode, team_config_json, \
              verification_status, verification_in_progress, verification_metadata, \
-             verification_generation, source_project_id, source_session_id \
+             verification_generation, source_project_id, source_session_id, session_purpose \
              FROM ideation_sessions WHERE plan_artifact_id = ?1",
         )?;
         let sessions = stmt
@@ -142,7 +143,7 @@ impl SqliteIdeationSessionRepository {
              inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
              updated_at, archived_at, converted_at, team_mode, team_config_json, \
              verification_status, verification_in_progress, verification_metadata, \
-             verification_generation, source_project_id, source_session_id \
+             verification_generation, source_project_id, source_session_id, session_purpose \
              FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1",
         )?;
         let sessions = stmt
@@ -326,8 +327,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "INSERT INTO ideation_sessions (id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, source_project_id, source_session_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+                    "INSERT INTO ideation_sessions (id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, source_project_id, source_session_id, session_purpose)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19)",
                     rusqlite::params![
                         session.id.as_str(),
                         session.project_id.as_str(),
@@ -347,6 +348,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         session.verification_status.to_string(),
                         session.source_project_id,
                         session.source_session_id,
+                        session.session_purpose.to_string(),
                     ],
                 )?;
                 Ok(session)
@@ -359,7 +361,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id, session_purpose
                      FROM ideation_sessions WHERE id = ?1",
                     [&id],
                     |row| IdeationSession::from_row(row),
@@ -373,7 +375,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id, session_purpose
                      FROM ideation_sessions WHERE project_id = ?1 ORDER BY updated_at DESC",
                 )?;
                 let sessions = stmt
@@ -491,7 +493,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id, session_purpose
                      FROM ideation_sessions
                      WHERE project_id = ?1 AND status = 'active'
                      ORDER BY updated_at DESC",
@@ -531,7 +533,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id, session_purpose
                      FROM ideation_sessions WHERE plan_artifact_id = ?1",
                 )?;
                 let sessions = stmt
@@ -550,7 +552,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id, session_purpose
                      FROM ideation_sessions WHERE inherited_plan_artifact_id = ?1",
                 )?;
                 let sessions = stmt
@@ -566,7 +568,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id, session_purpose
                      FROM ideation_sessions WHERE parent_session_id = ?1 ORDER BY created_at DESC",
                 )?;
                 let sessions = stmt
@@ -590,7 +592,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                 // Walk up the parent chain iteratively
                 loop {
                     let result = conn.query_row(
-                        "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id
+                        "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id, session_purpose
                          FROM ideation_sessions WHERE id = ?1",
                         [&current_id],
                         |row| IdeationSession::from_row(row),
@@ -838,12 +840,37 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                      inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
                      updated_at, archived_at, converted_at, team_mode, team_config_json, \
                      verification_status, verification_in_progress, verification_metadata, \
-                     verification_generation, source_project_id, source_session_id \
+                     verification_generation, source_project_id, source_session_id, session_purpose \
                      FROM ideation_sessions \
                      WHERE verification_in_progress = 1 AND updated_at < ?1",
                 )?;
                 let sessions = stmt
                     .query_map([&stale_before_str], IdeationSession::from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(sessions)
+            })
+            .await
+    }
+
+    async fn get_verification_children(
+        &self,
+        parent_session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        let param_str = parent_session_id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, \
+                     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
+                     updated_at, archived_at, converted_at, team_mode, team_config_json, \
+                     verification_status, verification_in_progress, verification_metadata, \
+                     verification_generation, source_project_id, source_session_id, session_purpose \
+                     FROM ideation_sessions \
+                     WHERE parent_session_id = ?1 AND session_purpose = 'verification' AND status != 'archived' \
+                     ORDER BY created_at DESC LIMIT 1",
+                )?;
+                let sessions = stmt
+                    .query_map([&param_str], IdeationSession::from_row)?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(sessions)
             })
@@ -865,7 +892,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                      inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
                      updated_at, archived_at, converted_at, team_mode, team_config_json, \
                      verification_status, verification_in_progress, verification_metadata, \
-                     verification_generation, source_project_id, source_session_id \
+                     verification_generation, source_project_id, source_session_id, session_purpose \
                      FROM ideation_sessions \
                      WHERE project_id = ?1 AND status = ?2 \
                      ORDER BY created_at DESC LIMIT ?3",

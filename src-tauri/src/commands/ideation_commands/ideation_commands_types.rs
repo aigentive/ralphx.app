@@ -69,6 +69,7 @@ pub struct IdeationSessionResponse {
     pub inherited_plan_artifact_id: Option<String>,
     pub source_project_id: Option<String>,
     pub source_session_id: Option<String>,
+    pub session_purpose: String,
 }
 
 impl From<IdeationSession> for IdeationSessionResponse {
@@ -101,6 +102,7 @@ impl From<IdeationSession> for IdeationSessionResponse {
             inherited_plan_artifact_id: session.inherited_plan_artifact_id.map(|id| id.as_str().to_string()),
             source_project_id: session.source_project_id,
             source_session_id: session.source_session_id,
+            session_purpose: session.session_purpose.to_string(),
         }
     }
 }

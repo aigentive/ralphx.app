@@ -341,6 +341,13 @@ impl IdeationSessionRepository for MockIdeationRepo {
         unimplemented!()
     }
 
+    async fn get_verification_children(
+        &self,
+        _parent_session_id: &IdeationSessionId,
+    ) -> AppResult<Vec<IdeationSession>> {
+        unimplemented!()
+    }
+
     async fn get_by_project_and_status(
         &self,
         _project_id: &str,
@@ -1329,63 +1336,6 @@ async fn resolve_working_directory_merge_context_accepts_merge_prefix() {
         std::path::PathBuf::from(&wt_path),
         "Must return the merge- worktree path as the working directory"
     );
-}
-
-// ──────────────────────────────────────────────────────────────────────────────
-// Tests for auto_verification metadata filtering in format_session_history
-// ──────────────────────────────────────────────────────────────────────────────
-
-#[test]
-fn format_session_history_auto_verification_filtered_out() {
-    let sid = IdeationSessionId::new();
-    let mut auto_verify_msg = make_user_msg(&sid, "please verify this plan");
-    auto_verify_msg.metadata =
-        Some(r#"{"auto_verification": true}"#.to_string());
-    let normal_msg = make_user_msg(&sid, "normal user message");
-    let msgs = vec![auto_verify_msg, normal_msg];
-    let result = format_session_history(&msgs, 2);
-    // Auto-verification message must be excluded
-    assert!(!result.contains("please verify this plan"));
-    // Normal message must still appear
-    assert!(result.contains("normal user message"));
-}
-
-#[test]
-fn format_session_history_all_auto_verification_returns_empty_string() {
-    let sid = IdeationSessionId::new();
-    let mut msg = make_user_msg(&sid, "auto verify only");
-    msg.metadata = Some(r#"{"auto_verification": true}"#.to_string());
-    let result = format_session_history(&[msg], 1);
-    assert_eq!(result, "");
-}
-
-#[test]
-fn format_session_history_auto_verification_and_recovery_context_both_filtered() {
-    let sid = IdeationSessionId::new();
-    let mut auto_verify_msg = make_user_msg(&sid, "auto verify content");
-    auto_verify_msg.metadata = Some(r#"{"auto_verification": true}"#.to_string());
-    let mut recovery_msg = make_user_msg(&sid, "recovery context content");
-    recovery_msg.metadata = Some(r#"{"recovery_context": true}"#.to_string());
-    let normal_msg = make_user_msg(&sid, "regular message");
-    let msgs = vec![auto_verify_msg, recovery_msg, normal_msg];
-    let result = format_session_history(&msgs, 3);
-    // Both filtered metadata types must be excluded
-    assert!(!result.contains("auto verify content"));
-    assert!(!result.contains("recovery context content"));
-    // Normal message must appear
-    assert!(result.contains("regular message"));
-}
-
-#[test]
-fn format_session_history_auto_verification_false_value_is_included() {
-    // Only messages with the "auto_verification" key present (regardless of value) are excluded.
-    // A message with `{"auto_verification": false}` still has the key so it is excluded.
-    let sid = IdeationSessionId::new();
-    let mut msg = make_user_msg(&sid, "auto_verification false");
-    msg.metadata = Some(r#"{"auto_verification": false}"#.to_string());
-    let result = format_session_history(&[msg], 1);
-    // The filter checks for key *presence*, so this should also be filtered out
-    assert!(!result.contains("auto_verification false"));
 }
 
 /// Test 3: Merger agent spawn rejects non-merge worktree paths (e.g., task-{task_id}).

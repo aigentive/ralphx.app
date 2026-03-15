@@ -82,6 +82,9 @@ pub struct IdeationSession {
     pub source_project_id: Option<String>,
     /// Source session ID when this session was imported from another project
     pub source_session_id: Option<String>,
+    /// Purpose of this session: General (default) or Verification (plan-verifier child)
+    #[serde(default)]
+    pub session_purpose: SessionPurpose,
 }
 
 /// Builder for creating IdeationSession instances
@@ -108,6 +111,7 @@ pub struct IdeationSessionBuilder {
     verification_generation: Option<i32>,
     source_project_id: Option<String>,
     source_session_id: Option<String>,
+    session_purpose: Option<SessionPurpose>,
 }
 
 impl IdeationSessionBuilder {
@@ -230,6 +234,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set the session purpose
+    pub fn session_purpose(mut self, session_purpose: SessionPurpose) -> Self {
+        self.session_purpose = Some(session_purpose);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -256,6 +266,7 @@ impl IdeationSessionBuilder {
             verification_generation: self.verification_generation.unwrap_or(0),
             source_project_id: self.source_project_id,
             source_session_id: self.source_session_id,
+            session_purpose: self.session_purpose.unwrap_or_default(),
         }
     }
 }
@@ -392,6 +403,12 @@ impl IdeationSession {
             source_session_id: row
                 .get::<_, Option<String>>("source_session_id")
                 .unwrap_or(None),
+            session_purpose: row
+                .get::<_, Option<String>>("session_purpose")
+                .unwrap_or(None)
+                .as_deref()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or_default(),
         })
     }
 

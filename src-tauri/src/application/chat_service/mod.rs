@@ -35,6 +35,7 @@ use crate::domain::entities::{
     AgentRun, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
     IdeationSessionId, TaskId,
 };
+use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
@@ -563,11 +564,16 @@ impl<R: Runtime> ClaudeChatService<R> {
                     None
                 }
             }
-            // Ideation context: look up session status for read-only mode
+            // Ideation context: check purpose first (Verification sessions → plan-verifier agent)
+            // then fall back to status for accepted/readonly routing
             ChatContextType::Ideation => {
                 let session_id = IdeationSessionId::from_string(context_id);
                 if let Ok(Some(session)) = self.ideation_session_repo.get_by_id(&session_id).await {
-                    Some(session.status.to_string())
+                    if session.session_purpose == SessionPurpose::Verification {
+                        Some("verification".to_string())
+                    } else {
+                        Some(session.status.to_string())
+                    }
                 } else {
                     None
                 }

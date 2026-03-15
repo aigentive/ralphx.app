@@ -5,6 +5,43 @@ use chrono::{DateTime, TimeZone, Utc};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
+/// Purpose of an ideation session — distinguishes general ideation from plan-verifier child sessions
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SessionPurpose {
+    /// Standard ideation session (default)
+    General,
+    /// Child session spawned by the plan-verifier agent
+    Verification,
+}
+
+impl Default for SessionPurpose {
+    fn default() -> Self {
+        Self::General
+    }
+}
+
+impl std::fmt::Display for SessionPurpose {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SessionPurpose::General => write!(f, "general"),
+            SessionPurpose::Verification => write!(f, "verification"),
+        }
+    }
+}
+
+impl FromStr for SessionPurpose {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "general" => Ok(SessionPurpose::General),
+            "verification" => Ok(SessionPurpose::Verification),
+            _ => Err(format!("unknown session purpose: '{s}'")),
+        }
+    }
+}
+
 /// Status of an ideation session
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

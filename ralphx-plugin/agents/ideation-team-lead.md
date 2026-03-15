@@ -247,60 +247,18 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
 
 The agent decides which layers apply based on plan content. If the plan proposes specific code changes, file modifications, or architectural modifications → both layers. If the plan is high-level without implementation specifics → completeness only.
 
-**Pre-check (auto-verify guard):** Before starting the round loop, call `get_plan_verification(session_id)`. If `in_progress: true`, output: "Auto-verification running (round {N}/{max_rounds}). Results appear automatically when complete." and EXIT the VERIFY phase — do not start a new round.
+**Pre-check (auto-verify guard):** Before delegating, call `get_plan_verification(session_id)`. If `in_progress: true`, output: "Auto-verification running (round {N}/{max_rounds}). Results appear automatically when complete." and EXIT the VERIFY phase — do not create a new child session.
 
-**Round Loop:**
-1. `get_plan_verification(session_id)` → get current round, gap history. **When round > 1:** Extract `current_gaps[].description` from the prior round result. Pass prior-round context **as the first section of each critic's prompt argument** (before the PLAN CONTENT line):
-   ```
-   PRIOR ROUND CONTEXT (round N-1 findings that were addressed in the current plan revision):
-   - [gap description 1] — ADDRESSED in revision (do not re-flag unless the fix is inadequate)
-   - [gap description 2] — ADDRESSED in revision
-   Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. Do not re-flag just because the code hasn't been written yet.
-   ```
-   Include this section in the Layer 1 critic prompt AND in the Layer 2 critic prompt. Omit entirely when round == 1.
-2. `get_session_plan(session_id)` → inspect plan content to determine whether it proposes specific code changes (for the Layer 2 guard). Do NOT extract or pass plan content to critics — they fetch it themselves via MCP using the session_id.
-3. **Layer 1 — Completeness critic:** Spawn `Task(ralphx:plan-critic-layer1)` with a prompt containing the session_id. The critic's full instructions (framing, output format, severity guide) live in `plan-critic-layer1.md` — no inline template needed.
+**❌ Do NOT run any verification steps yourself. The plan-verifier agent handles the entire round loop.**
 
-   Prompt format:
-   ```
-   {prior_round_context_block — include only when round > 1; omit entirely when round == 1}
+**Delegation:**
+Call `create_child_session(purpose: "verification", inherit_context: true, description: "Run verification round loop. parent_session_id: {session_id}")`.
 
-   SESSION_ID: {session_id}
-   ```
-3b. **Layer 2 — Implementation feasibility (when plan proposes code changes):** Spawn one `Task(ralphx:plan-critic-layer2)` with the same prompt format as Layer 1 (session_id + prior-round context if round > 1). The agent applies two lenses in one pass (minimal/surgical + defense-in-depth) and returns a unified JSON gap list. Its full instructions and code-reading protocols live in `plan-critic-layer2.md`.
+The child session automatically routes to the `plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, calling `update_plan_verification`, revising the plan, checking convergence). Verification progress appears automatically via the `VerificationBadge` on the parent session — no polling needed.
 
-   The agent MUST read actual code (not rely on plan descriptions). Gaps must be concrete: "if X happens, Y breaks because line Z does W." ❌ Style/preference debates — only functional and architectural gaps.
+**If user skips verification:** Call `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
 
-4. Parse JSON from critic responses. On parse failure: record via `update_plan_verification(session_id, status: "needs_revision", round: N, gaps: [])`.
-5. Tag gaps by source before submitting: Layer 1 gaps → add `source: "layer1"`, Layer 2 gaps → add `source: "layer2"`.
-6. Call `update_plan_verification(session_id, status: "reviewing", in_progress: true, round: N, gaps: [...], convergence_reason: null)`.
-   **Backend handles all computation:** The backend computes gap score, fingerprinting, and convergence detection. Always send `status: "reviewing"` — the backend auto-transitions to `needs_revision` (gaps present) or `verified` (convergence detected). Never send `needs_revision` or `verified` directly.
-6.5. Check the API response status field:
-   - `verified` (backend detected convergence) → output "Converged: {convergence_reason from response}" → EXIT loop → proceed to CONFIRM.
-   - `needs_revision` (backend auto-transitioned) → continue to step 7. Do NOT retry or loop back.
-7. Output round progress (values from backend response):
-   ```
-   Verification Round {N}/{max_rounds}
-   Gap score: {score} (critical: {c}, high: {h}, medium: {m}, low: {l})
-   {Improving / Regressing / Stable}
-   Layers: {completeness | completeness + implementation feasibility}
-
-   Critical gaps: {list or "None"}
-   High gaps: {list or "None"}
-
-   Continue? (y/n or describe what to fix)
-   ```
-8. Present gaps to user. Ask: "Shall I update the plan to address these gaps and run another round?"
-9. User approves → `edit_plan_artifact` (targeted changes <30%) or `update_plan_artifact` (full rewrites >30%) → repeat from step 1.
-
-    When revising the plan to address gaps:
-    - NEVER remove or modify sections that describe proposed additions (new files, new columns, new migrations) unless a critic identified that the addition itself is wrong.
-    - Only ADD or CLARIFY content — do not restructure or remove existing plan sections.
-    - Preserve ALL user-authored content (architecture decisions, phase descriptions, affected files).
-    - If a gap says "X is missing", add X to the plan — do not remove other proposed items to make room.
-10. User skips → `update_plan_verification(session_id, status: "skipped", convergence_reason: "user_skipped")` → proceed to CONFIRM.
-
-**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → ask user: "A verification round was in progress. Resume from round {N}? (y/n)"
+**Recovery routing:** If `get_plan_verification` shows `in_progress: true` on RECOVER → verification is running in a child session. Output: "Verification is running in a child session (round {N}/{max_rounds}). Results appear automatically when complete."
 
 ### Cross-Project Plan Detection
 

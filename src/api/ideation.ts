@@ -164,7 +164,7 @@ export const ideationApi = {
     list: async (projectId: string): Promise<IdeationSessionResponse[]> => {
       const raw = await typedInvoke(
         "list_ideation_sessions",
-        { projectId },  // camelCase - Tauri auto-converts to snake_case for Rust
+        { projectId, purpose: "general" },  // camelCase - Tauri auto-converts to snake_case for Rust
         z.array(IdeationSessionResponseSchema)
       );
       return raw.map(transformSession);

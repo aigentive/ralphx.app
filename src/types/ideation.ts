@@ -103,6 +103,7 @@ export const IdeationSessionSchema = z.object({
   verificationUpdateSeq: z.number().int().optional(),
   sourceProjectId: z.string().nullable().optional(),
   sourceSessionId: z.string().nullable().optional(),
+  sessionPurpose: z.enum(["general", "verification"]).default("general"),
 });
 
 export type IdeationSession = z.infer<typeof IdeationSessionSchema>;

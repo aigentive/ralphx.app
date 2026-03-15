@@ -41,8 +41,14 @@ export function ChildSessionNotification({
       sessionId: string;
       parentSessionId: string;
       title: string;
+      purpose?: string;
     }>("ideation:child_session_created:local", (payload) => {
       logger.debug("[ChildSessionNotification] Received child session event:", payload);
+
+      // Suppress notifications for verification children — they are background work
+      if (payload.purpose === "verification") {
+        return;
+      }
 
       // Only show notification if this is a child of the current session
       if (payload.parentSessionId === sessionId) {

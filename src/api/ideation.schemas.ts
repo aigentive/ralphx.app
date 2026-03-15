@@ -32,6 +32,7 @@ export const IdeationSessionResponseSchema = z.object({
   source_project_id: z.string().nullable().optional(),
   source_session_id: z.string().nullable().optional(),
   inherited_plan_artifact_id: z.string().nullable().optional(),
+  session_purpose: z.enum(["general", "verification"]).optional(),
 });
 
 /**

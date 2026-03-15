@@ -33,13 +33,14 @@ pub const SHORT_MERGER: &str = "ralphx-merger";
 pub const SHORT_MEMORY_MAINTAINER: &str = "memory-maintainer";
 pub const SHORT_MEMORY_CAPTURE: &str = "memory-capture";
 
+// ── Plan verification critic agents ─────────────────────────────────────
+pub const SHORT_PLAN_CRITIC_LAYER1: &str = "plan-critic-layer1";
+pub const SHORT_PLAN_CRITIC_LAYER2: &str = "plan-critic-layer2";
+pub const SHORT_PLAN_VERIFIER: &str = "plan-verifier";
+
 // ── Team lead variants (extends base agents) ────────────────────────────
 pub const SHORT_IDEATION_TEAM_LEAD: &str = "ideation-team-lead";
 pub const SHORT_WORKER_TEAM: &str = "ralphx-worker-team";
-
-// ── Plan critic agents (read-only, plan verification) ───────────────────
-pub const SHORT_PLAN_CRITIC_LAYER1: &str = "plan-critic-layer1";
-pub const SHORT_PLAN_CRITIC_LAYER2: &str = "plan-critic-layer2";
 
 // ── ChatService team agents (team_mode=true → resolve_agent_with_team_mode) ──
 
@@ -56,6 +57,9 @@ pub const AGENT_ORCHESTRATOR_IDEATION: &str = "ralphx:orchestrator-ideation";
 
 /// Ideation orchestrator in read-only mode (session status = "accepted")
 pub const AGENT_ORCHESTRATOR_IDEATION_READONLY: &str = "ralphx:orchestrator-ideation-readonly";
+
+/// Plan verifier agent (ChatContextType::Ideation when session_purpose = Verification)
+pub const AGENT_PLAN_VERIFIER: &str = "ralphx:plan-verifier";
 
 /// Task-scoped chat (ChatContextType::Task)
 pub const AGENT_CHAT_TASK: &str = "ralphx:chat-task";

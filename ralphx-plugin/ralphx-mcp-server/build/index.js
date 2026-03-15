@@ -384,8 +384,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
         else if (name === "create_child_session") {
             // POST /api/create_child_session
-            const { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config } = args;
-            result = await callTauri("create_child_session", { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config });
+            const { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config, purpose } = args;
+            result = await callTauri("create_child_session", { parent_session_id, title, description, inherit_context, initial_prompt, team_mode, team_config, purpose });
         }
         else if (name === "get_parent_session_context") {
             // GET /api/parent_session_context/:session_id

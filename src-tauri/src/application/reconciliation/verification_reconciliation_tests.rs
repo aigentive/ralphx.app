@@ -316,6 +316,47 @@ async fn test_reconciler_only_imported_verified_resets_zero() {
 }
 
 #[tokio::test]
+async fn test_orphaned_verification_child_reconciled() {
+    let repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let project_id = ProjectId::new();
+
+    // Parent session stuck in verification for 2 hours (> 90-min threshold)
+    let mut parent = IdeationSession::new(project_id.clone());
+    parent.verification_status = VerificationStatus::Reviewing;
+    parent.verification_in_progress = true;
+    parent.verification_generation = 1; // auto-verify
+    parent.updated_at = Utc::now() - Duration::hours(2);
+    let parent_id = parent.id.clone();
+    repo.create(parent).await.unwrap();
+
+    // Orphaned verification child session (not archived)
+    let mut child = IdeationSession::new(project_id.clone());
+    child.session_purpose = crate::domain::entities::ideation::SessionPurpose::Verification;
+    child.parent_session_id = Some(parent_id.clone());
+    child.updated_at = Utc::now() - Duration::hours(2);
+    let child_id = child.id.clone();
+    repo.create(child).await.unwrap();
+
+    let svc = make_service(repo.clone(), default_config());
+    let count = svc.scan_and_reset().await;
+
+    assert_eq!(count, 1, "parent session should be reset");
+
+    // Parent should be reset
+    let parent_after = repo.get_by_id(&parent_id).await.unwrap().unwrap();
+    assert_eq!(parent_after.verification_status, VerificationStatus::Unverified);
+    assert!(!parent_after.verification_in_progress);
+
+    // Child should be archived
+    let child_after = repo.get_by_id(&child_id).await.unwrap().unwrap();
+    assert_eq!(
+        child_after.status,
+        crate::domain::entities::IdeationSessionStatus::Archived,
+        "orphaned verification child must be archived by reconciler"
+    );
+}
+
+#[tokio::test]
 async fn test_reconciler_manual_session_reset_after_long_threshold() {
     let repo = Arc::new(MemoryIdeationSessionRepository::new());
     let project_id = ProjectId::new();

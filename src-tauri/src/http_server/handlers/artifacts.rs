@@ -3,15 +3,13 @@ use axum::{
     http::StatusCode,
     Json,
 };
-use std::sync::Arc;
 use tauri::Emitter;
 use tracing::error;
 
 use super::*;
-use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactContent, ArtifactId, ArtifactMetadata, ArtifactType,
-    ChatContextType, IdeationSession, IdeationSessionId, VerificationStatus,
+    IdeationSession, IdeationSessionId, VerificationStatus,
 };
 use rusqlite::Connection;
 use crate::domain::services::emit_verification_status_changed;
@@ -21,9 +19,6 @@ use crate::infrastructure::sqlite::{
     SqliteArtifactRepository as ArtifactRepo, SqliteIdeationSessionRepository as SessionRepo,
     SqliteTaskProposalRepository as ProposalRepo,
 };
-
-/// Metadata key used to mark auto-verification messages.
-pub(crate) const AUTO_VERIFICATION_KEY: &str = "auto_verification";
 
 // ============================================================================
 // EditError Types
@@ -262,226 +257,66 @@ pub async fn create_plan_artifact(
     // Spawn auto-verifier after commit, if trigger was applied.
     // Fire-and-forget: spawn failure resets in_progress so reconciler/user can retry.
     if let Some(generation) = auto_verify_generation {
-        if let Err(e) = spawn_auto_verifier(&state, session_id.as_str(), generation).await {
-            error!(
-                "Auto-verifier spawn failed for session {}: {}",
-                session_id.as_str(),
-                e
-            );
-            // Recovery: reset in_progress=0 so the session is not permanently locked.
-            let sid_str = session_id.as_str().to_string();
-            if let Err(reset_err) = state.app_state.db.run(move |conn| {
-                SessionRepo::reset_auto_verify_sync(conn, &sid_str)
-            }).await {
-                error!(
-                    "Failed to reset auto-verify state for session {} after spawn failure: {}",
-                    session_id.as_str(),
-                    reset_err
+        let cfg = verification_config();
+        let title = format!("Auto-verification (gen {generation})");
+        let description = format!(
+            "Run verification round loop. parent_session_id: {}, generation: {generation}, max_rounds: {}",
+            session_id.as_str(),
+            cfg.max_rounds
+        );
+        match crate::http_server::handlers::session_linking::create_verification_child_session(
+            &state,
+            session_id.as_str(),
+            &description,
+            &title,
+        )
+        .await
+        {
+            Ok(true) => {} // orchestration triggered — success
+            Ok(false) => {
+                // Plan-verifier failed to spawn — reset in_progress to avoid permanently locking
+                tracing::warn!(
+                    "Verification agent failed to spawn for session {}",
+                    session_id.as_str()
                 );
+                let sid_str = session_id.as_str().to_string();
+                if let Err(reset_err) = state
+                    .app_state
+                    .db
+                    .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_str))
+                    .await
+                {
+                    error!(
+                        "Failed to reset auto-verify state for session {} after spawn failure: {}",
+                        session_id.as_str(),
+                        reset_err
+                    );
+                }
+            }
+            Err(e) => {
+                error!(
+                    "Auto-verifier spawn failed for session {}: {}",
+                    session_id.as_str(),
+                    e
+                );
+                let sid_str = session_id.as_str().to_string();
+                if let Err(reset_err) = state
+                    .app_state
+                    .db
+                    .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &sid_str))
+                    .await
+                {
+                    error!(
+                        "Failed to reset auto-verify state for session {} after spawn failure: {}",
+                        session_id.as_str(),
+                        reset_err
+                    );
+                }
             }
         }
     }
 
     Ok(Json(ArtifactResponse::from(created)))
-}
-
-/// Spawn the auto-verifier agent on the session using the ChatService pipeline.
-///
-/// Uses the same pattern as `session_linking.rs` (spawn_child_session_agent):
-/// constructs a ClaudeChatService, then calls send_message with the verification prompt.
-/// The orchestrator-ideation agent (registered for ChatContextType::Ideation) picks up
-/// the message and runs the iterative verification loop.
-/// Build the inner prompt for the auto-verifier agent.
-///
-/// Extracted as a pure function to enable unit testing without a full ChatService stack.
-/// `prior_gaps` contains gap descriptions from a previous generation's verification run;
-/// when non-empty they are injected inside each delimiter block so critics do not
-/// re-escalate already-addressed findings.
-pub(crate) fn build_auto_verifier_prompt(
-    session_id: &str,
-    generation: i32,
-    max_rounds: u32,
-    prior_gaps: &[String],
-) -> String {
-    // Pre-seeded prior gaps for the initial call (in practice always empty).
-    // On subsequent rounds the orchestrator injects prior gaps dynamically (see step C).
-    let initial_prior_gaps_block = if prior_gaps.is_empty() {
-        String::new()
-    } else {
-        let gap_lines: Vec<String> = prior_gaps
-            .iter()
-            .map(|g| {
-                format!(
-                    "- {g} — ADDRESSED in revision (do not re-flag unless the fix is inadequate)"
-                )
-            })
-            .collect();
-        format!(
-            "PRIOR ROUND CONTEXT (round N-1 findings that were addressed in the current plan revision):\n\
-             {}\n\
-             Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. \
-             Do not re-flag just because the code has not been written yet.\n\n",
-            gap_lines.join("\n")
-        )
-    };
-
-    format!(
-        "AUTO-VERIFICATION MODE for session {session_id}. Generation: {generation}. Max rounds: {max_rounds}. NO user is present — run the complete verification loop WITHOUT waiting for user input.\n\
-         \n\
-         ## MANDATORY FIRST STEP\n\
-         \n\
-         Call get_session_plan(session_id: \"{session_id}\") to read the current plan.\n\
-         Store the artifact_id from the response (you will need it for update_plan_artifact calls).\n\
-         Use the plan content for the Layer 2 guard regex check in Step E ONLY — do NOT embed plan content in the critic prompt.\n\
-         \n\
-         ## VERIFICATION LOOP\n\
-         \n\
-         Repeat until convergence OR round >= {max_rounds}:\n\
-         \n\
-         ### A. ZOMBIE CHECK\n\
-         Call get_plan_verification(\"{session_id}\").\n\
-         If verification_generation != {generation}, EXIT IMMEDIATELY — a newer verification run has superseded this one.\n\
-         \n\
-         ### B. Round counter\n\
-         Compute round = current_round + 1.\n\
-         \n\
-         ### C. Build critic prompt\n\
-         Compose the critic_prompt string to pass to each Agent:\n\
-         - If round == 1 and there are pre-seeded prior gaps, start with:\n\
-           {initial_prior_gaps_block}\
-           SESSION_ID: {session_id}\n\
-         - If round > 1, prepend the following section BEFORE the SESSION_ID line (using gap descriptions from the previous get_plan_verification response):\n\
-           ```\n\
-           PRIOR ROUND CONTEXT (gaps from round N-1 addressed in the current plan revision):\n\
-           - <gap1 description> — ADDRESSED in revision (do not re-flag unless the fix is inadequate)\n\
-           - <gap2 description> — ADDRESSED in revision (do not re-flag unless the fix is inadequate)\n\
-           ...\n\
-           Only re-flag a prior gap if the revision's fix is INSUFFICIENT or INCORRECT. Do not re-flag just because the code has not been written yet.\n\
-           \n\
-           SESSION_ID: {session_id}\n\
-           ```\n\
-         - If round == 1 (no pre-seeded gaps), critic_prompt = SESSION_ID: {session_id}\n\
-         \n\
-         ### D. LAYER 1 — Completeness Critic (always run)\n\
-         Spawn: Agent(subagent_type: \"ralphx:plan-critic-layer1\", prompt: critic_prompt)\n\
-         Wait for the result.\n\
-         \n\
-         ### E. LAYER 2 — Dual-lens critic (run only if plan contains code indicators)\n\
-         Check if the plan content matches: /(?:src[-\\/]|\\.rs\\b|\\.tsx?\\b|Affected Files|## Implementation)/\n\
-         If it matches, spawn the Layer 2 critic (single agent, dual-lens analysis):\n\
-         Agent(subagent_type: \"ralphx:plan-critic-layer2\", prompt: critic_prompt)\n\
-         Wait for the result.\n\
-         \n\
-         ### F. Merge and deduplicate gaps\n\
-         Collect all gaps from all Agent results that completed. Deduplicate by description similarity (merge gaps where descriptions are >80% similar). Assign the higher severity when merging.\n\
-         \n\
-         ### G. Report to backend\n\
-         Call: update_plan_verification(session_id: \"{session_id}\", status: \"reviewing\", in_progress: true, round: N, gaps: [all_gaps], generation: {generation})\n\
-         NOTE: Always send status: \"reviewing\" — the backend auto-corrects to \"needs_revision\" when appropriate. NEVER send \"needs_revision\" directly.\n\
-         \n\
-         ### H. EMPTY ROUND GUARD\n\
-         If all_gaps is empty AND round == 1:\n\
-         - Call update_plan_verification with 0 gaps as above\n\
-         - CONTINUE to round 2 automatically — do NOT stop. Empty round 1 requires confirmation in round 2.\n\
-         \n\
-         ### I. Revise plan if gaps found\n\
-         Compute gap_score = (critical_count × 10) + (high_count × 3) + (medium_count × 1).\n\
-         If gap_score > 0:\n\
-         - Call get_session_plan(\"{session_id}\") to get the latest plan content\n\
-         - Synthesize fixes for ALL critical and high gaps; address medium gaps if straightforward\n\
-         - Write a revised plan — when revising, follow these protection rules:\n\
-           * NEVER remove or modify sections that describe proposed additions (new files, new columns, new migrations) unless a critic identified that the addition itself is wrong.\n\
-           * Only ADD or CLARIFY content — do not restructure or remove existing plan sections.\n\
-           * Preserve ALL user-authored content (architecture decisions, phase descriptions, affected files).\n\
-           * If a gap says \"X is missing\", add X to the plan — do not remove other proposed items to make room.\n\
-         - ONLY modify sections related to identified gaps, NEVER remove user content\n\
-         - Call update_plan_artifact(artifact_id: <current_artifact_id>, content: <revised_plan_content>)\n\
-         - Store the new artifact_id returned from the response\n\
-         \n\
-         ### J. CONVERGENCE CHECK\n\
-         Call get_plan_verification(\"{session_id}\").\n\
-         If convergence_reason is not null, proceed to FINAL CLEANUP.\n\
-         \n\
-         ### K. Max rounds check\n\
-         If round >= {max_rounds}: proceed to FINAL CLEANUP with convergence_reason: \"max_rounds\".\n\
-         \n\
-         ### L. Re-read and loop\n\
-         Call get_session_plan(\"{session_id}\") to re-read the (possibly updated) plan, then return to step A.\n\
-         \n\
-         ## FINAL CLEANUP\n\
-         \n\
-         Call update_plan_verification with:\n\
-         - session_id: \"{session_id}\"\n\
-         - status: <status from the last get_plan_verification call>\n\
-         - in_progress: false\n\
-         - convergence_reason: <reason>\n\
-         - generation: {generation}\n\
-         \n\
-         For max_rounds exit: use status: \"verified\", convergence_reason: \"max_rounds\".\n\
-         \n\
-         EXIT — work is complete.\n\
-         \n\
-         ## ERROR HANDLING\n\
-         \n\
-         - Any MCP call failure: wait 2 seconds, retry once.\n\
-         - If retry also fails: call update_plan_verification(status: \"needs_revision\", in_progress: false, convergence_reason: \"agent_error\", generation: {generation}), then EXIT.\n\
-         - If update_plan_verification returns a \"generation mismatch\" error: EXIT immediately without further calls.\n\
-         \n\
-         ## CONVERGENCE RULES (backend computes — check get_plan_verification after each update)\n\
-         \n\
-         - zero_blocking: critical=0 AND high=0 AND medium=0 (round >= 2)\n\
-         - jaccard_converged: Jaccard similarity >= 0.8 between consecutive rounds\n\
-         - max_rounds: round >= {max_rounds}\n\
-         - critic_parse_failure: >= 3 parse failures in 5 rounds\n\
-         The backend computes convergence — always check get_plan_verification for convergence_reason after each update_plan_verification call.",
-        initial_prior_gaps_block = initial_prior_gaps_block,
-    )
-}
-
-pub(crate) async fn spawn_auto_verifier(
-    state: &HttpServerState,
-    session_id: &str,
-    generation: i32,
-) -> Result<(), String> {
-    let cfg = verification_config();
-    let max_rounds = cfg.max_rounds;
-
-    let trigger_time = chrono::Utc::now();
-    let inner_prompt = build_auto_verifier_prompt(session_id, generation, max_rounds, &[]);
-    let prompt = format!("<auto-verification>\n{}\n</auto-verification>", inner_prompt);
-
-    let app = &state.app_state;
-    let mut chat_service = ClaudeChatService::new(
-        Arc::clone(&app.chat_message_repo),
-        Arc::clone(&app.chat_attachment_repo),
-        Arc::clone(&app.chat_conversation_repo),
-        Arc::clone(&app.agent_run_repo),
-        Arc::clone(&app.project_repo),
-        Arc::clone(&app.task_repo),
-        Arc::clone(&app.task_dependency_repo),
-        Arc::clone(&app.ideation_session_repo),
-        Arc::clone(&app.activity_event_repo),
-        Arc::clone(&app.message_queue),
-        Arc::clone(&app.running_agent_registry),
-        Arc::clone(&app.memory_event_repo),
-    )
-    .with_execution_state(Arc::clone(&state.execution_state))
-    .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
-    .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
-    .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
-
-    if let Some(ref handle) = app.app_handle {
-        chat_service = chat_service.with_app_handle(handle.clone());
-    }
-
-    chat_service
-        .send_message(ChatContextType::Ideation, session_id, &prompt, SendMessageOptions {
-            metadata: Some(serde_json::json!({AUTO_VERIFICATION_KEY: true}).to_string()),
-            created_at: Some(trigger_time),
-        })
-        .await
-        .map(|_| ())
-        .map_err(|e| format!("send_message failed: {}", e))
 }
 
 pub async fn update_plan_artifact(

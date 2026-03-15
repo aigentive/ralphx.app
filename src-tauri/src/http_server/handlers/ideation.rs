@@ -789,6 +789,14 @@ pub async fn update_plan_verification(
         })?
         .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
 
+    // Guard: reject calls targeting verification child sessions — plan-verifier must use parent session_id
+    if session.session_purpose == crate::domain::entities::SessionPurpose::Verification {
+        return Err(json_error(
+            StatusCode::BAD_REQUEST,
+            "Cannot update verification state on a verification child session. Use the parent session_id.",
+        ));
+    }
+
     // Server-side generation guard: when setting in_progress=true, verify generation matches
     if req.in_progress {
         if let Some(req_gen) = req.generation {

@@ -2307,56 +2307,6 @@ async fn test_get_ideation_messages_returns_user_and_orchestrator() {
 }
 
 #[tokio::test]
-async fn test_get_ideation_messages_excludes_auto_verification() {
-    use crate::domain::entities::ideation::ChatMessage;
-    use crate::domain::entities::IdeationSessionId;
-    use crate::http_server::handlers::artifacts::AUTO_VERIFICATION_KEY;
-
-    let state = setup_test_state().await;
-    let (_, session_id_str) =
-        setup_session(&state, "proj-msg-autoverify", "Auto Verify Session").await;
-    let session_id = IdeationSessionId::from_string(session_id_str.clone());
-
-    // Normal user message
-    create_message(
-        &state,
-        ChatMessage::user_in_session(session_id.clone(), "normal message"),
-    )
-    .await;
-
-    // Auto-verification user message (should be excluded)
-    let mut auto_msg =
-        ChatMessage::user_in_session(session_id.clone(), "verification trigger");
-    auto_msg.metadata = Some(
-        serde_json::json!({ AUTO_VERIFICATION_KEY: true }).to_string(),
-    );
-    create_message(&state, auto_msg).await;
-
-    // Orchestrator response with auto-verification metadata (should be excluded)
-    let mut auto_orch =
-        ChatMessage::orchestrator_in_session(session_id.clone(), "verification result");
-    auto_orch.metadata = Some(
-        serde_json::json!({ AUTO_VERIFICATION_KEY: true }).to_string(),
-    );
-    create_message(&state, auto_orch).await;
-
-    let result = get_ideation_messages_http(
-        State(state),
-        unrestricted_scope(),
-        Path(session_id_str),
-        axum::extract::Query(GetIdeationMessagesQuery { limit: 50, offset: 0 }),
-    )
-    .await;
-
-    assert!(result.is_ok());
-    let response = result.unwrap().0;
-    // Only normal user message survives both filters
-    assert_eq!(response.messages.len(), 1);
-    assert_eq!(response.messages[0].content, "normal message");
-    assert_eq!(response.messages[0].role, "user");
-}
-
-#[tokio::test]
 async fn test_get_ideation_messages_pagination() {
     use crate::domain::entities::ideation::ChatMessage;
     use crate::domain::entities::IdeationSessionId;

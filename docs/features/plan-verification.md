@@ -8,35 +8,45 @@ This feature was motivated by manual adversarial review of the plan verification
 
 ## Verification Flow
 
+Verification runs in a **hidden child session** with a dedicated `plan-verifier` agent. The parent session stays unblocked for ideation work while the round loop runs independently.
+
 ```
-User triggers verification
+create_plan_artifact() OR trigger_verification_http()
         │
         ▼
-Orchestrator spawns critic (Task subagent)
+trigger_auto_verify_sync()  [atomic DB: status=reviewing, in_progress=1, generation++]
         │
         ▼
-Critic returns structured gaps (JSON)
+create_verification_child_session()
+  ├─ session_purpose = Verification
+  ├─ title = "Auto-verification (gen N)"
+  ├─ description = "Run verification round loop. parent_session_id: ..., generation: ..., max_rounds: ..."
+  └─ routes to plan-verifier agent (purpose-based routing)
         │
-        ├─ Parse failure? → record in sliding window
-        │
-        ▼
-Orchestrator processes round:
-  • Computes gap fingerprints (4-layer normalization)
-  • Tracks Jaccard similarity vs. previous round
-  • Records gap_score = critical×10 + high×3 + medium×1
-  • Tracks best_round_index (lowest gap_score)
+        ├─ orchestration_triggered=false? → reset_auto_verify_sync(parent)
         │
         ▼
-Convergence check:
-  ┌─ 0 critical AND 0 high AND 0 medium (round ≥ 2) → "zero_blocking" ✅
-  ├─ Jaccard(round_N, round_N+1) ≥ 0.8 for 2 consecutive rounds → "jaccard_converged" ✅
-  ├─ current_round ≥ max_rounds → "max_rounds" ✅ (hard cap)
-  └─ ≥ 3 parse failures in last 5 rounds → "critic_parse_failure" ✅
-        │
-        ├─ Not converged → orchestrator corrects plan → next round
+plan-verifier agent (in child session):
+  • Reads plan via get_session_plan (inherited from parent)
+  • ROUND LOOP:
+      A. Zombie guard: get_plan_verification(parent_session_id) — check generation
+      B. Spawn plan-critic-layer1 + plan-critic-layer2 (parallel Task subagents)
+      C. Critics fetch plan via get_session_plan MCP tool (no prompt bloat)
+      D. Critics return structured gaps (JSON)
+         ├─ Parse failure? → record in sliding window
+      E. Merge gaps, compute fingerprints, Jaccard similarity
+      F. update_plan_verification(parent_session_id, ...) — writes to PARENT session
+      G. Convergence check:
+           ┌─ 0 critical AND 0 high AND 0 medium (round ≥ 2) → "zero_blocking" ✅
+           ├─ Jaccard(round_N, round_N+1) ≥ 0.8 for 2 rounds → "jaccard_converged" ✅
+           ├─ current_round ≥ max_rounds → "max_rounds" ✅ (hard cap)
+           └─ ≥ 3 parse failures in last 5 rounds → "critic_parse_failure" ✅
+      H. Not converged → correct plan via update_plan_artifact / edit_plan_artifact → next round
+      I. Converged → update_plan_verification(parent_session_id, in_progress=false)
         │
         ▼
-Status transitions to "verified" | "needs_revision" | "skipped"
+Child session archived automatically on agent exit
+Parent session: status transitions to "verified" | "needs_revision" | "skipped"
 ```
 
 ## Convergence Algorithm
@@ -130,7 +140,7 @@ Typed errors (no string comparison):
 | `update_plan_verification` | POST | Reports round results from critic. Required: `session_id`, `status`. Optional: `gaps`, `round`, `convergence_reason`, `in_progress` |
 | `get_plan_verification` | GET | Reads current verification status, round history, and gap list |
 
-Available to: `orchestrator-ideation`, `ideation-team-lead`.
+Available to: `orchestrator-ideation`, `ideation-team-lead`, `plan-verifier`.
 
 ## Tauri Events
 
@@ -262,5 +272,7 @@ INFO  session_id=... "Reconciliation reset stuck verification"
 | `domain/services/verification_gate.rs` | `check_verification_gate()` — shared across all 3 acceptance paths |
 | `domain/repositories/ideation_session_repository.rs` | `update_verification_state()`, `reset_verification()`, `get_verification_status()`, `revert_plan_and_skip_with_artifact()` |
 | `http_server/handlers/ideation.rs` | `POST /verification`, `GET /verification`, `POST /revert-and-skip` |
-| `http_server/handlers/external.rs` | `POST /api/external/apply_proposals` |
-| `application/reconciliation/verification_reconciliation.rs` | Startup + periodic stuck-session reset |
+| `http_server/handlers/external.rs` | `POST /api/external/apply_proposals`, `POST /api/external/trigger_verification` |
+| `http_server/handlers/session_linking.rs` | `create_verification_child_session()` — creates child with `session_purpose=Verification` |
+| `application/reconciliation/verification_reconciliation.rs` | Startup + periodic stuck-session reset + orphaned child detection |
+| `ralphx-plugin/agents/plan-verifier.md` | Dedicated agent owning the round loop in child session |

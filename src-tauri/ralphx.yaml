@@ -488,6 +488,20 @@ agents:
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
+  - name: plan-verifier
+    system_prompt_file: ralphx-plugin/agents/plan-verifier.md
+    model: sonnet
+    tools: { extends: base_tools, include: [Task] }
+    mcp_tools: [
+        get_plan_verification,
+        update_plan_verification,
+        get_session_plan,
+        get_plan_artifact,
+        update_plan_artifact,
+        get_parent_session_context,
+      ]
+    preapproved_cli_tools: [Task(Explore), Task(Plan), "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)"]
+
   - name: session-namer
     system_prompt_file: ralphx-plugin/agents/session-namer.md
     model: haiku
@@ -830,7 +844,7 @@ agents:
         update_plan_artifact,
         edit_plan_artifact,
       ]
-    preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)"]
+    preapproved_cli_tools: [Read, Grep, Glob, Bash]
 
   # --- Team lead variants (extends base agents) ---
 

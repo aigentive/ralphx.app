@@ -12,6 +12,7 @@ use crate::domain::entities::{
     ChatAttachment, ChatContextType, ChatConversation, ChatConversationId, ChatMessage,
     ChatMessageId, GitMode, IdeationSessionId, MessageRole, ProjectId, TaskId,
 };
+use crate::domain::entities::ideation::SessionPurpose;
 use crate::domain::repositories::{
     ChatAttachmentRepository, IdeationSessionRepository, ProjectRepository, TaskRepository,
 };
@@ -115,14 +116,6 @@ pub fn format_session_history(messages: &[ChatMessage], total_available: usize) 
                 .as_deref()
                 .and_then(|meta| serde_json::from_str::<serde_json::Value>(meta).ok())
                 .and_then(|v| v.get("recovery_context").cloned())
-                .is_none()
-        })
-        .filter(|m| {
-            // Exclude messages that have an "auto_verification" key in their metadata JSON.
-            m.metadata
-                .as_deref()
-                .and_then(|meta| serde_json::from_str::<serde_json::Value>(meta).ok())
-                .and_then(|v| v.get("auto_verification").cloned())
                 .is_none()
         })
         .collect();
@@ -850,11 +843,16 @@ pub async fn get_entity_status_for_resume(
                 None
             }
         }
-        // Ideation context: look up session status for read-only mode
+        // Ideation context: check purpose first (Verification sessions → plan-verifier agent)
+        // then fall back to status for accepted/readonly routing
         ChatContextType::Ideation => {
             let session_id = IdeationSessionId::from_string(context_id);
             if let Ok(Some(session)) = ideation_session_repo.get_by_id(&session_id).await {
-                Some(session.status.to_string())
+                if session.session_purpose == SessionPurpose::Verification {
+                    Some("verification".to_string())
+                } else {
+                    Some(session.status.to_string())
+                }
             } else {
                 None
             }

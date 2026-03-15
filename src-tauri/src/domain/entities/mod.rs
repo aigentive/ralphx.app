@@ -64,7 +64,7 @@ pub use ideation::{
     ParseIdeationSessionStatusError, ParseMessageRoleError, ParsePriorityError,
     ParseProposalCategoryError, ParseProposalStatusError, ParseVerificationStatusError, Priority,
     PriorityAssessment, PriorityAssessmentFactors, PriorityFactors, ProposalCategory,
-    ProposalStatus, SessionLink, SessionRelationship, TaskProposal, UserHintFactor,
+    ProposalStatus, SessionLink, SessionPurpose, SessionRelationship, TaskProposal, UserHintFactor,
     VerificationError, VerificationGap, VerificationMetadata, VerificationRound, VerificationStatus,
 };
 pub use memory_archive::{

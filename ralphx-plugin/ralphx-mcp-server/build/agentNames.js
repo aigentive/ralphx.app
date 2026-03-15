@@ -23,6 +23,7 @@ export const MEMORY_MAINTAINER = "memory-maintainer";
 export const MEMORY_CAPTURE = "memory-capture";
 export const PLAN_CRITIC_LAYER1 = "plan-critic-layer1";
 export const PLAN_CRITIC_LAYER2 = "plan-critic-layer2";
+export const PLAN_VERIFIER = "plan-verifier";
 export const IDEATION_TEAM_LEAD = "ideation-team-lead";
 export const IDEATION_TEAM_MEMBER = "ideation-team-member";
 export const IDEATION_SPECIALIST_BACKEND = "ideation-specialist-backend";
