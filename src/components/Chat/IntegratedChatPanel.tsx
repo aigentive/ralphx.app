@@ -446,7 +446,6 @@ export function IntegratedChatPanel({
 
   const {
     handleSend: handleSendBase,
-    handleQueue,
     handleEditLastQueued,
     handleDeleteQueuedMessage,
     handleEditQueuedMessage,
@@ -830,7 +829,6 @@ export function IntegratedChatPanel({
             <div className="p-3">
               <ChatInput
                 onSend={activeQuestion ? handleQuestionSend : handleSend}
-                onQueue={isTeamActive ? (content) => handleQueue(content, sendTarget) : handleQueue}
                 onStop={handleStopAgentWrapper}
                 agentStatus={agentStatus}
                 isSending={isSending || isSubmittingAnswer}

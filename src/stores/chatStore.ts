@@ -229,15 +229,20 @@ export const useChatStore = create<ChatState & ChatActions>()(
 
     queueMessage: (contextKey, content, clientId) =>
       set((state) => {
+        const id = clientId ?? `queued-${Date.now()}-${Math.random()}`;
+        if (!state.queuedMessages[contextKey]) {
+          state.queuedMessages[contextKey] = [];
+        }
+        // Duplicate-ID guard: if a message with this ID already exists, no-op
+        if (clientId != null && state.queuedMessages[contextKey].some((m) => m.id === clientId)) {
+          return;
+        }
         const queuedMessage: QueuedMessage = {
-          id: clientId ?? `queued-${Date.now()}-${Math.random()}`,
+          id,
           content,
           createdAt: new Date().toISOString(),
           isEditing: false,
         };
-        if (!state.queuedMessages[contextKey]) {
-          state.queuedMessages[contextKey] = [];
-        }
         state.queuedMessages[contextKey].push(queuedMessage);
       }),
 

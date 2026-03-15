@@ -30,6 +30,8 @@ pub mod events {
     pub const AGENT_ERROR: &str = "agent:error";
     /// Agent queue sent event
     pub const AGENT_QUEUE_SENT: &str = "agent:queue_sent";
+    /// Agent message queued event (message entered the queue, agent already running)
+    pub const AGENT_MESSAGE_QUEUED: &str = "agent:message_queued";
     /// Activity stream message event (for execution bar)
     pub const AGENT_MESSAGE: &str = "agent:message";
     /// Agent task (subagent) started event
@@ -63,7 +65,7 @@ pub mod events {
 // ============================================================================
 
 /// Result from sending a message (returns immediately while processing continues in background)
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Default)]
 pub struct SendResult {
     /// The conversation ID for this chat
     pub conversation_id: String,
@@ -71,6 +73,10 @@ pub struct SendResult {
     pub agent_run_id: String,
     /// Whether this is a new conversation (first message)
     pub is_new_conversation: bool,
+    /// Whether the message was queued (Gate 2 blocked — agent already running)
+    pub was_queued: bool,
+    /// The queued message ID if was_queued is true
+    pub queued_message_id: Option<String>,
 }
 
 /// A conversation with its messages
@@ -211,6 +217,16 @@ pub struct AgentQueueSentPayload {
     pub context_id: String,
 }
 
+/// Payload for agent:message_queued event (message entered the queue at Gate 2)
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentMessageQueuedPayload {
+    pub message_id: String,
+    pub content: String,
+    pub context_type: String,
+    pub context_id: String,
+    pub created_at: String,
+}
+
 /// Payload for agent:hook event (discriminated by `hook_type`)
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentHookPayload {
@@ -339,8 +355,6 @@ pub enum ChatServiceError {
     ConversationNotFound(String),
     RepositoryError(String),
     AgentRunFailed(String),
-    /// An agent is already running for this context. The message was auto-queued.
-    AgentAlreadyRunning(String),
 }
 
 impl std::fmt::Display for ChatServiceError {
@@ -354,7 +368,6 @@ impl std::fmt::Display for ChatServiceError {
             Self::ConversationNotFound(msg) => write!(f, "Conversation not found: {}", msg),
             Self::RepositoryError(msg) => write!(f, "Repository error: {}", msg),
             Self::AgentRunFailed(msg) => write!(f, "Agent run failed: {}", msg),
-            Self::AgentAlreadyRunning(msg) => write!(f, "Agent already running: {}", msg),
         }
     }
 }

@@ -28,7 +28,7 @@ pub struct MockChatService {
     active_run: Mutex<Option<AgentRun>>,
     message_queue: Arc<MessageQueue>,
     call_count: std::sync::atomic::AtomicU32,
-    /// When set, send_message returns AgentAlreadyRunning after this many successful calls.
+    /// When set, send_message returns Ok(was_queued: true) after this many successful calls.
     already_running_after: Mutex<Option<u32>>,
 }
 
@@ -84,7 +84,7 @@ impl MockChatService {
         .await;
     }
 
-    /// After `n` successful send_message calls, subsequent calls return AgentAlreadyRunning.
+    /// After `n` successful send_message calls, subsequent calls return Ok(was_queued: true).
     pub async fn set_already_running_after(&self, n: u32) {
         *self.already_running_after.lock().await = Some(n);
     }
@@ -120,10 +120,11 @@ impl ChatService for MockChatService {
 
         if let Some(threshold) = *self.already_running_after.lock().await {
             if current > threshold {
-                return Err(ChatServiceError::AgentAlreadyRunning(format!(
-                    "Mock: agent already running for {} {}",
-                    context_type, context_id
-                )));
+                return Ok(SendResult {
+                    was_queued: true,
+                    queued_message_id: Some("mock-queued-id".to_string()),
+                    ..Default::default()
+                });
             }
         }
 
@@ -142,6 +143,7 @@ impl ChatService for MockChatService {
             conversation_id: conversation.id.as_str().to_string(),
             agent_run_id: agent_run.id.as_str().to_string(),
             is_new_conversation: conversation.claude_session_id.is_none(),
+            ..Default::default()
         })
     }
 

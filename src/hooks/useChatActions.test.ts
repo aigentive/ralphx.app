@@ -18,20 +18,19 @@ const mockActions = {
   startEditingQueuedMessage: vi.fn(),
   setActiveConversation: vi.fn(),
   setAgentRunning: vi.fn(),
+  setSending: vi.fn(),
 };
 vi.mock("@/stores/chatStore", () => ({
   useChatStore: (selector: (state: typeof mockActions) => unknown) => selector(mockActions),
 }));
 
 const mockSendAgentMessage = vi.fn();
-const mockQueueAgentMessage = vi.fn();
 const mockDeleteQueuedAgentMessage = vi.fn();
 const mockStopAgent = vi.fn();
 
 vi.mock("@/api/chat", () => ({
   chatApi: {
     sendAgentMessage: (...args: unknown[]) => mockSendAgentMessage(...args),
-    queueAgentMessage: (...args: unknown[]) => mockQueueAgentMessage(...args),
     deleteQueuedAgentMessage: (...args: unknown[]) => mockDeleteQueuedAgentMessage(...args),
   },
   stopAgent: (...args: unknown[]) => mockStopAgent(...args),
@@ -85,7 +84,7 @@ function setup(opts: SetupOptions = {}) {
     messageCount = 5,
   } = opts;
 
-  const mutateAsync = vi.fn().mockResolvedValue(undefined);
+  const mutateAsync = vi.fn().mockResolvedValue({ conversationId: "conv-1", agentRunId: "run-1", isNewConversation: false, wasQueued: false });
 
   const { result } = renderHook(() =>
     useChatActions({
@@ -113,8 +112,8 @@ describe("useChatActions", () => {
       conversationId: "conv-1",
       agentRunId: "run-1",
       isNewConversation: false,
+      wasQueued: false,
     });
-    mockQueueAgentMessage.mockResolvedValue({ id: "q-1" });
     mockDeleteQueuedAgentMessage.mockResolvedValue(true);
     mockStopAgent.mockResolvedValue(true);
     mockRecoverTaskExecution.mockResolvedValue(true);
@@ -171,7 +170,7 @@ describe("useChatActions", () => {
       // Should use direct API, NOT the mutation
       expect(mutateAsync).not.toHaveBeenCalled();
       expect(mockSendAgentMessage).toHaveBeenCalledWith("review", "task-42", "looks good", undefined, undefined);
-      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("review:task-42", true);
+      expect(mockActions.setSending).toHaveBeenCalledWith("review:task-42", true);
       expect(mockInvalidateQueries).toHaveBeenCalled();
     });
 
@@ -180,6 +179,7 @@ describe("useChatActions", () => {
         conversationId: "new-conv",
         agentRunId: "run-1",
         isNewConversation: true,
+        wasQueued: false,
       });
 
       const { result } = setup({
@@ -224,46 +224,6 @@ describe("useChatActions", () => {
       });
 
       expect(mockSpawnSessionNamer).not.toHaveBeenCalled();
-    });
-  });
-
-  // ── handleQueue ─────────────────────────────────────────────────
-
-  describe("handleQueue", () => {
-    it("adds to local store and sends to backend", async () => {
-      const { result } = setup();
-
-      await act(async () => {
-        await result.current.handleQueue("queued msg");
-      });
-
-      // Local store should be updated with the content and a generated ID
-      expect(mockActions.queueMessage).toHaveBeenCalledWith(
-        "task:task-1",
-        "queued msg",
-        expect.stringMatching(/^queued-\d+-[a-z0-9]+$/)
-      );
-
-      // Backend should receive the same message
-      expect(mockQueueAgentMessage).toHaveBeenCalledWith(
-        "task",
-        "task-1",
-        "queued msg",
-        expect.stringMatching(/^queued-\d+-[a-z0-9]+$/),
-        undefined,
-        undefined
-      );
-    });
-
-    it("does not queue empty strings", async () => {
-      const { result } = setup();
-
-      await act(async () => {
-        await result.current.handleQueue("  ");
-      });
-
-      expect(mockActions.queueMessage).not.toHaveBeenCalled();
-      expect(mockQueueAgentMessage).not.toHaveBeenCalled();
     });
   });
 
@@ -318,7 +278,7 @@ describe("useChatActions", () => {
   // ── handleEditQueuedMessage ─────────────────────────────────────
 
   describe("handleEditQueuedMessage", () => {
-    it("deletes old and creates new with fresh ID", async () => {
+    it("deletes old message and sends via sendAgentMessage", async () => {
       const { result } = setup();
 
       await act(async () => {
@@ -329,30 +289,45 @@ describe("useChatActions", () => {
       expect(mockDeleteQueuedAgentMessage).toHaveBeenCalledWith("task", "task-1", "old-id");
       expect(mockActions.deleteQueuedMessage).toHaveBeenCalledWith("task:task-1", "old-id");
 
-      // New message queued with fresh ID
-      expect(mockActions.queueMessage).toHaveBeenCalledWith(
-        "task:task-1",
-        "updated content",
-        expect.stringMatching(/^queued-\d+-[a-z0-9]+$/)
-      );
-      expect(mockQueueAgentMessage).toHaveBeenCalledWith(
-        "task",
-        "task-1",
-        "updated content",
-        expect.stringMatching(/^queued-\d+-[a-z0-9]+$/)
-      );
+      // Sends via sendAgentMessage (not queueAgentMessage)
+      expect(mockSendAgentMessage).toHaveBeenCalledWith("task", "task-1", "updated content");
+    });
 
-      // The new ID should be different from the old
-      const newId = mockActions.queueMessage.mock.calls[0][2];
-      expect(newId).not.toBe("old-id");
+    it("queues locally when sendAgentMessage returns wasQueued=true", async () => {
+      mockSendAgentMessage.mockResolvedValue({
+        conversationId: "conv-1",
+        agentRunId: "run-1",
+        isNewConversation: false,
+        wasQueued: true,
+        queuedMessageId: "q-new-1",
+      });
+
+      const { result } = setup();
+
+      await act(async () => {
+        await result.current.handleEditQueuedMessage("old-id", "updated content");
+      });
+
+      expect(mockActions.queueMessage).toHaveBeenCalledWith("task:task-1", "updated content", "q-new-1");
+    });
+
+    it("sets and clears sending spinner", async () => {
+      const { result } = setup();
+
+      await act(async () => {
+        await result.current.handleEditQueuedMessage("old-id", "updated content");
+      });
+
+      expect(mockActions.setSending).toHaveBeenCalledWith("task:task-1", true);
+      expect(mockActions.setSending).toHaveBeenCalledWith("task:task-1", false);
     });
   });
 
   // ── storeContextKey consistency (double-execution fix) ─────────
 
   describe("storeContextKey consistency", () => {
-    it("task_execution context sets isAgentRunning with task_execution key", async () => {
-      const { result } = setup({
+    it("task_execution context routes through sendMessage.mutateAsync", async () => {
+      const { result, mutateAsync } = setup({
         contextType: "task_execution",
         contextId: "task-99",
         storeContextKey: "task_execution:task-99",
@@ -362,11 +337,11 @@ describe("useChatActions", () => {
         await result.current.handleSend("do the work");
       });
 
-      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("task_execution:task-99", true);
+      expect(mutateAsync).toHaveBeenCalledWith({ content: "do the work", attachmentIds: undefined });
     });
 
-    it("merge context sets isAgentRunning with merge key", async () => {
-      const { result } = setup({
+    it("merge context routes through sendMessage.mutateAsync", async () => {
+      const { result, mutateAsync } = setup({
         contextType: "merge",
         contextId: "task-99",
         storeContextKey: "merge:task-99",
@@ -376,7 +351,7 @@ describe("useChatActions", () => {
         await result.current.handleSend("merge it");
       });
 
-      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("merge:task-99", true);
+      expect(mutateAsync).toHaveBeenCalledWith({ content: "merge it", attachmentIds: undefined });
     });
 
     it("error during task_execution send resets isAgentRunning with correct key", async () => {
@@ -392,8 +367,7 @@ describe("useChatActions", () => {
         await result.current.handleSend("will fail");
       });
 
-      // Should first set true, then false on error — BOTH on the correct key
-      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("task_execution:task-err", true);
+      // On error, agent running state is reset on the correct key
       expect(mockActions.setAgentRunning).toHaveBeenCalledWith("task_execution:task-err", false);
     });
 
@@ -410,7 +384,6 @@ describe("useChatActions", () => {
         await result.current.handleSend("will fail");
       });
 
-      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("merge:task-merge-err", true);
       expect(mockActions.setAgentRunning).toHaveBeenCalledWith("merge:task-merge-err", false);
     });
   });
@@ -418,7 +391,7 @@ describe("useChatActions", () => {
   // ── ideation regression ─────────────────────────────────────────
 
   describe("ideation regression", () => {
-    it("ideation handleSend sets agent running on session key", async () => {
+    it("ideation handleSend routes through sendMessage.mutateAsync", async () => {
       const { result, mutateAsync } = setup({
         contextType: "ideation",
         contextId: "session-1",
@@ -431,28 +404,9 @@ describe("useChatActions", () => {
         await result.current.handleSend("ideation message");
       });
 
-      expect(mockActions.setAgentRunning).toHaveBeenCalledWith("session:session-1", true);
       expect(mutateAsync).toHaveBeenCalledWith({ content: "ideation message", attachmentIds: undefined });
     });
 
-    it("ideation handleQueue uses correct store key", async () => {
-      const { result } = setup({
-        contextType: "ideation",
-        contextId: "session-1",
-        storeContextKey: "session:session-1",
-        ideationSessionId: "session-1",
-      });
-
-      await act(async () => {
-        await result.current.handleQueue("queued ideation msg");
-      });
-
-      expect(mockActions.queueMessage).toHaveBeenCalledWith(
-        "session:session-1",
-        "queued ideation msg",
-        expect.stringMatching(/^queued-\d+-[a-z0-9]+$/)
-      );
-    });
   });
 
   // ── handleEditLastQueued ────────────────────────────────────────

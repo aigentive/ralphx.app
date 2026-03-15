@@ -27,12 +27,34 @@ fn test_send_agent_message_response_from() {
         conversation_id: "conv-123".to_string(),
         agent_run_id: "run-456".to_string(),
         is_new_conversation: true,
+        was_queued: false,
+        queued_message_id: None,
     };
 
     let response = SendAgentMessageResponse::from(result);
     assert_eq!(response.conversation_id, "conv-123");
     assert_eq!(response.agent_run_id, "run-456");
     assert!(response.is_new_conversation);
+    assert!(!response.was_queued);
+    assert!(response.queued_message_id.is_none());
+}
+
+#[test]
+fn test_send_agent_message_response_queued() {
+    let result = SendResult {
+        conversation_id: "conv-existing".to_string(),
+        agent_run_id: "run-existing".to_string(),
+        is_new_conversation: false,
+        was_queued: true,
+        queued_message_id: Some("queued-msg-123".to_string()),
+    };
+
+    let response = SendAgentMessageResponse::from(result);
+    assert_eq!(response.conversation_id, "conv-existing");
+    assert_eq!(response.agent_run_id, "run-existing");
+    assert!(!response.is_new_conversation);
+    assert!(response.was_queued);
+    assert_eq!(response.queued_message_id.as_deref(), Some("queued-msg-123"));
 }
 
 #[test]
@@ -51,6 +73,8 @@ fn test_response_serialization() {
         conversation_id: "conv-123".to_string(),
         agent_run_id: "run-456".to_string(),
         is_new_conversation: true,
+        was_queued: false,
+        queued_message_id: None,
     };
 
     let json = serde_json::to_string(&response).unwrap();

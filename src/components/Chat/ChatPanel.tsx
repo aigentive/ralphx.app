@@ -327,7 +327,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   // Unified actions hook (replaces useChatPanelHandlers action logic)
   const {
     handleSend,
-    handleQueue,
     handleStopAgent,
     handleDeleteQueuedMessage,
     handleEditQueuedMessage,
@@ -633,7 +632,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
           <div className="p-3">
             <ChatInput
               onSend={activeQuestion ? handleQuestionSend : handleSendWithAttachments}
-              onQueue={isTeamActive ? (content) => handleQueue(content, sendTarget) : handleQueue}
               onStop={handleStopAgentWrapper}
               agentStatus={agentStatus}
               isSending={isSending || isSubmittingAnswer}

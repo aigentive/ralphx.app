@@ -220,8 +220,6 @@ export function useChat(context: ChatContext) {
   // Send message mutation
   const sendMessage = useMutation<SendAgentMessageResult, Error, { content: string; attachmentIds?: string[]; target?: string }>({
     mutationFn: async ({ content, attachmentIds, target }) => {
-      // Set agent running immediately so subsequent messages get queued
-      setAgentRunning(contextKey, true);
       return chatApi.sendAgentMessage(contextType, contextId, content, attachmentIds, target);
     },
     onMutate: () => {

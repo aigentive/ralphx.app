@@ -16,7 +16,7 @@ use super::merge_helpers::{
 };
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::git_service::git_cmd::ENOENT_MARKER;
-use crate::application::{ChatServiceError, GitService};
+use crate::application::GitService;
 use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
 use crate::domain::entities::plan_branch::PlanBranchId;
 use crate::domain::entities::{
@@ -698,7 +698,7 @@ impl<'a> super::TransitionHandler<'a> {
                 // 3. Spawning Claude CLI with --agent worker
                 // 4. Persisting stream output to chat_messages
                 // 5. Processing queued messages on completion
-                if let Err(e) = self
+                match self
                     .machine
                     .context
                     .services
@@ -711,24 +711,25 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                     .await
                 {
-                    // AgentAlreadyRunning means another caller successfully started the agent.
-                    // The task IS being executed — treat as a successful no-op.
-                    if matches!(&e, ChatServiceError::AgentAlreadyRunning(_)) {
+                    Ok(result) if result.was_queued => {
                         tracing::info!(
                             task_id = task_id_str,
                             "Agent already running for this task — treating on_enter as no-op"
                         );
                         return Ok(());
                     }
-                    tracing::error!(
-                        task_id = task_id_str,
-                        error = %e,
-                        "Failed to send task execution message — agent not started"
-                    );
-                    return Err(AppError::ExecutionBlocked(format!(
-                        "Failed to start agent: {}",
-                        e
-                    )));
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::error!(
+                            task_id = task_id_str,
+                            error = %e,
+                            "Failed to send task execution message — agent not started"
+                        );
+                        return Err(AppError::ExecutionBlocked(format!(
+                            "Failed to start agent: {}",
+                            e
+                        )));
+                    }
                 }
             }
             State::QaRefining => {
@@ -1032,20 +1033,18 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                     .await;
 
-                match &result {
+                match result {
+                    Ok(result) if result.was_queued => {
+                        tracing::info!(
+                            task_id = task_id,
+                            "Agent already running for this task — treating on_enter(Reviewing) as no-op"
+                        );
+                        return Ok(());
+                    }
                     Ok(_) => {
                         tracing::info!(task_id = task_id, "Reviewer agent spawned successfully");
                     }
                     Err(e) => {
-                        // AgentAlreadyRunning means another caller successfully started the agent.
-                        // The task IS being reviewed — treat as a successful no-op.
-                        if matches!(e, ChatServiceError::AgentAlreadyRunning(_)) {
-                            tracing::info!(
-                                task_id = task_id,
-                                "Agent already running for this task — treating on_enter(Reviewing) as no-op"
-                            );
-                            return Ok(());
-                        }
                         tracing::error!(task_id = task_id, error = %e, "Failed to spawn reviewer agent");
                     }
                 }
@@ -1175,7 +1174,7 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                 }
 
-                if let Err(e) = self
+                match self
                     .machine
                     .context
                     .services
@@ -1188,24 +1187,25 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                     .await
                 {
-                    // AgentAlreadyRunning means another caller successfully started the agent.
-                    // The task IS being executed — treat as a successful no-op.
-                    if matches!(&e, ChatServiceError::AgentAlreadyRunning(_)) {
+                    Ok(result) if result.was_queued => {
                         tracing::info!(
                             task_id = task_id,
                             "Agent already running for this task — treating on_enter as no-op"
                         );
                         return Ok(());
                     }
-                    tracing::error!(
-                        task_id = task_id,
-                        error = %e,
-                        "Failed to send re-execution message — agent not started"
-                    );
-                    return Err(AppError::ExecutionBlocked(format!(
-                        "Failed to start agent: {}",
-                        e
-                    )));
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::error!(
+                            task_id = task_id,
+                            error = %e,
+                            "Failed to send re-execution message — agent not started"
+                        );
+                        return Err(AppError::ExecutionBlocked(format!(
+                            "Failed to start agent: {}",
+                            e
+                        )));
+                    }
                 }
             }
             State::RevisionNeeded => {
@@ -1809,20 +1809,18 @@ impl<'a> super::TransitionHandler<'a> {
                     )
                     .await;
 
-                match &result {
+                match result {
+                    Ok(result) if result.was_queued => {
+                        tracing::info!(
+                            task_id = task_id,
+                            "Agent already running for this task — treating on_enter(Merging) as no-op"
+                        );
+                        return Ok(());
+                    }
                     Ok(_) => {
                         tracing::info!(task_id = task_id, "Merger agent spawned successfully");
                     }
                     Err(e) => {
-                        // AgentAlreadyRunning means another caller successfully started the agent.
-                        // The task IS being merged — treat as a successful no-op.
-                        if matches!(e, ChatServiceError::AgentAlreadyRunning(_)) {
-                            tracing::info!(
-                                task_id = task_id,
-                                "Agent already running for this task — treating on_enter(Merging) as no-op"
-                            );
-                            return Ok(());
-                        }
                         tracing::error!(task_id = task_id, error = %e, "Failed to spawn merger agent");
                         record_merger_spawn_failure(
                             &self.machine.context.services.task_repo,

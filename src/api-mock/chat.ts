@@ -103,28 +103,8 @@ export async function mockSendAgentMessage(
     conversationId: conversation.id,
     agentRunId: generateTestUuid(),
     isNewConversation: isNew,
+    wasQueued: false,
   };
-}
-
-export async function mockQueueAgentMessage(
-  contextType: ContextType,
-  contextId: string,
-  content: string,
-  clientId?: string
-): Promise<QueuedMessageResponse> {
-  const key = `${contextType}:${contextId}`;
-  const queued: QueuedMessageResponse = {
-    id: clientId ?? generateTestUuid(),
-    content,
-    createdAt: new Date().toISOString(),
-    isEditing: false,
-  };
-
-  const existing = mockQueuedMessages.get(key) ?? [];
-  existing.push(queued);
-  mockQueuedMessages.set(key, existing);
-
-  return queued;
 }
 
 export async function mockGetQueuedAgentMessages(
@@ -178,7 +158,6 @@ export const mockChatApi = {
   createConversation: mockCreateConversation,
   getAgentRunStatus: mockGetAgentRunStatus,
   sendAgentMessage: mockSendAgentMessage,
-  queueAgentMessage: mockQueueAgentMessage,
   getQueuedAgentMessages: mockGetQueuedAgentMessages,
   deleteQueuedAgentMessage: mockDeleteQueuedAgentMessage,
   isChatServiceAvailable: mockIsChatServiceAvailable,

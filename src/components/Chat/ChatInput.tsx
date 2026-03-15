@@ -45,8 +45,6 @@ export interface ChatInputProps {
   isAgentRunning?: boolean;
   /** Tri-state agent status — overrides isAgentRunning when provided */
   agentStatus?: AgentStatus;
-  /** Callback when message is queued (while agent running) */
-  onQueue?: (message: string) => void;
   /** Whether there are queued messages */
   hasQueuedMessages?: boolean;
   /** Callback to edit the last queued message */
@@ -126,7 +124,6 @@ export function ChatInput({
   autoFocus = false,
   isAgentRunning = false,
   agentStatus: agentStatusProp,
-  onQueue,
   hasQueuedMessages = false,
   onEditLastQueued,
   onStop,
@@ -140,7 +137,6 @@ export function ChatInput({
   // Derive agent state from tri-state when available, fall back to boolean
   const effectiveStatus: AgentStatus = agentStatusProp ?? (isAgentRunning ? "generating" : "idle");
   const isAgentAlive = effectiveStatus !== "idle";
-  const isAgentGenerating = effectiveStatus === "generating";
   // Support both controlled and uncontrolled modes
   const [internalValue, setInternalValue] = useState("");
   const isControlled = controlledValue !== undefined;
@@ -250,14 +246,7 @@ export function ChatInput({
       // Don't clearInput() here — let handleQuestionSend clear after successful submission.
       // Premature clearing causes lost input when the backend call fails (e.g., stale session).
       await onSend(trimmedValue);
-    } else if (isAgentGenerating && onQueue) {
-      // Agent actively generating — queue the message (will be sent when turn completes)
-      console.info("[ChatInput] QUEUE path: agentStatus=generating, routing to onQueue");
-      onQueue(trimmedValue);
-      clearInput();
     } else {
-      // Normal send flow (idle or waiting_for_input) — send directly
-      console.info("[ChatInput] SEND path: agentStatus=%s, hasOnQueue=%s", effectiveStatus, !!onQueue);
       clearInput();
       try {
         await onSend(trimmedValue);
@@ -269,9 +258,6 @@ export function ChatInput({
     value,
     isSending,
     isAgentAlive,
-    isAgentGenerating,
-    effectiveStatus,
-    onQueue,
     onSend,
     isControlled,
     onChangeProp,

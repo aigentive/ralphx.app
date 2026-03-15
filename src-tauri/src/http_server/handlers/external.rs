@@ -21,7 +21,7 @@ use std::sync::Arc;
 use tracing::error;
 use tauri::Emitter;
 
-use crate::application::chat_service::{ChatService, ChatServiceError, ClaudeChatService, SendMessageOptions};
+use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
 use crate::application::task_cleanup_service::TaskCleanupService;
 use crate::commands::ideation_commands::{apply_proposals_core, ApplyProposalsInput};
 use crate::domain::entities::{
@@ -465,6 +465,10 @@ pub async fn start_ideation_http(
             )
             .await
         {
+            Ok(result) if result.was_queued => {
+                // Agent is running, message was queued — treat as success
+                agent_spawned = true;
+            }
             Ok(_) => {
                 agent_spawned = true;
 
@@ -528,10 +532,6 @@ pub async fn start_ideation_http(
                         }
                     }
                 });
-            }
-            Err(ChatServiceError::AgentAlreadyRunning(_)) => {
-                // Agent is running, message was queued — treat as success
-                agent_spawned = true;
             }
             Err(e) => {
                 error!(
@@ -1999,18 +1999,28 @@ pub async fn ideation_message_http(
         chat_service = chat_service.with_app_handle(handle.clone());
     }
 
-    chat_service
+    let send_result = chat_service
         .send_message(
             ChatContextType::Ideation,
             &session_id_str,
             &req.message,
             SendMessageOptions::default(),
         )
-        .await
-        .map_err(|e| {
+        .await;
+
+    match send_result {
+        Ok(result) if result.was_queued => {
+            return Ok(Json(IdeationMessageResponse {
+                status: "queued".to_string(),
+                session_id: session_id_str,
+            }));
+        }
+        Ok(_) => {}
+        Err(e) => {
             error!("Failed to send message to ideation session {}: {}", session_id_str, e);
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
+            return Err(StatusCode::INTERNAL_SERVER_ERROR.into());
+        }
+    }
 
     Ok(Json(IdeationMessageResponse {
         status: "spawned".to_string(),

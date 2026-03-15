@@ -389,7 +389,6 @@ export const chatApi = {
   getAgentRunStatus,
   // Message sending & queue
   sendAgentMessage,
-  queueAgentMessage,
   getQueuedAgentMessages,
   deleteQueuedAgentMessage,
   // Agent lifecycle
@@ -413,12 +412,16 @@ export interface SendAgentMessageResult {
   conversationId: string;
   agentRunId: string;
   isNewConversation: boolean;
+  wasQueued: boolean;
+  queuedMessageId?: string | null | undefined;
 }
 
 const SendAgentMessageResponseSchema = z.object({
   conversation_id: z.string(),
   agent_run_id: z.string(),
   is_new_conversation: z.boolean(),
+  was_queued: z.boolean().optional().default(false),
+  queued_message_id: z.string().optional().nullable(),
 });
 
 type RawSendAgentMessageResponse = z.infer<typeof SendAgentMessageResponseSchema>;
@@ -428,6 +431,8 @@ function transformSendAgentMessageResponse(raw: RawSendAgentMessageResponse): Se
     conversationId: raw.conversation_id,
     agentRunId: raw.agent_run_id,
     isNewConversation: raw.is_new_conversation,
+    wasQueued: raw.was_queued,
+    queuedMessageId: raw.queued_message_id,
   };
 }
 
@@ -462,40 +467,6 @@ export async function sendAgentMessage(
     SendAgentMessageResponseSchema
   );
   return transformSendAgentMessageResponse(raw);
-}
-
-/**
- * Queue a message to be sent when the current agent run completes
- *
- * @param contextType The context type
- * @param contextId The context ID
- * @param content The message content
- * @param clientId Optional client-provided ID (allows frontend/backend to use same ID)
- * @param attachmentIds Optional array of attachment IDs to link to this message
- */
-export async function queueAgentMessage(
-  contextType: ContextType,
-  contextId: string,
-  content: string,
-  clientId?: string,
-  attachmentIds?: string[],
-  target?: string
-): Promise<QueuedMessageResponse> {
-  const raw = await typedInvoke(
-    "queue_agent_message",
-    {
-      input: {
-        contextType,
-        contextId,
-        content,
-        ...(clientId !== undefined && { clientId }),
-        ...(attachmentIds !== undefined && attachmentIds.length > 0 && { attachmentIds }),
-        ...(target !== undefined && { target }),
-      },
-    },
-    QueuedMessageResponseSchema
-  );
-  return transformQueuedMessage(raw);
 }
 
 /**

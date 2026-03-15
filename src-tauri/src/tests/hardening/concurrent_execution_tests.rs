@@ -611,7 +611,7 @@ async fn test_double_scheduler_service_only_one_agent_registered() {
     );
 
     // Key assertion: at most one agent registered in the shared registry.
-    // This proves the three-layer fix (optimistic lock + try_register + AgentAlreadyRunning no-op)
+    // This proves the three-layer fix (optimistic lock + try_register + Ok(was_queued: true) guard)
     // prevents double-execution even when two schedulers race.
     let all_agents = app_state.running_agent_registry.list_all().await;
     assert!(

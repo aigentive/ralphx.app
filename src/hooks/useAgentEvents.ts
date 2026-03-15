@@ -34,6 +34,7 @@ export function useAgentEvents(activeConversationId: string | null) {
   const setAgentStatus = useChatStore((s) => s.setAgentStatus);
   const updateLastAgentEvent = useChatStore((s) => s.updateLastAgentEvent);
   const deleteQueuedMessage = useChatStore((s) => s.deleteQueuedMessage);
+  const queueMessage = useChatStore((s) => s.queueMessage);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const clearActiveQuestion = useUiStore((s) => s.clearActiveQuestion);
   const clearPendingPlan = useTeamStore((s) => s.clearPendingPlan);
@@ -254,6 +255,23 @@ export function useAgentEvents(activeConversationId: string | null) {
       })
     );
 
+    // Listen for message_queued - backend notifies us when a message enters the queue (Gate 2)
+    // Idempotent: queueMessage has a duplicate-ID guard, so calling it twice with the same ID is safe
+    unsubscribes.push(
+      bus.subscribe<{
+        message_id: string;
+        content: string;
+        context_type: string;
+        context_id: string;
+        created_at: string;
+      }>("agent:message_queued", (payload) => {
+        const { message_id, content, context_type, context_id: eventContextId } = payload;
+
+        const eventContextKey = buildStoreKey(context_type as ContextType, eventContextId);
+        queueMessage(eventContextKey, content, message_id);
+      })
+    );
+
     // Listen for agent stopped - defensive cleanup if agent:run_completed emission regresses.
     // Backend emits agent:stopped immediately on SIGTERM, before agent:run_completed.
     // This ensures running state clears even if the subsequent run_completed is lost.
@@ -349,7 +367,7 @@ export function useAgentEvents(activeConversationId: string | null) {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, activeConversationId, queryClient, setAgentStatus, updateLastAgentEvent, deleteQueuedMessage, setActiveConversation, clearActiveQuestion, clearPendingPlan]);
+  }, [bus, activeConversationId, queryClient, setAgentStatus, updateLastAgentEvent, deleteQueuedMessage, queueMessage, setActiveConversation, clearActiveQuestion, clearPendingPlan]);
 
   // Global singleton watchdog — defense-in-depth for stuck generating state.
   // If the backend misses run_completed for any reason, this forces idle after

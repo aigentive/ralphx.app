@@ -107,7 +107,6 @@ vi.mock("@/hooks/useChatPanelContext", () => ({
 vi.mock("@/hooks/useChatActions", () => ({
   useChatActions: () => ({
     handleSend: vi.fn(),
-    handleQueue: vi.fn(),
     handleEditLastQueued: vi.fn(),
     handleDeleteQueuedMessage: vi.fn(),
     handleEditQueuedMessage: vi.fn(),

@@ -360,57 +360,27 @@ describe("ChatInput", () => {
       expect(screen.getByPlaceholderText("Send a message...")).toBeInTheDocument();
     });
 
-    it("calls onQueue instead of onSend when agent is running", async () => {
+    it("calls onSend regardless of agent running state", async () => {
       const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
-      const onQueue = vi.fn();
-      render(<ChatInput onSend={onSend} onQueue={onQueue} isAgentRunning={true} />);
-
-      const textarea = screen.getByTestId("chat-input-textarea");
-      await user.type(textarea, "Hello");
-      await user.click(screen.getByTestId("chat-input-send"));
-
-      expect(onQueue).toHaveBeenCalledWith("Hello");
-      expect(onSend).not.toHaveBeenCalled();
-    });
-
-    it("clears textarea after queueing message", async () => {
-      const user = userEvent.setup();
-      const onQueue = vi.fn();
-      render(<ChatInput {...defaultProps} onQueue={onQueue} isAgentRunning={true} />);
-
-      const textarea = screen.getByTestId("chat-input-textarea");
-      await user.type(textarea, "Hello");
-      await user.click(screen.getByTestId("chat-input-send"));
-
-      await waitFor(() => {
-        expect(textarea).toHaveValue("");
-      });
-    });
-
-    it("calls onSend when agent is not running (normal flow)", async () => {
-      const user = userEvent.setup();
-      const onSend = vi.fn().mockResolvedValue(undefined);
-      const onQueue = vi.fn();
-      render(<ChatInput onSend={onSend} onQueue={onQueue} isAgentRunning={false} />);
+      render(<ChatInput onSend={onSend} isAgentRunning={true} />);
 
       const textarea = screen.getByTestId("chat-input-textarea");
       await user.type(textarea, "Hello");
       await user.click(screen.getByTestId("chat-input-send"));
 
       expect(onSend).toHaveBeenCalledWith("Hello");
-      expect(onQueue).not.toHaveBeenCalled();
     });
 
-    it("queues message on Enter keypress when agent is running", async () => {
+    it("sends message on Enter keypress when agent is running", async () => {
       const user = userEvent.setup();
-      const onQueue = vi.fn();
-      render(<ChatInput {...defaultProps} onQueue={onQueue} isAgentRunning={true} />);
+      const onSend = vi.fn().mockResolvedValue(undefined);
+      render(<ChatInput {...defaultProps} onSend={onSend} isAgentRunning={true} />);
 
       const textarea = screen.getByTestId("chat-input-textarea");
       await user.type(textarea, "Hello{Enter}");
 
-      expect(onQueue).toHaveBeenCalledWith("Hello");
+      expect(onSend).toHaveBeenCalledWith("Hello");
     });
   });
 
@@ -660,16 +630,14 @@ describe("ChatInput", () => {
       expect(onSend).toHaveBeenCalledWith("answer");
     });
 
-    it("calls onSend (not onQueue) in question mode even with agent running", async () => {
+    it("calls onSend in question mode even with agent running", async () => {
       const user = userEvent.setup();
       const onSend = vi.fn().mockResolvedValue(undefined);
-      const onQueue = vi.fn();
       render(
         <ChatInput
           onSend={onSend}
           isAgentRunning={true}
           questionMode={questionModeProps}
-          onQueue={onQueue}
         />
       );
 
@@ -677,9 +645,8 @@ describe("ChatInput", () => {
       await user.type(textarea, "answer");
       await user.click(screen.getByTestId("chat-input-send"));
 
-      // Question answers must be delivered immediately — never queue
+      // Question answers must be delivered immediately
       expect(onSend).toHaveBeenCalledWith("answer");
-      expect(onQueue).not.toHaveBeenCalled();
     });
   });
 
