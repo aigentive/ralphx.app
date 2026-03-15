@@ -7,7 +7,8 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationStatus,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationMetadata,
+    VerificationStatus,
 };
 use crate::error::AppResult;
 
@@ -165,6 +166,26 @@ pub trait IdeationSessionRepository: Send + Sync {
         previous_version_id: String,
         convergence_reason: String,
     ) -> AppResult<()>;
+
+    /// Atomic reset-and-begin for re-verification.
+    ///
+    /// Clears stale verification metadata (gaps, rounds, convergence_reason, best_round_index,
+    /// current_round, parse_failures), increments verification_generation by 1, and sets
+    /// verification_status → reviewing + verification_in_progress → true — all in one transaction.
+    ///
+    /// Called ONLY for terminal→reviewing transitions (Verified, Skipped, ImportedVerified).
+    /// NOT for NeedsRevision → Reviewing (normal inter-round flow).
+    ///
+    /// Returns `(new_gen, cleared_metadata)` — handler uses new_gen in the response and
+    /// cleared_metadata for event emission (the pre-call local metadata is stale after reset).
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the session is not found (0 rows affected) or on DB failure.
+    async fn reset_and_begin_reverify(
+        &self,
+        session_id: &str,
+    ) -> AppResult<(i32, VerificationMetadata)>;
 
     /// Find sessions where `verification_in_progress = 1` and `updated_at < stale_before`.
     async fn get_stale_in_progress_sessions(

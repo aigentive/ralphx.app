@@ -304,6 +304,13 @@ impl IdeationSessionRepository for MockIdeationRepo {
         unimplemented!()
     }
 
+    async fn reset_and_begin_reverify(
+        &self,
+        _session_id: &str,
+    ) -> AppResult<(i32, crate::domain::entities::VerificationMetadata)> {
+        unimplemented!()
+    }
+
     async fn get_verification_status(
         &self,
         _id: &IdeationSessionId,

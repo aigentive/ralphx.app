@@ -828,6 +828,8 @@ pub async fn update_plan_verification(
     let has_convergence_reason = req.convergence_reason.is_some();
     let is_valid = match (current, new_status) {
         (_, VerificationStatus::Skipped) => true,
+        // Skipped can transition to Reviewing to allow users to verify after skipping
+        (VerificationStatus::Skipped, VerificationStatus::Reviewing) => true,
         (VerificationStatus::Skipped, _) => false,
         (VerificationStatus::Unverified, VerificationStatus::Reviewing) => true,
         (VerificationStatus::Reviewing, VerificationStatus::NeedsRevision) => true,
@@ -837,6 +839,8 @@ pub async fn update_plan_verification(
         (VerificationStatus::NeedsRevision, VerificationStatus::Verified) => has_convergence_reason,
         // ImportedVerified can transition to Reviewing to re-run verification if desired
         (VerificationStatus::ImportedVerified, VerificationStatus::Reviewing) => true,
+        // Verified can transition to Reviewing to re-run verification
+        (VerificationStatus::Verified, VerificationStatus::Reviewing) => true,
         _ => false,
     };
 
@@ -863,6 +867,64 @@ pub async fn update_plan_verification(
                 current, new_status
             ),
         ));
+    }
+
+    // Re-verify fast path: terminal → Reviewing (Verified, Skipped, ImportedVerified)
+    // Atomically clears stale metadata + increments generation + sets Reviewing+in_progress.
+    // Skips update_verification_state entirely — reset_and_begin_reverify does everything.
+    let is_reverify = matches!(
+        current,
+        VerificationStatus::Verified
+            | VerificationStatus::Skipped
+            | VerificationStatus::ImportedVerified
+    ) && new_status == VerificationStatus::Reviewing;
+
+    if is_reverify {
+        let (new_gen, cleared_metadata) = state
+            .app_state
+            .ideation_session_repo
+            .reset_and_begin_reverify(&session_id)
+            .await
+            .map_err(|e| {
+                error!("Failed to reset verification for {}: {}", session_id, e);
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Failed to reset verification state",
+                )
+            })?;
+
+        tracing::info!(
+            session_id = %session_id,
+            from_status = %current,
+            new_gen = new_gen,
+            "Re-verify: stale metadata cleared, generation incremented"
+        );
+
+        if let Some(app_handle) = &state.app_state.app_handle {
+            emit_verification_status_changed(
+                app_handle,
+                &session_id,
+                VerificationStatus::Reviewing,
+                true,
+                Some(&cleared_metadata),
+                None,
+            );
+        }
+
+        return Ok(Json(VerificationResponse {
+            session_id,
+            status: VerificationStatus::Reviewing.to_string(),
+            in_progress: true,
+            current_round: None,
+            max_rounds: None,
+            gap_score: Some(0),
+            convergence_reason: None,
+            best_round_index: None,
+            current_gaps: vec![],
+            rounds: vec![],
+            plan_version: None,
+            verification_generation: new_gen,
+        }));
     }
 
     // Build/update metadata

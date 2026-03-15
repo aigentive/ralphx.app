@@ -1376,3 +1376,633 @@ async fn test_max_rounds_exit_behavior() {
         "convergence_reason must be 'max_rounds'"
     );
 }
+
+// ── Re-verification transition tests ──
+// Tests covering Verified → Reviewing, Skipped → Reviewing, metadata reset,
+// zombie protection after re-verify, and regression for existing transitions.
+
+/// Re-verify: Verified → Reviewing returns 200.
+///
+/// A plan-verifier agent must be able to restart verification on a session
+/// that was previously verified. The Verified → Reviewing transition must
+/// be allowed and return 200 with status="reviewing".
+#[tokio::test]
+async fn test_reverify_verified_to_reviewing_returns_200() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Verified)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "Verified → Reviewing must return 200: {:?}", result.err());
+    let resp = result.unwrap().0;
+    assert_eq!(resp.status, "reviewing", "status must be reviewing after transition");
+    assert!(resp.in_progress, "in_progress must be true");
+}
+
+/// Re-verify: Skipped → Reviewing returns 200.
+///
+/// A user who previously skipped verification must be able to start it.
+/// Skipped → Reviewing must be allowed.
+#[tokio::test]
+async fn test_reverify_skipped_to_reviewing_returns_200() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Skipped)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "Skipped → Reviewing must return 200: {:?}", result.err());
+    let resp = result.unwrap().0;
+    assert_eq!(resp.status, "reviewing");
+    assert!(resp.in_progress);
+}
+
+/// Re-verify clears ALL stale metadata and passes condition 6.
+///
+/// When transitioning from Verified → Reviewing, the handler must:
+/// 1. Clear all stale fields: current_gaps, rounds, convergence_reason,
+///    best_round_index, current_round, parse_failures.
+/// 2. Increment verification_generation (N → N+1).
+/// 3. Return response with new generation N+1 (not stale N).
+/// 4. Allow a subsequent needs_revision call with generation=N+1.
+///
+/// The initial reviewing call sends NO gaps, which is safe from condition 6
+/// (condition 6 only fires when reviewing + gaps present).
+#[tokio::test]
+async fn test_reverify_clears_all_stale_metadata() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(3)
+        .verification_status(VerificationStatus::Verified)
+        .build();
+    let session_id_obj = session.id.clone();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // Set stale metadata from a prior verification run
+    let stale_metadata = serde_json::json!({
+        "v": 1,
+        "current_round": 3,
+        "max_rounds": 5,
+        "rounds": [
+            {"fingerprints": ["fp-auth", "fp-scale"], "gap_score": 12},
+            {"fingerprints": ["fp-auth"], "gap_score": 8},
+            {"fingerprints": ["fp-auth"], "gap_score": 8}
+        ],
+        "current_gaps": [
+            {"severity": "high", "category": "security", "description": "No auth", "why_it_matters": null}
+        ],
+        "convergence_reason": "max_rounds",
+        "best_round_index": 2,
+        "parse_failures": [1]
+    })
+    .to_string();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id_obj,
+            VerificationStatus::Verified,
+            false,
+            Some(stale_metadata),
+        )
+        .await
+        .unwrap();
+
+    // Trigger re-verify with no gaps — safe from condition 6
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: Some(3),
+        }),
+    )
+    .await
+    .expect("re-verify from Verified must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "reviewing", "status must be reviewing after re-verify");
+    assert!(resp.in_progress, "in_progress must be true");
+    assert_eq!(
+        resp.verification_generation, 4,
+        "response must use new generation N+1=4, not stale N=3"
+    );
+    assert!(resp.current_gaps.is_empty(), "stale current_gaps must be cleared in response");
+    assert!(resp.rounds.is_empty(), "stale rounds must be cleared in response");
+    assert!(resp.convergence_reason.is_none(), "stale convergence_reason must be cleared");
+
+    // Verify DB state directly
+    let updated = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.verification_status, VerificationStatus::Reviewing);
+    assert!(updated.verification_in_progress);
+    assert_eq!(updated.verification_generation, 4, "generation must be 4 in DB");
+
+    // Parse metadata JSON to confirm all stale fields were cleared
+    let meta: serde_json::Value = serde_json::from_str(
+        updated.verification_metadata.as_deref().unwrap_or("{}"),
+    )
+    .unwrap();
+    assert_eq!(meta["current_gaps"], serde_json::json!([]), "current_gaps must be empty");
+    assert_eq!(meta["rounds"], serde_json::json!([]), "rounds must be empty");
+    assert!(meta["convergence_reason"].is_null(), "convergence_reason must be null");
+    assert!(meta["best_round_index"].is_null(), "best_round_index must be null");
+    assert_eq!(meta["current_round"], 0, "current_round must be reset to 0");
+    assert_eq!(meta["parse_failures"], serde_json::json!([]), "parse_failures must be cleared");
+
+    // Confirm next valid call succeeds with new generation — do NOT call reviewing→reviewing (422)
+    let next = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "high".to_string(),
+                category: "testing".to_string(),
+                description: "New gap found in fresh review".to_string(),
+                why_it_matters: None,
+                source: None,
+            }]),
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: Some(4), // New generation after reset
+        }),
+    )
+    .await;
+
+    assert!(
+        next.is_ok(),
+        "needs_revision with new generation=4 must succeed after metadata reset: {:?}",
+        next.err()
+    );
+    let next_resp = next.unwrap().0;
+    assert_eq!(next_resp.status, "needs_revision");
+    assert_eq!(next_resp.current_gaps.len(), 1, "new gap must be present");
+}
+
+/// Skipped → NeedsRevision is rejected (422).
+///
+/// The only allowed transition from Skipped is Skipped → Reviewing.
+#[tokio::test]
+async fn test_skipped_to_needs_revision_blocked() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Skipped)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: false,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "Skipped → NeedsRevision must be rejected");
+    let (status, _) = result.unwrap_err();
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "must return 422 for invalid Skipped → NeedsRevision"
+    );
+}
+
+/// Skipped → Verified is rejected (422).
+///
+/// The only allowed transition from Skipped is Skipped → Reviewing.
+#[tokio::test]
+async fn test_skipped_to_verified_blocked() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Skipped)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "verified".to_string(),
+            in_progress: false,
+            round: None,
+            gaps: None,
+            convergence_reason: Some("zero_blocking".to_string()),
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "Skipped → Verified must be rejected");
+    let (status, _) = result.unwrap_err();
+    assert_eq!(
+        status,
+        StatusCode::UNPROCESSABLE_ENTITY,
+        "must return 422 for invalid Skipped → Verified"
+    );
+}
+
+/// Zombie protection after re-verify: stale-generation agent is rejected with 409.
+///
+/// When reset_and_begin_reverify increments the generation from N to N+1,
+/// a stale agent still sending generation=N must receive 409 CONFLICT.
+/// The new agent with generation=N+1 must succeed.
+#[tokio::test]
+async fn test_reverify_zombie_agent_rejected_after_generation_increment() {
+    let state = setup_test_state().await;
+
+    // Session at Verified with generation=5
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(5)
+        .verification_status(VerificationStatus::Verified)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // Re-verify: generation increments from 5 → 6
+    let reverify = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: Some(5),
+        }),
+    )
+    .await
+    .expect("re-verify must succeed and increment generation to 6");
+
+    assert_eq!(reverify.0.verification_generation, 6, "generation must be 6 after reset");
+
+    // Zombie agent sends needs_revision with old generation=5 → must be rejected with 409
+    let zombie = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: Some(5), // Stale — old generation
+        }),
+    )
+    .await;
+
+    assert!(zombie.is_err(), "zombie agent with stale generation=5 must be rejected");
+    let (status, _) = zombie.unwrap_err();
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "must return 409 CONFLICT for zombie agent after re-verify"
+    );
+
+    // Fresh agent with correct generation=6 → must succeed
+    let fresh = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![]),
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: Some(6),
+        }),
+    )
+    .await;
+
+    assert!(fresh.is_ok(), "fresh agent with generation=6 must succeed: {:?}", fresh.err());
+}
+
+/// ImportedVerified → Reviewing triggers metadata reset.
+///
+/// ImportedVerified sessions may carry stale gaps/rounds from the imported state.
+/// Transitioning to Reviewing must clear all stale metadata (same as Verified → Reviewing).
+#[tokio::test]
+async fn test_imported_verified_to_reviewing_triggers_metadata_reset() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(2)
+        .verification_status(VerificationStatus::ImportedVerified)
+        .build();
+    let session_id_obj = session.id.clone();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let stale_metadata = serde_json::json!({
+        "v": 1,
+        "current_round": 2,
+        "max_rounds": 3,
+        "rounds": [{"fingerprints": ["fp-imported"], "gap_score": 5}],
+        "current_gaps": [
+            {"severity": "medium", "category": "docs", "description": "Missing docs", "why_it_matters": null}
+        ],
+        "convergence_reason": "zero_blocking",
+        "best_round_index": 0,
+        "parse_failures": []
+    })
+    .to_string();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id_obj,
+            VerificationStatus::ImportedVerified,
+            false,
+            Some(stale_metadata),
+        )
+        .await
+        .unwrap();
+
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: Some(2),
+        }),
+    )
+    .await
+    .expect("ImportedVerified → Reviewing must succeed");
+
+    let resp = result.0;
+    assert_eq!(resp.status, "reviewing");
+    assert!(resp.in_progress);
+    assert_eq!(resp.verification_generation, 3, "generation must be incremented to 2+1=3");
+    assert!(resp.current_gaps.is_empty(), "imported stale gaps must be cleared");
+    assert!(resp.rounds.is_empty(), "imported stale rounds must be cleared");
+    assert!(resp.convergence_reason.is_none(), "imported convergence_reason must be cleared");
+
+    let updated = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(updated.verification_generation, 3);
+
+    let meta: serde_json::Value = serde_json::from_str(
+        updated.verification_metadata.as_deref().unwrap_or("{}"),
+    )
+    .unwrap();
+    assert_eq!(meta["current_gaps"], serde_json::json!([]));
+    assert_eq!(meta["rounds"], serde_json::json!([]));
+    assert!(meta["convergence_reason"].is_null());
+    assert_eq!(meta["current_round"], 0);
+}
+
+/// Regression: Verified → Skipped still allowed after new re-verify arms.
+///
+/// The new Verified → Reviewing match arm must not shadow the existing
+/// catch-all that allows any status → Skipped.
+#[tokio::test]
+async fn test_verified_to_skipped_still_allowed() {
+    let state = setup_test_state().await;
+
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_status(VerificationStatus::Verified)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let result = update_plan_verification(
+        State(state),
+        Path(session_id),
+        Json(UpdateVerificationRequest {
+            status: "skipped".to_string(),
+            in_progress: false,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: None,
+            parse_failed: None,
+            generation: None,
+        }),
+    )
+    .await;
+
+    assert!(result.is_ok(), "Verified → Skipped must still be allowed: {:?}", result.err());
+    let resp = result.unwrap().0;
+    assert_eq!(resp.status, "skipped");
+}
+
+/// Full re-verify flow: reach Verified, re-verify, new gaps replace old gaps.
+///
+/// End-to-end test simulating the plan-verifier agent's second run:
+/// 1. Session is at Verified with stale gaps from prior run.
+/// 2. Re-verify transition clears metadata and increments generation.
+/// 3. First round of new verification (needs_revision with new gaps) succeeds.
+/// 4. New gaps are present in the response; old gaps are gone.
+#[tokio::test]
+async fn test_full_reverify_flow_new_gaps_replace_old() {
+    let state = setup_test_state().await;
+
+    // Session at Verified with generation=1 and stale gaps
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(1)
+        .verification_status(VerificationStatus::Verified)
+        .build();
+    let session_id_obj = session.id.clone();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let old_metadata = serde_json::json!({
+        "v": 1,
+        "current_round": 1,
+        "max_rounds": 1,
+        "rounds": [{"fingerprints": ["old-gap-fp"], "gap_score": 5}],
+        "current_gaps": [
+            {"severity": "high", "category": "old", "description": "Old outdated gap", "why_it_matters": null}
+        ],
+        "convergence_reason": "max_rounds",
+        "best_round_index": 0,
+        "parse_failures": []
+    })
+    .to_string();
+
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(
+            &session_id_obj,
+            VerificationStatus::Verified,
+            false,
+            Some(old_metadata),
+        )
+        .await
+        .unwrap();
+
+    // Re-verify: Verified → Reviewing (clears metadata, increments gen 1 → 2)
+    let reverify = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "reviewing".to_string(),
+            in_progress: true,
+            round: None,
+            gaps: None,
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: Some(1),
+        }),
+    )
+    .await
+    .expect("re-verify must succeed");
+
+    assert_eq!(reverify.0.verification_generation, 2);
+    assert!(reverify.0.current_gaps.is_empty(), "old gaps must be cleared after re-verify");
+
+    // Round 1 with fresh gaps using new generation=2
+    let round1 = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: true,
+            round: Some(1),
+            gaps: Some(vec![VerificationGapRequest {
+                severity: "critical".to_string(),
+                category: "security".to_string(),
+                description: "Completely new security gap found in fresh review".to_string(),
+                why_it_matters: Some("Fresh analysis found new vulnerabilities".to_string()),
+                source: None,
+            }]),
+            convergence_reason: None,
+            max_rounds: Some(5),
+            parse_failed: None,
+            generation: Some(2),
+        }),
+    )
+    .await
+    .expect("round 1 with new generation must succeed");
+
+    let r1 = round1.0;
+    assert_eq!(r1.status, "needs_revision", "critical gap → needs_revision");
+    assert_eq!(r1.current_gaps.len(), 1, "exactly 1 new gap");
+    assert_eq!(
+        r1.current_gaps[0].description,
+        "Completely new security gap found in fresh review",
+        "new gap description must be present"
+    );
+    assert_eq!(r1.current_gaps[0].severity, "critical");
+
+    // DB: new gaps present, old gaps gone
+    let final_session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .unwrap()
+        .unwrap();
+    let meta: serde_json::Value = serde_json::from_str(
+        final_session.verification_metadata.as_deref().unwrap_or("{}"),
+    )
+    .unwrap();
+    assert_eq!(
+        meta["current_gaps"][0]["description"],
+        "Completely new security gap found in fresh review",
+        "DB must contain new gap"
+    );
+    assert_ne!(
+        meta["current_gaps"][0]["description"].as_str().unwrap_or(""),
+        "Old outdated gap",
+        "old gap must not be present in DB"
+    );
+}
