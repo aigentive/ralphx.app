@@ -79,6 +79,8 @@ pub struct StartupJobRunner<R: Runtime = tauri::Wry> {
     execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
     /// Phase 105: Persisted agent registry for killing orphaned OS processes on restart
     running_agent_registry: Arc<dyn crate::domain::services::RunningAgentRegistry>,
+    /// Plan branch repository for resolving plan branch during deferred cleanup
+    plan_branch_repo: Option<Arc<dyn crate::domain::repositories::PlanBranchRepository>>,
     reconciler: ReconciliationRunner<R>,
     /// Optional task scheduler for auto-starting Ready tasks on startup.
     /// When provided, Ready tasks will be scheduled after resuming agent-active tasks.
@@ -109,6 +111,7 @@ impl<R: Runtime> StartupJobRunner<R> {
         active_project_state: Arc<ActiveProjectState>,
         app_state_repo: Arc<dyn AppStateRepository>,
         execution_settings_repo: Arc<dyn ExecutionSettingsRepository>,
+        plan_branch_repo: Option<Arc<dyn crate::domain::repositories::PlanBranchRepository>>,
     ) -> Self {
         let reconciler = ReconciliationRunner::new(
             Arc::clone(&task_repo),
@@ -139,6 +142,7 @@ impl<R: Runtime> StartupJobRunner<R> {
             app_state_repo,
             execution_settings_repo,
             running_agent_registry,
+            plan_branch_repo,
             reconciler,
             task_scheduler: None,
             app_handle: None,
@@ -973,6 +977,19 @@ impl<R: Runtime> StartupJobRunner<R> {
                 let task_id = task.id.clone();
                 let task_branch = task.task_branch.clone();
                 let worktree_path = task.worktree_path.clone();
+                // Resolve plan branch for ancestor guard
+                let plan_branch = if let (Some(ref exec_plan_id), Some(ref pb_repo)) =
+                    (&task.execution_plan_id, &self.plan_branch_repo)
+                {
+                    pb_repo
+                        .get_by_execution_plan_id(exec_plan_id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|pb| pb.branch_name)
+                } else {
+                    None
+                };
                 tokio::spawn(async move {
                     deferred_merge_cleanup(
                         task_id,
@@ -980,6 +997,7 @@ impl<R: Runtime> StartupJobRunner<R> {
                         working_dir,
                         task_branch,
                         worktree_path,
+                        plan_branch,
                     )
                     .await;
                 });

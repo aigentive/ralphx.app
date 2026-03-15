@@ -435,6 +435,7 @@ impl<'a> super::TransitionHandler<'a> {
             let project_dir = project.working_directory.clone();
             let task_branch_clone = task.task_branch.clone();
             let worktree_path_clone = task.worktree_path.clone();
+            let cleanup_plan_branch = Some(target_branch.to_string());
             tokio::spawn(async move {
                 super::merge_completion::deferred_merge_cleanup(
                     task_id_clone,
@@ -442,6 +443,7 @@ impl<'a> super::TransitionHandler<'a> {
                     project_dir,
                     task_branch_clone,
                     worktree_path_clone,
+                    cleanup_plan_branch,
                 )
                 .await;
             });

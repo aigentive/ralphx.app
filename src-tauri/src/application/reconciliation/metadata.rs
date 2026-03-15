@@ -5,10 +5,11 @@ use tracing::warn;
 
 use crate::application::GitService;
 use crate::domain::entities::{
-    task_metadata::RetryStrategy, ExecutionFailureSource, ExecutionRecoveryEvent,
-    ExecutionRecoveryEventKind, ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode,
-    ExecutionRecoverySource, ExecutionRecoveryState, InternalStatus, MergeFailureSource,
-    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryState, Task,
+    task_metadata::{RetryStrategy, StopRetryingReason},
+    ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+    ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
+    ExecutionRecoveryState, InternalStatus, MergeFailureSource, MergeRecoveryEventKind,
+    MergeRecoveryMetadata, MergeRecoveryState, Task,
 };
 use crate::infrastructure::agents::claude::reconciliation_config;
 
@@ -617,6 +618,40 @@ impl<R: Runtime> ReconciliationRunner<R> {
         );
 
         recovery.stop_retrying = true;
+        recovery.append_event_with_state(event, ExecutionRecoveryState::Failed);
+
+        let updated_metadata = recovery
+            .update_task_metadata(task.metadata.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        self.task_repo
+            .update_metadata(&task.id, Some(updated_metadata))
+            .await
+            .map_err(|e| e.to_string())
+    }
+
+    /// Set `stop_retrying = true` with a specific reason code.
+    /// Extends `set_execution_stop_retrying()` by also storing the reason
+    /// in `ExecutionRecoveryMetadata.unrecoverable_reason` for diagnostics.
+    pub(crate) async fn set_execution_stop_retrying_with_reason(
+        &self,
+        task: &Task,
+        reason: StopRetryingReason,
+    ) -> Result<(), String> {
+        let mut recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                .unwrap_or(None)
+                .unwrap_or_default();
+
+        let event = ExecutionRecoveryEvent::new(
+            ExecutionRecoveryEventKind::StopRetrying,
+            ExecutionRecoverySource::System,
+            ExecutionRecoveryReasonCode::GitBranchLost,
+            format!("Permanent git error - stopping auto-retry (reason: {:?})", reason),
+        );
+
+        recovery.stop_retrying = true;
+        recovery.unrecoverable_reason = Some(reason);
         recovery.append_event_with_state(event, ExecutionRecoveryState::Failed);
 
         let updated_metadata = recovery

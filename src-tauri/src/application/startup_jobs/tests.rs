@@ -57,6 +57,7 @@ fn build_runner(
         Arc::clone(&active_project_state),
         Arc::clone(&app_state_repo),
         execution_settings_repo,
+        None,
     );
     (runner, app_state_repo)
 }

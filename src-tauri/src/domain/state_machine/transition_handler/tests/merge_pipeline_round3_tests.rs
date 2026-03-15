@@ -269,7 +269,7 @@ async fn test_delete_feature_branch_force_deletes_squash_merged_branch() {
 
     // Verify branch is actually gone
     assert!(
-        !GitService::branch_exists(repo, "feature/test").await,
+        !GitService::branch_exists(repo, "feature/test").await.unwrap_or(true),
         "Branch should be deleted after delete_feature_branch"
     );
 }

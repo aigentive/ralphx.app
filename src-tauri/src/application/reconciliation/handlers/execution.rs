@@ -10,10 +10,10 @@ use crate::application::chat_service::{MergeAutoCompleteContext, reconcile_merge
 use crate::application::interactive_process_registry::InteractiveProcessKey;
 use crate::application::GitService;
 use crate::domain::entities::{
-    ActivityEvent, ActivityEventType, AgentRunStatus, ChatContextType, ExecutionFailureSource,
-    ExecutionRecoveryEvent, ExecutionRecoveryEventKind, ExecutionRecoveryMetadata,
-    ExecutionRecoveryReasonCode, ExecutionRecoverySource, ExecutionRecoveryState, InternalStatus,
-    ReviewNote, ReviewOutcome, ReviewerType, TaskId,
+    task_metadata::StopRetryingReason, ActivityEvent, ActivityEventType, AgentRunStatus,
+    ChatContextType, ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
+    ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
+    ExecutionRecoveryState, InternalStatus, ReviewNote, ReviewOutcome, ReviewerType, Task, TaskId,
 };
 use crate::domain::services::RunningAgentKey;
 use crate::domain::state_machine::transition_handler::set_trigger_origin;
@@ -23,6 +23,10 @@ use super::super::policy::{
     RecoveryActionKind, RecoveryContext, RecoveryDecision, RecoveryEvidence, UserRecoveryAction,
 };
 use super::super::ReconciliationRunner;
+
+/// Maximum number of auto-recoveries allowed for permanent git errors.
+/// After this many clean-slate re-executions, the task permanently fails.
+const MAX_AUTO_RECOVERIES: u32 = 2;
 
 impl<R: Runtime> ReconciliationRunner<R> {
     /// Check if an IPR entry for a context is backed by a live process.
@@ -187,6 +191,57 @@ impl<R: Runtime> ReconciliationRunner<R> {
                         Self::auto_retry_count_for_status(&task, InternalStatus::Executing);
                     (count, max_retries)
                 };
+
+                // Permanent git error: auto-recover before applying budget check.
+                // Must be BEFORE the budget check so git failures don't consume timeout-retry budget.
+                let last_error_message = new_recovery
+                    .as_ref()
+                    .and_then(|r| r.events.last().map(|e| e.message.clone()))
+                    .unwrap_or_default();
+
+                if is_git_isolation_startup && is_permanent_git_error(&last_error_message) {
+                    let auto_recovery_count = new_recovery
+                        .as_ref()
+                        .map(|r| r.auto_recovery_count)
+                        .unwrap_or(0);
+
+                    if auto_recovery_count >= MAX_AUTO_RECOVERIES {
+                        // Exhausted auto-recovery attempts — permanently fail with GitBranchLost reason.
+                        if let Err(e) = self
+                            .set_execution_stop_retrying_with_reason(
+                                &task,
+                                StopRetryingReason::GitBranchLost,
+                            )
+                            .await
+                        {
+                            warn!(
+                                task_id = task.id.as_str(),
+                                error = %e,
+                                "Startup recovery: failed to set stop_retrying with GitBranchLost reason"
+                            );
+                        }
+                        continue;
+                    }
+
+                    // Within recovery budget: auto-recover (clean slate re-execution).
+                    match self.auto_recover_task(&task, auto_recovery_count).await {
+                        Ok(()) => {
+                            info!(
+                                task_id = task.id.as_str(),
+                                recovery_count = auto_recovery_count + 1,
+                                "Startup recovery: auto-recovered task from permanent git error"
+                            );
+                        }
+                        Err(e) => {
+                            warn!(
+                                task_id = task.id.as_str(),
+                                error = %e,
+                                "Startup recovery: auto_recover_task failed — skipping"
+                            );
+                        }
+                    }
+                    continue;
+                }
 
                 if attempt_count >= task_max_retries {
                     tracing::debug!(
@@ -2042,4 +2097,89 @@ impl<R: Runtime> ReconciliationRunner<R> {
             }
         }
     }
+
+    /// Auto-recover a task that failed due to a permanent git error.
+    ///
+    /// Clears stale git references (branch/worktree/SHA), resets execution recovery
+    /// metadata, increments auto_recovery_count, transitions to Ready, and emits
+    /// a prominent activity event. The scheduler will re-queue the task on the next
+    /// reconciliation cycle.
+    async fn auto_recover_task(&self, task: &Task, recovery_count: u32) -> Result<(), String> {
+        // 1. Clear stale git references and reset execution recovery metadata.
+        //    Build the updated metadata first (before touching task fields).
+        let mut recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
+                .unwrap_or(None)
+                .unwrap_or_default();
+
+        // Clear event history (fresh execution, not a retry of the failed one).
+        recovery.events.clear();
+        recovery.last_state = ExecutionRecoveryState::Retrying;
+        recovery.stop_retrying = false;
+        recovery.auto_recovery_count = recovery_count + 1;
+
+        let updated_metadata = recovery
+            .update_task_metadata(task.metadata.as_deref())
+            .map_err(|e| e.to_string())?;
+
+        // 2. Clear task git refs + persist metadata in one update.
+        //    Clone the task and clear the stale fields, then update.
+        let mut updated_task = task.clone();
+        updated_task.task_branch = None;
+        updated_task.worktree_path = None;
+        updated_task.merge_commit_sha = None;
+        updated_task.metadata = Some(updated_metadata);
+
+        self.task_repo
+            .update(&updated_task)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 3. Transition to Ready via transition_service.
+        self.transition_service
+            .transition_task(&task.id, InternalStatus::Ready)
+            .await
+            .map_err(|e| e.to_string())?;
+
+        // 4. Emit activity event (warn level — prominent, self-healing action).
+        let message = format!(
+            "Auto-recovering task: previous work branch was lost. \
+             Re-executing from task description (recovery {}/{}).",
+            recovery_count + 1,
+            MAX_AUTO_RECOVERIES
+        );
+        let activity_event = ActivityEvent::new_task_event(
+            task.id.clone(),
+            ActivityEventType::System,
+            &message,
+        );
+        if let Err(e) = self.activity_event_repo.save(activity_event).await {
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                error = %e,
+                "auto_recover_task: failed to save activity event (proceeding)"
+            );
+        }
+
+        tracing::warn!(
+            task_id = task.id.as_str(),
+            recovery_count = recovery_count + 1,
+            max_recoveries = MAX_AUTO_RECOVERIES,
+            "Auto-recovering task from permanent git error — transitioning to Ready"
+        );
+
+        Ok(())
+    }
+}
+
+/// Returns true if the error message matches known permanent git failure patterns.
+///
+/// These are errors where the git object/reference no longer exists and cannot
+/// be recovered by retrying — the task branch was deleted or the repo is corrupt.
+/// Matches the error format from on_enter_states.rs branch existence check (Fix 4).
+fn is_permanent_git_error(msg: &str) -> bool {
+    msg.contains("invalid reference")
+        || msg.contains("not a valid object name")
+        || msg.contains("does not point to a valid object")
+        || msg.contains("no longer exists")
 }

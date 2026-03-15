@@ -50,3 +50,81 @@ fn test_staleness_check_recent_task_not_stale() {
         "Task failed 1 hour ago should not be stale"
     );
 }
+
+// ============================================================
+// Tests for is_permanent_git_error() classifier
+// ============================================================
+
+/// Replicates is_permanent_git_error() from execution.rs for testing.
+/// This mirrors the production function to verify classification behavior.
+fn is_permanent_git_error_test(msg: &str) -> bool {
+    msg.contains("invalid reference")
+        || msg.contains("not a valid object name")
+        || msg.contains("does not point to a valid object")
+        || msg.contains("no longer exists")
+}
+
+#[test]
+fn test_permanent_git_error_invalid_reference() {
+    // Git says the branch ref is invalid (deleted branch)
+    let msg = "Git isolation failed: invalid reference 'refs/heads/ralphx/task-abc'";
+    assert!(
+        is_permanent_git_error_test(msg),
+        "Should detect 'invalid reference' as permanent git error"
+    );
+}
+
+#[test]
+fn test_permanent_git_error_not_valid_object() {
+    let msg = "fatal: not a valid object name: 'ralphx/task-abc'";
+    assert!(
+        is_permanent_git_error_test(msg),
+        "Should detect 'not a valid object name' as permanent git error"
+    );
+}
+
+#[test]
+fn test_permanent_git_error_does_not_point_to_valid_object() {
+    let msg = "error: refs/heads/ralphx/task-abc does not point to a valid object";
+    assert!(
+        is_permanent_git_error_test(msg),
+        "Should detect 'does not point to a valid object' as permanent git error"
+    );
+}
+
+#[test]
+fn test_permanent_git_error_branch_no_longer_exists() {
+    // Matches the error from Fix 4 (branch_exists check in on_enter_states.rs)
+    let msg = "branch 'ralphx/task-abc' no longer exists (deleted during prior merge cleanup)";
+    assert!(
+        is_permanent_git_error_test(msg),
+        "Should detect 'no longer exists' as permanent git error"
+    );
+}
+
+#[test]
+fn test_permanent_git_error_transient_not_matched() {
+    // Transient errors should NOT be classified as permanent
+    let transient_errors = [
+        "fatal: Unable to create '.git/index.lock': File exists",
+        "error: timeout waiting for git",
+        "network error: connection refused",
+        "error: unable to acquire lock on git index",
+        "fatal: Out of memory, malloc failed",
+    ];
+    for msg in &transient_errors {
+        assert!(
+            !is_permanent_git_error_test(msg),
+            "Should NOT classify transient error as permanent: {}",
+            msg
+        );
+    }
+}
+
+#[test]
+fn test_permanent_git_error_empty_message_not_permanent() {
+    assert!(
+        !is_permanent_git_error_test(""),
+        "Empty message should not be classified as permanent git error"
+    );
+}

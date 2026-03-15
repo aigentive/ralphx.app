@@ -267,11 +267,32 @@ impl GitService {
         Ok(branch)
     }
 
-    /// Check if a branch (local or remote-tracking) exists in the repo.
-    pub async fn branch_exists(repo: &Path, branch: &str) -> bool {
-        git_cmd::run_status(&["rev-parse", "--verify", branch], repo)
-            .await
-            .unwrap_or(false)
+    /// Check if a local branch exists in the repo.
+    ///
+    /// Uses `git rev-parse --verify refs/heads/{branch}` to check only local branches.
+    /// Conservative failure mode: git errors (timeout, IO) return `Ok(false)` — callers
+    /// use `.unwrap_or(false)` so failures safely skip operations that require the branch.
+    pub async fn branch_exists(repo_path: &Path, branch: &str) -> AppResult<bool> {
+        let output = git_cmd::run(
+            &["rev-parse", "--verify", &format!("refs/heads/{branch}")],
+            repo_path,
+        )
+        .await;
+        Ok(output.map_or(false, |o| o.status.success()))
+    }
+
+    /// Check if `commit` is an ancestor of `target` in the given repo.
+    ///
+    /// Uses `git merge-base --is-ancestor commit target`. Conservative failure mode:
+    /// git errors (corrupt repo, invalid ref, timeout) collapse to `Ok(false)` — callers
+    /// use `.unwrap_or(false)` so failures safely skip branch deletion.
+    pub async fn is_ancestor(repo_path: &Path, commit: &str, target: &str) -> AppResult<bool> {
+        let output = git_cmd::run(
+            &["merge-base", "--is-ancestor", commit, target],
+            repo_path,
+        )
+        .await;
+        Ok(output.map_or(false, |o| o.status.success()))
     }
 
     /// Validate that both source and target branches exist before merge.
@@ -281,13 +302,13 @@ impl GitService {
         source_branch: &str,
         target_branch: &str,
     ) -> Option<MergeAttemptResult> {
-        if !Self::branch_exists(repo, source_branch).await {
+        if !Self::branch_exists(repo, source_branch).await.unwrap_or(false) {
             warn!("Source branch '{}' does not exist", source_branch);
             return Some(MergeAttemptResult::BranchNotFound {
                 branch: source_branch.to_string(),
             });
         }
-        if !Self::branch_exists(repo, target_branch).await {
+        if !Self::branch_exists(repo, target_branch).await.unwrap_or(false) {
             warn!("Target branch '{}' does not exist", target_branch);
             return Some(MergeAttemptResult::BranchNotFound {
                 branch: target_branch.to_string(),

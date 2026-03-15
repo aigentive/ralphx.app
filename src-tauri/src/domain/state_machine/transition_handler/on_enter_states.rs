@@ -374,7 +374,7 @@ impl<'a> super::TransitionHandler<'a> {
 
                                 // Check if branch already exists from a previous execution attempt
                                 let branch_exists =
-                                    GitService::branch_exists(repo_path, &branch).await;
+                                    GitService::branch_exists(repo_path, &branch).await.unwrap_or(false);
 
                                 // Create worktree - use existing branch if it exists, create new one otherwise
                                 let result = if branch_exists {
@@ -443,13 +443,23 @@ impl<'a> super::TransitionHandler<'a> {
                                     .unwrap_or(false);
                                 let expected_path_exists = expected_wt_buf.exists();
                                 if !stored_path_exists && !expected_path_exists {
+                                    let repo_path = Path::new(&project.working_directory);
+                                    let branch_exists = GitService::branch_exists(repo_path, branch)
+                                        .await
+                                        .unwrap_or(false);
+                                    if !branch_exists {
+                                        return Err(AppError::ExecutionBlocked(format!(
+                                            "{}: branch '{}' no longer exists (deleted during prior merge cleanup). Task needs manual recovery or reset to Ready.",
+                                            GIT_ISOLATION_ERROR_PREFIX,
+                                            branch
+                                        )));
+                                    }
                                     tracing::info!(
                                         task_id = task_id_str,
                                         branch = %branch,
                                         expected_wt = %expected_wt_path,
                                         "Worktree missing for task with existing branch — re-creating"
                                     );
-                                    let repo_path = Path::new(&project.working_directory);
                                     match GitService::checkout_existing_branch_worktree(
                                         repo_path,
                                         &expected_wt_buf,

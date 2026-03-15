@@ -270,6 +270,7 @@ async fn deferred_cleanup_clears_pending_cleanup_metadata() {
         "/tmp/nonexistent-repo".to_string(),
         Some("task/cleanup-test".to_string()),
         Some("/tmp/nonexistent-worktree-cleanup".to_string()),
+        None,
     )
     .await;
 
@@ -302,6 +303,7 @@ async fn deferred_cleanup_clears_branch_and_worktree_fields() {
         "/tmp/nonexistent-repo".to_string(),
         Some("task/fields-test".to_string()),
         Some("/tmp/nonexistent-worktree-fields".to_string()),
+        None,
     )
     .await;
 
@@ -338,6 +340,7 @@ async fn deferred_cleanup_failure_preserves_merged_status() {
         "/tmp/nonexistent-repo".to_string(),
         Some("task/fail-test".to_string()),
         Some("/tmp/nonexistent-worktree-fail-test".to_string()),
+        None,
     )
     .await;
 
@@ -396,6 +399,7 @@ async fn deferred_cleanup_deletes_branch_in_real_repo() {
         repo_path_str,
         Some(branch_name.to_string()),
         None, // no worktree
+        None,
     )
     .await;
 
@@ -434,6 +438,7 @@ async fn deferred_cleanup_noop_when_no_branch_or_worktree() {
         task_id.clone(),
         task_repo_dyn,
         "/tmp/nonexistent-repo".to_string(),
+        None,
         None,
         None,
     )

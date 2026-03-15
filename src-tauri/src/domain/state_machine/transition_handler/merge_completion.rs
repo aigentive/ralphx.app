@@ -355,6 +355,7 @@ pub async fn deferred_merge_cleanup(
     project_working_dir: String,
     task_branch: Option<String>,
     worktree_path: Option<String>,
+    plan_branch: Option<String>,
 ) {
     let task_id_str = task_id.as_str().to_string();
     let repo_path = Path::new(&project_working_dir);
@@ -398,24 +399,54 @@ pub async fn deferred_merge_cleanup(
         }
     }
 
-    // Step 3: Delete task branch
+    // Step 3: Delete task branch — with ancestor guard to prevent work loss.
+    // If plan_branch is provided, verify task commits landed on it before deleting.
     if let Some(ref branch) = task_branch {
         if repo_path.exists() {
-            match GitService::delete_branch(repo_path, branch, true).await {
-                Ok(_) => {
-                    tracing::info!(
-                        task_id = %task_id_str,
-                        branch = %branch,
-                        "Phase 3: task branch deleted"
-                    );
+            // Ancestor check: is task branch HEAD an ancestor of plan branch HEAD?
+            let should_delete = match plan_branch.as_deref() {
+                Some(pb) => {
+                    let is_anc = GitService::is_ancestor(repo_path, branch, pb)
+                        .await
+                        .unwrap_or(false);
+                    if !is_anc {
+                        tracing::error!(
+                            task_id = %task_id_str,
+                            task_branch = %branch,
+                            plan_branch = %pb,
+                            "Phase 3: branch deletion guard: task HEAD not ancestor of plan HEAD \
+                             — skipping deletion to prevent work loss"
+                        );
+                    }
+                    is_anc
                 }
-                Err(e) => {
-                    tracing::warn!(
+                None => {
+                    // No plan branch info — skip ancestor check (backward compat)
+                    tracing::debug!(
                         task_id = %task_id_str,
-                        error = %e,
-                        branch = %branch,
-                        "Phase 3: failed to delete task branch (non-fatal)"
+                        "Phase 3: no plan_branch provided, skipping ancestor check"
                     );
+                    true
+                }
+            };
+
+            if should_delete {
+                match GitService::delete_branch(repo_path, branch, true).await {
+                    Ok(_) => {
+                        tracing::info!(
+                            task_id = %task_id_str,
+                            branch = %branch,
+                            "Phase 3: task branch deleted"
+                        );
+                    }
+                    Err(e) => {
+                        tracing::warn!(
+                            task_id = %task_id_str,
+                            error = %e,
+                            branch = %branch,
+                            "Phase 3: failed to delete task branch (non-fatal)"
+                        );
+                    }
                 }
             }
         }
@@ -613,6 +644,7 @@ mod tests {
             repo_path_str.clone(),
             Some(branch_name.to_string()),
             Some("/tmp/nonexistent-worktree-fix3-test".to_string()),
+            None,
         )
         .await;
 
@@ -697,5 +729,221 @@ mod tests {
 
         assert!(has_no_code_changes_metadata(&task));
         assert!(has_pending_cleanup_metadata(&task));
+    }
+
+    // ===== Ancestor guard tests for branch deletion =====
+
+    /// When the task branch is NOT an ancestor of the plan branch, the branch
+    /// must NOT be deleted — it may still contain work not yet on the plan branch.
+    #[tokio::test]
+    async fn test_deferred_cleanup_skips_deletion_when_not_ancestor() {
+        let (_dir, repo_path_str) = make_test_repo();
+        let repo_path = Path::new(&repo_path_str);
+
+        let task_branch = "task/not-ancestor-test";
+        let plan_branch = "plan/not-ancestor-test";
+
+        // Create task branch from main and add a unique commit not on plan
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "-b", task_branch])
+            .current_dir(repo_path)
+            .output();
+        std::fs::write(repo_path.join("task_only_file.md"), "task work").unwrap();
+        for args in [vec!["add", "."], vec!["commit", "-m", "task: task-only work"]] {
+            let _ = std::process::Command::new("git")
+                .args(&args)
+                .current_dir(repo_path)
+                .output();
+        }
+
+        // Checkout main, create plan branch from main (WITHOUT the task commit)
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo_path)
+            .output();
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "-b", plan_branch])
+            .current_dir(repo_path)
+            .output();
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo_path)
+            .output();
+
+        // Sanity check: task branch should NOT be an ancestor of plan branch
+        let task_is_ancestor = std::process::Command::new("git")
+            .args(["merge-base", "--is-ancestor", task_branch, plan_branch])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(
+            !task_is_ancestor.status.success(),
+            "Task should NOT be ancestor of plan for this test"
+        );
+
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let task_repo_dyn: Arc<dyn TaskRepository> =
+            Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+        let project_id = ProjectId::from_string("proj-ancestor-guard".to_string());
+
+        let mut task = Task::new(project_id, "Ancestor guard test".to_string());
+        task.internal_status = InternalStatus::Merged;
+        task.task_branch = Some(task_branch.to_string());
+        set_pending_cleanup_metadata(&mut task);
+        let task_id = task.id.clone();
+        task_repo.create(task).await.unwrap();
+
+        deferred_merge_cleanup(
+            task_id.clone(),
+            task_repo_dyn,
+            repo_path_str.clone(),
+            Some(task_branch.to_string()),
+            None, // no worktree
+            Some(plan_branch.to_string()),
+        )
+        .await;
+
+        // CRITICAL: task branch must still exist in git (not deleted)
+        let branch_check = std::process::Command::new("git")
+            .args(["branch", "--list", task_branch])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(
+            String::from_utf8_lossy(&branch_check.stdout).contains(task_branch),
+            "Task branch should NOT be deleted when task is not ancestor of plan branch"
+        );
+    }
+
+    /// When the task branch IS an ancestor of the plan branch (i.e. it was merged in),
+    /// the branch should be deleted as normal.
+    #[tokio::test]
+    async fn test_deferred_cleanup_deletes_branch_when_ancestor() {
+        let (_dir, repo_path_str) = make_test_repo();
+        let repo_path = Path::new(&repo_path_str);
+
+        let task_branch = "task/ancestor-yes-test";
+        let plan_branch = "plan/ancestor-yes-test";
+
+        // Create plan branch from main
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "-b", plan_branch])
+            .current_dir(repo_path)
+            .output();
+
+        // Create task branch from plan and add a commit
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "-b", task_branch])
+            .current_dir(repo_path)
+            .output();
+        std::fs::write(repo_path.join("task_work.md"), "work").unwrap();
+        for args in [vec!["add", "."], vec!["commit", "-m", "task: work"]] {
+            let _ = std::process::Command::new("git")
+                .args(&args)
+                .current_dir(repo_path)
+                .output();
+        }
+
+        // Merge task into plan (task is now an ancestor of plan)
+        let _ = std::process::Command::new("git")
+            .args(["checkout", plan_branch])
+            .current_dir(repo_path)
+            .output();
+        let _ = std::process::Command::new("git")
+            .args(["merge", "--no-ff", task_branch, "-m", "Merge task"])
+            .current_dir(repo_path)
+            .output();
+
+        // Return to main so force-delete works
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo_path)
+            .output();
+
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let task_repo_dyn: Arc<dyn TaskRepository> =
+            Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+        let project_id = ProjectId::from_string("proj-ancestor-yes".to_string());
+
+        let mut task = Task::new(project_id, "Ancestor yes test".to_string());
+        task.internal_status = InternalStatus::Merged;
+        task.task_branch = Some(task_branch.to_string());
+        set_pending_cleanup_metadata(&mut task);
+        let task_id = task.id.clone();
+        task_repo.create(task).await.unwrap();
+
+        deferred_merge_cleanup(
+            task_id.clone(),
+            task_repo_dyn,
+            repo_path_str.clone(),
+            Some(task_branch.to_string()),
+            None, // no worktree
+            Some(plan_branch.to_string()),
+        )
+        .await;
+
+        // Task branch SHOULD be deleted (task IS ancestor of plan)
+        let branch_check = std::process::Command::new("git")
+            .args(["branch", "--list", task_branch])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&branch_check.stdout).contains(task_branch),
+            "Task branch SHOULD be deleted when task is ancestor of plan branch"
+        );
+    }
+
+    /// Backward compatibility: when no plan_branch is provided, the ancestor check
+    /// is skipped and the branch is deleted unconditionally.
+    #[tokio::test]
+    async fn test_deferred_cleanup_proceeds_when_no_plan_branch() {
+        let (_dir, repo_path_str) = make_test_repo();
+        let repo_path = Path::new(&repo_path_str);
+
+        let task_branch = "task/no-plan-branch-test";
+
+        // Create task branch and return to main
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "-b", task_branch])
+            .current_dir(repo_path)
+            .output();
+        let _ = std::process::Command::new("git")
+            .args(["checkout", "main"])
+            .current_dir(repo_path)
+            .output();
+
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let task_repo_dyn: Arc<dyn TaskRepository> =
+            Arc::clone(&task_repo) as Arc<dyn TaskRepository>;
+        let project_id = ProjectId::from_string("proj-no-plan".to_string());
+
+        let mut task = Task::new(project_id, "No plan branch test".to_string());
+        task.internal_status = InternalStatus::Merged;
+        task.task_branch = Some(task_branch.to_string());
+        set_pending_cleanup_metadata(&mut task);
+        let task_id = task.id.clone();
+        task_repo.create(task).await.unwrap();
+
+        deferred_merge_cleanup(
+            task_id.clone(),
+            task_repo_dyn,
+            repo_path_str.clone(),
+            Some(task_branch.to_string()),
+            None,
+            None, // No plan branch — backward compat: skip check, proceed with deletion
+        )
+        .await;
+
+        // Branch should be deleted (no plan branch = skip check = proceed)
+        let branch_check = std::process::Command::new("git")
+            .args(["branch", "--list", task_branch])
+            .current_dir(repo_path)
+            .output()
+            .unwrap();
+        assert!(
+            !String::from_utf8_lossy(&branch_check.stdout).contains(task_branch),
+            "Task branch should be deleted when no plan_branch is provided (backward compat)"
+        );
     }
 }

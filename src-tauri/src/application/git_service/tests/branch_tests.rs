@@ -645,7 +645,11 @@ async fn test_branch_exists_returns_true_for_existing_branch() {
         .unwrap();
     let branch_name = String::from_utf8_lossy(&output.stdout).trim().to_string();
 
-    assert!(GitService::branch_exists(repo, &branch_name).await);
+    assert!(
+        GitService::branch_exists(repo, &branch_name)
+            .await
+            .unwrap_or(false)
+    );
 }
 
 #[tokio::test]
@@ -658,6 +662,214 @@ async fn test_branch_exists_returns_false_for_nonexistent_branch() {
         .current_dir(repo)
         .output()
         .unwrap();
+    // Create an initial commit so the repo is valid
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("file.txt"), "hello").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
 
-    assert!(!GitService::branch_exists(repo, "nonexistent-branch").await);
+    assert!(
+        !GitService::branch_exists(repo, "nonexistent-branch")
+            .await
+            .unwrap_or(true)
+    );
+}
+
+// =========================================================================
+// is_ancestor Tests
+// =========================================================================
+
+/// Helper: initialize a repo, make an initial commit, return HEAD sha
+fn setup_repo_with_commit(repo: &std::path::Path) -> String {
+    Command::new("git")
+        .args(["init"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("file.txt"), "initial").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let out = Command::new("git")
+        .args(["rev-parse", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+#[tokio::test]
+async fn test_is_ancestor_returns_true_when_commit_is_ancestor() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    let first_sha = setup_repo_with_commit(repo);
+
+    // Add a second commit on the same branch
+    std::fs::write(repo.join("file2.txt"), "second").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "second"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let second_sha = {
+        let out = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // first_sha is an ancestor of second_sha
+    let result = GitService::is_ancestor(repo, &first_sha, &second_sha)
+        .await
+        .unwrap_or(false);
+    assert!(result, "first commit should be ancestor of second commit");
+}
+
+#[tokio::test]
+async fn test_is_ancestor_returns_false_when_commit_is_not_ancestor() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    let first_sha = setup_repo_with_commit(repo);
+
+    // Add a second commit
+    std::fs::write(repo.join("file2.txt"), "second").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "second"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let second_sha = {
+        let out = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // second_sha is NOT an ancestor of first_sha (reverse order)
+    let result = GitService::is_ancestor(repo, &second_sha, &first_sha)
+        .await
+        .unwrap_or(true); // unwrap_or(true) so a false-positive Err would fail the assertion
+    assert!(
+        !result,
+        "second commit should NOT be ancestor of first commit"
+    );
+}
+
+#[tokio::test]
+async fn test_is_ancestor_returns_false_for_invalid_ref() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    setup_repo_with_commit(repo);
+
+    let head_sha = {
+        let out = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(repo)
+            .output()
+            .unwrap();
+        String::from_utf8_lossy(&out.stdout).trim().to_string()
+    };
+
+    // Invalid ref should return false (conservative failure mode)
+    let result = GitService::is_ancestor(repo, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeef", &head_sha)
+        .await
+        .unwrap_or(false);
+    assert!(
+        !result,
+        "invalid ref should not be considered an ancestor"
+    );
+}
+
+#[tokio::test]
+async fn test_branch_exists_uses_refs_heads_prefix() {
+    // Verifies that branch_exists checks local branches (refs/heads/) specifically,
+    // not arbitrary refs.
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    setup_repo_with_commit(repo);
+
+    // Get the actual default branch name
+    let out = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    let branch_name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+
+    // Create another branch
+    Command::new("git")
+        .args(["branch", "feature/test-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Existing branch should return true
+    let exists = GitService::branch_exists(repo, "feature/test-branch")
+        .await
+        .unwrap_or(false);
+    assert!(exists, "feature/test-branch should exist");
+
+    // Default branch should exist
+    let default_exists = GitService::branch_exists(repo, &branch_name)
+        .await
+        .unwrap_or(false);
+    assert!(default_exists, "default branch should exist");
+
+    // Non-existent branch should return false
+    let missing = GitService::branch_exists(repo, "no-such-branch")
+        .await
+        .unwrap_or(true); // unwrap_or(true) so Err would fail the assertion
+    assert!(!missing, "no-such-branch should not exist");
 }

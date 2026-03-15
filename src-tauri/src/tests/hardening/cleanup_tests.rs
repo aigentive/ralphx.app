@@ -641,6 +641,7 @@ async fn test_fix_complete_merge_internal_clears_task_branch_and_worktree_path()
         repo_path.to_string_lossy().to_string(),
         task.task_branch.clone(),
         task.worktree_path.clone(),
+        None,
     )
     .await;
 

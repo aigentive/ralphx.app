@@ -197,10 +197,12 @@ impl<'a> super::TransitionHandler<'a> {
                                         let cleanup_dir = project.working_directory.clone();
                                         let cleanup_branch = task.task_branch.clone();
                                         let cleanup_wt = task.worktree_path.clone();
+                                        let plan_branch_name = pb.branch_name.clone();
                                         tokio::spawn(async move {
                                             super::merge_completion::deferred_merge_cleanup(
                                                 cleanup_task_id, cleanup_repo, cleanup_dir,
                                                 cleanup_branch, cleanup_wt,
+                                                Some(plan_branch_name),
                                             ).await;
                                         });
                                     }
@@ -333,10 +335,11 @@ impl<'a> super::TransitionHandler<'a> {
             let cleanup_dir = project.working_directory.clone();
             let cleanup_branch = task.task_branch.clone();
             let cleanup_wt = task.worktree_path.clone();
+            let cleanup_plan_branch = Some(target_branch.to_string());
             tokio::spawn(async move {
                 super::merge_completion::deferred_merge_cleanup(
                     cleanup_task_id, cleanup_repo, cleanup_dir,
-                    cleanup_branch, cleanup_wt,
+                    cleanup_branch, cleanup_wt, cleanup_plan_branch,
                 ).await;
             });
         }
@@ -360,7 +363,7 @@ impl<'a> super::TransitionHandler<'a> {
         let (task, task_id, task_id_str, task_repo) = (tc.task, tc.task_id, tc.task_id_str, tc.task_repo);
         let (source_branch, target_branch) = (bp.source_branch, bp.target_branch);
         let (project, repo_path) = (pc.project, pc.repo_path);
-        if GitService::branch_exists(repo_path, source_branch).await {
+        if GitService::branch_exists(repo_path, source_branch).await.unwrap_or(false) {
             return false;
         }
 
@@ -448,10 +451,12 @@ impl<'a> super::TransitionHandler<'a> {
                                     let cleanup_dir = project.working_directory.clone();
                                     let cleanup_branch = task.task_branch.clone();
                                     let cleanup_wt = task.worktree_path.clone();
+                                    let plan_branch_name = pb.branch_name.clone();
                                     tokio::spawn(async move {
                                         super::merge_completion::deferred_merge_cleanup(
                                             cleanup_task_id, cleanup_repo, cleanup_dir,
                                             cleanup_branch, cleanup_wt,
+                                            Some(plan_branch_name),
                                         ).await;
                                     });
                                 }
@@ -533,10 +538,11 @@ impl<'a> super::TransitionHandler<'a> {
                     let cleanup_dir = project.working_directory.clone();
                     let cleanup_branch = task.task_branch.clone();
                     let cleanup_wt = task.worktree_path.clone();
+                    let cleanup_plan_branch = Some(target_branch.to_string());
                     tokio::spawn(async move {
                         super::merge_completion::deferred_merge_cleanup(
                             cleanup_task_id, cleanup_repo, cleanup_dir,
-                            cleanup_branch, cleanup_wt,
+                            cleanup_branch, cleanup_wt, cleanup_plan_branch,
                         ).await;
                     });
                 }
