@@ -1475,3 +1475,232 @@ mod ipc_contract {
         assert!(input.custom_response.is_none());
     }
 }
+
+// ─── Layer 1 restart logic unit tests ────────────────────────────────────────
+// These tests verify the behavior added to the terminal→Ready block in move_task:
+// git ref clearing, execution_recovery selective reset, and metadata clobber prevention.
+// We can't invoke Tauri commands directly (requires AppHandle), so we replicate the
+// exact logic using the same helper functions and MemoryTaskRepository.
+#[cfg(test)]
+mod layer1_restart_tests {
+    use crate::domain::entities::{
+        ExecutionRecoveryMetadata, ExecutionRecoveryState, InternalStatus, ProjectId, Task,
+    };
+    use crate::domain::repositories::TaskRepository;
+    use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
+    use crate::infrastructure::memory::MemoryTaskRepository;
+    use std::sync::Arc;
+
+    async fn create_task_in_repo(
+        task_repo: &Arc<MemoryTaskRepository>,
+        task: Task,
+    ) -> Task {
+        task_repo.create(task).await.unwrap()
+    }
+
+    fn make_task_with_git_refs() -> Task {
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let mut task = Task::new(project_id, "Restart Test Task".to_string());
+        task.internal_status = InternalStatus::Failed;
+        task.task_branch = Some("ralphx/task/test-branch".to_string());
+        task.worktree_path = Some("/worktrees/test-task".to_string());
+        task.merge_commit_sha = Some("deadbeefcafe".to_string());
+        task
+    }
+
+    /// Simulate the terminal→Ready restart block from move_task.
+    /// Returns the mutated task (not yet saved) plus updated metadata string.
+    fn apply_restart_block(task: &Task, agent_variant: Option<&str>) -> Task {
+        let mut task_mut = task.clone();
+        set_trigger_origin(&mut task_mut, "retry");
+
+        // Clear stale git refs
+        task_mut.task_branch = None;
+        task_mut.worktree_path = None;
+        task_mut.merge_commit_sha = None;
+
+        // Selectively reset execution_recovery, preserving auto_recovery_count
+        if let Ok(Some(mut recovery)) =
+            ExecutionRecoveryMetadata::from_task_metadata(task_mut.metadata.as_deref())
+        {
+            recovery.stop_retrying = false;
+            recovery.last_state = ExecutionRecoveryState::Retrying;
+            recovery.events.clear();
+            recovery.unrecoverable_reason = None;
+            if let Ok(updated_meta) =
+                recovery.update_task_metadata(task_mut.metadata.as_deref())
+            {
+                task_mut.metadata = Some(updated_meta);
+            }
+        }
+
+        // Update agent_variant in same write to avoid metadata clobber
+        let mut meta = parse_metadata(&task_mut).unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = meta.as_object_mut() {
+            match agent_variant {
+                Some(v) if !v.is_empty() => {
+                    obj.insert("agent_variant".to_string(), serde_json::json!(v));
+                }
+                _ => {
+                    obj.remove("agent_variant");
+                }
+            }
+        }
+        task_mut.metadata = Some(meta.to_string());
+        task_mut
+    }
+
+    #[tokio::test]
+    async fn test_terminal_to_ready_clears_git_refs() {
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let original = create_task_in_repo(&task_repo, make_task_with_git_refs()).await;
+
+        let restarted = apply_restart_block(&original, None);
+        task_repo.update(&restarted).await.unwrap();
+
+        let saved = task_repo.get_by_id(&original.id).await.unwrap().unwrap();
+        assert!(saved.task_branch.is_none(), "task_branch should be cleared");
+        assert!(saved.worktree_path.is_none(), "worktree_path should be cleared");
+        assert!(
+            saved.merge_commit_sha.is_none(),
+            "merge_commit_sha should be cleared"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_terminal_to_ready_resets_execution_recovery_preserves_count() {
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let mut task = Task::new(project_id, "Recovery Reset Test".to_string());
+        task.internal_status = InternalStatus::Failed;
+
+        // Set up execution_recovery with stop_retrying=true and auto_recovery_count=2
+        let mut recovery = ExecutionRecoveryMetadata::new();
+        recovery.stop_retrying = true;
+        recovery.last_state = ExecutionRecoveryState::Failed;
+        recovery.auto_recovery_count = 2;
+        let metadata_json = recovery.update_task_metadata(None).unwrap();
+        task.metadata = Some(metadata_json);
+
+        let original = create_task_in_repo(&task_repo, task).await;
+
+        let restarted = apply_restart_block(&original, None);
+        task_repo.update(&restarted).await.unwrap();
+
+        let saved = task_repo.get_by_id(&original.id).await.unwrap().unwrap();
+        let final_recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(saved.metadata.as_deref())
+                .unwrap()
+                .unwrap();
+
+        assert!(
+            !final_recovery.stop_retrying,
+            "stop_retrying should be reset to false"
+        );
+        assert_eq!(
+            final_recovery.last_state,
+            ExecutionRecoveryState::Retrying,
+            "last_state should be reset to Retrying"
+        );
+        assert!(final_recovery.events.is_empty(), "events should be cleared");
+        assert!(
+            final_recovery.unrecoverable_reason.is_none(),
+            "unrecoverable_reason should be cleared"
+        );
+        assert_eq!(
+            final_recovery.auto_recovery_count, 2,
+            "auto_recovery_count must be PRESERVED"
+        );
+    }
+
+    /// CRITICAL: Verifies that agent_variant and execution_recovery reset are both
+    /// present in the final metadata — not clobbered by two separate writes.
+    #[tokio::test]
+    async fn test_terminal_to_ready_agent_variant_and_recovery_reset_no_clobber() {
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let mut task = Task::new(project_id, "Clobber Non-Regression Test".to_string());
+        task.internal_status = InternalStatus::Failed;
+
+        // Set execution_recovery with stop_retrying=true
+        let mut recovery = ExecutionRecoveryMetadata::new();
+        recovery.stop_retrying = true;
+        recovery.last_state = ExecutionRecoveryState::Failed;
+        recovery.auto_recovery_count = 1;
+        task.metadata = Some(recovery.update_task_metadata(None).unwrap());
+
+        let original = create_task_in_repo(&task_repo, task).await;
+
+        // Restart with agent_variant="team"
+        let restarted = apply_restart_block(&original, Some("team"));
+        task_repo.update(&restarted).await.unwrap();
+
+        let saved = task_repo.get_by_id(&original.id).await.unwrap().unwrap();
+
+        // Verify agent_variant was set
+        let meta = parse_metadata(&saved).expect("metadata should be present");
+        let agent_variant = meta.get("agent_variant").and_then(|v| v.as_str());
+        assert_eq!(
+            agent_variant,
+            Some("team"),
+            "agent_variant should be set to 'team'"
+        );
+
+        // Verify execution_recovery reset was NOT clobbered by agent_variant write
+        let final_recovery =
+            ExecutionRecoveryMetadata::from_task_metadata(saved.metadata.as_deref())
+                .unwrap()
+                .unwrap();
+        assert!(
+            !final_recovery.stop_retrying,
+            "stop_retrying must be false even when agent_variant is also set"
+        );
+        assert_eq!(
+            final_recovery.last_state,
+            ExecutionRecoveryState::Retrying,
+            "last_state must be Retrying even when agent_variant is also set"
+        );
+    }
+
+    /// Verifies block 2 (agent_variant update for non-restart transitions) still works.
+    /// When old_status is NOT terminal, block 2 should fire and update agent_variant.
+    #[tokio::test]
+    async fn test_non_restart_ready_transition_agent_variant_updated() {
+        let task_repo = Arc::new(MemoryTaskRepository::new());
+        let project_id = ProjectId::from_string("test-project".to_string());
+        let mut task = Task::new(project_id, "Agent Variant Non-Restart Test".to_string());
+        task.internal_status = InternalStatus::Ready; // non-terminal
+        // Set an old agent_variant in metadata
+        task.metadata = Some(r#"{"agent_variant":"team"}"#.to_string());
+
+        let original = create_task_in_repo(&task_repo, task).await;
+
+        // Simulate block 2: non-terminal→Ready transition with agent_variant=None (clear it)
+        // block 2 fires for: matches!(new_status, Ready|Executing) && NOT (terminal→Ready)
+        // Since old_status=Ready (non-terminal), the guard allows block 2 to run.
+        let agent_variant: Option<&str> = None;
+        let mut meta = parse_metadata(&original).unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = meta.as_object_mut() {
+            match agent_variant {
+                Some(v) if !v.is_empty() => {
+                    obj.insert("agent_variant".to_string(), serde_json::json!(v));
+                }
+                _ => {
+                    obj.remove("agent_variant");
+                }
+            }
+        }
+        task_repo
+            .update_metadata(&original.id, Some(meta.to_string()))
+            .await
+            .unwrap();
+
+        let saved = task_repo.get_by_id(&original.id).await.unwrap().unwrap();
+        let final_meta = parse_metadata(&saved).unwrap_or_else(|| serde_json::json!({}));
+        let agent_variant_val = final_meta.get("agent_variant");
+        assert!(
+            agent_variant_val.is_none(),
+            "agent_variant should be removed when None passed on non-restart transition"
+        );
+    }
+}

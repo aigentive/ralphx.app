@@ -11,21 +11,23 @@ use chrono::Utc;
 use super::super::machine::State;
 use super::freshness::{self, FreshnessAction};
 use super::merge_helpers::{
-    compute_merge_worktree_path, compute_task_worktree_path, expand_home,
+    compute_merge_worktree_path, compute_task_worktree_path,
     resolve_task_base_branch, slugify,
 };
 use super::metadata_builder::{build_failed_metadata, MetadataUpdate};
 use crate::application::git_service::git_cmd::ENOENT_MARKER;
 use crate::application::{ChatServiceError, GitService};
 use crate::domain::entities::task_metadata::GIT_ISOLATION_ERROR_PREFIX;
+use crate::domain::entities::plan_branch::PlanBranchId;
 use crate::domain::entities::{
     ExecutionFailureSource, ExecutionRecoveryEvent, ExecutionRecoveryEventKind,
     ExecutionRecoveryMetadata, ExecutionRecoveryReasonCode, ExecutionRecoverySource,
     ExecutionRecoveryState, MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind,
     MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
-    ProjectId, TaskCategory, TaskId, TaskStepStatus,
+    Project, ProjectId, Task, TaskCategory, TaskId, TaskStepStatus,
 };
-use crate::domain::repositories::TaskRepository;
+use crate::domain::repositories::{PlanBranchRepository, TaskRepository};
+use crate::domain::services::github_service::GithubServiceTrait;
 use crate::error::{AppError, AppResult};
 use crate::infrastructure::agents::claude::{reconciliation_config, scheduler_config};
 
@@ -94,6 +96,87 @@ async fn apply_freshness_result(
         Err(FreshnessAction::ExecutionBlocked { reason }) => {
             Err(AppError::ExecutionBlocked(reason))
         }
+    }
+}
+
+/// Create a fresh task branch and worktree for a task entering Executing state.
+///
+/// Resolves the base branch, computes the standard worktree path via
+/// `compute_task_worktree_path`, cleans any stale worktree at that path, then
+/// creates (or checks out an existing) branch into the worktree.
+///
+/// Does NOT update the database — the caller is responsible for persisting the
+/// returned `(branch_name, worktree_path)` onto the task.
+///
+/// # Errors
+/// Returns `AppError::ExecutionBlocked` if the git worktree cannot be created.
+#[allow(clippy::too_many_arguments)]
+async fn create_fresh_branch_and_worktree(
+    task: &Task,
+    project: &Project,
+    task_id_str: &str,
+    repo_path: &Path,
+    plan_branch_repo: &Option<Arc<dyn PlanBranchRepository>>,
+    task_repo_ref: &Option<Arc<dyn TaskRepository>>,
+    pr_creation_guard: &Option<Arc<dashmap::DashMap<PlanBranchId, ()>>>,
+    github_service: &Option<Arc<dyn GithubServiceTrait>>,
+) -> AppResult<(String, std::path::PathBuf)> {
+    let branch = format!(
+        "ralphx/{}/task-{}",
+        slugify(&project.name),
+        task_id_str
+    );
+    let resolved_base = resolve_task_base_branch(
+        task,
+        project,
+        plan_branch_repo,
+        task_repo_ref,
+        pr_creation_guard,
+        github_service,
+    )
+    .await;
+    let base_branch = resolved_base.as_str();
+
+    // Use compute_task_worktree_path for consistent path computation
+    let worktree_path_str = compute_task_worktree_path(project, task_id_str);
+    let worktree_path_buf = std::path::PathBuf::from(&worktree_path_str);
+
+    // Clean up stale task worktree from a prior execution attempt
+    if worktree_path_buf.exists() {
+        if let Err(e) = GitService::delete_worktree(repo_path, &worktree_path_buf).await {
+            tracing::warn!(
+                task_id = task_id_str,
+                error = %e,
+                "Failed to clean stale task worktree (non-fatal)"
+            );
+        }
+    }
+
+    // Check if branch already exists from a previous execution attempt
+    let branch_exists = GitService::branch_exists(repo_path, &branch)
+        .await
+        .unwrap_or(false);
+
+    // Create worktree — use existing branch if it exists, create new one otherwise
+    let result = if branch_exists {
+        tracing::info!(
+            task_id = task_id_str,
+            branch = %branch,
+            "Branch already exists, checking out existing branch into worktree"
+        );
+        GitService::checkout_existing_branch_worktree(repo_path, &worktree_path_buf, &branch).await
+    } else {
+        GitService::create_worktree(repo_path, &worktree_path_buf, &branch, base_branch).await
+    };
+
+    match result {
+        Ok(_) => Ok((branch, worktree_path_buf)),
+        Err(e) => Err(AppError::ExecutionBlocked(format!(
+            "{}: could not create worktree at '{}': {}",
+            GIT_ISOLATION_ERROR_PREFIX,
+            worktree_path_str,
+            e
+        ))),
     }
 }
 
@@ -332,162 +415,195 @@ impl<'a> super::TransitionHandler<'a> {
                     let project_result = project_repo.get_by_id(&project_id).await;
 
                     if let (Ok(Some(mut task)), Ok(Some(project))) = (task_result, project_result) {
-                        // Only setup if task doesn't already have a branch
-                        if task.task_branch.is_none() {
-                            let branch =
-                                format!("ralphx/{}/task-{}", slugify(&project.name), task_id_str);
-                            // Resolve base branch: feature branch for plan tasks, project base otherwise
-                            let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
-                            let task_repo_ref = &self.machine.context.services.task_repo;
-                            let pr_creation_guard_ref = &self.machine.context.services.pr_creation_guard;
-                            let github_service_ref = &self.machine.context.services.github_service;
-                            let resolved_base =
-                                resolve_task_base_branch(&task, &project, plan_branch_repo, task_repo_ref, pr_creation_guard_ref, github_service_ref).await;
-                            let base_branch = resolved_base.as_str();
-                            let repo_path = Path::new(&project.working_directory);
+                        let repo_path = Path::new(&project.working_directory);
+                        let plan_branch_repo = &self.machine.context.services.plan_branch_repo;
+                        let task_repo_ref = &self.machine.context.services.task_repo;
+                        let pr_creation_guard_ref =
+                            &self.machine.context.services.pr_creation_guard;
+                        let github_service_ref = &self.machine.context.services.github_service;
 
-                            // Attempt branch/worktree setup. Git isolation failures MUST
-                            // block execution to prevent agents from writing to main branch.
-                            // All git errors return ExecutionBlocked to fail the task.
-                            let git_result: AppResult<Option<(String, Option<String>)>> = {
-                                // Build worktree path
-                                let worktree_parent = project
-                                    .worktree_parent_directory
-                                    .as_deref()
-                                    .unwrap_or("~/ralphx-worktrees");
-                                let expanded_parent = expand_home(worktree_parent);
-
-                                let worktree_path = format!(
-                                    "{}/{}/task-{}",
-                                    expanded_parent,
-                                    slugify(&project.name),
-                                    task_id_str
+                        // Layer 2 self-healing guard: detect deleted branches BEFORE the three-way
+                        // worktree guard. Covers paths where Layer 1 (move_task) is bypassed
+                        // (reconciler, scheduler, direct transitions).
+                        let mut branch_self_healed = false;
+                        if let Some(ref branch) = task.task_branch.clone() {
+                            let branch_exists =
+                                GitService::branch_exists(repo_path, branch).await.unwrap_or(false);
+                            if !branch_exists {
+                                tracing::warn!(
+                                    task_id = task_id_str,
+                                    branch = %branch,
+                                    "Stale task_branch detected — branch deleted, self-healing by creating fresh branch"
                                 );
-                                let worktree_path_buf = std::path::PathBuf::from(&worktree_path);
-
-                                // Clean up stale task worktree from a prior execution attempt
-                                if worktree_path_buf.exists() {
-                                    if let Err(e) = GitService::delete_worktree(repo_path, &worktree_path_buf).await {
-                                        tracing::warn!(task_id = task_id_str, error = %e, "Failed to clean stale task worktree (non-fatal)");
+                                // Clean up stored worktree directory if it exists
+                                if let Some(ref stored_wt) = task.worktree_path.clone() {
+                                    let stored = std::path::PathBuf::from(stored_wt);
+                                    if stored.exists() {
+                                        let _ =
+                                            GitService::delete_worktree(repo_path, &stored).await;
                                     }
                                 }
-
-                                // Check if branch already exists from a previous execution attempt
-                                let branch_exists =
-                                    GitService::branch_exists(repo_path, &branch).await.unwrap_or(false);
-
-                                // Create worktree - use existing branch if it exists, create new one otherwise
-                                let result = if branch_exists {
-                                    tracing::info!(
-                                        task_id = task_id_str,
-                                        branch = %branch,
-                                        "Branch already exists, checking out existing branch into worktree"
-                                    );
-                                    GitService::checkout_existing_branch_worktree(
-                                        repo_path,
-                                        &worktree_path_buf,
-                                        &branch,
-                                    )
-                                    .await
-                                } else {
-                                    GitService::create_worktree(
-                                        repo_path,
-                                        &worktree_path_buf,
-                                        &branch,
-                                        base_branch,
-                                    )
-                                    .await
-                                };
-
-                                match result {
-                                    Ok(_) => Ok(Some((branch.clone(), Some(worktree_path)))),
-                                    Err(e) => {
-                                        return Err(AppError::ExecutionBlocked(
-                                            format!("{}: could not create worktree at '{}': {}", GIT_ISOLATION_ERROR_PREFIX, worktree_path, e)
-                                        ));
-                                    }
+                                // Also clean up the expected path (may differ from stored path)
+                                let expected_wt_path_str =
+                                    compute_task_worktree_path(&project, task_id_str);
+                                let expected_wt_path =
+                                    std::path::PathBuf::from(&expected_wt_path_str);
+                                if expected_wt_path.exists() {
+                                    let _ = GitService::delete_worktree(repo_path, &expected_wt_path)
+                                        .await;
                                 }
-                            };
-
-                            // If git setup succeeded, persist the branch info
-                            if let Ok(Some((branch_name, worktree_path_opt))) = git_result {
-                                task.task_branch = Some(branch_name.clone());
-                                if let Some(wt_path) = worktree_path_opt {
-                                    task.worktree_path = Some(wt_path.clone());
-                                    tracing::info!(
-                                        task_id = task_id_str,
-                                        branch = %branch_name,
-                                        worktree_path = %wt_path,
-                                        "Created worktree with task branch"
-                                    );
-                                }
+                                // Clear stale refs and persist to DB
+                                task.task_branch = None;
+                                task.worktree_path = None;
+                                task.merge_commit_sha = None;
                                 task.touch();
                                 if let Err(e) = task_repo.update(&task).await {
-                                    tracing::error!(error = %e, "Failed to persist task branch info");
+                                    tracing::error!(
+                                        task_id = task_id_str,
+                                        error = %e,
+                                        "Failed to clear stale git refs during self-heal"
+                                    );
+                                }
+                                // Create a fresh branch and worktree
+                                match create_fresh_branch_and_worktree(
+                                    &task,
+                                    &project,
+                                    task_id_str,
+                                    repo_path,
+                                    plan_branch_repo,
+                                    task_repo_ref,
+                                    pr_creation_guard_ref,
+                                    github_service_ref,
+                                )
+                                .await
+                                {
+                                    Ok((new_branch, new_worktree)) => {
+                                        task.task_branch = Some(new_branch.clone());
+                                        task.worktree_path =
+                                            Some(new_worktree.to_string_lossy().to_string());
+                                        task.touch();
+                                        tracing::info!(
+                                            task_id = task_id_str,
+                                            branch = %new_branch,
+                                            worktree_path = %new_worktree.display(),
+                                            "Self-healed: created fresh branch and worktree for deleted branch"
+                                        );
+                                        if let Err(e) = task_repo.update(&task).await {
+                                            tracing::error!(
+                                                task_id = task_id_str,
+                                                error = %e,
+                                                "Failed to persist self-healed branch info"
+                                            );
+                                        }
+                                        branch_self_healed = true;
+                                    }
+                                    Err(e) => return Err(e),
                                 }
                             }
                         }
 
-                        // Worktree existence guard: even when task_branch is already set (prior run),
-                        // the worktree may have been cleaned up. Re-create if missing to prevent
-                        // run_and_store_pre_execution_setup from using a stale/nonexistent path.
-                        // Also handles the race where create_worktree succeeded but DB persist failed.
-                        if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
-                            if let Some(ref branch) = task.task_branch.clone() {
-                                let expected_wt_path = compute_task_worktree_path(&project, task_id_str);
-                                let expected_wt_buf = std::path::PathBuf::from(&expected_wt_path);
-                                // Check both the expected path AND the stored path
-                                let stored_path_exists = task.worktree_path
-                                    .as_ref()
-                                    .map(|p| std::path::PathBuf::from(p).exists())
-                                    .unwrap_or(false);
-                                let expected_path_exists = expected_wt_buf.exists();
-                                if !stored_path_exists && !expected_path_exists {
-                                    let repo_path = Path::new(&project.working_directory);
-                                    let branch_exists = GitService::branch_exists(repo_path, branch)
-                                        .await
-                                        .unwrap_or(false);
-                                    if !branch_exists {
-                                        return Err(AppError::ExecutionBlocked(format!(
-                                            "{}: branch '{}' no longer exists (deleted during prior merge cleanup). Task needs manual recovery or reset to Ready.",
-                                            GIT_ISOLATION_ERROR_PREFIX,
-                                            branch
-                                        )));
-                                    }
-                                    tracing::info!(
-                                        task_id = task_id_str,
-                                        branch = %branch,
-                                        expected_wt = %expected_wt_path,
-                                        "Worktree missing for task with existing branch — re-creating"
-                                    );
-                                    match GitService::checkout_existing_branch_worktree(
-                                        repo_path,
-                                        &expected_wt_buf,
-                                        branch,
-                                    )
-                                    .await
-                                    {
-                                        Ok(_) => {
-                                            task.worktree_path = Some(expected_wt_path);
-                                            task.touch();
-                                            if let Err(e) = task_repo.update(&task).await {
-                                                tracing::error!(error = %e, "Failed to persist re-created worktree_path");
-                                            }
+                        // Original branch/worktree setup — skipped when self-heal already handled it.
+                        if !branch_self_healed {
+                            if task.task_branch.is_none() {
+                                // Fresh task — create branch + worktree via shared helper
+                                match create_fresh_branch_and_worktree(
+                                    &task,
+                                    &project,
+                                    task_id_str,
+                                    repo_path,
+                                    plan_branch_repo,
+                                    task_repo_ref,
+                                    pr_creation_guard_ref,
+                                    github_service_ref,
+                                )
+                                .await
+                                {
+                                    Ok((branch_name, worktree_path)) => {
+                                        tracing::info!(
+                                            task_id = task_id_str,
+                                            branch = %branch_name,
+                                            worktree_path = %worktree_path.display(),
+                                            "Created worktree with task branch"
+                                        );
+                                        task.task_branch = Some(branch_name);
+                                        task.worktree_path =
+                                            Some(worktree_path.to_string_lossy().to_string());
+                                        task.touch();
+                                        if let Err(e) = task_repo.update(&task).await {
+                                            tracing::error!(
+                                                error = %e,
+                                                "Failed to persist task branch info"
+                                            );
                                         }
-                                        Err(e) => {
+                                    }
+                                    Err(e) => return Err(e),
+                                }
+                            }
+
+                            // Worktree existence guard: even when task_branch is already set (prior run),
+                            // the worktree may have been cleaned up. Re-create if missing to prevent
+                            // run_and_store_pre_execution_setup from using a stale/nonexistent path.
+                            // Also handles the race where create_worktree succeeded but DB persist failed.
+                            if let Ok(Some(mut task)) = task_repo.get_by_id(&task_id).await {
+                                if let Some(ref branch) = task.task_branch.clone() {
+                                    let expected_wt_path =
+                                        compute_task_worktree_path(&project, task_id_str);
+                                    let expected_wt_buf =
+                                        std::path::PathBuf::from(&expected_wt_path);
+                                    // Check both the expected path AND the stored path
+                                    let stored_path_exists = task
+                                        .worktree_path
+                                        .as_ref()
+                                        .map(|p| std::path::PathBuf::from(p).exists())
+                                        .unwrap_or(false);
+                                    let expected_path_exists = expected_wt_buf.exists();
+                                    if !stored_path_exists && !expected_path_exists {
+                                        let branch_exists =
+                                            GitService::branch_exists(repo_path, branch)
+                                                .await
+                                                .unwrap_or(false);
+                                        if !branch_exists {
                                             return Err(AppError::ExecutionBlocked(format!(
-                                                "{}: could not re-create missing worktree for task with existing branch: {}",
+                                                "{}: branch '{}' no longer exists (deleted during prior merge cleanup). Task needs manual recovery or reset to Ready.",
                                                 GIT_ISOLATION_ERROR_PREFIX,
-                                                e
+                                                branch
                                             )));
                                         }
-                                    }
-                                } else if !stored_path_exists && expected_path_exists {
-                                    // Expected path exists but DB has wrong/missing worktree_path — update DB
-                                    task.worktree_path = Some(expected_wt_path);
-                                    task.touch();
-                                    if let Err(e) = task_repo.update(&task).await {
-                                        tracing::error!(error = %e, "Failed to update stale worktree_path in DB");
+                                        tracing::info!(
+                                            task_id = task_id_str,
+                                            branch = %branch,
+                                            expected_wt = %expected_wt_path,
+                                            "Worktree missing for task with existing branch — re-creating"
+                                        );
+                                        match GitService::checkout_existing_branch_worktree(
+                                            repo_path,
+                                            &expected_wt_buf,
+                                            branch,
+                                        )
+                                        .await
+                                        {
+                                            Ok(_) => {
+                                                task.worktree_path = Some(expected_wt_path);
+                                                task.touch();
+                                                if let Err(e) = task_repo.update(&task).await {
+                                                    tracing::error!(error = %e, "Failed to persist re-created worktree_path");
+                                                }
+                                            }
+                                            Err(e) => {
+                                                return Err(AppError::ExecutionBlocked(format!(
+                                                    "{}: could not re-create missing worktree for task with existing branch: {}",
+                                                    GIT_ISOLATION_ERROR_PREFIX,
+                                                    e
+                                                )));
+                                            }
+                                        }
+                                    } else if !stored_path_exists && expected_path_exists {
+                                        // Expected path exists but DB has wrong/missing worktree_path — update DB
+                                        task.worktree_path = Some(expected_wt_path);
+                                        task.touch();
+                                        if let Err(e) = task_repo.update(&task).await {
+                                            tracing::error!(error = %e, "Failed to update stale worktree_path in DB");
+                                        }
                                     }
                                 }
                             }
