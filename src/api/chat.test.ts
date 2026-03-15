@@ -8,7 +8,6 @@ import {
   createConversation,
   getAgentRunStatus,
   sendAgentMessage,
-  queueAgentMessage,
   getQueuedAgentMessages,
   deleteQueuedAgentMessage,
   isChatServiceAvailable,
@@ -131,18 +130,14 @@ describe("chat api", () => {
     expect(mockInvoke).toHaveBeenCalledWith("send_agent_message", {
       input: { contextType: "project", contextId: "p1", content: "Hello" },
     });
-    expect(result).toEqual({ conversationId: "c1", agentRunId: "r1", isNewConversation: true });
+    expect(result).toEqual({ conversationId: "c1", agentRunId: "r1", isNewConversation: true, wasQueued: false, queuedMessageId: undefined });
   });
 
-  it("queues and lists queued messages", async () => {
-    mockInvoke
-      .mockResolvedValueOnce({ id: "q1", content: "queued", created_at: "2026-01-24T10:00:00Z", is_editing: false })
-      .mockResolvedValueOnce([{ id: "q1", content: "queued", created_at: "2026-01-24T10:00:00Z", is_editing: false }]);
+  it("lists queued messages", async () => {
+    mockInvoke.mockResolvedValueOnce([{ id: "q1", content: "queued", created_at: "2026-01-24T10:00:00Z", is_editing: false }]);
 
-    const queued = await queueAgentMessage("project", "p1", "queued", "client-1");
     const list = await getQueuedAgentMessages("project", "p1");
 
-    expect(queued).toMatchObject({ id: "q1", isEditing: false });
     expect(list).toHaveLength(1);
   });
 

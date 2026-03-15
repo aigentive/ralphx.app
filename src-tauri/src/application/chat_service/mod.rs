@@ -71,12 +71,14 @@ pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, Repl
 pub use chat_service_streaming::process_stream_background;
 pub use chat_service_types::{
     events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload, AgentMessageCreatedPayload,
-    AgentQueueSentPayload, AgentRunCompletedPayload, AgentRunStartedPayload,
-    AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
-    ChatConversationWithMessages, ChatServiceError, SendResult, TeamCostUpdatePayload,
-    TeamArtifactCreatedPayload, TeamCreatedPayload, TeamDisbandedPayload, TeamMessagePayload,
-    TeamTeammateIdlePayload, TeamTeammateShutdownPayload, TeamTeammateSpawnedPayload,
+    AgentMessageQueuedPayload, AgentQueueSentPayload, AgentRunCompletedPayload,
+    AgentRunStartedPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload,
+    AgentToolCallPayload, ChatConversationWithMessages, ChatServiceError, SendResult,
+    TeamCostUpdatePayload, TeamArtifactCreatedPayload, TeamCreatedPayload, TeamDisbandedPayload,
+    TeamMessagePayload, TeamTeammateIdlePayload, TeamTeammateShutdownPayload,
+    TeamTeammateSpawnedPayload,
 };
+pub use chat_service_types::events::AGENT_MESSAGE_QUEUED;
 pub use streaming_state_cache::{
     CachedStreamingTask, CachedToolCall, ConversationStreamingState, StreamingStateCache,
 };
@@ -729,6 +731,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                         conversation_id: conversation.id.as_str().to_string(),
                         agent_run_id: uuid::Uuid::new_v4().to_string(),
                         is_new_conversation: false,
+                        ..Default::default()
                     });
                 }
                 Err(e) => {
@@ -772,7 +775,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             gate = "GATE_2_REGISTRY",
             "[GATE_TRACE] Gate 2 (running_agent_registry.try_register)"
         );
-        if let Err(_existing) = self
+        if let Err(existing) = self
             .running_agent_registry
             .try_register(
                 registry_key.clone(),
@@ -785,8 +788,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                 %context_type,
                 context_id,
                 gate = "GATE_2_BLOCKED",
-                existing_pid = _existing.pid,
-                existing_run_id = %_existing.agent_run_id,
+                existing_pid = existing.pid,
+                existing_run_id = %existing.agent_run_id,
                 "[GATE_TRACE] Gate 2 blocked — agent already running, queuing message"
             );
             let queued = self
@@ -799,18 +802,22 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                     options.created_at.map(|ts| ts.to_rfc3339()),
                 );
             self.emit_event(
-                "agent:queue_sent",
-                AgentQueueSentPayload {
+                "agent:message_queued",
+                AgentMessageQueuedPayload {
                     message_id: queued.id.clone(),
-                    conversation_id: conversation.id.as_str().to_string(),
+                    content: queued.content.clone(),
                     context_type: context_type.to_string(),
                     context_id: context_id.to_string(),
+                    created_at: queued.created_at.clone(),
                 },
             );
-            return Err(ChatServiceError::AgentAlreadyRunning(format!(
-                "Message queued (id: {}). An agent is already running for {} {}.",
-                queued.id, context_type, context_id
-            )));
+            return Ok(SendResult {
+                conversation_id: existing.conversation_id.clone(),
+                agent_run_id: existing.agent_run_id.clone(),
+                is_new_conversation: false,
+                was_queued: true,
+                queued_message_id: Some(queued.id),
+            });
         }
 
         // From here on, we hold the agent slot. Any early return must unregister.
@@ -1187,6 +1194,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
             conversation_id: conversation_id.as_str().to_string(),
             agent_run_id,
             is_new_conversation,
+            ..Default::default()
         })
     }
 

@@ -45,6 +45,10 @@ pub struct SendAgentMessageResponse {
     pub conversation_id: String,
     pub agent_run_id: String,
     pub is_new_conversation: bool,
+    #[serde(default)]
+    pub was_queued: bool,
+    #[serde(default)]
+    pub queued_message_id: Option<String>,
 }
 
 impl From<SendResult> for SendAgentMessageResponse {
@@ -53,6 +57,8 @@ impl From<SendResult> for SendAgentMessageResponse {
             conversation_id: result.conversation_id,
             agent_run_id: result.agent_run_id,
             is_new_conversation: result.is_new_conversation,
+            was_queued: result.was_queued,
+            queued_message_id: result.queued_message_id,
         }
     }
 }
@@ -296,6 +302,8 @@ pub async fn send_agent_message(
                 conversation_id: String::new(),
                 agent_run_id: uuid::Uuid::new_v4().to_string(),
                 is_new_conversation: false,
+                was_queued: false,
+                queued_message_id: None,
             });
         }
         // Team not found for context — fall through to normal lead path

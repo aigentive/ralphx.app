@@ -17,6 +17,7 @@ import { chatKeys } from "@/hooks/useChat";
 import { ideationApi } from "@/api/ideation";
 import { logger } from "@/lib/logger";
 import type { ContextType } from "@/types/chat-conversation";
+import type { SendAgentMessageResult } from "@/api/chat";
 
 // ============================================================================
 // Types
@@ -36,7 +37,7 @@ interface UseChatActionsProps {
   /** Send message mutation from useChat or useTaskChat */
   sendMessage: {
     isPending: boolean;
-    mutateAsync: (params: { content: string; attachmentIds?: string[]; target?: string }) => Promise<unknown>;
+    mutateAsync: (params: { content: string; attachmentIds?: string[]; target?: string }) => Promise<SendAgentMessageResult>;
   };
   /** Current message count (for first-message detection in ideation) */
   messageCount?: number;
@@ -61,11 +62,7 @@ export function useChatActions({
   const startEditingQueuedMessage = useChatStore((s) => s.startEditingQueuedMessage);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
-
-  // Generate a unique ID for queued messages (shared between frontend + backend)
-  const generateQueuedMessageId = useCallback(() => {
-    return `queued-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-  }, []);
+  const setSending = useChatStore((s) => s.setSending);
 
   // ── Send ─────────────────────────────────────────────────────────
   const handleSend = useCallback(
@@ -78,29 +75,30 @@ export function useChatActions({
       try {
         // For review mode, send with "review" context type via direct API
         if (contextType === "review" && selectedTaskId) {
-          setAgentRunning(storeContextKey, true);
+          setSending(storeContextKey, true);
+          try {
+            const result = await chatApi.sendAgentMessage("review", selectedTaskId, content, attachmentIds, target);
 
-          const result = await chatApi.sendAgentMessage("review", selectedTaskId, content, attachmentIds, target);
-
-          queryClient.invalidateQueries({
-            queryKey: chatKeys.conversationList("review", selectedTaskId),
-          });
-
-          if (result.conversationId) {
             queryClient.invalidateQueries({
-              queryKey: chatKeys.conversation(result.conversationId),
+              queryKey: chatKeys.conversationList("review", selectedTaskId),
             });
-            if (result.isNewConversation) {
-              setActiveConversation(result.conversationId);
+
+            if (result.wasQueued && result.queuedMessageId != null) {
+              queueMessage(storeContextKey, content, result.queuedMessageId);
             }
+
+            if (result.conversationId) {
+              queryClient.invalidateQueries({
+                queryKey: chatKeys.conversation(result.conversationId),
+              });
+              if (result.isNewConversation) {
+                setActiveConversation(result.conversationId);
+              }
+            }
+          } finally {
+            setSending(storeContextKey, false);
           }
         } else {
-          // Set the CORRECT store context key immediately so ChatInput sees
-          // isAgentRunning=true and switches to queue mode.
-          // useChat.sendMessage also sets its own key ("task:<id>") which is a
-          // harmless orphan — the key that matters is storeContextKey
-          // ("task_execution:<id>", "merge:<id>", etc.) from useChatPanelContext.
-          setAgentRunning(storeContextKey, true);
           const params: { content: string; attachmentIds?: string[]; target?: string } = { content };
           if (attachmentIds !== undefined) {
             params.attachmentIds = attachmentIds;
@@ -108,7 +106,10 @@ export function useChatActions({
           if (target !== undefined) {
             params.target = target;
           }
-          await sendMessage.mutateAsync(params);
+          const result = await sendMessage.mutateAsync(params);
+          if (result.wasQueued && result.queuedMessageId != null) {
+            queueMessage(storeContextKey, content, result.queuedMessageId);
+          }
         }
 
         // Trigger session auto-naming on first ideation message (fire-and-forget)
@@ -124,27 +125,7 @@ export function useChatActions({
         setAgentRunning(storeContextKey, false);
       }
     },
-    [sendMessage, contextType, selectedTaskId, storeContextKey, setAgentRunning, setActiveConversation, queryClient, ideationSessionId, messageCount]
-  );
-
-  // ── Queue ────────────────────────────────────────────────────────
-  const handleQueue = useCallback(
-    async (content: string, target?: string) => {
-      if (!content.trim()) return;
-
-      const messageId = generateQueuedMessageId();
-
-      // Add to local store immediately for optimistic UI
-      queueMessage(storeContextKey, content, messageId);
-
-      // Also queue to backend so it gets processed when agent completes
-      try {
-        await chatApi.queueAgentMessage(contextType, contextId, content, messageId, undefined, target);
-      } catch {
-        // Message is already in local store — it just won't be processed by backend
-      }
-    },
-    [queueMessage, storeContextKey, contextType, contextId, generateQueuedMessageId]
+    [sendMessage, contextType, selectedTaskId, storeContextKey, setAgentRunning, setSending, setActiveConversation, queryClient, ideationSessionId, messageCount, queueMessage]
   );
 
   // ── Stop Agent ───────────────────────────────────────────────────
@@ -195,18 +176,20 @@ export function useChatActions({
       // Delete from local store
       deleteQueuedMessage(storeContextKey, messageId);
 
-      // Generate new ID and queue the edited content
-      const newMessageId = generateQueuedMessageId();
-      queueMessage(storeContextKey, newContent, newMessageId);
-
-      // Queue to backend with same ID
+      // Send the edited content via sendAgentMessage (delete-before-send pattern)
+      setSending(storeContextKey, true);
       try {
-        await chatApi.queueAgentMessage(contextType, contextId, newContent, newMessageId);
+        const result = await chatApi.sendAgentMessage(contextType, contextId, newContent);
+        if (result.wasQueued && result.queuedMessageId != null) {
+          queueMessage(storeContextKey, newContent, result.queuedMessageId);
+        }
       } catch {
         // Silently ignore — local state already updated
+      } finally {
+        setSending(storeContextKey, false);
       }
     },
-    [deleteQueuedMessage, queueMessage, contextType, contextId, generateQueuedMessageId, storeContextKey]
+    [deleteQueuedMessage, queueMessage, contextType, contextId, storeContextKey, setSending]
   );
 
   // ── Edit Last Queued ─────────────────────────────────────────────
@@ -221,7 +204,6 @@ export function useChatActions({
 
   return {
     handleSend,
-    handleQueue,
     handleStopAgent,
     handleDeleteQueuedMessage,
     handleEditQueuedMessage,

@@ -507,6 +507,32 @@ describe("chatStore", () => {
       expect(state.queuedMessages[taskKey]?.[0].content).toBe("Task message");
       expect(state.queuedMessages[execKey]?.[0].content).toBe("Execution message");
     });
+
+    it("ignores duplicate message ID (idempotent for same non-null ID)", () => {
+      const messageId = "backend-queued-msg-123";
+
+      useChatStore.getState().queueMessage(contextKey, "Hello", messageId);
+      useChatStore.getState().queueMessage(contextKey, "Hello", messageId);
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[contextKey]).toHaveLength(1);
+    });
+
+    it("allows two messages with different IDs", () => {
+      useChatStore.getState().queueMessage(contextKey, "First", "id-001");
+      useChatStore.getState().queueMessage(contextKey, "Second", "id-002");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[contextKey]).toHaveLength(2);
+    });
+
+    it("allows messages without explicit ID even when an ID message exists", () => {
+      useChatStore.getState().queueMessage(contextKey, "With ID", "id-001");
+      useChatStore.getState().queueMessage(contextKey, "Without ID");
+
+      const state = useChatStore.getState();
+      expect(state.queuedMessages[contextKey]).toHaveLength(2);
+    });
   });
 
   describe("editQueuedMessage", () => {

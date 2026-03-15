@@ -31,7 +31,6 @@ const mockClearAttachments = vi.fn();
 vi.mock("@/hooks/useChatActions", () => ({
   useChatActions: () => ({
     handleSend: mockHandleSend,
-    handleQueue: vi.fn(),
     handleStopAgent: vi.fn(),
     handleDeleteQueuedMessage: vi.fn(),
     handleEditQueuedMessage: vi.fn(),

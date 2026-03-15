@@ -1,7 +1,8 @@
-// Tests for AgentAlreadyRunning guard in on_enter(Merging) and on_enter(Reviewing).
+// Tests for was_queued guard in on_enter for all 4 agent-spawning states.
 //
-// RC#2 fix: when chat_service.send_message() returns AgentAlreadyRunning,
+// RC#2 fix (updated): when chat_service.send_message() returns Ok(was_queued: true),
 // on_enter should log info and return Ok(()) (no-op), NOT record a spawn failure.
+// Gate 2 now returns Ok(was_queued: true) instead of Err(AgentAlreadyRunning).
 //
 // Per CLAUDE.md rule 1.5: MemoryTaskRepository + MockChatService.
 // Mock agent spawning only → verify call_count() and absence of spawn_failure metadata.
@@ -216,4 +217,234 @@ async fn reviewing_double_on_enter_agent_already_running_is_noop() {
         2,
         "Both on_enter calls should have reached chat_service (call_count == 2)"
     );
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Helpers: services without repos (Executing/ReExecuting skip git operations
+// when no task_repo/project_repo is wired into TaskServices)
+// ──────────────────────────────────────────────────────────────────────────────
+
+async fn make_services_queued_no_repos() -> (Arc<MockChatService>, TaskServices) {
+    // set_already_running_after(0) → first call returns Ok(was_queued: true)
+    let chat_service = Arc::new(MockChatService::new());
+    chat_service.set_already_running_after(0).await;
+    let services = TaskServices::new(
+        Arc::new(MockAgentSpawner::new()) as Arc<dyn AgentSpawner>,
+        Arc::new(MockEventEmitter::new()) as Arc<dyn EventEmitter>,
+        Arc::new(MockNotifier::new()) as Arc<dyn Notifier>,
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(MockReviewStarter::new()) as Arc<dyn ReviewStarter>,
+        Arc::clone(&chat_service) as Arc<dyn ChatService>,
+    )
+    .with_task_scheduler(Arc::new(MockTaskScheduler::new()) as Arc<dyn TaskScheduler>);
+    (chat_service, services)
+}
+
+async fn make_services_unavailable_no_repos() -> (Arc<MockChatService>, TaskServices) {
+    // set_available(false) → all calls return Err(AgentNotAvailable)
+    let chat_service = Arc::new(MockChatService::new());
+    chat_service.set_available(false).await;
+    let services = TaskServices::new(
+        Arc::new(MockAgentSpawner::new()) as Arc<dyn AgentSpawner>,
+        Arc::new(MockEventEmitter::new()) as Arc<dyn EventEmitter>,
+        Arc::new(MockNotifier::new()) as Arc<dyn Notifier>,
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(MockReviewStarter::new()) as Arc<dyn ReviewStarter>,
+        Arc::clone(&chat_service) as Arc<dyn ChatService>,
+    )
+    .with_task_scheduler(Arc::new(MockTaskScheduler::new()) as Arc<dyn TaskScheduler>);
+    (chat_service, services)
+}
+
+async fn make_services_normal_no_repos() -> (Arc<MockChatService>, TaskServices) {
+    // Normal mock — first call returns Ok(was_queued: false)
+    let chat_service = Arc::new(MockChatService::new());
+    let services = TaskServices::new(
+        Arc::new(MockAgentSpawner::new()) as Arc<dyn AgentSpawner>,
+        Arc::new(MockEventEmitter::new()) as Arc<dyn EventEmitter>,
+        Arc::new(MockNotifier::new()) as Arc<dyn Notifier>,
+        Arc::new(MockDependencyManager::new()) as Arc<dyn DependencyManager>,
+        Arc::new(MockReviewStarter::new()) as Arc<dyn ReviewStarter>,
+        Arc::clone(&chat_service) as Arc<dyn ChatService>,
+    )
+    .with_task_scheduler(Arc::new(MockTaskScheduler::new()) as Arc<dyn TaskScheduler>);
+    (chat_service, services)
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Executing: positive (was_queued), negative (genuine error), normal-spawn
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// on_enter(Executing) with was_queued: true → no-op (Ok).
+#[tokio::test]
+async fn executing_was_queued_is_noop() {
+    let (chat_service, services) = make_services_queued_no_repos().await;
+    let context = TaskContext::new("task-exec-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+    let result = handler.on_enter(&State::Executing).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(Executing) with was_queued must return Ok (no-op): {:?}",
+        result.err()
+    );
+    assert_eq!(chat_service.call_count(), 1, "send_message must be called once");
+}
+
+/// on_enter(Executing) with genuine Err → error is propagated as Err.
+#[tokio::test]
+async fn executing_genuine_error_is_propagated() {
+    let (chat_service, services) = make_services_unavailable_no_repos().await;
+    let context = TaskContext::new("task-exec-err", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+    let result = handler.on_enter(&State::Executing).await;
+    assert!(
+        result.is_err(),
+        "on_enter(Executing) with genuine Err must propagate error, not silently swallow it"
+    );
+    assert_eq!(chat_service.call_count(), 1, "send_message must be attempted once");
+}
+
+/// on_enter(Executing) with was_queued: false → normal spawn, returns Ok.
+#[tokio::test]
+async fn executing_normal_spawn_succeeds() {
+    let (chat_service, services) = make_services_normal_no_repos().await;
+    let context = TaskContext::new("task-exec-ok", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+    let result = handler.on_enter(&State::Executing).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(Executing) normal spawn must return Ok: {:?}",
+        result.err()
+    );
+    assert_eq!(chat_service.call_count(), 1, "send_message must be called once for normal spawn");
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// ReExecuting: positive (was_queued), negative (genuine error), normal-spawn
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// on_enter(ReExecuting) with was_queued: true → no-op (Ok).
+#[tokio::test]
+async fn re_executing_was_queued_is_noop() {
+    let (chat_service, services) = make_services_queued_no_repos().await;
+    let context = TaskContext::new("task-reexec-1", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+    let result = handler.on_enter(&State::ReExecuting).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(ReExecuting) with was_queued must return Ok (no-op): {:?}",
+        result.err()
+    );
+    assert_eq!(chat_service.call_count(), 1, "send_message must be called once");
+}
+
+/// on_enter(ReExecuting) with genuine Err → error is propagated as Err.
+#[tokio::test]
+async fn re_executing_genuine_error_is_propagated() {
+    let (chat_service, services) = make_services_unavailable_no_repos().await;
+    let context = TaskContext::new("task-reexec-err", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+    let result = handler.on_enter(&State::ReExecuting).await;
+    assert!(
+        result.is_err(),
+        "on_enter(ReExecuting) with genuine Err must propagate error, not silently swallow it"
+    );
+    assert_eq!(chat_service.call_count(), 1, "send_message must be attempted once");
+}
+
+/// on_enter(ReExecuting) with was_queued: false → normal spawn, returns Ok.
+#[tokio::test]
+async fn re_executing_normal_spawn_succeeds() {
+    let (chat_service, services) = make_services_normal_no_repos().await;
+    let context = TaskContext::new("task-reexec-ok", "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+    let result = handler.on_enter(&State::ReExecuting).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(ReExecuting) normal spawn must return Ok: {:?}",
+        result.err()
+    );
+    assert_eq!(chat_service.call_count(), 1, "send_message must be called once for normal spawn");
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Negative tests: Reviewing and Merging — genuine Err is NOT propagated (logged only)
+// ──────────────────────────────────────────────────────────────────────────────
+
+/// on_enter(Reviewing) with genuine Err → handler returns Ok (error logged, not propagated).
+/// Guards against regressions that accidentally convert Err arm to was_queued no-op.
+#[tokio::test]
+async fn reviewing_genuine_error_is_not_propagated() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Reviewing genuine error test".to_string());
+    task.internal_status = InternalStatus::Reviewing;
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new(
+        "test-project".to_string(),
+        "/tmp/nonexistent-reviewing-err".to_string(),
+    );
+    project.id = project_id;
+    project_repo.create(project).await.unwrap();
+
+    let chat_service = Arc::new(MockChatService::new());
+    chat_service.set_available(false).await;
+
+    let services = build_services_from_chat(&chat_service, &task_repo, &project_repo);
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+    let result = handler.on_enter(&State::Reviewing).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(Reviewing) must not propagate spawn errors (errors are logged only): {:?}",
+        result.err()
+    );
+    assert_eq!(chat_service.call_count(), 1, "send_message must be attempted once");
+}
+
+/// on_enter(Merging) with genuine Err → handler returns Ok (error logged + recorded, not propagated).
+/// Guards against regressions that accidentally convert Err arm to was_queued no-op.
+#[tokio::test]
+async fn merging_genuine_error_is_not_propagated() {
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let mut task = Task::new(project_id.clone(), "Merging genuine error test".to_string());
+    task.internal_status = InternalStatus::Merging;
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let mut project = Project::new(
+        "test-project".to_string(),
+        "/tmp/nonexistent-merging-err".to_string(),
+    );
+    project.id = project_id;
+    project_repo.create(project).await.unwrap();
+
+    let chat_service = Arc::new(MockChatService::new());
+    chat_service.set_available(false).await;
+
+    let services = build_services_from_chat(&chat_service, &task_repo, &project_repo);
+    let context = TaskContext::new(task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+    let result = handler.on_enter(&State::Merging).await;
+    assert!(
+        result.is_ok(),
+        "on_enter(Merging) must not propagate spawn errors (errors are logged + recorded only): {:?}",
+        result.err()
+    );
+    assert_eq!(chat_service.call_count(), 1, "send_message must be attempted once");
 }

@@ -67,8 +67,8 @@ mod orchestration_chain_tests;
 // Covers Fix 2 (commit 189e8eaf): AttemptFailed events + retry budget exhaustion
 mod spawn_failure_recovery_tests;
 
-// Tests for AgentAlreadyRunning guard in on_enter(Merging) and on_enter(Reviewing)
-// RC#2: double on_enter returns no-op instead of recording spawn failure
+// Tests for was_queued guard in on_enter for all 4 agent-spawning states
+// RC#2: double on_enter (Ok(was_queued: true)) returns no-op instead of recording spawn failure
 mod on_enter_already_running_tests;
 
 // RC#6: plan_update_conflict must create merge-* worktree before spawning merger agent
