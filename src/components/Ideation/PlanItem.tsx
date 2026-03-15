@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import {
   MessageSquare,
+  Loader2,
   Clock,
   MoreHorizontal,
   Pencil,
@@ -27,7 +28,9 @@ import {
   ArrowDownToLine,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { IdeationSessionWithProgress } from "@/types/ideation";
+import { useChatStore, selectAgentStatus } from "@/stores/chatStore";
+import { buildStoreKey } from "@/lib/chat-context-registry";
+import type { IdeationSessionWithProgress, SessionProgress } from "@/types/ideation";
 import type { SessionGroup } from "./planBrowserUtils";
 
 // ============================================================================
@@ -89,11 +92,15 @@ export interface PlanItemProps {
 // Metadata Line
 // ============================================================================
 
-function MetadataLine({ group, plan }: {
+interface MetadataLineProps {
   group: SessionGroup;
   plan: IdeationSessionWithProgress;
-}) {
-  const progress = plan.progress;
+  progress: SessionProgress | null;
+  isIdeationActive: boolean;
+  isIdeationWaiting: boolean;
+}
+
+function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiting }: MetadataLineProps) {
   const parentSessionTitle = plan.parentSessionTitle;
 
   // Show parent session indicator if this is a child session
@@ -103,6 +110,8 @@ function MetadataLine({ group, plan }: {
         className="flex items-center gap-1 text-[10px]"
         style={{ color: "hsl(220 10% 45%)" }}
       >
+        {isIdeationActive && <span style={{ color: "hsl(14 100% 60%)" }}>Agent working... • </span>}
+        {isIdeationWaiting && <span>Awaiting input • </span>}
         <CornerDownRight className="w-2.5 h-2.5" />
         <span className="truncate">Follow-up of: {parentSessionTitle}</span>
       </div>
@@ -116,15 +125,39 @@ function MetadataLine({ group, plan }: {
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 45%)" }}
         >
-          <Clock className="w-2.5 h-2.5" />
-          <span>{formatRelativeTime(plan.updatedAt)}</span>
+          {isIdeationActive ? (
+            <span style={{ color: "hsl(14 100% 60%)" }}>Agent working...</span>
+          ) : isIdeationWaiting ? (
+            <span>Awaiting input</span>
+          ) : (
+            <>
+              <Clock className="w-2.5 h-2.5" />
+              <span>{formatRelativeTime(plan.updatedAt)}</span>
+            </>
+          )}
         </div>
       );
 
     case "in-progress":
-      if (!progress) return null;
+      if (!progress) {
+        if (isIdeationActive) return <span className="text-[10px]" style={{ color: "hsl(14 100% 60%)" }}>Agent working...</span>;
+        if (isIdeationWaiting) return <span className="text-[10px]" style={{ color: "hsl(220 10% 45%)" }}>Awaiting input</span>;
+        return null;
+      }
       return (
         <div className="flex items-center gap-1 text-[10px]">
+          {isIdeationActive && (
+            <>
+              <span style={{ color: "hsl(14 100% 60%)" }}>Agent working</span>
+              <span style={{ color: "hsl(220 10% 35%)" }}>&middot;</span>
+            </>
+          )}
+          {isIdeationWaiting && (
+            <>
+              <span style={{ color: "hsl(220 10% 45%)" }}>Awaiting input</span>
+              <span style={{ color: "hsl(220 10% 35%)" }}>&middot;</span>
+            </>
+          )}
           <span style={{ color: "hsl(145 70% 50%)" }}>
             {progress.done}/{progress.total} done
           </span>
@@ -145,6 +178,8 @@ function MetadataLine({ group, plan }: {
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 45%)" }}
         >
+          {isIdeationActive && <span style={{ color: "hsl(14 100% 60%)" }}>Agent working... • </span>}
+          {isIdeationWaiting && <span>Awaiting input • </span>}
           <span>{progress?.total ?? 0} {(progress?.total ?? 0) === 1 ? "task" : "tasks"}</span>
           {plan.convertedAt && (
             <>
@@ -161,6 +196,8 @@ function MetadataLine({ group, plan }: {
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 40%)" }}
         >
+          {isIdeationActive && <span style={{ color: "hsl(14 100% 60%)" }}>Agent working... • </span>}
+          {isIdeationWaiting && <span>Awaiting input • </span>}
           <CircleCheck className="w-2.5 h-2.5" style={{ color: "hsl(145 70% 40%)" }} />
           <span>Completed</span>
         </div>
@@ -172,6 +209,8 @@ function MetadataLine({ group, plan }: {
           className="flex items-center gap-1 text-[10px]"
           style={{ color: "hsl(220 10% 40%)" }}
         >
+          {isIdeationActive && <span style={{ color: "hsl(14 100% 60%)" }}>Agent working... • </span>}
+          {isIdeationWaiting && <span>Awaiting input • </span>}
           {plan.archivedAt ? (
             <span>Archived {formatDate(plan.archivedAt)}</span>
           ) : (
@@ -321,6 +360,10 @@ export function PlanItem({
   onNavigateToSource,
 }: PlanItemProps) {
   const muted = isMutedGroup(group);
+  const storeKey = buildStoreKey("ideation", plan.id);
+  const agentStatus = useChatStore(selectAgentStatus(storeKey));
+  const isIdeationActive = agentStatus === "generating";
+  const isIdeationWaiting = agentStatus === "waiting_for_input";
 
   return (
     <div
@@ -366,10 +409,17 @@ export function PlanItem({
               : "1px solid hsla(220 10% 100% / 0.06)",
           }}
         >
-          <MessageSquare
-            className="w-3 h-3"
-            style={{ color: isSelected ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
-          />
+          {isIdeationActive ? (
+            <Loader2
+              className="w-3 h-3 animate-spin"
+              style={{ color: "hsl(14 100% 60%)" }}
+            />
+          ) : (
+            <MessageSquare
+              className="w-3 h-3"
+              style={{ color: isIdeationWaiting || isSelected ? "hsl(14 100% 60%)" : "hsl(220 10% 50%)" }}
+            />
+          )}
         </div>
 
         {/* Content */}
@@ -427,7 +477,13 @@ export function PlanItem({
                   </button>
                 )}
               </div>
-              <MetadataLine group={group} plan={plan} />
+              <MetadataLine
+                group={group}
+                plan={plan}
+                progress={plan.progress ?? null}
+                isIdeationActive={isIdeationActive}
+                isIdeationWaiting={isIdeationWaiting}
+              />
             </>
           )}
         </div>

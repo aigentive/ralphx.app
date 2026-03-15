@@ -10,6 +10,8 @@
 
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { buildStoreKey } from "@/lib/chat-context-registry";
+import { useChatStore, selectAgentStatus } from "@/stores/chatStore";
 import type { PlanCandidate } from "@/stores/planStore";
 
 // ============================================================================
@@ -55,6 +57,11 @@ export function PlanCandidateItem({
   onClick,
   highlightedRef,
 }: PlanCandidateItemProps) {
+  const storeKey = buildStoreKey("ideation", plan.sessionId);
+  const agentStatus = useChatStore(selectAgentStatus(storeKey));
+  const isIdeationActive = agentStatus === "generating";
+  const isIdeationWaiting = agentStatus === "waiting_for_input";
+
   const completionPercent = getCompletionPercent(
     plan.taskStats.incomplete,
     plan.taskStats.total
@@ -97,6 +104,16 @@ export function PlanCandidateItem({
         <div className="text-xs leading-tight mt-0.5" style={{ color: "hsl(220 10% 62%)" }}>
           {formatIncompleteSummary(plan.taskStats.incomplete, plan.taskStats.total)}
           {plan.taskStats.activeNow > 0 && " • Active work"}
+          {isIdeationActive && (
+            <span style={{ color: "hsl(14 100% 60%)" }}>
+              {plan.taskStats.total > 0 ? " • Session active" : "Session active"}
+            </span>
+          )}
+          {isIdeationWaiting && (
+            <span>
+              {plan.taskStats.total > 0 ? " • Awaiting input" : "Awaiting input"}
+            </span>
+          )}
         </div>
       </div>
 
