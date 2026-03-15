@@ -335,16 +335,17 @@ async fn test_a6_execution_failed_event_transitions_executing_to_failed() {
 }
 
 // ============================================================================
-// A7: Missing task branch during worktree recreation -> ExecutionBlocked
+// A7: Missing task branch during worktree recreation -> Layer 2 self-healing
 // ============================================================================
 
 #[tokio::test]
-async fn test_a7_missing_branch_returns_execution_blocked_with_no_longer_exists() {
+async fn test_a7_missing_branch_self_heals_and_enters_executing() {
     // Scenario A7: Task has task_branch set but the branch was deleted from git
     // (e.g., during prior merge cleanup). Worktree is also missing.
     //
-    // Expected: ExecutionBlocked error with "no longer exists" in the message,
-    // which causes the task to transition to Failed via auto-dispatch.
+    // Layer 2 behavior (RC#14): on_enter(Executing) self-heals by detecting the
+    // deleted branch, creating a fresh branch + worktree, and proceeding to spawn
+    // the agent. Task ends up in Executing state (not Failed).
 
     let temp_dir = tempfile::tempdir().unwrap();
     let repo_path = temp_dir.path().join("repo");
@@ -389,6 +390,7 @@ async fn test_a7_missing_branch_returns_execution_blocked_with_no_longer_exists(
     let mut project = create_test_project_with_git_mode("missing-branch-proj", GitMode::Worktree);
     project.working_directory = repo_path.to_str().unwrap().to_string();
     project.worktree_parent_directory = Some(worktrees_dir.to_str().unwrap().to_string());
+    project.base_branch = Some("main".to_string());
     let project_id = project.id.clone();
     svc.project_repo.create(project).await.unwrap();
 
@@ -397,7 +399,8 @@ async fn test_a7_missing_branch_returns_execution_blocked_with_no_longer_exists(
     task.internal_status = InternalStatus::Ready;
     let task_id_str = task.id.as_str().to_string();
     // Set task_branch to a branch name that was never created in git (simulating post-merge deletion)
-    task.task_branch = Some(format!("ralphx/missing-branch-proj/task-{}", task_id_str));
+    let stale_branch = format!("ralphx/missing-branch-proj/task-{}", task_id_str);
+    task.task_branch = Some(stale_branch.clone());
     task.worktree_path = None; // No worktree exists either
     svc.task_repo.create(task).await.unwrap();
 
@@ -409,31 +412,35 @@ async fn test_a7_missing_branch_returns_execution_blocked_with_no_longer_exists(
         .handle_transition(&State::Ready, &TaskEvent::StartExecution)
         .await;
 
-    // ExecutionBlocked triggers auto-dispatch of ExecutionFailed → Failed state
+    // Layer 2 self-healing: deleted branch is detected, fresh branch is created,
+    // agent is spawned → task ends in Executing state (not Failed)
     assert!(
         result.is_success(),
-        "TransitionHandler should return Success after auto-dispatching ExecutionFailed"
+        "TransitionHandler should return Success after self-healing"
     );
     assert!(
-        matches!(result.state(), Some(State::Failed(_))),
-        "State should be Failed after missing branch is detected: {:?}",
+        matches!(result.state(), Some(State::Executing)),
+        "State should be Executing after self-heal creates fresh branch: {:?}",
         result.state()
     );
 
-    // The Failed state should contain "no longer exists" from the branch check error
-    if let Some(State::Failed(data)) = result.state() {
-        assert!(
-            data.error.contains("no longer exists"),
-            "Failed state error should mention 'no longer exists', got: {}",
-            data.error
-        );
-    }
+    // Agent WAS spawned — self-heal succeeded so execution continues normally
+    assert!(
+        svc.chat_service.call_count() >= 1,
+        "send_message should be called after self-heal creates fresh branch"
+    );
 
-    // Agent was NOT spawned — branch check fires before agent spawn
-    assert_eq!(
-        svc.chat_service.call_count(),
-        0,
-        "send_message should not be called when branch no longer exists"
+    // Fresh branch should now exist in git
+    let branch_list = std::process::Command::new("git")
+        .args(["branch", "--list", &stale_branch])
+        .current_dir(&repo_path)
+        .output()
+        .unwrap();
+    let branch_output = String::from_utf8_lossy(&branch_list.stdout);
+    assert!(
+        !branch_output.trim().is_empty(),
+        "Fresh branch '{}' should exist in git after self-heal",
+        stale_branch
     );
 }
 

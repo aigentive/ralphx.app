@@ -97,6 +97,11 @@ mod rc4_rebase_double_delete;
 // Bonus: pre_merge_cleanup aborts stale MERGE_HEAD in task worktree
 mod rc12_rc13_stale_worktree;
 
+// RC#14: Layer 2 self-healing guard in on_enter(Executing) for deleted branches
+// Self-heal detects deleted branch, cleans orphaned worktrees, creates fresh branch
+// Tests: branch detection, orphaned worktree cleanup, stored vs expected path cleanup
+mod rc14_deleted_branch_self_heal;
+
 // Merge target resolution regression tests: task with plan branch must merge to plan, not main
 // Test 1: task_with_plan_branch_merges_to_plan_not_main
 // Test 2: check_already_merged_detects_prior_merge_on_plan_branch

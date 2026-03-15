@@ -8,7 +8,10 @@ use super::types::{
 use crate::application::task_cleanup_service::{StopMode, TaskCleanupService};
 use crate::application::AppState;
 use crate::commands::ExecutionState;
-use crate::domain::entities::{InternalStatus, ProjectId, Task, TaskCategory, TaskId};
+use crate::domain::entities::{
+    ExecutionRecoveryMetadata, ExecutionRecoveryState, InternalStatus, ProjectId, Task,
+    TaskCategory, TaskId,
+};
 use crate::domain::state_machine::transition_handler::metadata_builder::build_restart_metadata;
 use crate::domain::state_machine::transition_handler::{parse_metadata, set_trigger_origin};
 use std::sync::Arc;
@@ -174,25 +177,79 @@ pub async fn move_task(
     let old_status = old_task.internal_status;
     let project_id = old_task.project_id.clone();
 
-    // Pre-seed trigger_origin="retry" when moving from terminal to Ready
+    // Terminal→Ready restart: clear stale git refs, reset execution_recovery, set trigger_origin,
+    // and update agent_variant — all in a single atomic task_repo.update().
+    //
+    // IMPORTANT: This write MUST happen before transition_task_with_metadata / transition_task
+    // below, because both paths re-fetch the task from DB before running on_enter. The cleared
+    // git refs must be visible to on_enter so it creates a fresh branch instead of failing with
+    // ExecutionBlocked on a deleted branch.
     if old_status.is_terminal() && new_status == InternalStatus::Ready {
         let mut task_mut = old_task.clone();
+
+        // 1. Set trigger_origin (existing behavior)
         set_trigger_origin(&mut task_mut, "retry");
+
+        // 2. Clear stale git refs so on_enter creates a fresh branch on next execution.
+        //    merge_commit_sha is also cleared: on restart the task enters a full new execution
+        //    cycle, so the old merge SHA is irrelevant.
+        task_mut.task_branch = None;
+        task_mut.worktree_path = None;
+        task_mut.merge_commit_sha = None;
+
+        // 3. Selectively reset execution_recovery: clear transient state but PRESERVE
+        //    auto_recovery_count so the reconciler circuit-breaker stays intact.
+        if let Ok(Some(mut recovery)) =
+            ExecutionRecoveryMetadata::from_task_metadata(task_mut.metadata.as_deref())
+        {
+            recovery.stop_retrying = false;
+            recovery.last_state = ExecutionRecoveryState::Retrying;
+            recovery.events.clear();
+            recovery.unrecoverable_reason = None;
+            // auto_recovery_count intentionally preserved
+            if let Ok(updated_meta) =
+                recovery.update_task_metadata(task_mut.metadata.as_deref())
+            {
+                task_mut.metadata = Some(updated_meta);
+            }
+        }
+
+        // 4. Update agent_variant here to avoid the metadata clobber from block 2.
+        //    Block 2 calls parse_metadata(&old_task) — the pre-write snapshot — then
+        //    update_metadata() which overwrites the entire metadata string, erasing the
+        //    execution_recovery reset above. Handle agent_variant in this block instead.
+        let mut meta =
+            parse_metadata(&task_mut).unwrap_or_else(|| serde_json::json!({}));
+        if let Some(obj) = meta.as_object_mut() {
+            match agent_variant.as_deref() {
+                Some(variant) if !variant.is_empty() => {
+                    obj.insert("agent_variant".to_string(), serde_json::json!(variant));
+                }
+                _ => {
+                    obj.remove("agent_variant");
+                }
+            }
+        }
+        task_mut.metadata = Some(meta.to_string());
+
         if let Err(e) = state.task_repo.update(&task_mut).await {
             tracing::error!(
                 task_id = task_id.as_str(),
                 error = %e,
-                "Failed to set trigger_origin=retry in metadata"
+                "Failed to clear git refs and reset execution_recovery on task restart"
             );
         }
     }
 
     // Always update agent_variant in metadata for ready/executing transitions
-    // so that switching from team→solo properly clears the stale "team" value
+    // so that switching from team→solo properly clears the stale "team" value.
+    // SKIP for terminal→Ready: agent_variant is already handled in the block above
+    // to prevent it from clobbering the execution_recovery reset via update_metadata().
     if matches!(
         new_status,
         InternalStatus::Ready | InternalStatus::Executing
-    ) {
+    ) && !(old_status.is_terminal() && new_status == InternalStatus::Ready)
+    {
         let mut meta = parse_metadata(&old_task).unwrap_or_else(|| serde_json::json!({}));
         if let Some(obj) = meta.as_object_mut() {
             match agent_variant.as_deref() {
