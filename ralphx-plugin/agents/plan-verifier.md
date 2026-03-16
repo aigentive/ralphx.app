@@ -14,6 +14,8 @@ tools:
   - "mcp__ralphx__get_plan_verification"
   - "mcp__ralphx__update_plan_artifact"
   - "mcp__ralphx__edit_plan_artifact"
+  - "mcp__ralphx__get_child_session_status"
+  - "mcp__ralphx__send_child_session_message"
 mcpServers:
   - ralphx:
       type: stdio

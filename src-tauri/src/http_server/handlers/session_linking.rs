@@ -555,7 +555,7 @@ pub async fn get_parent_session_context(
 
 /// Returns true if the session should use team mode for agent spawning.
 /// "solo" and None are treated as non-team; any other value ("research", "debate", etc.) is team.
-fn session_is_team_mode(session: &IdeationSession) -> bool {
+pub(crate) fn session_is_team_mode(session: &IdeationSession) -> bool {
     session.team_mode.as_deref().is_some_and(|m| m != "solo")
 }
 

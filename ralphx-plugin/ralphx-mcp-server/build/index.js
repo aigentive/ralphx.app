@@ -519,6 +519,22 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                     },
             };
         }
+        else if (name === "get_child_session_status") {
+            // GET /api/ideation/sessions/:id/child-status
+            const { session_id, include_recent_messages, message_limit } = args;
+            const params = new URLSearchParams();
+            if (include_recent_messages)
+                params.set("include_messages", "true");
+            if (message_limit)
+                params.set("message_limit", String(message_limit));
+            const query = params.toString() ? `?${params}` : "";
+            result = await callTauriGet(`ideation/sessions/${session_id}/child-status${query}`);
+        }
+        else if (name === "send_child_session_message") {
+            // POST /api/ideation/sessions/:id/message
+            const { session_id, message } = args;
+            result = await callTauri(`ideation/sessions/${session_id}/message`, { message });
+        }
         else {
             // Default: POST request
             result = await callTauri(name, args || {});

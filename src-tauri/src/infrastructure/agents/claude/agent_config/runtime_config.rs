@@ -14,6 +14,9 @@ pub struct AllRuntimeConfig {
     pub limits: LimitsConfig,
     pub verification: VerificationConfig,
     pub external_mcp: ExternalMcpConfig,
+    /// Seconds of inactivity before an agent is considered "likely_waiting" vs "likely_generating".
+    /// Used by get_child_session_status to derive estimated_status. Default: 10.
+    pub child_session_activity_threshold_secs: Option<u64>,
 }
 
 /// Configuration for the plan verification feature.
@@ -108,6 +111,8 @@ impl Default for ExternalMcpConfig {
 pub(crate) struct IdeationConfigWrapper {
     #[serde(default)]
     pub verification: VerificationConfig,
+    #[serde(default)]
+    pub child_session_activity_threshold_secs: Option<u64>,
 }
 
 // ── YAML wrapper for nested `timeouts:` key ──────────────────────────────
@@ -687,6 +692,13 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
             "RALPHX_EXTERNAL_MCP_MAX_IDEATION_SESSIONS is deprecated and has no effect. \
              The session gate was removed; sessions are always created. Remove this env var."
         );
+    }
+
+    // Ideation
+    if let Some(v) = lookup("RALPHX_IDEATION_ACTIVITY_THRESHOLD_SECS") {
+        if let Ok(n) = v.parse::<u64>() {
+            cfg.child_session_activity_threshold_secs = Some(n);
+        }
     }
 }
 

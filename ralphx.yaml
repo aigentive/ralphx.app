@@ -238,6 +238,9 @@ limits:
   max_resume_attempts: 5 # Env: RALPHX_LIMITS_MAX_RESUME_ATTEMPTS
 
 ideation:
+  # Seconds of inactivity before an agent is considered "likely_waiting" vs "likely_generating".
+  # Used by get_child_session_status MCP tool to derive estimated_status. Env: RALPHX_IDEATION_ACTIVITY_THRESHOLD_SECS
+  child_session_activity_threshold_secs: 10
   verification:
     # verification_reconciliation.rs — max adversarial review rounds [1,10]; hard cap, always terminates
     max_rounds: 5
@@ -464,6 +467,9 @@ agents:
         list_projects,
         create_cross_project_session,
         cross_project_guide,
+        # child session tools
+        get_child_session_status,
+        send_child_session_message,
       ]
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
@@ -829,6 +835,9 @@ agents:
         get_plan_verification,
         update_plan_artifact,
         edit_plan_artifact,
+        # child session tools
+        get_child_session_status,
+        send_child_session_message,
       ]
     preapproved_cli_tools: [Read, Grep, Glob, Bash, "Task(ralphx:plan-critic-layer1)", "Task(ralphx:plan-critic-layer2)"]
 
@@ -881,6 +890,9 @@ agents:
         list_projects,
         create_cross_project_session,
         cross_project_guide,
+        # child session tools
+        get_child_session_status,
+        send_child_session_message,
       ]
 
   - name: ralphx-worker-team

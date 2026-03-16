@@ -166,6 +166,15 @@ pub async fn start_http_server(
             "/api/ideation/sessions/:id/revert-and-skip",
             post(revert_and_skip),
         )
+        // Child session tools (orchestrator-ideation + ideation-team-lead + plan-verifier agents)
+        .route(
+            "/api/ideation/sessions/:id/child-status",
+            get(get_child_session_status_handler),
+        )
+        .route(
+            "/api/ideation/sessions/:id/message",
+            post(send_child_session_message_handler),
+        )
         // Task tools (chat-task agent)
         .route("/api/update_task", post(update_task))
         .route("/api/add_task_note", post(add_task_note))
