@@ -136,7 +136,7 @@ impl SessionExportService {
 
                 let maybe_session: Option<SessionRow> = conn
                     .query_row(
-                        "SELECT s.title, s.status, s.team_mode, s.verification_status, \
+                        "SELECT s.title, s.status, COALESCE(s.team_mode, 'solo'), s.verification_status, \
                          s.verification_metadata, s.plan_artifact_id, p.name \
                          FROM ideation_sessions s \
                          LEFT JOIN projects p ON p.id = s.project_id \

@@ -871,3 +871,36 @@ async fn import_steps_serialized_as_json_strings() {
     let parsed: Vec<String> = serde_json::from_str(&steps_raw).unwrap();
     assert_eq!(parsed, vec!["step1"]);
 }
+
+#[tokio::test]
+async fn export_session_with_null_team_mode_defaults_to_solo() {
+    let app_state = AppState::new_sqlite_test();
+    seed_project(&app_state, "project-1", "Project 1").await;
+
+    // Insert session row with explicit NULL team_mode via raw SQL
+    // (bypasses seed_session helper which always provides 'solo')
+    // Mirrors seed_session column list for compatibility with all migrations
+    app_state
+        .db
+        .run(|conn| {
+            conn.execute(
+                "INSERT INTO ideation_sessions \
+                 (id, project_id, title, title_source, status, plan_artifact_id, \
+                  inherited_plan_artifact_id, seed_task_id, parent_session_id, \
+                  created_at, updated_at, archived_at, converted_at, \
+                  team_mode, team_config_json) \
+                 VALUES ('sess-null', 'project-1', 'Test Session', 'user', \
+                         'active', NULL, NULL, NULL, NULL, \
+                         datetime('now'), datetime('now'), NULL, NULL, \
+                         NULL, NULL)",
+                [],
+            )?;
+            Ok(())
+        })
+        .await
+        .unwrap();
+
+    let service = make_service(&app_state);
+    let export = service.export("sess-null", "project-1").await.unwrap();
+    assert_eq!(export.session.team_mode, "solo");
+}
