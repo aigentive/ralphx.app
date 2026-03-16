@@ -36,6 +36,7 @@ const MERGE_DEBRIS_METADATA_KEYS: &[&str] = &[
     "source_update_conflict",
     "conflict_files",
     "error",
+    "merge_pipeline_active", // Legacy: pre-v53 stored as JSON metadata (evidence: side_effects.rs:142)
 ];
 
 /// Check whether this is a first clean merge attempt with no prior debris.
@@ -44,28 +45,52 @@ const MERGE_DEBRIS_METADATA_KEYS: &[&str] = &[
 /// meaning there's no debris from prior attempts that needs cleaning up.
 /// When `true`, `pre_merge_cleanup` can skip all cleanup steps (Phase 1 GUARD fast-path).
 ///
-/// Checks task metadata for any of the `MERGE_DEBRIS_METADATA_KEYS`, and also
-/// checks whether `worktree_path` is set (worktree existence = potential debris
-/// even when metadata was not written, e.g. after a cleanup timeout).
+/// Uses a 3-tier check:
+/// 1. Dedicated `merge_pipeline_active` DB column — set when pipeline starts, cleared on success.
+///    Non-null means a prior run crashed mid-pipeline.
+/// 2. JSON metadata debris keys (including legacy `merge_pipeline_active` JSON key from pre-v53).
+/// 3. Disk-presence check — if `worktree_path` is set AND the directory still exists on disk,
+///    treat as potential debris (process may have crashed before writing metadata).
 pub(crate) fn is_first_clean_attempt(task: &Task) -> bool {
-    // Even if no debris metadata, a worktree_path signals potential debris on disk
-    if task.worktree_path.is_some() {
+    // Tier 1: Dedicated DB column — crash-mid-pipeline detection.
+    // Set by set_merge_pipeline_active() in side_effects.rs, cleared after successful run.
+    let pipeline_active = task.merge_pipeline_active.is_some();
+    if pipeline_active {
         return false;
     }
-    let Some(ref metadata_str) = task.metadata else {
-        return true;
+
+    // Tier 2: JSON metadata debris keys (includes legacy merge_pipeline_active JSON key).
+    let has_debris_metadata = match task.metadata.as_ref() {
+        None => false,
+        Some(metadata_str) => {
+            match serde_json::from_str::<serde_json::Value>(metadata_str) {
+                // Malformed metadata — conservative: treat as debris
+                Err(_) => true,
+                Ok(metadata) => match metadata.as_object() {
+                    None => false,
+                    Some(obj) => MERGE_DEBRIS_METADATA_KEYS
+                        .iter()
+                        .any(|key| obj.contains_key(*key)),
+                },
+            }
+        }
     };
-    let Ok(metadata) = serde_json::from_str::<serde_json::Value>(metadata_str) else {
-        // Malformed metadata — conservative: run cleanup when in doubt
+    if has_debris_metadata {
         return false;
-    };
-    let Some(obj) = metadata.as_object() else {
-        return true;
-    };
-    // If any debris key is present, this is a retry
-    !MERGE_DEBRIS_METADATA_KEYS
-        .iter()
-        .any(|key| obj.contains_key(*key))
+    }
+
+    // Tier 3: Disk-presence check — crash-before-metadata scenario.
+    // If worktree_path is set AND the directory exists on disk, treat as potential debris.
+    // Path::exists() is a blocking stat() — acceptable for local ~/ralphx-worktrees/ paths (<1ms).
+    let disk_exists = task
+        .worktree_path
+        .as_ref()
+        .map_or(false, |p| std::path::Path::new(p).exists());
+    if disk_exists {
+        return false;
+    }
+
+    true
 }
 
 /// Ensure the plan branch exists as a git ref (lazy creation for merge target).
@@ -761,9 +786,27 @@ impl<'a> super::TransitionHandler<'a> {
                 "pre_merge_cleanup: first attempt but agents running — proceeding with cleanup"
             );
         } else {
+            let pipeline_active = task.merge_pipeline_active.is_some();
+            let has_debris_metadata = task.metadata.as_ref().map_or(false, |s| {
+                serde_json::from_str::<serde_json::Value>(s)
+                    .ok()
+                    .and_then(|v| v.as_object().cloned())
+                    .map_or(true, |obj| {
+                        MERGE_DEBRIS_METADATA_KEYS
+                            .iter()
+                            .any(|key| obj.contains_key(*key))
+                    })
+            });
+            let disk_exists = task
+                .worktree_path
+                .as_ref()
+                .map_or(false, |p| std::path::Path::new(p).exists());
             tracing::info!(
                 task_id = task_id_str,
-                "pre_merge_cleanup: retry attempt (debris metadata found) — running full cleanup"
+                pipeline_active,
+                has_debris_metadata,
+                disk_exists,
+                "pre_merge_cleanup: retry attempt (debris detected — pipeline active flag, metadata, or stale worktree on disk) — running full cleanup"
             );
         }
 
@@ -875,13 +918,30 @@ impl<'a> super::TransitionHandler<'a> {
             // Conditional settle sleep — only when agents were actually killed
             let agent_kill_settle_secs = git_runtime_config().agent_kill_settle_secs;
             if agent_kill_settle_secs > 0 {
+                let settle_secs = agent_kill_settle_secs;
                 tracing::info!(
                     task_id = task_id_str,
-                    settle_secs = agent_kill_settle_secs,
+                    settle_secs,
                     "pre_merge_cleanup: agents were killed, waiting {}s for process tree cleanup",
-                    agent_kill_settle_secs,
+                    settle_secs,
                 );
-                tokio::time::sleep(std::time::Duration::from_secs(agent_kill_settle_secs)).await;
+                // Always use os_thread_timeout — immune to tokio timer-driver starvation.
+                // One dormant OS thread per merge (settle_secs + 1s grace) is acceptable.
+                match super::cleanup_helpers::os_thread_timeout(
+                    std::time::Duration::from_secs(settle_secs + 1),
+                    tokio::time::sleep(std::time::Duration::from_secs(settle_secs)),
+                )
+                .await
+                {
+                    Ok(_) => {}
+                    Err(_elapsed) => {
+                        tracing::warn!(
+                            task_id = %task_id_str,
+                            settle_secs,
+                            "settle sleep watchdog fired — possible tokio timer starvation"
+                        );
+                    }
+                }
             }
         } else {
             tracing::info!(
@@ -1011,13 +1071,13 @@ impl<'a> super::TransitionHandler<'a> {
             }
 
             // --- Step 3: Prune stale worktree refs ---
-            if let Err(e) = GitService::prune_worktrees(repo_path).await {
-                tracing::warn!(
-                    task_id = task_id_str,
-                    error = %e,
-                    "Failed to prune stale worktrees (non-fatal)"
-                );
-            }
+            run_cleanup_step(
+                "prune_worktrees",
+                git_runtime_config().cleanup_git_op_timeout_secs,
+                task_id_str,
+                GitService::prune_worktrees(repo_path),
+            )
+            .await;
 
             // --- Step 4: Delete own stale merge/rebase worktrees (PARALLEL) ---
             let step_start = std::time::Instant::now();

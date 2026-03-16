@@ -389,31 +389,65 @@ pub async fn complete_merge(
         }
     }
 
-    // 10. Cleanup branch/worktree — with ancestor guard to prevent work loss.
-    // Verify task branch HEAD is an ancestor of plan branch HEAD before deleting.
-    // If not (work not squash-merged), skip deletion to preserve task work.
+    // 10. Cleanup branch/worktree — with merge guard to prevent work loss.
+    // Worktree deletion is always safe (no commits lost). Branch deletion is guarded
+    // by the shared helper that handles both normal and squash merges.
+    // CRITICAL: HTTP handler is the ONLY cleanup for HTTP-path merges — no deferred cleanup.
     if let Some(task_branch) = &task.task_branch {
-        // repo_path already defined in step 6
-        let is_ancestor = GitService::is_ancestor(&repo_path, task_branch, &target_branch)
-            .await
-            .unwrap_or(false);
+        // Delete worktree unconditionally if it exists (Worktree mode)
+        if let Some(worktree_path) = &task.worktree_path {
+            match GitService::delete_worktree(&repo_path, &PathBuf::from(worktree_path)).await {
+                Ok(_) => {
+                    tracing::info!(
+                        task_id = %task_id.as_str(),
+                        worktree = %worktree_path,
+                        "HTTP cleanup: worktree removed"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = %task_id.as_str(),
+                        error = %e,
+                        worktree = %worktree_path,
+                        "HTTP cleanup: delete_worktree failed (non-fatal)"
+                    );
+                }
+            }
+        }
 
-        if !is_ancestor {
-            tracing::error!(
+        // Guard branch deletion with shared helper (handles squash merges too)
+        let (safe_to_delete, reason) =
+            GitService::is_branch_merged_or_content_equivalent(&repo_path, task_branch, &target_branch)
+                .await;
+
+        if safe_to_delete {
+            match GitService::delete_branch(&repo_path, task_branch, true).await {
+                Ok(_) => {
+                    tracing::info!(
+                        task_id = %task_id.as_str(),
+                        branch = %task_branch,
+                        reason = %reason,
+                        "HTTP cleanup: task branch deleted"
+                    );
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = %task_id.as_str(),
+                        error = %e,
+                        branch = %task_branch,
+                        "HTTP cleanup: delete_branch failed (non-fatal)"
+                    );
+                }
+            }
+        } else {
+            tracing::warn!(
                 task_id = %task_id.as_str(),
                 task_branch = %task_branch,
                 plan_branch = %target_branch,
-                "Branch deletion guard: task HEAD not ancestor of plan HEAD — \
-                 skipping deletion to prevent work loss"
+                reason = %reason,
+                "HTTP cleanup: branch deletion guard: task content not found in plan HEAD \
+                 — skipping deletion to prevent work loss"
             );
-        } else {
-            // Delete worktree if exists (Worktree mode)
-            if let Some(worktree_path) = &task.worktree_path {
-                let _ = GitService::delete_worktree(&repo_path, &PathBuf::from(worktree_path)).await;
-            }
-
-            // Delete branch (both modes)
-            let _ = GitService::delete_branch(&repo_path, task_branch, true).await;
         }
     }
 

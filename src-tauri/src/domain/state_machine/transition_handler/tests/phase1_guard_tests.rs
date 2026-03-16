@@ -85,22 +85,51 @@ async fn test_retry_attempt_with_failure_metadata_runs_cleanup() {
     );
 }
 
-/// Task with merge_pipeline_active metadata (prior crash) should run cleanup.
+/// Task with merge_pipeline_active DB column set (prior crash) triggers cleanup.
 ///
-/// If a prior attempt crashed mid-pipeline, merge_pipeline_active may still be set.
-/// This counts as debris that requires cleanup.
+/// If a prior attempt crashed mid-pipeline, the dedicated merge_pipeline_active DB column
+/// may still be set (it is cleared only on successful completion). This is a DB column
+/// (NOT JSON metadata) — set by set_merge_pipeline_active() in side_effects.rs.
+///
+/// Isolation: metadata=None and worktree_path=None ensure only the column check fires.
+/// Negative isolation: column=None with all else identical must return true (fast path).
 #[tokio::test]
 async fn test_prior_crash_metadata_triggers_cleanup() {
+    use crate::domain::state_machine::transition_handler::merge_coordination::is_first_clean_attempt;
+
+    // --- Direct unit test: assert is_first_clean_attempt() returns false ---
+    {
+        let mut task = Task::new(
+            crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+            "Crash recovery".to_string(),
+        );
+        // Set the dedicated DB column (not JSON metadata)
+        task.merge_pipeline_active = Some("2026-01-01T00:00:00Z".to_string());
+        // Isolate: no metadata debris, no worktree on disk
+        task.metadata = None;
+        task.worktree_path = None;
+        assert!(
+            !is_first_clean_attempt(&task),
+            "merge_pipeline_active column set → NOT first clean attempt"
+        );
+
+        // Negative isolation: clearing the column restores fast path
+        task.merge_pipeline_active = None;
+        assert!(
+            is_first_clean_attempt(&task),
+            "merge_pipeline_active=None with no other debris → IS first clean attempt"
+        );
+    }
+
+    // --- Integration test: end-state validation ---
     let setup = setup_pending_merge_repos("Crash recovery", Some("feature/crash")).await;
 
-    // Simulate a prior crash leaving merge_pipeline_active set
+    // Set the dedicated DB column (not JSON metadata)
     let mut task = setup.task_repo.get_by_id(&setup.task_id).await.unwrap().unwrap();
-    task.metadata = Some(
-        serde_json::json!({
-            "merge_pipeline_active": "2026-01-01T00:00:00Z"
-        })
-        .to_string(),
-    );
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
+    // Isolate: no metadata debris, no worktree on disk
+    task.metadata = None;
+    task.worktree_path = None;
     setup.task_repo.update(&task).await.unwrap();
 
     let (mut machine, task_repo, task_id) = setup.into_machine();
@@ -113,7 +142,7 @@ async fn test_prior_crash_metadata_triggers_cleanup() {
     assert_eq!(
         updated.internal_status,
         InternalStatus::MergeIncomplete,
-        "Crash recovery should run cleanup and proceed to merge"
+        "Crash recovery (DB column set) should run cleanup and proceed to merge"
     );
 }
 
@@ -247,6 +276,123 @@ fn test_is_first_clean_attempt_with_unrelated_metadata() {
     assert!(
         is_first_clean_attempt(&task),
         "Task with unrelated metadata should be first clean attempt"
+    );
+}
+
+// ==================
+// 3-tier is_first_clean_attempt tests (Fix 1)
+// ==================
+
+/// Core fix: worktree_path set but directory does NOT exist on disk → fast path.
+///
+/// This is THE primary regression test for the lsof hang fix. Before the fix,
+/// any non-None worktree_path caused is_first_clean_attempt to return false,
+/// triggering the full lsof cleanup even on clean first merges.
+#[test]
+fn test_worktree_path_set_dir_absent_is_fast_path() {
+    use crate::domain::state_machine::transition_handler::merge_coordination::is_first_clean_attempt;
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Test".to_string(),
+    );
+    task.worktree_path = Some("/tmp/nonexistent-ralphx-worktree-xyz-404".to_string());
+    task.metadata = None;
+    task.merge_pipeline_active = None;
+    // Directory does not exist → should be fast path (true)
+    assert!(
+        is_first_clean_attempt(&task),
+        "worktree_path set but dir absent and no other debris → should be first clean attempt"
+    );
+}
+
+/// Crash-recovery: worktree_path set AND directory EXISTS on disk → full cleanup.
+///
+/// Covers crash-before-metadata scenario: process crashed after worktree_path
+/// was set but before merge_failure_source metadata was written.
+#[test]
+fn test_worktree_path_set_dir_exists_triggers_cleanup() {
+    use crate::domain::state_machine::transition_handler::merge_coordination::is_first_clean_attempt;
+    let temp = tempfile::TempDir::new().unwrap();
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Test".to_string(),
+    );
+    task.worktree_path = Some(temp.path().to_str().unwrap().to_string());
+    task.metadata = None;
+    task.merge_pipeline_active = None;
+    // Directory exists → full cleanup needed (false)
+    assert!(
+        !is_first_clean_attempt(&task),
+        "worktree_path set and dir exists on disk → stale worktree, not first clean attempt"
+    );
+}
+
+/// DB column check: merge_pipeline_active set, no metadata, no dir → full cleanup.
+///
+/// Tests the crash-mid-pipeline scenario via dedicated DB column (not JSON metadata).
+#[test]
+fn test_merge_pipeline_active_column_triggers_cleanup() {
+    use crate::domain::state_machine::transition_handler::merge_coordination::is_first_clean_attempt;
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Test".to_string(),
+    );
+    task.merge_pipeline_active = Some("2026-01-01T00:00:00Z".to_string());
+    task.metadata = None;
+    task.worktree_path = None;
+    assert!(
+        !is_first_clean_attempt(&task),
+        "merge_pipeline_active column set → crash-mid-pipeline, not first clean attempt"
+    );
+}
+
+/// Negative isolation: merge_pipeline_active=None with all else identical → fast path.
+///
+/// Proves the DB column is the actual trigger — clearing it restores fast-path.
+#[test]
+fn test_merge_pipeline_active_none_is_fast_path() {
+    use crate::domain::state_machine::transition_handler::merge_coordination::is_first_clean_attempt;
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Test".to_string(),
+    );
+    // Same setup as test_merge_pipeline_active_column_triggers_cleanup but with None
+    task.merge_pipeline_active = None;
+    task.metadata = None;
+    task.worktree_path = None;
+    assert!(
+        is_first_clean_attempt(&task),
+        "merge_pipeline_active=None with no other debris → should be first clean attempt"
+    );
+}
+
+/// Disk-presence check: dir exists then removed — verifies transition.
+///
+/// Creates a real directory, confirms cleanup triggered, removes it,
+/// confirms fast path restored. This validates the disk-presence tier.
+#[test]
+fn test_disk_presence_tier_transitions() {
+    use crate::domain::state_machine::transition_handler::merge_coordination::is_first_clean_attempt;
+    let temp = tempfile::TempDir::new().unwrap();
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Test".to_string(),
+    );
+    task.worktree_path = Some(temp.path().to_str().unwrap().to_string());
+    task.metadata = None;
+    task.merge_pipeline_active = None;
+
+    // While directory exists → full cleanup
+    assert!(
+        !is_first_clean_attempt(&task),
+        "dir exists on disk → not first clean attempt"
+    );
+
+    // After directory is removed → fast path
+    drop(temp);
+    assert!(
+        is_first_clean_attempt(&task),
+        "dir removed from disk → first clean attempt (no other debris)"
     );
 }
 
