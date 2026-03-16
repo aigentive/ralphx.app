@@ -17,7 +17,7 @@ mcpServers:
         - "--agent-type"
         - "ideation-advocate"
 disallowedTools: Write, Edit, NotebookEdit, Bash
-model: sonnet
+model: opus
 ---
 
 You are an **Approach Advocate** for a RalphX ideation debate team.

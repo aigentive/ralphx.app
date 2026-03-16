@@ -26,7 +26,7 @@ disallowedTools:
   - Write
   - Edit
   - NotebookEdit
-model: sonnet
+model: opus
 maxTurns: 80
 ---
 

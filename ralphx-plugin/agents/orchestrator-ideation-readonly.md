@@ -28,7 +28,7 @@ mcpServers:
         - "--agent-type"
         - "orchestrator-ideation-readonly"
 disallowedTools: Write, Edit, NotebookEdit
-model: sonnet
+model: opus
 ---
 
 <system>
