@@ -61,6 +61,8 @@ function createMockHandlers(): TaskContextMenuHandlers {
     onBlockWithReason: vi.fn(),
     onUnblock: vi.fn(),
     onStartExecution: vi.fn(),
+    onPause: vi.fn(),
+    onResume: vi.fn(),
     onApprove: vi.fn(),
     onReject: vi.fn(),
     onRequestChanges: vi.fn(),
@@ -201,13 +203,13 @@ describe("TaskContextMenuItems", () => {
       expect(screen.queryByText("Archive")).not.toBeInTheDocument();
     });
 
-    it("shows Restore and Delete Permanently for archived tasks", () => {
+    it("shows Restore for archived tasks", () => {
       renderWithContextMenu(
         createMockTask({ archivedAt: new Date().toISOString() }),
         handlers,
       );
       expect(screen.getByText("Restore")).toBeInTheDocument();
-      expect(screen.getByText("Delete Permanently")).toBeInTheDocument();
+      expect(screen.queryByText("Delete Permanently")).not.toBeInTheDocument();
     });
   });
 
@@ -272,14 +274,44 @@ describe("TaskContextMenuItems", () => {
       expect(screen.getByText("Re-open")).toBeInTheDocument();
     });
 
-    it("shows no status actions for executing tasks", () => {
+    it("shows Pause and Cancel for executing tasks", () => {
       renderWithContextMenu(
         createMockTask({ internalStatus: "executing" }),
         handlers,
         "kanban",
       );
-      expect(screen.queryByText("Cancel")).not.toBeInTheDocument();
+      expect(screen.getByText("Pause")).toBeInTheDocument();
+      expect(screen.getByText("Cancel")).toBeInTheDocument();
       expect(screen.queryByText("Block")).not.toBeInTheDocument();
+    });
+
+    it("shows Pause and Cancel for re_executing tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "re_executing" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.getByText("Pause")).toBeInTheDocument();
+      expect(screen.getByText("Cancel")).toBeInTheDocument();
+    });
+
+    it("shows Resume and Cancel for paused tasks", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "paused" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.getByText("Resume")).toBeInTheDocument();
+      expect(screen.getByText("Cancel")).toBeInTheDocument();
+    });
+
+    it("shows Start Execution for ready tasks in kanban", () => {
+      renderWithContextMenu(
+        createMockTask({ internalStatus: "ready" }),
+        handlers,
+        "kanban",
+      );
+      expect(screen.getByText("Start Execution")).toBeInTheDocument();
     });
   });
 

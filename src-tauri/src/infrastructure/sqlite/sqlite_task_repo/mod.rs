@@ -124,7 +124,7 @@ impl TaskRepository for SqliteTaskRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, ideation_session_id = ?10, execution_plan_id = ?11, updated_at = ?12, started_at = ?13, completed_at = ?14, archived_at = ?15, blocked_reason = ?16, task_branch = ?17, worktree_path = ?18, merge_commit_sha = ?19, metadata = ?20, merge_pipeline_active = ?21
+                    "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, ideation_session_id = ?10, execution_plan_id = ?11, updated_at = ?12, started_at = ?13, completed_at = ?14, blocked_reason = ?15, task_branch = ?16, worktree_path = ?17, merge_commit_sha = ?18, metadata = ?19, merge_pipeline_active = ?20
                      WHERE id = ?1",
                     rusqlite::params![
                         task.id.as_str(),
@@ -141,7 +141,6 @@ impl TaskRepository for SqliteTaskRepository {
                         task.updated_at.to_rfc3339(),
                         task.started_at.map(|dt| dt.to_rfc3339()),
                         task.completed_at.map(|dt| dt.to_rfc3339()),
-                        task.archived_at.map(|dt| dt.to_rfc3339()),
                         task.blocked_reason,
                         task.task_branch,
                         task.worktree_path,
@@ -164,8 +163,8 @@ impl TaskRepository for SqliteTaskRepository {
         self.db
             .run(move |conn| {
                 let rows_affected = conn.execute(
-                    "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, ideation_session_id = ?10, execution_plan_id = ?11, updated_at = ?12, started_at = ?13, completed_at = ?14, archived_at = ?15, blocked_reason = ?16, task_branch = ?17, worktree_path = ?18, merge_commit_sha = ?19, metadata = ?20, merge_pipeline_active = ?21
-                     WHERE id = ?1 AND internal_status = ?22",
+                    "UPDATE tasks SET project_id = ?2, category = ?3, title = ?4, description = ?5, priority = ?6, internal_status = ?7, source_proposal_id = ?8, plan_artifact_id = ?9, ideation_session_id = ?10, execution_plan_id = ?11, updated_at = ?12, started_at = ?13, completed_at = ?14, blocked_reason = ?15, task_branch = ?16, worktree_path = ?17, merge_commit_sha = ?18, metadata = ?19, merge_pipeline_active = ?20
+                     WHERE id = ?1 AND internal_status = ?21",
                     rusqlite::params![
                         task.id.as_str(),
                         task.project_id.as_str(),
@@ -181,7 +180,6 @@ impl TaskRepository for SqliteTaskRepository {
                         task.updated_at.to_rfc3339(),
                         task.started_at.map(|dt| dt.to_rfc3339()),
                         task.completed_at.map(|dt| dt.to_rfc3339()),
-                        task.archived_at.map(|dt| dt.to_rfc3339()),
                         task.blocked_reason,
                         task.task_branch,
                         task.worktree_path,
@@ -215,19 +213,6 @@ impl TaskRepository for SqliteTaskRepository {
         self.db
             .run(move |conn| {
                 conn.execute(queries::DELETE_TASK, [id.as_str()])?;
-                Ok(())
-            })
-            .await
-    }
-
-    async fn clear_task_references(&self, id: &TaskId) -> AppResult<()> {
-        let id = id.as_str().to_string();
-        self.db
-            .run(move |conn| {
-                // Clear task_proposals.created_task_id
-                conn.execute(queries::CLEAR_TASK_PROPOSAL_REFERENCES, [id.as_str()])?;
-                // Clear artifacts.task_id
-                conn.execute(queries::CLEAR_ARTIFACT_REFERENCES, [id.as_str()])?;
                 Ok(())
             })
             .await

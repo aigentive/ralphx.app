@@ -7,7 +7,6 @@ import { useEffect, useCallback } from "react";
 interface UseKeyboardShortcutsOptions {
   selectedTaskId: string | null;
   onMove: (taskId: string, columnId: string) => void;
-  onDelete: (taskId: string) => void;
 }
 
 const SHORTCUTS: Record<string, string> = {
@@ -23,12 +22,10 @@ const SHORTCUTS: Record<string, string> = {
  * - P: Move to Planned
  * - B: Move to Backlog
  * - T: Move to To-do
- * - Delete: Skip task (with confirmation)
  */
 export function useKeyboardShortcuts({
   selectedTaskId,
   onMove,
-  onDelete,
 }: UseKeyboardShortcutsOptions): void {
   const handleKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -54,13 +51,8 @@ export function useKeyboardShortcuts({
         return;
       }
 
-      // Check delete shortcut
-      if (event.key === "Delete" || event.key === "Backspace") {
-        event.preventDefault();
-        onDelete(selectedTaskId);
-      }
     },
-    [selectedTaskId, onMove, onDelete]
+    [selectedTaskId, onMove]
   );
 
   useEffect(() => {

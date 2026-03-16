@@ -86,10 +86,10 @@ async fn test_get_artifacts_by_task() {
 }
 
 #[tokio::test]
-async fn test_delete_artifact() {
+async fn test_archive_artifact() {
     let state = setup_test_state();
 
-    let artifact = Artifact::new_inline("Delete Me", ArtifactType::Prd, "Content", "user");
+    let artifact = Artifact::new_inline("Archive Me", ArtifactType::Prd, "Content", "user");
     let id = artifact.id.clone();
 
     state
@@ -99,16 +99,17 @@ async fn test_delete_artifact() {
         .expect("Failed to create artifact in test");
     state
         .artifact_repo
-        .delete(&id)
+        .archive(&id)
         .await
-        .expect("Failed to delete artifact in test");
+        .expect("Failed to archive artifact in test");
 
     let found = state
         .artifact_repo
         .get_by_id(&id)
         .await
-        .expect("Failed to get artifact by id in test");
-    assert!(found.is_none());
+        .expect("Failed to get artifact by id in test")
+        .expect("Expected artifact to still exist after archive");
+    assert!(found.archived_at.is_some());
 }
 
 #[tokio::test]

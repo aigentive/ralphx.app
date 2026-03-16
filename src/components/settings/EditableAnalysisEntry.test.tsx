@@ -22,7 +22,6 @@ const mockCallbacks = {
   onUpdateField: vi.fn(),
   onResetField: vi.fn(),
   onResetEntry: vi.fn(),
-  onRemoveEntry: vi.fn(),
   onAddArrayItem: vi.fn(),
   onRemoveArrayItem: vi.fn(),
   onUpdateArrayItem: vi.fn(),
@@ -391,50 +390,6 @@ describe("EditableAnalysisEntry", () => {
   });
 
   describe("entry operations", () => {
-    it("shows Remove Entry button for user-added entries", () => {
-      const userAddedCallbacks = {
-        ...mockCallbacks,
-        isUserAdded: true,
-      };
-
-      render(
-        <EditableAnalysisEntry
-          entry={mockEntry}
-          entryIdx={0}
-          {...userAddedCallbacks}
-        />
-      );
-
-      // Expand
-      fireEvent.click(screen.getByRole("button", { name: /\./i }));
-
-      const removeButton = screen.getByText("Remove Entry");
-      expect(removeButton).toBeInTheDocument();
-    });
-
-    it("calls onRemoveEntry when Remove Entry clicked", () => {
-      const userAddedCallbacks = {
-        ...mockCallbacks,
-        isUserAdded: true,
-      };
-
-      render(
-        <EditableAnalysisEntry
-          entry={mockEntry}
-          entryIdx={0}
-          {...userAddedCallbacks}
-        />
-      );
-
-      // Expand
-      fireEvent.click(screen.getByRole("button", { name: /\./i }));
-
-      const removeButton = screen.getByText("Remove Entry");
-      fireEvent.click(removeButton);
-
-      expect(mockCallbacks.onRemoveEntry).toHaveBeenCalled();
-    });
-
     it("shows Reset Entry button for detected entries", () => {
       render(
         <EditableAnalysisEntry

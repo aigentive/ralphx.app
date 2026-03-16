@@ -15,10 +15,10 @@ pub(super) const GET_BY_PROJECT: &str =
      FROM tasks WHERE project_id = ?1
      ORDER BY priority DESC, created_at ASC";
 
-/// Get tasks by ideation session ID (for cascade delete)
+/// Get tasks by ideation session ID (excludes archived tasks)
 pub(super) const GET_BY_IDEATION_SESSION: &str =
     "SELECT id, project_id, category, title, description, priority, internal_status, needs_review_point, source_proposal_id, plan_artifact_id, ideation_session_id, execution_plan_id, created_at, updated_at, started_at, completed_at, archived_at, blocked_reason, task_branch, worktree_path, merge_commit_sha, metadata, merge_pipeline_active
-     FROM tasks WHERE ideation_session_id = ?1
+     FROM tasks WHERE ideation_session_id = ?1 AND archived_at IS NULL
      ORDER BY created_at ASC";
 
 /// Delete task query
@@ -56,12 +56,3 @@ pub(super) const GET_STALE_READY_TASKS: &str =
        AND updated_at < ?1
      ORDER BY updated_at ASC";
 
-/// Clear FK references to a task before deletion (defense-in-depth)
-/// Sets created_task_id to NULL in task_proposals table
-pub(super) const CLEAR_TASK_PROPOSAL_REFERENCES: &str =
-    "UPDATE task_proposals SET created_task_id = NULL WHERE created_task_id = ?1";
-
-/// Clear FK references to a task before deletion (defense-in-depth)
-/// Sets task_id to NULL in artifacts table
-pub(super) const CLEAR_ARTIFACT_REFERENCES: &str =
-    "UPDATE artifacts SET task_id = NULL WHERE task_id = ?1";

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use async_trait::async_trait;
+use chrono::Utc;
 
 use crate::domain::entities::{
     Artifact, ArtifactBucketId, ArtifactId, ArtifactRelation, ArtifactRelationType, ArtifactType,
@@ -235,6 +236,19 @@ impl ArtifactRepository for MemoryArtifactRepository {
 
     async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId> {
         Ok(id.clone())
+    }
+
+    async fn archive(&self, id: &ArtifactId) -> AppResult<Artifact> {
+        let mut artifacts = self.artifacts.write().await;
+        if let Some(artifact) = artifacts.get_mut(id) {
+            artifact.archived_at = Some(Utc::now());
+            Ok(artifact.clone())
+        } else {
+            Err(crate::error::AppError::NotFound(format!(
+                "Artifact with id {} not found",
+                id
+            )))
+        }
     }
 }
 

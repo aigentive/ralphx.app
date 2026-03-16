@@ -62,7 +62,6 @@ export interface UseAnalysisEditorReturn {
 
   // Entry operations
   addEntry(): void;
-  removeEntry(entryIdx: number): void;
 
   // Persistence
   save(): Promise<void>;
@@ -232,10 +231,6 @@ export function useAnalysisEditor(
     ]);
   }, []);
 
-  const removeEntry = useCallback((entryIdx: number) => {
-    setEntries((prev) => prev.filter((_, i) => i !== entryIdx));
-  }, []);
-
   // Query helpers
   const isFieldCustomized = useCallback(
     (entryIdx: number, field: keyof AnalysisEntry): boolean => {
@@ -293,7 +288,6 @@ export function useAnalysisEditor(
     removeArrayItem,
     updateArrayItem,
     addEntry,
-    removeEntry,
     save,
     isFieldCustomized,
     isUserAdded,

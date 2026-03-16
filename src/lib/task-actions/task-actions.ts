@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   GitMerge,
   FileWarning,
+  Pause,
 } from "lucide-react";
 import type { InternalStatus } from "@/types/status";
 import type { TaskAction, ActionSurface } from "./types";
@@ -63,6 +64,13 @@ function getKanbanActions(status: InternalStatus): TaskAction[] {
 
     case "ready":
       return [
+        {
+          id: "start",
+          label: "Start Execution",
+          icon: Play,
+          handlerKey: "onStartExecution",
+          confirmConfig: CONFIRMATION_CONFIGS.start,
+        },
         {
           id: "block",
           label: "Block",
@@ -129,6 +137,45 @@ function getKanbanActions(status: InternalStatus): TaskAction[] {
           icon: RotateCcw,
           handlerKey: "onStatusChange",
           confirmConfig: CONFIRMATION_CONFIGS.backlog,
+        },
+      ];
+
+    case "executing":
+    case "re_executing":
+      return [
+        {
+          id: "pause",
+          label: "Pause",
+          icon: Pause,
+          handlerKey: "onPause",
+          confirmConfig: CONFIRMATION_CONFIGS.pause,
+        },
+        {
+          id: "cancel",
+          label: "Cancel",
+          icon: X,
+          handlerKey: "onStatusChange",
+          variant: "destructive",
+          confirmConfig: CONFIRMATION_CONFIGS.cancelled,
+        },
+      ];
+
+    case "paused":
+      return [
+        {
+          id: "resume",
+          label: "Resume",
+          icon: Play,
+          handlerKey: "onResume",
+          confirmConfig: CONFIRMATION_CONFIGS.resume,
+        },
+        {
+          id: "cancel",
+          label: "Cancel",
+          icon: X,
+          handlerKey: "onStatusChange",
+          variant: "destructive",
+          confirmConfig: CONFIRMATION_CONFIGS.cancelled,
         },
       ];
 

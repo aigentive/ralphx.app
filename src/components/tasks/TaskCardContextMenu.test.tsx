@@ -123,7 +123,7 @@ describe("TaskCardContextMenu", () => {
     expect(screen.getByText("Archive")).toBeInTheDocument();
   });
 
-  it("shows Restore and Delete Permanently for archived tasks", () => {
+  it("shows Restore for archived tasks (no Delete Permanently)", () => {
     const task = createMockTask({ archivedAt: new Date().toISOString() });
     render(
       <TaskCardContextMenu task={task} {...mockHandlers}>
@@ -134,7 +134,7 @@ describe("TaskCardContextMenu", () => {
     fireEvent.contextMenu(screen.getByTestId("trigger"));
 
     expect(screen.getByText("Restore")).toBeInTheDocument();
-    expect(screen.getByText("Delete Permanently")).toBeInTheDocument();
+    expect(screen.queryByText("Delete Permanently")).not.toBeInTheDocument();
     expect(screen.queryByText("Archive")).not.toBeInTheDocument();
   });
 

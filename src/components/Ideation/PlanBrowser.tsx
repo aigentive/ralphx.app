@@ -40,7 +40,6 @@ interface PlanBrowserProps {
   onSelectPlan: (planId: string) => void;
   onNewPlan: () => void;
   onArchivePlan?: (planId: string) => void;
-  onDeletePlan?: (planId: string) => void;
   onReopenPlan?: (planId: string) => void;
   onResetReacceptPlan?: (planId: string) => void;
 }
@@ -189,7 +188,6 @@ export function PlanBrowser({
   onSelectPlan,
   onNewPlan,
   onArchivePlan,
-  onDeletePlan,
   onReopenPlan,
   onResetReacceptPlan,
 }: PlanBrowserProps) {
@@ -286,7 +284,6 @@ export function PlanBrowser({
       onKeyDown={(e) => handleKeyDown(e, plan.id)}
       onMenuOpenChange={(open) => setOpenMenuId(open ? plan.id : null)}
       onArchive={() => onArchivePlan?.(plan.id)}
-      onDelete={() => onDeletePlan?.(plan.id)}
       onReopen={() => onReopenPlan?.(plan.id)}
       onResetReaccept={() => onResetReacceptPlan?.(plan.id)}
     />
@@ -301,7 +298,6 @@ export function PlanBrowser({
     handleConfirmRename,
     handleKeyDown,
     onArchivePlan,
-    onDeletePlan,
     onReopenPlan,
     onResetReacceptPlan,
   ]);

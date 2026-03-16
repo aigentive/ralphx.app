@@ -183,6 +183,9 @@ pub struct Project {
     pub created_at: DateTime<Utc>,
     /// When the project was last updated
     pub updated_at: DateTime<Utc>,
+    /// When the project was archived (soft-deleted). None = active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
 }
 
 impl Project {
@@ -206,6 +209,7 @@ impl Project {
             github_pr_enabled: true,
             created_at: now,
             updated_at: now,
+            archived_at: None,
         }
     }
 
@@ -294,6 +298,9 @@ impl Project {
             github_pr_enabled: row.get::<_, i64>("github_pr_enabled").unwrap_or(1) != 0,
             created_at: Self::parse_datetime(row.get("created_at")?),
             updated_at: Self::parse_datetime(row.get("updated_at")?),
+            archived_at: row
+                .get::<_, Option<String>>("archived_at")?
+                .map(Self::parse_datetime),
         })
     }
 

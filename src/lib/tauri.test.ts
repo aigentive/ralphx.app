@@ -373,13 +373,13 @@ describe("api.projects", () => {
     });
   });
 
-  describe("delete", () => {
-    it("should call delete_project with projectId", async () => {
+  describe("archive", () => {
+    it("should call archive_project with projectId", async () => {
       mockInvoke.mockResolvedValue(true);
 
-      await api.projects.delete("project-1");
+      await api.projects.archive("project-1");
 
-      expect(mockInvoke).toHaveBeenCalledWith("delete_project", {
+      expect(mockInvoke).toHaveBeenCalledWith("archive_project", {
         projectId: "project-1",
       });
     });
@@ -387,7 +387,7 @@ describe("api.projects", () => {
     it("should return boolean", async () => {
       mockInvoke.mockResolvedValue(true);
 
-      const result = await api.projects.delete("project-1");
+      const result = await api.projects.archive("project-1");
 
       expect(result).toBe(true);
     });

@@ -66,10 +66,6 @@ export interface PlanGroupData extends Record<string, unknown> {
   isSelected?: boolean;
   /** Navigate to a specific task (merge task link) */
   onNavigateToTask?: (taskId: string) => void;
-  /** Delete this plan group (shows confirmation) */
-  onDeletePlan?: (planArtifactId: string) => void;
-  /** Remove all tasks in this group (bulk cleanup) */
-  onRemoveAll?: (sessionId: string) => void;
   /** Cancel all tasks in this group (non-destructive alternative) */
   onCancelAll?: (sessionId: string) => void;
 }
@@ -129,8 +125,6 @@ export const PlanGroup = memo(function PlanGroup({
     projectId,
     isSelected,
     onNavigateToTask,
-    onDeletePlan,
-    onRemoveAll,
     onCancelAll,
   } = data;
   const hasTierControls = Boolean(
@@ -153,7 +147,7 @@ export const PlanGroup = memo(function PlanGroup({
   const isUncategorized = planArtifactId === UNGROUPED_PLAN_ID;
   const groupKind = isUncategorized ? "uncategorized" as const : "plan" as const;
   const groupLabel = sessionTitle ?? "Unnamed plan";
-  const hasContextMenu = Boolean(onRemoveAll && projectId);
+  const hasContextMenu = Boolean(onCancelAll && projectId);
 
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
 
@@ -189,7 +183,6 @@ export const PlanGroup = memo(function PlanGroup({
         {...(tierControls ?? {})}
         onToggleCollapse={() => onToggleCollapse?.(planArtifactId)}
         {...(onNavigateToTask ? { onNavigateToTask } : {})}
-        {...(onDeletePlan ? { onDeletePlan: () => onDeletePlan(planArtifactId) } : {})}
       />
 
       {/* Content area - empty, task nodes are positioned inside by React Flow */}
@@ -238,7 +231,6 @@ export const PlanGroup = memo(function PlanGroup({
             taskCount={taskIds.length}
             projectId={projectId!}
             groupId={isUncategorized ? "" : sessionId}
-            onRemoveAll={() => onRemoveAll!(sessionId)}
             {...(onCancelAll && { onCancelAll: () => onCancelAll(sessionId) })}
             confirm={confirm}
           />
@@ -285,8 +277,6 @@ export function createPlanGroupNode(
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAll?: (sessionId: string) => void,
   onCancelAll?: (sessionId: string) => void
 ): PlanGroupNode {
   return {
@@ -311,8 +301,6 @@ export function createPlanGroupNode(
       ...(onToggleCollapse && { onToggleCollapse }),
       ...(projectId && { projectId }),
       ...(onNavigateToTask && { onNavigateToTask }),
-      ...(onDeletePlan && { onDeletePlan }),
-      ...(onRemoveAll && { onRemoveAll }),
       ...(onCancelAll && { onCancelAll }),
     },
     // Group node properties

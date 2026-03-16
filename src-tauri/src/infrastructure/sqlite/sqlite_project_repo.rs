@@ -5,6 +5,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 use async_trait::async_trait;
+use chrono::Utc;
 use rusqlite::Connection;
 
 use super::DbConnection;
@@ -70,7 +71,7 @@ impl ProjectRepository for SqliteProjectRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled
+                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled, archived_at
                      FROM projects WHERE id = ?1",
                     [id.as_str()],
                     |row| Project::from_row(row),
@@ -83,8 +84,8 @@ impl ProjectRepository for SqliteProjectRepository {
         self.db
             .run(move |conn| {
                 let mut stmt = conn.prepare(
-                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled
-                     FROM projects ORDER BY name ASC",
+                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled, archived_at
+                     FROM projects WHERE archived_at IS NULL ORDER BY name ASC",
                 )?;
                 let projects = stmt
                     .query_map([], Project::from_row)?
@@ -152,11 +153,31 @@ impl ProjectRepository for SqliteProjectRepository {
         self.db
             .query_optional(move |conn| {
                 conn.query_row(
-                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled
+                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled, archived_at
                      FROM projects WHERE working_directory = ?1",
                     [path.as_str()],
                     |row| Project::from_row(row),
                 )
+            })
+            .await
+    }
+
+    async fn archive(&self, id: &ProjectId) -> AppResult<Project> {
+        let id = id.as_str().to_string();
+        self.db
+            .run(move |conn| {
+                let now = Utc::now();
+                conn.execute(
+                    "UPDATE projects SET archived_at = ?2, updated_at = ?3 WHERE id = ?1 AND archived_at IS NULL",
+                    rusqlite::params![id.as_str(), now.to_rfc3339(), now.to_rfc3339()],
+                )?;
+                let project = conn.query_row(
+                    "SELECT id, name, working_directory, git_mode, base_branch, worktree_parent_directory, use_feature_branches, merge_validation_mode, merge_strategy, detected_analysis, custom_analysis, analyzed_at, created_at, updated_at, github_pr_enabled, archived_at
+                     FROM projects WHERE id = ?1",
+                    [id.as_str()],
+                    |row| Project::from_row(row),
+                )?;
+                Ok(project)
             })
             .await
     }

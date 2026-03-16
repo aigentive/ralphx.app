@@ -45,6 +45,7 @@ fn make_project(id: &str) -> crate::domain::entities::project::Project {
         github_pr_enabled: true,
         created_at: chrono::Utc::now(),
         updated_at: chrono::Utc::now(),
+        archived_at: None,
     }
 }
 

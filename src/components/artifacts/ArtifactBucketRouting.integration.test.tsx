@@ -30,7 +30,7 @@ vi.mock("@/lib/api/artifacts", () => ({
   getArtifact: vi.fn(),
   createArtifact: vi.fn(),
   updateArtifact: vi.fn(),
-  deleteArtifact: vi.fn(),
+  archiveArtifact: vi.fn(),
   getArtifactsByBucket: vi.fn(),
   getArtifactsByTask: vi.fn(),
   getBuckets: vi.fn(),
@@ -518,11 +518,11 @@ describe("Artifact Creation and Bucket Routing Integration", () => {
       expect(result.version).toBe(2);
     });
 
-    it("can delete artifact", async () => {
-      vi.mocked(artifactsApi.deleteArtifact).mockResolvedValue(undefined);
+    it("can archive artifact", async () => {
+      vi.mocked(artifactsApi.archiveArtifact).mockResolvedValue(undefined);
 
-      await expect(artifactsApi.deleteArtifact("artifact-1")).resolves.toBeUndefined();
-      expect(artifactsApi.deleteArtifact).toHaveBeenCalledWith("artifact-1");
+      await expect(artifactsApi.archiveArtifact("artifact-1")).resolves.toBeUndefined();
+      expect(artifactsApi.archiveArtifact).toHaveBeenCalledWith("artifact-1");
     });
   });
 });

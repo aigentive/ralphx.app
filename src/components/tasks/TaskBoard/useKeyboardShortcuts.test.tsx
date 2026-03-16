@@ -8,7 +8,6 @@ import { useKeyboardShortcuts } from "./useKeyboardShortcuts";
 
 describe("useKeyboardShortcuts", () => {
   const mockOnMove = vi.fn();
-  const mockOnDelete = vi.fn();
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -23,7 +22,6 @@ describe("useKeyboardShortcuts", () => {
       useKeyboardShortcuts({
         selectedTaskId: "task-1",
         onMove: mockOnMove,
-        onDelete: mockOnDelete,
       })
     );
 
@@ -40,7 +38,6 @@ describe("useKeyboardShortcuts", () => {
       useKeyboardShortcuts({
         selectedTaskId: "task-1",
         onMove: mockOnMove,
-        onDelete: mockOnDelete,
       })
     );
 
@@ -57,7 +54,6 @@ describe("useKeyboardShortcuts", () => {
       useKeyboardShortcuts({
         selectedTaskId: "task-1",
         onMove: mockOnMove,
-        onDelete: mockOnDelete,
       })
     );
 
@@ -69,29 +65,11 @@ describe("useKeyboardShortcuts", () => {
     expect(mockOnMove).toHaveBeenCalledWith("task-1", "todo");
   });
 
-  it("should call onDelete when Delete is pressed", () => {
-    renderHook(() =>
-      useKeyboardShortcuts({
-        selectedTaskId: "task-1",
-        onMove: mockOnMove,
-        onDelete: mockOnDelete,
-      })
-    );
-
-    act(() => {
-      const event = new KeyboardEvent("keydown", { key: "Delete" });
-      document.dispatchEvent(event);
-    });
-
-    expect(mockOnDelete).toHaveBeenCalledWith("task-1");
-  });
-
   it("should not call any callback when no task is selected", () => {
     renderHook(() =>
       useKeyboardShortcuts({
         selectedTaskId: null,
         onMove: mockOnMove,
-        onDelete: mockOnDelete,
       })
     );
 
@@ -101,7 +79,6 @@ describe("useKeyboardShortcuts", () => {
     });
 
     expect(mockOnMove).not.toHaveBeenCalled();
-    expect(mockOnDelete).not.toHaveBeenCalled();
   });
 
   it("should ignore shortcuts when typing in an input", () => {
@@ -109,7 +86,6 @@ describe("useKeyboardShortcuts", () => {
       useKeyboardShortcuts({
         selectedTaskId: "task-1",
         onMove: mockOnMove,
-        onDelete: mockOnDelete,
       })
     );
 
@@ -132,7 +108,6 @@ describe("useKeyboardShortcuts", () => {
       useKeyboardShortcuts({
         selectedTaskId: "task-1",
         onMove: mockOnMove,
-        onDelete: mockOnDelete,
       })
     );
 

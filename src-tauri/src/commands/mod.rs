@@ -49,10 +49,10 @@ pub use agent_profile_commands::{
     get_custom_agent_profiles, list_agent_profiles, seed_builtin_profiles,
 };
 pub use artifact_commands::{
-    add_artifact_relation, create_artifact, create_bucket, delete_artifact, get_artifact,
-    get_artifact_relations, get_artifacts, get_artifacts_by_bucket, get_artifacts_by_task,
-    get_buckets, get_system_buckets, get_team_artifacts_by_session, update_artifact,
-    AddRelationInput, ArtifactRelationResponse, ArtifactResponse, BucketResponse,
+    add_artifact_relation, archive_artifact, create_artifact, create_bucket, delete_artifact,
+    get_artifact, get_artifact_relations, get_artifacts, get_artifacts_by_bucket,
+    get_artifacts_by_task, get_buckets, get_system_buckets, get_team_artifacts_by_session,
+    update_artifact, AddRelationInput, ArtifactRelationResponse, ArtifactResponse, BucketResponse,
     CreateArtifactInput, CreateBucketInput, GetTeamArtifactsResponse, TeamArtifactSummaryResponse,
     UpdateArtifactInput,
 };
@@ -108,7 +108,7 @@ pub use permission_commands::{
     ResolvePermissionResponse,
 };
 pub use project_commands::{
-    create_project, delete_project, get_project, list_projects, update_project,
+    archive_project, create_project, delete_project, get_project, list_projects, update_project,
 };
 pub use qa_commands::{
     get_qa_results, get_qa_settings, get_task_qa, retry_qa, skip_qa, update_qa_settings,
@@ -127,18 +127,17 @@ pub use review_commands::{
     reject_fix_task, reject_review, request_changes, request_task_changes_for_review,
 };
 pub use task_commands::{
-    answer_user_question, archive_task, cancel_tasks_in_group, create_task, delete_task,
-    emit_queue_changed, get_archived_count, get_task, get_task_state_transitions,
-    get_valid_transitions, inject_task, list_tasks, move_task, pause_task, permanently_delete_task,
-    restore_task, search_tasks, stop_task, update_task, StateTransitionResponse,
+    answer_user_question, archive_task, cancel_tasks_in_group, create_task, emit_queue_changed,
+    get_archived_count, get_task, get_task_state_transitions, get_valid_transitions, inject_task,
+    list_tasks, move_task, pause_task, restore_task, search_tasks, stop_task, update_task,
+    StateTransitionResponse,
 };
 pub use task_context_commands::{
     get_artifact_full, get_artifact_version, get_related_artifacts, get_task_context,
     search_artifacts, ArtifactSearchResult, SearchArtifactsInput,
 };
 pub use task_step_commands::{
-    create_task_step, delete_task_step, get_step_progress, get_task_steps, reorder_task_steps,
-    update_task_step,
+    create_task_step, get_step_progress, get_task_steps, reorder_task_steps, update_task_step,
 };
 pub use test_data_commands::{clear_test_data, seed_test_data, seed_visual_audit_data};
 pub use workflow_commands::{

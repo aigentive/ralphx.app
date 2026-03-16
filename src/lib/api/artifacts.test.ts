@@ -5,7 +5,6 @@ import {
   getArtifact,
   createArtifact,
   updateArtifact,
-  deleteArtifact,
   getArtifactsByBucket,
   getArtifactsByTask,
   getBuckets,
@@ -431,32 +430,6 @@ describe("updateArtifact", () => {
     const result = await updateArtifact("a-123", { name: "Updated" });
 
     expect(result.name).toBe("Updated");
-  });
-});
-
-describe("deleteArtifact", () => {
-  beforeEach(() => {
-    mockInvoke.mockReset();
-  });
-
-  it("should call delete_artifact command with id", async () => {
-    mockInvoke.mockResolvedValue(undefined);
-
-    await deleteArtifact("a-123");
-
-    expect(mockInvoke).toHaveBeenCalledWith("delete_artifact", { id: "a-123" });
-  });
-
-  it("should complete without throwing on success", async () => {
-    mockInvoke.mockResolvedValue(undefined);
-
-    await expect(deleteArtifact("a-123")).resolves.toBeUndefined();
-  });
-
-  it("should propagate backend errors", async () => {
-    mockInvoke.mockRejectedValue(new Error("Artifact not found"));
-
-    await expect(deleteArtifact("nonexistent")).rejects.toThrow("Artifact not found");
   });
 });
 

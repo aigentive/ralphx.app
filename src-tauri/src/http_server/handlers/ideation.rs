@@ -22,7 +22,7 @@ use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
 use crate::domain::services::emit_verification_status_changed;
 
 use super::super::helpers::{
-    create_proposal_impl, delete_proposal_impl, parse_category, parse_priority,
+    archive_proposal_impl, create_proposal_impl, parse_category, parse_priority,
     update_proposal_impl,
 };
 use super::super::types::{
@@ -201,17 +201,17 @@ pub async fn update_task_proposal(
     Ok(Json(response))
 }
 
-pub async fn delete_task_proposal(
+pub async fn archive_task_proposal(
     State(state): State<HttpServerState>,
     Json(req): Json<DeleteProposalRequest>,
 ) -> Result<Json<SuccessResponse>, StatusCode> {
     let proposal_id = TaskProposalId::from_string(req.proposal_id.clone());
 
-    // Delete proposal — assert_session_mutable(), events, and dep analysis inside impl
-    delete_proposal_impl(&state.app_state, proposal_id)
+    // Archive proposal — assert_session_mutable(), events, and dep analysis inside impl
+    archive_proposal_impl(&state.app_state, proposal_id)
         .await
         .map_err(|e| {
-            error!("Failed to delete proposal {}: {}", req.proposal_id, e);
+            error!("Failed to archive proposal {}: {}", req.proposal_id, e);
             match e {
                 crate::error::AppError::NotFound(_) => StatusCode::NOT_FOUND,
                 crate::error::AppError::Validation(_) => StatusCode::BAD_REQUEST,
@@ -221,7 +221,7 @@ pub async fn delete_task_proposal(
 
     Ok(Json(SuccessResponse {
         success: true,
-        message: "Proposal deleted successfully".to_string(),
+        message: "Proposal archived successfully".to_string(),
     }))
 }
 

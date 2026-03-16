@@ -22,7 +22,6 @@ interface EditableAnalysisEntryProps {
   onUpdateField<K extends keyof AnalysisEntry>(field: K, value: AnalysisEntry[K]): void;
   onResetField(field: keyof AnalysisEntry): void;
   onResetEntry(): void;
-  onRemoveEntry(): void;
   onAddArrayItem(field: "validate" | "worktree_setup"): void;
   onRemoveArrayItem(field: "validate" | "worktree_setup", itemIdx: number): void;
   onUpdateArrayItem(field: "validate" | "worktree_setup", itemIdx: number, value: string): void;
@@ -182,7 +181,6 @@ export function EditableAnalysisEntry({
   onUpdateField,
   onResetField,
   onResetEntry,
-  onRemoveEntry,
   onAddArrayItem,
   onRemoveArrayItem,
   onUpdateArrayItem,
@@ -299,20 +297,8 @@ export function EditableAnalysisEntry({
             />
           </div>
 
-          {/* Footer: Reset/Remove buttons */}
+          {/* Footer: Reset button */}
           <div className="flex items-center gap-2 pt-2 border-t border-[var(--border-subtle)]">
-            {isUserAdded && (
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                onClick={onRemoveEntry}
-                className="h-7 px-2 text-xs text-[var(--status-error)] hover:bg-[rgba(239,68,68,0.08)]"
-              >
-                <Trash2 className="w-3.5 h-3.5 mr-1" />
-                Remove Entry
-              </Button>
-            )}
             {!isUserAdded && (
               <Button
                 type="button"

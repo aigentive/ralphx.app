@@ -170,18 +170,6 @@ async fn test_update_workflow_changes_description() {
 // ==================== DELETE TESTS ====================
 
 #[tokio::test]
-async fn test_delete_workflow_removes_it() {
-    let repo = MemoryWorkflowRepository::new();
-    let workflow = create_test_workflow("To Delete");
-    repo.create(workflow.clone()).await.unwrap();
-
-    repo.delete(&workflow.id).await.unwrap();
-
-    let found = repo.get_by_id(&workflow.id).await.unwrap();
-    assert!(found.is_none());
-}
-
-#[tokio::test]
 async fn test_delete_non_existent_workflow_succeeds() {
     let repo = MemoryWorkflowRepository::new();
     let id = WorkflowId::new();

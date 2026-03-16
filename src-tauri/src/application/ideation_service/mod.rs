@@ -255,12 +255,12 @@ where
         }
     }
 
-    /// Delete a proposal
-    pub async fn delete_proposal(&self, proposal_id: &TaskProposalId) -> AppResult<()> {
+    /// Archive a proposal (soft-delete)
+    pub async fn archive_proposal(&self, proposal_id: &TaskProposalId) -> AppResult<()> {
         // First clear any dependencies
         self.dependency_repo.clear_dependencies(proposal_id).await?;
-        // Then delete the proposal
-        self.proposal_repo.delete(proposal_id).await
+        // Then archive the proposal
+        self.proposal_repo.archive(proposal_id).await.map(|_| ())
     }
 
     /// Toggle proposal selection state

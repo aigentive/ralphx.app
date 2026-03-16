@@ -242,55 +242,6 @@ describe("workflowStore", () => {
     });
   });
 
-  describe("deleteWorkflow", () => {
-    it("removes a workflow from the store", () => {
-      const workflow = createTestWorkflow({ id: "workflow-1" });
-      useWorkflowStore.setState({ workflows: { "workflow-1": workflow } });
-
-      useWorkflowStore.getState().deleteWorkflow("workflow-1");
-
-      const state = useWorkflowStore.getState();
-      expect(state.workflows["workflow-1"]).toBeUndefined();
-    });
-
-    it("clears activeWorkflowId if active workflow is deleted", () => {
-      const workflow = createTestWorkflow({ id: "workflow-1" });
-      useWorkflowStore.setState({
-        workflows: { "workflow-1": workflow },
-        activeWorkflowId: "workflow-1",
-      });
-
-      useWorkflowStore.getState().deleteWorkflow("workflow-1");
-
-      const state = useWorkflowStore.getState();
-      expect(state.activeWorkflowId).toBeNull();
-    });
-
-    it("does not affect activeWorkflowId if different workflow is deleted", () => {
-      const workflow1 = createTestWorkflow({ id: "workflow-1" });
-      const workflow2 = createTestWorkflow({ id: "workflow-2" });
-      useWorkflowStore.setState({
-        workflows: { "workflow-1": workflow1, "workflow-2": workflow2 },
-        activeWorkflowId: "workflow-1",
-      });
-
-      useWorkflowStore.getState().deleteWorkflow("workflow-2");
-
-      const state = useWorkflowStore.getState();
-      expect(state.activeWorkflowId).toBe("workflow-1");
-    });
-
-    it("does nothing if workflow not found", () => {
-      const workflow = createTestWorkflow({ id: "workflow-1" });
-      useWorkflowStore.setState({ workflows: { "workflow-1": workflow } });
-
-      useWorkflowStore.getState().deleteWorkflow("nonexistent");
-
-      const state = useWorkflowStore.getState();
-      expect(Object.keys(state.workflows)).toHaveLength(1);
-    });
-  });
-
   describe("setLoading", () => {
     it("sets loading state to true", () => {
       useWorkflowStore.getState().setLoading(true);

@@ -179,14 +179,6 @@ export const ideationApi = {
     },
 
     /**
-     * Delete a session
-     * @param sessionId The session ID
-     */
-    delete: async (sessionId: string): Promise<void> => {
-      await invoke("delete_ideation_session", { id: sessionId });
-    },
-
-    /**
      * Reopen an accepted/archived session back to Active status
      * Deletes all tasks, cleans up git resources, clears proposal task links
      * @param sessionId The session ID

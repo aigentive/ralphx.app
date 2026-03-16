@@ -343,7 +343,7 @@ impl TaskProposalRepository for MockProposalRepository {
             .lock()
             .unwrap()
             .values()
-            .filter(|p| &p.session_id == session_id)
+            .filter(|p| &p.session_id == session_id && p.archived_at.is_none())
             .cloned()
             .collect();
         proposals.sort_by_key(|p| p.sort_order);
@@ -457,6 +457,16 @@ impl TaskProposalRepository for MockProposalRepository {
         _session_id: &IdeationSessionId,
     ) -> AppResult<()> {
         Ok(())
+    }
+
+    async fn archive(&self, id: &TaskProposalId) -> AppResult<TaskProposal> {
+        let mut proposals = self.proposals.lock().unwrap();
+        let proposal = proposals
+            .get_mut(&id.to_string())
+            .ok_or_else(|| crate::error::AppError::NotFound(format!("Proposal {} not found", id)))?;
+        proposal.archived_at = Some(Utc::now());
+        proposal.updated_at = Utc::now();
+        Ok(proposal.clone())
     }
 }
 
@@ -1097,7 +1107,7 @@ async fn test_update_proposal_not_found() {
 }
 
 #[tokio::test]
-async fn test_delete_proposal() {
+async fn test_archive_proposal() {
     let project_id = ProjectId::new();
     let session = IdeationSession::new(project_id.clone());
     let session_id = session.id.clone();
@@ -1108,7 +1118,7 @@ async fn test_delete_proposal() {
         .await
         .unwrap();
 
-    service.delete_proposal(&proposal.id).await.unwrap();
+    service.archive_proposal(&proposal.id).await.unwrap();
 
     let proposals = service.get_proposals(&session_id).await.unwrap();
     assert!(proposals.is_empty());

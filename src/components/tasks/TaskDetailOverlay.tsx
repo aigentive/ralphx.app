@@ -29,23 +29,11 @@ import {
   Pencil,
   Archive,
   RotateCcw,
-  Trash,
-  Trash2,
   Loader2,
   Lightbulb,
   History,
   ScrollText,
 } from "lucide-react";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
 import { useConfirmation } from "@/hooks/useConfirmation";
@@ -274,7 +262,6 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
   const task: Task | undefined = taskFromStore || taskFromList || taskFromDetail;
 
   const [isEditing, setIsEditing] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showAuditTrail, setShowAuditTrail] = useState(false);
 
   // Derived values for history mode (historyState from store)
@@ -287,10 +274,8 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
     moveMutation,
     archiveMutation,
     restoreMutation,
-    cleanupTaskMutation,
     isArchiving,
     isRestoring,
-    isCleaningTask,
   } = useTaskMutation(projectId);
 
   // Confirmation dialog for archive/restore
@@ -383,35 +368,6 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
     });
     if (!confirmed) return;
     restoreMutation.mutate(task.id, {
-      onSuccess: () => {
-        handleClose();
-      },
-    });
-  };
-
-  // Handle permanent delete
-  const handlePermanentDelete = () => {
-    if (!task) return;
-    cleanupTaskMutation.mutate(task.id, {
-      onSuccess: () => {
-        setShowDeleteDialog(false);
-        handleClose();
-      },
-    });
-  };
-
-  // Handle remove (non-archived tasks)
-  const handleRemove = async () => {
-    if (!task) return;
-    const confirmed = await confirm({
-      title: "Remove this task?",
-      description:
-        "This will permanently remove the task and clean up all associated resources (branches, agents, artifacts). This action cannot be undone.",
-      confirmText: "Remove",
-      variant: "destructive",
-    });
-    if (!confirmed) return;
-    cleanupTaskMutation.mutate(task.id, {
       onSuccess: () => {
         handleClose();
       },
@@ -582,25 +538,6 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                   <Pencil className="w-4 h-4" />
                 </Button>
               )}
-              {/* Remove button - non-archived tasks */}
-              {!isArchived && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={handleRemove}
-                  disabled={isCleaningTask}
-                  data-testid="task-overlay-remove-button"
-                  aria-label="Remove task"
-                  style={{ color: "hsl(0 70% 60%)" }}
-                  className="hover:bg-[hsla(0_70%_55%/0.1)]"
-                >
-                  {isCleaningTask ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash2 className="w-4 h-4" />
-                  )}
-                </Button>
-              )}
               {/* Archive button */}
               {!isArchived && (
                 <Button
@@ -636,25 +573,6 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
                     <Loader2 className="w-4 h-4 animate-spin" />
                   ) : (
                     <RotateCcw className="w-4 h-4" />
-                  )}
-                </Button>
-              )}
-              {/* Delete permanently button */}
-              {isArchived && (
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={() => setShowDeleteDialog(true)}
-                  disabled={isCleaningTask}
-                  data-testid="task-overlay-delete-button"
-                  aria-label="Delete permanently"
-                  style={{ color: "hsl(0 70% 60%)" }}
-                  className="hover:bg-[hsla(0_70%_55%/0.1)]"
-                >
-                  {isCleaningTask ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Trash className="w-4 h-4" />
                   )}
                 </Button>
               )}
@@ -752,36 +670,6 @@ export function TaskDetailOverlay({ projectId, footer }: TaskDetailOverlayProps)
           )}
         </div>
       </div>
-
-      {/* Permanent Delete Confirmation Dialog */}
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Permanently?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete "{task.title}". This action cannot be
-              undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handlePermanentDelete}
-              disabled={isCleaningTask}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isCleaningTask ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Deleting...
-                </>
-              ) : (
-                "Delete Permanently"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       {/* Archive/Restore Confirmation Dialog */}
       <ConfirmationDialog {...confirmationDialogProps} />
