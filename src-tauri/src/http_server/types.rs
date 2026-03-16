@@ -367,12 +367,16 @@ pub struct CreatePlanArtifactRequest {
 pub struct UpdatePlanArtifactRequest {
     pub artifact_id: String,
     pub content: String,
+    #[serde(default)]
+    pub caller_session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
 pub struct EditPlanArtifactRequest {
     pub artifact_id: String,
     pub edits: Vec<PlanEdit>,
+    #[serde(default)]
+    pub caller_session_id: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

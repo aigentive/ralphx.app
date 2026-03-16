@@ -24,6 +24,7 @@ import {
 import { artifactApi } from "@/api/artifact";
 import type { Artifact } from "@/types/artifact";
 import { cn } from "@/lib/utils";
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import type { TeamFinding } from "./TeamFindingsSection";
 import { DebateSummary } from "./DebateSummary";
 import type { DebateSummaryData } from "./DebateSummary";
@@ -89,6 +90,8 @@ export interface PlanDisplayProps {
   planVersion?: number;
   /** Plan artifact version at time of verification — used to detect stale gaps */
   verificationPlanVersion?: number;
+  /** When true, a verification agent is actively generating — edit button is disabled */
+  verificationAgentGenerating?: boolean;
 }
 
 // ============================================================================
@@ -263,6 +266,7 @@ export function PlanDisplay({
   planVersion,
   verificationPlanVersion,
   sourceProjectName,
+  verificationAgentGenerating = false,
 }: PlanDisplayProps) {
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
@@ -754,33 +758,49 @@ export function PlanDisplay({
                 </DropdownMenu>
               )}
 
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={verificationInProgress ? undefined : onEdit}
-                disabled={verificationInProgress}
-                title={
-                  verificationInProgress
-                    ? "Plan is being auto-verified. Editing will be available after verification completes."
-                    : undefined
-                }
-                className="h-7 w-7 p-0 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-                style={{ color: "hsl(220 10% 50%)" }}
-                onMouseEnter={(e) => {
-                  if (!verificationInProgress) {
+              {(verificationInProgress || verificationAgentGenerating) ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span className="inline-flex">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={undefined}
+                          disabled={true}
+                          className="h-7 w-7 p-0 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+                          style={{ color: "hsl(220 10% 50%)" }}
+                        >
+                          <FileEdit className="w-3.5 h-3.5" />
+                        </Button>
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      {verificationAgentGenerating
+                        ? "Plan is frozen — verification agent is actively working. Wait for the current round to complete."
+                        : "Plan is being auto-verified. Editing will be available after verification completes."}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onEdit}
+                  className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
+                  style={{ color: "hsl(220 10% 50%)" }}
+                  onMouseEnter={(e) => {
                     e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
                     e.currentTarget.style.color = "hsl(220 10% 90%)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  if (!verificationInProgress) {
+                  }}
+                  onMouseLeave={(e) => {
                     e.currentTarget.style.background = "transparent";
                     e.currentTarget.style.color = "hsl(220 10% 50%)";
-                  }
-                }}
-              >
-                <FileEdit className="w-3.5 h-3.5" />
-              </Button>
+                  }}
+                >
+                  <FileEdit className="w-3.5 h-3.5" />
+                </Button>
+              )}
 
               <Button
                 variant="ghost"

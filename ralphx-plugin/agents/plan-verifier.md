@@ -58,9 +58,13 @@ Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
 - If `generation != <extracted generation>` → generation mismatch (zombie). Output: "Generation mismatch: expected {extracted_gen}, got {current_gen}. Stale agent detected. Exiting." and EXIT.
 - Store current `round_number` from the response (default: 0 if null).
 
-### D. Fetch plan
+### D. Store own session ID
 
-Call `mcp__ralphx__get_session_plan(session_id: <YOUR_OWN_SESSION_ID>)` to read the plan content inherited from the parent.
+Store the `session_id` value you passed to `get_parent_session_context` as `OWN_SESSION_ID`. You will use this as `caller_session_id` in all `update_plan_artifact` / `edit_plan_artifact` calls.
+
+### E. Fetch plan
+
+Call `mcp__ralphx__get_session_plan(session_id: <YOUR_OWN_SESSION_ID>)` to read the plan content inherited from the parent. Also store the `artifact_id` from the returned plan — you will need it for artifact write calls.
 - If this returns null or an error → output error: "Cannot fetch plan — aborting verification" and EXIT.
 
 ---
@@ -126,10 +130,12 @@ Check the response for a generation conflict error (HTTP 409). If generation mis
 
 ### E. Revise plan if CRITICAL or HIGH gaps found
 
+> **Note:** `update_plan_artifact` and `edit_plan_artifact` take `artifact_id` (not `session_id`). There is no `session_id` parameter on these tools — use `caller_session_id` instead to bypass the write lock.
+
 If any gap has severity "critical" or "high":
 1. Analyze each critical/high gap and determine the minimal plan revision needed.
-2. For small revisions (<30% of plan): use `mcp__ralphx__edit_plan_artifact(session_id: <parent_session_id>, ...)` with targeted edits.
-3. For large revisions (≥30% of plan): use `mcp__ralphx__update_plan_artifact(session_id: <parent_session_id>, ...)` with the full revised content.
+2. For small revisions (<30% of plan): use `mcp__ralphx__edit_plan_artifact(artifact_id: <plan_artifact_id>, caller_session_id: <OWN_SESSION_ID>, ...)` with targeted edits.
+3. For large revisions (≥30% of plan): use `mcp__ralphx__update_plan_artifact(artifact_id: <plan_artifact_id>, caller_session_id: <OWN_SESSION_ID>, ...)` with the full revised content.
 4. Make plan revisions address the gaps — do not add unrelated content.
 
 If only "medium" or "low" gaps found (no critical/high): skip plan revision for this round.
@@ -182,7 +188,8 @@ Output a brief summary: "Verification complete. Status: {status}. Rounds run: {c
 
 | Rule | Detail |
 |------|--------|
-| **ALWAYS use parent_session_id** | ALL `update_plan_verification` / `get_plan_verification` / `update_plan_artifact` / `edit_plan_artifact` calls use `<parent_session_id>`, NOT your own child session ID |
+| **update/get_plan_verification** | Use `session_id: <parent_session_id>` — these tools take a session_id |
+| **update/edit_plan_artifact** | Use `artifact_id: <plan_artifact_id>` + `caller_session_id: <OWN_SESSION_ID>` — these tools take artifact_id, NOT session_id |
 | **Parallel critic dispatch** | Both critic Task calls MUST be in ONE response message — never one at a time |
 | **No self-modification** | You are read-only for the filesystem. ❌ Write, Edit, NotebookEdit |
 | **Exit on zombie** | Generation mismatch at any step → EXIT without cleanup |

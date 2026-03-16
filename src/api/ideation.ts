@@ -261,10 +261,10 @@ export const ideationApi = {
      * @param sessionId The parent session ID
      * @returns Array of child sessions
      */
-    getChildren: async (sessionId: string): Promise<IdeationSessionResponse[]> => {
+    getChildren: async (sessionId: string, purpose: string): Promise<IdeationSessionResponse[]> => {
       const raw = await typedInvoke(
         "get_child_sessions",
-        { session_id: sessionId },
+        { session_id: sessionId, purpose },
         z.array(IdeationSessionResponseSchema)
       );
       return raw.map(transformSession);

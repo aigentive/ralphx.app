@@ -491,6 +491,32 @@ pub async fn spawn_session_namer(
     Ok(())
 }
 
+/// Get child sessions for a parent session, filtered by purpose.
+/// Only supports purpose="verification". Returns active (non-archived) children.
+#[tauri::command]
+pub async fn get_child_sessions(
+    session_id: String,
+    purpose: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<IdeationSessionResponse>, String> {
+    let parent_id = IdeationSessionId::from_string(session_id);
+    match purpose.as_deref() {
+        Some("verification") => state
+            .ideation_session_repo
+            .get_verification_children(&parent_id)
+            .await
+            .map(|sessions| {
+                sessions
+                    .into_iter()
+                    .map(IdeationSessionResponse::from)
+                    .collect()
+            })
+            .map_err(|e| e.to_string()),
+        Some(p) => Err(format!("Unsupported purpose filter: '{}'", p)),
+        None => Err("purpose is required (supported: \"verification\")".to_string()),
+    }
+}
+
 /// Get group counts for all 5 session display groups for a project
 ///
 /// Returns counts for: drafts (active sessions), in_progress (accepted + has active tasks),
