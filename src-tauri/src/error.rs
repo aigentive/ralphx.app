@@ -50,6 +50,15 @@ pub enum AppError {
 
     #[error("Duplicate pull request: branch already has an open PR")]
     DuplicatePr,
+
+    #[error("IMPORT_VERSION_UNSUPPORTED: Schema version {version} is not supported")]
+    ImportVersionUnsupported { version: u32 },
+
+    #[error("IMPORT_INVALID_FORMAT: {detail}")]
+    ImportInvalidFormat { detail: String },
+
+    #[error("IMPORT_INVALID_DEPENDENCY: {detail}")]
+    ImportInvalidDependency { detail: String },
 }
 
 impl From<AgentError> for AppError {

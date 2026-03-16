@@ -9,7 +9,8 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationStatus,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationMetadata,
+    VerificationStatus,
 };
 use crate::domain::repositories::ideation_session_repository::{
     IdeationSessionWithProgress, SessionGroupCounts, SessionProgress,
@@ -690,6 +691,59 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                     rusqlite::params![id, now.to_rfc3339()],
                 )?;
                 Ok(rows > 0)
+            })
+            .await
+    }
+
+    async fn reset_and_begin_reverify(
+        &self,
+        session_id: &str,
+    ) -> AppResult<(i32, VerificationMetadata)> {
+        let session_id = session_id.to_string();
+        self.db
+            .run_transaction(move |conn| {
+                // Read current metadata + generation
+                let (metadata_json, current_gen): (Option<String>, i32) = conn.query_row(
+                    "SELECT verification_metadata, verification_generation FROM ideation_sessions WHERE id = ?1",
+                    rusqlite::params![session_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                ).map_err(|e| crate::error::AppError::Database(format!("Session not found: {e}")))?;
+
+                // Parse existing metadata (or use default), then clear all stale fields
+                let mut metadata: VerificationMetadata = metadata_json
+                    .as_deref()
+                    .and_then(|s| serde_json::from_str(s).ok())
+                    .unwrap_or_default();
+                metadata.current_gaps = vec![];
+                metadata.rounds = vec![];
+                metadata.convergence_reason = None;
+                metadata.best_round_index = None;
+                metadata.current_round = 0;
+                metadata.parse_failures = vec![];
+
+                let new_metadata_json = serde_json::to_string(&metadata)
+                    .map_err(|e| crate::error::AppError::Database(format!("Metadata serialize failed: {e}")))?;
+                let new_gen = current_gen + 1;
+
+                // Atomic: clear metadata + increment generation + set status + set in_progress
+                let rows_affected = conn.execute(
+                    "UPDATE ideation_sessions SET \
+                       verification_status = 'reviewing', \
+                       verification_in_progress = 1, \
+                       verification_generation = ?2, \
+                       verification_metadata = ?3, \
+                       updated_at = CURRENT_TIMESTAMP \
+                     WHERE id = ?1",
+                    rusqlite::params![session_id, new_gen, new_metadata_json],
+                )?;
+
+                if rows_affected == 0 {
+                    return Err(crate::error::AppError::Database(
+                        format!("Session not found: {}", session_id),
+                    ));
+                }
+
+                Ok((new_gen, metadata))
             })
             .await
     }

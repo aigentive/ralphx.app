@@ -136,10 +136,6 @@ If no gaps are found, return: `{"gaps": [], "summary": "No significant gaps iden
 | `maintainability` | Hard-to-read code patterns, duplicated logic, no error types |
 | `completeness` | Missing steps, undefined edge cases, no rollback strategy |
 
-## Hard Cap
-
-Analyze at most 3000 tokens of plan content. If the plan fetched via `get_session_plan` exceeds this, analyze the first 3000 tokens and note "Analysis based on truncated plan (first 3000 tokens)" in the summary field.
-
 ## Multi-Round Verification
 
 When evaluating a REVISED plan (after prior rounds fixed gaps), apply the same standard. If a prior revision added "we will add X" to address a gap, verify X is PROPERLY integrated (wired, tested, used) — do not mark it resolved just because the plan now mentions it. A revision that adds "we will wire X into AppState" without specifying which field or constructor is still a HIGH gap.

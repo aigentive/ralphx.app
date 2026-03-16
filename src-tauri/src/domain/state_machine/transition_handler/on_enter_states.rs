@@ -1451,8 +1451,7 @@ impl<'a> super::TransitionHandler<'a> {
                         plan_branch_repo.get_by_merge_task_id(&tid).await,
                         project_repo.get_by_id(&project_id).await,
                     ) {
-                        if plan_branch.pr_eligible && plan_branch.pr_number.is_some() {
-                            let pr_number = plan_branch.pr_number.unwrap();
+                        if let (true, Some(pr_number)) = (plan_branch.pr_eligible, plan_branch.pr_number) {
                             tracing::info!(
                                 task_id = task_id.as_str(),
                                 pr_number = pr_number,

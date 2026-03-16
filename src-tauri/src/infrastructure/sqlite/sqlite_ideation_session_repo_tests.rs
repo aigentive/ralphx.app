@@ -1784,3 +1784,124 @@ async fn test_list_by_group_parent_title_resolved() {
         "Parent session title should be resolved"
     );
 }
+
+// ==================== RESET_AND_BEGIN_REVERIFY TESTS ====================
+
+/// SQLite-specific: reset_and_begin_reverify uses atomic read-modify-write transaction.
+///
+/// Uses a real in-memory SQLite connection to verify atomicity and correct
+/// SQL serialization. This catches bugs that memory-repo tests miss, such as
+/// JSON field ordering differences, serde round-trip errors, and integer
+/// storage precision issues.
+///
+/// Verifies:
+/// - Returned (new_gen, cleared_metadata) tuple is correct
+/// - DB is updated atomically: status=reviewing, in_progress=true, gen=N+1
+/// - All stale metadata fields are cleared in the stored JSON
+#[tokio::test]
+async fn test_reset_and_begin_reverify_sqlite_atomicity() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let repo = SqliteIdeationSessionRepository::new(conn);
+
+    // Create session — SQLite create() does not persist verification_generation from the builder,
+    // so the session starts at generation=0 (the DB default). We test 0 → 1 increment.
+    let session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .verification_status(VerificationStatus::Verified)
+        .build();
+    let session_id_obj = session.id.clone();
+    repo.create(session).await.unwrap();
+
+    // Set stale metadata: 2 rounds, 1 gap, convergence_reason set, parse_failures non-empty
+    let stale_meta = serde_json::json!({
+        "v": 1,
+        "current_round": 2,
+        "max_rounds": 5,
+        "rounds": [
+            {"fingerprints": ["fp-a", "fp-b"], "gap_score": 10},
+            {"fingerprints": ["fp-a"], "gap_score": 6}
+        ],
+        "current_gaps": [
+            {"severity": "critical", "category": "security", "description": "Auth bypass risk", "why_it_matters": null}
+        ],
+        "convergence_reason": "max_rounds",
+        "best_round_index": 1,
+        "parse_failures": [1]
+    })
+    .to_string();
+
+    repo.update_verification_state(
+        &session_id_obj,
+        VerificationStatus::Verified,
+        false,
+        Some(stale_meta),
+    )
+    .await
+    .unwrap();
+
+    // Call reset_and_begin_reverify — must atomically clear metadata, increment gen, set Reviewing
+    let (new_gen, cleared_metadata) = repo
+        .reset_and_begin_reverify(session_id_obj.as_str())
+        .await
+        .unwrap();
+
+    // Assert returned tuple (DB starts at generation=0, so reset increments to 1)
+    assert_eq!(new_gen, 1, "generation must be incremented from 0 to 1");
+    assert!(cleared_metadata.current_gaps.is_empty(), "returned current_gaps must be empty");
+    assert!(cleared_metadata.rounds.is_empty(), "returned rounds must be empty");
+    assert!(
+        cleared_metadata.convergence_reason.is_none(),
+        "returned convergence_reason must be None"
+    );
+    assert!(
+        cleared_metadata.best_round_index.is_none(),
+        "returned best_round_index must be None"
+    );
+    assert_eq!(cleared_metadata.current_round, 0, "returned current_round must be 0");
+    assert!(
+        cleared_metadata.parse_failures.is_empty(),
+        "returned parse_failures must be empty"
+    );
+
+    // Assert DB was updated atomically
+    let updated = repo.get_by_id(&session_id_obj).await.unwrap().unwrap();
+    assert_eq!(
+        updated.verification_status,
+        VerificationStatus::Reviewing,
+        "DB status must be Reviewing"
+    );
+    assert!(updated.verification_in_progress, "DB in_progress must be true");
+    assert_eq!(updated.verification_generation, 1, "DB generation must be 1");
+
+    // Parse stored metadata to verify SQLite-level JSON serialization is correct
+    let stored_meta: serde_json::Value = serde_json::from_str(
+        updated.verification_metadata.as_deref().unwrap_or("{}"),
+    )
+    .unwrap();
+    assert_eq!(
+        stored_meta["current_gaps"],
+        serde_json::json!([]),
+        "SQLite current_gaps must be empty array"
+    );
+    assert_eq!(
+        stored_meta["rounds"],
+        serde_json::json!([]),
+        "SQLite rounds must be empty array"
+    );
+    assert!(
+        stored_meta["convergence_reason"].is_null(),
+        "SQLite convergence_reason must be null"
+    );
+    assert!(
+        stored_meta["best_round_index"].is_null(),
+        "SQLite best_round_index must be null"
+    );
+    assert_eq!(stored_meta["current_round"], 0, "SQLite current_round must be 0");
+    assert_eq!(
+        stored_meta["parse_failures"],
+        serde_json::json!([]),
+        "SQLite parse_failures must be empty array"
+    );
+}

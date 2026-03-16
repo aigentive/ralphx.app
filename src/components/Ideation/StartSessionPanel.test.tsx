@@ -40,6 +40,17 @@ vi.mock("sonner", () => ({
   toast: { error: (...args: unknown[]) => mockToastError(...args) },
 }));
 
+// Mock useSessionExportImport
+const mockImportSession = vi.fn();
+vi.mock("@/hooks/useSessionExportImport", () => ({
+  useSessionExportImport: () => ({
+    importSession: mockImportSession,
+    exportSession: vi.fn(),
+    isImporting: false,
+    isExporting: false,
+  }),
+}));
+
 // Mock TaskPickerDialog to avoid complex rendering
 vi.mock("./TaskPickerDialog", () => ({
   TaskPickerDialog: ({ isOpen, onSelect }: { isOpen: boolean; onClose: () => void; onSelect: (task: unknown) => void }) =>
@@ -233,6 +244,24 @@ describe("StartSessionPanel", () => {
       });
 
       expect(mockToastError).toHaveBeenCalledWith("Failed to start ideation session");
+    });
+  });
+
+  describe("import session button", () => {
+    it("renders the Import Session button", () => {
+      render(<StartSessionPanel onNewSession={onNewSession} />);
+      expect(screen.getByText("Import Session")).toBeInTheDocument();
+    });
+
+    it("calls importSession with activeProjectId when Import Session is clicked", async () => {
+      mockImportSession.mockResolvedValueOnce(undefined);
+      render(<StartSessionPanel onNewSession={onNewSession} />);
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("Import Session"));
+      });
+
+      expect(mockImportSession).toHaveBeenCalledWith("project-1");
     });
   });
 });
