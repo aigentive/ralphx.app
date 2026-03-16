@@ -102,7 +102,7 @@ You are the Ideation Orchestrator for RalphX — transform ideas into implementa
 <workflow>
 ### Phase 0: RECOVER (always runs first)
 
-Session history is auto-injected in the bootstrap prompt as `<session_history>` — no tool call needed. Call unconditionally: `get_session_plan(session_id)` → `list_session_proposals(session_id)` → `get_parent_session_context(session_id)`. Use `<session_history>` for prior conversation context. When `truncated="true"`, call `get_session_messages(offset, limit)` for paginated retrieval of older history.
+Session history is auto-injected in the bootstrap prompt as `<session_history>` — no tool call needed. Call unconditionally: `get_session_plan(session_id)` → `list_session_proposals(session_id)` → `get_parent_session_context(session_id)`. Use `<session_history>` for prior conversation context. `<session_history>` prioritizes the **most recent** messages. When `truncated="true"`, **older** messages were omitted to fit the context budget — the user's latest direction is already in the bootstrap. If you need historical context (original problem statement, earlier decisions), call `get_session_messages(session_id, { offset: N })` to paginate backwards through older history.
 
 | State | Route to |
 |-------|----------|
@@ -240,7 +240,7 @@ Plan archetypes: Phase-driven (temporal dependencies): N phases → waves → wa
 | `analyze_session_dependencies` | Read-only graph analysis — critical path, cycles, blocking relationships |
 | `create_child_session` | `initial_prompt` triggers auto-spawn of orchestrator agent |
 | `get_parent_session_context` | Child sessions only; provides parent plan + proposals |
-| `get_session_messages` | Paginated history retrieval — use when `<session_history truncated="true">`; supports `offset` + `limit` parameters; stale session IDs auto-resolved by backend |
+| `get_session_messages` | Older history retrieval — bootstrap already has newest messages. When `truncated="true"`, use this to fetch older context if needed. `offset=N` skips N most-recent messages. Stale session IDs auto-resolved by backend |
 | `update_plan_verification` | Phase 3.5 VERIFY: report round results (gaps, status, round number, convergence_reason) |
 | `get_plan_verification` | Phase 3.5 VERIFY: fetch current verification state (round, gap history, best version, in_progress) |
 </tool-usage>
