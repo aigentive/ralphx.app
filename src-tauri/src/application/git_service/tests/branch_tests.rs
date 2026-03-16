@@ -831,6 +831,252 @@ async fn test_is_ancestor_returns_false_for_invalid_ref() {
     );
 }
 
+// =========================================================================
+// is_branch_merged_or_content_equivalent Tests
+// =========================================================================
+
+/// Helper: create a minimal git repo with one initial commit on main/master.
+fn setup_squash_test_repo(repo: &std::path::Path) {
+    Command::new("git")
+        .args(["init"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.email", "test@example.com"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["config", "user.name", "Test User"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    // initial commit on default branch (main/master)
+    std::fs::write(repo.join("base.txt"), "base content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "initial"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+}
+
+/// Get the current default branch name (main or master depending on git config)
+fn default_branch(repo: &std::path::Path) -> String {
+    let out = Command::new("git")
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&out.stdout).trim().to_string()
+}
+
+/// Squash merge recipe:
+///   plan-branch ← git merge --squash task-branch → creates new commit
+///   result: task-branch NOT ancestor of plan-branch, but content matches
+#[tokio::test]
+async fn test_is_branch_merged_or_content_equivalent_squash_merge_returns_content_match() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    setup_squash_test_repo(repo);
+    let base = default_branch(repo);
+
+    // Create plan-branch from base
+    Command::new("git")
+        .args(["checkout", "-b", "plan-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Create task-branch with a feature commit
+    Command::new("git")
+        .args(["checkout", "-b", "task-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("feature.txt"), "feature content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "feat: add feature"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Squash merge task-branch into plan-branch
+    Command::new("git")
+        .args(["checkout", "plan-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["merge", "--squash", "task-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "squash merge"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // task-branch is NOT an ancestor of plan-branch (squash creates new commit)
+    let is_anc = GitService::is_ancestor(repo, "task-branch", "plan-branch")
+        .await
+        .unwrap_or(true);
+    assert!(!is_anc, "squash merge should break ancestor relationship");
+
+    // But content matches → safe to delete
+    let (safe, reason) =
+        GitService::is_branch_merged_or_content_equivalent(repo, "task-branch", "plan-branch")
+            .await;
+    assert!(safe, "squash merge: should be safe to delete");
+    assert_eq!(reason, "content_match");
+
+    drop(base); // suppress unused warning
+}
+
+/// Normal (non-squash) merge: task-branch IS an ancestor → returns "ancestor"
+#[tokio::test]
+async fn test_is_branch_merged_or_content_equivalent_normal_merge_returns_ancestor() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    setup_squash_test_repo(repo);
+
+    // Create plan-branch and task-branch from base
+    Command::new("git")
+        .args(["checkout", "-b", "plan-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["checkout", "-b", "task-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("feature.txt"), "feature content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "feat: add feature"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Regular merge (preserves ancestor relationship)
+    Command::new("git")
+        .args(["checkout", "plan-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["merge", "--no-ff", "task-branch", "-m", "merge task"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    let (safe, reason) =
+        GitService::is_branch_merged_or_content_equivalent(repo, "task-branch", "plan-branch")
+            .await;
+    assert!(safe, "normal merge: should be safe to delete");
+    assert_eq!(reason, "ancestor");
+}
+
+/// Diverged branches: neither ancestor nor content match → returns "content_differs"
+#[tokio::test]
+async fn test_is_branch_merged_or_content_equivalent_diverged_returns_content_differs() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    setup_squash_test_repo(repo);
+
+    // Create plan-branch with its own diverging commit
+    Command::new("git")
+        .args(["checkout", "-b", "plan-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("plan.txt"), "plan-only content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "plan work"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Go back to default branch and create task-branch with different content
+    let base = default_branch(repo);
+    Command::new("git")
+        .args(["checkout", &base])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["checkout", "-b", "task-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    std::fs::write(repo.join("task.txt"), "task-only content").unwrap();
+    Command::new("git")
+        .args(["add", "."])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .args(["commit", "-m", "task work"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // task-branch and plan-branch have diverged — neither ancestor nor content match
+    let (safe, reason) =
+        GitService::is_branch_merged_or_content_equivalent(repo, "task-branch", "plan-branch")
+            .await;
+    assert!(!safe, "diverged branches: should NOT be safe to delete");
+    assert_eq!(reason, "content_differs");
+}
+
+/// Deleted task-branch: both git ops fail → unwrap_or(false) → returns (false, "content_differs")
+#[tokio::test]
+async fn test_is_branch_merged_or_content_equivalent_deleted_branch_returns_content_differs() {
+    let temp_dir = tempfile::tempdir().unwrap();
+    let repo = temp_dir.path();
+
+    setup_squash_test_repo(repo);
+
+    // Create plan-branch (stays)
+    Command::new("git")
+        .args(["branch", "plan-branch"])
+        .current_dir(repo)
+        .output()
+        .unwrap();
+
+    // Call with a branch that doesn't exist — git ops return errors which collapse to false
+    let (safe, reason) =
+        GitService::is_branch_merged_or_content_equivalent(repo, "nonexistent-task-branch", "plan-branch")
+            .await;
+    // Expected: both ancestor check and content check fail → (false, "content_differs")
+    assert!(!safe, "deleted/nonexistent branch: should NOT be safe to delete");
+    assert_eq!(reason, "content_differs");
+}
+
 #[tokio::test]
 async fn test_branch_exists_uses_refs_heads_prefix() {
     // Verifies that branch_exists checks local branches (refs/heads/) specifically,

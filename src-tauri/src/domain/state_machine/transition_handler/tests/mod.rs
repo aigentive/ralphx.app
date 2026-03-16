@@ -152,6 +152,10 @@ mod merge_pipeline_round2_tests;
 // prior rebase conflict detection, force branch deletion
 mod merge_pipeline_round3_tests;
 
+// Merge pipeline round 4 tests: Step 3 prune_worktrees timeout via run_cleanup_step,
+// settle sleep watchdog (os_thread_timeout immune to tokio timer starvation)
+mod merge_pipeline_round4_tests;
+
 // Post-merge cascade stop + resolve_task_base_branch merged branch guard
 // Fix C: cascade stop sibling tasks after plan merge
 // Fix D: refuse to resurrect merged plan branches
