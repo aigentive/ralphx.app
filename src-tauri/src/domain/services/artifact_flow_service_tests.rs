@@ -94,6 +94,7 @@ fn create_test_artifact(artifact_type: ArtifactType, bucket_id: Option<&str>) ->
         metadata: ArtifactMetadata::new("user"),
         derived_from: vec![],
         bucket_id: bucket_id.map(ArtifactBucketId::from_string),
+        archived_at: None,
     }
 }
 

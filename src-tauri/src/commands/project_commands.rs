@@ -10,6 +10,7 @@ use tauri::{Emitter, State};
 use tokio::time::Duration;
 
 use crate::application::{AppState, TaskTransitionService};
+use crate::commands::execution_commands::ActiveProjectState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     GitMode, InternalStatus, MergeStrategy, MergeValidationMode, PlanBranchStatus, Project,
@@ -308,6 +309,43 @@ pub async fn update_project(
         .map_err(|e| e.to_string())?;
 
     Ok(ProjectResponse::from(project))
+}
+
+/// Archive a project (soft delete).
+///
+/// Sets `archived_at` on the project, hiding it from normal views.
+///
+/// # Errors
+/// Returns `Err` if the project is not found, the project is the currently active project,
+/// or the DB update fails.
+///
+/// # Events
+/// Emits `project:archived` with the project ID on success.
+#[tauri::command]
+pub async fn archive_project(
+    project_id: String,
+    state: State<'_, AppState>,
+    active_project_state: State<'_, Arc<ActiveProjectState>>,
+    app: tauri::AppHandle,
+) -> Result<ProjectResponse, String> {
+    let id = ProjectId::from_string(project_id);
+
+    // Guard: reject if this is the currently active project
+    if let Some(active_id) = active_project_state.get().await {
+        if active_id.as_str() == id.as_str() {
+            return Err("Cannot archive the currently active project".to_string());
+        }
+    }
+
+    let archived = state
+        .project_repo
+        .archive(&id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    app.emit("project:archived", archived.id.as_str()).ok();
+
+    Ok(ProjectResponse::from(archived))
 }
 
 /// Delete a project

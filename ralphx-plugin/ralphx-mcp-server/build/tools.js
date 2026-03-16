@@ -101,14 +101,14 @@ export const ALL_TOOLS = [
         },
     },
     {
-        name: "delete_task_proposal",
-        description: "Delete a task proposal. Use when the user wants to remove a proposal that's no longer needed.",
+        name: "archive_task_proposal",
+        description: "Archive a task proposal. Use when the user wants to remove a proposal that's no longer needed.",
         inputSchema: {
             type: "object",
             properties: {
                 proposal_id: {
                     type: "string",
-                    description: "The proposal ID to delete",
+                    description: "The proposal ID to archive",
                 },
             },
             required: ["proposal_id"],
@@ -1255,7 +1255,7 @@ export const TOOL_ALLOWLIST = {
     [ORCHESTRATOR_IDEATION]: [
         "create_task_proposal",
         "update_task_proposal",
-        "delete_task_proposal",
+        "archive_task_proposal",
         "list_session_proposals",
         "get_proposal",
         "analyze_session_dependencies",
@@ -1511,7 +1511,7 @@ export const TOOL_ALLOWLIST = {
         // Existing ideation tools
         "create_task_proposal",
         "update_task_proposal",
-        "delete_task_proposal",
+        "archive_task_proposal",
         "list_session_proposals",
         "get_proposal",
         "analyze_session_dependencies",

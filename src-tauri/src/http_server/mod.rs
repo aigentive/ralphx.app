@@ -120,7 +120,7 @@ pub async fn start_http_server(
         // Ideation tools (orchestrator-ideation agent)
         .route("/api/create_task_proposal", post(create_task_proposal))
         .route("/api/update_task_proposal", post(update_task_proposal))
-        .route("/api/delete_task_proposal", post(delete_task_proposal))
+        .route("/api/archive_task_proposal", post(archive_task_proposal))
         // Proposal query tools (orchestrator-ideation agent)
         .route(
             "/api/list_session_proposals/:session_id",

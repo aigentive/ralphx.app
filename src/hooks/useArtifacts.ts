@@ -202,15 +202,15 @@ export function useUpdateArtifact() {
 }
 
 /**
- * Hook to delete an artifact
+ * Hook to archive an artifact
  *
- * @returns TanStack Mutation for deleting artifacts
+ * @returns TanStack Mutation for archiving artifacts
  */
-export function useDeleteArtifact() {
+export function useArchiveArtifact() {
   const queryClient = useQueryClient();
 
   return useMutation<void, Error, string>({
-    mutationFn: api.artifacts.deleteArtifact,
+    mutationFn: api.artifacts.archiveArtifact,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: artifactKeys.all });
     },

@@ -188,7 +188,7 @@ VERIFICATION: After completing, run [lint command] on modified files only.
 |--------|--------------|-------------------|
 | Create proposals | `create_task_proposal` | Suggest `create_child_session` for new work |
 | Update proposals | `update_task_proposal` | Suggest `create_child_session` for modifications |
-| Delete proposals | `delete_task_proposal` | Explain session is archived; child session can supersede |
+| Archive proposals | `archive_task_proposal` | Explain session is archived; child session can supersede |
 | Create plan | `create_plan_artifact` | Plan is frozen; child session can have its own plan |
 | Update plan | `update_plan_artifact` | Plan is immutable; explain this to user |
 

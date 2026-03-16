@@ -397,7 +397,7 @@ async fn test_update_task_proposal() {
 }
 
 #[tokio::test]
-async fn test_delete_task_proposal() {
+async fn test_archive_task_proposal_soft_deletes() {
     let state = setup_test_state();
     let project_id = ProjectId::new();
 
@@ -411,7 +411,7 @@ async fn test_delete_task_proposal() {
 
     let proposal = TaskProposal::new(
         created_session.id.clone(),
-        "To Delete",
+        "To Archive",
         ProposalCategory::Feature,
         Priority::Medium,
     );
@@ -421,19 +421,20 @@ async fn test_delete_task_proposal() {
         .await
         .expect("Failed to create task proposal in test");
 
-    // Delete proposal
+    // Archive proposal
     state
         .task_proposal_repo
-        .delete(&created.id)
+        .archive(&created.id)
         .await
-        .expect("Failed to delete task proposal in test");
+        .expect("Failed to archive task proposal in test");
 
     let result = state
         .task_proposal_repo
         .get_by_id(&created.id)
         .await
-        .expect("Failed to get by id in test");
-    assert!(result.is_none());
+        .expect("Failed to get by id in test")
+        .expect("Expected entity to still exist after archive");
+    assert!(result.archived_at.is_some());
 }
 
 #[tokio::test]

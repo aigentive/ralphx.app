@@ -17,7 +17,7 @@ vi.mock("@/lib/tauri", () => ({
     steps: {
       create: vi.fn(),
       update: vi.fn(),
-      delete: vi.fn(),
+      skip: vi.fn(),
       reorder: vi.fn(),
     },
   },
@@ -184,25 +184,25 @@ describe("useStepMutations", () => {
     });
   });
 
-  describe("delete", () => {
-    it("should delete a step", async () => {
-      vi.mocked(api.steps.delete).mockResolvedValue(undefined);
+  describe("skip", () => {
+    it("should skip a step", async () => {
+      vi.mocked(api.steps.skip).mockResolvedValue(undefined);
 
       const { result } = renderHook(() => useStepMutations(mockTaskId), {
         wrapper,
       });
 
-      result.current.delete.mutate("step-1");
+      result.current.skip.mutate({ stepId: "step-1", reason: "Skipped by user" });
 
       await waitFor(() => {
-        expect(result.current.delete.isSuccess).toBe(true);
+        expect(result.current.skip.isSuccess).toBe(true);
       });
 
-      expect(api.steps.delete).toHaveBeenCalledWith("step-1");
+      expect(api.steps.skip).toHaveBeenCalledWith("step-1", "Skipped by user");
     });
 
     it("should invalidate queries on success", async () => {
-      vi.mocked(api.steps.delete).mockResolvedValue(undefined);
+      vi.mocked(api.steps.skip).mockResolvedValue(undefined);
 
       const invalidateQueriesSpy = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -210,10 +210,10 @@ describe("useStepMutations", () => {
         wrapper,
       });
 
-      result.current.delete.mutate("step-1");
+      result.current.skip.mutate({ stepId: "step-1", reason: "Skipped by user" });
 
       await waitFor(() => {
-        expect(result.current.delete.isSuccess).toBe(true);
+        expect(result.current.skip.isSuccess).toBe(true);
       });
 
       expect(invalidateQueriesSpy).toHaveBeenCalledWith({
@@ -280,7 +280,7 @@ describe("useStepMutations", () => {
 
       expect(result.current.isCreating).toBe(false);
       expect(result.current.isUpdating).toBe(false);
-      expect(result.current.isDeleting).toBe(false);
+      expect(result.current.isSkipping).toBe(false);
       expect(result.current.isReordering).toBe(false);
     });
 

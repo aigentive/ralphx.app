@@ -194,11 +194,11 @@ export const artifactsApi = {
   },
 
   /**
-   * Delete an artifact by ID
+   * Archive an artifact by ID
    * @param id The artifact ID
    */
-  deleteArtifact: async (id: string): Promise<void> => {
-    await invoke("delete_artifact", { id });
+  archiveArtifact: async (id: string): Promise<void> => {
+    await invoke("archive_artifact", { id });
   },
 
   /**

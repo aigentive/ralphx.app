@@ -835,6 +835,7 @@ async fn test_link_proposals_to_plan_batch_25() {
             sort_order: i as i32,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            archived_at: None,
         };
         let saved = state
             .app_state
@@ -1286,6 +1287,7 @@ async fn test_update_plan_artifact_batch_updates_linked_proposals() {
             sort_order: i as i32,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            archived_at: None,
         };
         let saved = state
             .app_state
@@ -1728,6 +1730,7 @@ async fn test_edit_plan_artifact_rejects_file_backed_artifact() {
         metadata: ArtifactMetadata::new("orchestrator").with_version(1),
         derived_from: vec![],
         bucket_id: None,
+        archived_at: None,
     };
     let artifact_id = artifact.id.as_str().to_string();
     state.app_state.artifact_repo.create(artifact).await.unwrap();
@@ -2109,6 +2112,7 @@ async fn test_edit_plan_artifact_batch_updates_linked_proposals() {
             sort_order: i as i32,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
+            archived_at: None,
         };
         let saved = state.app_state.task_proposal_repo.create(proposal).await.unwrap();
         proposal_ids.push(saved.id.as_str().to_string());

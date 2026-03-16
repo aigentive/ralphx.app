@@ -138,7 +138,7 @@ pub struct UnblockTaskResponse {
 /// Response for task cleanup operations
 #[derive(Debug, Serialize)]
 pub struct CleanupReportResponse {
-    pub deleted_count: usize,
+    pub archived_count: usize,
     pub failed_count: usize,
     pub stopped_agents: usize,
 }
@@ -147,6 +147,24 @@ pub struct CleanupReportResponse {
 #[derive(Debug, Serialize)]
 pub struct BulkCancelResponse {
     pub cancelled_count: usize,
+}
+
+/// Response for bulk pause operations
+#[derive(Debug, Serialize)]
+pub struct BulkPauseResponse {
+    pub paused_count: usize,
+}
+
+/// Response for bulk resume operations
+#[derive(Debug, Serialize)]
+pub struct BulkResumeResponse {
+    pub resumed_count: usize,
+}
+
+/// Response for bulk archive operations
+#[derive(Debug, Serialize)]
+pub struct BulkArchiveResponse {
+    pub archived_count: usize,
 }
 
 /// Response for paginated task list

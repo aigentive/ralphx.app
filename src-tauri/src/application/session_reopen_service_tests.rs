@@ -69,13 +69,9 @@ async fn test_reopen_accepted_session() {
         .unwrap();
     assert_eq!(reopened.status, IdeationSessionStatus::Active);
 
-    // Verify task is deleted
-    assert!(state
-        .task_repo
-        .get_by_id(&created_task.id)
-        .await
-        .unwrap()
-        .is_none());
+    // Verify task is archived (cleanup now archives instead of deleting)
+    let task = state.task_repo.get_by_id(&created_task.id).await.unwrap().unwrap();
+    assert!(task.archived_at.is_some(), "Task should be archived after session reopen cleanup");
 
     // Verify proposal created_task_id is cleared
     let updated_proposal = state

@@ -182,6 +182,7 @@ fn finalize_plan_update(
             .with_version(old_artifact.metadata.version + 1),
         derived_from: vec![],
         bucket_id: old_artifact.bucket_id.clone(),
+        archived_at: None,
     };
     let created =
         ArtifactRepo::create_with_previous_version_sync(conn, new_artifact, &old_id)?;
@@ -250,6 +251,7 @@ pub async fn create_plan_artifact(
                 metadata: ArtifactMetadata::new("orchestrator").with_version(1),
                 derived_from: vec![],
                 bucket_id: Some(bucket_id),
+                archived_at: None,
             };
 
             // Chain only to the session's OWN plan (plan_artifact_id), never to an inherited one.

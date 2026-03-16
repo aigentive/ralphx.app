@@ -216,31 +216,42 @@ describe("ideationStore", () => {
     });
   });
 
-  describe("removeSession", () => {
-    it("removes a session from the store", () => {
+  describe("archiveSession", () => {
+    it("archives a session in the store (sets status to archived)", () => {
       const session = createTestSession({ id: "session-1" });
       useIdeationStore.setState({ sessions: { "session-1": session } });
 
-      useIdeationStore.getState().removeSession("session-1");
+      useIdeationStore.getState().archiveSession("session-1");
 
       const state = useIdeationStore.getState();
-      expect(state.sessions["session-1"]).toBeUndefined();
+      expect(state.sessions["session-1"]?.status).toBe("archived");
+      expect(state.sessions["session-1"]?.archivedAt).toBeTruthy();
     });
 
-    it("clears activeSessionId if active session is removed", () => {
+    it("keeps the session in the store after archiving", () => {
+      const session = createTestSession({ id: "session-1" });
+      useIdeationStore.setState({ sessions: { "session-1": session } });
+
+      useIdeationStore.getState().archiveSession("session-1");
+
+      const state = useIdeationStore.getState();
+      expect(state.sessions["session-1"]).toBeDefined();
+    });
+
+    it("clears activeSessionId if active session is archived", () => {
       const session = createTestSession({ id: "session-1" });
       useIdeationStore.setState({
         sessions: { "session-1": session },
         activeSessionId: "session-1",
       });
 
-      useIdeationStore.getState().removeSession("session-1");
+      useIdeationStore.getState().archiveSession("session-1");
 
       const state = useIdeationStore.getState();
       expect(state.activeSessionId).toBeNull();
     });
 
-    it("does not affect activeSessionId if different session is removed", () => {
+    it("does not affect activeSessionId if different session is archived", () => {
       const session1 = createTestSession({ id: "session-1" });
       const session2 = createTestSession({ id: "session-2" });
       useIdeationStore.setState({
@@ -248,7 +259,7 @@ describe("ideationStore", () => {
         activeSessionId: "session-1",
       });
 
-      useIdeationStore.getState().removeSession("session-2");
+      useIdeationStore.getState().archiveSession("session-2");
 
       const state = useIdeationStore.getState();
       expect(state.activeSessionId).toBe("session-1");
@@ -258,10 +269,11 @@ describe("ideationStore", () => {
       const session = createTestSession({ id: "session-1" });
       useIdeationStore.setState({ sessions: { "session-1": session } });
 
-      useIdeationStore.getState().removeSession("nonexistent");
+      useIdeationStore.getState().archiveSession("nonexistent");
 
       const state = useIdeationStore.getState();
       expect(Object.keys(state.sessions)).toHaveLength(1);
+      expect(state.sessions["session-1"]?.status).toBe("active");
     });
   });
 

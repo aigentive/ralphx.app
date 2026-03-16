@@ -45,8 +45,6 @@ interface ArtifactActions {
   addArtifact: (artifact: Artifact) => void;
   /** Update a specific artifact with partial changes */
   updateArtifact: (artifactId: string, changes: Partial<Artifact>) => void;
-  /** Remove an artifact from the store */
-  deleteArtifact: (artifactId: string) => void;
   /** Add a single bucket to the store */
   addBucket: (bucket: ArtifactBucket) => void;
   /** Set loading state */
@@ -104,15 +102,6 @@ export const useArtifactStore = create<ArtifactState & ArtifactActions>()(
         const artifact = state.artifacts[artifactId];
         if (artifact) {
           Object.assign(artifact, changes);
-        }
-      }),
-
-    deleteArtifact: (artifactId) =>
-      set((state) => {
-        delete state.artifacts[artifactId];
-        // Clear selection if deleted artifact was selected
-        if (state.selectedArtifactId === artifactId) {
-          state.selectedArtifactId = null;
         }
       }),
 

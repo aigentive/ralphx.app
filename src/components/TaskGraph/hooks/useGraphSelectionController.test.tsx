@@ -26,7 +26,6 @@ interface TestHarnessProps {
   layoutNodes?: Node[];
   groupNodes?: Node[];
   planGroups?: PlanGroupInfo[];
-  onDeleteTask?: (taskId: string) => void;
   keyboardNavigationEnabled?: boolean;
   fitNode?: (node: Node, options?: { duration?: number; padding?: number; maxZoom?: number }) => void;
 }
@@ -60,7 +59,6 @@ function TestHarness({
       statusSummary: EMPTY_STATUS_SUMMARY,
     },
   ],
-  onDeleteTask,
   keyboardNavigationEnabled = true,
   fitNode = noop,
 }: TestHarnessProps) {
@@ -86,7 +84,6 @@ function TestHarness({
     graphReady: true,
     graphError: null,
     isLoading: false,
-    onDeleteTask,
     keyboardNavigationEnabled,
   });
 
@@ -195,9 +192,8 @@ describe("useGraphSelectionController", () => {
       });
     });
 
-    it("calls onDeleteTask for an uncategorized task", () => {
+    it("does nothing for an uncategorized task (no navigation possible)", () => {
       useUiStore.getState().clearGraphSelection();
-      const onDeleteTask = vi.fn();
       const taskNode: Node = {
         id: "task-uncategorized",
         type: "task",
@@ -211,7 +207,6 @@ describe("useGraphSelectionController", () => {
             layoutNodes={[taskNode]}
             planGroups={[]}
             groupNodes={[]}
-            onDeleteTask={onDeleteTask}
           />
         </ReactFlowProvider>
       );
@@ -223,44 +218,11 @@ describe("useGraphSelectionController", () => {
 
       fireEvent.keyDown(container.firstChild as HTMLElement, { key: "Backspace" });
 
-      expect(onDeleteTask).toHaveBeenCalledWith("task-uncategorized");
-    });
-
-    it("does not call onDeleteTask for a categorized task", () => {
-      useUiStore.getState().clearGraphSelection();
-      const onDeleteTask = vi.fn();
-      const taskNode: Node = {
-        id: "task-1",
-        type: "task",
-        position: { x: 100, y: 100 },
-        data: {},
-      };
-
-      const { container } = render(
-        <ReactFlowProvider>
-          <TestHarness
-            layoutNodes={[taskNode]}
-            planGroups={[
-              {
-                planArtifactId: "plan-1",
-                sessionId: "session-1",
-                sessionTitle: "Plan",
-                taskIds: ["task-1"],
-                statusSummary: EMPTY_STATUS_SUMMARY,
-              },
-            ]}
-            onDeleteTask={onDeleteTask}
-          />
-        </ReactFlowProvider>
-      );
-
-      act(() => {
-        useUiStore.getState().setGraphSelection({ kind: "task", id: "task-1" });
+      // Selection should remain unchanged (no destructive action)
+      expect(useUiStore.getState().graphSelection).toEqual({
+        kind: "task",
+        id: "task-uncategorized",
       });
-
-      fireEvent.keyDown(container.firstChild as HTMLElement, { key: "Backspace" });
-
-      expect(onDeleteTask).not.toHaveBeenCalled();
     });
   });
 });

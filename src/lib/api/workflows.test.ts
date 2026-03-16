@@ -5,7 +5,6 @@ import {
   getWorkflow,
   createWorkflow,
   updateWorkflow,
-  deleteWorkflow,
   setDefaultWorkflow,
   getActiveWorkflowColumns,
   getBuiltinWorkflows,
@@ -393,34 +392,6 @@ describe("updateWorkflow", () => {
 
     await expect(updateWorkflow("wf-123", invalidInput)).rejects.toThrow();
     expect(mockInvoke).not.toHaveBeenCalled();
-  });
-});
-
-describe("deleteWorkflow", () => {
-  beforeEach(() => {
-    mockInvoke.mockReset();
-  });
-
-  it("should call delete_workflow command with id", async () => {
-    mockInvoke.mockResolvedValue(undefined);
-
-    await deleteWorkflow("wf-123");
-
-    expect(mockInvoke).toHaveBeenCalledWith("delete_workflow", { id: "wf-123" });
-  });
-
-  it("should complete without throwing on success", async () => {
-    mockInvoke.mockResolvedValue(undefined);
-
-    await expect(deleteWorkflow("wf-123")).resolves.toBeUndefined();
-  });
-
-  it("should propagate backend errors", async () => {
-    mockInvoke.mockRejectedValue(new Error("Cannot delete default workflow"));
-
-    await expect(deleteWorkflow("default")).rejects.toThrow(
-      "Cannot delete default workflow"
-    );
   });
 });
 

@@ -99,20 +99,6 @@ async fn test_update_task_modifies_fields() {
 }
 
 #[tokio::test]
-async fn test_delete_task_removes_it() {
-    let state = setup_test_state().await;
-
-    let project_id = ProjectId::from_string("test-project".to_string());
-    let task = Task::new(project_id, "To Delete".to_string());
-    let created = state.task_repo.create(task).await.unwrap();
-
-    state.task_repo.delete(&created.id).await.unwrap();
-
-    let found = state.task_repo.get_by_id(&created.id).await.unwrap();
-    assert!(found.is_none());
-}
-
-#[tokio::test]
 async fn test_list_tasks_returns_all_for_project() {
     let state = setup_test_state().await;
 

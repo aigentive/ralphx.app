@@ -128,12 +128,12 @@ export const projectsApi = {
     ),
 
   /**
-   * Delete a project
+   * Archive a project
    * @param projectId The project ID
-   * @returns true if deleted
+   * @returns true if archived
    */
-  delete: (projectId: string) =>
-    typedInvoke("delete_project", { projectId }, z.boolean()),
+  archive: (projectId: string) =>
+    typedInvoke("archive_project", { projectId }, z.boolean()),
 
   /**
    * Update custom analysis override for a project
@@ -229,14 +229,6 @@ export const workflowsApi = {
       WorkflowResponseSchema,
       transformWorkflow
     );
-  },
-
-  /**
-   * Delete a workflow by ID
-   * @param id The workflow ID
-   */
-  delete: async (id: string): Promise<void> => {
-    await invoke("delete_workflow", { id });
   },
 
   /**

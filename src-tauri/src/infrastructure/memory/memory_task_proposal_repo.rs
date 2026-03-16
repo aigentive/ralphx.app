@@ -5,6 +5,7 @@ use std::collections::HashMap;
 use std::sync::RwLock;
 
 use async_trait::async_trait;
+use chrono::Utc;
 
 use crate::domain::entities::{
     ArtifactId, IdeationSessionId, PriorityAssessment, TaskId, TaskProposal, TaskProposalId,
@@ -175,6 +176,20 @@ impl TaskProposalRepository for MemoryTaskProposalRepository {
             }
         }
         Ok(())
+    }
+
+    async fn archive(&self, id: &TaskProposalId) -> AppResult<crate::domain::entities::TaskProposal> {
+        let mut proposals = self.proposals.write().unwrap();
+        if let Some(p) = proposals.get_mut(&id.to_string()) {
+            p.archived_at = Some(Utc::now());
+            p.updated_at = Utc::now();
+            Ok(p.clone())
+        } else {
+            Err(crate::error::AppError::NotFound(format!(
+                "TaskProposal with id {} not found",
+                id
+            )))
+        }
     }
 }
 

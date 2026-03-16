@@ -51,9 +51,7 @@ import {
   useIdeationSession,
   useIdeationSessions,
   useArchiveIdeationSession,
-  useDeleteIdeationSession,
 } from "@/hooks/useIdeation";
-import { useConfirmation } from "@/hooks/useConfirmation";
 import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
@@ -175,7 +173,7 @@ function AppContent() {
   const activeSession = useIdeationStore(selectActiveSession);
   const setActiveSession = useIdeationStore((s) => s.setActiveSession);
   const selectSession = useIdeationStore((s) => s.selectSession);
-  const removeSession = useIdeationStore((s) => s.removeSession);
+  const archiveSessionInStore = useIdeationStore((s) => s.archiveSession);
   const activeSessionId = activeSession?.id ?? "";
   // Get raw proposals from store and memoize the filtered/sorted version
   const allProposals = useProposalStore((s) => s.proposals);
@@ -247,8 +245,6 @@ function AppContent() {
   const { data: sessionData, isLoading: isSessionLoading } = useIdeationSession(activeSession?.id ?? "");
   const { data: allSessions = [] } = useIdeationSessions(currentProjectId);
   const archiveSession = useArchiveIdeationSession();
-  const deleteSession = useDeleteIdeationSession();
-  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
   const { deleteProposal, reorder, updateProposal } = useProposalMutations();
   const { apply: applyProposalsMutation } = useApplyProposals();
 
@@ -536,39 +532,13 @@ function AppContent() {
     try {
       await archiveSession.mutateAsync(sessionId);
       // Clean up stores to free memory
-      removeSession(sessionId);
+      archiveSessionInStore(sessionId);
       clearMessages(`session:${sessionId}`);
       setActiveSession(null);
     } catch {
       toast.error("Failed to archive session");
     }
-  }, [archiveSession, setActiveSession, removeSession, clearMessages]);
-
-  const handleDeleteSession = useCallback(async (sessionId: string) => {
-    const sessionToDelete = allSessions.find(s => s.id === sessionId);
-
-    const confirmed = await confirm({
-      title: "Delete session?",
-      description: `This will permanently delete "${sessionToDelete?.title || 'this session'}" and all its messages. This action cannot be undone.`,
-      confirmText: "Delete",
-      variant: "destructive",
-    });
-
-    if (!confirmed) return;
-
-    try {
-      await deleteSession.mutateAsync(sessionId);
-      // Clean up stores to free memory
-      removeSession(sessionId);
-      clearMessages(`session:${sessionId}`);
-      if (activeSession?.id === sessionId) {
-        setActiveSession(null);
-      }
-      toast.success("Session deleted");
-    } catch {
-      toast.error("Failed to delete session");
-    }
-  }, [deleteSession, confirm, allSessions, activeSession, setActiveSession, removeSession, clearMessages]);
+  }, [archiveSession, setActiveSession, archiveSessionInStore, clearMessages]);
 
   const handleSelectSession = useCallback((sessionId: string) => {
     // Find the session in allSessions and select it atomically
@@ -1057,7 +1027,6 @@ function AppContent() {
                   onNewSession={handleNewSession}
                   onSelectSession={handleSelectSession}
                   onArchiveSession={handleArchiveSession}
-                  onDeleteSession={handleDeleteSession}
                   onEditProposal={handleEditProposal}
                   onViewProposal={handleViewProposal}
                   selectedProposalId={viewingProposalId}
@@ -1177,9 +1146,6 @@ function AppContent() {
         onEdit={handleEditProposal}
         onNavigateToTask={handleNavigateToTaskFromSheet}
       />
-
-      {/* Confirmation Dialog */}
-      <ConfirmationDialog {...confirmationDialogProps} />
 
       {/* Plan Quick Switcher */}
       {!hasNoProjects && (

@@ -17,7 +17,7 @@ import {
   useBuckets,
   useCreateArtifact,
   useUpdateArtifact,
-  useDeleteArtifact,
+  useArchiveArtifact,
   useCreateBucket,
   useAddArtifactRelation,
   useArtifactRelations,
@@ -41,7 +41,7 @@ vi.mock("@/lib/tauri", () => ({
       getBuckets: vi.fn(),
       createArtifact: vi.fn(),
       updateArtifact: vi.fn(),
-      deleteArtifact: vi.fn(),
+      archiveArtifact: vi.fn(),
       createBucket: vi.fn(),
       addArtifactRelation: vi.fn(),
       getArtifactRelations: vi.fn(),
@@ -506,7 +506,7 @@ describe("useUpdateArtifact", () => {
   });
 });
 
-describe("useDeleteArtifact", () => {
+describe("useArchiveArtifact", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -515,10 +515,10 @@ describe("useDeleteArtifact", () => {
     vi.resetAllMocks();
   });
 
-  it("should delete an artifact successfully", async () => {
-    vi.mocked(api.artifacts.deleteArtifact).mockResolvedValueOnce(undefined);
+  it("should archive an artifact successfully", async () => {
+    vi.mocked(api.artifacts.archiveArtifact).mockResolvedValueOnce(undefined);
 
-    const { result } = renderHook(() => useDeleteArtifact(), {
+    const { result } = renderHook(() => useArchiveArtifact(), {
       wrapper: createWrapper(),
     });
 
@@ -526,15 +526,15 @@ describe("useDeleteArtifact", () => {
       await result.current.mutateAsync("artifact-1");
     });
 
-    expect(api.artifacts.deleteArtifact).toHaveBeenCalled();
-    expect(vi.mocked(api.artifacts.deleteArtifact).mock.calls[0][0]).toBe("artifact-1");
+    expect(api.artifacts.archiveArtifact).toHaveBeenCalled();
+    expect(vi.mocked(api.artifacts.archiveArtifact).mock.calls[0][0]).toBe("artifact-1");
   });
 
-  it("should handle delete error", async () => {
-    const error = new Error("Failed to delete artifact");
-    vi.mocked(api.artifacts.deleteArtifact).mockRejectedValueOnce(error);
+  it("should handle archive error", async () => {
+    const error = new Error("Failed to archive artifact");
+    vi.mocked(api.artifacts.archiveArtifact).mockRejectedValueOnce(error);
 
-    const { result } = renderHook(() => useDeleteArtifact(), {
+    const { result } = renderHook(() => useArchiveArtifact(), {
       wrapper: createWrapper(),
     });
 
@@ -542,7 +542,7 @@ describe("useDeleteArtifact", () => {
       act(async () => {
         await result.current.mutateAsync("artifact-1");
       })
-    ).rejects.toThrow("Failed to delete artifact");
+    ).rejects.toThrow("Failed to archive artifact");
   });
 });
 

@@ -179,15 +179,32 @@ pub async fn archive_ideation_session(
 ) -> Result<(), String> {
     let session_id = IdeationSessionId::from_string(id.clone());
 
-    // Stop any running ideation agent before archiving
-    let cleanup = TaskCleanupService::new(
+    // Get session to retrieve project_id
+    let session = state
+        .ideation_session_repo
+        .get_by_id(&session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Session not found: {}", id))?;
+
+    // 1. Get all tasks for this session
+    let tasks = state
+        .task_repo
+        .get_by_ideation_session(&session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 2. Stop ideation agent and clean up tasks (archive them, stop agents, clean git)
+    let cleanup_service = TaskCleanupService::new(
         Arc::clone(&state.task_repo),
         Arc::clone(&state.project_repo),
         Arc::clone(&state.running_agent_registry),
-        Some(app),
+        Some(app.clone()),
     )
     .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
-    let found = cleanup.stop_ideation_session_agent(&id).await;
+
+    // Stop the ideation session agent first
+    let found = cleanup_service.stop_ideation_session_agent(&id).await;
     if !found {
         tracing::debug!(
             session_id = id.as_str(),
@@ -195,6 +212,56 @@ pub async fn archive_ideation_session(
         );
     }
 
+    // Archive all session tasks (stop agents, clean git branches/worktrees, archive in DB)
+    let report = cleanup_service
+        .cleanup_tasks(&tasks, StopMode::DirectStop, true)
+        .await;
+    if !report.errors.is_empty() {
+        tracing::warn!(
+            session_id = id.as_str(),
+            errors = ?report.errors,
+            "Some tasks failed during session archive cleanup"
+        );
+    }
+
+    // 3. Clean up plan branch (best-effort)
+    if let Ok(Some(plan_branch)) = state.plan_branch_repo.get_by_session_id(&session_id).await {
+        // Best-effort delete the git feature branch
+        let project = state
+            .project_repo
+            .get_by_id(&session.project_id)
+            .await
+            .ok()
+            .flatten();
+
+        if let Some(project) = project {
+            let repo_path = PathBuf::from(&project.working_directory);
+            if let Err(e) =
+                GitService::delete_feature_branch(&repo_path, &plan_branch.branch_name).await
+            {
+                tracing::warn!(
+                    branch = plan_branch.branch_name.as_str(),
+                    error = %e,
+                    "Failed to delete git feature branch during session archive (best-effort)"
+                );
+            }
+        }
+
+        // Mark plan branch as Abandoned
+        if let Err(e) = state
+            .plan_branch_repo
+            .update_status(&plan_branch.id, PlanBranchStatus::Abandoned)
+            .await
+        {
+            tracing::warn!(
+                plan_branch_id = plan_branch.id.as_str(),
+                error = %e,
+                "Failed to mark plan branch as Abandoned during session archive"
+            );
+        }
+    }
+
+    // 4. Archive the session
     state
         .ideation_session_repo
         .update_status(&session_id, IdeationSessionStatus::Archived)

@@ -197,14 +197,6 @@ export async function updateArtifact(
 }
 
 /**
- * Delete an artifact by ID
- * @param id The artifact ID
- */
-export async function deleteArtifact(id: string): Promise<void> {
-  await invoke("delete_artifact", { id });
-}
-
-/**
  * Get all artifacts in a specific bucket
  * @param bucketId The bucket ID
  * @returns Array of artifact responses

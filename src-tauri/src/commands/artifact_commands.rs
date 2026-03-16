@@ -2,7 +2,7 @@
 // Thin layer that delegates to ArtifactRepository and ArtifactBucketRepository
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{
@@ -317,6 +317,35 @@ pub async fn update_artifact(
         .map_err(|e| e.to_string())?;
 
     Ok(ArtifactResponse::from(artifact))
+}
+
+/// Archive an artifact
+///
+/// Sets the archived_at timestamp, hiding the artifact from normal views.
+///
+/// # Arguments
+/// * `artifact_id` - The artifact ID to archive
+/// * `app` - Tauri app handle for event emission
+///
+/// # Returns
+/// * `ArtifactResponse` - The archived artifact
+///
+/// # Events
+/// * Emits 'artifact:archived' with the artifact ID
+#[tauri::command]
+pub async fn archive_artifact(
+    artifact_id: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<ArtifactResponse, String> {
+    let id = ArtifactId::from_string(artifact_id);
+    let archived = state
+        .artifact_repo
+        .archive(&id)
+        .await
+        .map_err(|e| e.to_string())?;
+    app.emit("artifact:archived", archived.id.as_str()).ok();
+    Ok(ArtifactResponse::from(archived))
 }
 
 /// Delete an artifact

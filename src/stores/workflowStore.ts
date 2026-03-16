@@ -37,8 +37,6 @@ interface WorkflowActions {
   addWorkflow: (workflow: WorkflowSchema) => void;
   /** Update a specific workflow with partial changes */
   updateWorkflow: (workflowId: string, changes: Partial<WorkflowSchema>) => void;
-  /** Remove a workflow from the store */
-  deleteWorkflow: (workflowId: string) => void;
   /** Set loading state */
   setLoading: (isLoading: boolean) => void;
   /** Set error message */
@@ -87,15 +85,6 @@ export const useWorkflowStore = create<WorkflowState & WorkflowActions>()(
         const workflow = state.workflows[workflowId];
         if (workflow) {
           Object.assign(workflow, changes);
-        }
-      }),
-
-    deleteWorkflow: (workflowId) =>
-      set((state) => {
-        delete state.workflows[workflowId];
-        // Clear active workflow if it was deleted
-        if (state.activeWorkflowId === workflowId) {
-          state.activeWorkflowId = null;
         }
       }),
 

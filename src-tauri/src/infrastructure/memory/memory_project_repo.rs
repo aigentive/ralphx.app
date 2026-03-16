@@ -6,6 +6,7 @@ use std::sync::Arc;
 use tokio::sync::RwLock;
 
 use async_trait::async_trait;
+use chrono::Utc;
 
 use crate::domain::entities::{Project, ProjectId};
 use crate::domain::repositories::ProjectRepository;
@@ -77,6 +78,20 @@ impl ProjectRepository for MemoryProjectRepository {
             .values()
             .find(|p| p.working_directory == path)
             .cloned())
+    }
+
+    async fn archive(&self, id: &ProjectId) -> AppResult<Project> {
+        let mut projects = self.projects.write().await;
+        if let Some(project) = projects.get_mut(id) {
+            project.archived_at = Some(Utc::now());
+            project.updated_at = Utc::now();
+            Ok(project.clone())
+        } else {
+            Err(crate::error::AppError::NotFound(format!(
+                "Project with id {} not found",
+                id
+            )))
+        }
     }
 }
 

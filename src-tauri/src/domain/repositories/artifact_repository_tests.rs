@@ -121,6 +121,10 @@ impl ArtifactRepository for MockArtifactRepository {
     async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId> {
         Ok(id.clone())
     }
+
+    async fn archive(&self, _id: &ArtifactId) -> AppResult<Artifact> {
+        unimplemented!()
+    }
 }
 
 fn create_test_artifact() -> Artifact {

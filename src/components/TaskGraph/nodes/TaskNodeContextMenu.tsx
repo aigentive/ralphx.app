@@ -62,7 +62,10 @@ export function TaskNodeContextMenu({
                 taskCount={groupInfo.taskCount}
                 projectId={groupInfo.projectId}
                 groupId={groupInfo.groupId}
-                onRemoveAll={groupInfo.onRemoveAll}
+                {...(groupInfo.onCancelAll !== undefined && { onCancelAll: groupInfo.onCancelAll })}
+                {...(groupInfo.onPauseAll !== undefined && { onPauseAll: groupInfo.onPauseAll })}
+                {...(groupInfo.onResumeAll !== undefined && { onResumeAll: groupInfo.onResumeAll })}
+                {...(groupInfo.onArchiveAll !== undefined && { onArchiveAll: groupInfo.onArchiveAll })}
                 confirm={menuState.confirm}
               />
             </>

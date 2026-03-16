@@ -47,8 +47,6 @@ export interface ProposalListProps {
   proposals: TaskProposal[];
   /** Callback when edit is clicked */
   onEdit: (proposalId: string) => void;
-  /** Callback when remove is clicked */
-  onRemove: (proposalId: string) => void;
   /** Callback when proposals are reordered */
   onReorder: (proposalIds: string[]) => void;
   /** Callback for sort by priority */
@@ -98,7 +96,6 @@ function ClearIcon() {
 interface SortableProposalCardProps {
   proposal: TaskProposal;
   onEdit: (proposalId: string) => void;
-  onRemove: (proposalId: string) => void;
   dependsOnCount?: number;
   blocksCount?: number;
 }
@@ -106,7 +103,6 @@ interface SortableProposalCardProps {
 const SortableProposalCard = React.memo(function SortableProposalCard({
   proposal,
   onEdit,
-  onRemove,
   dependsOnCount,
   blocksCount,
 }: SortableProposalCardProps) {
@@ -142,7 +138,6 @@ const SortableProposalCard = React.memo(function SortableProposalCard({
       <ProposalCard
         proposal={proposal}
         onEdit={onEdit}
-        onRemove={onRemove}
         {...optionalProps}
       />
     </div>
@@ -257,7 +252,6 @@ function Toolbar({
 export function ProposalList({
   proposals,
   onEdit,
-  onRemove,
   onReorder,
   onSortByPriority,
   onClearAll,
@@ -343,7 +337,6 @@ export function ProposalList({
                   key={proposal.id}
                   proposal={proposal}
                   onEdit={onEdit}
-                  onRemove={onRemove}
                   {...depProps}
                 />
               );

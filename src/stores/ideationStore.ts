@@ -65,8 +65,8 @@ interface IdeationActions {
   setSessions: (sessions: IdeationSession[]) => void;
   /** Update a specific session with partial changes */
   updateSession: (sessionId: string, changes: Partial<IdeationSession>) => void;
-  /** Remove a session from the store */
-  removeSession: (sessionId: string) => void;
+  /** Archive a session in the store (soft-update: sets status to archived) */
+  archiveSession: (sessionId: string) => void;
   /** Set the plan artifact for the active session */
   setPlanArtifact: (artifact: Artifact | null) => void;
   /** Fetch the plan artifact for a given artifact ID */
@@ -178,10 +178,14 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
         }
       }),
 
-    removeSession: (sessionId) =>
+    archiveSession: (sessionId) =>
       set((state) => {
-        delete state.sessions[sessionId];
-        // Clear active session if removing active session
+        const session = state.sessions[sessionId];
+        if (session) {
+          session.status = "archived";
+          session.archivedAt = new Date().toISOString();
+        }
+        // Clear active session if archiving active session
         if (state.activeSessionId === sessionId) {
           state.activeSessionId = null;
         }

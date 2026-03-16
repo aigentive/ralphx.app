@@ -171,38 +171,6 @@ export function useArchiveIdeationSession() {
 }
 
 /**
- * Hook to delete an ideation session
- *
- * @returns Mutation object for deleting sessions
- *
- * @example
- * ```tsx
- * const deleteSession = useDeleteIdeationSession();
- *
- * const handleDelete = async (sessionId: string) => {
- *   await deleteSession.mutateAsync(sessionId);
- *   navigate("/ideation");
- * };
- * ```
- */
-export function useDeleteIdeationSession() {
-  const queryClient = useQueryClient();
-
-  return useMutation<void, Error, string>({
-    mutationFn: (sessionId) => ideationApi.sessions.delete(sessionId),
-    onSuccess: (_data, sessionId) => {
-      // Remove from cache and invalidate session lists
-      queryClient.removeQueries({
-        queryKey: ideationKeys.sessionDetail(sessionId),
-      });
-      queryClient.invalidateQueries({
-        queryKey: ideationKeys.sessions(),
-      });
-    },
-  });
-}
-
-/**
  * Hook to reopen an accepted/archived ideation session back to Active
  *
  * Deletes all associated tasks, cleans up git resources, and resets session status.

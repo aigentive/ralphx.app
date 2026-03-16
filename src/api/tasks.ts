@@ -25,14 +25,20 @@ import {
   type TaskStep,
   type StepProgressSummary,
 } from "@/types/task-step";
-import { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw, UnblockTaskResponseSchemaRaw } from "./tasks.schemas";
+import { BulkCancelResponseSchemaRaw, BulkPauseResponseSchemaRaw, BulkResumeResponseSchemaRaw, BulkArchiveResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw, UnblockTaskResponseSchemaRaw } from "./tasks.schemas";
 import {
   transformBulkCancelResponse,
+  transformBulkPauseResponse,
+  transformBulkResumeResponse,
+  transformBulkArchiveResponse,
   transformCleanupReport,
   transformInjectTaskResponse,
   transformStateTransition,
   transformUnblockTaskResponse,
   type BulkCancelResponse,
+  type BulkPauseResponse,
+  type BulkResumeResponse,
+  type BulkArchiveResponse,
   type CleanupReport,
   type InjectTaskResponse,
   type StateTransition,
@@ -40,13 +46,13 @@ import {
 } from "./tasks.transforms";
 
 // Re-export types for convenience
-export type { BulkCancelResponse, CleanupReport, InjectTaskResponse, StateTransition, UnblockTaskResponse } from "./tasks.transforms";
+export type { BulkCancelResponse, BulkPauseResponse, BulkResumeResponse, BulkArchiveResponse, CleanupReport, InjectTaskResponse, StateTransition, UnblockTaskResponse } from "./tasks.transforms";
 
 // Re-export schemas for consumers that need validation
-export { BulkCancelResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw, UnblockTaskResponseSchemaRaw } from "./tasks.schemas";
+export { BulkCancelResponseSchemaRaw, BulkPauseResponseSchemaRaw, BulkResumeResponseSchemaRaw, BulkArchiveResponseSchemaRaw, CleanupReportResponseSchemaRaw, InjectTaskResponseSchemaRaw, StateTransitionResponseSchemaRaw, UnblockTaskResponseSchemaRaw } from "./tasks.schemas";
 
 // Re-export transforms for consumers that need manual transformation
-export { transformBulkCancelResponse, transformCleanupReport, transformInjectTaskResponse, transformStateTransition, transformUnblockTaskResponse } from "./tasks.transforms";
+export { transformBulkCancelResponse, transformBulkPauseResponse, transformBulkResumeResponse, transformBulkArchiveResponse, transformCleanupReport, transformInjectTaskResponse, transformStateTransition, transformUnblockTaskResponse } from "./tasks.transforms";
 
 // ============================================================================
 // Input Types
@@ -250,15 +256,6 @@ export const tasksApi = {
     ),
 
   /**
-   * Permanently delete a task (only works on archived tasks)
-   * @deprecated Use `cleanupTask` instead — it handles force-stop, branch cleanup, and event emission.
-   * @param taskId The task ID
-   * @returns void on success
-   */
-  permanentlyDelete: (taskId: string) =>
-    typedInvoke("permanently_delete_task", { taskId }, z.void()),
-
-  /**
    * Get count of archived tasks for a project
    * @param projectId The project ID
    * @param ideationSessionId Optional ideation session ID to filter tasks by plan
@@ -405,6 +402,63 @@ export const tasksApi = {
       BulkCancelResponseSchemaRaw,
       transformBulkCancelResponse
     ),
+
+  /**
+   * Pause all tasks in a group
+   * @param groupKind "status" | "session" | "uncategorized"
+   * @param groupId The status name or session ID
+   * @param projectId The project ID
+   * @returns Bulk pause report with count of paused tasks
+   */
+  pauseTasksInGroup: (
+    groupKind: string,
+    groupId: string,
+    projectId: string
+  ): Promise<BulkPauseResponse> =>
+    typedInvokeWithTransform(
+      "pause_tasks_in_group",
+      { groupKind, groupId, projectId },
+      BulkPauseResponseSchemaRaw,
+      transformBulkPauseResponse
+    ),
+
+  /**
+   * Resume all paused tasks in a group
+   * @param groupKind "status" | "session" | "uncategorized"
+   * @param groupId The status name or session ID
+   * @param projectId The project ID
+   * @returns Bulk resume report with count of resumed tasks
+   */
+  resumeTasksInGroup: (
+    groupKind: string,
+    groupId: string,
+    projectId: string
+  ): Promise<BulkResumeResponse> =>
+    typedInvokeWithTransform(
+      "resume_tasks_in_group",
+      { groupKind, groupId, projectId },
+      BulkResumeResponseSchemaRaw,
+      transformBulkResumeResponse
+    ),
+
+  /**
+   * Archive all tasks in a group
+   * @param groupKind "status" | "session" | "uncategorized"
+   * @param groupId The status name or session ID
+   * @param projectId The project ID
+   * @returns Bulk archive report with count of archived tasks
+   */
+  archiveTasksInGroup: (
+    groupKind: string,
+    groupId: string,
+    projectId: string
+  ): Promise<BulkArchiveResponse> =>
+    typedInvokeWithTransform(
+      "archive_tasks_in_group",
+      { groupKind, groupId, projectId },
+      BulkArchiveResponseSchemaRaw,
+      transformBulkArchiveResponse
+    ),
 } as const;
 
 // ============================================================================
@@ -461,14 +515,6 @@ export const stepsApi = {
       TaskStepResponseSchema,
       transformTaskStep
     ),
-
-  /**
-   * Delete a task step
-   * @param stepId The step ID
-   * @returns void on success
-   */
-  delete: (stepId: string) =>
-    typedInvoke("delete_task_step", { stepId }, z.void()),
 
   /**
    * Reorder task steps

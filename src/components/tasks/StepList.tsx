@@ -31,7 +31,7 @@ interface StepListProps {
  */
 export function StepList({ taskId, editable = false, hideCompletionNotes = false }: StepListProps) {
   const { data: steps, isLoading, isError } = useTaskSteps(taskId);
-  const { delete: deleteStep } = useStepMutations(taskId);
+  const { skip: skipStep } = useStepMutations(taskId);
 
   // Loading state
   if (isLoading) {
@@ -77,7 +77,7 @@ export function StepList({ taskId, editable = false, hideCompletionNotes = false
           index,
           editable,
           hideCompletionNote: hideCompletionNotes,
-          ...(editable && { onDelete: (stepId: string) => deleteStep.mutate(stepId) }),
+          ...(editable && { onSkip: (stepId: string) => skipStep.mutate({ stepId, reason: "Skipped by user" }) }),
         };
         return (
           <div key={step.id}>

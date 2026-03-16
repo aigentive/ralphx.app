@@ -104,17 +104,27 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
-  /** @deprecated Use cleanupTaskMutation instead */
-  const permanentlyDeleteMutation = useMutation({
-    mutationFn: (taskId: string) => api.tasks.permanentlyDelete(taskId),
+  const pauseMutation = useMutation({
+    mutationFn: (taskId: string) => api.tasks.pause(taskId),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
       queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
-      queryClient.invalidateQueries({ queryKey: ["archived-count"] });
-      toast.success("Task permanently deleted");
+      toast.success("Task paused");
     },
     onError: (error: Error) => {
-      toast.error(`Failed to delete task: ${error.message}`);
+      toast.error(`Failed to pause task: ${error.message}`);
+    },
+  });
+
+  const resumeMutation = useMutation({
+    mutationFn: (taskId: string) => api.tasks.resume(taskId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      toast.success("Task resumed");
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to resume task: ${error.message}`);
     },
   });
 
@@ -199,6 +209,67 @@ export function useTaskMutation(projectId: string) {
     },
   });
 
+  const pauseTasksInGroupMutation = useMutation({
+    mutationFn: ({
+      groupKind,
+      groupId,
+      projectId: pid,
+    }: {
+      groupKind: string;
+      groupId: string;
+      projectId: string;
+    }) => api.tasks.pauseTasksInGroup(groupKind, groupId, pid),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      toast.success(`Paused ${data.pausedCount} task${data.pausedCount === 1 ? "" : "s"}`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to pause tasks: ${error.message}`);
+    },
+  });
+
+  const resumeTasksInGroupMutation = useMutation({
+    mutationFn: ({
+      groupKind,
+      groupId,
+      projectId: pid,
+    }: {
+      groupKind: string;
+      groupId: string;
+      projectId: string;
+    }) => api.tasks.resumeTasksInGroup(groupKind, groupId, pid),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      toast.success(`Resumed ${data.resumedCount} task${data.resumedCount === 1 ? "" : "s"}`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to resume tasks: ${error.message}`);
+    },
+  });
+
+  const archiveTasksInGroupMutation = useMutation({
+    mutationFn: ({
+      groupKind,
+      groupId,
+      projectId: pid,
+    }: {
+      groupKind: string;
+      groupId: string;
+      projectId: string;
+    }) => api.tasks.archiveTasksInGroup(groupKind, groupId, pid),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: taskKeys.list(projectId) });
+      queryClient.invalidateQueries({ queryKey: infiniteTaskKeys.all });
+      queryClient.invalidateQueries({ queryKey: ["archived-count"] });
+      toast.success(`Archived ${data.archivedCount} task${data.archivedCount === 1 ? "" : "s"}`);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to archive tasks: ${error.message}`);
+    },
+  });
+
   return {
     createMutation,
     updateMutation,
@@ -206,19 +277,27 @@ export function useTaskMutation(projectId: string) {
     moveMutation,
     archiveMutation,
     restoreMutation,
-    permanentlyDeleteMutation,
+    pauseMutation,
+    resumeMutation,
     blockMutation,
     unblockMutation,
     cleanupTaskMutation,
     cleanupTasksInGroupMutation,
     cancelTasksInGroupMutation,
+    pauseTasksInGroupMutation,
+    resumeTasksInGroupMutation,
+    archiveTasksInGroupMutation,
     isArchiving: archiveMutation.isPending,
     isRestoring: restoreMutation.isPending,
-    isPermanentlyDeleting: permanentlyDeleteMutation.isPending,
+    isPausing: pauseMutation.isPending,
+    isResuming: resumeMutation.isPending,
     isBlocking: blockMutation.isPending,
     isUnblocking: unblockMutation.isPending,
     isCleaningTask: cleanupTaskMutation.isPending,
     isCleaningGroup: cleanupTasksInGroupMutation.isPending,
     isCancellingGroup: cancelTasksInGroupMutation.isPending,
+    isPausingGroup: pauseTasksInGroupMutation.isPending,
+    isResumingGroup: resumeTasksInGroupMutation.isPending,
+    isArchivingGroup: archiveTasksInGroupMutation.isPending,
   };
 }

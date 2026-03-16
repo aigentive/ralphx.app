@@ -158,21 +158,6 @@ async fn test_update_workflow() {
 }
 
 #[tokio::test]
-async fn test_delete_workflow() {
-    let conn = setup_test_db();
-    let repo = SqliteWorkflowRepository::new(conn);
-
-    let workflow = create_test_workflow();
-    repo.create(workflow.clone()).await.unwrap();
-
-    let result = repo.delete(&workflow.id).await;
-    assert!(result.is_ok());
-
-    let found = repo.get_by_id(&workflow.id).await.unwrap();
-    assert!(found.is_none());
-}
-
-#[tokio::test]
 async fn test_set_default_unsets_previous() {
     let conn = setup_test_db();
     let repo = SqliteWorkflowRepository::new(conn);

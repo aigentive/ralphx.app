@@ -75,6 +75,22 @@ pub trait TaskProposalRepository: Send + Sync {
         &self,
         session_id: &IdeationSessionId,
     ) -> AppResult<()>;
+
+    /// Archive a proposal (soft delete)
+    async fn archive(&self, id: &TaskProposalId) -> AppResult<TaskProposal>;
+
+    /// Archive a proposal within an existing transaction (synchronous)
+    ///
+    /// # Default implementation
+    /// Panics — only SQLite repositories support transactional sync operations.
+    /// Memory repositories use `archive()` instead.
+    fn archive_sync(
+        &self,
+        _conn: &rusqlite::Connection,
+        _id: &TaskProposalId,
+    ) -> AppResult<TaskProposal> {
+        unimplemented!("archive_sync is only supported by SQLite repositories")
+    }
 }
 
 #[cfg(test)]

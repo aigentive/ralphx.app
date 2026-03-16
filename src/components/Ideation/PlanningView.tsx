@@ -76,7 +76,6 @@ interface PlanningViewProps {
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
-  onDeleteSession?: (sessionId: string) => void;
   onEditProposal: (proposalId: string) => void;
   onRemoveProposal: (proposalId: string) => void;
   onReorderProposals: (proposalIds: string[]) => void;
@@ -138,7 +137,6 @@ export function PlanningView({
   onNewSession,
   onSelectSession,
   onArchiveSession,
-  onDeleteSession,
   onEditProposal,
   onRemoveProposal,
   onReorderProposals,
@@ -755,7 +753,6 @@ export function PlanningView({
             currentPlanId={session?.id ?? null}
             onSelectPlan={onSelectSession}
             onNewPlan={onNewSession}
-            {...(onDeleteSession !== undefined && { onDeletePlan: onDeleteSession })}
             onArchivePlan={onArchiveSession}
             onReopenPlan={(planId) => {
               onSelectSession(planId);
@@ -1139,7 +1136,6 @@ export function PlanningView({
                           highlightedIds={highlightedProposalIdsWithUpdates}
                           criticalPathIds={criticalPathSet}
                           onEdit={onEditProposal}
-                          onRemove={onRemoveProposal}
                           {...(planArtifact?.metadata.version !== undefined && {
                             currentPlanVersion: planArtifact.metadata.version,
                           })}

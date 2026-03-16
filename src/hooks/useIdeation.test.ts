@@ -14,7 +14,6 @@ import {
   useIdeationSessions,
   useCreateIdeationSession,
   useArchiveIdeationSession,
-  useDeleteIdeationSession,
   ideationKeys,
 } from "./useIdeation";
 import { ideationApi } from "@/api/ideation";
@@ -364,41 +363,3 @@ describe("useArchiveIdeationSession", () => {
   });
 });
 
-describe("useDeleteIdeationSession", () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    vi.resetAllMocks();
-  });
-
-  it("should delete a session successfully", async () => {
-    vi.mocked(ideationApi.sessions.delete).mockResolvedValueOnce(undefined);
-
-    const { result } = renderHook(() => useDeleteIdeationSession(), {
-      wrapper: createWrapper(),
-    });
-
-    await act(async () => {
-      await result.current.mutateAsync("session-1");
-    });
-
-    expect(ideationApi.sessions.delete).toHaveBeenCalledWith("session-1");
-  });
-
-  it("should handle delete error", async () => {
-    const error = new Error("Failed to delete session");
-    vi.mocked(ideationApi.sessions.delete).mockRejectedValueOnce(error);
-
-    const { result } = renderHook(() => useDeleteIdeationSession(), {
-      wrapper: createWrapper(),
-    });
-
-    await expect(
-      act(async () => {
-        await result.current.mutateAsync("session-1");
-      })
-    ).rejects.toThrow("Failed to delete session");
-  });
-});

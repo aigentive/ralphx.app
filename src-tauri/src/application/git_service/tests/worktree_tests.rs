@@ -1251,6 +1251,7 @@ fn make_test_project(worktree_parent: &str) -> crate::domain::entities::project:
         github_pr_enabled: true,
         created_at: now,
         updated_at: now,
+        archived_at: None,
     }
 }
 

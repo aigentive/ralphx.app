@@ -93,28 +93,6 @@ async fn test_update_task_step() {
 }
 
 #[tokio::test]
-async fn test_delete_task_step() {
-    let state = setup_test_state();
-    let project = create_test_project(&state).await;
-    let task_id = create_test_task(&state, project.id).await;
-
-    let step = TaskStep::new(
-        task_id.clone(),
-        "To Delete".to_string(),
-        0,
-        "user".to_string(),
-    );
-
-    let created = state.task_step_repo.create(step).await.unwrap();
-
-    state.task_step_repo.delete(&created.id).await.unwrap();
-
-    let steps = state.task_step_repo.get_by_task(&task_id).await.unwrap();
-
-    assert_eq!(steps.len(), 0);
-}
-
-#[tokio::test]
 async fn test_reorder_task_steps() {
     let state = setup_test_state();
     let project = create_test_project(&state).await;

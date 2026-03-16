@@ -438,6 +438,10 @@ impl TaskProposalRepository for MockProposalRepository {
     ) -> AppResult<()> {
         Ok(())
     }
+
+    async fn archive(&self, _id: &TaskProposalId) -> AppResult<TaskProposal> {
+        unimplemented!()
+    }
 }
 
 struct MockProposalDependencyRepository {
@@ -670,10 +674,6 @@ impl TaskRepository for MockTaskRepository {
 
     async fn delete(&self, id: &TaskId) -> AppResult<()> {
         self.tasks.lock().unwrap().remove(&id.to_string());
-        Ok(())
-    }
-
-    async fn clear_task_references(&self, _id: &TaskId) -> AppResult<()> {
         Ok(())
     }
 

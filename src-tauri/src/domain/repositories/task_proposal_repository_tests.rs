@@ -135,6 +135,10 @@ impl TaskProposalRepository for MockTaskProposalRepository {
     ) -> AppResult<()> {
         Ok(())
     }
+
+    async fn archive(&self, _id: &TaskProposalId) -> AppResult<TaskProposal> {
+        unimplemented!()
+    }
 }
 
 fn create_test_proposal(session_id: &IdeationSessionId) -> TaskProposal {

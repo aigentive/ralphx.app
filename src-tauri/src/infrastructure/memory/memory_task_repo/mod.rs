@@ -81,10 +81,11 @@ impl TaskRepository for MemoryTaskRepository {
         let mut result: Vec<Task> = tasks
             .values()
             .filter(|t| {
-                t.ideation_session_id
-                    .as_ref()
-                    .map(|id| id == session_id)
-                    .unwrap_or(false)
+                t.archived_at.is_none()
+                    && t.ideation_session_id
+                        .as_ref()
+                        .map(|id| id == session_id)
+                        .unwrap_or(false)
             })
             .cloned()
             .collect();
@@ -127,11 +128,6 @@ impl TaskRepository for MemoryTaskRepository {
     async fn delete(&self, id: &TaskId) -> AppResult<()> {
         let mut tasks = self.tasks.write().await;
         tasks.remove(id);
-        Ok(())
-    }
-
-    async fn clear_task_references(&self, _id: &TaskId) -> AppResult<()> {
-        // No-op for memory repo (used in tests)
         Ok(())
     }
 
