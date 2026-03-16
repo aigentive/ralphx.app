@@ -6,7 +6,8 @@
  */
 
 import { useState, useCallback, useEffect } from "react";
-import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ShieldCheck, SkipForward, RotateCcw, Wand2, ListPlus, AlertTriangle, Clock } from "lucide-react";
+import { toast } from "sonner";
+import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ShieldCheck, SkipForward, RotateCcw, Wand2, ListPlus, AlertTriangle, Clock, MoreHorizontal, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -24,7 +25,6 @@ import {
 import { artifactApi } from "@/api/artifact";
 import type { Artifact } from "@/types/artifact";
 import { cn } from "@/lib/utils";
-import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from "@/components/ui/tooltip";
 import type { TeamFinding } from "./TeamFindingsSection";
 import { DebateSummary } from "./DebateSummary";
 import type { DebateSummaryData } from "./DebateSummary";
@@ -758,67 +758,67 @@ export function PlanDisplay({
                 </DropdownMenu>
               )}
 
-              {(verificationInProgress || verificationAgentGenerating) ? (
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="inline-flex">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={undefined}
-                          disabled={true}
-                          className="h-7 w-7 p-0 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
-                          style={{ color: "hsl(220 10% 50%)" }}
-                        >
-                          <FileEdit className="w-3.5 h-3.5" />
-                        </Button>
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      {verificationAgentGenerating
-                        ? "Plan is frozen — verification agent is actively working. Wait for the current round to complete."
-                        : "Plan is being auto-verified. Editing will be available after verification completes."}
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              ) : (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={onEdit}
-                  className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
-                  style={{ color: "hsl(220 10% 50%)" }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                    e.currentTarget.style.color = "hsl(220 10% 90%)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "transparent";
-                    e.currentTarget.style.color = "hsl(220 10% 50%)";
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
+                    style={{ color: "hsl(220 10% 50%)" }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
+                      e.currentTarget.style.color = "hsl(220 10% 90%)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.color = "hsl(220 10% 50%)";
+                    }}
+                  >
+                    <MoreHorizontal className="w-3.5 h-3.5" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="end"
+                  className="w-44"
+                  style={{
+                    background: "hsl(220 10% 14%)",
+                    backdropFilter: "blur(20px)",
+                    border: "1px solid hsla(220 10% 100% / 0.08)",
+                    boxShadow: "0 8px 32px hsla(220 10% 0% / 0.4)",
                   }}
                 >
-                  <FileEdit className="w-3.5 h-3.5" />
-                </Button>
-              )}
-
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleExport}
-                className="h-7 w-7 p-0 rounded-lg transition-colors duration-150"
-                style={{ color: "hsl(220 10% 50%)" }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                  e.currentTarget.style.color = "hsl(220 10% 90%)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "transparent";
-                  e.currentTarget.style.color = "hsl(220 10% 50%)";
-                }}
-              >
-                <Download className="w-3.5 h-3.5" />
-              </Button>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const content = plan.content.type === "inline" ? plan.content.text : "";
+                      navigator.clipboard.writeText(content).then(() => {
+                        toast.success("Copied to clipboard");
+                      }).catch(() => {
+                        toast.error("Failed to copy");
+                      });
+                    }}
+                    disabled={plan.content.type !== "inline" || !plan.content.text}
+                    className="text-[12px] cursor-pointer gap-2 px-3 py-2"
+                  >
+                    <Copy className="w-3.5 h-3.5" />
+                    Copy Markdown
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={onEdit}
+                    disabled={verificationInProgress || verificationAgentGenerating}
+                    className="text-[12px] cursor-pointer gap-2 px-3 py-2"
+                  >
+                    <FileEdit className="w-3.5 h-3.5" />
+                    Edit
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={handleExport}
+                    className="text-[12px] cursor-pointer gap-2 px-3 py-2"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    Export...
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         </div>

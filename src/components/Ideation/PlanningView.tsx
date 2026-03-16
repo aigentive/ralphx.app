@@ -1107,6 +1107,8 @@ export function PlanningView({
                         sessionId={session?.id ?? ""}
                         sessionTitle={session?.title ?? null}
                         verificationStatus={session?.verificationStatus ?? "unverified"}
+                        planArtifact={planArtifact}
+                        projectId={activeProjectId || session?.projectId || ""}
                       />
 
                       {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (
