@@ -328,4 +328,36 @@ impl GitService {
         let output = git_cmd::run(&["diff", "--quiet", branch_a, branch_b], repo).await?;
         Ok(output.status.success())
     }
+
+    /// Check if a source branch is safe to delete after merging into a target branch.
+    ///
+    /// Returns `(safe: bool, reason: &'static str)` where reason is one of:
+    /// - `"ancestor"` — source is a git ancestor of target (normal merge)
+    /// - `"content_match"` — not an ancestor but tree content is identical (clean squash merge)
+    /// - `"content_differs"` — neither condition holds; deletion skipped (conflict-resolved squash
+    ///   or branches have truly diverged)
+    ///
+    /// Conservative failure mode: git errors collapse to `false` via `unwrap_or(false)`.
+    /// Callers add context-appropriate log messages using the returned reason string.
+    pub async fn is_branch_merged_or_content_equivalent(
+        repo: &Path,
+        source_branch: &str,
+        target_branch: &str,
+    ) -> (bool, &'static str) {
+        let is_anc = Self::is_ancestor(repo, source_branch, target_branch)
+            .await
+            .unwrap_or(false);
+        if is_anc {
+            return (true, "ancestor");
+        }
+        let same_content =
+            Self::branches_have_same_content(repo, source_branch, target_branch)
+                .await
+                .unwrap_or(false);
+        if same_content {
+            (true, "content_match")
+        } else {
+            (false, "content_differs")
+        }
+    }
 }
