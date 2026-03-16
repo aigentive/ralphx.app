@@ -58,6 +58,19 @@ tokio = { version = "1", features = ["test-util"] }
 tower = { version = "0.4", features = ["util"] }
 http-body-util = "0.1"
 
+[lints.rust]
+# rustc built-in lint (Rust 1.89+) — not a Clippy lint
+mismatched_lifetime_syntaxes = "warn"
+
+[lints.clippy]
+# Elevated to deny — catches real null-dereference bugs
+unnecessary_unwrap = "deny"
+# Known lints from Rust 1.93 upgrade — documented as accepted
+manual_is_multiple_of = "warn"
+cloned_ref_to_slice_refs = "warn"
+manual_contains = "warn"
+io_other_error = "warn"
+
 [profile.release]
 lto = true
 opt-level = "s"

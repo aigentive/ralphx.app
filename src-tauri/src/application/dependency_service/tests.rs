@@ -557,7 +557,7 @@ fn test_find_critical_path_single_node() {
     let p1 = create_test_proposal(&session_id, "Solo");
 
     let service = create_service(vec![p1.clone()], vec![]);
-    let path = service.find_critical_path(&[p1.clone()], &[]);
+    let path = service.find_critical_path(std::slice::from_ref(&p1), &[]);
 
     assert_eq!(path.len(), 1);
     assert_eq!(path[0], p1.id);

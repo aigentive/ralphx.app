@@ -902,8 +902,8 @@ async fn test_get_valid_transitions_from_backlog() {
 
     // From backlog, should be able to go to Ready or Cancelled
     assert_eq!(transitions.len(), 2);
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Cancelled));
+    assert!(transitions.contains(&InternalStatus::Ready));
+    assert!(transitions.contains(&InternalStatus::Cancelled));
 
     // Test the label mapping function
     let ready_label = helpers::status_to_label(InternalStatus::Ready);
@@ -920,12 +920,10 @@ async fn test_get_valid_transitions_from_ready() {
 
     // From ready, should be able to go to Executing, Blocked, PendingMerge, or Cancelled
     assert_eq!(transitions.len(), 4);
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Executing));
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Blocked));
-    assert!(transitions
-        .iter()
-        .any(|t| *t == InternalStatus::PendingMerge));
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Cancelled));
+    assert!(transitions.contains(&InternalStatus::Executing));
+    assert!(transitions.contains(&InternalStatus::Blocked));
+    assert!(transitions.contains(&InternalStatus::PendingMerge));
+    assert!(transitions.contains(&InternalStatus::Cancelled));
 
     // Test labels
     assert_eq!(
@@ -945,8 +943,8 @@ async fn test_get_valid_transitions_from_blocked() {
 
     // From blocked, should be able to go to Ready or Cancelled
     assert_eq!(transitions.len(), 2);
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Cancelled));
+    assert!(transitions.contains(&InternalStatus::Ready));
+    assert!(transitions.contains(&InternalStatus::Cancelled));
 }
 
 #[tokio::test]
@@ -956,9 +954,7 @@ async fn test_get_valid_transitions_from_qa_failed() {
 
     // From qa_failed, should be able to go to RevisionNeeded (only one option)
     assert_eq!(transitions.len(), 1);
-    assert!(transitions
-        .iter()
-        .any(|t| *t == InternalStatus::RevisionNeeded));
+    assert!(transitions.contains(&InternalStatus::RevisionNeeded));
 
     // Test label
     assert_eq!(
@@ -974,10 +970,8 @@ async fn test_get_valid_transitions_from_approved() {
 
     // From approved, can transition to PendingMerge or re-opened to Ready
     assert_eq!(transitions.len(), 2);
-    assert!(transitions
-        .iter()
-        .any(|t| *t == InternalStatus::PendingMerge));
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
+    assert!(transitions.contains(&InternalStatus::PendingMerge));
+    assert!(transitions.contains(&InternalStatus::Ready));
 
     // Test label
     assert_eq!(
@@ -993,7 +987,7 @@ async fn test_get_valid_transitions_from_cancelled() {
 
     // From cancelled, can be re-opened to Ready
     assert_eq!(transitions.len(), 1);
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
+    assert!(transitions.contains(&InternalStatus::Ready));
 
     // Test label
     assert_eq!(
@@ -1009,7 +1003,7 @@ async fn test_get_valid_transitions_from_failed() {
 
     // From failed, can retry (go to Ready)
     assert_eq!(transitions.len(), 1);
-    assert!(transitions.iter().any(|t| *t == InternalStatus::Ready));
+    assert!(transitions.contains(&InternalStatus::Ready));
 
     // Test label
     assert_eq!(

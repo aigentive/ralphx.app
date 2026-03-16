@@ -26,6 +26,7 @@ pub mod resume_validator;
 pub mod services;
 pub mod review_issue_service;
 pub mod review_service;
+pub mod session_export_service;
 pub mod session_reopen_service;
 pub mod startup_jobs;
 pub mod supervisor_service;
@@ -73,6 +74,10 @@ pub use services::PrPollerRegistry;
 pub use resume_validator::{ResumeValidationResult, ResumeValidator};
 pub use review_issue_service::{CreateIssueInput, ReviewIssueService};
 pub use review_service::ReviewService;
+pub use session_export_service::{
+    DependencyData, ImportedSession, PlanVersionData, PriorityFactorsData, ProposalData,
+    SessionData, SessionExport, SessionExportService, SourceInstance,
+};
 pub use session_reopen_service::SessionReopenService;
 pub use startup_jobs::StartupJobRunner;
 pub use supervisor_service::{SupervisorConfig, SupervisorService, TaskMonitorState};
@@ -90,6 +95,8 @@ pub use team_state_tracker::TeamStateTracker;
 mod app_state_shared_state_tests;
 #[cfg(test)]
 mod prune_engine_tests;
+#[cfg(test)]
+mod session_export_service_tests;
 #[cfg(test)]
 mod throttled_emitter_tests;
 

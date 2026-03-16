@@ -997,6 +997,9 @@ pub fn run() {
             // Ideation settings commands
             commands::ideation_commands::get_ideation_settings,
             commands::ideation_commands::update_ideation_settings,
+            // Ideation export/import commands
+            commands::ideation_commands::export_ideation_session,
+            commands::ideation_commands::import_ideation_session,
             // Workflow commands
             commands::workflow_commands::get_workflows,
             commands::workflow_commands::get_workflow,

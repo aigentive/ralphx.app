@@ -305,7 +305,7 @@ impl ResumeValidator {
     async fn get_git_status(&self, path: &Path) -> std::io::Result<String> {
         let output = git_cmd::run(&["status", "--porcelain"], path)
             .await
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e.to_string()))?;
+            .map_err(|e| std::io::Error::other(e.to_string()))?;
         Ok(String::from_utf8_lossy(&output.stdout).to_string())
     }
 
