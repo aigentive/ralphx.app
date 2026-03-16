@@ -230,9 +230,15 @@ export function useAgentEvents(activeConversationId: string | null) {
         queryClient.invalidateQueries({
           queryKey: chatKeys.agentRun(conversation_id),
         });
-        queryClient.invalidateQueries({
-          queryKey: chatKeys.conversation(conversation_id),
-        });
+        // Active-conversation assistant turns already invalidate/refetch via
+        // agent:message_created in useChatEvents. Skipping the second active
+        // conversation invalidation avoids overlapping layout/scroll churn
+        // during finalization while preserving refetches for non-active tabs.
+        if (conversation_id !== activeConversationId) {
+          queryClient.invalidateQueries({
+            queryKey: chatKeys.conversation(conversation_id),
+          });
+        }
       })
     );
 

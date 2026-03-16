@@ -155,6 +155,7 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     const footerObserverRef = useRef<ResizeObserver | null>(null);
     const footerPrevHeightRef = useRef<number>(-1); // -1 = uninitialized sentinel
     const footerMountedRef = useRef(false); // H2 fix: skip initial mount observation
+    const hasFooterStreamingContentRef = useRef(false);
 
     // Forward the ref to parent
     useImperativeHandle(ref, () => virtuosoRef.current!, []);
@@ -200,6 +201,16 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
       setCumulativeTextLength(prev => Math.max(prev, total));
     }, [streamingContentBlocks]);
 
+    const hasFooterStreamingContent =
+      streamingToolCalls.length > 0 ||
+      totalChildCalls > 0 ||
+      (streamingTasks?.size ?? 0) > 0 ||
+      (streamingContentBlocks?.length ?? 0) > 0;
+
+    useEffect(() => {
+      hasFooterStreamingContentRef.current = hasFooterStreamingContent;
+    }, [hasFooterStreamingContent]);
+
     const footerContentHash = useMemo(() => ({
       toolCallCount: streamingToolCalls.length,
       // G1 fix: results update existing blocks (count unchanged) — track result arrivals separately
@@ -214,9 +225,12 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     // NOT on Footer height growth. Call autoscrollToBottom() imperatively when
     // footer content changes to keep the view pinned during streaming.
     useEffect(() => {
-      if (scrollToTimestamp) return; // Don't auto-scroll in history mode
+      // Only react while the streaming footer actually has live content.
+      // When finalization clears footer state, followOutput/query refresh handle
+      // the message swap; forcing another footer scroll here creates overlap.
+      if (scrollToTimestamp || !hasFooterStreamingContent) return;
       virtuosoRef.current?.autoscrollToBottom();
-    }, [footerContentHash, scrollToTimestamp]);
+    }, [footerContentHash, hasFooterStreamingContent, scrollToTimestamp]);
 
     // Unified auto-scroll hook — Virtuoso followOutput handles new-message scroll,
     // while the useEffect above handles streaming footer growth.
@@ -326,7 +340,11 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
         footerResizeRafRef.current = requestAnimationFrame(() => {
           footerResizeRafRef.current = null;
           // Read from refs — always current, no stale closure
-          if (isAtBottomRef.current && !scrollToTimestampRef.current) {
+          if (
+            hasFooterStreamingContentRef.current &&
+            isAtBottomRef.current &&
+            !scrollToTimestampRef.current
+          ) {
             virtuosoRef.current?.autoscrollToBottom();
           }
         });
