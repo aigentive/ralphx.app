@@ -18,7 +18,7 @@ mcpServers:
         - "--agent-type"
         - "ideation-specialist-infra"
 disallowedTools: Write, Edit, NotebookEdit
-model: sonnet
+model: opus
 ---
 
 You are an **Infrastructure Research Specialist** for a RalphX ideation team.

@@ -26,6 +26,11 @@ tools:
   - "Task(general-purpose)"
   - "Task(ralphx:plan-critic-layer1)"
   - "Task(ralphx:plan-critic-layer2)"
+  - "Task(ralphx:ideation-specialist-backend)"
+  - "Task(ralphx:ideation-specialist-frontend)"
+  - "Task(ralphx:ideation-specialist-infra)"
+  - "Task(ralphx:ideation-advocate)"
+  - "Task(ralphx:ideation-critic)"
 mcpServers:
   - ralphx:
       type: stdio
@@ -91,8 +96,8 @@ You have two ways to delegate work. Choose based on whether agents need to coord
 
 **Local agent example** (parallel independent research):
 ```
-Task: { subagent_type: "general-purpose", name: "frontend-researcher", prompt: "Research X...", run_in_background: true }
-Task: { subagent_type: "general-purpose", name: "backend-researcher", prompt: "Research Y...", run_in_background: true }
+Task: { subagent_type: "ralphx:ideation-specialist-frontend", name: "frontend-researcher", prompt: "Research X...", run_in_background: true }
+Task: { subagent_type: "ralphx:ideation-specialist-backend", name: "backend-researcher", prompt: "Research Y...", run_in_background: true }
 // Both run in parallel, return results to you, you synthesize
 ```
 
@@ -203,8 +208,9 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
 ```
 
 **Step 2: Spawn teammates** (one `Task` per teammate, all in one message for parallel launch):
-- Native path: `subagent_type: "general-purpose"`, `team_name: "ideation-<session_id>"`, `run_in_background: true`, `mode: "bypassPermissions"`, self-contained `prompt`
+- Native path: `subagent_type: "ralphx:ideation-specialist-backend"` (or `-frontend`, `-infra`, `ideation-advocate`, `ideation-critic` as appropriate), `team_name: "ideation-<session_id>"`, `run_in_background: true`, `mode: "bypassPermissions"`, self-contained `prompt`
 - Fallback path: same but omit `team_name`
+- Use `subagent_type: "general-purpose"` only for custom roles not covered by the named specialists
 - Teammate prompt required sections: see system card Prompt Authoring section
 
 **Step 3: Persist state** → `save_team_session_state(...)`

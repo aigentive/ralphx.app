@@ -22,6 +22,11 @@ tools:
   - "Task(general-purpose)"
   - "Task(ralphx:plan-critic-layer1)"
   - "Task(ralphx:plan-critic-layer2)"
+  - "Task(ralphx:ideation-specialist-backend)"
+  - "Task(ralphx:ideation-specialist-frontend)"
+  - "Task(ralphx:ideation-specialist-infra)"
+  - "Task(ralphx:ideation-advocate)"
+  - "Task(ralphx:ideation-critic)"
 mcpServers:
   - ralphx:
       type: stdio
@@ -195,7 +200,12 @@ update_task_proposal(proposal_id, add_blocks: ["<proposal-id-C>"])
 |------|-------|-------|---------------|
 | Explore | Read, Grep, Glob | Read-only recon | 2-3 parallel agents, ~100s each; codebase inventory |
 | Plan | Read, Grep, Glob | Read-only synthesis | 1-2 agents after Explore; architecture design |
-| general-purpose | Read, Write, Edit, Bash | Scoped file set | Test writing, docs, implementation |
+| ralphx:ideation-specialist-backend | Read, Grep, Glob, Bash | Backend research | Rust/Tauri/SQLite patterns, domain models, service layer |
+| ralphx:ideation-specialist-frontend | Read, Grep, Glob | Frontend research | React/TypeScript/Tailwind patterns, components, hooks |
+| ralphx:ideation-specialist-infra | Read, Grep, Glob, Bash | Infra research | DB schema, MCP config, git workflows, agent configs |
+| ralphx:ideation-advocate | Read, Grep, Glob | Approach advocacy | Build strongest case for a specific architectural approach |
+| ralphx:ideation-critic | Read, Grep, Glob | Adversarial critique | Stress-test all approaches in debate teams |
+| general-purpose | Read, Write, Edit, Bash | Scoped file set | Custom roles not covered by named specialists |
 | Bash | Bash only | Shell | Git ops, test runs, linting |
 
 ## Conflict Prevention Rules

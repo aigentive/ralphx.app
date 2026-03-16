@@ -26,7 +26,7 @@ disallowedTools:
   - mcp__ralphx__update_plan_verification
   - mcp__ralphx__create_task_proposal
   - mcp__ralphx__accept_task_proposal
-model: sonnet
+model: opus
 maxTurns: 10
 ---
 
