@@ -585,7 +585,7 @@ describe("useAgentEvents", () => {
       expect(useChatStore.getState().agentStatus["merge:task-123"]).toBe("waiting_for_input");
     });
 
-    it("invalidates agentRun and conversation queries when conversation_id matches active", () => {
+    it("invalidates only agentRun when conversation_id matches active", () => {
       const { queryClient, wrapper } = createWrapperWithClient();
       const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -603,14 +603,12 @@ describe("useAgentEvents", () => {
       expect(invalidateSpy).toHaveBeenCalledWith({
         queryKey: ["chat", "agentRun", "conv-1"],
       });
-      expect(invalidateSpy).toHaveBeenCalledWith({
+      expect(invalidateSpy).not.toHaveBeenCalledWith({
         queryKey: ["chat", "conversation", "conv-1"],
       });
     });
 
-    it("invalidates queries using payload conversation_id even when it differs from active", () => {
-      // New behavior: invalidation uses payload conversation_id directly (no activeConversationId guard).
-      // This avoids stale-closure mismatches where the closure's activeConversationId might lag.
+    it("invalidates queries using payload conversation_id when it differs from active", () => {
       const { queryClient, wrapper } = createWrapperWithClient();
       const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -625,8 +623,12 @@ describe("useAgentEvents", () => {
         });
       });
 
-      // Queries are invalidated for "conv-OTHER" (the payload conversation_id)
-      expect(invalidateSpy).toHaveBeenCalled();
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["chat", "agentRun", "conv-OTHER"],
+      });
+      expect(invalidateSpy).toHaveBeenCalledWith({
+        queryKey: ["chat", "conversation", "conv-OTHER"],
+      });
     });
 
     it("skips event and does not invalidate queries when teammate_name is set", () => {
