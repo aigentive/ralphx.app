@@ -97,6 +97,10 @@ mod rc4_rebase_double_delete;
 // Bonus: pre_merge_cleanup aborts stale MERGE_HEAD in task worktree
 mod rc12_rc13_stale_worktree;
 
+// Fix 5: source_update_conflict completion path cleans up merge worktree
+// Verifies: worktree deleted, task.worktree_path = None, conflict_type cleared from metadata
+mod source_update_conflict_worktree_cleanup;
+
 // RC#14: Layer 2 self-healing guard in on_enter(Executing) for deleted branches
 // Self-heal detects deleted branch, cleans orphaned worktrees, creates fresh branch
 // Tests: branch detection, orphaned worktree cleanup, stored vs expected path cleanup
@@ -241,3 +245,10 @@ mod toctou_merge_guard_tests;
 //   6. post_merge_cleanup idempotency: Merged plan branch → early return
 //   7. no github_service wired → falls through to push-to-main
 mod pr_mode_state_machine_tests;
+
+// Resilience tests for pre_delete_worktree second-chance fallback (Fix 3):
+//   1. Removes a real registered git worktree (happy path)
+//   2. No-op when path doesn't exist
+//   3. Removes a plain (non-registered) directory via rm-rf fallback
+//   4. Second-chance after transient lock: permissions restored during 100ms sleep (Unix)
+mod pre_delete_worktree_resilience_tests;
