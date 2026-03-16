@@ -2203,7 +2203,7 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
 
     // Not running yet — should Ok
     let result = check_verification_freeze(
-        &[parent.clone()],
+        std::slice::from_ref(&parent),
         None,
         running_registry.as_ref(),
         session_repo.as_ref(),
