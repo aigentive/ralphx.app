@@ -31,8 +31,7 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // to prevent false escalation. Check poller liveness instead.
         if let Some(ref repo) = self.plan_branch_repo {
             if let Ok(Some(plan_branch)) = repo.get_by_merge_task_id(&task.id).await {
-                if plan_branch.pr_number.is_some() && plan_branch.pr_eligible {
-                    let pr_number = plan_branch.pr_number.unwrap();
+                if let (true, Some(pr_number)) = (plan_branch.pr_eligible, plan_branch.pr_number) {
                     if let Some(ref registry) = self.pr_poller_registry {
                         if registry.is_polling(&task.id) {
                             // Poller alive — check for stale heartbeat (>5min)

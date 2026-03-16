@@ -68,7 +68,7 @@ impl MockGithubService {
     }
 
     /// Access the inner state to configure responses or read call counts.
-    pub fn state(&self) -> std::sync::MutexGuard<MockGithubState> {
+    pub fn state(&self) -> std::sync::MutexGuard<'_, MockGithubState> {
         self.state.lock().expect("MockGithubState lock poisoned")
     }
 
