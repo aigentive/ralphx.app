@@ -11,6 +11,8 @@
     "global-shortcut:allow-register",
     "global-shortcut:allow-unregister",
     "window-state:default",
-    "fs:allow-read-text-file"
+    "fs:allow-read-text-file",
+    "fs:allow-stat",
+    "fs:allow-write-text-file"
   ]
 }
