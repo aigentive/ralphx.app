@@ -680,7 +680,7 @@ pub fn run() {
                         verification_session_repo,
                         verification_config,
                     ).with_app_handle(verification_recon_app_handle));
-                    svc.startup_scan().await;
+                    svc.startup_reset_all_in_progress().await;
                     tauri::async_runtime::spawn(async move { svc.run_periodic().await });
                 }
 

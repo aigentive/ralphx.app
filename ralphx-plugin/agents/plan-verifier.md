@@ -180,9 +180,9 @@ Output a brief summary: "Verification complete. Status: {status}. Rounds run: {c
 
 ## Error Handling
 
-- If any MCP call returns a non-retriable error: call final cleanup with `status: "reviewing"`, `in_progress: false`, `convergence_reason: "agent_error"`, then EXIT.
+- If any MCP call returns a non-retriable error: call final cleanup with `status: "reviewing"`, `in_progress: false`, `convergence_reason: "agent_error"`, `generation: <current_generation>`, then EXIT.
 - If generation mismatch occurs at any point: EXIT immediately without calling final cleanup (another process owns the session).
-- Never retry MCP calls more than once on error.
+- If `update_plan_verification` returns an error, retry up to 3 times with 2-second delays before giving up. For all other MCP calls, do not retry more than once on error.
 
 ---
 
@@ -191,8 +191,10 @@ Output a brief summary: "Verification complete. Status: {status}. Rounds run: {c
 | Rule | Detail |
 |------|--------|
 | **update/get_plan_verification** | Use `session_id: <parent_session_id>` — these tools take a session_id |
+| **generation parameter (NON-NEGOTIABLE)** | ALWAYS pass `generation` on every `update_plan_verification` call, including terminal status updates (`verified`, `skipped`, `needs_revision`). Read the generation from the response of your most recent `get_plan_verification` or `update_plan_verification` call. |
 | **update/edit_plan_artifact** | Use `artifact_id: <plan_artifact_id>` + `caller_session_id: <OWN_SESSION_ID>` — these tools take artifact_id, NOT session_id |
 | **Parallel critic dispatch** | Both critic Task calls MUST be in ONE response message — never one at a time |
 | **No self-modification** | You are read-only for the filesystem. ❌ Write, Edit, NotebookEdit |
 | **Exit on zombie** | Generation mismatch at any step → EXIT without cleanup |
 | **Final cleanup always** | Mark `in_progress: false` before exiting (except on zombie detection) |
+| **Always pass generation** | ALWAYS include `generation: <current_generation>` on every `update_plan_verification` call, including terminal status updates (verified, needs_revision, skipped) — the server rejects stale-generation calls with 409 |

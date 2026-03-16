@@ -348,6 +348,10 @@ impl IdeationSessionRepository for MockIdeationRepo {
         unimplemented!()
     }
 
+    async fn get_all_in_progress_sessions(&self) -> AppResult<Vec<IdeationSession>> {
+        unimplemented!()
+    }
+
     async fn get_verification_children(
         &self,
         _parent_session_id: &IdeationSessionId,
@@ -956,12 +960,14 @@ fn format_session_history_8000_char_cap() {
     assert!(count < 6, "Expected fewer than 6 messages due to 8000-char cap, got {}", count);
     // Directional: newest messages (highest index) MUST be present; oldest MUST be absent.
     // Without .rev(), oldest messages would survive the cap and newest would be dropped.
+    // Use content-specific substrings (not just "0:" / "5:") to avoid false positives
+    // from ISO timestamps like "20:xx:xxZ" which also contain those character sequences.
     assert!(
-        result.contains("5:"),
+        result.contains("5: yyy"),
         "Newest message (index 5) must survive the char cap"
     );
     assert!(
-        !result.contains("0:"),
+        !result.contains("0: yyy"),
         "Oldest message (index 0) must be dropped when cap is hit"
     );
 }

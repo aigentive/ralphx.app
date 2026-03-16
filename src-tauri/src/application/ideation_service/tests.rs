@@ -266,6 +266,17 @@ impl IdeationSessionRepository for MockSessionRepository {
             .collect())
     }
 
+    async fn get_all_in_progress_sessions(&self) -> AppResult<Vec<IdeationSession>> {
+        Ok(self
+            .sessions
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|s| s.verification_in_progress)
+            .cloned()
+            .collect())
+    }
+
     async fn get_verification_children(
         &self,
         _parent_session_id: &IdeationSessionId,

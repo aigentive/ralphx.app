@@ -927,6 +927,131 @@ async fn test_zombie_guard_skipped_when_no_generation_provided() {
     assert!(result.is_ok(), "missing generation must not trigger the guard: {:?}", result.err());
 }
 
+/// Zombie protection: terminal call (in_progress=false) with stale generation → 409 CONFLICT
+///
+/// Terminal calls (verified, needs_revision, skipped) must also be guarded.
+/// A zombie agent that finished after a reset must not overwrite the new agent's terminal status.
+#[tokio::test]
+async fn test_zombie_terminal_call_stale_generation_rejected() {
+    let state = setup_test_state().await;
+
+    // Session at Reviewing with generation=3 (simulates a reset mid-verification)
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(3)
+        .verification_status(crate::domain::entities::VerificationStatus::Reviewing)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // Zombie agent sends terminal status (in_progress=false) with stale generation=1 → must be rejected
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: false,
+            round: Some(2),
+            gaps: None,
+            convergence_reason: Some("max_rounds".to_string()),
+            max_rounds: None,
+            parse_failed: None,
+            generation: Some(1), // Stale — reset incremented to 3
+        }),
+    )
+    .await;
+
+    assert!(result.is_err(), "terminal call with stale generation must be rejected");
+    let (status, _body) = result.unwrap_err();
+    assert_eq!(
+        status,
+        StatusCode::CONFLICT,
+        "must return 409 CONFLICT for stale generation on terminal call"
+    );
+}
+
+/// Zombie protection: terminal call (in_progress=false) with correct generation → success
+///
+/// A legitimate agent finishing its round loop must be able to write terminal status
+/// when it provides the correct current generation.
+#[tokio::test]
+async fn test_zombie_terminal_call_correct_generation_succeeds() {
+    let state = setup_test_state().await;
+
+    // Session at Reviewing with generation=3
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(3)
+        .verification_status(crate::domain::entities::VerificationStatus::Reviewing)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // Correct generation → terminal call must succeed
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: false,
+            round: Some(2),
+            gaps: None,
+            convergence_reason: Some("max_rounds".to_string()),
+            max_rounds: None,
+            parse_failed: None,
+            generation: Some(3), // Correct generation
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "terminal call with correct generation must succeed: {:?}",
+        result.err()
+    );
+}
+
+/// Zombie protection: terminal call without generation parameter → guard does not fire
+///
+/// Backward compatibility: callers that omit generation entirely are not affected
+/// by the guard, regardless of whether the call is in_progress=true or false.
+#[tokio::test]
+async fn test_zombie_terminal_call_no_generation_no_guard() {
+    let state = setup_test_state().await;
+
+    // Session at Reviewing with generation=5
+    let session = IdeationSessionBuilder::new()
+        .project_id(ProjectId::new())
+        .verification_generation(5)
+        .verification_status(crate::domain::entities::VerificationStatus::Reviewing)
+        .build();
+    let session_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    // No generation parameter → guard skipped, terminal call proceeds normally
+    let result = update_plan_verification(
+        State(state.clone()),
+        Path(session_id.clone()),
+        Json(UpdateVerificationRequest {
+            status: "needs_revision".to_string(),
+            in_progress: false,
+            round: Some(1),
+            gaps: None,
+            convergence_reason: Some("max_rounds".to_string()),
+            max_rounds: None,
+            parse_failed: None,
+            generation: None, // No generation = no guard check
+        }),
+    )
+    .await;
+
+    assert!(
+        result.is_ok(),
+        "terminal call without generation must not trigger the guard: {:?}",
+        result.err()
+    );
+}
+
 /// Empty round guard: round 1 with 0 gaps does NOT trigger convergence.
 ///
 /// A critic that finds 0 gaps in round 1 may simply be broken or confused.

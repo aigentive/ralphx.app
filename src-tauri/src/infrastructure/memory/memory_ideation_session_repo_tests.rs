@@ -270,6 +270,63 @@ async fn test_get_verification_status_returns_none_for_nonexistent() {
     assert!(result.is_none());
 }
 
+// ==================== ARCHIVE CLEARS VERIFICATION_IN_PROGRESS TESTS ====================
+
+#[tokio::test]
+async fn test_archive_clears_verification_in_progress_when_set() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    // Set verification_in_progress = true
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::Reviewing,
+        true,
+        Some(r#"{"v":1}"#.to_string()),
+    )
+    .await
+    .unwrap();
+
+    // Archive should atomically clear the flag
+    repo.update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let updated = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(updated.status, IdeationSessionStatus::Archived);
+    assert!(updated.archived_at.is_some());
+    assert!(
+        !updated.verification_in_progress,
+        "verification_in_progress must be cleared on archive"
+    );
+}
+
+#[tokio::test]
+async fn test_archive_does_not_regress_when_verification_in_progress_already_false() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    // Ensure flag is already false (default)
+    let before = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert!(!before.verification_in_progress);
+
+    // Archive — flag must remain false
+    repo.update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let updated = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(updated.status, IdeationSessionStatus::Archived);
+    assert!(
+        !updated.verification_in_progress,
+        "verification_in_progress must remain false after archive"
+    );
+}
+
 /// ImportedVerified sessions must not be reset by reset_verification —
 /// their pre-verified status must be preserved across plan artifact changes.
 #[tokio::test]
@@ -302,4 +359,65 @@ async fn test_reset_verification_is_noop_for_imported_verified() {
     assert!(!found.verification_in_progress);
     // Metadata is preserved (reset was skipped entirely)
     assert_eq!(found.verification_metadata, Some(r#"{"v":1}"#.to_string()));
+}
+
+// ==================== STALE QUERY EXCLUDES ARCHIVED SESSIONS TESTS ====================
+
+/// Defense-in-depth: archived session with verification_in_progress re-set via
+/// update_verification_state must NOT appear in get_stale_in_progress_sessions.
+#[tokio::test]
+async fn test_get_stale_in_progress_sessions_excludes_archived() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    // Archive the session (clears verification_in_progress via update_status guard)
+    repo.update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    // Re-set verification_in_progress=true after archiving to simulate defense-in-depth scenario
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::Reviewing,
+        true,
+        None,
+    )
+    .await
+    .unwrap();
+
+    // Use a future cutoff so updated_at is definitely before it
+    let stale_cutoff = chrono::Utc::now() + chrono::Duration::hours(1);
+    let results = repo.get_stale_in_progress_sessions(stale_cutoff).await.unwrap();
+    assert!(
+        results.iter().all(|s| s.id != session.id),
+        "archived session must be excluded from stale query even with verification_in_progress=true"
+    );
+}
+
+/// Active session with stale verification_in_progress=true MUST appear in results.
+#[tokio::test]
+async fn test_get_stale_in_progress_sessions_includes_active() {
+    let repo = MemoryIdeationSessionRepository::new();
+    let project_id = ProjectId::new();
+    let session = IdeationSession::new(project_id.clone());
+    repo.create(session.clone()).await.unwrap();
+
+    // Set verification_in_progress=true (session stays Active)
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::Reviewing,
+        true,
+        None,
+    )
+    .await
+    .unwrap();
+
+    let stale_cutoff = chrono::Utc::now() + chrono::Duration::hours(1);
+    let results = repo.get_stale_in_progress_sessions(stale_cutoff).await.unwrap();
+    assert!(
+        results.iter().any(|s| s.id == session.id),
+        "active stale session must be included in stale query"
+    );
 }

@@ -399,7 +399,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .run(move |conn| {
                 let query = match status {
                     IdeationSessionStatus::Archived => {
-                        "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, archived_at = ?4 WHERE id = ?1"
+                        "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, archived_at = ?4, verification_in_progress = 0 WHERE id = ?1"
                     }
                     IdeationSessionStatus::Accepted => {
                         "UPDATE ideation_sessions SET status = ?2, updated_at = ?3, converted_at = ?4 WHERE id = ?1"
@@ -896,10 +896,30 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                      verification_status, verification_in_progress, verification_metadata, \
                      verification_generation, source_project_id, source_session_id, session_purpose \
                      FROM ideation_sessions \
-                     WHERE verification_in_progress = 1 AND updated_at < ?1",
+                     WHERE verification_in_progress = 1 AND updated_at < ?1 AND status != 'archived'",
                 )?;
                 let sessions = stmt
                     .query_map([&stale_before_str], IdeationSession::from_row)?
+                    .collect::<Result<Vec<_>, _>>()?;
+                Ok(sessions)
+            })
+            .await
+    }
+
+    async fn get_all_in_progress_sessions(&self) -> AppResult<Vec<IdeationSession>> {
+        self.db
+            .run(move |conn| {
+                let mut stmt = conn.prepare(
+                    "SELECT id, project_id, title, title_source, status, plan_artifact_id, \
+                     inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, \
+                     updated_at, archived_at, converted_at, team_mode, team_config_json, \
+                     verification_status, verification_in_progress, verification_metadata, \
+                     verification_generation, source_project_id, source_session_id, session_purpose \
+                     FROM ideation_sessions \
+                     WHERE verification_in_progress = 1 AND status != 'archived'",
+                )?;
+                let sessions = stmt
+                    .query_map([], IdeationSession::from_row)?
                     .collect::<Result<Vec<_>, _>>()?;
                 Ok(sessions)
             })
