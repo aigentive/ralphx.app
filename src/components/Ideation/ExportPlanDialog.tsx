@@ -1,16 +1,16 @@
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogDescription,
-  DialogFooter,
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { CheckCircle2, FolderOpen } from "lucide-react";
-import { useProjects } from "@/hooks/useProjects";
-import { useExportPlanToProject } from "@/hooks/useExportPlanToProject";
+import { FileJson, FileText } from "lucide-react";
+import { save } from "@tauri-apps/plugin-dialog";
+import { writeTextFile } from "@tauri-apps/plugin-fs";
+import { toast } from "sonner";
+import { useSessionExportImport } from "@/hooks/useSessionExportImport";
+import type { Artifact } from "@/types/artifact";
 
 // ============================================================================
 // Types
@@ -22,6 +22,8 @@ export interface ExportPlanDialogProps {
   sessionId: string;
   sessionTitle: string | null;
   verificationStatus: string;
+  planArtifact: Artifact | null;
+  projectId: string;
 }
 
 // ============================================================================
@@ -44,62 +46,50 @@ export function ExportPlanDialog({
   sessionId,
   sessionTitle,
   verificationStatus,
+  planArtifact,
+  projectId,
 }: ExportPlanDialogProps) {
-  const [targetPath, setTargetPath] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [successSession, setSuccessSession] = useState<{
-    title: string | null;
-  } | null>(null);
+  const [isDownloadingMarkdown, setIsDownloadingMarkdown] = useState(false);
 
-  const { data: projects } = useProjects();
-  const mutation = useExportPlanToProject();
-
-  const matchingProjects = useMemo(() => {
-    if (!targetPath || !projects) return [];
-    return projects.filter((p) =>
-      p.workingDirectory.startsWith(targetPath)
-    );
-  }, [targetPath, projects]);
-
-  const handleOpenChange = (next: boolean) => {
-    if (!next) {
-      setTargetPath("");
-      setShowDropdown(false);
-      setSuccessSession(null);
-      mutation.reset();
-    }
-    onOpenChange(next);
-  };
-
-  const handlePathChange = (value: string) => {
-    setTargetPath(value);
-    setShowDropdown(value.length > 0);
-    mutation.reset();
-  };
-
-  const handleSelectProject = (workingDirectory: string) => {
-    setTargetPath(workingDirectory);
-    setShowDropdown(false);
-  };
-
-  const handleSubmit = () => {
-    if (!targetPath.trim()) return;
-    mutation.mutate(
-      { targetProjectPath: targetPath.trim(), sourceSessionId: sessionId },
-      {
-        onSuccess: (session) => {
-          setSuccessSession({ title: session.title ?? null });
-        },
-      }
-    );
-  };
+  const { exportSession, isExporting } = useSessionExportImport();
 
   const badgeLabel = getVerificationBadgeLabel(verificationStatus);
-  const isPending = mutation.isPending;
-  const hasError = mutation.isError;
+
+  const planContent =
+    planArtifact?.content.type === "inline" ? planArtifact.content.text : "";
+
+  const hasPlan = planArtifact !== null;
+  const hasInlineContent = planArtifact !== null && planArtifact.content.type === "inline";
+
+  const handleDownloadJson = async () => {
+    await exportSession(sessionId, projectId, hasPlan);
+  };
+
+  const handleDownloadMarkdown = async () => {
+    if (!planContent) return;
+
+    setIsDownloadingMarkdown(true);
+    try {
+      const savePath = await save({
+        filters: [{ name: "Markdown", extensions: ["md"] }],
+        defaultPath: `${sessionTitle ?? "plan"}.md`,
+      });
+
+      if (savePath === null) {
+        return;
+      }
+
+      await writeTextFile(savePath, planContent);
+      toast.success("Plan exported as Markdown");
+    } catch {
+      toast.error("Failed to export plan as Markdown");
+    } finally {
+      setIsDownloadingMarkdown(false);
+    }
+  };
 
   return (
-    <Dialog open={open} onOpenChange={handleOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
         className="max-w-md"
         style={{
@@ -109,19 +99,15 @@ export function ExportPlanDialog({
       >
         <DialogHeader>
           <DialogTitle style={{ color: "var(--text-primary)" }}>
-            Export Plan to Project
+            Export Plan
           </DialogTitle>
-          <DialogDescription style={{ color: "var(--text-muted)" }}>
-            Create a copy of this verified plan in another project.
-          </DialogDescription>
         </DialogHeader>
 
         {/* Source plan info */}
         <div
-          className="rounded-lg px-3 py-2.5 text-sm mt-1"
+          className="rounded-lg px-3 py-2.5 text-sm"
           style={{
             backgroundColor: "var(--bg-surface)",
-            borderColor: "var(--border-subtle)",
             border: "1px solid var(--border-subtle)",
           }}
         >
@@ -135,7 +121,8 @@ export function ExportPlanDialog({
             <span
               className="shrink-0 text-xs px-1.5 py-0.5 rounded"
               style={{
-                backgroundColor: "color-mix(in srgb, var(--accent-primary) 15%, transparent)",
+                backgroundColor:
+                  "color-mix(in srgb, var(--accent-primary) 15%, transparent)",
                 color: "var(--accent-primary)",
               }}
             >
@@ -144,127 +131,111 @@ export function ExportPlanDialog({
           </div>
         </div>
 
-        {successSession ? (
-          /* Success state */
+        {/* No plan message */}
+        {!hasPlan && (
+          <p className="text-sm" style={{ color: "var(--text-muted)" }}>
+            No plan content available.
+          </p>
+        )}
+
+        {/* Download cards */}
+        <div className="flex flex-col gap-3">
+          {/* JSON card */}
           <div
-            className="flex flex-col items-center text-center py-6 gap-3"
+            className="rounded-lg p-3"
+            style={{
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+            }}
           >
-            <CheckCircle2
-              className="w-10 h-10"
-              style={{ color: "var(--accent-primary)" }}
-            />
-            <p
-              className="font-medium text-sm"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Plan exported successfully
-            </p>
-            {successSession.title && (
-              <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                New session: &ldquo;{successSession.title}&rdquo;
-              </p>
-            )}
-            <button
-              onClick={() => handleOpenChange(false)}
-              className="mt-2 text-xs px-3 py-1.5 rounded-md transition-colors"
-              style={{
-                backgroundColor: "var(--bg-surface)",
-                color: "var(--text-secondary)",
-                border: "1px solid var(--border-subtle)",
-              }}
-            >
-              Close
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* Path input */}
-            <div className="relative mt-1">
-              <FolderOpen
-                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 pointer-events-none"
-                style={{ color: "var(--text-muted)" }}
+            <div className="flex items-start gap-3">
+              <FileJson
+                className="w-5 h-5 mt-0.5 shrink-0"
+                style={{ color: "var(--accent-primary)" }}
               />
-              <Input
-                placeholder="/path/to/project"
-                value={targetPath}
-                onChange={(e) => handlePathChange(e.target.value)}
-                onFocus={() => {
-                  if (targetPath.length > 0) setShowDropdown(true);
-                }}
-                className="pl-9 h-9 text-sm bg-[var(--bg-surface)] border-[var(--border-subtle)] text-[var(--text-primary)] placeholder:text-[var(--text-muted)] outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
-                style={{ boxShadow: "none", outline: "none" }}
-                disabled={isPending}
-              />
-
-              {/* Autocomplete dropdown */}
-              {showDropdown && matchingProjects.length > 0 && (
-                <div
-                  className="absolute top-full left-0 right-0 mt-1 rounded-lg overflow-hidden z-50 shadow-lg"
-                  style={{
-                    backgroundColor: "var(--bg-elevated)",
-                    border: "1px solid var(--border-subtle)",
-                  }}
+              <div className="flex-1 min-w-0">
+                <p
+                  className="font-medium text-sm"
+                  style={{ color: "var(--text-primary)" }}
                 >
-                  {matchingProjects.map((project) => (
-                    <button
-                      key={project.id}
-                      onClick={() =>
-                        handleSelectProject(project.workingDirectory)
-                      }
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-[var(--bg-hover)] transition-colors"
-                    >
-                      <div
-                        className="font-medium truncate"
-                        style={{ color: "var(--text-primary)" }}
-                      >
-                        {project.name}
-                      </div>
-                      <div
-                        className="text-xs truncate"
-                        style={{ color: "var(--text-muted)" }}
-                      >
-                        {project.workingDirectory}
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
+                  Download JSON
+                </p>
+                <p
+                  className="text-xs mt-0.5"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Full session export with plan, proposals, and dependencies.
+                  Re-importable into any RalphX project.
+                </p>
+              </div>
             </div>
-
-            {/* Error message */}
-            {hasError && (
-              <p className="text-xs" style={{ color: "hsl(0 72% 60%)" }}>
-                {mutation.error?.message ?? "Export failed. Please try again."}
-              </p>
-            )}
-
-            <DialogFooter>
+            <div className="flex justify-end mt-3">
               <button
-                onClick={() => handleOpenChange(false)}
-                className="text-sm px-3 py-1.5 rounded-md transition-colors"
-                style={{
-                  color: "var(--text-secondary)",
-                  backgroundColor: "var(--bg-surface)",
-                  border: "1px solid var(--border-subtle)",
-                }}
-                disabled={isPending}
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSubmit}
-                disabled={isPending || !targetPath.trim()}
-                className="text-sm px-4 py-1.5 rounded-md font-medium transition-opacity disabled:opacity-50"
+                onClick={handleDownloadJson}
+                disabled={!hasPlan || isExporting}
+                className="text-sm px-3 py-1.5 rounded-md font-medium transition-opacity disabled:opacity-50"
                 style={{
                   backgroundColor: "var(--accent-primary)",
                   color: "white",
                 }}
               >
-                {isPending ? "Creating..." : "Create in Project"}
+                {isExporting ? "Exporting..." : "Download"}
               </button>
-            </DialogFooter>
-          </>
-        )}
+            </div>
+          </div>
+
+          {/* Markdown card */}
+          <div
+            className="rounded-lg p-3"
+            style={{
+              backgroundColor: "var(--bg-surface)",
+              border: "1px solid var(--border-subtle)",
+            }}
+          >
+            <div className="flex items-start gap-3">
+              <FileText
+                className="w-5 h-5 mt-0.5 shrink-0"
+                style={{ color: "var(--accent-primary)" }}
+              />
+              <div className="flex-1 min-w-0">
+                <p
+                  className="font-medium text-sm"
+                  style={{ color: "var(--text-primary)" }}
+                >
+                  Download Markdown
+                </p>
+                <p
+                  className="text-xs mt-0.5"
+                  style={{ color: "var(--text-muted)" }}
+                >
+                  Plan content as readable .md file for sharing or reference.
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end mt-3">
+              <button
+                onClick={handleDownloadMarkdown}
+                disabled={!hasInlineContent || isDownloadingMarkdown}
+                className="text-sm px-3 py-1.5 rounded-md font-medium transition-opacity disabled:opacity-50"
+                style={{
+                  backgroundColor: "var(--accent-primary)",
+                  color: "white",
+                }}
+              >
+                {isDownloadingMarkdown ? "Exporting..." : "Download"}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* TODO: Re-enable cross-project export in future */}
+        {/*
+        <div>
+          <h3>Export to Project</h3>
+          <p>Create a copy of this verified plan in another project.</p>
+          ...cross-project export form...
+        </div>
+        */}
       </DialogContent>
     </Dialog>
   );
