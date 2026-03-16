@@ -264,16 +264,6 @@ describe("useAnalysisEditor", () => {
       expect(result.current.isDirty).toBe(true);
     });
 
-    it("removes entry by index", () => {
-      const { result } = renderHook(() => useAnalysisEditor(mockProject));
-
-      act(() => {
-        result.current.removeEntry(0);
-      });
-
-      expect(result.current.entries).toHaveLength(1);
-      expect(result.current.entries[0].path).toBe("src-tauri");
-    });
   });
 
   describe("customization tracking", () => {

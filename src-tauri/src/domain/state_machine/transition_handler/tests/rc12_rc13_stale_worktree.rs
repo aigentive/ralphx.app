@@ -319,3 +319,73 @@ async fn test_stale_worktree_entry_with_deleted_path_can_be_recreated() {
 
     let _ = GitService::delete_worktree(path, &wt_path).await;
 }
+
+// ==========================================
+// Fix 4: already-exists error — stale directory at target path
+// ==========================================
+
+/// Fix 4: When `git worktree add` fails with "already exists" because the target
+/// directory physically exists on disk (from failed cleanup) but is NOT registered
+/// in git's worktree metadata, `checkout_existing_branch_worktree` should:
+///   1. Force-remove the stale directory via `tokio::fs::remove_dir_all`
+///   2. Run `git worktree prune`
+///   3. Retry `git worktree add` — which must succeed
+#[tokio::test]
+async fn test_checkout_existing_branch_worktree_recovers_from_already_exists() {
+    let git_repo = setup_real_git_repo();
+    let path = git_repo.path();
+
+    create_branch(path, "already-exists-branch");
+
+    let worktree_parent = path.join("worktrees");
+    fs::create_dir_all(&worktree_parent).unwrap();
+
+    let wt_path = worktree_parent.join("already-exists-wt");
+
+    // Pre-create the directory WITHOUT registering it as a git worktree.
+    // This is the scenario: a previous run created the directory but failed
+    // before `git worktree add` completed, leaving a stale directory behind.
+    fs::create_dir_all(&wt_path).unwrap();
+    assert!(
+        wt_path.exists(),
+        "Precondition: stale directory should exist at worktree path"
+    );
+
+    // Verify git does NOT know about this path (not registered)
+    let worktrees = GitService::list_worktrees(path).await.unwrap();
+    let registered = worktrees
+        .iter()
+        .any(|w| w.path == wt_path.to_string_lossy().as_ref());
+    assert!(
+        !registered,
+        "Precondition: stale directory should NOT be registered as a git worktree"
+    );
+
+    // Call checkout_existing_branch_worktree — should detect "already exists",
+    // remove the stale dir, prune, and successfully create the worktree.
+    let result =
+        GitService::checkout_existing_branch_worktree(path, &wt_path, "already-exists-branch")
+            .await;
+    assert!(
+        result.is_ok(),
+        "checkout_existing_branch_worktree should recover from stale directory: {:?}",
+        result.err()
+    );
+
+    assert!(
+        wt_path.exists(),
+        "Worktree directory should exist after recovery"
+    );
+
+    // Verify git now tracks it as a proper worktree
+    let worktrees_after = GitService::list_worktrees(path).await.unwrap();
+    let now_registered = worktrees_after
+        .iter()
+        .any(|w| w.branch.as_deref() == Some("already-exists-branch"));
+    assert!(
+        now_registered,
+        "Worktree should be registered in git after successful recovery"
+    );
+
+    let _ = GitService::delete_worktree(path, &wt_path).await;
+}

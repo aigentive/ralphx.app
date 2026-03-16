@@ -7,7 +7,6 @@
  * - useActiveWorkflowColumns: Fetch columns for the active workflow
  * - useCreateWorkflow: Create a new workflow
  * - useUpdateWorkflow: Update an existing workflow
- * - useDeleteWorkflow: Delete a workflow
  * - useSetDefaultWorkflow: Set a workflow as the default
  */
 
@@ -173,32 +172,6 @@ export function useUpdateWorkflow() {
     onSuccess: (_, { id }) => {
       queryClient.invalidateQueries({ queryKey: workflowKeys.lists() });
       queryClient.invalidateQueries({ queryKey: workflowKeys.detail(id) });
-      queryClient.invalidateQueries({ queryKey: workflowKeys.activeColumns() });
-    },
-  });
-}
-
-/**
- * Hook to delete a workflow
- *
- * @returns TanStack Mutation for deleting workflows
- *
- * @example
- * ```tsx
- * const { mutateAsync, isPending } = useDeleteWorkflow();
- *
- * const handleDelete = async () => {
- *   await mutateAsync("workflow-123");
- * };
- * ```
- */
-export function useDeleteWorkflow() {
-  const queryClient = useQueryClient();
-
-  return useMutation<void, Error, string>({
-    mutationFn: (id) => api.workflows.delete(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: workflowKeys.lists() });
       queryClient.invalidateQueries({ queryKey: workflowKeys.activeColumns() });
     },
   });

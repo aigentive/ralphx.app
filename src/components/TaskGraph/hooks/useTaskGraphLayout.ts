@@ -172,8 +172,6 @@ function createGroupNodes(
   includeUncategorized: boolean = true,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAll?: (sessionId: string) => void,
   onCancelAll?: (sessionId: string) => void
 ): PlanGroupNode[] {
   const args = {
@@ -191,8 +189,6 @@ function createGroupNodes(
     ...(onToggleAllTiers && { onToggleAllTiers }),
     ...(projectId && { projectId }),
     ...(onNavigateToTask && { onNavigateToTask }),
-    ...(onDeletePlan && { onDeletePlan }),
-    ...(onRemoveAll && { onRemoveAll }),
     ...(onCancelAll && { onCancelAll }),
   };
   return buildPlanGroupNodes(args);
@@ -466,8 +462,6 @@ function computeLayoutWithCache(
   cache: React.MutableRefObject<CachedLayout | null>,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAll?: (sessionId: string) => void,
   onCancelAll?: (sessionId: string) => void
 ): LayoutResult {
   // Helper to get per-node dimensions from the mode lookup
@@ -760,8 +754,6 @@ function computeLayoutWithCache(
     includeUncategorized,
     projectId,
     onNavigateToTask,
-    onDeletePlan,
-    onRemoveAll,
     onCancelAll
   );
 
@@ -1065,8 +1057,6 @@ export function useTaskGraphLayout(
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onDeletePlan?: (planArtifactId: string) => void,
-  onRemoveAll?: (sessionId: string) => void,
   onCancelAll?: (sessionId: string) => void
 ): LayoutResult {
   // Merge with default config
@@ -1098,8 +1088,6 @@ export function useTaskGraphLayout(
       layoutCache,
       projectId,
       onNavigateToTask,
-      onDeletePlan,
-      onRemoveAll,
       onCancelAll
     );
   }, [
@@ -1116,8 +1104,6 @@ export function useTaskGraphLayout(
     onToggleAllTiers,
     projectId,
     onNavigateToTask,
-    onDeletePlan,
-    onRemoveAll,
     onCancelAll,
   ]);
 

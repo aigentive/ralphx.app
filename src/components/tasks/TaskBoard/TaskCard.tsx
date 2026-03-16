@@ -12,7 +12,7 @@
 
 import { useDraggable } from "@dnd-kit/core";
 import { GripVertical, FileText, Lightbulb, Clock, Ban, GitBranch, GitPullRequest } from "lucide-react";
-import { useState, useMemo, useCallback } from "react";
+import { useMemo, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { markdownComponents } from "@/components/Chat/MessageItem.markdown";
@@ -28,16 +28,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { TaskCardContextMenu } from "@/components/tasks/TaskCardContextMenu";
 import type { GroupInfo } from "@/lib/task-actions";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
@@ -124,12 +114,11 @@ export function TaskCard({
     restoreMutation,
     cleanupTaskMutation,
     moveMutation,
+    pauseMutation,
+    resumeMutation,
     blockMutation,
     unblockMutation,
   } = useTaskMutation(task.projectId);
-
-  // Confirmation dialog state for permanent delete
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   // Check if task is archived
   const isArchived = task.archivedAt !== null;
@@ -182,15 +171,6 @@ export function TaskCard({
     cleanupTaskMutation.mutate(task.id);
   };
 
-  const handlePermanentDelete = () => {
-    setShowDeleteConfirm(true);
-  };
-
-  const confirmPermanentDelete = () => {
-    cleanupTaskMutation.mutate(task.id);
-    setShowDeleteConfirm(false);
-  };
-
   const handleStatusChange = (newStatus: string) => {
     moveMutation.mutate({ taskId: task.id, toStatus: newStatus });
   };
@@ -205,6 +185,18 @@ export function TaskCard({
   const handleUnblock = useCallback(() => {
     unblockMutation.mutate(task.id);
   }, [task.id, unblockMutation]);
+
+  const handlePause = useCallback(() => {
+    pauseMutation.mutate(task.id);
+  }, [task.id, pauseMutation]);
+
+  const handleResume = useCallback(() => {
+    resumeMutation.mutate(task.id);
+  }, [task.id, resumeMutation]);
+
+  const handleStartExecution = useCallback(() => {
+    moveMutation.mutate({ taskId: task.id, toStatus: "executing" });
+  }, [task.id, moveMutation]);
 
   const handleStartIdeation = async () => {
     try {
@@ -233,11 +225,13 @@ export function TaskCard({
         onEdit={handleEdit}
         onArchive={handleArchive}
         onRestore={handleRestore}
-        onPermanentDelete={handlePermanentDelete}
         onRemove={handleRemove}
         onStatusChange={handleStatusChange}
         onBlockWithReason={handleBlockWithReason}
         onUnblock={handleUnblock}
+        onPause={handlePause}
+        onResume={handleResume}
+        onStartExecution={handleStartExecution}
         onStartIdeation={handleStartIdeation}
         {...(groupInfo !== undefined && { groupInfo })}
       >
@@ -463,26 +457,6 @@ export function TaskCard({
     </div>
       </TaskCardContextMenu>
 
-      {/* Confirmation dialog for permanent delete */}
-      <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete task permanently?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The task "{task.title}" will be permanently removed from the system.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmPermanentDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete Permanently
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

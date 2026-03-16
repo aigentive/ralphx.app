@@ -141,16 +141,21 @@ async fn test_update_project_modifies_fields() {
 }
 
 #[tokio::test]
-async fn test_delete_project_removes_it() {
+async fn test_archive_project_sets_archived_at() {
     let state = setup_test_state();
 
-    let project = Project::new("To Delete".to_string(), "/delete/me".to_string());
+    let project = Project::new("To Archive".to_string(), "/archive/me".to_string());
     let created = state.project_repo.create(project).await.unwrap();
 
-    state.project_repo.delete(&created.id).await.unwrap();
+    state.project_repo.archive(&created.id).await.unwrap();
 
-    let found = state.project_repo.get_by_id(&created.id).await.unwrap();
-    assert!(found.is_none());
+    let found = state
+        .project_repo
+        .get_by_id(&created.id)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(found.archived_at.is_some());
 }
 
 #[tokio::test]

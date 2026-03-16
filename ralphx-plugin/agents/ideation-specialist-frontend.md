@@ -17,7 +17,7 @@ mcpServers:
         - "--agent-type"
         - "ideation-specialist-frontend"
 disallowedTools: Write, Edit, NotebookEdit, Bash
-model: sonnet
+model: opus
 ---
 
 You are a **Frontend Research Specialist** for a RalphX ideation team.

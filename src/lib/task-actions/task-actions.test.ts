@@ -63,11 +63,12 @@ describe("getTaskActions (kanban)", () => {
     expect(actions[0].confirmConfig).toBeDefined();
   });
 
-  it("returns Block and Cancel for ready", () => {
+  it("returns Start Execution, Block, and Cancel for ready", () => {
     const actions = getTaskActions("ready", "kanban");
-    expect(actions).toHaveLength(2);
-    expect(actions.map(a => a.id)).toEqual(["block", "cancel"]);
-    expect(actions[0].opensDialog).toBe(true);
+    expect(actions).toHaveLength(3);
+    expect(actions.map(a => a.id)).toEqual(["start", "block", "cancel"]);
+    expect(actions[0].confirmConfig).toBeDefined();
+    expect(actions[1].opensDialog).toBe(true);
   });
 
   it("returns Unblock and Cancel for blocked", () => {
@@ -97,9 +98,31 @@ describe("getTaskActions (kanban)", () => {
     expect(actions[0].id).toBe("reopen");
   });
 
-  it("returns empty for system-controlled statuses", () => {
+  it("returns Pause and Cancel for executing tasks", () => {
+    const actions = getTaskActions("executing", "kanban");
+    expect(actions).toHaveLength(2);
+    expect(actions.map(a => a.id)).toEqual(["pause", "cancel"]);
+    expect(actions[0].confirmConfig).toBeDefined();
+    expect(actions[1].variant).toBe("destructive");
+  });
+
+  it("returns Pause and Cancel for re_executing tasks", () => {
+    const actions = getTaskActions("re_executing", "kanban");
+    expect(actions).toHaveLength(2);
+    expect(actions.map(a => a.id)).toEqual(["pause", "cancel"]);
+  });
+
+  it("returns Resume and Cancel for paused tasks", () => {
+    const actions = getTaskActions("paused", "kanban");
+    expect(actions).toHaveLength(2);
+    expect(actions.map(a => a.id)).toEqual(["resume", "cancel"]);
+    expect(actions[0].confirmConfig).toBeDefined();
+    expect(actions[1].variant).toBe("destructive");
+  });
+
+  it("returns empty for system-controlled statuses (review/qa pipeline)", () => {
     const systemStatuses: InternalStatus[] = [
-      "executing", "re_executing", "reviewing", "pending_review",
+      "reviewing", "pending_review",
     ];
     for (const status of systemStatuses) {
       expect(getTaskActions(status, "kanban")).toHaveLength(0);
@@ -227,6 +250,7 @@ describe("CONFIRMATION_CONFIGS", () => {
       "cancelled", "blocked", "ready", "backlog", "retry",
       "start", "unblock", "approve", "reject", "request-changes", "mark-resolved",
       "archive", "restore", "permanent-delete",
+      "pause", "resume",
     ];
     for (const key of requiredKeys) {
       expect(CONFIRMATION_CONFIGS[key]).toBeDefined();

@@ -16,7 +16,7 @@ import { stepKeys } from "./useTaskSteps";
  * Provides mutations for:
  * - Creating steps
  * - Updating steps
- * - Deleting steps
+ * - Skipping steps
  * - Reordering steps
  *
  * @param taskId - The task ID for cache invalidation
@@ -24,7 +24,7 @@ import { stepKeys } from "./useTaskSteps";
  *
  * @example
  * ```tsx
- * const { create, update, delete: deleteStep } = useStepMutations("task-123");
+ * const { create, update, skip } = useStepMutations("task-123");
  *
  * // Create a new step
  * create.mutate({ title: "New Step", description: "Do something" });
@@ -32,8 +32,8 @@ import { stepKeys } from "./useTaskSteps";
  * // Update a step
  * update.mutate({ stepId: "step-1", data: { title: "Updated Title" } });
  *
- * // Delete a step
- * deleteStep.mutate("step-1");
+ * // Skip a step
+ * skip.mutate({ stepId: "step-1", reason: "Skipped by user" });
  *
  * // Reorder steps
  * reorder.mutate(["step-3", "step-1", "step-2"]);
@@ -76,15 +76,16 @@ export function useStepMutations(taskId: string) {
     },
   });
 
-  const deleteStep = useMutation({
-    mutationFn: (stepId: string) => api.steps.delete(stepId),
+  const skipStep = useMutation({
+    mutationFn: ({ stepId, reason }: { stepId: string; reason: string }) =>
+      api.steps.skip(stepId, reason),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: stepKeys.byTask(taskId) });
       queryClient.invalidateQueries({ queryKey: stepKeys.progress(taskId) });
-      toast.success("Step deleted");
+      toast.success("Step skipped");
     },
     onError: (error: Error) => {
-      toast.error(`Failed to delete step: ${error.message}`);
+      toast.error(`Failed to skip step: ${error.message}`);
     },
   });
 
@@ -103,11 +104,11 @@ export function useStepMutations(taskId: string) {
   return {
     create,
     update,
-    delete: deleteStep,
+    skip: skipStep,
     reorder,
     isCreating: create.isPending,
     isUpdating: update.isPending,
-    isDeleting: deleteStep.isPending,
+    isSkipping: skipStep.isPending,
     isReordering: reorder.isPending,
   };
 }

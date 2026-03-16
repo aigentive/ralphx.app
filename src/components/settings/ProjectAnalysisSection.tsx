@@ -180,7 +180,6 @@ export function ProjectAnalysisSection() {
                 onUpdateField={(field, value) => editor.updateField(i, field, value)}
                 onResetField={(field) => editor.resetField(i, field)}
                 onResetEntry={() => editor.resetEntry(i)}
-                onRemoveEntry={() => editor.removeEntry(i)}
                 onAddArrayItem={(field) => editor.addArrayItem(i, field)}
                 onRemoveArrayItem={(field, itemIdx) => editor.removeArrayItem(i, field, itemIdx)}
                 onUpdateArrayItem={(field, itemIdx, value) => editor.updateArrayItem(i, field, itemIdx, value)}

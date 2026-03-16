@@ -84,6 +84,9 @@ pub trait ArtifactRepository: Send + Sync {
     /// Walk the version chain forward from any artifact ID to find the latest version.
     /// Given A(v1) → B(v2) → C(v3): resolve_latest(A) → C, resolve_latest(C) → C.
     async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId>;
+
+    /// Archive an artifact (soft delete)
+    async fn archive(&self, id: &ArtifactId) -> AppResult<Artifact>;
 }
 
 /// Summary of an artifact version for history display

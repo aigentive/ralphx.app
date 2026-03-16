@@ -29,6 +29,9 @@ pub trait ProjectRepository: Send + Sync {
 
     /// Find project by working directory path
     async fn get_by_working_directory(&self, path: &str) -> AppResult<Option<Project>>;
+
+    /// Archive a project (soft delete)
+    async fn archive(&self, id: &ProjectId) -> AppResult<Project>;
 }
 
 #[cfg(test)]

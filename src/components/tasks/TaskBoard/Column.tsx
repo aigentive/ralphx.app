@@ -316,14 +316,7 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
 
   // Confirmation dialog for column context menu
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
-  const { cleanupTasksInGroupMutation, cancelTasksInGroupMutation } = useTaskMutation(projectId);
-
-  // Handler for "Remove all" group action
-  // Note: For multi-state columns, this only removes tasks matching the primary status (column.mapsTo)
-  const handleRemoveAll = useCallback(() => {
-    const { groupKind, groupId } = resolveGroupCleanupParams("column", column.mapsTo);
-    cleanupTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
-  }, [column.mapsTo, projectId, cleanupTasksInGroupMutation]);
+  const { cancelTasksInGroupMutation, pauseTasksInGroupMutation, resumeTasksInGroupMutation, archiveTasksInGroupMutation } = useTaskMutation(projectId);
 
   // Handler for "Cancel all" group action
   // Note: For multi-state columns, this only cancels tasks matching the primary status (column.mapsTo)
@@ -332,6 +325,21 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     cancelTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
   }, [column.mapsTo, projectId, cancelTasksInGroupMutation]);
 
+  const handlePauseAll = useCallback(() => {
+    const { groupKind, groupId } = resolveGroupCleanupParams("column", column.mapsTo);
+    pauseTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
+  }, [column.mapsTo, projectId, pauseTasksInGroupMutation]);
+
+  const handleResumeAll = useCallback(() => {
+    const { groupKind, groupId } = resolveGroupCleanupParams("column", column.mapsTo);
+    resumeTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
+  }, [column.mapsTo, projectId, resumeTasksInGroupMutation]);
+
+  const handleArchiveAll = useCallback(() => {
+    const { groupKind, groupId } = resolveGroupCleanupParams("column", column.mapsTo);
+    archiveTasksInGroupMutation.mutate({ groupKind, groupId, projectId });
+  }, [column.mapsTo, projectId, archiveTasksInGroupMutation]);
+
   // Group info for task-level context menus (shows column group actions)
   const columnGroupInfo: GroupInfo = useMemo(() => ({
     groupLabel: column.name,
@@ -339,9 +347,11 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
     taskCount: tasks.length,
     groupId: column.mapsTo,
     projectId,
-    onRemoveAll: handleRemoveAll,
     onCancelAll: handleCancelAll,
-  }), [column.name, column.mapsTo, tasks.length, projectId, handleRemoveAll, handleCancelAll]);
+    onPauseAll: handlePauseAll,
+    onResumeAll: handleResumeAll,
+    onArchiveAll: handleArchiveAll,
+  }), [column.name, column.mapsTo, tasks.length, projectId, handleCancelAll, handlePauseAll, handleResumeAll, handleArchiveAll]);
 
   // Determine if this column should show InlineTaskAdd
   // Always visible in draft/backlog columns (not during drag)
@@ -599,8 +609,10 @@ export function Column({ column, projectId, showArchived, showMergeTasks, isOver
             taskCount={tasks.length}
             projectId={projectId}
             groupId={column.mapsTo}
-            onRemoveAll={handleRemoveAll}
             onCancelAll={handleCancelAll}
+            onPauseAll={handlePauseAll}
+            onResumeAll={handleResumeAll}
+            onArchiveAll={handleArchiveAll}
             confirm={confirm}
           />
         </ContextMenuContent>

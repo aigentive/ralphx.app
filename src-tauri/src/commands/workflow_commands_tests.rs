@@ -64,23 +64,6 @@ async fn test_list_workflows() {
 }
 
 #[tokio::test]
-async fn test_delete_workflow() {
-    let state = setup_test_state();
-
-    let workflow = WorkflowSchema::new(
-        "To Delete",
-        vec![WorkflowColumn::new("col", "Col", InternalStatus::Backlog)],
-    );
-    let id = workflow.id.clone();
-
-    state.workflow_repo.create(workflow).await.unwrap();
-    state.workflow_repo.delete(&id).await.unwrap();
-
-    let found = state.workflow_repo.get_by_id(&id).await.unwrap();
-    assert!(found.is_none());
-}
-
-#[tokio::test]
 async fn test_set_default_workflow() {
     let state = setup_test_state();
 

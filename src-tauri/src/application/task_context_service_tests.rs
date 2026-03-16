@@ -56,10 +56,6 @@ impl TaskRepository for MockTaskRepository {
         Ok(())
     }
 
-    async fn clear_task_references(&self, _id: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
-
     async fn get_by_status(
         &self,
         _project_id: &ProjectId,
@@ -368,6 +364,10 @@ impl TaskProposalRepository for MockTaskProposalRepository {
     ) -> AppResult<()> {
         Ok(())
     }
+
+    async fn archive(&self, _id: &TaskProposalId) -> AppResult<TaskProposal> {
+        unimplemented!()
+    }
 }
 
 struct MockArtifactRepository {
@@ -491,6 +491,10 @@ impl ArtifactRepository for MockArtifactRepository {
 
     async fn resolve_latest_artifact_id(&self, id: &ArtifactId) -> AppResult<ArtifactId> {
         Ok(id.clone())
+    }
+
+    async fn archive(&self, _id: &ArtifactId) -> AppResult<Artifact> {
+        unimplemented!()
     }
 }
 

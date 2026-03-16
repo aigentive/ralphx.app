@@ -115,4 +115,16 @@ export const CONFIRMATION_CONFIGS = {
     description: "This will permanently delete the task. This action cannot be undone.",
     variant: "destructive",
   },
+
+  // State transition actions
+  pause: {
+    title: "Pause this task?",
+    description: "The agent will stop and the task will be paused. You can resume it later.",
+    variant: "default",
+  },
+  resume: {
+    title: "Resume this task?",
+    description: "The task will be queued for re-execution from where it left off.",
+    variant: "default",
+  },
 } as const satisfies Record<string, ConfirmConfig>;

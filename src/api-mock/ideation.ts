@@ -260,10 +260,10 @@ export const mockIdeationApi = {
       };
     },
 
-    getChildren: async (sessionId: string): Promise<IdeationSessionResponse[]> => {
+    getChildren: async (sessionId: string, purpose: string): Promise<IdeationSessionResponse[]> => {
       ensureMockData();
       return Array.from(mockSessions.values()).filter(
-        (s) => s.parentSessionId === sessionId
+        (s) => s.parentSessionId === sessionId && s.sessionPurpose === purpose
       );
     },
   },

@@ -397,7 +397,8 @@ fn setup_test_db() -> Connection {
             merge_validation_mode TEXT NOT NULL DEFAULT 'block',
             merge_strategy TEXT NOT NULL DEFAULT 'rebase',
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL
+            updated_at TEXT NOT NULL,
+            archived_at TEXT NULL
         )"#,
         [],
     )

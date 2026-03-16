@@ -5,6 +5,7 @@
 
 use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 
 use crate::application::GitService;
 use crate::domain::entities::plan_branch::{PlanBranchId, PrPushStatus, PrStatus};
@@ -76,8 +77,54 @@ pub(crate) async fn pre_delete_worktree(
                 task_id = task_id,
                 worktree_path = %wt_display,
                 error = %message,
-                "Stale worktree deletion failed — merge worktree may fail to create"
+                "Stale worktree deletion failed — attempting second-chance force removal"
             );
+            // Second-chance fallback: brief wait → direct rm-rf → git worktree prune.
+            // Covers file-lock scenarios where the first attempt races a process still
+            // holding handles inside the worktree directory.
+            tokio::time::sleep(Duration::from_millis(100)).await;
+            let second_chance_ok = match tokio::fs::remove_dir_all(worktree).await {
+                Ok(()) => {
+                    tracing::info!(
+                        task_id = task_id,
+                        worktree_path = %wt_display,
+                        "Second-chance remove_dir_all succeeded — worktree cleared"
+                    );
+                    true
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        task_id = task_id,
+                        worktree_path = %wt_display,
+                        error = %e,
+                        "Second-chance remove_dir_all also failed — worktree may block creation"
+                    );
+                    // Emit a directory listing to help diagnose which process holds the lock.
+                    if let Ok(mut entries) = tokio::fs::read_dir(worktree).await {
+                        let mut names = Vec::new();
+                        while let Ok(Some(entry)) = entries.next_entry().await {
+                            names.push(entry.file_name().to_string_lossy().into_owned());
+                        }
+                        tracing::error!(
+                            task_id = task_id,
+                            worktree_path = %wt_display,
+                            entries = ?names,
+                            "Locked worktree directory listing for diagnostics"
+                        );
+                    }
+                    false
+                }
+            };
+            // Run git worktree prune unconditionally — cleans stale internal git entries
+            // even if the directory removal succeeded (git may still track the old path).
+            super::cleanup_helpers::git_worktree_prune(repo_path).await;
+            if !second_chance_ok && worktree.exists() {
+                tracing::error!(
+                    task_id = task_id,
+                    worktree_path = %wt_display,
+                    "Worktree still present after second-chance cleanup — merge worktree creation will likely fail"
+                );
+            }
         }
     }
 }

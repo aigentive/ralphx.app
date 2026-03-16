@@ -1089,7 +1089,8 @@ fn setup_proposal_test_db() -> Connection {
                 plan_version_at_creation INTEGER,
                 sort_order INTEGER NOT NULL DEFAULT 0,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                archived_at TEXT NULL
             )"#,
         [],
     )

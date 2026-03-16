@@ -54,6 +54,9 @@ pub struct TaskProposal {
     pub created_at: DateTime<Utc>,
     /// When the proposal was last updated
     pub updated_at: DateTime<Utc>,
+    /// When the proposal was archived (soft-deleted). None = active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
 }
 
 impl TaskProposal {
@@ -88,6 +91,7 @@ impl TaskProposal {
             sort_order: 0,
             created_at: now,
             updated_at: now,
+            archived_at: None,
         }
     }
 
@@ -196,6 +200,9 @@ impl TaskProposal {
             sort_order: row.get("sort_order")?,
             created_at: parse_datetime_helper(row.get("created_at")?),
             updated_at: parse_datetime_helper(row.get("updated_at")?),
+            archived_at: row
+                .get::<_, Option<String>>("archived_at")?
+                .map(parse_datetime_helper),
         })
     }
 }

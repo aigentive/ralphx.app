@@ -60,12 +60,8 @@ import type { InternalStatus } from "@/types/status";
 import { useUiStore } from "@/stores/uiStore";
 import { usePlanStore, selectActivePlanId, selectActiveExecutionPlanId } from "@/stores/planStore";
 import { useTaskMutation } from "@/hooks/useTaskMutation";
-import { useDeleteIdeationSession } from "@/hooks/useIdeation";
-import { useConfirmation } from "@/hooks/useConfirmation";
 import { useNavCompactBreakpoint } from "@/hooks";
 import { usePersistedNodeMode } from "@/hooks/usePersistedNodeMode";
-import { useIdeationStore } from "@/stores/ideationStore";
-import { useChatStore } from "@/stores/chatStore";
 import { taskGraphKeys } from "./hooks/useTaskGraph";
 import { api } from "@/lib/tauri";
 import { toast } from "sonner";
@@ -308,10 +304,6 @@ function TaskGraphViewInner({
   const executionStatus = useUiStore((s) => s.executionStatus);
   const { isNavCompact } = useNavCompactBreakpoint();
   const queryClient = useQueryClient();
-  const deleteSessionMutation = useDeleteIdeationSession();
-  const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
-  const removeSession = useIdeationStore((s) => s.removeSession);
-  const clearMessages = useChatStore((s) => s.clearMessages);
   const clearGraphSelection = useUiStore((s) => s.clearGraphSelection);
   const [overlayClosing, setOverlayClosing] = useState(false);
   const overlayCloseTimeoutRef = useRef<number | null>(null);
@@ -919,8 +911,10 @@ function TaskGraphViewInner({
     moveMutation,
     blockMutation,
     unblockMutation,
-    cleanupTasksInGroupMutation,
     cancelTasksInGroupMutation,
+    pauseTasksInGroupMutation,
+    resumeTasksInGroupMutation,
+    archiveTasksInGroupMutation,
   } = useTaskMutation(projectId);
 
   // ============================================================================
@@ -1059,55 +1053,6 @@ function TaskGraphViewInner({
     };
   }, [filteredGraphData.nodes, filteredGraphData.planGroups, hasAnyAutoCompact, nodeModeLookup]);
 
-  // Plan deletion handler (Backspace on plan group or Delete button in settings)
-  const handleDeletePlan = useCallback(
-    async (planArtifactId: string) => {
-      const planGroup = graphData?.planGroups.find(
-        (pg) => pg.planArtifactId === planArtifactId
-      );
-      if (!planGroup) return;
-
-      const confirmed = await confirm({
-        title: "Delete plan?",
-        description: `This will permanently delete "${planGroup.sessionTitle || "Unnamed plan"}" and all ${planGroup.taskIds.length} task${planGroup.taskIds.length === 1 ? "" : "s"}. This action cannot be undone.`,
-        confirmText: "Delete",
-        variant: "destructive",
-      });
-
-      if (!confirmed) return;
-
-      try {
-        await deleteSessionMutation.mutateAsync(planGroup.sessionId);
-        removeSession(planGroup.sessionId);
-        clearMessages(`session:${planGroup.sessionId}`);
-        clearGraphSelection();
-        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
-        toast.success("Plan deleted");
-      } catch {
-        toast.error("Failed to delete plan");
-      }
-    },
-    [graphData?.planGroups, confirm, deleteSessionMutation, removeSession, clearMessages, clearGraphSelection, queryClient, projectId]
-  );
-
-  // Remove all tasks in a group (bulk cleanup via context menu)
-  const handleRemoveAllInGroup = useCallback(
-    async (sessionId: string) => {
-      try {
-        const isUncategorized = sessionId === "";
-        await cleanupTasksInGroupMutation.mutateAsync({
-          groupKind: isUncategorized ? "uncategorized" : "session",
-          groupId: isUncategorized ? "" : sessionId,
-          projectId,
-        });
-        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
-      } catch {
-        // Error toast is handled by the mutation's onError
-      }
-    },
-    [cleanupTasksInGroupMutation, projectId, queryClient]
-  );
-
   const handleCancelAllInGroup = useCallback(
     async (sessionId: string) => {
       try {
@@ -1125,31 +1070,55 @@ function TaskGraphViewInner({
     [cancelTasksInGroupMutation, projectId, queryClient]
   );
 
-  // Task deletion handler (Delete key on task node — has its own confirmation dialog)
-  const handleDeleteTask = useCallback(
-    async (taskId: string) => {
-      const taskNode = graphData?.nodes.find((n) => n.taskId === taskId);
-      const taskTitle = taskNode?.title ?? "this task";
-
-      const confirmed = await confirm({
-        title: "Delete task?",
-        description: `This will permanently delete "${taskTitle}". This action cannot be undone.`,
-        confirmText: "Delete",
-        variant: "destructive",
-      });
-
-      if (!confirmed) return;
-
+  const handlePauseAllInGroup = useCallback(
+    async (sessionId: string) => {
       try {
-        await api.tasks.cleanupTask(taskId);
-        clearGraphSelection();
+        const isUncategorized = sessionId === "";
+        await pauseTasksInGroupMutation.mutateAsync({
+          groupKind: isUncategorized ? "uncategorized" : "session",
+          groupId: isUncategorized ? "" : sessionId,
+          projectId,
+        });
         queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
-        toast.success("Task deleted");
       } catch {
-        toast.error("Failed to delete task");
+        // Error toast is handled by the mutation's onError
       }
     },
-    [graphData?.nodes, confirm, clearGraphSelection, queryClient, projectId]
+    [pauseTasksInGroupMutation, projectId, queryClient]
+  );
+
+  const handleResumeAllInGroup = useCallback(
+    async (sessionId: string) => {
+      try {
+        const isUncategorized = sessionId === "";
+        await resumeTasksInGroupMutation.mutateAsync({
+          groupKind: isUncategorized ? "uncategorized" : "session",
+          groupId: isUncategorized ? "" : sessionId,
+          projectId,
+        });
+        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
+      } catch {
+        // Error toast is handled by the mutation's onError
+      }
+    },
+    [resumeTasksInGroupMutation, projectId, queryClient]
+  );
+
+  const handleArchiveAllInGroup = useCallback(
+    async (sessionId: string) => {
+      try {
+        const isUncategorized = sessionId === "";
+        await archiveTasksInGroupMutation.mutateAsync({
+          groupKind: isUncategorized ? "uncategorized" : "session",
+          groupId: isUncategorized ? "" : sessionId,
+          projectId,
+        });
+        queryClient.invalidateQueries({ queryKey: taskGraphKeys.graphPrefix(projectId) });
+      } catch {
+        // Error toast is handled by the mutation's onError
+      }
+    },
+    [archiveTasksInGroupMutation, projectId, queryClient]
   );
 
   // Compute layout using dagre (includes plan grouping)
@@ -1167,8 +1136,6 @@ function TaskGraphViewInner({
     handleToggleAllTiers,
     projectId,
     handleViewDetails,
-    handleDeletePlan,
-    handleRemoveAllInGroup,
     handleCancelAllInGroup
   );
 
@@ -1220,8 +1187,6 @@ function TaskGraphViewInner({
     graphReady,
     graphError: error ?? null,
     isLoading,
-    onDeletePlanGroup: handleDeletePlan,
-    onDeleteTask: handleDeleteTask,
     keyboardNavigationEnabled: !battleModeActive,
   });
 
@@ -1271,20 +1236,23 @@ function TaskGraphViewInner({
       const groupLabel = pg.sessionTitle ?? "Unnamed plan";
       const sessionId = pg.sessionId;
 
+      const groupSessionId = isUncategorized ? "" : sessionId;
       for (const taskId of pg.taskIds) {
         map.set(taskId, {
           groupLabel,
           groupKind,
           taskCount: pg.taskIds.length,
-          groupId: isUncategorized ? "" : sessionId,
+          groupId: groupSessionId,
           projectId,
-          onRemoveAll: () => handleRemoveAllInGroup(isUncategorized ? "" : sessionId),
-          onCancelAll: () => handleCancelAllInGroup(isUncategorized ? "" : sessionId),
+          onCancelAll: () => handleCancelAllInGroup(groupSessionId),
+          onPauseAll: () => handlePauseAllInGroup(groupSessionId),
+          onResumeAll: () => handleResumeAllInGroup(groupSessionId),
+          onArchiveAll: () => handleArchiveAllInGroup(groupSessionId),
         });
       }
     }
     return map;
-  }, [filteredGraphData?.planGroups, projectId, handleRemoveAllInGroup, handleCancelAllInGroup]);
+  }, [filteredGraphData?.planGroups, projectId, handleCancelAllInGroup, handlePauseAllInGroup, handleResumeAllInGroup, handleArchiveAllInGroup]);
 
   const prevNodesRef = useRef<Node[]>([]);
   const prevEdgesRef = useRef<Edge[]>([]);
@@ -1569,7 +1537,6 @@ function TaskGraphViewInner({
 
   return (
     <>
-    <ConfirmationDialog {...confirmationDialogProps} />
     <GraphSplitLayout
       projectId={projectId}
       footer={footer}

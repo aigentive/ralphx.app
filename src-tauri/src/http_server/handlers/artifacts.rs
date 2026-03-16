@@ -13,6 +13,8 @@ use crate::domain::entities::{
 };
 use rusqlite::Connection;
 use crate::domain::services::emit_verification_status_changed;
+use crate::domain::repositories::IdeationSessionRepository;
+use crate::domain::services::running_agent_registry::{RunningAgentKey, RunningAgentRegistry};
 use crate::error::AppError;
 use crate::infrastructure::agents::claude::verification_config;
 use crate::infrastructure::sqlite::{
@@ -87,8 +89,64 @@ fn map_app_err(e: AppError) -> HttpError {
     match e {
         AppError::Validation(msg) => HttpError::validation(msg),
         AppError::NotFound(_) => StatusCode::NOT_FOUND.into(),
+        AppError::Conflict(msg) => HttpError {
+            status: StatusCode::CONFLICT,
+            message: Some(msg),
+        },
         _ => StatusCode::INTERNAL_SERVER_ERROR.into(),
     }
+}
+
+/// Async pre-transaction freeze check. Returns Err(AppError::Conflict) if a verification
+/// agent is actively running on a child session of any owning session, UNLESS the caller
+/// IS that verification child.
+///
+/// Runs BEFORE db.run_transaction() — registry methods are async and cannot be called
+/// inside the synchronous spawn_blocking closure of db.run().
+/// Accepts TOCTOU trade-off (single-user context, self-healing on process exit).
+///
+/// SIMPLIFICATION: plan-verifier agents are autonomous (no stdin pipes) and do NOT
+/// register in InteractiveProcessRegistry. Therefore is_generating = is_running.
+/// This was verified during implementation: plan-verifier agents spawn via
+/// ChatService::send_message() which registers only in RunningAgentRegistry.
+///
+/// TRUST MODEL: caller_session_id is cooperative/protocol-based only. :3847 is
+/// localhost-only (single-user desktop) — prevents accidental concurrent writes, not adversarial.
+async fn check_verification_freeze(
+    owning_sessions: &[IdeationSession],
+    caller_session_id: Option<&str>,
+    running_registry: &dyn RunningAgentRegistry,
+    session_repo: &dyn IdeationSessionRepository,
+) -> Result<(), AppError> {
+    for session in owning_sessions {
+        // Fast path: no verification in progress — skip DB query entirely.
+        // Covers: never started, completed (verified/skipped), or reset.
+        if !session.verification_in_progress {
+            continue;
+        }
+        // Uses existing get_verification_children (returns at most 1 non-archived
+        // verification child — only one is active at a time by design).
+        let children = session_repo
+            .get_verification_children(&session.id)
+            .await?;
+        for child in &children {
+            if Some(child.id.as_str()) == caller_session_id {
+                continue; // Bypass: caller is the verification agent itself
+            }
+            // plan-verifier agents are autonomous and do NOT use stdin pipes, so
+            // InteractiveProcessRegistry is not consulted. is_generating = is_running.
+            let running_key = RunningAgentKey::new("ideation", child.id.as_str());
+            if running_registry.is_running(&running_key).await {
+                return Err(AppError::Conflict(format!(
+                    "Plan is frozen — verification agent is actively working \
+                     (child session: {}). Wait for the verification round to \
+                     complete before editing.",
+                    child.id.as_str()
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// Shared core for both update_plan_artifact and (future) edit_plan_artifact.
@@ -129,6 +187,7 @@ fn finalize_plan_update(
             .with_version(old_artifact.metadata.version + 1),
         derived_from: vec![],
         bucket_id: old_artifact.bucket_id.clone(),
+        archived_at: None,
     };
     let created =
         ArtifactRepo::create_with_previous_version_sync(conn, new_artifact, &old_id)?;
@@ -197,6 +256,7 @@ pub async fn create_plan_artifact(
                 metadata: ArtifactMetadata::new("orchestrator").with_version(1),
                 derived_from: vec![],
                 bucket_id: Some(bucket_id),
+                archived_at: None,
             };
 
             // Chain only to the session's OWN plan (plan_artifact_id), never to an inherited one.
@@ -324,7 +384,40 @@ pub async fn update_plan_artifact(
     Json(req): Json<UpdatePlanArtifactRequest>,
 ) -> Result<Json<ArtifactResponse>, HttpError> {
     let input_artifact_id = req.artifact_id.clone();
+    let caller_session_id = req.caller_session_id;
     let content = req.content;
+
+    // Pre-transaction freeze check (steps 1-3):
+    // Registry methods are async and cannot run inside db.run_transaction's spawn_blocking.
+    // TOCTOU trade-off accepted: single-user context, self-healing on agent process exit.
+
+    // 1. Resolve stale artifact ID — separate db.run() before the transaction.
+    //    Propagate DB errors; do NOT silently fall back to req.artifact_id (would bypass the check).
+    let id_for_freeze = input_artifact_id.clone();
+    let latest_artifact_id = state
+        .app_state
+        .db
+        .run(move |conn| ArtifactRepo::resolve_latest_sync(conn, &id_for_freeze))
+        .await
+        .map_err(map_app_err)?;
+
+    // 2. Get owning sessions (async, before transaction)
+    let owning_sessions = state
+        .app_state
+        .ideation_session_repo
+        .get_by_plan_artifact_id(&latest_artifact_id)
+        .await
+        .map_err(map_app_err)?;
+
+    // 3. Pre-transaction freeze check: returns 409 if a verification agent is generating
+    check_verification_freeze(
+        &owning_sessions,
+        caller_session_id.as_deref(),
+        state.app_state.running_agent_registry.as_ref(),
+        state.app_state.ideation_session_repo.as_ref(),
+    )
+    .await
+    .map_err(map_app_err)?;
 
     // Single lock acquisition: all DB work in one transaction.
     // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
@@ -430,6 +523,7 @@ pub async fn edit_plan_artifact(
     Json(req): Json<EditPlanArtifactRequest>,
 ) -> Result<Json<ArtifactResponse>, HttpError> {
     let input_artifact_id = req.artifact_id.clone();
+    let caller_session_id = req.caller_session_id;
     let edits = req.edits;
 
     // Pre-transaction input validation (defense-in-depth — MCP schema validates too)
@@ -448,6 +542,36 @@ pub async fn edit_plan_artifact(
             )));
         }
     }
+
+    // Pre-transaction freeze check (same as update_plan_artifact):
+    // Registry methods are async and cannot run inside db.run_transaction's spawn_blocking.
+
+    // 1. Resolve stale artifact ID — separate db.run() before the transaction.
+    let id_for_freeze = input_artifact_id.clone();
+    let latest_artifact_id = state
+        .app_state
+        .db
+        .run(move |conn| ArtifactRepo::resolve_latest_sync(conn, &id_for_freeze))
+        .await
+        .map_err(map_app_err)?;
+
+    // 2. Get owning sessions (async, before transaction)
+    let owning_sessions = state
+        .app_state
+        .ideation_session_repo
+        .get_by_plan_artifact_id(&latest_artifact_id)
+        .await
+        .map_err(map_app_err)?;
+
+    // 3. Pre-transaction freeze check: returns 409 if a verification agent is generating
+    check_verification_freeze(
+        &owning_sessions,
+        caller_session_id.as_deref(),
+        state.app_state.running_agent_registry.as_ref(),
+        state.app_state.ideation_session_repo.as_ref(),
+    )
+    .await
+    .map_err(map_app_err)?;
 
     // Single lock acquisition: all DB work in one transaction.
     // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).

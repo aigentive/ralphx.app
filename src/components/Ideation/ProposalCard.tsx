@@ -13,7 +13,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { FileEdit, Trash2, Eye, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { FileEdit, Eye, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TaskProposal } from "@/types/ideation";
 import { PRIORITY_CONFIG } from "./PlanningView.constants";
@@ -31,7 +31,6 @@ export interface DependencyDetail {
 export interface ProposalCardProps {
   proposal: TaskProposal;
   onEdit: (proposalId: string) => void;
-  onRemove: (proposalId: string) => void;
   isHighlighted?: boolean;
   currentPlanVersion?: number | undefined;
   onViewHistoricalPlan?: (artifactId: string, version: number) => void | undefined;
@@ -58,7 +57,6 @@ const MAX_INLINE_DEPS = 2;
 export const ProposalCard = React.memo(function ProposalCard({
   proposal,
   onEdit,
-  onRemove,
   isHighlighted = false,
   currentPlanVersion,
   onViewHistoricalPlan,
@@ -175,22 +173,6 @@ export const ProposalCard = React.memo(function ProposalCard({
                       </Button>
                     </TooltipTrigger>
                     <TooltipContent>Edit</TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-7 w-7 rounded-lg transition-colors duration-150"
-                        style={{ background: "transparent" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(0 70% 50% / 0.1)"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-                        onClick={(e) => { e.stopPropagation(); onRemove(proposal.id); }}
-                      >
-                        <Trash2 className="w-3.5 h-3.5" style={{ color: "hsl(0 70% 60%)" }} />
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Remove</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
               </div>

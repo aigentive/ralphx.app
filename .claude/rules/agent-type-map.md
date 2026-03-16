@@ -22,7 +22,7 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 | Agent Name | Context | Model | Role |
 |---|---|---|---|
 | `orchestrator-ideation` | ideation | opus | Lead for ideation sessions (proposals, plans). MCP: `update_plan_verification`, `get_plan_verification` |
-| `orchestrator-ideation-readonly` | ideation | sonnet | Read-only ideation fallback |
+| `orchestrator-ideation-readonly` | ideation | opus | Read-only ideation fallback |
 | `ideation-team-lead` | ideation | opus | Team mode lead for ideation. MCP: `update_plan_verification`, `get_plan_verification` |
 | `session-namer` | ideation | haiku | Names ideation sessions |
 | `dependency-suggester` | ideation | haiku | Suggests task dependencies |
@@ -43,7 +43,14 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 | `project-analyzer` | — | sonnet | Project analysis |
 | `memory-maintainer` | — | sonnet | Memory management |
 | `memory-capture` | — | sonnet | Memory capture |
-| `plan-critic-layer2` | — | sonnet | Dual-lens implementation critic (minimal/surgical + defense-in-depth). Read-only. No Write/Edit/Bash. |
+| `plan-critic-layer1` | — | opus | Layer 1 completeness critic for plan verification. Returns structured JSON gap analysis only. |
+| `plan-critic-layer2` | — | opus | Dual-lens implementation critic (minimal/surgical + defense-in-depth). Read-only. No Write/Edit/Bash. |
+| `plan-verifier` | — | opus | Owns adversarial round loop — spawns critics, merges gaps, revises plan. |
+| `ideation-specialist-backend` | — | opus | Research Rust/Tauri/SQLite patterns for ideation teams |
+| `ideation-specialist-frontend` | — | opus | Research React/TypeScript/Tailwind patterns for ideation teams |
+| `ideation-specialist-infra` | — | opus | Research database schema, MCP, config, and git patterns for ideation teams |
+| `ideation-advocate` | — | opus | Advocate for a specific approach in architectural debates |
+| `ideation-critic` | — | opus | Stress-test all approaches with adversarial analysis |
 
 ## Agent Lifecycle Events
 

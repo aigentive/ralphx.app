@@ -49,10 +49,6 @@ interface GraphSelectionControllerParams {
   graphReady: boolean;
   graphError: Error | null;
   isLoading: boolean;
-  /** Called when Backspace is pressed on a selected plan group (prompts delete) */
-  onDeletePlanGroup?: (planArtifactId: string) => void;
-  /** Called when Delete key is pressed on a selected task node (prompts delete) */
-  onDeleteTask?: (taskId: string) => void;
   /** Disable keyboard navigation/shortcuts (used while battle overlay is active) */
   keyboardNavigationEnabled?: boolean;
 }
@@ -238,8 +234,6 @@ export function useGraphSelectionController({
   graphReady,
   graphError,
   isLoading,
-  onDeletePlanGroup,
-  onDeleteTask,
   keyboardNavigationEnabled = true,
 }: GraphSelectionControllerParams): GraphSelectionControllerResult {
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
@@ -647,7 +641,7 @@ export function useGraphSelectionController({
         return;
       }
 
-      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", "Backspace", "Delete"].includes(key)) {
+      if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", "Backspace"].includes(key)) {
         return;
       }
 
@@ -714,8 +708,7 @@ export function useGraphSelectionController({
             focusSelectionInView({ kind: "planGroup", id: planArtifactId });
             return;
           }
-          // Uncategorized task (no tier group, no plan group) — treat as delete
-          onDeleteTask?.(activeSelection.id);
+          // Uncategorized task (no tier group, no plan group) — no action
           return;
         }
         if (activeSelection.kind === "tierGroup") {
@@ -728,25 +721,8 @@ export function useGraphSelectionController({
           }
         }
         if (activeSelection.kind === "planGroup") {
-          if (onDeletePlanGroup) {
-            onDeletePlanGroup(activeSelection.id);
-          } else {
-            setFocusedNodeId(null);
-            clearGraphSelection();
-          }
-        }
-        return;
-      }
-
-      if (key === "Delete") {
-        if (!activeSelection) return;
-        if (activeSelection.kind === "task") {
-          onDeleteTask?.(activeSelection.id);
-          return;
-        }
-        if (activeSelection.kind === "planGroup") {
-          onDeletePlanGroup?.(activeSelection.id);
-          return;
+          setFocusedNodeId(null);
+          clearGraphSelection();
         }
         return;
       }
@@ -955,8 +931,6 @@ export function useGraphSelectionController({
       grouping.byTier,
       layoutNodes,
       nodes,
-      onDeletePlanGroup,
-      onDeleteTask,
       onToggleAllTiers,
       onToggleCollapse,
       onToggleTierCollapse,

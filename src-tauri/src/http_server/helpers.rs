@@ -367,7 +367,7 @@ pub async fn update_proposal_impl(
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
-                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
+                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at
                      FROM task_proposals WHERE id = ?1",
                     [&pid],
                     |row| TaskProposal::from_row(row),
@@ -552,22 +552,22 @@ pub async fn update_proposal_impl(
     Ok((updated, dep_errors))
 }
 
-/// Delete proposal — fetch session, assert mutability, and DELETE in a single DB transaction.
+/// Archive proposal — fetch session, assert mutability, and ARCHIVE in a single DB transaction.
 ///
 /// Fixes existing bug: HTTP delete handler had no `assert_session_mutable()` guard, allowing
-/// MCP agents to delete proposals from Archived/Accepted sessions.
+/// MCP agents to archive proposals from Archived/Accepted sessions.
 ///
 /// # Errors
 /// - `AppError::NotFound` if proposal or session doesn't exist
 /// - `AppError::Validation` if session is Archived or Accepted
 /// - Database errors from the proposal repository
-pub async fn delete_proposal_impl(
+pub async fn archive_proposal_impl(
     state: &AppState,
     proposal_id: TaskProposalId,
 ) -> AppResult<IdeationSessionId> {
     let pid = proposal_id.as_str().to_string();
 
-    // Single lock: fetch proposal+session, assert mutability, DELETE — all in one transaction.
+    // Single lock: fetch proposal+session, assert mutability, ARCHIVE — all in one transaction.
     // Events emitted after db.run_transaction() returns (acceptable crash-consistency gap).
     let session_id = state
         .db
@@ -621,8 +621,9 @@ pub async fn delete_proposal_impl(
                 .map_err(AppError::from)?;
             }
 
-            // Delete proposal scoped to session (prevents cross-session deletions)
-            ProposalRepo::delete_sync(conn, &pid, session_id.as_str())?;
+            // Archive proposal scoped to session (prevents cross-session deletions)
+            let proposal_id_typed = TaskProposalId::from_string(pid.clone());
+            ProposalRepo::archive_sync(conn, &proposal_id_typed)?;
 
             Ok(session_id)
         })
@@ -631,7 +632,7 @@ pub async fn delete_proposal_impl(
     // Emit event after transaction (acceptable crash-consistency gap)
     if let Some(app_handle) = &state.app_handle {
         let _ = app_handle.emit(
-            "proposal:deleted",
+            "proposal:archived",
             serde_json::json!({ "proposalId": proposal_id.as_str() }),
         );
     }

@@ -17,7 +17,7 @@ mcpServers:
         - "--agent-type"
         - "ideation-critic"
 disallowedTools: Write, Edit, NotebookEdit, Bash
-model: sonnet
+model: opus
 ---
 
 ## Spawning Note

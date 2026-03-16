@@ -127,36 +127,36 @@ describe('StepItem', () => {
   });
 
   describe('Editable Mode', () => {
-    it('should not show delete button when not editable', () => {
+    it('should not show skip button when not editable', () => {
       render(<StepItem step={baseStep} index={0} editable={false} />);
-      expect(screen.queryByLabelText('Delete step')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Skip step')).not.toBeInTheDocument();
     });
 
-    it('should show delete button when editable and pending', async () => {
-      const onDelete = vi.fn();
-      render(<StepItem step={baseStep} index={0} editable={true} onDelete={onDelete} />);
+    it('should show skip button when editable and pending', async () => {
+      const onSkip = vi.fn();
+      render(<StepItem step={baseStep} index={0} editable={true} onSkip={onSkip} />);
 
-      const deleteButton = screen.getByLabelText('Delete step');
-      expect(deleteButton).toBeInTheDocument();
+      const skipButton = screen.getByLabelText('Skip step');
+      expect(skipButton).toBeInTheDocument();
     });
 
-    it('should not show delete button for non-pending steps', () => {
+    it('should not show skip button for non-pending steps', () => {
       const completedStep = { ...baseStep, status: 'completed' as const };
-      const onDelete = vi.fn();
-      render(<StepItem step={completedStep} index={0} editable={true} onDelete={onDelete} />);
+      const onSkip = vi.fn();
+      render(<StepItem step={completedStep} index={0} editable={true} onSkip={onSkip} />);
 
-      expect(screen.queryByLabelText('Delete step')).not.toBeInTheDocument();
+      expect(screen.queryByLabelText('Skip step')).not.toBeInTheDocument();
     });
 
-    it('should call onDelete when delete button is clicked', async () => {
+    it('should call onSkip when skip button is clicked', async () => {
       const user = userEvent.setup();
-      const onDelete = vi.fn();
-      render(<StepItem step={baseStep} index={0} editable={true} onDelete={onDelete} />);
+      const onSkip = vi.fn();
+      render(<StepItem step={baseStep} index={0} editable={true} onSkip={onSkip} />);
 
-      const deleteButton = screen.getByLabelText('Delete step');
-      await user.click(deleteButton);
+      const skipButton = screen.getByLabelText('Skip step');
+      await user.click(skipButton);
 
-      expect(onDelete).toHaveBeenCalledWith('step-1');
+      expect(onSkip).toHaveBeenCalledWith('step-1');
     });
   });
 

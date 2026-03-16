@@ -22,14 +22,14 @@ function TestWrapper({
   taskCount,
   projectId = "project-1",
   groupId = "ready",
-  onRemoveAll,
+  onArchiveAll,
 }: {
   groupLabel: string;
   groupKind: "column" | "plan" | "uncategorized";
   taskCount: number;
   projectId?: string;
   groupId?: string;
-  onRemoveAll: () => void;
+  onArchiveAll?: () => void;
 }) {
   const { confirm, confirmationDialogProps, ConfirmationDialog } = useConfirmation();
   return (
@@ -45,7 +45,8 @@ function TestWrapper({
             taskCount={taskCount}
             projectId={projectId}
             groupId={groupId}
-            onRemoveAll={onRemoveAll}
+            onArchiveAll={onArchiveAll}
+
             confirm={confirm}
           />
         </ContextMenuContent>
@@ -64,51 +65,51 @@ function openContextMenu() {
 // ============================================================================
 
 describe("GroupContextMenuItems", () => {
-  let onRemoveAll: ReturnType<typeof vi.fn>;
+  let onArchiveAll: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
-    onRemoveAll = vi.fn();
+    onArchiveAll = vi.fn();
   });
 
   describe("rendering", () => {
-    it("renders 'Remove all Ready' for column kind", () => {
+    it("renders 'Archive all Ready' for column kind", () => {
       render(
         <TestWrapper
           groupLabel="Ready"
           groupKind="column"
           taskCount={3}
-          onRemoveAll={onRemoveAll}
+          onArchiveAll={onArchiveAll}
         />,
       );
       openContextMenu();
-      expect(screen.getByText("Remove all Ready")).toBeInTheDocument();
+      expect(screen.getByText("Archive all Ready")).toBeInTheDocument();
     });
 
-    it("renders 'Remove all from [Plan]' for plan kind", () => {
+    it("renders 'Archive all in [Plan]' for plan kind", () => {
       render(
         <TestWrapper
           groupLabel="Auth Feature"
           groupKind="plan"
           taskCount={5}
           groupId="session-abc"
-          onRemoveAll={onRemoveAll}
+          onArchiveAll={onArchiveAll}
         />,
       );
       openContextMenu();
-      expect(screen.getByText("Remove all from Auth Feature")).toBeInTheDocument();
+      expect(screen.getByText("Archive all in Auth Feature")).toBeInTheDocument();
     });
 
-    it("renders 'Remove all Uncategorized' for uncategorized kind", () => {
+    it("renders 'Archive all Uncategorized' for uncategorized kind", () => {
       render(
         <TestWrapper
           groupLabel=""
           groupKind="uncategorized"
           taskCount={2}
-          onRemoveAll={onRemoveAll}
+          onArchiveAll={onArchiveAll}
         />,
       );
       openContextMenu();
-      expect(screen.getByText("Remove all Uncategorized")).toBeInTheDocument();
+      expect(screen.getByText("Archive all Uncategorized")).toBeInTheDocument();
     });
 
     it("renders nothing when taskCount is 0", () => {
@@ -117,90 +118,102 @@ describe("GroupContextMenuItems", () => {
           groupLabel="Ready"
           groupKind="column"
           taskCount={0}
-          onRemoveAll={onRemoveAll}
+          onArchiveAll={onArchiveAll}
         />,
       );
       openContextMenu();
-      expect(screen.queryByText(/Remove all/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/Archive all/)).not.toBeInTheDocument();
     });
 
-    it("has data-testid for remove-all action", () => {
+    it("has data-testid for archive-all action", () => {
       render(
         <TestWrapper
           groupLabel="Ready"
           groupKind="column"
           taskCount={3}
-          onRemoveAll={onRemoveAll}
+          onArchiveAll={onArchiveAll}
         />,
       );
       openContextMenu();
-      expect(screen.getByTestId("remove-all-action")).toBeInTheDocument();
+      expect(screen.getByTestId("archive-all-action")).toBeInTheDocument();
+    });
+
+    it("renders nothing when no handlers provided", () => {
+      render(
+        <TestWrapper
+          groupLabel="Ready"
+          groupKind="column"
+          taskCount={3}
+        />,
+      );
+      openContextMenu();
+      expect(screen.queryByText(/Archive all/)).not.toBeInTheDocument();
     });
   });
 
   describe("confirmation flow", () => {
-    it("shows confirmation dialog when clicked", async () => {
+    it("shows confirmation dialog when archive-all clicked", async () => {
       render(
         <TestWrapper
           groupLabel="Ready"
           groupKind="column"
           taskCount={3}
-          onRemoveAll={onRemoveAll}
+          onArchiveAll={onArchiveAll}
         />,
       );
       openContextMenu();
-      fireEvent.click(screen.getByText("Remove all Ready"));
+      fireEvent.click(screen.getByText("Archive all Ready"));
 
       await waitFor(() => {
-        expect(screen.getByText("Remove all Ready?")).toBeInTheDocument();
+        expect(screen.getByText("Archive all Ready?")).toBeInTheDocument();
       });
       expect(screen.getByText(/3 tasks/)).toBeInTheDocument();
     });
 
-    it("calls onRemoveAll when confirmed", async () => {
+    it("calls onArchiveAll when confirmed", async () => {
       render(
         <TestWrapper
           groupLabel="Blocked"
           groupKind="column"
           taskCount={2}
           groupId="blocked"
-          onRemoveAll={onRemoveAll}
+          onArchiveAll={onArchiveAll}
         />,
       );
       openContextMenu();
-      fireEvent.click(screen.getByText("Remove all Blocked"));
+      fireEvent.click(screen.getByText("Archive all Blocked"));
 
       await waitFor(() => {
-        expect(screen.getByText("Remove all Blocked?")).toBeInTheDocument();
+        expect(screen.getByText("Archive all Blocked?")).toBeInTheDocument();
       });
 
-      fireEvent.click(screen.getByText("Remove"));
+      fireEvent.click(screen.getByText("Archive"));
       await waitFor(() => {
-        expect(onRemoveAll).toHaveBeenCalledTimes(1);
+        expect(onArchiveAll).toHaveBeenCalledTimes(1);
       });
     });
 
-    it("does not call onRemoveAll when cancelled", async () => {
+    it("does not call onArchiveAll when cancelled", async () => {
       render(
         <TestWrapper
           groupLabel="Ready"
           groupKind="column"
           taskCount={3}
-          onRemoveAll={onRemoveAll}
+          onArchiveAll={onArchiveAll}
         />,
       );
       openContextMenu();
-      fireEvent.click(screen.getByText("Remove all Ready"));
+      fireEvent.click(screen.getByText("Archive all Ready"));
 
       await waitFor(() => {
-        expect(screen.getByText("Remove all Ready?")).toBeInTheDocument();
+        expect(screen.getByText("Archive all Ready?")).toBeInTheDocument();
       });
 
       fireEvent.click(screen.getByText("Cancel"));
       await waitFor(() => {
-        expect(screen.queryByText("Remove all Ready?")).not.toBeInTheDocument();
+        expect(screen.queryByText("Archive all Ready?")).not.toBeInTheDocument();
       });
-      expect(onRemoveAll).not.toHaveBeenCalled();
+      expect(onArchiveAll).not.toHaveBeenCalled();
     });
   });
 });

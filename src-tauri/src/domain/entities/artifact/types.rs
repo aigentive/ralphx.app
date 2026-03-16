@@ -372,6 +372,9 @@ pub struct Artifact {
     /// Optional bucket ID this artifact belongs to
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bucket_id: Option<ArtifactBucketId>,
+    /// When the artifact was archived (soft-deleted). None = active.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archived_at: Option<DateTime<Utc>>,
 }
 
 impl Artifact {
@@ -390,6 +393,7 @@ impl Artifact {
             metadata: ArtifactMetadata::new(created_by),
             derived_from: vec![],
             bucket_id: None,
+            archived_at: None,
         }
     }
 
@@ -408,6 +412,7 @@ impl Artifact {
             metadata: ArtifactMetadata::new(created_by),
             derived_from: vec![],
             bucket_id: None,
+            archived_at: None,
         }
     }
 

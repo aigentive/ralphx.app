@@ -109,10 +109,6 @@ vi.mock("@/hooks/useIdeation", () => ({
     mutateAsync: vi.fn(),
     isPending: false,
   }),
-  useDeleteIdeationSession: vi.fn().mockReturnValue({
-    mutateAsync: vi.fn(),
-    isPending: false,
-  }),
 }));
 
 // Mock proposal hooks

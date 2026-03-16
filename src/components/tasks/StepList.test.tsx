@@ -168,9 +168,9 @@ describe('StepList', () => {
 
     renderWithProviders(<StepList taskId="task-1" editable={true} />);
 
-    // When editable=true and step is pending, delete button should be rendered
-    // Step 3 is pending, so it should have a delete button
-    const deleteButtons = screen.getAllByLabelText('Delete step');
+    // When editable=true and step is pending, skip button should be rendered
+    // Step 3 is pending, so it should have a skip button
+    const deleteButtons = screen.getAllByLabelText('Skip step');
     expect(deleteButtons.length).toBeGreaterThan(0);
   });
 
@@ -183,7 +183,7 @@ describe('StepList', () => {
 
     renderWithProviders(<StepList taskId="task-1" editable={false} />);
 
-    const deleteButtons = screen.queryAllByLabelText('Delete step');
+    const deleteButtons = screen.queryAllByLabelText('Skip step');
     expect(deleteButtons.length).toBe(0);
   });
 });

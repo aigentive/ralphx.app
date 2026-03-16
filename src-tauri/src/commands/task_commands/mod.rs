@@ -48,6 +48,6 @@ pub use query::{
 // Re-export mutation commands
 pub use mutation::{
     answer_user_question, archive_task, cancel_tasks_in_group, cleanup_task,
-    cleanup_tasks_in_group, create_task, delete_task, inject_task, move_task, pause_task,
-    permanently_delete_task, restore_task, resume_task, stop_task, update_task,
+    cleanup_tasks_in_group, create_task, inject_task, move_task, pause_task, restore_task,
+    resume_task, stop_task, update_task,
 };

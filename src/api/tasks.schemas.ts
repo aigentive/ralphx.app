@@ -33,6 +33,30 @@ export const BulkCancelResponseSchemaRaw = z.object({
 });
 
 /**
+ * Bulk pause response schema from Rust (snake_case)
+ * Returned by pause_tasks_in_group command.
+ */
+export const BulkPauseResponseSchemaRaw = z.object({
+  paused_count: z.number().int(),
+});
+
+/**
+ * Bulk resume response schema from Rust (snake_case)
+ * Returned by resume_tasks_in_group command.
+ */
+export const BulkResumeResponseSchemaRaw = z.object({
+  resumed_count: z.number().int(),
+});
+
+/**
+ * Bulk archive response schema from Rust (snake_case)
+ * Returned by archive_tasks_in_group command.
+ */
+export const BulkArchiveResponseSchemaRaw = z.object({
+  archived_count: z.number().int(),
+});
+
+/**
  * Unblock task response schema from Rust (snake_case)
  * Returned by unblock_task command. Includes the updated task and an optional
  * warning when one or more of its dependencies are in Failed status.
