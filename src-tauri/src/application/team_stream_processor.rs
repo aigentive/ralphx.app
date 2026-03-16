@@ -899,7 +899,7 @@ pub fn start_teammate_stream<R: Runtime>(
                     }
 
                     // Periodic progress logging (every 50 lines at INFO level for diagnostics)
-                    if lines_seen % 50 == 0 {
+                    if lines_seen.is_multiple_of(50) {
                         tracing::info!(
                             teammate = %teammate_name,
                             team = %team_name,

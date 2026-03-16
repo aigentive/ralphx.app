@@ -6,12 +6,13 @@
  */
 
 import { useEffect, useState } from "react";
-import { Lightbulb, Zap, FileText, Loader2 } from "lucide-react";
+import { Lightbulb, Zap, FileText, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { TaskPickerDialog } from "./TaskPickerDialog";
 import { TeamConfigPanel } from "./TeamConfigPanel";
 import { useCreateIdeationSession } from "@/hooks/useIdeation";
+import { useSessionExportImport } from "@/hooks/useSessionExportImport";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { useProjectStore } from "@/stores/projectStore";
 import type { Task } from "@/types/task";
@@ -44,6 +45,7 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
   const addSession = useIdeationStore((state) => state.addSession);
   const setActiveSession = useIdeationStore((state) => state.setActiveSession);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
+  const { importSession, isImporting } = useSessionExportImport();
 
   const isTeamMode = teamMode !== "solo";
 
@@ -283,6 +285,38 @@ export function StartSessionPanel({ onNewSession }: StartSessionPanelProps) {
               <>
                 <FileText className="w-4 h-4" />
                 <span>Seed from Draft Task</span>
+              </>
+            )}
+          </button>
+
+          {/* Import Session */}
+          <button
+            onClick={() => {
+              if (activeProjectId) {
+                void importSession(activeProjectId);
+              }
+            }}
+            disabled={isImporting}
+            className="flex items-center justify-center gap-2 mx-auto mt-3 text-[13px] transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ color: "hsl(220 10% 60%)" }}
+            onMouseEnter={(e) => {
+              if (!isImporting) {
+                e.currentTarget.style.color = "hsl(14 100% 60%)";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.color = "hsl(220 10% 60%)";
+            }}
+          >
+            {isImporting ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Importing...</span>
+              </>
+            ) : (
+              <>
+                <Upload className="w-4 h-4" />
+                <span>Import Session</span>
               </>
             )}
           </button>

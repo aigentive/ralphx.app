@@ -558,8 +558,7 @@ impl SpawnableCommand {
         let mut child = self.cmd.spawn()?;
 
         let mut stdin = child.stdin.take().ok_or_else(|| {
-            std::io::Error::new(
-                std::io::ErrorKind::Other,
+            std::io::Error::other(
                 "no stdin pipe — ensure Stdio::piped() was set before spawn_interactive",
             )
         })?;
