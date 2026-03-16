@@ -119,6 +119,11 @@ async fn check_verification_freeze(
     session_repo: &dyn IdeationSessionRepository,
 ) -> Result<(), AppError> {
     for session in owning_sessions {
+        // Fast path: no verification in progress — skip DB query entirely.
+        // Covers: never started, completed (verified/skipped), or reset.
+        if !session.verification_in_progress {
+            continue;
+        }
         // Uses existing get_verification_children (returns at most 1 non-archived
         // verification child — only one is active at a time by design).
         let children = session_repo
