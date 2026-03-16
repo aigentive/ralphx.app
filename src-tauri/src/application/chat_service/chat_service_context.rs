@@ -124,12 +124,18 @@ pub fn format_session_history(messages: &[ChatMessage], total_available: usize) 
         return String::new();
     }
 
-    let mut parts: Vec<String> = Vec::new();
+    // Iterate newest-first so the 8000-char cap drops oldest messages, not newest.
+    // Each message produces 1-2 XML entries (text + optional tool_summary); reversal
+    // must preserve intra-message ordering, so we collect into per-message groups and
+    // reverse the groups (not the flat list) before flattening to the final output.
+    // Note: msg_parts construction is kept inline (not extracted to a helper) because
+    // a closure would need to borrow `msg` and `role_str` simultaneously, adding
+    // complexity for no reuse benefit.
+    let mut included: Vec<Vec<String>> = Vec::new();
     let mut total_chars: usize = 0;
-    let mut included_count: usize = 0;
     let truncated_by_limit = filtered.len() < total_available;
 
-    'outer: for msg in filtered.iter() {
+    'outer: for msg in filtered.iter().rev() {
         let timestamp = msg.created_at.format("%Y-%m-%dT%H:%M:%SZ").to_string();
         let role_str = match msg.role {
             MessageRole::User => "user",
@@ -179,13 +185,17 @@ pub fn format_session_history(messages: &[ChatMessage], total_available: usize) 
         }
 
         total_chars += msg_chars;
-        parts.extend(msg_parts);
-        included_count += 1;
+        included.push(msg_parts);
     }
 
-    if parts.is_empty() {
+    if included.is_empty() {
         return String::new();
     }
+
+    // Restore chronological order: we iterated newest-first, so reverse groups before flattening.
+    included.reverse();
+    let parts: Vec<String> = included.iter().flatten().cloned().collect();
+    let included_count = included.len();
 
     let truncated = truncated_by_limit || included_count < filtered.len();
     let truncated_attr = if truncated { "true" } else { "false" };
