@@ -42,6 +42,13 @@ pub const SHORT_PLAN_VERIFIER: &str = "plan-verifier";
 pub const SHORT_IDEATION_TEAM_LEAD: &str = "ideation-team-lead";
 pub const SHORT_WORKER_TEAM: &str = "ralphx-worker-team";
 
+// ── Ideation specialist agents (spawned by ideation-team-lead) ───────────
+pub const SHORT_IDEATION_SPECIALIST_BACKEND: &str = "ideation-specialist-backend";
+pub const SHORT_IDEATION_SPECIALIST_FRONTEND: &str = "ideation-specialist-frontend";
+pub const SHORT_IDEATION_SPECIALIST_INFRA: &str = "ideation-specialist-infra";
+pub const SHORT_IDEATION_ADVOCATE: &str = "ideation-advocate";
+pub const SHORT_IDEATION_CRITIC: &str = "ideation-critic";
+
 // ── ChatService team agents (team_mode=true → resolve_agent_with_team_mode) ──
 
 /// Ideation team lead (ChatContextType::Ideation + team_mode)

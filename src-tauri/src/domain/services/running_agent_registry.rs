@@ -642,6 +642,23 @@ impl MemoryRunningAgentRegistry {
             agents: Arc::new(Mutex::new(HashMap::new())),
         }
     }
+
+    /// Insert a running agent entry for test setup.
+    /// Uses minimal RunningAgentInfo values — only `is_running` (key presence) matters.
+    #[cfg(test)]
+    pub async fn set_running(&self, key: RunningAgentKey) {
+        let info = RunningAgentInfo {
+            pid: 0,
+            conversation_id: "test-conversation".to_string(),
+            agent_run_id: "test-agent-run".to_string(),
+            started_at: chrono::Utc::now(),
+            worktree_path: None,
+            cancellation_token: None,
+            last_active_at: None,
+        };
+        let mut agents = self.agents.lock().await;
+        agents.insert(key, info);
+    }
 }
 
 #[async_trait]

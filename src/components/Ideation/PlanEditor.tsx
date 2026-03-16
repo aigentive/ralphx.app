@@ -11,6 +11,7 @@ import { useState, useCallback } from "react";
 import { Save, X, Eye, Edit2 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Card } from "@/components/ui/card";
@@ -184,6 +185,10 @@ export function PlanEditor({ plan, onSave, onCancel, isNewPlan = false }: PlanEd
       });
 
       if (!response.ok) {
+        if (response.status === 409) {
+          toast.error("Plan is frozen — verification agent is actively working. Wait for the current round to complete.");
+          return;
+        }
         throw new Error(`Failed to update plan: ${response.statusText}`);
       }
 

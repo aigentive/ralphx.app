@@ -50,6 +50,9 @@ pub enum AppError {
 
     #[error("Duplicate pull request: branch already has an open PR")]
     DuplicatePr,
+
+    #[error("Conflict: {0}")]
+    Conflict(String),
 }
 
 impl From<AgentError> for AppError {

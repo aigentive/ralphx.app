@@ -44,6 +44,10 @@ export const PLAN_TOOLS = [
                     type: "string",
                     description: "Updated plan content in markdown format. This will create a new version of the artifact with a new ID.",
                 },
+                caller_session_id: {
+                    type: "string",
+                    description: "The session ID of the caller. Required when calling from a verification child session to bypass the write lock on the plan artifact.",
+                },
             },
             required: ["artifact_id", "content"],
         },
@@ -213,6 +217,10 @@ export const PLAN_TOOLS = [
                         required: ["old_text", "new_text"],
                     },
                     description: "List of edit operations to apply sequentially. Each operation finds old_text and replaces with new_text.",
+                },
+                caller_session_id: {
+                    type: "string",
+                    description: "The session ID of the caller. Required when calling from a verification child session to bypass the write lock on the plan artifact.",
                 },
             },
             required: ["artifact_id", "edits"],
