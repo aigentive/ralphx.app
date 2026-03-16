@@ -137,7 +137,10 @@ The agent decides which layers apply based on plan content. If the plan proposes
 **❌ Do NOT run any verification steps yourself. The plan-verifier agent handles the entire round loop.**
 
 **Delegation:**
-Call `create_child_session(purpose: "verification", inherit_context: true, description: "Run verification round loop. parent_session_id: {session_id}")`.
+Call `create_child_session(purpose: "verification", inherit_context: true)`. The backend auto-initializes verification state and injects `parent_session_id`, `generation`, and `max_rounds` into the prompt automatically — do NOT pass these manually.
+
+- HTTP 409 response: output "Verification is already in progress." and exit — do not retry.
+- HTTP 400 response: output "Cannot start verification: create a plan first." and exit.
 
 The child session automatically routes to the `plan-verifier` agent, which owns the round loop (spawning critics, merging gaps, calling `update_plan_verification`, revising the plan, checking convergence). Verification progress appears automatically via the `VerificationBadge` on the parent session — no polling needed.
 

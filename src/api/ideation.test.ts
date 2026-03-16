@@ -5,6 +5,7 @@ import {
   ApiVerificationGapSchema,
   ApiRoundSummarySchema,
   VerificationResponseSchema,
+  CreateChildSessionResponseSchema,
 } from "./ideation.schemas";
 
 // Cast invoke to a mock function for testing
@@ -267,6 +268,7 @@ describe("ideationApi.sessions", () => {
 
       expect(mockInvoke).toHaveBeenCalledWith("list_ideation_sessions", {
         projectId: "project-1",
+        purpose: "general",
       });
     });
 
@@ -824,6 +826,46 @@ describe("VerificationResponseSchema", () => {
       description: "No error handling",
       whyItMatters: "Will crash in prod",
     });
+  });
+});
+
+describe("CreateChildSessionResponseSchema", () => {
+  it("preserves generation field when present", () => {
+    const raw = {
+      session_id: "child-session-1",
+      parent_session_id: "parent-session-1",
+      title: "Verification Session",
+      status: "active",
+      created_at: "2026-01-24T12:00:00Z",
+      generation: 1,
+    };
+    const result = CreateChildSessionResponseSchema.parse(raw);
+    expect(result.generation).toBe(1);
+  });
+
+  it("parses successfully when generation is absent", () => {
+    const raw = {
+      session_id: "child-session-1",
+      parent_session_id: "parent-session-1",
+      title: null,
+      status: "active",
+      created_at: "2026-01-24T12:00:00Z",
+    };
+    const result = CreateChildSessionResponseSchema.parse(raw);
+    expect(result.generation).toBeUndefined();
+  });
+
+  it("preserves higher generation numbers", () => {
+    const raw = {
+      session_id: "child-session-1",
+      parent_session_id: "parent-session-1",
+      title: null,
+      status: "active",
+      created_at: "2026-01-24T12:00:00Z",
+      generation: 5,
+    };
+    const result = CreateChildSessionResponseSchema.parse(raw);
+    expect(result.generation).toBe(5);
   });
 });
 

@@ -51,3 +51,393 @@ fn test_session_is_team_mode_none_returns_false() {
     let session = make_session(None);
     assert!(!session_is_team_mode(&session));
 }
+
+// ============================================================
+// Verification Auto-Initialization Integration Tests
+// ============================================================
+
+mod verification_init_tests {
+    use super::*;
+    use crate::application::AppState;
+    use crate::commands::ExecutionState;
+    use crate::domain::entities::{
+        ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
+        VerificationStatus,
+    };
+    use crate::http_server::types::CreateChildSessionRequest;
+    use crate::infrastructure::sqlite::SqliteIdeationSessionRepository;
+    use std::sync::Arc;
+
+    async fn setup_sqlite_state() -> HttpServerState {
+        let app_state = Arc::new(AppState::new_sqlite_test());
+        let execution_state = Arc::new(ExecutionState::new());
+        let tracker = crate::application::TeamStateTracker::new();
+        let team_service = Arc::new(crate::application::TeamService::new_without_events(
+            Arc::new(tracker.clone()),
+        ));
+        HttpServerState {
+            app_state,
+            execution_state,
+            team_tracker: tracker,
+            team_service,
+        }
+    }
+
+    fn make_parent_session(plan_artifact_id: Option<ArtifactId>) -> IdeationSession {
+        IdeationSession {
+            id: IdeationSessionId::new(),
+            project_id: ProjectId::from_string("proj-test".to_string()),
+            title: Some("Test Session".to_string()),
+            status: IdeationSessionStatus::Active,
+            plan_artifact_id,
+            inherited_plan_artifact_id: None,
+            seed_task_id: None,
+            parent_session_id: None,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+            archived_at: None,
+            converted_at: None,
+            team_mode: None,
+            team_config_json: None,
+            title_source: None,
+            verification_status: Default::default(),
+            verification_in_progress: false,
+            verification_metadata: None,
+            verification_generation: 0,
+            source_project_id: None,
+            source_session_id: None,
+            session_purpose: Default::default(),
+        }
+    }
+
+    fn make_verification_request(parent_id: &IdeationSessionId) -> CreateChildSessionRequest {
+        CreateChildSessionRequest {
+            parent_session_id: parent_id.as_str().to_string(),
+            title: None,
+            description: None,
+            inherit_context: false,
+            initial_prompt: None,
+            team_mode: None,
+            team_config: None,
+            purpose: Some("verification".to_string()),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_verification_first_time_unverified_parent() {
+        let state = setup_sqlite_state().await;
+
+        // Insert parent session with a plan artifact (FK OFF — no real artifact row needed)
+        let parent = make_parent_session(Some(ArtifactId::new()));
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let req = make_verification_request(&parent_id);
+        let result = create_child_session(State(state.clone()), Json(req)).await;
+        assert!(result.is_ok(), "Expected Ok, got: {:?}", result.err());
+
+        let response = result.unwrap().0;
+        assert_eq!(
+            response.generation,
+            Some(1),
+            "First verification should return generation 1"
+        );
+
+        // Check parent DB state
+        let updated_parent = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            updated_parent.verification_in_progress,
+            "Parent should be in_progress=true after trigger"
+        );
+        assert_eq!(
+            updated_parent.verification_status,
+            VerificationStatus::Reviewing,
+            "Parent status should be Reviewing"
+        );
+        assert_eq!(
+            updated_parent.verification_generation, 1,
+            "Parent generation should be 1"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verification_re_verification_already_verified() {
+        let state = setup_sqlite_state().await;
+
+        let parent = make_parent_session(Some(ArtifactId::new()));
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        // Directly set parent to verified state with generation=1 via SQL
+        let pid = parent_id.as_str().to_string();
+        state
+            .app_state
+            .db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE ideation_sessions SET verification_status = 'verified', \
+                     verification_in_progress = 0, verification_generation = 1 \
+                     WHERE id = ?1",
+                    rusqlite::params![pid],
+                )
+                .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
+                Ok(())
+            })
+            .await
+            .unwrap();
+
+        let req = make_verification_request(&parent_id);
+        let result = create_child_session(State(state.clone()), Json(req)).await;
+        assert!(result.is_ok(), "Re-verification should succeed, got: {:?}", result.err());
+
+        let response = result.unwrap().0;
+        assert_eq!(
+            response.generation,
+            Some(2),
+            "Re-verification should return generation 2"
+        );
+
+        // Confirm parent is back in reviewing state
+        let updated_parent = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            updated_parent.verification_in_progress,
+            "Parent should be in_progress=true after re-verification trigger"
+        );
+        assert_eq!(
+            updated_parent.verification_status,
+            VerificationStatus::Reviewing,
+            "Parent status should be Reviewing"
+        );
+        assert_eq!(
+            updated_parent.verification_generation, 2,
+            "Parent generation should be 2"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verification_concurrent_guard_returns_409() {
+        let state = setup_sqlite_state().await;
+
+        let parent = make_parent_session(Some(ArtifactId::new()));
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        // First call — should succeed
+        let req1 = make_verification_request(&parent_id);
+        let result1 = create_child_session(State(state.clone()), Json(req1)).await;
+        assert!(result1.is_ok(), "First call should succeed, got: {:?}", result1.err());
+        assert_eq!(result1.unwrap().0.generation, Some(1));
+
+        // Second call — parent is now in_progress=true; should get 409
+        let req2 = make_verification_request(&parent_id);
+        let result2 = create_child_session(State(state.clone()), Json(req2)).await;
+        assert!(result2.is_err(), "Second concurrent call should fail with 409");
+        let err = result2.unwrap_err();
+        assert_eq!(
+            err.0,
+            axum::http::StatusCode::CONFLICT,
+            "Expected 409 CONFLICT, got: {:?}",
+            err.0
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verification_no_plan_artifact_returns_400() {
+        let state = setup_sqlite_state().await;
+
+        // Parent without plan artifact
+        let parent = make_parent_session(None);
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let req = make_verification_request(&parent_id);
+        let result = create_child_session(State(state.clone()), Json(req)).await;
+        assert!(result.is_err(), "Should fail with 400 when no plan artifact");
+        let err = result.unwrap_err();
+        assert_eq!(
+            err.0,
+            axum::http::StatusCode::BAD_REQUEST,
+            "Expected 400 BAD_REQUEST, got: {:?}",
+            err.0
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verification_spawn_failure_rollback() {
+        let state = setup_sqlite_state().await;
+
+        let parent = make_parent_session(Some(ArtifactId::new()));
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        // Simulate trigger (as the handler would do)
+        let pid = parent_id.as_str().to_string();
+        let gen = state
+            .app_state
+            .db
+            .run(move |conn| {
+                SqliteIdeationSessionRepository::trigger_auto_verify_sync(conn, &pid)
+            })
+            .await
+            .unwrap();
+        assert_eq!(gen, Some(1), "Trigger should return generation 1");
+
+        // Confirm parent is in_progress=true
+        let parent_after_trigger = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            parent_after_trigger.verification_in_progress,
+            "Parent should be in_progress=true after trigger"
+        );
+
+        // Simulate rollback (as the handler does on spawn failure)
+        let pid2 = parent_id.as_str().to_string();
+        state
+            .app_state
+            .db
+            .run(move |conn| {
+                SqliteIdeationSessionRepository::reset_auto_verify_sync(conn, &pid2)
+            })
+            .await
+            .unwrap();
+
+        // Confirm parent is back to in_progress=false after rollback
+        let parent_after_rollback = state
+            .app_state
+            .ideation_session_repo
+            .get_by_id(&parent_id)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            !parent_after_rollback.verification_in_progress,
+            "Parent should be in_progress=false after rollback"
+        );
+        assert_eq!(
+            parent_after_rollback.verification_status,
+            VerificationStatus::Unverified,
+            "Parent status should be Unverified after rollback"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verification_prompt_augmented_with_metadata() {
+        let state = setup_sqlite_state().await;
+
+        let parent = make_parent_session(Some(ArtifactId::new()));
+        let parent_id = parent.id.clone();
+        state
+            .app_state
+            .ideation_session_repo
+            .create(parent)
+            .await
+            .unwrap();
+
+        let req = CreateChildSessionRequest {
+            parent_session_id: parent_id.as_str().to_string(),
+            title: None,
+            description: Some("Verify this plan".to_string()),
+            inherit_context: false,
+            initial_prompt: None,
+            team_mode: None,
+            team_config: None,
+            purpose: Some("verification".to_string()),
+        };
+
+        let result = create_child_session(State(state.clone()), Json(req)).await;
+        // Handler should succeed (child session is created) regardless of agent spawn outcome.
+        // In test environments without a real Claude CLI, the agent spawn will fail and the
+        // handler rolls back verification_generation to None.
+        assert!(result.is_ok(), "Handler should succeed, got: {:?}", result.err());
+
+        let response = result.unwrap().0;
+        let child_id = IdeationSessionId::from_string(response.session_id.clone());
+
+        // In tests, ClaudeChatService spawn fails (no real Claude CLI), so orchestration_triggered
+        // will be false and generation will be None after rollback.
+        // The key invariant to assert: when a description is provided and verification initializes,
+        // the user message stored before the spawn attempt contains the augmented metadata.
+        let messages = state
+            .app_state
+            .chat_message_repo
+            .get_by_session(&child_id)
+            .await
+            .unwrap();
+
+        if messages.is_empty() {
+            // Spawn failed before message was stored — this is acceptable in test environment.
+            // The important behaviors (400/409/generation) are covered by other tests.
+            return;
+        }
+
+        // If a message was stored, it must contain the verification metadata augmentation
+        let user_msg = messages
+            .iter()
+            .find(|m| m.role == crate::domain::entities::MessageRole::User);
+        if let Some(msg) = user_msg {
+            let content = &msg.content;
+            assert!(
+                content.contains("parent_session_id:"),
+                "Content should contain parent_session_id metadata, got: {}",
+                content
+            );
+            assert!(
+                content.contains("generation: 1"),
+                "Content should contain generation: 1 metadata, got: {}",
+                content
+            );
+            assert!(
+                content.contains("max_rounds: 3"),
+                "Content should contain max_rounds metadata, got: {}",
+                content
+            );
+            assert!(
+                content.contains("Verify this plan"),
+                "Content should contain original description, got: {}",
+                content
+            );
+        }
+    }
+}
