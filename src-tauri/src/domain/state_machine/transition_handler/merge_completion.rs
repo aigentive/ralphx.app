@@ -399,38 +399,47 @@ pub async fn deferred_merge_cleanup(
         }
     }
 
-    // Step 3: Delete task branch — with ancestor guard to prevent work loss.
+    // Step 3: Delete task branch — with merge guard to prevent work loss.
     // If plan_branch is provided, verify task commits landed on it before deleting.
+    // Uses shared helper that handles both normal and squash merges.
     if let Some(ref branch) = task_branch {
         if repo_path.exists() {
-            // Ancestor check: is task branch HEAD an ancestor of plan branch HEAD?
-            let should_delete = match plan_branch.as_deref() {
+            let safe_to_delete = match plan_branch.as_deref() {
                 Some(pb) => {
-                    let is_anc = GitService::is_ancestor(repo_path, branch, pb)
-                        .await
-                        .unwrap_or(false);
-                    if !is_anc {
-                        tracing::error!(
+                    let (safe, reason) =
+                        GitService::is_branch_merged_or_content_equivalent(repo_path, branch, pb)
+                            .await;
+                    if safe {
+                        tracing::debug!(
                             task_id = %task_id_str,
                             task_branch = %branch,
                             plan_branch = %pb,
-                            "Phase 3: branch deletion guard: task HEAD not ancestor of plan HEAD \
+                            reason = %reason,
+                            "Phase 3: branch deletion guard passed"
+                        );
+                    } else {
+                        tracing::warn!(
+                            task_id = %task_id_str,
+                            task_branch = %branch,
+                            plan_branch = %pb,
+                            reason = %reason,
+                            "Phase 3: branch deletion guard: task content not found in plan HEAD \
                              — skipping deletion to prevent work loss"
                         );
                     }
-                    is_anc
+                    safe
                 }
                 None => {
-                    // No plan branch info — skip ancestor check (backward compat)
+                    // No plan branch info — skip merge check (backward compat)
                     tracing::debug!(
                         task_id = %task_id_str,
-                        "Phase 3: no plan_branch provided, skipping ancestor check"
+                        "Phase 3: no plan_branch provided, skipping merge check"
                     );
                     true
                 }
             };
 
-            if should_delete {
+            if safe_to_delete {
                 match GitService::delete_branch(repo_path, branch, true).await {
                     Ok(_) => {
                         tracing::info!(
