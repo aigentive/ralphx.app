@@ -343,7 +343,8 @@ impl ResearchProcess {
         if interval == 0 {
             return false;
         }
-        self.progress.current_iteration > 0 && self.progress.current_iteration.is_multiple_of(interval)
+        self.progress.current_iteration > 0
+            && self.progress.current_iteration % interval == 0
     }
 
     /// Returns true if the process has reached max iterations

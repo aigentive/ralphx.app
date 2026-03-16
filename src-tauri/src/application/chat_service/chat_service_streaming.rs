@@ -1511,7 +1511,7 @@ pub async fn process_stream_background<R: Runtime>(
             last_heartbeat = std::time::Instant::now();
         }
 
-        if lines_seen.is_multiple_of(50) {
+        if lines_seen % 50 == 0 {
             tracing::debug!(
                 conversation_id = %conversation_id_str,
                 lines_seen,
