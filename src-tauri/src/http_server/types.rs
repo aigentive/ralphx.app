@@ -901,6 +901,9 @@ pub struct CreateChildSessionResponse {
     /// Resolved team configuration: inherited from parent or explicitly set via request
     #[serde(skip_serializing_if = "Option::is_none")]
     pub team_config: Option<TeamConfigInput>,
+    /// Verification generation number; only set when purpose == "verification" and initialization succeeded
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation: Option<i32>,
 }
 
 #[derive(Debug, Serialize)]

@@ -165,6 +165,7 @@ export interface CreateChildSessionResponse {
   title: string | null;
   status: string;
   createdAt: string;
+  generation?: number;
   parentContext: ParentSessionContextResponse | undefined;
 }
 

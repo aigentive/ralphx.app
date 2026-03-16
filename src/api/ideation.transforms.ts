@@ -230,6 +230,7 @@ export function transformCreateChildSession(
     title: raw.title,
     status: raw.status,
     createdAt: raw.created_at,
+    ...(raw.generation !== undefined && { generation: raw.generation }),
     parentContext: raw.parent_context ? transformParentSessionContext(raw.parent_context) : undefined,
   };
 }

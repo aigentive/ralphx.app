@@ -17,6 +17,7 @@ use crate::domain::entities::{
 use crate::infrastructure::agents::claude::{
     get_team_constraints, team_constraints_config, validate_child_team_config, TeamConstraints,
 };
+use crate::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
 
 use super::super::types::{
     CreateChildSessionRequest, CreateChildSessionResponse, HttpServerState, ParentContextResponse,
@@ -101,6 +102,9 @@ pub async fn create_child_session(
 ) -> Result<Json<CreateChildSessionResponse>, JsonError> {
     let parent_id = IdeationSessionId::from_string(req.parent_session_id.clone());
 
+    // Verification generation; set below when purpose == "verification" and init succeeds
+    let mut verification_generation: Option<i32> = None;
+
     // Validate parent session exists
     let parent = state
         .app_state
@@ -147,6 +151,69 @@ pub async fn create_child_session(
             StatusCode::BAD_REQUEST,
             "Circular reference detected: session cannot be its own parent",
         ));
+    }
+
+    // Verification branch: auto-initialize verification state when purpose == "verification"
+    if req.purpose.as_deref() == Some("verification") {
+        // Pre-flight: parent must have a plan artifact
+        if parent.plan_artifact_id.is_none() {
+            return Err(json_error(
+                StatusCode::BAD_REQUEST,
+                "Cannot start verification: parent session has no plan artifact",
+            ));
+        }
+
+        // Concurrency guard: atomically set in_progress=1 and increment generation
+        let pid = parent_id.as_str().to_string();
+        let verify_result = state
+            .app_state
+            .db
+            .run(move |conn| SessionRepo::trigger_auto_verify_sync(conn, &pid))
+            .await
+            .map_err(|e| {
+                error!("Failed to trigger verification sync: {}", e);
+                json_error(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("Failed to initialize verification state: {}", e),
+                )
+            })?;
+
+        match verify_result {
+            Some(new_gen) => {
+                // Verification initialized; record generation for prompt augmentation and response
+                verification_generation = Some(new_gen);
+            }
+            None => {
+                // Either already in_progress or imported_verified — re-query for fresh state
+                let pid2 = parent_id.as_str().to_string();
+                let fresh_parent = state
+                    .app_state
+                    .db
+                    .run(move |conn| SessionRepo::get_by_id_sync(conn, &pid2))
+                    .await
+                    .map_err(|e| {
+                        error!("Failed to re-query parent session: {}", e);
+                        json_error(
+                            StatusCode::INTERNAL_SERVER_ERROR,
+                            format!("Failed to check verification state: {}", e),
+                        )
+                    })?;
+                let fresh = fresh_parent.ok_or_else(|| {
+                    json_error(StatusCode::NOT_FOUND, "Parent session not found")
+                })?;
+                if fresh.verification_in_progress {
+                    return Err(json_error(
+                        StatusCode::CONFLICT,
+                        "Verification already in progress",
+                    ));
+                } else {
+                    return Err(json_error(
+                        StatusCode::BAD_REQUEST,
+                        "Cannot verify imported-verified sessions",
+                    ));
+                }
+            }
+        }
     }
 
     // Create new child session with parent_session_id set
@@ -219,6 +286,16 @@ pub async fn create_child_session(
         .await
         .map_err(|e| {
             error!("Failed to create child session: {}", e);
+            // Rollback verification state if we initialized it
+            if verification_generation.is_some() {
+                let pid = parent_id.as_str().to_string();
+                let db = state.app_state.db.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(re) = db.run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid)).await {
+                        error!("Failed to rollback verification state after child DB insert failure: {}", re);
+                    }
+                });
+            }
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to create session: {}", e),
@@ -306,9 +383,36 @@ pub async fn create_child_session(
         .clone()
         .unwrap_or_else(|| "Child Session".to_string());
 
+    // Build effective prompts: when verification_generation is set, append verification metadata
+    // in the format the plan-verifier agent already expects to parse.
+    let effective_initial_prompt: Option<String> = req.initial_prompt.as_ref().map(|p| {
+        if let Some(gen) = verification_generation {
+            format!(
+                "{}\n\nparent_session_id: {}, generation: {}, max_rounds: 3",
+                p,
+                parent_session_str,
+                gen
+            )
+        } else {
+            p.clone()
+        }
+    });
+    let effective_description: Option<String> = req.description.as_ref().map(|d| {
+        if let Some(gen) = verification_generation {
+            format!(
+                "{}\n\nparent_session_id: {}, generation: {}, max_rounds: 3",
+                d,
+                parent_session_str,
+                gen
+            )
+        } else {
+            d.clone()
+        }
+    });
+
     // Auto-spawn orchestrator agent on child session if initial_prompt is set.
     // send_message stores the user message and spawns a background agent — non-blocking.
-    let orchestration_triggered = if let Some(ref prompt) = req.initial_prompt {
+    let orchestration_triggered = if let Some(ref prompt) = effective_initial_prompt {
         let app = &state.app_state;
         let mut chat_service = ClaudeChatService::new(
             Arc::clone(&app.chat_message_repo),
@@ -347,10 +451,22 @@ pub async fn create_child_session(
                     "Failed to auto-spawn agent on child session {}: {}",
                     child_session_str, e
                 );
+                // Rollback verification state — parent's in_progress must not stay locked
+                if verification_generation.is_some() {
+                    let pid = parent_id.as_str().to_string();
+                    let db = state.app_state.db.clone();
+                    tauri::async_runtime::spawn(async move {
+                        if let Err(re) = db.run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid)).await {
+                            error!("Failed to rollback verification state after spawn failure: {}", re);
+                        }
+                    });
+                    // Reset local generation so response reflects failure
+                    verification_generation = None;
+                }
                 false
             }
         }
-    } else if let Some(ref desc) = req.description {
+    } else if let Some(ref desc) = effective_description {
         // Use description as the initial prompt via ChatService (same as initial_prompt path)
         // This ensures a conversation is created and streaming events are emitted to the frontend
         if !desc.trim().is_empty() {
@@ -391,6 +507,17 @@ pub async fn create_child_session(
                         "Failed to auto-spawn agent on child session {} (from description): {}",
                         child_session_str, e
                     );
+                    // Rollback verification state — parent's in_progress must not stay locked
+                    if verification_generation.is_some() {
+                        let pid = parent_id.as_str().to_string();
+                        let db = state.app_state.db.clone();
+                        tauri::async_runtime::spawn(async move {
+                            if let Err(re) = db.run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid)).await {
+                                error!("Failed to rollback verification state after spawn failure: {}", re);
+                            }
+                        });
+                        verification_generation = None;
+                    }
                     false
                 }
             }
@@ -434,6 +561,7 @@ pub async fn create_child_session(
         orchestration_triggered,
         team_mode: created_session.team_mode.clone(),
         team_config,
+        generation: verification_generation,
     }))
 }
 

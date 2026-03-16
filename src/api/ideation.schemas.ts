@@ -238,5 +238,6 @@ export const CreateChildSessionResponseSchema = z.object({
   title: z.string().nullable(),
   status: z.string(),
   created_at: z.string(),
+  generation: z.number().optional(),
   parent_context: ParentSessionContextResponseSchema.optional(),
 });
