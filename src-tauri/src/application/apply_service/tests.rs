@@ -1262,7 +1262,7 @@ async fn test_validate_selection_missing_dependency_warning() {
     let service = create_service(session.clone(), vec![p1.clone(), p2.clone()], deps);
 
     let result = service
-        .validate_selection(&session_id, &[p2.id.clone()])
+        .validate_selection(&session_id, std::slice::from_ref(&p2.id))
         .await
         .unwrap();
 
