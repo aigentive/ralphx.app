@@ -436,6 +436,7 @@ fn parse_config_with_lookup(
         limits: parsed.limits,
         verification: parsed.ideation.verification,
         external_mcp: parsed.external_mcp,
+        child_session_activity_threshold_secs: parsed.ideation.child_session_activity_threshold_secs,
     };
     if runtime.external_mcp.max_external_ideation_sessions != 1 {
         tracing::warn!(
@@ -719,6 +720,7 @@ fn load_config() -> LoadedConfig {
             limits: LimitsConfig::default(),
             verification: VerificationConfig::default(),
             external_mcp: ExternalMcpConfig::default(),
+            child_session_activity_threshold_secs: None,
         };
         runtime_config::apply_env_overrides(&mut runtime);
         LoadedConfig {
@@ -844,6 +846,18 @@ pub fn external_mcp_config() -> &'static ExternalMcpConfig {
         .get_or_init(load_config)
         .runtime
         .external_mcp
+}
+
+/// Returns the activity threshold (seconds) used by `get_child_session_status` to derive
+/// `estimated_status`. Reads from `AllRuntimeConfig.child_session_activity_threshold_secs`,
+/// defaulting to 10 if unset.
+#[allow(dead_code)]
+pub fn ideation_activity_threshold_secs() -> u64 {
+    LOADED_CONFIG_CELL
+        .get_or_init(load_config)
+        .runtime
+        .child_session_activity_threshold_secs
+        .unwrap_or(10)
 }
 
 pub fn get_preapproved_tools(agent_name: &str) -> Option<String> {

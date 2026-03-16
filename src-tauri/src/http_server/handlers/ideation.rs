@@ -3,7 +3,7 @@
 use std::collections::HashMap;
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::StatusCode,
     Json,
 };
@@ -17,9 +17,14 @@ fn json_error(status: StatusCode, error: impl Into<String>) -> JsonError {
     (status, Json(serde_json::json!({ "error": error.into() })))
 }
 
-use crate::application::{CreateProposalOptions, UpdateProposalOptions, UpdateSource};
-use crate::domain::entities::{IdeationSessionId, Priority, TaskProposalId};
+use std::sync::Arc;
+
+use crate::application::chat_service::{ChatService, ClaudeChatService, SendMessageOptions};
+use crate::application::{CreateProposalOptions, InteractiveProcessKey, UpdateProposalOptions, UpdateSource};
+use crate::domain::entities::ideation::IdeationSessionStatus;
+use crate::domain::entities::{ChatContextType, IdeationSessionId, Priority, TaskProposalId};
 use crate::domain::services::emit_verification_status_changed;
+use crate::domain::services::running_agent_registry::RunningAgentKey;
 
 use super::super::helpers::{
     archive_proposal_impl, create_proposal_impl, parse_category, parse_priority,
@@ -28,10 +33,11 @@ use super::super::helpers::{
 use super::super::types::{
     CreateProposalRequest, DeleteProposalRequest, GetSessionMessagesRequest,
     GetSessionMessagesResponse, HttpServerState, ListProposalsResponse, ProposalDetailResponse,
-    ProposalResponse, ProposalSummary, RevertAndSkipRequest, SessionMessageResponse,
-    SuccessResponse, UpdateProposalRequest, UpdateSessionTitleRequest,
-    UpdateVerificationRequest, VerificationResponse,
+    ProposalResponse, ProposalSummary, RevertAndSkipRequest, SendSessionMessageRequest,
+    SendSessionMessageResponse, SessionMessageResponse, SuccessResponse, UpdateProposalRequest,
+    UpdateSessionTitleRequest, UpdateVerificationRequest, VerificationResponse,
 };
+use super::session_linking::session_is_team_mode;
 
 pub async fn create_task_proposal(
     State(state): State<HttpServerState>,
@@ -1471,6 +1477,330 @@ pub async fn revert_and_skip(
         success: true,
         message: "Plan reverted and verification skipped".to_string(),
     }))
+}
+
+// GET /api/ideation/sessions/:id/child-status?include_messages=true&message_limit=10
+pub async fn get_child_session_status_handler(
+    State(state): State<HttpServerState>,
+    Path(session_id): Path<String>,
+    Query(params): Query<super::super::types::ChildSessionStatusParams>,
+) -> Result<Json<super::super::types::ChildSessionStatusResponse>, JsonError> {
+    use crate::domain::entities::ideation::{VerificationMetadata, VerificationStatus};
+    use crate::domain::entities::IdeationSessionId;
+    use crate::domain::services::RunningAgentKey;
+    use crate::infrastructure::agents::claude::ideation_activity_threshold_secs;
+    use super::super::types::{
+        AgentStateInfo, ChatMessageSummary, ChildSessionStatusResponse, IdeationSessionSummary,
+        VerificationInfo,
+    };
+
+    let session_id_obj = IdeationSessionId::from_string(session_id.clone());
+
+    // Step 1: Fetch session — 404 if not found
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&session_id_obj)
+        .await
+        .map_err(|e| {
+            error!("Failed to get session {}: {}", session_id, e);
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get session")
+        })?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+
+    // Step 2: Check RunningAgentRegistry under both "session" and "ideation" keys.
+    // Ideation sessions can be registered under either key depending on how they were spawned.
+    let session_key = RunningAgentKey::new("session", &session_id);
+    let ideation_key = RunningAgentKey::new("ideation", &session_id);
+    let registry = &state.app_state.running_agent_registry;
+
+    let agent_info = if let Some(info) = registry.get(&session_key).await {
+        Some(info)
+    } else {
+        registry.get(&ideation_key).await
+    };
+
+    // Step 3: Derive estimated_status from last_active_at using config threshold
+    let threshold_secs = ideation_activity_threshold_secs();
+    let agent_state = match &agent_info {
+        None => AgentStateInfo {
+            is_running: false,
+            started_at: None,
+            last_active_at: None,
+            pid: None,
+            estimated_status: "idle".to_string(),
+        },
+        Some(info) => {
+            let estimated_status = if let Some(last_active) = info.last_active_at {
+                let elapsed = chrono::Utc::now()
+                    .signed_duration_since(last_active)
+                    .num_seconds();
+                if elapsed >= 0 && (elapsed as u64) < threshold_secs {
+                    "likely_generating"
+                } else {
+                    "likely_waiting"
+                }
+            } else {
+                // In registry but no heartbeat yet — assume still generating
+                "likely_generating"
+            };
+            AgentStateInfo {
+                is_running: true,
+                started_at: Some(info.started_at.to_rfc3339()),
+                last_active_at: info.last_active_at.map(|t| t.to_rfc3339()),
+                pid: Some(info.pid),
+                estimated_status: estimated_status.to_string(),
+            }
+        }
+    };
+
+    // Step 4: Optionally fetch recent messages, clamped to max 50
+    let recent_messages = if params.include_messages.unwrap_or(false) {
+        let limit = u32::min(params.message_limit.unwrap_or(5), 50);
+        let messages = state
+            .app_state
+            .chat_message_repo
+            .get_recent_by_session(&session_id_obj, limit)
+            .await
+            .map_err(|e| {
+                error!("Failed to get messages for session {}: {}", session_id, e);
+                json_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get messages")
+            })?;
+        Some(
+            messages
+                .into_iter()
+                .map(|m| {
+                    // Truncate content to 500 chars (char-boundary safe)
+                    let content = m.content.chars().take(500).collect::<String>();
+                    ChatMessageSummary {
+                        role: m.role.to_string(),
+                        content,
+                        created_at: m.created_at.to_rfc3339(),
+                    }
+                })
+                .collect::<Vec<_>>(),
+        )
+    } else {
+        None
+    };
+
+    // Step 5: Build VerificationInfo from session entity if verification has been started.
+    // gap_score and current_round live in the verification_metadata JSON blob.
+    // Malformed JSON → return verification: None (no panic).
+    let verification = if session.verification_status != VerificationStatus::Unverified {
+        let (current_round, gap_score) = if let Some(meta_json) = &session.verification_metadata {
+            match serde_json::from_str::<VerificationMetadata>(meta_json) {
+                Ok(meta) => {
+                    let round = if meta.current_round > 0 {
+                        Some(meta.current_round)
+                    } else {
+                        None
+                    };
+                    let score = meta.rounds.last().map(|r| r.gap_score);
+                    (round, score)
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "Failed to parse verification_metadata for session {}: {}",
+                        session_id,
+                        e
+                    );
+                    (None, None)
+                }
+            }
+        } else {
+            (None, None)
+        };
+        Some(VerificationInfo {
+            status: session.verification_status.to_string(),
+            generation: session.verification_generation,
+            current_round,
+            gap_score,
+        })
+    } else {
+        None
+    };
+
+    // Step 6: Build IdeationSessionSummary from session entity fields
+    let session_summary = IdeationSessionSummary {
+        id: session.id.as_str().to_string(),
+        title: session.title.clone().unwrap_or_default(),
+        status: session.status.to_string(),
+        session_purpose: Some(session.session_purpose.to_string()),
+        parent_session_id: session
+            .parent_session_id
+            .as_ref()
+            .map(|id| id.as_str().to_string()),
+        created_at: session.created_at.to_rfc3339(),
+        updated_at: session.updated_at.to_rfc3339(),
+    };
+
+    Ok(Json(ChildSessionStatusResponse {
+        session: session_summary,
+        agent_state,
+        verification,
+        recent_messages,
+    }))
+}
+
+/// POST /api/ideation/sessions/:id/message
+///
+/// Tri-state delivery:
+/// 1. "sent"    — interactive process open; message written directly to stdin
+/// 2. "queued"  — agent running but no open stdin; message queued for resume
+/// 3. "spawned" — no agent running; new agent process spawned with the message
+pub async fn send_child_session_message_handler(
+    State(state): State<HttpServerState>,
+    Path(session_id): Path<String>,
+    Json(req): Json<SendSessionMessageRequest>,
+) -> Result<Json<SendSessionMessageResponse>, JsonError> {
+    // Step 1: Validate session exists
+    let sid = IdeationSessionId::from_string(session_id.clone());
+    let session = state
+        .app_state
+        .ideation_session_repo
+        .get_by_id(&sid)
+        .await
+        .map_err(|e| {
+            error!("Failed to get ideation session {}: {}", session_id, e);
+            json_error(StatusCode::INTERNAL_SERVER_ERROR, "Failed to get ideation session")
+        })?
+        .ok_or_else(|| json_error(StatusCode::NOT_FOUND, "Session not found"))?;
+
+    // Validate session status (enum comparison, not string per CLAUDE.md rule #5)
+    if session.status != IdeationSessionStatus::Active {
+        return Err(json_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Session is not active",
+        ));
+    }
+
+    // Validate message length
+    if req.message.is_empty() {
+        return Err(json_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Message cannot be empty",
+        ));
+    }
+    if req.message.len() > 10_000 {
+        return Err(json_error(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Message too long (max 10000 chars)",
+        ));
+    }
+
+    // Step 2: Try interactive process registry under BOTH context type keys.
+    // Ideation sessions can be registered under "session" (HTTP-spawned) or "ideation" (Tauri IPC-spawned).
+    for context_type in &["session", "ideation"] {
+        let ipr_key = InteractiveProcessKey {
+            context_type: context_type.to_string(),
+            context_id: session_id.clone(),
+        };
+        if state
+            .app_state
+            .interactive_process_registry
+            .has_process(&ipr_key)
+            .await
+        {
+            match state
+                .app_state
+                .interactive_process_registry
+                .write_message(&ipr_key, &req.message)
+                .await
+            {
+                Ok(()) => {
+                    return Ok(Json(SendSessionMessageResponse {
+                        delivery_status: "sent".to_string(),
+                        conversation_id: None,
+                    }));
+                }
+                Err(e) => {
+                    // Process may have closed between has_process and write_message; fall through
+                    error!(
+                        "Failed to write to interactive process for session {} ({}): {}",
+                        session_id, context_type, e
+                    );
+                }
+            }
+        }
+    }
+
+    // Step 3: Queue if agent running (check both keys)
+    for context_type in &["session", "ideation"] {
+        let agent_key = RunningAgentKey::new(*context_type, &session_id);
+        if state
+            .app_state
+            .running_agent_registry
+            .is_running(&agent_key)
+            .await
+        {
+            state
+                .app_state
+                .message_queue
+                .queue(ChatContextType::Ideation, &session_id, req.message.clone());
+            return Ok(Json(SendSessionMessageResponse {
+                delivery_status: "queued".to_string(),
+                conversation_id: None,
+            }));
+        }
+    }
+
+    // Step 4: Agent not running — construct ClaudeChatService and spawn.
+    // Follows session_linking.rs:312-330 positional constructor pattern exactly.
+    let is_team_mode = session_is_team_mode(&session);
+    let app = &state.app_state;
+    let mut chat_service = ClaudeChatService::new(
+        Arc::clone(&app.chat_message_repo),
+        Arc::clone(&app.chat_attachment_repo),
+        Arc::clone(&app.chat_conversation_repo),
+        Arc::clone(&app.agent_run_repo),
+        Arc::clone(&app.project_repo),
+        Arc::clone(&app.task_repo),
+        Arc::clone(&app.task_dependency_repo),
+        Arc::clone(&app.ideation_session_repo),
+        Arc::clone(&app.activity_event_repo),
+        Arc::clone(&app.message_queue),
+        Arc::clone(&app.running_agent_registry),
+        Arc::clone(&app.memory_event_repo),
+    )
+    .with_execution_state(Arc::clone(&state.execution_state))
+    .with_plan_branch_repo(Arc::clone(&app.plan_branch_repo))
+    .with_task_proposal_repo(Arc::clone(&app.task_proposal_repo))
+    .with_interactive_process_registry(Arc::clone(&app.interactive_process_registry));
+
+    if let Some(ref handle) = app.app_handle {
+        chat_service = chat_service.with_app_handle(handle.clone());
+    }
+    chat_service = chat_service.with_team_mode(is_team_mode);
+
+    match chat_service
+        .send_message(
+            ChatContextType::Ideation,
+            &session_id,
+            &req.message,
+            SendMessageOptions::default(),
+        )
+        .await
+    {
+        Ok(result) if result.was_queued => Ok(Json(SendSessionMessageResponse {
+            delivery_status: "queued".to_string(),
+            conversation_id: None,
+        })),
+        Ok(result) => Ok(Json(SendSessionMessageResponse {
+            delivery_status: "spawned".to_string(),
+            conversation_id: Some(result.conversation_id),
+        })),
+        Err(e) => {
+            error!(
+                "Failed to send message to ideation session {}: {}",
+                session_id, e
+            );
+            Err(json_error(
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to send message",
+            ))
+        }
+    }
 }
 
 #[cfg(test)]

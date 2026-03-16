@@ -37,6 +37,70 @@ pub struct UpdateSessionTitleRequest {
 }
 
 // ============================================================================
+// Request/Response Types - Child Session Status + Messaging
+// ============================================================================
+
+#[derive(Debug, Deserialize)]
+pub struct ChildSessionStatusParams {
+    pub include_messages: Option<bool>,
+    pub message_limit: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct IdeationSessionSummary {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+    pub session_purpose: Option<String>,
+    pub parent_session_id: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentStateInfo {
+    pub is_running: bool,
+    pub started_at: Option<String>,
+    pub last_active_at: Option<String>,
+    pub pid: Option<u32>,
+    pub estimated_status: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct VerificationInfo {
+    pub status: String,
+    pub generation: i32,
+    pub current_round: Option<u32>,
+    pub gap_score: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChatMessageSummary {
+    pub role: String,
+    pub content: String,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ChildSessionStatusResponse {
+    pub session: IdeationSessionSummary,
+    pub agent_state: AgentStateInfo,
+    pub verification: Option<VerificationInfo>,
+    pub recent_messages: Option<Vec<ChatMessageSummary>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SendSessionMessageRequest {
+    pub message: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct SendSessionMessageResponse {
+    pub delivery_status: String,
+    pub conversation_id: Option<String>,
+}
+
+// ============================================================================
 // Request/Response Types - Ideation (Proposals)
 // ============================================================================
 

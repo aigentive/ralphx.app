@@ -1246,6 +1246,54 @@ export const ALL_TOOLS = [
             required: [],
         },
     },
+    // ========================================================================
+    // CHILD SESSION TOOLS (orchestrator-ideation, ideation-team-lead, plan-verifier)
+    // ========================================================================
+    {
+        name: "get_child_session_status",
+        description: "Returns live status of a child session: session metadata, agent process state (idle/likely_generating/likely_waiting), " +
+            "recent messages, and verification metadata if applicable. Use to check if a verification agent is stalled, " +
+            "monitor child session progress, or verify agent completion.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                session_id: {
+                    type: "string",
+                    description: "The child session ID to check",
+                },
+                include_recent_messages: {
+                    type: "boolean",
+                    description: "Include recent conversation messages (default: false)",
+                },
+                message_limit: {
+                    type: "number",
+                    description: "Max messages to return (default: 5, max: 50). Only used when include_recent_messages=true.",
+                },
+            },
+            required: ["session_id"],
+        },
+    },
+    {
+        name: "send_child_session_message",
+        description: "Sends a message to a child session's agent conversation. If agent is generating, message is queued. " +
+            "If agent is idle, a new agent run is spawned. Returns delivery_status: 'sent' (written to active stdin), " +
+            "'queued' (agent busy, will receive on next turn), or 'spawned' (new agent run started). " +
+            "Use to nudge verification agents, inject context, or send stop signals.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                session_id: {
+                    type: "string",
+                    description: "The child session ID to message",
+                },
+                message: {
+                    type: "string",
+                    description: "The message content to send to the child session's agent",
+                },
+            },
+            required: ["session_id", "message"],
+        },
+    },
 ];
 /**
  * Tool scoping per agent type
@@ -1285,6 +1333,9 @@ export const TOOL_ALLOWLIST = {
         "list_projects",
         "create_cross_project_session",
         "cross_project_guide",
+        // child session tools
+        "get_child_session_status",
+        "send_child_session_message",
     ],
     [ORCHESTRATOR_IDEATION_READONLY]: [
         "list_session_proposals",
@@ -1541,6 +1592,9 @@ export const TOOL_ALLOWLIST = {
         "list_projects",
         "create_cross_project_session",
         "cross_project_guide",
+        // Child session tools
+        "get_child_session_status",
+        "send_child_session_message",
     ],
     // Ideation team members - research and analysis (read-only)
     [IDEATION_TEAM_MEMBER]: [
@@ -1685,6 +1739,9 @@ export const TOOL_ALLOWLIST = {
         "get_plan_verification",
         "update_plan_artifact",
         "edit_plan_artifact",
+        // Child session tools
+        "get_child_session_status",
+        "send_child_session_message",
     ],
     // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
     debug: ALL_TOOLS.map((t) => t.name),
