@@ -2,7 +2,7 @@
 
 # src-tauri/CLAUDE.md — Backend
 
-Quality standards: `@../.claude/rules/code-quality-standards.md`
+Quality standards: `@../.claude/rules/code-quality-standards.md` | Rust API safety: `@../.claude/rules/rust-stable-apis.md`
 
 ## Stack
 Rust 2021 | Tauri 2.0 | rusqlite 0.32 | statig 0.3 (async state machine)
@@ -90,6 +90,7 @@ New pattern → add one-liner here. Pattern name + rule only.
 | MergeDeadline | `attempt_programmatic_merge` wraps cleanup + strategy in bounded deadline (`attempt_merge_deadline_secs`) |
 | No Inline Timeout Consts | All durations → `runtime_config` + `ralphx.yaml`, never Rust `const` |
 | Tokio spawn | `tokio::spawn` → async fn ONLY. Sync code → `std::thread::spawn` \| `tauri::async_runtime::spawn`. See `.claude/rules/tokio-runtime-safety.md` |
+| Rust std API stability | Avoid unstable std APIs in production code (e.g., `is_multiple_of`) — use stable equivalents (e.g., `%`). See `.claude/rules/rust-stable-apis.md` |
 
 ## Code Quality
 Multi-stream workflow: `.claude/rules/stream-*.md` (features/refactor/polish). File limits + migration rules: `.claude/rules/code-quality-standards.md`.
