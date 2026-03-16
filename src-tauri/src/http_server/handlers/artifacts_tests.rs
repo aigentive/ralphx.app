@@ -2211,6 +2211,11 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
     .await;
     assert!(result.is_ok(), "Should be Ok when verification child is not running");
 
+    // Mark parent as having verification in progress (as happens in production when
+    // verification starts). The early-out guard skips the freeze check when false.
+    let mut parent_verifying = parent.clone();
+    parent_verifying.verification_in_progress = true;
+
     // Register child as generating
     running_registry
         .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
@@ -2218,7 +2223,7 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
 
     // Without caller_session_id → 409 Conflict
     let result = check_verification_freeze(
-        &[parent.clone()],
+        &[parent_verifying.clone()],
         None,
         running_registry.as_ref(),
         session_repo.as_ref(),
@@ -2231,7 +2236,7 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
 
     // With caller_session_id = child.id → bypass → Ok
     let result = check_verification_freeze(
-        &[parent.clone()],
+        &[parent_verifying.clone()],
         Some(child_id.as_str()),
         running_registry.as_ref(),
         session_repo.as_ref(),
@@ -2248,13 +2253,123 @@ async fn test_6a_freeze_blocks_external_writes_and_bypasses_for_caller() {
         .unregister(&RunningAgentKey::new("ideation", child_id.as_str()), "test-agent-run")
         .await;
     let result = check_verification_freeze(
-        &[parent.clone()],
+        &[parent_verifying.clone()],
         None,
         running_registry.as_ref(),
         session_repo.as_ref(),
     )
     .await;
     assert!(result.is_ok(), "Should be Ok after verification child exits");
+}
+
+/// 6A': freeze is released when verification_in_progress transitions to false,
+/// even if the child session process is still registered as running.
+#[tokio::test]
+async fn test_6a_prime_freeze_released_when_verification_complete() {
+    let session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let running_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    // Create parent and verification child
+    let parent = make_active_session();
+    let parent_id = parent.id.clone();
+    session_repo.create(parent.clone()).await.unwrap();
+
+    let child = make_verification_child(&parent_id);
+    let child_id = child.id.clone();
+    session_repo.create(child).await.unwrap();
+
+    // Set verification_in_progress=true and register child as running (freeze active)
+    session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
+        .await
+        .unwrap();
+    running_registry
+        .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
+        .await;
+
+    // Fetch the updated parent so check_verification_freeze sees in_progress=true
+    let parent_verifying = session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Phase 1: freeze active → Conflict
+    let result = check_verification_freeze(
+        &[parent_verifying],
+        None,
+        running_registry.as_ref(),
+        session_repo.as_ref(),
+    )
+    .await;
+    assert!(
+        matches!(result, Err(AppError::Conflict(_))),
+        "Should return Conflict when verification_in_progress=true and child is running"
+    );
+
+    // Set verification_in_progress=false (verification round completed)
+    session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Verified, false, None)
+        .await
+        .unwrap();
+
+    // Fetch updated parent (in_progress=false now)
+    let parent_completed = session_repo
+        .get_by_id(&parent_id)
+        .await
+        .unwrap()
+        .unwrap();
+
+    // Phase 2: freeze released — Ok even though child is still in running registry
+    let result = check_verification_freeze(
+        &[parent_completed],
+        None,
+        running_registry.as_ref(),
+        session_repo.as_ref(),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "Should return Ok after verification_in_progress set to false"
+    );
+}
+
+/// 6A-default: parent never started verification (in_progress=false by default).
+/// A running verification child should NOT trigger the freeze.
+#[tokio::test]
+async fn test_6a_default_false_with_children() {
+    let session_repo = Arc::new(MemoryIdeationSessionRepository::new());
+    let running_registry = Arc::new(MemoryRunningAgentRegistry::new());
+
+    // Create parent with default verification_in_progress=false
+    let parent = make_active_session();
+    let parent_id = parent.id.clone();
+    assert!(
+        !parent.verification_in_progress,
+        "make_active_session() should default verification_in_progress to false"
+    );
+    session_repo.create(parent.clone()).await.unwrap();
+
+    // Create verification child and register it as running
+    let child = make_verification_child(&parent_id);
+    let child_id = child.id.clone();
+    session_repo.create(child).await.unwrap();
+    running_registry
+        .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
+        .await;
+
+    // Early-out guard: in_progress=false → freeze check is skipped → Ok
+    let result = check_verification_freeze(
+        &[parent],
+        None,
+        running_registry.as_ref(),
+        session_repo.as_ref(),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "Should return Ok when verification_in_progress=false, even with a running child"
+    );
 }
 
 /// 6C: no verification children → Ok(())
@@ -2317,6 +2432,15 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
         .await
         .unwrap();
 
+    // Mark parent as having verification in progress (as happens in production when
+    // verification starts). The early-out guard skips the freeze check when false.
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
+        .await
+        .unwrap();
+
     // Register child as running (freeze active)
     registry
         .set_running(RunningAgentKey::new("ideation", child_id.as_str()))
@@ -2356,6 +2480,30 @@ async fn test_6d_update_plan_artifact_returns_409_during_freeze() {
         "Verification agent should be allowed to update its own plan: {:?}",
         result.err()
     );
+
+    // Phase 3: set in_progress=false (verification complete) → freeze released
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Verified, false, None)
+        .await
+        .unwrap();
+
+    // update_plan_artifact WITHOUT caller_session_id → 200 (freeze released)
+    let result = update_plan_artifact(
+        State(state.clone()),
+        Json(UpdatePlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            content: "update after freeze released".to_string(),
+            caller_session_id: None,
+        }),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "Should succeed after verification_in_progress set to false: {:?}",
+        result.err()
+    );
 }
 
 /// 6D': edit_plan_artifact returns 409 during freeze; 200 with caller_session_id bypass.
@@ -2376,6 +2524,15 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
         .app_state
         .ideation_session_repo
         .create(child)
+        .await
+        .unwrap();
+
+    // Mark parent as having verification in progress (as happens in production when
+    // verification starts). The early-out guard skips the freeze check when false.
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Reviewing, true, None)
         .await
         .unwrap();
 
@@ -2422,6 +2579,33 @@ async fn test_6d_prime_edit_plan_artifact_returns_409_during_freeze() {
     assert!(
         result.is_ok(),
         "Verification agent should be allowed to edit its own plan: {:?}",
+        result.err()
+    );
+
+    // Phase 3: set in_progress=false (verification complete) → freeze released
+    state
+        .app_state
+        .ideation_session_repo
+        .update_verification_state(&parent_id, VerificationStatus::Verified, false, None)
+        .await
+        .unwrap();
+
+    // edit_plan_artifact WITHOUT caller_session_id → 200 (freeze released)
+    let result = edit_plan_artifact(
+        State(state.clone()),
+        Json(EditPlanArtifactRequest {
+            artifact_id: artifact_id.clone(),
+            edits: vec![PlanEdit {
+                old_text: "verifier edit — allowed".to_string(),
+                new_text: "edit after freeze released".to_string(),
+            }],
+            caller_session_id: None,
+        }),
+    )
+    .await;
+    assert!(
+        result.is_ok(),
+        "Should succeed after verification_in_progress set to false: {:?}",
         result.err()
     );
 }
