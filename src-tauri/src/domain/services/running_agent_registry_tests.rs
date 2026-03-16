@@ -679,7 +679,7 @@ async fn test_kill_process_immediate_kills_process_group_children() {
                     nix::unistd::Pid::from_raw(0),
                     nix::unistd::Pid::from_raw(0),
                 )
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))
+                .map_err(|e| std::io::Error::other(e))
             })
             .spawn()
             .expect("spawn bash parent")

@@ -88,5 +88,5 @@ fn test_all_error_variants_are_error_trait() {
     assert_error(&AgentError::CommunicationFailed("test".to_string()));
     assert_error(&AgentError::Timeout(1000));
     assert_error(&AgentError::CliNotAvailable("test".to_string()));
-    assert_error(&AgentError::Io(IoError::new(ErrorKind::Other, "test")));
+    assert_error(&AgentError::Io(IoError::other("test")));
 }
