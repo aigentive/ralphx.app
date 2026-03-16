@@ -803,19 +803,19 @@ pub async fn update_plan_verification(
         ));
     }
 
-    // Server-side generation guard: when setting in_progress=true, verify generation matches
-    if req.in_progress {
-        if let Some(req_gen) = req.generation {
-            if req_gen != session.verification_generation {
-                return Err(json_error(
-                    StatusCode::CONFLICT,
-                    format!(
-                        "Generation mismatch: request generation {} != current generation {}. \
-                         Verification was reset — zombie agent detected.",
-                        req_gen, session.verification_generation
-                    ),
-                ));
-            }
+    // Server-side generation guard: when generation is provided, verify it matches.
+    // Applies to ALL calls (including terminal in_progress=false) to prevent zombie agents
+    // from writing stale terminal status (e.g., verified/needs_revision after a reset).
+    if let Some(req_gen) = req.generation {
+        if req_gen != session.verification_generation {
+            return Err(json_error(
+                StatusCode::CONFLICT,
+                format!(
+                    "Generation mismatch: request generation {} != current generation {}. \
+                     Verification was reset — zombie agent detected.",
+                    req_gen, session.verification_generation
+                ),
+            ));
         }
     }
 

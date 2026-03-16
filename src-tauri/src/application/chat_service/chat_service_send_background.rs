@@ -542,30 +542,19 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 )
                 .await;
 
-                // Auto-archive verification child sessions when their agent completes.
-                // Verification sessions are background work — they should not persist as active sessions.
+                // Guard: skip auto-archival for verification child sessions.
+                // The run_completed hook (Fix 1) handles archival after confirming parent state
+                // is reconciled. Auto-archiving here creates a race with the agent's final MCP
+                // call (update_plan_verification). The periodic reconciler is the fallback for
+                // orphaned children if Fix 1's hook fails for any reason.
                 if context_type == ChatContextType::Ideation {
                     let session_id = crate::domain::entities::IdeationSessionId::from_string(context_id.clone());
                     match ideation_session_repo.get_by_id(&session_id).await {
                         Ok(Some(session)) if session.session_purpose == crate::domain::entities::ideation::SessionPurpose::Verification => {
-                            match ideation_session_repo
-                                .update_status(&session_id, crate::domain::entities::IdeationSessionStatus::Archived)
-                                .await
-                            {
-                                Ok(()) => {
-                                    tracing::info!(
-                                        session_id = %context_id,
-                                        "Auto-archived verification child session on agent completion"
-                                    );
-                                }
-                                Err(e) => {
-                                    tracing::warn!(
-                                        session_id = %context_id,
-                                        error = %e,
-                                        "Failed to auto-archive verification child session"
-                                    );
-                                }
-                            }
+                            tracing::debug!(
+                                session_id = %context_id,
+                                "Skipping auto-archival for verification child session — deferred to run_completed hook"
+                            );
                         }
                         Ok(Some(_)) => {} // not a verification session, no action
                         Ok(None) => {}    // session not found, no action

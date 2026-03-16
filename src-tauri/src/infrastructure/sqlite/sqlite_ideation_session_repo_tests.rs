@@ -1905,3 +1905,146 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
         "SQLite parse_failures must be empty array"
     );
 }
+
+// ==================== ARCHIVE CLEARS VERIFICATION_IN_PROGRESS TESTS ====================
+
+#[tokio::test]
+async fn test_archive_clears_verification_in_progress_when_set() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let repo = SqliteIdeationSessionRepository::new(conn);
+
+    let session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .build();
+    repo.create(session.clone()).await.unwrap();
+
+    // Set verification_in_progress = true
+    repo.update_verification_state(
+        &session.id,
+        VerificationStatus::Reviewing,
+        true,
+        Some(r#"{"v":1}"#.to_string()),
+    )
+    .await
+    .unwrap();
+
+    // Verify flag is set
+    let before = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert!(before.verification_in_progress);
+
+    // Archive should atomically clear the flag
+    repo.update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let updated = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(updated.status, IdeationSessionStatus::Archived);
+    assert!(updated.archived_at.is_some());
+    assert!(
+        !updated.verification_in_progress,
+        "verification_in_progress must be cleared on archive"
+    );
+}
+
+#[tokio::test]
+async fn test_archive_does_not_regress_when_verification_in_progress_already_false() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    let repo = SqliteIdeationSessionRepository::new(conn);
+
+    let session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .build();
+    repo.create(session.clone()).await.unwrap();
+
+    // Verify flag is already false (default)
+    let before = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert!(!before.verification_in_progress);
+
+    // Archive — flag must remain false
+    repo.update_status(&session.id, IdeationSessionStatus::Archived)
+        .await
+        .unwrap();
+
+    let updated = repo.get_by_id(&session.id).await.unwrap().unwrap();
+    assert_eq!(updated.status, IdeationSessionStatus::Archived);
+    assert!(
+        !updated.verification_in_progress,
+        "verification_in_progress must remain false after archive"
+    );
+}
+
+// ==================== STALE QUERY EXCLUDES ARCHIVED SESSIONS TESTS ====================
+
+/// Defense-in-depth: archived session with verification_in_progress=1 must NOT appear in
+/// get_stale_in_progress_sessions results, even if the flag was somehow set after archiving.
+#[tokio::test]
+async fn test_get_stale_in_progress_sessions_excludes_archived() {
+    let (shared, repo) = setup_shared_test_db();
+    let project_id = ProjectId::new();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    // Create an archived session and force verification_in_progress=1 via raw SQL
+    // to simulate the defense-in-depth scenario (bypassing normal update_status guard).
+    let session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .build();
+    repo.create(session.clone()).await.unwrap();
+
+    let stale_before = "2020-01-01T00:00:00+00:00";
+    {
+        let conn = shared.lock().await;
+        conn.execute(
+            "UPDATE ideation_sessions SET status = 'archived', verification_in_progress = 1, updated_at = ?1 WHERE id = ?2",
+            rusqlite::params![stale_before, session.id.as_str()],
+        )
+        .unwrap();
+    }
+
+    let stale_cutoff = chrono::Utc::now();
+    let results = repo.get_stale_in_progress_sessions(stale_cutoff).await.unwrap();
+    assert!(
+        results.iter().all(|s| s.id != session.id),
+        "archived session must be excluded from stale query even with verification_in_progress=1"
+    );
+}
+
+/// Active session with stale verification_in_progress=1 MUST appear in results.
+#[tokio::test]
+async fn test_get_stale_in_progress_sessions_includes_active() {
+    let (shared, repo) = setup_shared_test_db();
+    let project_id = ProjectId::new();
+    {
+        let conn = shared.lock().await;
+        create_test_project(&conn, &project_id, "Test Project", "/test/path");
+    }
+
+    let session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .build();
+    repo.create(session.clone()).await.unwrap();
+
+    // Force stale updated_at and verification_in_progress=1 while keeping status='active'
+    let stale_before = "2020-01-01T00:00:00+00:00";
+    {
+        let conn = shared.lock().await;
+        conn.execute(
+            "UPDATE ideation_sessions SET verification_in_progress = 1, updated_at = ?1 WHERE id = ?2",
+            rusqlite::params![stale_before, session.id.as_str()],
+        )
+        .unwrap();
+    }
+
+    let stale_cutoff = chrono::Utc::now();
+    let results = repo.get_stale_in_progress_sessions(stale_cutoff).await.unwrap();
+    assert!(
+        results.iter().any(|s| s.id == session.id),
+        "active stale session must be included in stale query"
+    );
+}

@@ -193,6 +193,11 @@ pub trait IdeationSessionRepository: Send + Sync {
         stale_before: DateTime<Utc>,
     ) -> AppResult<Vec<IdeationSession>>;
 
+    /// Find ALL sessions where `verification_in_progress = 1` and `status != 'archived'`.
+    /// No TTL filter — used on startup to unconditionally reset all stale in-progress sessions.
+    /// On startup, no verification agents are running, so any in-progress flag is stale by definition.
+    async fn get_all_in_progress_sessions(&self) -> AppResult<Vec<IdeationSession>>;
+
     /// Get active (non-archived) verification child sessions for a parent session.
     /// Returns at most 1 session (the most recent), ordered by created_at DESC.
     async fn get_verification_children(

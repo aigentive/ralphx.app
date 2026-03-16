@@ -248,6 +248,10 @@ impl IdeationSessionRepository for MockSessionRepository {
         Ok(Vec::new())
     }
 
+    async fn get_all_in_progress_sessions(&self) -> AppResult<Vec<IdeationSession>> {
+        Ok(Vec::new())
+    }
+
     async fn get_verification_children(
         &self,
         _parent_session_id: &IdeationSessionId,

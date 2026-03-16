@@ -75,6 +75,7 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             match status {
                 IdeationSessionStatus::Archived => {
                     session.archived_at = Some(Utc::now());
+                    session.verification_in_progress = false;
                 }
                 IdeationSessionStatus::Accepted => {
                     session.converted_at = Some(Utc::now());
@@ -392,7 +393,24 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             .read()
             .unwrap()
             .values()
-            .filter(|s| s.verification_in_progress && s.updated_at < stale_before)
+            .filter(|s| {
+                s.verification_in_progress
+                    && s.updated_at < stale_before
+                    && s.status != IdeationSessionStatus::Archived
+            })
+            .cloned()
+            .collect())
+    }
+
+    async fn get_all_in_progress_sessions(&self) -> AppResult<Vec<IdeationSession>> {
+        Ok(self
+            .sessions
+            .read()
+            .unwrap()
+            .values()
+            .filter(|s| {
+                s.verification_in_progress && s.status != IdeationSessionStatus::Archived
+            })
             .cloned()
             .collect())
     }

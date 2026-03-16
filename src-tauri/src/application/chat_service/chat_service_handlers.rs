@@ -17,9 +17,10 @@ use crate::application::task_transition_service::TaskTransitionService;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     AgentRunId, ChatContextType, ChatConversation, ChatConversationId, ChatMessageId,
-    InternalStatus, MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind,
-    MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
-    ReviewNote, ReviewOutcome, ReviewerType, TaskId, TaskStepStatus,
+    IdeationSessionId, InternalStatus, MergeFailureSource, MergeRecoveryEvent,
+    MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource,
+    MergeRecoveryState, ReviewNote, ReviewOutcome, ReviewerType, SessionPurpose, TaskId,
+    TaskStepStatus,
 };
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
@@ -427,6 +428,39 @@ pub(super) async fn handle_stream_success<R: Runtime>(
             );
         }
     }
+
+    // Path A: Handle verification child completion (only for Ideation context)
+    if context_type == ChatContextType::Ideation {
+        let child_id = IdeationSessionId::from_string(context_id.to_string());
+        match ideation_session_repo.get_by_id(&child_id).await {
+            Ok(Some(child_session)) => {
+                if child_session.session_purpose == SessionPurpose::Verification {
+                    if let Some(parent_id) = child_session.parent_session_id {
+                        crate::application::reconciliation::verification_reconciliation::reconcile_verification_on_child_complete(
+                            &parent_id,
+                            &child_id,
+                            ideation_session_repo,
+                            app_handle.as_ref(),
+                        )
+                        .await;
+                    }
+                }
+            }
+            Ok(None) => {
+                tracing::debug!(
+                    context_id,
+                    "Ideation session not found for verification reconciliation check"
+                );
+            }
+            Err(e) => {
+                tracing::warn!(
+                    context_id,
+                    error = %e,
+                    "Failed to fetch ideation session for verification reconciliation check"
+                );
+            }
+        }
+    }
 }
 
 /// Check whether a task is still in an active execution state that needs recovery.
@@ -623,6 +657,19 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 }),
             );
         }
+
+        // Path C: Reset verification state when a verification child is stopped by user
+        if context_type == ChatContextType::Ideation {
+            let child_id = IdeationSessionId::from_string(context_id.to_string());
+            crate::application::reconciliation::verification_reconciliation::reset_verification_on_child_error(
+                &child_id,
+                ideation_session_repo,
+                app_handle.as_ref(),
+                "user_stopped",
+            )
+            .await;
+        }
+
         return false;
     }
 
@@ -1419,6 +1466,19 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 "Review agent failed but no execution_state available for fallback transition"
             );
         }
+    }
+
+    // Path B: Reset verification state when a verification child errors (no turns produced)
+    // Ideation context falls through all TaskExecution/Merge/Review blocks above.
+    if context_type == ChatContextType::Ideation {
+        let child_id = IdeationSessionId::from_string(context_id.to_string());
+        crate::application::reconciliation::verification_reconciliation::reset_verification_on_child_error(
+            &child_id,
+            ideation_session_repo,
+            app_handle.as_ref(),
+            "agent_error",
+        )
+        .await;
     }
 
     false // Normal error handling performed, no retry spawned
