@@ -138,14 +138,6 @@ export async function updateWorkflow(
 }
 
 /**
- * Delete a workflow by ID
- * @param id The workflow ID
- */
-export async function deleteWorkflow(id: string): Promise<void> {
-  await invoke("delete_workflow", { id });
-}
-
-/**
  * Set a workflow as the default
  * @param id The workflow ID to set as default
  * @returns The updated workflow (camelCase display type)

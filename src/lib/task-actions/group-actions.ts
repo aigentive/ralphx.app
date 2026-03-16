@@ -4,7 +4,7 @@
  * and Graph uncategorized containers.
  */
 
-import { Trash2, Ban } from "lucide-react";
+import { Ban, PauseCircle, Play, Archive } from "lucide-react";
 import type { ConfirmConfig } from "./types";
 
 /** Which kind of task group this is */
@@ -17,8 +17,10 @@ export interface GroupInfo {
   taskCount: number;
   groupId: string;
   projectId: string;
-  onRemoveAll: () => void;
   onCancelAll?: () => void;
+  onPauseAll?: () => void;
+  onResumeAll?: () => void;
+  onArchiveAll?: () => void;
 }
 
 /** A group-level action definition */
@@ -31,18 +33,12 @@ export interface GroupAction {
 }
 
 /** Available group actions */
-export const GROUP_ACTIONS: { removeAll: GroupAction; cancelAll: GroupAction } = {
-  removeAll: {
-    id: "removeAll",
-    label: "Remove all",
-    icon: Trash2,
-    variant: "destructive",
-    confirmConfig: (groupLabel: string, taskCount: number) => ({
-      title: `Remove all ${groupLabel}?`,
-      description: `This will permanently remove ${taskCount} task${taskCount === 1 ? "" : "s"}. This action cannot be undone.`,
-      variant: "destructive",
-    }),
-  },
+export const GROUP_ACTIONS: {
+  cancelAll: GroupAction;
+  pauseAll: GroupAction;
+  resumeAll: GroupAction;
+  archiveAll: GroupAction;
+} = {
   cancelAll: {
     id: "cancelAll",
     label: "Cancel all",
@@ -52,6 +48,36 @@ export const GROUP_ACTIONS: { removeAll: GroupAction; cancelAll: GroupAction } =
       title: `Cancel all ${groupLabel}?`,
       description: `This will cancel ${taskCount} task${taskCount === 1 ? "" : "s"}.`,
       variant: "destructive",
+    }),
+  },
+  pauseAll: {
+    id: "pauseAll",
+    label: "Pause all",
+    icon: PauseCircle,
+    confirmConfig: (groupLabel: string, taskCount: number) => ({
+      title: `Pause all ${groupLabel}?`,
+      description: `This will pause ${taskCount} task${taskCount === 1 ? "" : "s"}.`,
+      variant: "default",
+    }),
+  },
+  resumeAll: {
+    id: "resumeAll",
+    label: "Resume all",
+    icon: Play,
+    confirmConfig: (groupLabel: string, taskCount: number) => ({
+      title: `Resume all ${groupLabel}?`,
+      description: `This will resume ${taskCount} paused task${taskCount === 1 ? "" : "s"}.`,
+      variant: "default",
+    }),
+  },
+  archiveAll: {
+    id: "archiveAll",
+    label: "Archive all",
+    icon: Archive,
+    confirmConfig: (groupLabel: string, taskCount: number) => ({
+      title: `Archive all ${groupLabel}?`,
+      description: `This will archive ${taskCount} task${taskCount === 1 ? "" : "s"}.`,
+      variant: "default",
     }),
   },
 } as const;
@@ -85,6 +111,39 @@ export function getCancelAllLabel(groupKind: GroupKind, groupLabel: string): str
       return `Cancel all in ${groupLabel}`;
     case "uncategorized":
       return "Cancel all Uncategorized";
+  }
+}
+
+export function getPauseAllLabel(groupKind: GroupKind, groupLabel: string): string {
+  switch (groupKind) {
+    case "column":
+      return `Pause all ${groupLabel}`;
+    case "plan":
+      return `Pause all in ${groupLabel}`;
+    case "uncategorized":
+      return "Pause all Uncategorized";
+  }
+}
+
+export function getResumeAllLabel(groupKind: GroupKind, groupLabel: string): string {
+  switch (groupKind) {
+    case "column":
+      return `Resume all ${groupLabel}`;
+    case "plan":
+      return `Resume all in ${groupLabel}`;
+    case "uncategorized":
+      return "Resume all Uncategorized";
+  }
+}
+
+export function getArchiveAllLabel(groupKind: GroupKind, groupLabel: string): string {
+  switch (groupKind) {
+    case "column":
+      return `Archive all ${groupLabel}`;
+    case "plan":
+      return `Archive all in ${groupLabel}`;
+    case "uncategorized":
+      return "Archive all Uncategorized";
   }
 }
 

@@ -36,8 +36,9 @@ async fn test_cleanup_single_task_deletes_from_db() {
         .await
         .unwrap();
 
-    // Verify task is deleted
-    assert!(state.task_repo.get_by_id(&task_id).await.unwrap().is_none());
+    // Verify task is archived
+    let task = state.task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert!(task.archived_at.is_some(), "Task should be archived after cleanup");
 }
 
 #[tokio::test]
@@ -57,12 +58,8 @@ async fn test_cleanup_task_ref_deletes_from_db() {
     let agent_stopped = service.cleanup_task_ref(&created).await.unwrap();
     assert!(!agent_stopped); // backlog task has no active agent
 
-    assert!(state
-        .task_repo
-        .get_by_id(&created.id)
-        .await
-        .unwrap()
-        .is_none());
+    let task = state.task_repo.get_by_id(&created.id).await.unwrap().unwrap();
+    assert!(task.archived_at.is_some(), "Task should be archived after cleanup_task_ref");
 }
 
 #[tokio::test]
@@ -108,12 +105,13 @@ async fn test_cleanup_tasks_batch() {
         .cleanup_tasks(&[task1, task2, task3], StopMode::DirectStop, false)
         .await;
 
-    assert_eq!(report.tasks_deleted, 3);
+    assert_eq!(report.tasks_archived, 3);
     assert!(report.errors.is_empty());
 
-    // Verify all tasks are deleted
+    // Verify all tasks are archived
     let remaining = state.task_repo.get_by_project(&project_id).await.unwrap();
-    assert!(remaining.is_empty());
+    assert_eq!(remaining.len(), 3, "All tasks should still be in DB (archived)");
+    assert!(remaining.iter().all(|t| t.archived_at.is_some()), "All tasks should be archived");
 }
 
 #[tokio::test]
@@ -163,7 +161,7 @@ async fn test_cleanup_tasks_in_group_by_session() {
         .await
         .unwrap();
 
-    assert_eq!(report.tasks_deleted, 2);
+    assert_eq!(report.tasks_archived, 2);
 
     // Standalone task should still exist
     assert!(state
@@ -209,19 +207,11 @@ async fn test_cleanup_tasks_in_group_by_status() {
     };
     let report = service.cleanup_tasks_in_group(group).await.unwrap();
 
-    assert_eq!(report.tasks_deleted, 2);
-    assert!(state
-        .task_repo
-        .get_by_id(&created1.id)
-        .await
-        .unwrap()
-        .is_none());
-    assert!(state
-        .task_repo
-        .get_by_id(&created2.id)
-        .await
-        .unwrap()
-        .is_none());
+    assert_eq!(report.tasks_archived, 2);
+    let task1 = state.task_repo.get_by_id(&created1.id).await.unwrap().unwrap();
+    assert!(task1.archived_at.is_some(), "Task 1 should be archived");
+    let task2 = state.task_repo.get_by_id(&created2.id).await.unwrap().unwrap();
+    assert!(task2.archived_at.is_some(), "Task 2 should be archived");
 }
 
 #[tokio::test]
@@ -271,7 +261,7 @@ async fn test_cleanup_tasks_in_group_uncategorized() {
         .await
         .unwrap();
 
-    assert_eq!(report.tasks_deleted, 2);
+    assert_eq!(report.tasks_archived, 2);
 
     // Session task should still exist
     assert!(state
@@ -317,7 +307,7 @@ async fn test_cleanup_skips_plan_merge_tasks() {
     };
     let report = service.cleanup_tasks_in_group(group).await.unwrap();
 
-    assert_eq!(report.tasks_deleted, 0);
+    assert_eq!(report.tasks_archived, 0);
     // plan_merge task should still exist
     assert!(state
         .task_repo
@@ -349,7 +339,7 @@ async fn test_cleanup_empty_batch() {
         .cleanup_tasks(&[], StopMode::DirectStop, false)
         .await;
 
-    assert_eq!(report.tasks_deleted, 0);
+    assert_eq!(report.tasks_archived, 0);
     assert_eq!(report.tasks_stopped, 0);
     assert!(report.errors.is_empty());
 }
@@ -372,12 +362,12 @@ async fn test_cleanup_empty_group() {
     };
     let report = service.cleanup_tasks_in_group(group).await.unwrap();
 
-    assert_eq!(report.tasks_deleted, 0);
+    assert_eq!(report.tasks_archived, 0);
     assert!(report.errors.is_empty());
 }
 
 #[tokio::test]
-async fn test_cleanup_tasks_post_delete_verification_catches_reappeared_tasks() {
+async fn test_cleanup_tasks_archives_task_idempotently() {
     let state = AppState::new_test();
     let project_id = ProjectId::new();
 
@@ -418,11 +408,11 @@ async fn test_cleanup_tasks_post_delete_verification_catches_reappeared_tasks() 
 
     // Task should be deleted on first attempt
     // (In a real scenario with concurrent writes, the post-verification would catch it)
-    assert_eq!(report.tasks_deleted, 1);
+    assert_eq!(report.tasks_archived, 1);
 
-    // Verify task is actually deleted (no reappearance in this test)
-    let maybe_task = test_repo.get_by_id(&task_id).await.unwrap();
-    assert!(maybe_task.is_none(), "Task should be deleted after cleanup");
+    // Verify task is archived
+    let task = test_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    assert!(task.archived_at.is_some(), "Task should be archived after cleanup");
 }
 
 // ── IPR cleanup tests ──────────────────────────────────────────────────
@@ -582,7 +572,7 @@ async fn test_cleanup_batch_removes_all_ipr_entries() {
         .cleanup_tasks(&[task1, task2], StopMode::DirectStop, false)
         .await;
 
-    assert_eq!(report.tasks_deleted, 2);
+    assert_eq!(report.tasks_archived, 2);
     assert_eq!(ipr.count().await, 0, "All IPR entries must be removed");
 }
 

@@ -313,26 +313,8 @@ describe("ideationApi.sessions", () => {
     });
   });
 
-  describe("delete", () => {
-    it("should call delete_ideation_session with id", async () => {
-      mockInvoke.mockResolvedValue(undefined);
-
-      await ideationApi.sessions.delete("session-1");
-
-      expect(mockInvoke).toHaveBeenCalledWith("delete_ideation_session", {
-        id: "session-1",
-      });
-    });
-
-    it("should propagate errors", async () => {
-      mockInvoke.mockRejectedValue(new Error("Session not found"));
-
-      await expect(ideationApi.sessions.delete("nonexistent")).rejects.toThrow(
-        "Session not found"
-      );
-    });
-  });
 });
+
 
 describe("ideationApi.proposals", () => {
   beforeEach(() => {

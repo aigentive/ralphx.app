@@ -1,4 +1,4 @@
-// Service for task cleanup: stop agent → git cleanup → DB delete → event emission
+// Service for task cleanup: stop agent → git cleanup → DB archive → event emission
 // Consolidates the inline cleanup logic from delete_ideation_session,
 // SessionReopenService::reopen, and permanently_delete_task.
 
@@ -83,15 +83,15 @@ pub enum TaskGroup {
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct CleanupReport {
     pub tasks_stopped: usize,
-    pub tasks_deleted: usize,
+    pub tasks_archived: usize,
     pub git_cleanups: usize,
     pub errors: Vec<String>,
 }
 
 impl CleanupReport {
     /// Convenience accessors matching the Tauri command response field names.
-    pub fn deleted_count(&self) -> usize {
-        self.tasks_deleted
+    pub fn archived_count(&self) -> usize {
+        self.tasks_archived
     }
     pub fn failed_count(&self) -> usize {
         self.errors.len()
@@ -144,11 +144,11 @@ impl TaskCleanupService {
         self
     }
 
-    /// Clean up a single task: stop agent → git cleanup → DB delete → optional event.
+    /// Clean up a single task: stop agent → git cleanup → DB archive → optional event.
     ///
     /// This is the core per-task cleanup unit. Callers control:
     /// - `stop_mode`: How to stop running agents (Graceful vs DirectStop)
-    /// - `emit_events`: Whether to emit `task:deleted` events for real-time UI updates
+    /// - `emit_events`: Whether to emit `task:archived` events for real-time UI updates
     pub async fn cleanup_single_task(
         &self,
         task: &Task,
@@ -172,35 +172,26 @@ impl TaskCleanupService {
         }
         self.cleanup_git_resources(task).await;
 
-        // 3. Clear FK references to task before deletion (defense-in-depth)
-        if let Err(e) = self.task_repo.clear_task_references(&task.id).await {
+        // 3. Archive task in DB
+        if let Err(e) = self.task_repo.archive(&task.id).await {
             tracing::warn!(
                 task_id = task.id.as_str(),
                 error = %e,
-                "Failed to clear task references during cleanup"
+                "Failed to archive task during cleanup"
             );
             return Err(e);
         }
+        tracing::info!(task_id = task.id.as_str(), "Archived task during cleanup");
 
-        // 4. Delete task from DB
-        if let Err(e) = self.task_repo.delete(&task.id).await {
-            tracing::warn!(
-                task_id = task.id.as_str(),
-                error = %e,
-                "Failed to delete task during cleanup"
-            );
-            return Err(e);
-        }
-
-        // 5. Emit event for real-time UI updates
+        // 4. Emit event for real-time UI updates
         if emit_events {
-            self.emit_task_deleted(task.id.as_str(), &project_id_str);
+            self.emit_task_archived(task.id.as_str(), &project_id_str);
         }
 
         Ok(())
     }
 
-    /// Clean delete a single task by reference (convenience wrapper).
+    /// Clean archive a single task by reference (convenience wrapper).
     /// Uses Graceful stop mode, no event emission. Returns whether an agent was stopped.
     pub async fn cleanup_task_ref(&self, task: &Task) -> AppResult<bool> {
         let was_active = AGENT_ACTIVE_STATUSES.contains(&task.internal_status);
@@ -234,79 +225,22 @@ impl TaskCleanupService {
             }
         }
 
-        // Delete tasks from DB and emit events
+        // Archive tasks in DB and emit events
         for task in tasks {
             let project_id_str = task.project_id.as_str().to_string();
-            // Clear FK references before deletion (defense-in-depth)
-            if let Err(e) = self.task_repo.clear_task_references(&task.id).await {
+            if let Err(e) = self.task_repo.archive(&task.id).await {
                 tracing::warn!(
                     task_id = task.id.as_str(),
                     error = %e,
-                    "Failed to clear task references during batch cleanup"
+                    "Failed to archive task during batch cleanup"
                 );
                 report
                     .errors
-                    .push(format!("Clear references {}: {}", task.id.as_str(), e));
-                continue;
-            }
-            if let Err(e) = self.task_repo.delete(&task.id).await {
-                tracing::warn!(
-                    task_id = task.id.as_str(),
-                    error = %e,
-                    "Failed to delete task during batch cleanup"
-                );
-                report
-                    .errors
-                    .push(format!("Delete {}: {}", task.id.as_str(), e));
+                    .push(format!("Archive {}: {}", task.id.as_str(), e));
             } else {
-                report.tasks_deleted += 1;
+                report.tasks_archived += 1;
                 if emit_events {
-                    self.emit_task_deleted(task.id.as_str(), &project_id_str);
-                }
-            }
-        }
-
-        // Post-delete verification: wait 200ms then check if tasks reappeared
-        // (due to concurrent merge side effects writing them back).
-        // This is a safety net for the race condition.
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
-
-        for task in tasks {
-            if let Ok(Some(_)) = self.task_repo.get_by_id(&task.id).await {
-                // Task reappeared, retry the delete
-                tracing::warn!(
-                    task_id = task.id.as_str(),
-                    "Task reappeared after delete, retrying cleanup"
-                );
-                let project_id_str = task.project_id.as_str().to_string();
-                // Clear FK references before retry delete (defense-in-depth)
-                if let Err(e) = self.task_repo.clear_task_references(&task.id).await {
-                    tracing::warn!(
-                        task_id = task.id.as_str(),
-                        error = %e,
-                        "Failed to clear task references during post-delete verification"
-                    );
-                    report.errors.push(format!(
-                        "Clear references (retry) {}: {}",
-                        task.id.as_str(),
-                        e
-                    ));
-                    continue;
-                }
-                if let Err(e) = self.task_repo.delete(&task.id).await {
-                    tracing::warn!(
-                        task_id = task.id.as_str(),
-                        error = %e,
-                        "Failed to delete task during post-delete verification"
-                    );
-                    report
-                        .errors
-                        .push(format!("Delete (retry) {}: {}", task.id.as_str(), e));
-                } else {
-                    report.tasks_deleted += 1;
-                    if emit_events {
-                        self.emit_task_deleted(task.id.as_str(), &project_id_str);
-                    }
+                    self.emit_task_archived(task.id.as_str(), &project_id_str);
                 }
             }
         }
@@ -530,12 +464,12 @@ impl TaskCleanupService {
         }
     }
 
-    /// Emit a task:deleted event for real-time UI updates.
-    fn emit_task_deleted(&self, task_id: &str, project_id: &str) {
+    /// Emit a task:archived event for real-time UI updates.
+    fn emit_task_archived(&self, task_id: &str, project_id: &str) {
         if let Some(ref app) = self.app_handle {
             use tauri::Emitter;
             let _ = app.emit(
-                "task:deleted",
+                "task:archived",
                 serde_json::json!({
                     "taskId": task_id,
                     "projectId": project_id,

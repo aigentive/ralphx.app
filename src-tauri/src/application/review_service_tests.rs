@@ -209,9 +209,6 @@ impl TaskRepository for MockTaskRepo {
     async fn delete(&self, _id: &TaskId) -> AppResult<()> {
         Ok(())
     }
-    async fn clear_task_references(&self, _id: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
     async fn get_by_status(
         &self,
         _project_id: &ProjectId,

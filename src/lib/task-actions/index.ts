@@ -15,4 +15,4 @@ export {
 export { getTaskActions } from "./task-actions";
 
 export type { GroupKind, GroupAction, GroupInfo } from "./group-actions";
-export { GROUP_ACTIONS, getRemoveAllLabel, getCancelAllLabel, resolveGroupCleanupParams } from "./group-actions";
+export { GROUP_ACTIONS, getRemoveAllLabel, getCancelAllLabel, getPauseAllLabel, getResumeAllLabel, getArchiveAllLabel, resolveGroupCleanupParams } from "./group-actions";

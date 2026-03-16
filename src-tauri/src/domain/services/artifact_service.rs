@@ -144,6 +144,7 @@ impl<A: ArtifactRepository, B: ArtifactBucketRepository> ArtifactService<A, B> {
             metadata: ArtifactMetadata::new(copier).with_version(1),
             derived_from: vec![source.id.clone()],
             bucket_id: Some(target_bucket_id.clone()),
+            archived_at: None,
         };
 
         // Add task/process associations if present in source
@@ -190,6 +191,7 @@ impl<A: ArtifactRepository, B: ArtifactBucketRepository> ArtifactService<A, B> {
             metadata: ArtifactMetadata::new(updater).with_version(new_version),
             derived_from: vec![current.id.clone()],
             bucket_id: current.bucket_id.clone(),
+            archived_at: None,
         };
 
         // Preserve task/process associations

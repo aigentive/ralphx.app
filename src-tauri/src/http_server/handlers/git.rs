@@ -203,15 +203,29 @@ pub async fn complete_merge(
         if let Some(ref worktree_path) = task.worktree_path {
             let wt_path = PathBuf::from(worktree_path);
             if wt_path.exists() {
-                let _ = GitService::delete_worktree(&repo_path, &wt_path).await;
+                if let Err(e) = GitService::delete_worktree(&repo_path, &wt_path).await {
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        error = %e,
+                        worktree = %wt_path.display(),
+                        "Failed to delete rebase worktree — pre_merge_cleanup will handle it"
+                    );
+                }
             }
         }
 
-        // Clear conflict_type from metadata
+        // Clear all debris metadata keys
         if let Some(ref meta_str) = task.metadata {
             if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(meta_str) {
                 if let Some(obj) = meta.as_object_mut() {
                     obj.remove("conflict_type");
+                    obj.remove("merge_failure_source");
+                    obj.remove("source_conflict_resolved");
+                    obj.remove("plan_update_conflict");
+                    obj.remove("merge_error");
+                    obj.remove("source_update_conflict");
+                    obj.remove("conflict_files");
+                    obj.remove("error");
                 }
                 task.metadata = Some(meta.to_string());
             }
@@ -269,6 +283,20 @@ pub async fn complete_merge(
                 "Source update conflict resolved by agent, transitioning back to PendingMerge"
             );
 
+            // Delete merge worktree created for source_update_conflict resolution
+            if let Some(ref worktree_path) = task.worktree_path {
+                let wt_path = PathBuf::from(worktree_path);
+                if let Err(e) = GitService::delete_worktree(&repo_path, &wt_path).await {
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        error = %e,
+                        worktree = %wt_path.display(),
+                        "Failed to delete source_update worktree — pre_merge_cleanup will handle it"
+                    );
+                }
+            }
+            task.worktree_path = None;
+
             // Clear source_update_conflict and set source_conflict_resolved for squash-only retry
             {
                 let mut meta = parse_metadata(&task).unwrap_or_else(|| serde_json::json!({}));
@@ -276,6 +304,7 @@ pub async fn complete_merge(
                     obj.remove("source_update_conflict");
                     obj.remove("conflict_files");
                     obj.remove("error");
+                    obj.remove("conflict_type");
                 }
                 task.metadata = Some(meta.to_string());
                 set_source_conflict_resolved(&mut task);

@@ -377,7 +377,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
             .run(move |conn| {
                 let mut stmt = conn.prepare(
                     "SELECT id, project_id, title, title_source, status, plan_artifact_id, inherited_plan_artifact_id, seed_task_id, parent_session_id, created_at, updated_at, archived_at, converted_at, team_mode, team_config_json, verification_status, verification_in_progress, verification_metadata, verification_generation, source_project_id, source_session_id, session_purpose
-                     FROM ideation_sessions WHERE project_id = ?1 ORDER BY updated_at DESC",
+                     FROM ideation_sessions WHERE project_id = ?1 AND archived_at IS NULL ORDER BY updated_at DESC",
                 )?;
                 let sessions = stmt
                     .query_map([&project_id], IdeationSession::from_row)?

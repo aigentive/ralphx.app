@@ -59,6 +59,9 @@ pub enum AppError {
 
     #[error("IMPORT_INVALID_DEPENDENCY: {detail}")]
     ImportInvalidDependency { detail: String },
+
+    #[error("Conflict: {0}")]
+    Conflict(String),
 }
 
 impl From<AgentError> for AppError {

@@ -425,10 +425,6 @@ impl TaskRepository for MockTaskRepo {
         Ok(())
     }
 
-    async fn clear_task_references(&self, _id: &TaskId) -> AppResult<()> {
-        Ok(())
-    }
-
     async fn get_by_status(
         &self,
         _project_id: &ProjectId,
@@ -824,6 +820,11 @@ async fn test_build_resume_command_with_team_mode() {
 
 // ──────────────────────────────────────────────────────────────────────────────
 // Tests for format_session_history
+//
+// Ordering assumption: the slice passed to format_session_history is in
+// chronological order — index 0 is the oldest message, last index is the newest.
+// format_session_history iterates with .rev() (newest-first) so that when the
+// 8000-char cap is hit, oldest messages are evicted and newest messages survive.
 // ──────────────────────────────────────────────────────────────────────────────
 
 fn make_user_msg(session_id: &IdeationSessionId, content: &str) -> ChatMessage {
@@ -936,9 +937,11 @@ fn format_session_history_per_message_2000_char_truncation() {
 #[test]
 fn format_session_history_8000_char_cap() {
     let sid = IdeationSessionId::new();
-    // Create messages that together exceed 8000 chars after escaping
+    // Array position = chronological order; .rev() treats last element as newest.
+    // Create messages that together exceed 8000 chars after escaping.
     let mut msgs = Vec::new();
-    // Each message ~1500 chars, so 6 messages = 9000 chars; cap at 8000 should stop at ~5
+    // Each message ~1500 chars, so 6 messages = 9000 chars; cap at 8000 should stop at ~5.
+    // Messages are indexed 0 (oldest) through 5 (newest).
     for i in 0..6 {
         msgs.push(make_user_msg(&sid, &format!("{}: {}", i, "y".repeat(1490))));
     }
@@ -951,6 +954,16 @@ fn format_session_history_8000_char_cap() {
     let count_end = result[count_start..].find('"').unwrap() + count_start;
     let count: usize = result[count_start..count_end].parse().unwrap();
     assert!(count < 6, "Expected fewer than 6 messages due to 8000-char cap, got {}", count);
+    // Directional: newest messages (highest index) MUST be present; oldest MUST be absent.
+    // Without .rev(), oldest messages would survive the cap and newest would be dropped.
+    assert!(
+        result.contains("5:"),
+        "Newest message (index 5) must survive the char cap"
+    );
+    assert!(
+        !result.contains("0:"),
+        "Oldest message (index 0) must be dropped when cap is hit"
+    );
 }
 
 #[test]
@@ -1019,6 +1032,55 @@ fn format_session_history_orchestrator_with_text_and_tools() {
     // Both text AND tool_summary should appear
     assert!(result.contains("Here is my analysis"));
     assert!(result.contains("[Used: search]"));
+}
+
+#[test]
+fn format_session_history_group_reversal_invariant() {
+    // Verifies that per-message groups (text + tool_summary) are kept together and
+    // in correct intra-message order after the group-level reversal.
+    // A flat-list reversal would put tool_summary BEFORE the message text — this test catches that.
+    let sid = IdeationSessionId::new();
+    let mut orch_msg = make_orchestrator_msg(&sid, "analysis text");
+    orch_msg.tool_calls = Some(
+        r#"[{"name":"create_task_proposal","arguments":"{}","result":{"content":"ok","is_error":false}}]"#
+            .to_string(),
+    );
+    let result = format_session_history(&[orch_msg], 1);
+    // Both entries must appear
+    assert!(result.contains("analysis text"));
+    assert!(result.contains(r#"role="tool_summary""#));
+    // Message text must appear BEFORE tool_summary — group order preserved after reversal.
+    let text_pos = result.find("analysis text").unwrap();
+    let summary_pos = result.find(r#"role="tool_summary""#).unwrap();
+    assert!(
+        text_pos < summary_pos,
+        "Message text must come before tool_summary (flat-list reversal regression guard)"
+    );
+}
+
+#[test]
+fn format_session_history_newest_priority_under_char_cap() {
+    // When the 8000-char cap is hit, newest messages (highest array index) must survive.
+    // This test is distinct from 8000_char_cap: it uses unique sentinel strings so
+    // presence/absence of specific messages can be asserted unambiguously.
+    // Array position = chronological order; .rev() treats last element as newest.
+    let sid = IdeationSessionId::new();
+    let filler = "z".repeat(1490);
+    // 4 messages ~1500 chars each = ~6000 chars fits; add a 5th and 6th to force truncation.
+    let msgs = vec![
+        make_user_msg(&sid, &format!("OLDEST_MSG {}", filler)),
+        make_user_msg(&sid, &format!("SECOND_MSG {}", filler)),
+        make_user_msg(&sid, &format!("THIRD_MSG {}", filler)),
+        make_user_msg(&sid, &format!("FOURTH_MSG {}", filler)),
+        make_user_msg(&sid, &format!("FIFTH_MSG {}", filler)),
+        make_user_msg(&sid, &format!("NEWEST_MSG {}", filler)),
+    ];
+    let result = format_session_history(&msgs, 6);
+    assert!(result.contains("truncated=\"true\""));
+    // Newest message must always be present
+    assert!(result.contains("NEWEST_MSG"), "Newest message must survive the char cap");
+    // Oldest message must be dropped (oldest-first eviction)
+    assert!(!result.contains("OLDEST_MSG"), "Oldest message must be evicted when cap is hit");
 }
 
 // ──────────────────────────────────────────────────────────────────────────────

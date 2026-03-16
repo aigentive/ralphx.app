@@ -38,8 +38,6 @@ interface PlanGroupBuilderArgs {
   includeUncategorized?: boolean;
   projectId?: string;
   onNavigateToTask?: (taskId: string) => void;
-  onDeletePlan?: (planArtifactId: string) => void;
-  onRemoveAll?: (sessionId: string) => void;
 }
 
 interface TierGroupBuilderArgs {
@@ -69,8 +67,6 @@ export function buildPlanGroupNodes({
   includeUncategorized = true,
   projectId,
   onNavigateToTask,
-  onDeletePlan,
-  onRemoveAll,
 }: PlanGroupBuilderArgs): PlanGroupNode[] {
   if (planGroups.length === 0 && !includeUncategorized) {
     return [];
@@ -161,8 +157,6 @@ export function buildPlanGroupNodes({
       hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined,
       projectId,
       onNavigateToTask,
-      onDeletePlan,
-      onRemoveAll
     );
 
     groupNodes.push(groupNode);
@@ -265,8 +259,6 @@ export function buildPlanGroupNodes({
       hasTierGroups && onToggleAllTiers ? onToggleAllTiers : undefined,
       projectId,
       onNavigateToTask,
-      undefined, // onDeletePlan — not applicable for uncategorized
-      onRemoveAll
     );
 
     groupNodes.push(groupNode);

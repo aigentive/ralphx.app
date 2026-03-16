@@ -101,8 +101,6 @@ export interface TieredProposalListProps {
   /** Callback when a proposal is selected */
   /** Callback when a proposal is edited */
   onEdit: (proposalId: string) => void;
-  /** Callback when a proposal is removed */
-  onRemove: (proposalId: string) => void;
   /** Callback to view historical plan */
   onViewHistoricalPlan?: (artifactId: string, version: number) => void;
   /** Whether the plan is in read-only mode (accepted/archived status) */
@@ -219,7 +217,6 @@ export const TieredProposalList = React.memo(function TieredProposalList({
   criticalPathIds,
   currentPlanVersion,
   onEdit,
-  onRemove,
   onViewHistoricalPlan,
   isReadOnly,
   onNavigateToTask,
@@ -387,7 +384,6 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                       <ProposalCard
                         proposal={proposal}
                         onEdit={onEdit}
-                        onRemove={onRemove}
                         {...optionalProps}
                       />
                     </div>

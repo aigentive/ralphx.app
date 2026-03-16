@@ -276,11 +276,11 @@ export function TaskBoard({
     const unsubscribers: (() => void)[] = [];
 
     // Listen for task:archived events
-    const unsubArchived = eventBus.subscribe<{ task_id: string; project_id: string }>(
+    const unsubArchived = eventBus.subscribe<{ taskId: string; projectId: string }>(
       'task:archived',
       (payload) => {
         // Only invalidate if the event is for the current project
-        if (payload.project_id === projectId) {
+        if (payload.projectId === projectId) {
           // Invalidate infinite task queries for all columns
           queryClient.invalidateQueries({
             queryKey: infiniteTaskKeys.all,
@@ -295,10 +295,10 @@ export function TaskBoard({
     unsubscribers.push(unsubArchived);
 
     // Listen for task:restored events
-    const unsubRestored = eventBus.subscribe<{ task_id: string; project_id: string }>(
+    const unsubRestored = eventBus.subscribe<{ taskId: string; projectId: string }>(
       'task:restored',
       (payload) => {
-        if (payload.project_id === projectId) {
+        if (payload.projectId === projectId) {
           queryClient.invalidateQueries({
             queryKey: infiniteTaskKeys.all,
           });
@@ -309,22 +309,6 @@ export function TaskBoard({
       }
     );
     unsubscribers.push(unsubRestored);
-
-    // Listen for task:deleted events (permanent delete)
-    const unsubDeleted = eventBus.subscribe<{ task_id: string; project_id: string }>(
-      'task:deleted',
-      (payload) => {
-        if (payload.project_id === projectId) {
-          queryClient.invalidateQueries({
-            queryKey: infiniteTaskKeys.all,
-          });
-          queryClient.invalidateQueries({
-            queryKey: ['archived-count', projectId, ideationSessionId],
-          });
-        }
-      }
-    );
-    unsubscribers.push(unsubDeleted);
 
     return () => {
       unsubscribers.forEach((unsub) => unsub());

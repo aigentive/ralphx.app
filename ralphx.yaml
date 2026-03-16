@@ -333,7 +333,7 @@ team_constraints:
   ideation:
     max_teammates: 5
     allowed_tools: [Read, Grep, Glob, Bash, WebFetch, WebSearch]
-    model_cap: sonnet
+    model_cap: opus
     mode: dynamic
     presets: [researcher, critic]
 
@@ -468,8 +468,8 @@ agents:
     preapproved_cli_tools: [Task(Explore), Task(Plan)]
 
   - name: orchestrator-ideation-readonly
-    system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
-    model: sonnet
+    system_prompt_file: ralphx-plugin/agents/orchestrator-ideation-readonly.md
+    model: opus
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
         list_session_proposals,
@@ -803,14 +803,14 @@ agents:
 
   - name: plan-critic-layer1
     system_prompt_file: ralphx-plugin/agents/plan-critic-layer1.md
-    model: sonnet
+    model: opus
     tools: { extends: base_tools }
     mcp_tools: [get_session_plan, get_artifact]
     preapproved_cli_tools: []
 
   - name: plan-critic-layer2
     system_prompt_file: ralphx-plugin/agents/plan-critic-layer2.md
-    model: sonnet
+    model: opus
     tools: { extends: base_tools }
     mcp_tools: [get_session_plan, get_artifact]
     preapproved_cli_tools: []
@@ -819,7 +819,7 @@ agents:
 
   - name: plan-verifier
     system_prompt_file: ralphx-plugin/agents/plan-verifier.md
-    model: sonnet
+    model: opus
     tools: { extends: base_tools, include: [Task] }
     mcp_tools:
       [
@@ -903,3 +903,100 @@ agents:
           ],
       }
     # inherits: mcp_tools, preapproved_cli_tools from ralphx-worker
+
+  # --- Group B ideation agents (research specialists, advocate, critic) ---
+
+  - name: ideation-specialist-backend
+    system_prompt_file: ralphx-plugin/agents/ideation-specialist-backend.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ideation-specialist-frontend
+    system_prompt_file: ralphx-plugin/agents/ideation-specialist-frontend.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ideation-specialist-infra
+    system_prompt_file: ralphx-plugin/agents/ideation-specialist-infra.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ideation-advocate
+    system_prompt_file: ralphx-plugin/agents/ideation-advocate.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []
+
+  - name: ideation-critic
+    system_prompt_file: ralphx-plugin/agents/ideation-critic.md
+    model: opus
+    tools: { extends: base_tools }
+    mcp_tools: [
+        # Team artifact tools
+        create_team_artifact,
+        get_team_artifacts,
+        # Plan read tools
+        get_session_plan,
+        get_artifact,
+        get_parent_session_context,
+        # Memory read tools
+        search_memories,
+        get_memory,
+        get_memories_for_paths,
+      ]
+    preapproved_cli_tools: []

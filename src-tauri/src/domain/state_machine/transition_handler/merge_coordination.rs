@@ -32,6 +32,10 @@ const MERGE_DEBRIS_METADATA_KEYS: &[&str] = &[
     "source_conflict_resolved",
     "plan_update_conflict",
     "merge_error",
+    "conflict_type",
+    "source_update_conflict",
+    "conflict_files",
+    "error",
 ];
 
 /// Check whether this is a first clean merge attempt with no prior debris.

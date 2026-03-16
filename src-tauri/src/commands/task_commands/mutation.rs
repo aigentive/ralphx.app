@@ -5,7 +5,6 @@ use super::types::{
     AnswerUserQuestionInput, AnswerUserQuestionResponse, CreateTaskInput, InjectTaskInput,
     InjectTaskResponse, TaskResponse, UnblockTaskResponse, UpdateTaskInput,
 };
-use crate::application::task_cleanup_service::{StopMode, TaskCleanupService};
 use crate::application::AppState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
@@ -607,65 +606,6 @@ pub async fn restore_task(
     Ok(TaskResponse::from(restored_task))
 }
 
-/// Permanently delete a task (hard delete)
-///
-/// Only works on archived tasks. This is irreversible.
-///
-/// # Arguments
-/// * `task_id` - The task ID to permanently delete
-/// * `app` - Tauri app handle for event emission
-///
-/// # Returns
-/// * `()` - Success or error
-///
-/// # Errors
-/// * Task not found
-/// * Task is not archived (safety check)
-///
-/// # Events
-/// * Emits 'task:deleted' with { task_id, project_id }
-#[tauri::command]
-pub async fn permanently_delete_task(
-    task_id: String,
-    state: State<'_, AppState>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
-    let task_id_obj = TaskId::from_string(task_id.clone());
-
-    // Get the task first to check if it's archived
-    let task = state
-        .task_repo
-        .get_by_id(&task_id_obj)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or_else(|| format!("Task not found: {}", task_id))?;
-
-    // Safety check: only allow permanent deletion of archived tasks
-    if task.archived_at.is_none() {
-        return Err(format!(
-            "Cannot permanently delete non-archived task: {}. Archive it first.",
-            task_id
-        ));
-    }
-
-    // Delegate to TaskCleanupService for full cleanup:
-    // force-stop agent (defensive) + git branch/worktree cleanup + DB delete + event
-    let cleanup_service = TaskCleanupService::new(
-        Arc::clone(&state.task_repo),
-        Arc::clone(&state.project_repo),
-        Arc::clone(&state.running_agent_registry),
-        Some(app),
-    )
-    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
-
-    cleanup_service
-        .cleanup_single_task(&task, StopMode::Graceful, true)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    Ok(())
-}
-
 /// Block a task with an optional reason
 ///
 /// Transitions the task to Blocked status and optionally records why it's blocked.
@@ -928,17 +868,17 @@ pub async fn unblock_task(
     })
 }
 
-/// Clean delete a single task: force-stop agent if active, cleanup branch/worktree, delete from DB, emit events
+/// Clean archive a single task: force-stop agent if active, cleanup branch/worktree, archive in DB, emit events
 ///
-/// Unlike `permanently_delete_task`, this does not require the task to be archived first.
+/// This does not require the task to be archived first.
 /// It handles full cleanup including stopping active agents and removing git resources.
 /// Active tasks are transitioned to Stopped to trigger proper on_exit side effects.
 ///
 /// # Arguments
-/// * `task_id` - The task ID to clean delete
+/// * `task_id` - The task ID to clean archive
 ///
 /// # Events
-/// * Emits 'task:deleted' with { task_id, project_id }
+/// * Emits 'task:archived' with { task_id, project_id }
 #[tauri::command]
 pub async fn cleanup_task(
     task_id: String,
@@ -975,7 +915,7 @@ pub async fn cleanup_task(
         .await
         .map_err(|e| e.to_string())?;
 
-    emit_task_lifecycle_event(&app, "task:deleted", &task_id, &project_id_str);
+    emit_task_lifecycle_event(&app, "task:archived", &task_id, &project_id_str);
 
     Ok(())
 }
@@ -1046,7 +986,7 @@ pub async fn cleanup_tasks_in_group(
     );
 
     Ok(super::types::CleanupReportResponse {
-        deleted_count: report.deleted_count(),
+        archived_count: report.archived_count(),
         failed_count: report.failed_count(),
         stopped_agents: report.stopped_agents(),
     })
@@ -1531,6 +1471,397 @@ pub async fn resume_task(
     );
 
     Ok(TaskResponse::from(restored_task))
+}
+
+/// Pause all tasks in a group (group_kind: "status" | "session" | "uncategorized")
+///
+/// Transitions all non-terminal, non-paused tasks to Paused status.
+/// Writes PauseReason::UserInitiated metadata before each transition.
+/// Returns count of paused tasks.
+#[tauri::command]
+pub async fn pause_tasks_in_group(
+    group_kind: String,
+    group_id: String,
+    project_id: String,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<super::types::BulkPauseResponse, String> {
+    use crate::application::TaskTransitionService;
+
+    let project_id_obj = ProjectId::from_string(project_id.clone());
+
+    let tasks = match group_kind.as_str() {
+        "status" => {
+            let internal_status: InternalStatus = group_id
+                .parse()
+                .map_err(|_| format!("Invalid status: {}", group_id))?;
+            state
+                .task_repo
+                .get_by_status(&project_id_obj, internal_status)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "session" => {
+            let session_id = crate::domain::entities::IdeationSessionId::from_string(group_id);
+            state
+                .task_repo
+                .get_by_ideation_session(&session_id)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "uncategorized" => {
+            let all_tasks = state
+                .task_repo
+                .get_by_project(&project_id_obj)
+                .await
+                .map_err(|e| e.to_string())?;
+            all_tasks
+                .into_iter()
+                .filter(|t| t.ideation_session_id.is_none())
+                .collect()
+        }
+        _ => {
+            return Err(format!(
+                "Invalid group_kind: {}. Expected 'status', 'session', or 'uncategorized'",
+                group_kind
+            ))
+        }
+    };
+
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_attachment_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
+    )
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+
+    let mut paused_count = 0;
+
+    for task in tasks {
+        if task.internal_status.is_terminal() || task.internal_status == InternalStatus::Paused {
+            continue;
+        }
+
+        let pause_reason = crate::application::chat_service::PauseReason::UserInitiated {
+            previous_status: task.internal_status.to_string(),
+            paused_at: chrono::Utc::now().to_rfc3339(),
+            scope: "task".to_string(),
+        };
+        let mut task_to_update = task.clone();
+        task_to_update.metadata = Some(
+            pause_reason.write_to_task_metadata(task_to_update.metadata.as_deref()),
+        );
+        task_to_update.touch();
+        let _ = state.task_repo.update(&task_to_update).await;
+
+        match transition_service
+            .transition_task(&task.id, InternalStatus::Paused)
+            .await
+        {
+            Ok(paused_task) => {
+                emit_task_lifecycle_event(
+                    &app,
+                    "task:paused",
+                    paused_task.id.as_str(),
+                    paused_task.project_id.as_str(),
+                );
+                paused_count += 1;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = %task.id,
+                    error = %e,
+                    "Failed to pause task in group"
+                );
+            }
+        }
+    }
+
+    let _ = app.emit(
+        "task:list_changed",
+        serde_json::json!({ "projectId": project_id }),
+    );
+
+    Ok(super::types::BulkPauseResponse { paused_count })
+}
+
+/// Resume all paused tasks in a group (group_kind: "status" | "session" | "uncategorized")
+///
+/// Transitions all Paused tasks back to their pre-pause status.
+/// Reads PauseReason metadata to determine previous status, falls back to status history.
+/// Returns count of resumed tasks.
+#[tauri::command]
+pub async fn resume_tasks_in_group(
+    group_kind: String,
+    group_id: String,
+    project_id: String,
+    state: State<'_, AppState>,
+    execution_state: State<'_, Arc<ExecutionState>>,
+    app: tauri::AppHandle,
+) -> Result<super::types::BulkResumeResponse, String> {
+    use crate::application::chat_service::PauseReason;
+    use crate::application::{TaskSchedulerService, TaskTransitionService};
+    use crate::domain::state_machine::services::TaskScheduler;
+
+    let project_id_obj = ProjectId::from_string(project_id.clone());
+
+    let tasks = match group_kind.as_str() {
+        "status" => {
+            let internal_status: InternalStatus = group_id
+                .parse()
+                .map_err(|_| format!("Invalid status: {}", group_id))?;
+            state
+                .task_repo
+                .get_by_status(&project_id_obj, internal_status)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "session" => {
+            let session_id = crate::domain::entities::IdeationSessionId::from_string(group_id);
+            state
+                .task_repo
+                .get_by_ideation_session(&session_id)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "uncategorized" => {
+            let all_tasks = state
+                .task_repo
+                .get_by_project(&project_id_obj)
+                .await
+                .map_err(|e| e.to_string())?;
+            all_tasks
+                .into_iter()
+                .filter(|t| t.ideation_session_id.is_none())
+                .collect()
+        }
+        _ => {
+            return Err(format!(
+                "Invalid group_kind: {}. Expected 'status', 'session', or 'uncategorized'",
+                group_kind
+            ))
+        }
+    };
+
+    let paused_tasks: Vec<_> = tasks
+        .into_iter()
+        .filter(|t| t.internal_status == InternalStatus::Paused)
+        .collect();
+
+    let scheduler_concrete = Arc::new(
+        TaskSchedulerService::new(
+            Arc::clone(&execution_state),
+            Arc::clone(&state.project_repo),
+            Arc::clone(&state.task_repo),
+            Arc::clone(&state.task_dependency_repo),
+            Arc::clone(&state.chat_message_repo),
+            Arc::clone(&state.chat_attachment_repo),
+            Arc::clone(&state.chat_conversation_repo),
+            Arc::clone(&state.agent_run_repo),
+            Arc::clone(&state.ideation_session_repo),
+            Arc::clone(&state.activity_event_repo),
+            Arc::clone(&state.message_queue),
+            Arc::clone(&state.running_agent_registry),
+            Arc::clone(&state.memory_event_repo),
+            Some(app.clone()),
+        )
+        .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+        .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry)),
+    );
+    scheduler_concrete.set_self_ref(Arc::clone(&scheduler_concrete) as Arc<dyn TaskScheduler>);
+
+    let transition_service = TaskTransitionService::new(
+        Arc::clone(&state.task_repo),
+        Arc::clone(&state.task_dependency_repo),
+        Arc::clone(&state.project_repo),
+        Arc::clone(&state.chat_message_repo),
+        Arc::clone(&state.chat_attachment_repo),
+        Arc::clone(&state.chat_conversation_repo),
+        Arc::clone(&state.agent_run_repo),
+        Arc::clone(&state.ideation_session_repo),
+        Arc::clone(&state.activity_event_repo),
+        Arc::clone(&state.message_queue),
+        Arc::clone(&state.running_agent_registry),
+        Arc::clone(&execution_state),
+        Some(app.clone()),
+        Arc::clone(&state.memory_event_repo),
+    )
+    .with_task_scheduler(scheduler_concrete as Arc<dyn TaskScheduler>)
+    .with_plan_branch_repo(Arc::clone(&state.plan_branch_repo))
+    .with_interactive_process_registry(Arc::clone(&state.interactive_process_registry));
+
+    let mut resumed_count = 0;
+
+    for task in paused_tasks {
+        if !execution_state.can_start_task() {
+            tracing::warn!(task_id = %task.id, "Skipping resume: max concurrent task limit reached");
+            continue;
+        }
+
+        let restore_status =
+            if let Some(reason) = PauseReason::from_task_metadata(task.metadata.as_deref()) {
+                match reason.previous_status().parse::<InternalStatus>() {
+                    Ok(status) => status,
+                    Err(_) => {
+                        match get_restore_status_from_history(&state, &task.id).await {
+                            Ok(s) => s,
+                            Err(e) => {
+                                tracing::warn!(task_id = %task.id, error = %e, "Cannot restore task");
+                                continue;
+                            }
+                        }
+                    }
+                }
+            } else {
+                match get_restore_status_from_history(&state, &task.id).await {
+                    Ok(s) => s,
+                    Err(e) => {
+                        tracing::warn!(task_id = %task.id, error = %e, "Cannot restore task");
+                        continue;
+                    }
+                }
+            };
+
+        if let Err(e) = transition_service
+            .transition_task(&task.id, restore_status)
+            .await
+        {
+            tracing::warn!(task_id = %task.id, error = %e, "Failed to resume task in group");
+            continue;
+        }
+
+        let updated_task = match state.task_repo.get_by_id(&task.id).await {
+            Ok(Some(t)) => t,
+            _ => continue,
+        };
+
+        let mut restored_task = updated_task;
+        restored_task.metadata = Some(PauseReason::clear_from_task_metadata(
+            restored_task.metadata.as_deref(),
+        ));
+        restored_task.touch();
+        let _ = state.task_repo.update(&restored_task).await;
+
+        transition_service
+            .execute_entry_actions(&task.id, &restored_task, restore_status)
+            .await;
+
+        emit_task_lifecycle_event(
+            &app,
+            "task:resumed",
+            restored_task.id.as_str(),
+            restored_task.project_id.as_str(),
+        );
+
+        resumed_count += 1;
+    }
+
+    let _ = app.emit(
+        "task:list_changed",
+        serde_json::json!({ "projectId": project_id }),
+    );
+
+    Ok(super::types::BulkResumeResponse { resumed_count })
+}
+
+/// Archive all tasks in a group (group_kind: "status" | "session" | "uncategorized")
+///
+/// Archives all non-archived tasks in the group.
+/// Returns count of archived tasks.
+#[tauri::command]
+pub async fn archive_tasks_in_group(
+    group_kind: String,
+    group_id: String,
+    project_id: String,
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<super::types::BulkArchiveResponse, String> {
+    let project_id_obj = ProjectId::from_string(project_id.clone());
+
+    let tasks = match group_kind.as_str() {
+        "status" => {
+            let internal_status: InternalStatus = group_id
+                .parse()
+                .map_err(|_| format!("Invalid status: {}", group_id))?;
+            state
+                .task_repo
+                .get_by_status(&project_id_obj, internal_status)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "session" => {
+            let session_id = crate::domain::entities::IdeationSessionId::from_string(group_id);
+            state
+                .task_repo
+                .get_by_ideation_session(&session_id)
+                .await
+                .map_err(|e| e.to_string())?
+        }
+        "uncategorized" => {
+            let all_tasks = state
+                .task_repo
+                .get_by_project(&project_id_obj)
+                .await
+                .map_err(|e| e.to_string())?;
+            all_tasks
+                .into_iter()
+                .filter(|t| t.ideation_session_id.is_none())
+                .collect()
+        }
+        _ => {
+            return Err(format!(
+                "Invalid group_kind: {}. Expected 'status', 'session', or 'uncategorized'",
+                group_kind
+            ))
+        }
+    };
+
+    let mut archived_count = 0;
+
+    for task in tasks {
+        if task.archived_at.is_some() {
+            continue;
+        }
+
+        match state.task_repo.archive(&task.id).await {
+            Ok(archived_task) => {
+                emit_task_lifecycle_event(
+                    &app,
+                    "task:archived",
+                    archived_task.id.as_str(),
+                    archived_task.project_id.as_str(),
+                );
+                archived_count += 1;
+            }
+            Err(e) => {
+                tracing::warn!(
+                    task_id = %task.id,
+                    error = %e,
+                    "Failed to archive task in group"
+                );
+            }
+        }
+    }
+
+    let _ = app.emit(
+        "task:list_changed",
+        serde_json::json!({ "projectId": project_id }),
+    );
+
+    Ok(super::types::BulkArchiveResponse { archived_count })
 }
 
 /// Helper: get restore status from status_history for a paused task

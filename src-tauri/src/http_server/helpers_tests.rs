@@ -373,7 +373,7 @@ async fn test_update_gate_blocks_when_reviewing() {
 
 // Scenario 13: HTTP delete during NeedsRevision + gate on → 400
 #[tokio::test]
-async fn test_delete_gate_blocks_when_needs_revision() {
+async fn test_archive_gate_blocks_when_needs_revision() {
     let state = AppState::new_sqlite_test();
     let (session, _) = setup_session_with_gate(&state, "verified", false).await;
     let proposal_id = create_test_proposal(&state, &session.id).await;
@@ -398,8 +398,8 @@ async fn test_delete_gate_blocks_when_needs_revision() {
         .await
         .unwrap();
 
-    let result = delete_proposal_impl(&state, proposal_id).await;
-    assert!(result.is_err(), "Delete on NeedsRevision+gate=on must fail");
+    let result = archive_proposal_impl(&state, proposal_id).await;
+    assert!(result.is_err(), "Archive on NeedsRevision+gate=on must fail");
     match result.unwrap_err() {
         AppError::Validation(msg) => {
             assert!(
@@ -580,10 +580,10 @@ async fn test_update_proposal_on_archived_session_blocked() {
     );
 }
 
-// Scenario 19: assert_session_mutable on delete — Accepted session blocks delete_proposal_impl.
-// Also validates the Phase 1 bug fix: HTTP delete now guards via delete_proposal_impl.
+// Scenario 19: assert_session_mutable on delete — Accepted session blocks archive_proposal_impl.
+// Also validates the Phase 1 bug fix: HTTP delete now guards via archive_proposal_impl.
 #[tokio::test]
-async fn test_delete_proposal_on_accepted_session_blocked() {
+async fn test_archive_proposal_on_accepted_session_blocked() {
     let state = AppState::new_sqlite_test();
     let project_id = ProjectId::new();
 
@@ -615,8 +615,8 @@ async fn test_delete_proposal_on_accepted_session_blocked() {
         .await
         .unwrap();
 
-    let result = delete_proposal_impl(&state, proposal_id).await;
-    assert!(result.is_err(), "Delete on Accepted session must fail");
+    let result = archive_proposal_impl(&state, proposal_id).await;
+    assert!(result.is_err(), "Archive on Accepted session must fail");
     assert!(
         matches!(result.unwrap_err(), AppError::Validation(_)),
         "Must return Validation error for Accepted session"

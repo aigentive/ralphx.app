@@ -193,10 +193,6 @@ export const mockTasksApi = {
     return { ...task, internalStatus: "stopped" as InternalStatus };
   },
 
-  permanentlyDelete: async (_taskId: string): Promise<void> => {
-    // Read-only mock: no-op
-  },
-
   getArchivedCount: async (projectId: string, ideationSessionId?: string | null): Promise<number> => {
     const store = getStore();
     let tasks = Array.from(store.tasks.values()).filter(

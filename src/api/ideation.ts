@@ -179,14 +179,6 @@ export const ideationApi = {
     },
 
     /**
-     * Delete a session
-     * @param sessionId The session ID
-     */
-    delete: async (sessionId: string): Promise<void> => {
-      await invoke("delete_ideation_session", { id: sessionId });
-    },
-
-    /**
      * Reopen an accepted/archived session back to Active status
      * Deletes all tasks, cleans up git resources, clears proposal task links
      * @param sessionId The session ID
@@ -261,10 +253,10 @@ export const ideationApi = {
      * @param sessionId The parent session ID
      * @returns Array of child sessions
      */
-    getChildren: async (sessionId: string): Promise<IdeationSessionResponse[]> => {
+    getChildren: async (sessionId: string, purpose: string): Promise<IdeationSessionResponse[]> => {
       const raw = await typedInvoke(
         "get_child_sessions",
-        { session_id: sessionId },
+        { session_id: sessionId, purpose },
         z.array(IdeationSessionResponseSchema)
       );
       return raw.map(transformSession);

@@ -294,55 +294,6 @@ describe("artifactStore", () => {
     });
   });
 
-  describe("deleteArtifact", () => {
-    it("removes an artifact from the store", () => {
-      const artifact = createTestArtifact({ id: "artifact-1" });
-      useArtifactStore.setState({ artifacts: { "artifact-1": artifact } });
-
-      useArtifactStore.getState().deleteArtifact("artifact-1");
-
-      const state = useArtifactStore.getState();
-      expect(state.artifacts["artifact-1"]).toBeUndefined();
-    });
-
-    it("clears selectedArtifactId if selected artifact is deleted", () => {
-      const artifact = createTestArtifact({ id: "artifact-1" });
-      useArtifactStore.setState({
-        artifacts: { "artifact-1": artifact },
-        selectedArtifactId: "artifact-1",
-      });
-
-      useArtifactStore.getState().deleteArtifact("artifact-1");
-
-      const state = useArtifactStore.getState();
-      expect(state.selectedArtifactId).toBeNull();
-    });
-
-    it("does not affect selectedArtifactId if different artifact is deleted", () => {
-      const artifact1 = createTestArtifact({ id: "artifact-1" });
-      const artifact2 = createTestArtifact({ id: "artifact-2" });
-      useArtifactStore.setState({
-        artifacts: { "artifact-1": artifact1, "artifact-2": artifact2 },
-        selectedArtifactId: "artifact-1",
-      });
-
-      useArtifactStore.getState().deleteArtifact("artifact-2");
-
-      const state = useArtifactStore.getState();
-      expect(state.selectedArtifactId).toBe("artifact-1");
-    });
-
-    it("does nothing if artifact not found", () => {
-      const artifact = createTestArtifact({ id: "artifact-1" });
-      useArtifactStore.setState({ artifacts: { "artifact-1": artifact } });
-
-      useArtifactStore.getState().deleteArtifact("nonexistent");
-
-      const state = useArtifactStore.getState();
-      expect(Object.keys(state.artifacts)).toHaveLength(1);
-    });
-  });
-
   describe("addBucket", () => {
     it("adds a new bucket to the store", () => {
       const bucket = createTestBucket({ id: "bucket-1" });

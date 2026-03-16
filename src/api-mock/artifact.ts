@@ -147,9 +147,9 @@ export const mockArtifactsApi = {
   },
 
   /**
-   * Delete an artifact by ID
+   * Archive an artifact by ID
    */
-  deleteArtifact: async (_id: string): Promise<void> => {
+  archiveArtifact: async (_id: string): Promise<void> => {
     // No-op in mock mode
   },
 

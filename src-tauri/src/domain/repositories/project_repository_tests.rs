@@ -48,6 +48,10 @@ impl ProjectRepository for MockProjectRepository {
     async fn get_by_working_directory(&self, _path: &str) -> AppResult<Option<Project>> {
         Ok(self.return_project.clone())
     }
+
+    async fn archive(&self, _id: &ProjectId) -> AppResult<Project> {
+        unimplemented!()
+    }
 }
 
 #[test]

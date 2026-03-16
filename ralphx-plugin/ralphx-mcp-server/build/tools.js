@@ -101,14 +101,14 @@ export const ALL_TOOLS = [
         },
     },
     {
-        name: "delete_task_proposal",
-        description: "Delete a task proposal. Use when the user wants to remove a proposal that's no longer needed.",
+        name: "archive_task_proposal",
+        description: "Archive a task proposal. Use when the user wants to remove a proposal that's no longer needed.",
         inputSchema: {
             type: "object",
             properties: {
                 proposal_id: {
                     type: "string",
-                    description: "The proposal ID to delete",
+                    description: "The proposal ID to archive",
                 },
             },
             required: ["proposal_id"],
@@ -316,8 +316,8 @@ export const ALL_TOOLS = [
     },
     {
         name: "get_session_messages",
-        description: "Get chat messages for an ideation session. Used for context recovery when resuming an expired session. " +
-            "Returns messages in chronological order (oldest to newest). The truncated flag indicates if older messages exist beyond the fetched window. " +
+        description: "Fetch older chat messages for an ideation session. The session bootstrap already includes the NEWEST messages — use this tool only when you need earlier history beyond what was provided. " +
+            "Returns messages in chronological order (oldest to newest). The truncated flag indicates if even older messages exist beyond the fetched window. " +
             "Default limit: 50, max: 200. Use offset to page through older history (e.g. offset=50 skips the most recent 50 and returns the next 50 older messages). " +
             "Set include_tool_calls=true to include tool_calls JSON (increases token usage).",
         inputSchema: {
@@ -1255,7 +1255,7 @@ export const TOOL_ALLOWLIST = {
     [ORCHESTRATOR_IDEATION]: [
         "create_task_proposal",
         "update_task_proposal",
-        "delete_task_proposal",
+        "archive_task_proposal",
         "list_session_proposals",
         "get_proposal",
         "analyze_session_dependencies",
@@ -1296,6 +1296,8 @@ export const TOOL_ALLOWLIST = {
         "create_child_session",
         // verification tools
         "get_plan_verification",
+        // older history retrieval
+        "get_session_messages",
         // memory read tools
         "search_memories",
         "get_memory",
@@ -1511,7 +1513,7 @@ export const TOOL_ALLOWLIST = {
         // Existing ideation tools
         "create_task_proposal",
         "update_task_proposal",
-        "delete_task_proposal",
+        "archive_task_proposal",
         "list_session_proposals",
         "get_proposal",
         "analyze_session_dependencies",

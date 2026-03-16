@@ -9,7 +9,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
@@ -20,7 +19,6 @@ import {
   MoreHorizontal,
   Pencil,
   Archive,
-  Trash2,
   RotateCcw,
   RefreshCw,
   CircleCheck,
@@ -82,7 +80,6 @@ export interface PlanItemProps {
   onKeyDown: (e: React.KeyboardEvent) => void;
   onMenuOpenChange: (open: boolean) => void;
   onArchive?: () => void;
-  onDelete?: () => void;
   onReopen?: () => void;
   onResetReaccept?: () => void;
   onNavigateToSource?: () => void;
@@ -225,11 +222,10 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
 // Context Menu
 // ============================================================================
 
-function ContextMenuItems({ group, onStartRename, onArchive, onDelete, onReopen, onResetReaccept }: {
+function ContextMenuItems({ group, onStartRename, onArchive, onReopen, onResetReaccept }: {
   group: SessionGroup;
   onStartRename: () => void;
   onArchive?: () => void;
-  onDelete?: () => void;
   onReopen?: () => void;
   onResetReaccept?: () => void;
 }) {
@@ -250,15 +246,6 @@ function ContextMenuItems({ group, onStartRename, onArchive, onDelete, onReopen,
           >
             <Archive className="w-3.5 h-3.5" />
             Archive
-          </DropdownMenuItem>
-          <DropdownMenuSeparator style={{ background: "hsla(220 10% 100% / 0.06)" }} />
-          <DropdownMenuItem
-            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
-            style={{ color: "hsl(0 70% 60%)" }}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Delete
           </DropdownMenuItem>
         </>
       );
@@ -289,15 +276,6 @@ function ContextMenuItems({ group, onStartRename, onArchive, onDelete, onReopen,
             <RefreshCw className="w-3.5 h-3.5" />
             Reset & Re-accept
           </DropdownMenuItem>
-          <DropdownMenuSeparator style={{ background: "hsla(220 10% 100% / 0.06)" }} />
-          <DropdownMenuItem
-            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
-            style={{ color: "hsl(0 70% 60%)" }}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Delete
-          </DropdownMenuItem>
         </>
       );
 
@@ -317,15 +295,6 @@ function ContextMenuItems({ group, onStartRename, onArchive, onDelete, onReopen,
           >
             <RotateCcw className="w-3.5 h-3.5" />
             Reopen
-          </DropdownMenuItem>
-          <DropdownMenuSeparator style={{ background: "hsla(220 10% 100% / 0.06)" }} />
-          <DropdownMenuItem
-            onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
-            className="text-[13px] cursor-pointer gap-2.5 py-2"
-            style={{ color: "hsl(0 70% 60%)" }}
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            Delete
           </DropdownMenuItem>
         </>
       );
@@ -354,7 +323,6 @@ export function PlanItem({
   onKeyDown,
   onMenuOpenChange,
   onArchive,
-  onDelete,
   onReopen,
   onResetReaccept,
   onNavigateToSource,
@@ -529,7 +497,6 @@ export function PlanItem({
                 group={group}
                 onStartRename={onStartRename}
                 {...(onArchive != null && { onArchive })}
-                {...(onDelete != null && { onDelete })}
                 {...(onReopen != null && { onReopen })}
                 {...(onResetReaccept != null && { onResetReaccept })}
               />

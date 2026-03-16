@@ -175,6 +175,61 @@ fn test_is_first_clean_attempt_with_conflict_metadata() {
     );
 }
 
+/// is_first_clean_attempt returns true after all 8 debris keys are cleared.
+/// Verifies that the rebase handler metadata cleanup produces a clean state.
+#[test]
+fn test_is_first_clean_attempt_after_debris_cleared() {
+    use crate::domain::state_machine::transition_handler::merge_coordination::is_first_clean_attempt;
+    let mut task = Task::new(
+        crate::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Test".to_string(),
+    );
+    // Set all 8 debris keys plus an unrelated key
+    task.metadata = Some(
+        serde_json::json!({
+            "merge_failure_source": "rebase",
+            "source_conflict_resolved": true,
+            "plan_update_conflict": true,
+            "merge_error": "conflict",
+            "conflict_type": "rebase",
+            "source_update_conflict": true,
+            "conflict_files": ["file.rs"],
+            "error": "some error",
+            "attempt_count": 2
+        })
+        .to_string(),
+    );
+    // Simulate the rebase handler cleanup
+    if let Some(ref meta_str) = task.metadata.clone() {
+        if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(meta_str) {
+            if let Some(obj) = meta.as_object_mut() {
+                obj.remove("conflict_type");
+                obj.remove("merge_failure_source");
+                obj.remove("source_conflict_resolved");
+                obj.remove("plan_update_conflict");
+                obj.remove("merge_error");
+                obj.remove("source_update_conflict");
+                obj.remove("conflict_files");
+                obj.remove("error");
+            }
+            task.metadata = Some(meta.to_string());
+        }
+    }
+    task.worktree_path = None;
+    assert!(
+        is_first_clean_attempt(&task),
+        "Task with all debris keys cleared should be first clean attempt"
+    );
+    // Unrelated key must survive
+    let meta: serde_json::Value =
+        serde_json::from_str(task.metadata.as_deref().unwrap_or("{}")).unwrap();
+    assert_eq!(
+        meta.get("attempt_count").and_then(|v| v.as_i64()),
+        Some(2),
+        "Unrelated metadata key 'attempt_count' must survive cleanup"
+    );
+}
+
 /// is_first_clean_attempt returns true when metadata exists but has no merge indicators.
 #[test]
 fn test_is_first_clean_attempt_with_unrelated_metadata() {

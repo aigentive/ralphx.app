@@ -8,7 +8,6 @@ import {
   useActiveWorkflowColumns,
   useCreateWorkflow,
   useUpdateWorkflow,
-  useDeleteWorkflow,
   useSetDefaultWorkflow,
   workflowKeys,
 } from "./useWorkflows";
@@ -148,17 +147,6 @@ describe("workflow mutations", () => {
     });
 
     expect(updateSpy).toHaveBeenCalledWith("workflow-1", { name: "Updated" });
-  });
-
-  it("deletes a workflow", async () => {
-    const deleteSpy = vi.spyOn(api.workflows, "delete").mockResolvedValueOnce(undefined);
-    const { result } = renderHook(() => useDeleteWorkflow(), { wrapper: createWrapper() });
-
-    await act(async () => {
-      await result.current.mutateAsync("workflow-1");
-    });
-
-    expect(deleteSpy).toHaveBeenCalledWith("workflow-1");
   });
 
   it("sets default workflow", async () => {

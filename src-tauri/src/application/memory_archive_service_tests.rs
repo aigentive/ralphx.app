@@ -36,6 +36,10 @@ impl ProjectRepository for MockProjectRepository {
     ) -> crate::error::AppResult<Option<Project>> {
         Ok(None)
     }
+
+    async fn archive(&self, _id: &ProjectId) -> crate::error::AppResult<Project> {
+        unimplemented!()
+    }
 }
 
 #[test]

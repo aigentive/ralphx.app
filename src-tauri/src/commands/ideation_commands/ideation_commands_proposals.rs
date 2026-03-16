@@ -10,7 +10,7 @@ use crate::domain::entities::{
     PriorityAssessmentFactors, ProposalCategory, TaskProposal, TaskProposalId, UserHintFactor,
 };
 use crate::http_server::helpers::{
-    assert_session_mutable, create_proposal_impl, delete_proposal_impl, update_proposal_impl,
+    archive_proposal_impl, assert_session_mutable, create_proposal_impl, update_proposal_impl,
 };
 
 use super::ideation_commands_types::{
@@ -157,9 +157,9 @@ pub async fn update_task_proposal(
 pub async fn delete_task_proposal(id: String, state: State<'_, AppState>) -> Result<(), String> {
     let proposal_id = TaskProposalId::from_string(id);
 
-    // Delegates all checks (including assert_session_mutable), DELETE, event emission,
+    // Delegates all checks (including assert_session_mutable), ARCHIVE, event emission,
     // and dep analysis to shared impl
-    delete_proposal_impl(state.inner(), proposal_id)
+    archive_proposal_impl(state.inner(), proposal_id)
         .await
         .map(|_| ())
         .map_err(|e| e.to_string())

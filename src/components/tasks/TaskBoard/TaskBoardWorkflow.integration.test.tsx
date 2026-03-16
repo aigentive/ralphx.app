@@ -46,7 +46,6 @@ vi.mock("@/lib/api/workflows", () => ({
   getWorkflow: vi.fn(),
   createWorkflow: vi.fn(),
   updateWorkflow: vi.fn(),
-  deleteWorkflow: vi.fn(),
   setDefaultWorkflow: vi.fn(),
   getActiveWorkflowColumns: vi.fn(),
 }));
@@ -330,12 +329,5 @@ describe("TaskBoardWorkflow Integration", () => {
       expect(workflowsApi.setDefaultWorkflow).toHaveBeenCalledWith("custom-agile");
     });
 
-    it("can delete a custom workflow", async () => {
-      vi.mocked(workflowsApi.deleteWorkflow).mockResolvedValue(undefined);
-
-      await workflowsApi.deleteWorkflow("custom-agile");
-
-      expect(workflowsApi.deleteWorkflow).toHaveBeenCalledWith("custom-agile");
-    });
   });
 });

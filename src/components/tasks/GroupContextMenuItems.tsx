@@ -17,7 +17,10 @@
  *       taskCount={5}
  *       projectId="proj-123"
  *       groupId="ready"
- *       onRemoveAll={handleRemoveAll}
+ *       onCancelAll={handleCancelAll}
+ *       onPauseAll={handlePauseAll}
+ *       onResumeAll={handleResumeAll}
+ *       onArchiveAll={handleArchiveAll}
  *       confirm={confirm}
  *     />
  *   </ContextMenuContent>
@@ -27,12 +30,14 @@
  */
 
 import { useCallback } from "react";
-import { ContextMenuItem } from "@/components/ui/context-menu";
+import { ContextMenuItem, ContextMenuSeparator } from "@/components/ui/context-menu";
 import {
   type GroupKind,
   GROUP_ACTIONS,
-  getRemoveAllLabel,
   getCancelAllLabel,
+  getPauseAllLabel,
+  getResumeAllLabel,
+  getArchiveAllLabel,
 } from "@/lib/task-actions";
 
 export interface GroupContextMenuItemsProps {
@@ -46,10 +51,14 @@ export interface GroupContextMenuItemsProps {
   projectId: string;
   /** Group identifier: status name or session ID */
   groupId: string;
-  /** Handler called after user confirms removal */
-  onRemoveAll: () => void;
   /** Optional handler called after user confirms cancellation */
   onCancelAll?: () => void;
+  /** Optional handler called after user confirms pause all */
+  onPauseAll?: () => void;
+  /** Optional handler called after user confirms resume all */
+  onResumeAll?: () => void;
+  /** Optional handler called after user confirms archive all */
+  onArchiveAll?: () => void;
   /** Confirm function from useConfirmation hook */
   confirm: (opts: {
     title: string;
@@ -63,34 +72,24 @@ export function GroupContextMenuItems({
   groupLabel,
   groupKind,
   taskCount,
-  onRemoveAll,
   onCancelAll,
+  onPauseAll,
+  onResumeAll,
+  onArchiveAll,
   confirm,
 }: GroupContextMenuItemsProps) {
-  const removeAction = GROUP_ACTIONS.removeAll;
   const cancelAction = GROUP_ACTIONS.cancelAll;
-  const removeLabel = getRemoveAllLabel(groupKind, groupLabel);
+  const pauseAction = GROUP_ACTIONS.pauseAll;
+  const resumeAction = GROUP_ACTIONS.resumeAll;
+  const archiveAction = GROUP_ACTIONS.archiveAll;
+
   const cancelLabel = getCancelAllLabel(groupKind, groupLabel);
-
-  const handleRemoveAll = useCallback(async () => {
-    if (taskCount === 0) return;
-
-    const config = removeAction.confirmConfig(groupLabel, taskCount);
-    const confirmed = await confirm({
-      title: config.title,
-      description: config.description,
-      confirmText: "Remove",
-      variant: config.variant,
-    });
-
-    if (confirmed) {
-      onRemoveAll();
-    }
-  }, [taskCount, removeAction, groupLabel, confirm, onRemoveAll]);
+  const pauseLabel = getPauseAllLabel(groupKind, groupLabel);
+  const resumeLabel = getResumeAllLabel(groupKind, groupLabel);
+  const archiveLabel = getArchiveAllLabel(groupKind, groupLabel);
 
   const handleCancelAll = useCallback(async () => {
     if (taskCount === 0 || !onCancelAll) return;
-
     const config = cancelAction.confirmConfig(groupLabel, taskCount);
     const confirmed = await confirm({
       title: config.title,
@@ -98,27 +97,78 @@ export function GroupContextMenuItems({
       confirmText: "Cancel",
       variant: config.variant,
     });
-
-    if (confirmed) {
-      onCancelAll();
-    }
+    if (confirmed) onCancelAll();
   }, [taskCount, cancelAction, groupLabel, confirm, onCancelAll]);
+
+  const handlePauseAll = useCallback(async () => {
+    if (taskCount === 0 || !onPauseAll) return;
+    const config = pauseAction.confirmConfig(groupLabel, taskCount);
+    const confirmed = await confirm({
+      title: config.title,
+      description: config.description,
+      confirmText: "Pause",
+      variant: config.variant,
+    });
+    if (confirmed) onPauseAll();
+  }, [taskCount, pauseAction, groupLabel, confirm, onPauseAll]);
+
+  const handleResumeAll = useCallback(async () => {
+    if (taskCount === 0 || !onResumeAll) return;
+    const config = resumeAction.confirmConfig(groupLabel, taskCount);
+    const confirmed = await confirm({
+      title: config.title,
+      description: config.description,
+      confirmText: "Resume",
+      variant: config.variant,
+    });
+    if (confirmed) onResumeAll();
+  }, [taskCount, resumeAction, groupLabel, confirm, onResumeAll]);
+
+  const handleArchiveAll = useCallback(async () => {
+    if (taskCount === 0 || !onArchiveAll) return;
+    const config = archiveAction.confirmConfig(groupLabel, taskCount);
+    const confirmed = await confirm({
+      title: config.title,
+      description: config.description,
+      confirmText: "Archive",
+      variant: config.variant,
+    });
+    if (confirmed) onArchiveAll();
+  }, [taskCount, archiveAction, groupLabel, confirm, onArchiveAll]);
 
   if (taskCount === 0) return null;
 
-  const RemoveIcon = removeAction.icon;
+  const hasAnyAction = onPauseAll ?? onResumeAll ?? onArchiveAll ?? onCancelAll;
+  if (!hasAnyAction) return null;
+
+  const PauseIcon = pauseAction.icon;
+  const ResumeIcon = resumeAction.icon;
+  const ArchiveIcon = archiveAction.icon;
   const CancelIcon = cancelAction.icon;
 
   return (
     <>
-      <ContextMenuItem
-        onClick={handleRemoveAll}
-        className="text-destructive"
-        data-testid="remove-all-action"
-      >
-        <RemoveIcon className="w-4 h-4 mr-2" />
-        {removeLabel}
-      </ContextMenuItem>
+      {onPauseAll && (
+        <ContextMenuItem onClick={handlePauseAll} data-testid="pause-all-action">
+          <PauseIcon className="w-4 h-4 mr-2" />
+          {pauseLabel}
+        </ContextMenuItem>
+      )}
+      {onResumeAll && (
+        <ContextMenuItem onClick={handleResumeAll} data-testid="resume-all-action">
+          <ResumeIcon className="w-4 h-4 mr-2" />
+          {resumeLabel}
+        </ContextMenuItem>
+      )}
+      {onArchiveAll && (
+        <ContextMenuItem onClick={handleArchiveAll} data-testid="archive-all-action">
+          <ArchiveIcon className="w-4 h-4 mr-2" />
+          {archiveLabel}
+        </ContextMenuItem>
+      )}
+      {onCancelAll && (onPauseAll ?? onResumeAll ?? onArchiveAll) && (
+        <ContextMenuSeparator />
+      )}
       {onCancelAll && (
         <ContextMenuItem
           onClick={handleCancelAll}

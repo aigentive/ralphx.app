@@ -5,7 +5,7 @@
  * Visual styling adapts based on step status (in_progress, completed, skipped, failed).
  */
 
-import { Circle, Loader2, CheckCircle2, MinusCircle, XCircle, Trash2 } from 'lucide-react';
+import { Circle, Loader2, CheckCircle2, MinusCircle, XCircle, SkipForward } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { TaskStep, TaskStepStatus } from '@/types/task-step';
 
@@ -16,7 +16,7 @@ interface StepItemProps {
   /** Hide completion notes (useful for historical views before execution) */
   hideCompletionNote?: boolean;
   onUpdate?: (step: TaskStep) => void;
-  onDelete?: (stepId: string) => void;
+  onSkip?: (stepId: string) => void;
 }
 
 /**
@@ -114,11 +114,11 @@ function getContainerStyles(status: TaskStepStatus): React.CSSProperties {
  *   step={step}
  *   index={0}
  *   editable={true}
- *   onDelete={(id) => handleDelete(id)}
+ *   onSkip={(id) => handleSkip(id)}
  * />
  * ```
  */
-export function StepItem({ step, index, editable = false, hideCompletionNote = false, onDelete }: StepItemProps) {
+export function StepItem({ step, index, editable = false, hideCompletionNote = false, onSkip }: StepItemProps) {
   const iconColor = getStatusColor(step.status);
   const containerStyles = getContainerStyles(step.status);
   const isSkipped = step.status === 'skipped';
@@ -189,16 +189,16 @@ export function StepItem({ step, index, editable = false, hideCompletionNote = f
         )}
       </div>
 
-      {/* Delete button (only for editable pending steps) */}
-      {editable && step.status === 'pending' && onDelete && (
+      {/* Skip button (only for editable pending steps) */}
+      {editable && step.status === 'pending' && onSkip && (
         <Button
           variant="ghost"
           size="sm"
-          onClick={() => onDelete(step.id)}
+          onClick={() => onSkip(step.id)}
           className="flex-shrink-0 h-7 w-7 p-0"
-          aria-label="Delete step"
+          aria-label="Skip step"
         >
-          <Trash2 className="h-3.5 w-3.5" style={{ color: 'hsl(220 10% 50%)' }} />
+          <SkipForward className="h-3.5 w-3.5" style={{ color: 'hsl(220 10% 50%)' }} />
         </Button>
       )}
     </div>

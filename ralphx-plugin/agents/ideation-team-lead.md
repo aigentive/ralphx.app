@@ -26,6 +26,11 @@ tools:
   - "Task(general-purpose)"
   - "Task(ralphx:plan-critic-layer1)"
   - "Task(ralphx:plan-critic-layer2)"
+  - "Task(ralphx:ideation-specialist-backend)"
+  - "Task(ralphx:ideation-specialist-frontend)"
+  - "Task(ralphx:ideation-specialist-infra)"
+  - "Task(ralphx:ideation-advocate)"
+  - "Task(ralphx:ideation-critic)"
 mcpServers:
   - ralphx:
       type: stdio
@@ -91,8 +96,8 @@ You have two ways to delegate work. Choose based on whether agents need to coord
 
 **Local agent example** (parallel independent research):
 ```
-Task: { subagent_type: "general-purpose", name: "frontend-researcher", prompt: "Research X...", run_in_background: true }
-Task: { subagent_type: "general-purpose", name: "backend-researcher", prompt: "Research Y...", run_in_background: true }
+Task: { subagent_type: "ralphx:ideation-specialist-frontend", name: "frontend-researcher", prompt: "Research X...", run_in_background: true }
+Task: { subagent_type: "ralphx:ideation-specialist-backend", name: "backend-researcher", prompt: "Research Y...", run_in_background: true }
 // Both run in parallel, return results to you, you synthesize
 ```
 
@@ -111,7 +116,7 @@ Every ideation session follows these phases:
 ### Phase 0: RECOVER
 **Gate:** None (always runs first)
 
-Session history is auto-injected in the bootstrap prompt as `<session_history>` — use it directly for prior conversation context. When `truncated="true"`, call `get_session_messages(offset, limit)` for paginated retrieval of older history.
+Session history is auto-injected in the bootstrap prompt as `<session_history>` — use it directly for prior conversation context. `<session_history>` prioritizes the **most recent** messages. When `truncated="true"`, **older** messages were omitted — the user's latest direction is already in the bootstrap. If you need historical context, call `get_session_messages(session_id, { offset: N })` to paginate backwards.
 
 Before processing user message:
 1. Read the `<reference name="agent-teams-orchestration">` section below (inlined at bottom of this file — mandatory)
@@ -203,8 +208,9 @@ TaskCreate: { "subject": "Research frontend auth patterns", "description": "..."
 ```
 
 **Step 2: Spawn teammates** (one `Task` per teammate, all in one message for parallel launch):
-- Native path: `subagent_type: "general-purpose"`, `team_name: "ideation-<session_id>"`, `run_in_background: true`, `mode: "bypassPermissions"`, self-contained `prompt`
+- Native path: `subagent_type: "ralphx:ideation-specialist-backend"` (or `-frontend`, `-infra`, `ideation-advocate`, `ideation-critic` as appropriate), `team_name: "ideation-<session_id>"`, `run_in_background: true`, `mode: "bypassPermissions"`, self-contained `prompt`
 - Fallback path: same but omit `team_name`
+- Use `subagent_type: "general-purpose"` only for custom roles not covered by the named specialists
 - Teammate prompt required sections: see system card Prompt Authoring section
 
 **Step 3: Persist state** → `save_team_session_state(...)`
@@ -327,6 +333,11 @@ Present next step: "Ready to apply to Kanban?"
 |------|------|-------|
 | `edit_plan_artifact` | Targeted changes (<30% of plan) | All-or-nothing atomicity — all edits succeed or none applied. Sequential: each edit sees result of prior edits. Use `old_text` anchors of 20+ chars. Independent edits to non-overlapping sections are safe and order-independent. If an edit fails, retry the entire call. |
 | `update_plan_artifact` | Full rewrites (>30% of content or full restructure) | Auto-verifier always uses this — not `edit_plan_artifact` — for full-content revisions. |
+
+## Session History Tools
+| Tool | Notes |
+|------|-------|
+| `get_session_messages` | Older history retrieval — bootstrap already has newest messages. When `truncated="true"`, use this to fetch older context if needed. `offset=N` skips N most-recent messages. |
 
 </tool-usage>
 

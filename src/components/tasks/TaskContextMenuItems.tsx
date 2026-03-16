@@ -29,7 +29,7 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
-import { Eye, Pencil, Archive, RotateCcw, Trash, Trash2, Lightbulb } from "lucide-react";
+import { Eye, Pencil, Archive, RotateCcw, Lightbulb } from "lucide-react";
 import type { Task } from "@/types/task";
 import type { TaskAction, ActionSurface } from "@/lib/task-actions";
 import { getTaskActions, canEdit } from "@/lib/task-actions";
@@ -49,17 +49,27 @@ export interface TaskContextMenuHandlers {
   onEdit?: () => void;
   onArchive?: () => void;
   onRestore?: () => void;
+  /**
+   * @deprecated Delete has been removed from the UI. Kept for backwards
+   * compatibility with callers. Has no effect.
+   */
   onPermanentDelete?: () => void;
   onStatusChange?: (newStatus: string) => void;
   onBlockWithReason?: (reason?: string) => void;
   onUnblock?: () => void;
   onStartExecution?: () => void;
+  onPause?: () => void;
+  onResume?: () => void;
   onApprove?: () => void;
   onReject?: () => void;
   onRequestChanges?: () => void;
   onMarkResolved?: () => void;
   onStartIdeation?: () => void;
   onViewAgentChat?: () => void;
+  /**
+   * @deprecated Remove action has been removed from the UI. Kept for backwards
+   * compatibility with callers. Has no effect.
+   */
   onRemove?: () => void;
 }
 
@@ -144,6 +154,10 @@ function resolveHandler(
       return handlers.onUnblock;
     case "onStartExecution":
       return handlers.onStartExecution;
+    case "onPause":
+      return handlers.onPause;
+    case "onResume":
+      return handlers.onResume;
     case "onApprove":
       return handlers.onApprove;
     case "onReject":
@@ -231,26 +245,6 @@ export function TaskContextMenuItems({
     if (confirmed) handlers.onRestore?.();
   }, [confirm, handlers]);
 
-  const handlePermanentDelete = useCallback(async () => {
-    const confirmed = await confirm({
-      title: "Delete permanently?",
-      description: "This will permanently delete the task. This action cannot be undone.",
-      confirmText: "Delete",
-      variant: "destructive",
-    });
-    if (confirmed) handlers.onPermanentDelete?.();
-  }, [confirm, handlers]);
-
-  const handleRemove = useCallback(async () => {
-    const confirmed = await confirm({
-      title: "Remove this task?",
-      description: "This will permanently remove the task and clean up all associated resources (branches, agents, artifacts). This action cannot be undone.",
-      confirmText: "Remove",
-      variant: "destructive",
-    });
-    if (confirmed) handlers.onRemove?.();
-  }, [confirm, handlers]);
-
   return (
     <>
       <ContextMenuItem
@@ -292,39 +286,23 @@ export function TaskContextMenuItems({
         </>
       )}
 
-      {!isArchived && (handlers.onRemove || handlers.onArchive) && (
+      {!isArchived && handlers.onArchive && (
         <>
           <ContextMenuSeparator />
-          {handlers.onRemove && (
-            <ContextMenuItem onClick={handleRemove} className="text-destructive">
-              <Trash2 className="w-4 h-4 mr-2" />
-              Remove
-            </ContextMenuItem>
-          )}
-          {handlers.onArchive && (
-            <ContextMenuItem onClick={handleArchive}>
-              <Archive className="w-4 h-4 mr-2" />
-              Archive
-            </ContextMenuItem>
-          )}
+          <ContextMenuItem onClick={handleArchive}>
+            <Archive className="w-4 h-4 mr-2" />
+            Archive
+          </ContextMenuItem>
         </>
       )}
 
-      {isArchived && (
+      {isArchived && handlers.onRestore && (
         <>
           <ContextMenuSeparator />
-          {handlers.onRestore && (
-            <ContextMenuItem onClick={handleRestore}>
-              <RotateCcw className="w-4 h-4 mr-2" />
-              Restore
-            </ContextMenuItem>
-          )}
-          {handlers.onPermanentDelete && (
-            <ContextMenuItem onClick={handlePermanentDelete} className="text-destructive">
-              <Trash className="w-4 h-4 mr-2" />
-              Delete Permanently
-            </ContextMenuItem>
-          )}
+          <ContextMenuItem onClick={handleRestore}>
+            <RotateCcw className="w-4 h-4 mr-2" />
+            Restore
+          </ContextMenuItem>
         </>
       )}
     </>

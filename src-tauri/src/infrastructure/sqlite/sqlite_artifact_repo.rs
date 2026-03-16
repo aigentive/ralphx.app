@@ -44,7 +44,7 @@ impl SqliteArtifactRepository {
     /// Expected column order:
     /// 0:id, 1:type, 2:name, 3:content_type, 4:content_text, 5:content_path,
     /// 6:bucket_id, 7:task_id, 8:process_id, 9:created_by, 10:version,
-    /// 11:previous_version_id, 12:created_at, 13:metadata_json
+    /// 11:previous_version_id, 12:created_at, 13:metadata_json, 14:archived_at
     fn artifact_from_row(row: &rusqlite::Row<'_>) -> Result<Artifact, rusqlite::Error> {
         let id: String = row.get(0)?;
         let type_str: String = row.get(1)?;
@@ -59,6 +59,7 @@ impl SqliteArtifactRepository {
         let version: i32 = row.get(10)?;
         let created_at_str: String = row.get(12)?;
         let metadata_json: Option<String> = row.get(13)?;
+        let archived_at_str: Option<String> = row.get(14)?;
 
         // Parse artifact type
         let artifact_type = ArtifactType::from_str(&type_str)
@@ -96,6 +97,13 @@ impl SqliteArtifactRepository {
             team_metadata,
         };
 
+        // Parse archived_at
+        let archived_at = archived_at_str.and_then(|s| {
+            DateTime::parse_from_rfc3339(&s)
+                .map(|dt| dt.with_timezone(&Utc))
+                .ok()
+        });
+
         Ok(Artifact {
             id: ArtifactId::from_string(id),
             artifact_type,
@@ -104,6 +112,7 @@ impl SqliteArtifactRepository {
             metadata,
             derived_from: vec![], // Loaded separately via relations
             bucket_id: bucket_id.map(ArtifactBucketId::from_string),
+            archived_at,
         })
     }
 
@@ -135,7 +144,7 @@ impl SqliteArtifactRepository {
         match conn.query_row(
             "SELECT id, type, name, content_type, content_text, content_path,
                     bucket_id, task_id, process_id, created_by, version,
-                    previous_version_id, created_at, metadata_json
+                    previous_version_id, created_at, metadata_json, archived_at
              FROM artifacts WHERE id = ?1",
             [id],
             Self::artifact_from_row,
@@ -223,6 +232,26 @@ impl SqliteArtifactRepository {
         Ok(artifact)
     }
 
+    /// Archive an artifact by setting its archived_at timestamp.
+    pub(crate) fn archive_sync(conn: &Connection, id: &ArtifactId) -> AppResult<Artifact> {
+        let now = Utc::now();
+        conn.execute(
+            "UPDATE artifacts SET archived_at = ?2 WHERE id = ?1 AND archived_at IS NULL",
+            rusqlite::params![id.as_str(), now.to_rfc3339()],
+        )?;
+        let artifact = conn
+            .query_row(
+                "SELECT id, type, name, content_type, content_text, content_path,
+                        bucket_id, task_id, process_id, created_by, version,
+                        previous_version_id, created_at, metadata_json, archived_at
+                 FROM artifacts WHERE id = ?1",
+                [id.as_str()],
+                Self::artifact_from_row,
+            )
+            .map_err(crate::error::AppError::from)?;
+        Ok(artifact)
+    }
+
     /// Parse an ArtifactRelation from a database row
     fn relation_from_row(row: &rusqlite::Row<'_>) -> Result<ArtifactRelation, rusqlite::Error> {
         let id: String = row.get(0)?;
@@ -291,7 +320,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 conn.query_row(
                     "SELECT id, type, name, content_type, content_text, content_path,
                             bucket_id, task_id, process_id, created_by, version,
-                            previous_version_id, created_at, metadata_json
+                            previous_version_id, created_at, metadata_json, archived_at
                      FROM artifacts WHERE id = ?1",
                     [id.as_str()],
                     Self::artifact_from_row,
@@ -312,7 +341,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
                     let result = conn.query_row(
                         "SELECT id, type, name, content_type, content_text, content_path,
                                 bucket_id, task_id, process_id, created_by, version,
-                                previous_version_id, created_at, metadata_json
+                                previous_version_id, created_at, metadata_json, archived_at
                          FROM artifacts WHERE id = ?1",
                         [current_id.as_str()],
                         |row| {
@@ -351,8 +380,8 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 let mut stmt = conn.prepare(
                     "SELECT id, type, name, content_type, content_text, content_path,
                             bucket_id, task_id, process_id, created_by, version,
-                            previous_version_id, created_at, metadata_json
-                     FROM artifacts WHERE bucket_id = ?1
+                            previous_version_id, created_at, metadata_json, archived_at
+                     FROM artifacts WHERE bucket_id = ?1 AND archived_at IS NULL
                      ORDER BY created_at DESC",
                 )?;
                 let artifacts = stmt
@@ -370,8 +399,8 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 let mut stmt = conn.prepare(
                     "SELECT id, type, name, content_type, content_text, content_path,
                             bucket_id, task_id, process_id, created_by, version,
-                            previous_version_id, created_at, metadata_json
-                     FROM artifacts WHERE type = ?1
+                            previous_version_id, created_at, metadata_json, archived_at
+                     FROM artifacts WHERE type = ?1 AND archived_at IS NULL
                      ORDER BY created_at DESC",
                 )?;
                 let artifacts = stmt
@@ -389,8 +418,8 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 let mut stmt = conn.prepare(
                     "SELECT id, type, name, content_type, content_text, content_path,
                             bucket_id, task_id, process_id, created_by, version,
-                            previous_version_id, created_at, metadata_json
-                     FROM artifacts WHERE task_id = ?1
+                            previous_version_id, created_at, metadata_json, archived_at
+                     FROM artifacts WHERE task_id = ?1 AND archived_at IS NULL
                      ORDER BY created_at DESC",
                 )?;
                 let artifacts = stmt
@@ -408,8 +437,8 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 let mut stmt = conn.prepare(
                     "SELECT id, type, name, content_type, content_text, content_path,
                             bucket_id, task_id, process_id, created_by, version,
-                            previous_version_id, created_at, metadata_json
-                     FROM artifacts WHERE process_id = ?1
+                            previous_version_id, created_at, metadata_json, archived_at
+                     FROM artifacts WHERE process_id = ?1 AND archived_at IS NULL
                      ORDER BY created_at DESC",
                 )?;
                 let artifacts = stmt
@@ -477,7 +506,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 let mut stmt = conn.prepare(
                     "SELECT a.id, a.type, a.name, a.content_type, a.content_text, a.content_path,
                             a.bucket_id, a.task_id, a.process_id, a.created_by, a.version,
-                            a.previous_version_id, a.created_at, a.metadata_json
+                            a.previous_version_id, a.created_at, a.metadata_json, a.archived_at
                      FROM artifacts a
                      INNER JOIN artifact_relations r ON a.id = r.to_artifact_id
                      WHERE r.from_artifact_id = ?1 AND r.relation_type = 'derived_from'
@@ -498,7 +527,7 @@ impl ArtifactRepository for SqliteArtifactRepository {
                 let mut stmt = conn.prepare(
                     "SELECT DISTINCT a.id, a.type, a.name, a.content_type, a.content_text,
                             a.content_path, a.bucket_id, a.task_id, a.process_id, a.created_by,
-                            a.version, a.previous_version_id, a.created_at, a.metadata_json
+                            a.version, a.previous_version_id, a.created_at, a.metadata_json, a.archived_at
                      FROM artifacts a
                      INNER JOIN artifact_relations r ON
                         (a.id = r.to_artifact_id AND r.from_artifact_id = ?1) OR
@@ -716,6 +745,13 @@ impl ArtifactRepository for SqliteArtifactRepository {
                     }
                 }
             })
+            .await
+    }
+
+    async fn archive(&self, id: &ArtifactId) -> AppResult<Artifact> {
+        let id = id.clone();
+        self.db
+            .run(move |conn| SqliteArtifactRepository::archive_sync(conn, &id))
             .await
     }
 }

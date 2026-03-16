@@ -278,6 +278,28 @@ impl GitService {
                 return Ok(());
             }
 
+            // Guard: target directory physically exists (e.g., from failed cleanup of a prior
+            // run) but is not registered as a worktree. Git fails with "already exists".
+            // Force-remove the stale directory, prune, then retry once.
+            if stderr.contains("already exists") {
+                debug!(
+                    "checkout_existing_branch_worktree: target path {:?} already exists on disk, force-removing and retrying",
+                    worktree
+                );
+                let _ = tokio::fs::remove_dir_all(worktree).await;
+                let _ = git_cmd::run(&["worktree", "prune"], repo).await;
+
+                let retry = git_cmd::run(&args, repo).await?;
+                if !retry.status.success() {
+                    let retry_stderr = String::from_utf8_lossy(&retry.stderr);
+                    return Err(AppError::GitOperation(format!(
+                        "Failed to create worktree at {:?} for branch '{}' after already-exists cleanup retry: {}",
+                        worktree, branch, retry_stderr
+                    )));
+                }
+                return Ok(());
+            }
+
             return Err(AppError::GitOperation(format!(
                 "Failed to create worktree at {:?} for branch '{}': {}",
                 worktree, branch, stderr

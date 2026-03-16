@@ -40,6 +40,7 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { usePlanStore } from "@/stores/planStore";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
+import { useChatStore, selectAgentStatus } from "@/stores/chatStore";
 import { AcceptModal } from "./AcceptModal";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { ConversationEmptyState } from "./EmptyStates";
@@ -75,7 +76,6 @@ interface PlanningViewProps {
   onNewSession: () => void;
   onSelectSession: (sessionId: string) => void;
   onArchiveSession: (sessionId: string) => void;
-  onDeleteSession?: (sessionId: string) => void;
   onEditProposal: (proposalId: string) => void;
   onRemoveProposal: (proposalId: string) => void;
   onReorderProposals: (proposalIds: string[]) => void;
@@ -137,7 +137,6 @@ export function PlanningView({
   onNewSession,
   onSelectSession,
   onArchiveSession,
-  onDeleteSession,
   onEditProposal,
   onRemoveProposal,
   onReorderProposals,
@@ -167,6 +166,23 @@ export function PlanningView({
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
     // B7: omitting placeholderData (default) — no stale data carried over on session switch
   });
+  // Poll for verification child sessions to detect active verification agent
+  const { data: verificationChildren } = useQuery({
+    queryKey: ["childSessions", session?.id, "verification"],
+    queryFn: () => ideationApi.sessions.getChildren(session!.id, "verification"),
+    enabled: !!session?.id,
+    refetchInterval: 5000,
+    staleTime: 4000,
+  });
+
+  // Get agent status of the verification child session (null-safe)
+  const verificationChildId = verificationChildren?.[0]?.id ?? null;
+  const verificationChildStoreKey = verificationChildId ? `session:${verificationChildId}` : "";
+  const verificationChildStatus = useChatStore(
+    useMemo(() => selectAgentStatus(verificationChildStoreKey), [verificationChildStoreKey])
+  );
+  const isVerificationAgentGenerating = !!verificationChildId && verificationChildStatus === "generating";
+
   const ideationSettings = useIdeationStore((state) => state.ideationSettings);
   const fetchPlanArtifact = useIdeationStore((state) => state.fetchPlanArtifact);
   const showSyncNotification = useIdeationStore((state) => state.showSyncNotification);
@@ -737,7 +753,6 @@ export function PlanningView({
             currentPlanId={session?.id ?? null}
             onSelectPlan={onSelectSession}
             onNewPlan={onNewSession}
-            {...(onDeleteSession !== undefined && { onDeletePlan: onDeleteSession })}
             onArchivePlan={onArchiveSession}
             onReopenPlan={(planId) => {
               onSelectSession(planId);
@@ -1066,6 +1081,7 @@ export function PlanningView({
                             })}
                             verificationStatus={session?.verificationStatus ?? "unverified"}
                             verificationInProgress={session?.verificationInProgress ?? false}
+                            verificationAgentGenerating={isVerificationAgentGenerating}
                             {...(session?.gapScore != null && { gapScore: session.gapScore })}
                             {...(planVersionBeforeVerification !== undefined && { planVersionBeforeVerification })}
                             {...(verificationData?.currentRound !== undefined && { currentRound: verificationData.currentRound })}
@@ -1120,7 +1136,6 @@ export function PlanningView({
                           highlightedIds={highlightedProposalIdsWithUpdates}
                           criticalPathIds={criticalPathSet}
                           onEdit={onEditProposal}
-                          onRemove={onRemoveProposal}
                           {...(planArtifact?.metadata.version !== undefined && {
                             currentPlanVersion: planArtifact.metadata.version,
                           })}
