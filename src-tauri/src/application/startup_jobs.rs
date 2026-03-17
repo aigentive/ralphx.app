@@ -329,6 +329,10 @@ impl<R: Runtime> StartupJobRunner<R> {
         // recovery so worktrees and branches are cleaned before new merges.
         self.resume_pending_cleanup(&projects).await;
 
+        // Phase 0.6: Repair stale non-merge worktree paths before spawning any agents.
+        // Prevents task/review contexts from ever falling back to main repo checkout.
+        self.repair_non_merge_task_worktrees(&projects).await;
+
         // Phase 1: Merge-first recovery — process PendingMerge and Merging tasks
         // before spawning other agents. This ensures main branch is in a clean state
         // before worker/reviewer agents start. PendingMerge first so fast-path
@@ -1010,6 +1014,128 @@ impl<R: Runtime> StartupJobRunner<R> {
             info!(count = resumed, "Phase 0.5: Resumed deferred cleanup tasks");
         } else {
             debug!("Phase 0.5: No pending cleanup tasks found");
+        }
+    }
+
+    /// Repair task worktree paths for non-merge statuses on startup.
+    ///
+    /// In Worktree mode, task/review agents must never run in `project.working_directory`.
+    /// If `worktree_path` is stale/missing/mis-pointed, recreate expected task worktree path.
+    async fn repair_non_merge_task_worktrees(&self, projects: &[crate::domain::entities::Project]) {
+        const REPAIR_STATUSES: &[InternalStatus] = &[
+            InternalStatus::Executing,
+            InternalStatus::QaRefining,
+            InternalStatus::QaTesting,
+            InternalStatus::Reviewing,
+            InternalStatus::ReExecuting,
+            InternalStatus::PendingReview,
+            InternalStatus::RevisionNeeded,
+        ];
+
+        for project in projects {
+            if !project.is_worktree() {
+                continue;
+            }
+
+            let repo_path = Path::new(&project.working_directory);
+            if !repo_path.exists() {
+                continue;
+            }
+
+            for status in REPAIR_STATUSES {
+                let tasks = match self.task_repo.get_by_status(&project.id, *status).await {
+                    Ok(tasks) => tasks,
+                    Err(e) => {
+                        tracing::warn!(
+                            error = %e,
+                            project_id = project.id.as_str(),
+                            status = ?status,
+                            "Failed to load tasks for startup worktree repair"
+                        );
+                        continue;
+                    }
+                };
+
+                for mut task in tasks {
+                    let Some(task_branch) = task.task_branch.clone() else {
+                        continue;
+                    };
+
+                    let expected = project.task_worktree_path(task.id.as_str());
+                    let expected_exists = expected.exists();
+
+                    let current = task.worktree_path.as_ref().map(std::path::PathBuf::from);
+                    let current_exists = current.as_ref().map(|p| p.exists()).unwrap_or(false);
+
+                    let current_merge_like = current
+                        .as_ref()
+                        .and_then(|p| p.file_name())
+                        .and_then(|n| n.to_str())
+                        .map(|name| {
+                            name.starts_with("merge-")
+                                || name.starts_with("rebase-")
+                                || name.starts_with("plan-update-")
+                                || name.starts_with("source-update-")
+                        })
+                        .unwrap_or(false);
+
+                    let needs_reset = current.is_none()
+                        || !current_exists
+                        || current_merge_like
+                        || current.as_ref().map(|p| p != &expected).unwrap_or(true);
+
+                    if !needs_reset {
+                        continue;
+                    }
+
+                    if !expected_exists {
+                        if let Err(e) = GitService::checkout_existing_branch_worktree(
+                            repo_path,
+                            &expected,
+                            &task_branch,
+                        )
+                        .await
+                        {
+                            tracing::warn!(
+                                task_id = task.id.as_str(),
+                                status = ?task.internal_status,
+                                branch = task_branch.as_str(),
+                                expected_worktree = %expected.display(),
+                                error = %e,
+                                "Startup worktree repair failed; task will remain blocked from unsafe main-repo fallback"
+                            );
+                            task.worktree_path = None;
+                            task.touch();
+                            if let Err(update_err) = self.task_repo.update(&task).await {
+                                tracing::warn!(
+                                    task_id = task.id.as_str(),
+                                    error = %update_err,
+                                    "Failed to persist cleared worktree_path after repair failure"
+                                );
+                            }
+                            continue;
+                        }
+                    }
+
+                    task.worktree_path = Some(expected.to_string_lossy().to_string());
+                    task.touch();
+                    if let Err(e) = self.task_repo.update(&task).await {
+                        tracing::warn!(
+                            task_id = task.id.as_str(),
+                            expected_worktree = %expected.display(),
+                            error = %e,
+                            "Failed to persist repaired task worktree_path"
+                        );
+                    } else {
+                        tracing::info!(
+                            task_id = task.id.as_str(),
+                            status = ?task.internal_status,
+                            worktree_path = %expected.display(),
+                            "Startup repaired non-merge task worktree_path"
+                        );
+                    }
+                }
+            }
         }
     }
 
