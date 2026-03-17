@@ -423,6 +423,9 @@ export function PlanningView({
     let executionPlanId: string | null | undefined;
     try {
       const applyResult = await onApply(options);
+      if (!applyResult?.sessionConverted) {
+        return;
+      }
       executionPlanId = applyResult?.executionPlanId;
     } catch {
       return;

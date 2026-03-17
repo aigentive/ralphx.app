@@ -41,10 +41,19 @@ pub struct VerificationConfig {
     /// Stale threshold for auto-verify sessions (generation > 0). Default: 600s (10 minutes).
     #[serde(default = "default_auto_verify_stale_secs")]
     pub auto_verify_stale_secs: u64,
+    /// Retry self-heal threshold for orphaned execution plans left behind by failed accept-plan
+    /// attempts. If an active execution plan has no tasks or linked proposals after this many
+    /// seconds, a later retry supersedes it and starts fresh. Default: 30s.
+    #[serde(default = "default_accept_stale_execution_plan_secs")]
+    pub accept_stale_execution_plan_secs: u64,
 }
 
 fn default_auto_verify_stale_secs() -> u64 {
     600
+}
+
+fn default_accept_stale_execution_plan_secs() -> u64 {
+    30
 }
 
 impl Default for VerificationConfig {
@@ -57,6 +66,7 @@ impl Default for VerificationConfig {
             reconciliation_stale_after_secs: 5400, // 90 minutes
             reconciliation_interval_secs: 300,     // 5 minutes
             auto_verify_stale_secs: 600,           // 10 minutes
+            accept_stale_execution_plan_secs: 30,  // 30 seconds
         }
     }
 }
@@ -659,6 +669,10 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
         cfg.verification.auto_verify_stale_secs,
         "RALPHX_VERIFICATION_AUTO_VERIFY_STALE_SECS"
     );
+    env_u64!(
+        cfg.verification.accept_stale_execution_plan_secs,
+        "RALPHX_VERIFICATION_ACCEPT_STALE_EXECUTION_PLAN_SECS"
+    );
     if let Some(v) = lookup("RALPHX_VERIFICATION_MAX_ROUNDS") {
         if let Ok(n) = v.parse::<u32>() {
             cfg.verification.max_rounds = n;
@@ -774,6 +788,12 @@ pub fn validate_verification_config(cfg: &mut VerificationConfig) {
     if cfg.auto_verify_stale_secs == 0 {
         warn!("verification.auto_verify_stale_secs must be > 0; clamping to 600");
         cfg.auto_verify_stale_secs = 600;
+    }
+    if cfg.accept_stale_execution_plan_secs == 0 {
+        warn!(
+            "verification.accept_stale_execution_plan_secs must be > 0; clamping to 30"
+        );
+        cfg.accept_stale_execution_plan_secs = 30;
     }
     if cfg.auto_verify_stale_secs >= cfg.reconciliation_stale_after_secs {
         warn!(

@@ -2,6 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use chrono::Utc;
 use tauri::{Manager, State};
 
 use crate::application::{git_service::GitService, AppState, TaskCleanupService, TaskSchedulerService};
@@ -83,6 +84,99 @@ pub async fn apply_proposals_core(
         .await
         .map_err(|e| AppError::Database(e.to_string()))?;
 
+    if let Some(existing_plan) = app_state
+        .execution_plan_repo
+        .get_active_for_session(&session_id)
+        .await
+        .map_err(|e| {
+            AppError::Database(format!("Failed to check existing execution plan: {}", e))
+        })?
+    {
+        let has_applied_proposals = all_proposals.iter().any(|p| p.created_task_id.is_some());
+        let existing_tasks = app_state
+            .task_repo
+            .get_by_ideation_session(&session_id)
+            .await
+            .map_err(|e| AppError::Database(format!("Failed to inspect existing tasks: {}", e)))?;
+        let stale_after_secs =
+            crate::infrastructure::agents::claude::verification_config()
+                .accept_stale_execution_plan_secs as i64;
+        let plan_age_secs = Utc::now()
+            .signed_duration_since(existing_plan.created_at)
+            .num_seconds();
+
+        if !has_applied_proposals
+            && existing_tasks.is_empty()
+            && plan_age_secs >= stale_after_secs
+        {
+            if let Some(stale_branch) = app_state
+                .plan_branch_repo
+                .get_by_execution_plan_id(&existing_plan.id)
+                .await
+                .map_err(|e| {
+                    AppError::Database(format!(
+                        "Failed to inspect stale execution plan branch: {}",
+                        e
+                    ))
+                })?
+            {
+                app_state
+                    .plan_branch_repo
+                    .delete(&stale_branch.id)
+                    .await
+                    .map_err(|e| {
+                        AppError::Database(format!(
+                            "Failed to delete stale execution plan branch: {}",
+                            e
+                        ))
+                    })?;
+            }
+
+            app_state
+                .execution_plan_repo
+                .mark_superseded(&existing_plan.id)
+                .await
+                .map_err(|e| {
+                    AppError::Database(format!(
+                        "Failed to supersede stale execution plan: {}",
+                        e
+                    ))
+                })?;
+
+            tracing::warn!(
+                execution_plan_id = %existing_plan.id,
+                session_id = %session_id,
+                age_secs = plan_age_secs,
+                "apply_proposals_core: superseded stale active ExecutionPlan before retry"
+            );
+        } else {
+            tracing::warn!(
+                "apply_proposals_core: active ExecutionPlan {} already exists for session {} — skipping duplicate",
+                existing_plan.id,
+                session_id
+            );
+            return Ok(ApplyProposalsResult {
+                created_task_ids: vec![],
+                dependencies_created: 0,
+                warnings: vec![format!(
+                    "Execution plan {} already active for this session — skipped to prevent duplicates",
+                    existing_plan.id
+                )],
+                session_converted: false,
+                execution_plan_id: Some(existing_plan.id.as_str().to_string()),
+                project_id: session.project_id.as_str().to_string(),
+                session_id: session_id.as_str().to_string(),
+                any_ready_tasks: false,
+                is_user_title: session
+                    .title_source
+                    .as_deref()
+                    .map(|s| s == "user")
+                    .unwrap_or(false),
+                proposal_titles: all_proposals.iter().map(|p| p.title.clone()).collect(),
+            });
+        }
+    }
+
     let proposals_to_apply: Vec<TaskProposal> = all_proposals
         .into_iter()
         .filter(|p| proposal_ids.contains(&p.id))
@@ -92,46 +186,6 @@ pub async fn apply_proposals_core(
         return Err(AppError::Validation(
             "Some proposals not found in session".to_string(),
         ));
-    }
-
-    // Idempotency guard: if an active ExecutionPlan already exists for this session,
-    // return early instead of creating duplicates. This handles rapid double-clicks
-    // on "Accept Plan" before the first apply completes and updates session status.
-    if let Some(existing_plan) = app_state
-        .execution_plan_repo
-        .get_active_for_session(&session_id)
-        .await
-        .map_err(|e| {
-            AppError::Database(format!("Failed to check existing execution plan: {}", e))
-        })?
-    {
-        tracing::warn!(
-            "apply_proposals_core: active ExecutionPlan {} already exists for session {} — skipping duplicate",
-            existing_plan.id,
-            session_id
-        );
-        return Ok(ApplyProposalsResult {
-            created_task_ids: vec![],
-            dependencies_created: 0,
-            warnings: vec![format!(
-                "Execution plan {} already active for this session — skipped to prevent duplicates",
-                existing_plan.id
-            )],
-            session_converted: false,
-            execution_plan_id: Some(existing_plan.id.as_str().to_string()),
-            project_id: session.project_id.as_str().to_string(),
-            session_id: session_id.as_str().to_string(),
-            any_ready_tasks: false,
-            is_user_title: session
-                .title_source
-                .as_deref()
-                .map(|s| s == "user")
-                .unwrap_or(false),
-            proposal_titles: proposals_to_apply
-                .iter()
-                .map(|p| p.title.clone())
-                .collect(),
-        });
     }
 
     // Create ExecutionPlan for this apply attempt

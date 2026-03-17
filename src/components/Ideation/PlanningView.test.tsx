@@ -420,6 +420,33 @@ describe("PlanningView", () => {
     });
   });
 
+  it("does not set active plan when accept does not convert the session", async () => {
+    const onApply = vi.fn().mockResolvedValue({
+      createdTaskIds: [],
+      dependenciesCreated: 0,
+      warnings: ["Execution plan already active"],
+      sessionConverted: false,
+      executionPlanId: "exec-plan-stale",
+    });
+    const user = userEvent.setup();
+
+    render(<PlanningView {...defaultProps} onApply={onApply} />);
+
+    await user.click(screen.getByTestId("tab-proposals"));
+    await user.click(screen.getByRole("button", { name: "Accept Plan" }));
+    await user.click(screen.getByTestId("accept-modal-confirm"));
+
+    await vi.waitFor(() => {
+      expect(onApply).toHaveBeenCalledWith({
+        sessionId: "session-1",
+        proposalIds: ["proposal-1", "proposal-2"],
+        targetColumn: "backlog",
+      });
+    });
+
+    expect(mockSetActivePlan).not.toHaveBeenCalled();
+  });
+
   it("clears active plan when reopening a session that was the active plan", async () => {
     // Setup: session-1 is the active plan
     mockActivePlanByProject["project-1"] = "session-1";
