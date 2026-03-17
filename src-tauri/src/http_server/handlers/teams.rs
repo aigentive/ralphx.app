@@ -420,11 +420,13 @@ pub async fn approve_team_plan(
             .await;
 
         // Derive MCP agent type from process: worker-* processes use worker-team-member,
-        // all others use ideation-team-member (the default in TeammateSpawnConfig::new)
+        // all others use ideation-team-member (the default in TeammateSpawnConfig::new).
+        // Prefer the preset field when available — it carries the specific agent name from
+        // the team lead's spawn request (e.g. "ideation-specialist-backend").
         let mcp_type = if plan.process.starts_with("worker") {
-            "worker-team-member"
+            pending.preset.as_deref().unwrap_or("worker-team-member")
         } else {
-            "ideation-team-member"
+            pending.preset.as_deref().unwrap_or("ideation-team-member")
         };
 
         // Use the lead agent's session ID passed through the MCP flow.
@@ -875,6 +877,8 @@ pub async fn request_teammate_spawn(
         }
     }
 
+    let mcp_type = req.preset.as_deref().unwrap_or("ideation-team-member");
+
     let spawn_config =
         TeammateSpawnConfig::new(&teammate_name, &team_name, &req.prompt)
             .with_parent_session_id(&parent_session_id)
@@ -883,6 +887,8 @@ pub async fn request_teammate_spawn(
             .with_tools(tools)
             .with_mcp_tools(req.mcp_tools.clone())
             .with_color(&teammate_color)
+            .with_mcp_agent_type(mcp_type)
+            .with_effort(resolve_effort(Some(mcp_type)))
             .with_working_dir(working_dir.clone())
             .with_plugin_dir(working_dir.join("ralphx-plugin"));
 
@@ -1531,6 +1537,25 @@ pub async fn save_team_session_state(
             req.team_composition.len()
         ),
     }))
+}
+
+// ============================================================================
+// Pure Helpers
+// ============================================================================
+
+/// Resolve the MCP agent type for a teammate spawn, preferring the `preset`
+/// field when available and falling back to a process-based default.
+/// Extracted for unit testability without Axum handler infrastructure.
+#[cfg(test)]
+pub(crate) fn resolve_mcp_agent_type(process: &str, preset: Option<&str>) -> String {
+    if let Some(p) = preset {
+        return p.to_string();
+    }
+    if process.starts_with("worker") {
+        "worker-team-member".to_string()
+    } else {
+        "ideation-team-member".to_string()
+    }
 }
 
 // ============================================================================

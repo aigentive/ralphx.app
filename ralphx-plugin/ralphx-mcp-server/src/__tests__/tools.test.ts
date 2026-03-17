@@ -19,6 +19,11 @@ import {
   WORKER_TEAM_MEMBER,
   ORCHESTRATOR_IDEATION,
   ORCHESTRATOR_IDEATION_READONLY,
+  IDEATION_SPECIALIST_BACKEND,
+  IDEATION_SPECIALIST_FRONTEND,
+  IDEATION_SPECIALIST_INFRA,
+  IDEATION_CRITIC,
+  IDEATION_ADVOCATE,
 } from '../agentNames.js';
 
 describe('getAllowedToolNames', () => {
@@ -622,5 +627,49 @@ describe('revert_and_skip tool', () => {
     setAgentType(IDEATION_TEAM_LEAD);
     const toolNames = getFilteredTools().map((t) => t.name);
     expect(toolNames).toContain('revert_and_skip');
+  });
+});
+
+// ===========================================================================
+// Specialist / Critic / Advocate TOOL_ALLOWLIST assertions + YAML parity
+// ===========================================================================
+
+describe('TOOL_ALLOWLIST specialist entries', () => {
+  const specialists = [
+    IDEATION_SPECIALIST_BACKEND,
+    IDEATION_SPECIALIST_FRONTEND,
+    IDEATION_SPECIALIST_INFRA,
+  ] as const;
+
+  it.each(specialists)('%s should include create_team_artifact', (agent) => {
+    expect(TOOL_ALLOWLIST[agent]).toContain('create_team_artifact');
+  });
+
+  it.each(specialists)('%s should include get_team_artifacts', (agent) => {
+    expect(TOOL_ALLOWLIST[agent]).toContain('get_team_artifacts');
+  });
+
+  it.each(specialists)('%s should include get_parent_session_context', (agent) => {
+    expect(TOOL_ALLOWLIST[agent]).toContain('get_parent_session_context');
+  });
+
+  it('IDEATION_TEAM_MEMBER should include get_parent_session_context', () => {
+    expect(TOOL_ALLOWLIST[IDEATION_TEAM_MEMBER]).toContain('get_parent_session_context');
+  });
+
+  it('IDEATION_CRITIC should include create_team_artifact', () => {
+    expect(TOOL_ALLOWLIST[IDEATION_CRITIC]).toContain('create_team_artifact');
+  });
+
+  it('IDEATION_CRITIC should include get_team_artifacts', () => {
+    expect(TOOL_ALLOWLIST[IDEATION_CRITIC]).toContain('get_team_artifacts');
+  });
+
+  it('IDEATION_ADVOCATE should include create_team_artifact', () => {
+    expect(TOOL_ALLOWLIST[IDEATION_ADVOCATE]).toContain('create_team_artifact');
+  });
+
+  it('IDEATION_ADVOCATE should include get_team_artifacts', () => {
+    expect(TOOL_ALLOWLIST[IDEATION_ADVOCATE]).toContain('get_team_artifacts');
   });
 });
