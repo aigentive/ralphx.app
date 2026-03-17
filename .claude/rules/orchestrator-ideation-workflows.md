@@ -20,19 +20,6 @@ The `orchestrator-ideation` agent (active + readonly variant) manages ideation s
 
 ---
 
-## Memory References
-
-Core patterns retrieved via `get_memories_for_paths` when working on ideation workflows:
-
-- `mem_*` — Phase 0: RECOVER session state recovery pattern
-- `mem_*` — Follow-up vocabulary table for session routing
-- `mem_*` — Child session awareness and context inheritance
-- `mem_*` — Accepted session delegation via create_child_session
-
-Use `get_memory <id>` for full details on each pattern.
-
----
-
 ## Phase 0: RECOVER (Always Runs First)
 
 **Entry:** Unconditional on every conversation start (before processing user message)

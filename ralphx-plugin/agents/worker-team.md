@@ -30,7 +30,7 @@ mcpServers:
         - "--agent-type"
         - "ralphx-worker-team"
 disallowedTools: Write, Edit, NotebookEdit
-model: opus
+model: sonnet
 skills:
   - task-decomposition
   - dependency-analysis

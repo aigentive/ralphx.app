@@ -133,14 +133,48 @@ Similar pattern for large TS modules:
 4. Run `npm run typecheck` before commit
 5. Atomic commit with all new files
 
+## Post-Extraction Cleanup
+
+After extracting functions to sub-modules, orphaned code may remain in the parent module. Detect and remove it.
+
+### Common Orphan Pattern
+
+Functions deleted from parent but left between two `impl` closures. Stray attributes like `#[cfg(test)]` break the first `impl` closure prematurely. Result: orphaned functions without `impl` wrapper → compile error "unexpected closing delimiter `}`".
+
+### Detection Strategy
+
+| Step | Action |
+|------|--------|
+| 1 | Compare `fn` signatures in parent (`mod.rs`) vs extracted modules — find duplicates |
+| 2 | Look for stray attributes (`#[cfg(test)]`) between `impl` closing braces |
+| 3 | Look for unmatched `}` at unexpected positions |
+| 4 | Run `cargo test --lib` — "unexpected closing delimiter" = orphaned block |
+
+### Resolution
+
+1. Identify exact line range (stray attribute start → orphaned `}` end)
+2. Verify functions in block are fully defined in extracted modules (no partial moves)
+3. Delete the entire range in one edit
+4. Verify compile succeeds
+
+### Prevention Checklist
+
+| Step | Action | Verify |
+|------|--------|--------|
+| Extract module | Create new leaf file with functions | `pub fn` signatures match extracted body |
+| Update parent | Delete functions from parent | Grep confirms no duplicates in parent |
+| Verify structure | Check `impl` block boundaries | No stray attributes between `impl` closing `}` and next item |
+| Compile | Run `cargo test --lib` | 0 compile errors, structure is clean |
+
 ## Verification Checklist
 
-- ☑ All functions assigned to correct module
-- ☑ `use super::*;` (Rust) or top-level imports (TS)
-- ☑ Shared test helpers moved to tests/mod.rs
-- ☑ Private functions with cross-module callers → `pub(super)`
-- ☑ Module declarations added to parent mod.rs
-- ☑ `cargo check` / `npm run typecheck` succeeds
-- ☑ Full test suite passes
-- ☑ Compilation succeeds with no new warnings
-- ☑ Single atomic commit
+- All functions assigned to correct module
+- `use super::*;` (Rust) or top-level imports (TS)
+- Shared test helpers moved to `tests/mod.rs`
+- Private functions with cross-module callers → `pub(super)`
+- Module declarations added to parent `mod.rs`
+- No orphaned duplicates in parent (see Post-Extraction Cleanup above)
+- `cargo clippy --all-targets --all-features -- -D warnings` / `npm run typecheck` succeeds
+- Full test suite passes
+- Compilation succeeds with no new warnings
+- Single atomic commit

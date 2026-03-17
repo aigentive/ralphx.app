@@ -24,8 +24,8 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 | `orchestrator-ideation` | ideation | opus | Lead for ideation sessions (proposals, plans). MCP: `update_plan_verification`, `get_plan_verification` |
 | `orchestrator-ideation-readonly` | ideation | opus | Read-only ideation fallback |
 | `ideation-team-lead` | ideation | opus | Team mode lead for ideation. MCP: `update_plan_verification`, `get_plan_verification` |
-| `session-namer` | ideation | haiku | Names ideation sessions |
-| `dependency-suggester` | ideation | haiku | Suggests task dependencies |
+| `session-namer` | ideation | sonnet | Names ideation sessions |
+| `dependency-suggester` | ideation | sonnet | Suggests task dependencies |
 | `chat-task` | task | sonnet | Task-level Q&A |
 | `chat-project` | project | sonnet | Project-level Q&A |
 | `ralphx-worker` | task_execution | sonnet | Code execution, step management |
@@ -37,7 +37,7 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 | `ralphx-merger` | merge | sonnet | Merge conflict resolution |
 | `ralphx-deep-researcher` | — | opus | Deep research for ideation |
 | `ralphx-orchestrator` | — | opus | Internal orchestration |
-| `ralphx-supervisor` | — | haiku | Supervision tasks |
+| `ralphx-supervisor` | — | sonnet | Supervision tasks |
 | `ralphx-qa-prep` | — | sonnet | QA preparation |
 | `ralphx-qa-executor` | — | sonnet | QA execution |
 | `project-analyzer` | — | sonnet | Project analysis |
@@ -51,6 +51,8 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 | `ideation-specialist-infra` | — | opus | Research database schema, MCP, config, and git patterns for ideation teams |
 | `ideation-advocate` | — | opus | Advocate for a specific approach in architectural debates |
 | `ideation-critic` | — | opus | Stress-test all approaches with adversarial analysis |
+
+**Memory tools:** Most agents also have memory read tools (`search_memories`, `get_memory`, `get_memories_for_paths`) — see `ralphx.yaml` for the authoritative `mcp_tools` list per agent.
 
 ## Agent Lifecycle Events
 

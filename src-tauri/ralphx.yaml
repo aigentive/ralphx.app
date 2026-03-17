@@ -504,7 +504,7 @@ agents:
 
   - name: session-namer
     system_prompt_file: ralphx-plugin/agents/session-namer.md
-    model: haiku
+    model: sonnet
     tools:
       mcp_only: true
     mcp_tools: [update_session_title]
@@ -732,7 +732,7 @@ agents:
 
   - name: ralphx-supervisor
     system_prompt_file: ralphx-plugin/agents/supervisor.md
-    model: haiku
+    model: sonnet
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: []
     preapproved_cli_tools: [Bash, Task(Explore), Task(Plan)]
@@ -752,7 +752,7 @@ agents:
 
   - name: project-analyzer
     system_prompt_file: ralphx-plugin/agents/project-analyzer.md
-    model: haiku
+    model: sonnet
     tools: { extends: base_tools }
     mcp_tools: [save_project_analysis, get_project_analysis]
     preapproved_cli_tools: [Read, Glob, Bash, Grep]
@@ -778,7 +778,7 @@ agents:
 
   - name: memory-maintainer
     system_prompt_file: ralphx-plugin/agents/memory-maintainer.md
-    model: haiku
+    model: sonnet
     tools: { extends: base_tools, include: [Write, Edit] }
     mcp_tools: [
         # memory read tools
@@ -798,7 +798,7 @@ agents:
 
   - name: memory-capture
     system_prompt_file: ralphx-plugin/agents/memory-capture.md
-    model: haiku
+    model: sonnet
     tools: { extends: base_tools, include: [Write, Edit] }
     mcp_tools: [
         # memory read tools
