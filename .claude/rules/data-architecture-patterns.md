@@ -37,8 +37,6 @@ Universal code quality patterns for production-grade data loading and state mana
 | Defaults | Page size: 50 default, 200 max. Clamp on backend. |
 | Ordering | Deterministic sort (e.g., `created_at DESC, id DESC`) to prevent duplicates across pages. |
 
-## Cache Invalidation Hierarchy
-
 ## React Hooks: Multi-Effect State Machines
 
 Complex hooks managing multiple interdependent effects should use **separate effects for separate concerns**, each tracking its own dimension via refs:
@@ -52,10 +50,10 @@ Complex hooks managing multiple interdependent effects should use **separate eff
 
 **Key pattern:** Session = plan scope; use for wholesale resets. Within same session, respect user choices.
 
-**Example:** `useColumnCollapse` (src/components/tasks/TaskBoard/useColumnCollapse.ts)
-- Effect 1 (ideationSessionId): Detect plan changes; auto-collapse empty on init/plan-change; preserve user-expanded within plan (lines 53–84)
-- Effect 2 (taskCounts): Detect 0→N; auto-expand unless user-collapsed (lines 86–106)
-- Callbacks: toggleCollapse, expandColumn track intent via refs (lines 113–138)
+**Example:** `useColumnCollapse` (`src/components/tasks/TaskBoard/useColumnCollapse.ts`)
+- Effect 1 (`ideationSessionId`): Detect plan changes; auto-collapse empty on init/plan-change; preserve user-expanded within plan
+- Effect 2 (`taskCounts`): Detect 0→N; auto-expand unless user-collapsed
+- Callbacks: `toggleCollapse`, `expandColumn` track intent via refs
 
 ## External Store Subscriptions: useSyncExternalStore
 
@@ -85,4 +83,4 @@ return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 
 **Benefits:** Immediate reactivity to cache mutations (e.g., optimistic updates); no polling; prevents unnecessary parent re-renders via ref memoization.
 
-**Example:** `useColumnTaskCounts` (src/components/tasks/TaskBoard/useColumnTaskCounts.ts) subscribes to queryClient cache, returns stable Map reference via ref-based equality (lines 63–96).
+**Example:** `useColumnTaskCounts` (`src/components/tasks/TaskBoard/useColumnTaskCounts.ts`) subscribes to queryClient cache, returns stable Map reference via ref-based equality.

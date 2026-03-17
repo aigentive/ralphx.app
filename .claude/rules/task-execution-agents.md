@@ -129,7 +129,7 @@ paths:
 
 | Agent | Model | Role |
 |-------|-------|------|
-| `orchestrator-ideation` | sonnet | Facilitates ideation sessions, creates task proposals + plans |
+| `orchestrator-ideation` | opus | Facilitates ideation sessions, creates task proposals + plans |
 | `session-namer` | haiku | Generates 2-word session titles |
 | `dependency-suggester` | haiku | Auto-applies dependency suggestions between proposals |
 | `chat-task` | sonnet | Task-specific Q&A |

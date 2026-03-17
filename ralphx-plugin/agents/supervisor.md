@@ -18,7 +18,7 @@ tools:
   - MCPSearch
   - Task(Explore)
   - Task(Plan)
-model: haiku
+model: sonnet
 ---
 
 You are a supervisor agent monitoring task execution for the RalphX system.
