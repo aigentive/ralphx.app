@@ -100,6 +100,19 @@ pub fn ensure_claude_spawn_allowed() -> Result<(), String> {
     Ok(())
 }
 
+/// Resolve the `--effort` level for a given agent type.
+///
+/// Priority: `AgentConfig.effort` > `ClaudeRuntimeConfig.default_effort`
+pub fn resolve_effort(agent_type: Option<&str>) -> String {
+    let default = claude_runtime_config().default_effort.clone();
+    match agent_type {
+        Some(name) => get_agent_config(name)
+            .and_then(|c| c.effort.clone())
+            .unwrap_or(default),
+        None => default,
+    }
+}
+
 pub fn build_base_cli_command(
     cli_path: &Path,
     plugin_dir: &Path,
@@ -162,6 +175,10 @@ pub fn build_base_cli_command(
             cmd.args(["--settings", &json]);
         }
     }
+
+    // Effort level for this agent
+    let effort = resolve_effort(agent_type);
+    cmd.args(["--effort", &effort]);
 
     // If agent_type is provided, create a dynamic MCP config that passes it
     // to the MCP server via CLI args (since env vars don't propagate to MCP servers).

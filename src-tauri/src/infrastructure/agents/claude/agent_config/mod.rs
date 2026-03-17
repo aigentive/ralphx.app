@@ -18,6 +18,17 @@ pub use runtime_config::{
     SupervisorRuntimeConfig, VerificationConfig,
 };
 
+const VALID_EFFORT_LEVELS: &[&str] = &["low", "medium", "high", "max"];
+
+fn validate_effort(value: &str, agent_name: &str) -> bool {
+    if VALID_EFFORT_LEVELS.contains(&value) {
+        true
+    } else {
+        tracing::warn!(agent = %agent_name, effort = %value, "Invalid effort level; ignoring");
+        false
+    }
+}
+
 const MEMORY_SKILLS: &[&str] = &[
     "Skill(ralphx:rule-manager)",
     "Skill(ralphx:knowledge-capture)",
@@ -44,6 +55,8 @@ pub struct AgentConfig {
     pub model: Option<String>,
     /// Effective settings JSON for this agent (if any), resolved from settings_profile.
     pub settings: Option<serde_json::Value>,
+    /// Optional per-agent effort level override (e.g. "max"). Validated at parse time.
+    pub effort: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -56,6 +69,8 @@ pub struct ClaudeRuntimeConfig {
     pub setting_sources: Option<Vec<String>>,
     /// JSON object passed to claude CLI via --settings (path or JSON string).
     pub settings: Option<serde_json::Value>,
+    /// Global default effort level for all agents (e.g. "medium"). Validated at parse time.
+    pub default_effort: String,
 }
 
 #[derive(Debug, Clone, Deserialize, Default)]
@@ -83,6 +98,7 @@ struct AgentConfigRaw {
     system_prompt_file: Option<String>,
     model: Option<String>,
     settings_profile: Option<String>,
+    effort: Option<String>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -104,6 +120,8 @@ struct ClaudeRuntimeConfigRaw {
     /// Optional settings passed to claude CLI via --settings (see docs/claude-code/settings.md).
     /// Legacy field kept for backwards compatibility when profiles are not configured.
     settings: Option<serde_json::Value>,
+    #[serde(default)]
+    default_effort: Option<String>,
 }
 
 impl Default for ClaudeRuntimeConfigRaw {
@@ -119,6 +137,7 @@ impl Default for ClaudeRuntimeConfigRaw {
             settings_profile_defaults: None,
             settings_profiles: HashMap::new(),
             settings: None,
+            default_effort: None,
         }
     }
 }
@@ -332,6 +351,7 @@ fn merge_agent_configs(parent: &AgentConfigRaw, child: &AgentConfigRaw) -> Agent
             .settings_profile
             .clone()
             .or_else(|| parent.settings_profile.clone()),
+        effort: child.effort.clone().or_else(|| parent.effort.clone()),
     }
 }
 
@@ -408,6 +428,7 @@ fn parse_config_with_lookup(
             system_prompt_file: system_prompt,
             model: raw.model.clone(),
             settings: agent_settings,
+            effort: raw.effort.clone().filter(|v| validate_effort(v, &raw.name)),
         });
     }
 
@@ -425,6 +446,11 @@ fn parse_config_with_lookup(
         ),
         use_append_system_prompt_file: parsed.claude.append_system_prompt_file,
         settings: resolved_settings,
+        default_effort: parsed
+            .claude
+            .default_effort
+            .filter(|v| VALID_EFFORT_LEVELS.contains(&v.as_str()))
+            .unwrap_or_else(|| "medium".to_string()),
     };
 
     let mut runtime = AllRuntimeConfig {
@@ -733,6 +759,7 @@ fn load_config() -> LoadedConfig {
                 permission_prompt_tool: "mcp__ralphx__permission_request".to_string(),
                 use_append_system_prompt_file: true,
                 settings: None,
+                default_effort: "medium".to_string(),
             },
             process_mapping: ProcessMapping::default(),
             team_constraints: TeamConstraintsConfig::default(),

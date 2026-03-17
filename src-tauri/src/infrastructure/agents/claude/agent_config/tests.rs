@@ -3,11 +3,11 @@ use crate::infrastructure::agents::claude::agent_names::{
     SHORT_CHAT_PROJECT, SHORT_CHAT_TASK, SHORT_CODER, SHORT_DEEP_RESEARCHER,
     SHORT_IDEATION_ADVOCATE, SHORT_IDEATION_CRITIC, SHORT_IDEATION_SPECIALIST_BACKEND,
     SHORT_IDEATION_SPECIALIST_FRONTEND, SHORT_IDEATION_SPECIALIST_INFRA, SHORT_IDEATION_TEAM_LEAD,
-    SHORT_MEMORY_CAPTURE, SHORT_MEMORY_MAINTAINER, SHORT_MERGER, SHORT_ORCHESTRATOR,
-    SHORT_ORCHESTRATOR_IDEATION, SHORT_ORCHESTRATOR_IDEATION_READONLY, SHORT_PLAN_CRITIC_LAYER1,
-    SHORT_PLAN_CRITIC_LAYER2, SHORT_PLAN_VERIFIER, SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR,
-    SHORT_QA_PREP, SHORT_REVIEWER, SHORT_REVIEW_CHAT, SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER,
-    SHORT_SUPERVISOR, SHORT_WORKER, SHORT_WORKER_TEAM,
+    SHORT_IDEATION_TEAM_MEMBER, SHORT_MEMORY_CAPTURE, SHORT_MEMORY_MAINTAINER, SHORT_MERGER,
+    SHORT_ORCHESTRATOR, SHORT_ORCHESTRATOR_IDEATION, SHORT_ORCHESTRATOR_IDEATION_READONLY,
+    SHORT_PLAN_CRITIC_LAYER1, SHORT_PLAN_CRITIC_LAYER2, SHORT_PLAN_VERIFIER,
+    SHORT_PROJECT_ANALYZER, SHORT_QA_EXECUTOR, SHORT_QA_PREP, SHORT_REVIEWER, SHORT_REVIEW_CHAT,
+    SHORT_REVIEW_HISTORY, SHORT_SESSION_NAMER, SHORT_SUPERVISOR, SHORT_WORKER, SHORT_WORKER_TEAM,
 };
 use std::collections::HashSet;
 
@@ -83,6 +83,7 @@ fn test_all_agent_names_are_known() {
         // Team lead variants
         SHORT_IDEATION_TEAM_LEAD,
         SHORT_WORKER_TEAM,
+        SHORT_IDEATION_TEAM_MEMBER,
         // Ideation specialist agents (spawned by ideation-team-lead)
         SHORT_IDEATION_SPECIALIST_BACKEND,
         SHORT_IDEATION_SPECIALIST_FRONTEND,
@@ -1046,4 +1047,233 @@ preapproved_cli_tools: []
     assert!(parsed.process_mapping.slots.is_empty());
     assert!(parsed.team_constraints.processes.is_empty());
     assert!(parsed.team_constraints.defaults.is_none());
+}
+
+// ==================== Effort Field Tests ====================
+
+#[test]
+fn test_effort_field_parsed_from_yaml() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: rally-agent
+    effort: high
+    tools:
+      extends: base_tools
+    mcp_tools: []
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+    let parsed = parse_config(yaml).expect("config should parse");
+    let agent = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "rally-agent")
+        .expect("rally-agent should exist");
+    assert_eq!(agent.effort, Some("high".to_string()));
+}
+
+#[test]
+fn test_effort_inheritance_via_extends() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: parent-agent
+    effort: max
+    tools:
+      extends: base_tools
+    mcp_tools: []
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+  - name: child-agent
+    extends: parent-agent
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+    let parsed = parse_config(yaml).expect("config should parse");
+    let child = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "child-agent")
+        .expect("child-agent should exist");
+    assert_eq!(
+        child.effort,
+        Some("max".to_string()),
+        "child should inherit parent's effort: max"
+    );
+}
+
+#[test]
+fn test_effort_child_overrides_parent() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: parent-agent
+    effort: max
+    tools:
+      extends: base_tools
+    mcp_tools: []
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+  - name: child-agent
+    extends: parent-agent
+    effort: high
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+    let parsed = parse_config(yaml).expect("config should parse");
+    let child = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "child-agent")
+        .expect("child-agent should exist");
+    assert_eq!(
+        child.effort,
+        Some("high".to_string()),
+        "child's effort: high should override parent's effort: max"
+    );
+}
+
+#[test]
+fn test_resolve_effort_returns_per_agent_effort_for_known_agent() {
+    use crate::infrastructure::agents::claude::resolve_effort;
+    // orchestrator-ideation has effort: max in ralphx.yaml
+    let effort = resolve_effort(Some("orchestrator-ideation"));
+    assert_eq!(effort, "max");
+}
+
+#[test]
+fn test_resolve_effort_returns_global_default_for_unknown_agent() {
+    use crate::infrastructure::agents::claude::resolve_effort;
+    let effort = resolve_effort(Some("unknown-agent-xyz-that-does-not-exist"));
+    assert_eq!(effort, "medium", "unknown agent should fall back to global default_effort");
+}
+
+#[test]
+fn test_resolve_effort_returns_global_default_when_none() {
+    use crate::infrastructure::agents::claude::resolve_effort;
+    let effort = resolve_effort(None);
+    assert_eq!(effort, "medium", "None agent type should return global default_effort");
+}
+
+#[test]
+fn test_invalid_effort_value_rejected_at_parse_time() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: test-agent
+    effort: turbo
+    tools:
+      extends: base_tools
+    mcp_tools: []
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+    let parsed = parse_config(yaml).expect("config should parse");
+    let agent = parsed
+        .agents
+        .iter()
+        .find(|a| a.name == "test-agent")
+        .expect("test-agent should exist");
+    assert_eq!(
+        agent.effort, None,
+        "invalid effort value 'turbo' should be rejected (filtered to None)"
+    );
+}
+
+#[test]
+fn test_invalid_global_default_effort_falls_back_to_medium() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+  default_effort: turbo
+agents:
+  - name: test-agent
+    tools:
+      extends: base_tools
+    mcp_tools: []
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+    let parsed = parse_config(yaml).expect("config should parse");
+    assert_eq!(
+        parsed.claude.default_effort, "medium",
+        "invalid global default_effort should fall back to 'medium'"
+    );
+}
+
+#[test]
+fn test_default_effort_carried_through_to_claude_runtime_config() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+  default_effort: high
+agents:
+  - name: test-agent
+    tools:
+      extends: base_tools
+    mcp_tools: []
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+    let parsed = parse_config(yaml).expect("config should parse");
+    assert_eq!(
+        parsed.claude.default_effort, "high",
+        "default_effort should be carried through to ClaudeRuntimeConfig"
+    );
+}
+
+#[test]
+fn test_fallback_loaded_config_has_default_effort() {
+    // The fallback LoadedConfig (used when embedded config fails to parse) must include
+    // default_effort: "medium". We verify the production loaded config has a valid effort value.
+    let effort = &claude_runtime_config().default_effort;
+    assert!(
+        super::VALID_EFFORT_LEVELS.contains(&effort.as_str()),
+        "claude_runtime_config().default_effort must be a valid effort level, got: {}",
+        effort
+    );
+}
+
+#[test]
+fn test_default_effort_omitted_from_yaml_defaults_to_medium() {
+    let yaml = r#"
+claude:
+  mcp_server_name: ralphx
+  permission_mode: default
+  dangerously_skip_permissions: false
+  permission_prompt_tool: permission_request
+agents:
+  - name: test-agent
+    tools:
+      extends: base_tools
+    mcp_tools: []
+    preapproved_cli_tools: []
+    system_prompt_file: ralphx-plugin/agents/worker.md
+"#;
+    let parsed = parse_config(yaml).expect("config should parse");
+    assert_eq!(
+        parsed.claude.default_effort, "medium",
+        "missing default_effort in YAML should default to 'medium'"
+    );
 }
