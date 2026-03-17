@@ -1,10 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render as rtlRender, screen } from "@testing-library/react";
+import { act, render as rtlRender, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { PlanningView } from "./PlanningView";
 import type { IdeationSession, TaskProposal } from "@/types/ideation";
+import { useIdeationStore } from "@/stores/ideationStore";
+import { useProposalStore } from "@/stores/proposalStore";
 
 vi.mock("@/providers/EventProvider", () => ({
   useEventBus: () => ({
@@ -18,6 +20,9 @@ const mockClearActivePlan = vi.fn();
 const mockSetActivePlan = vi.fn().mockResolvedValue(undefined);
 const mockSetIsPlanExpanded = vi.fn();
 const mockActivePlanByProject: Record<string, string | null> = {};
+
+// Configurable isPlanExpanded for testing tab-switch effects
+let mockIsPlanExpanded = false;
 
 vi.mock("@/hooks/useDependencyGraph", () => ({
   useDependencyGraph: () => ({ data: { proposals: [], edges: [], warnings: [] }, isFetching: false }),
@@ -54,7 +59,7 @@ vi.mock("./useIdeationHandlers", () => ({
     onArchiveSession: (sessionId: string) => void
   ) => ({
     highlightedProposalIds: new Set<string>(),
-    isPlanExpanded: false,
+    isPlanExpanded: mockIsPlanExpanded,
     setIsPlanExpanded: mockSetIsPlanExpanded,
     importStatus: null,
     setImportStatus: vi.fn(),
@@ -286,6 +291,9 @@ describe("PlanningView", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSetIsPlanExpanded.mockClear();
+    mockIsPlanExpanded = false;
+    // Reset proposal store state between tests
+    useProposalStore.setState({ lastProposalAddedAt: null });
   });
 
   it("renders the main view and active-session layout", () => {
@@ -568,6 +576,42 @@ describe("PlanningView", () => {
   it("does not auto-expand plan when session has no planArtifactId", () => {
     render(<PlanningView {...defaultProps} session={mockSession} proposals={[]} />);
     expect(mockSetIsPlanExpanded).not.toHaveBeenCalledWith(true);
+  });
+
+  describe("Proposals tab auto-switch", () => {
+    it("does not collapse plan when a new proposal arrives (switches tab instead)", () => {
+      mockIsPlanExpanded = true;
+      render(<PlanningView {...defaultProps} />);
+      mockSetIsPlanExpanded.mockClear(); // clear calls from initial render
+      // Simulate a new proposal arriving
+      act(() => {
+        useProposalStore.setState({ lastProposalAddedAt: Date.now() });
+      });
+      // Old behavior (auto-collapse) should NOT happen
+      expect(mockSetIsPlanExpanded).not.toHaveBeenCalledWith(false);
+    });
+
+    it("does not collapse plan when proposals load after auto-open", () => {
+      mockIsPlanExpanded = true;
+      render(<PlanningView {...defaultProps} proposals={[]} />);
+      mockSetIsPlanExpanded.mockClear(); // clear calls from initial render
+      // Old behavior (auto-collapse) should NOT happen when proposals arrive
+      expect(mockSetIsPlanExpanded).not.toHaveBeenCalledWith(false);
+    });
+
+    it("switches to Proposals tab via store when new proposal arrives and plan is expanded", () => {
+      mockIsPlanExpanded = true;
+      const originalFn = useIdeationStore.getState().setActiveIdeationTab;
+      const spySetActiveIdeationTab = vi.fn(originalFn);
+      useIdeationStore.setState({ setActiveIdeationTab: spySetActiveIdeationTab });
+      render(<PlanningView {...defaultProps} />);
+      act(() => {
+        useProposalStore.setState({ lastProposalAddedAt: Date.now() });
+      });
+      expect(spySetActiveIdeationTab).toHaveBeenCalledWith("session-1", "proposals");
+      // Restore original function to avoid affecting other tests
+      useIdeationStore.setState({ setActiveIdeationTab: originalFn });
+    });
   });
 
   describe("Verification tab", () => {

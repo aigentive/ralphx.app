@@ -513,7 +513,7 @@ export function PlanningView({
     }
   }, [planArtifact, proposals.length, isPlanExpanded, setIsPlanExpanded, isSessionLoading]);
 
-  // Auto-collapse plan when new proposal arrives
+  // Switch to Proposals tab when new proposal arrives
   const lastProposalAddedAt = useProposalStore((state) => state.lastProposalAddedAt);
   const prevProposalAddedAtRef = useRef(lastProposalAddedAt);
   useEffect(() => {
@@ -521,21 +521,21 @@ export function PlanningView({
     prevProposalAddedAtRef.current = lastProposalAddedAt;
     if (!changed) return;
     if (userOverrideRef.current) return;
-    if (lastProposalAddedAt !== null && isPlanExpanded) {
+    if (lastProposalAddedAt !== null && isPlanExpanded && session) {
       autoOpenedPlanRef.current = false;
-      setIsPlanExpanded(false);
+      setActiveIdeationTab(session.id, 'proposals');
     }
-  }, [lastProposalAddedAt, isPlanExpanded, setIsPlanExpanded]);
+  }, [lastProposalAddedAt, isPlanExpanded, session, setActiveIdeationTab]);
 
-  // If proposals load after an auto-open, collapse the plan
+  // If proposals load after an auto-open, switch to Proposals tab
   useEffect(() => {
     if (userOverrideRef.current) return;
     if (isSessionLoading) return;
-    if (proposals.length > 0 && isPlanExpanded && autoOpenedPlanRef.current) {
+    if (proposals.length > 0 && isPlanExpanded && autoOpenedPlanRef.current && session) {
       autoOpenedPlanRef.current = false;
-      setIsPlanExpanded(false);
+      setActiveIdeationTab(session.id, 'proposals');
     }
-  }, [proposals.length, isPlanExpanded, isSessionLoading, setIsPlanExpanded]);
+  }, [proposals.length, isPlanExpanded, isSessionLoading, session, setActiveIdeationTab]);
 
   // Reset plan expansion when switching sessions
   const lastSessionIdRef = useRef<string | null>(null);
@@ -575,6 +575,9 @@ export function PlanningView({
     if (!session) return;
     setActiveIdeationTab(session.id, 'verification');
 
+    // If child ID already preloaded (set by event handler), skip async fetch
+    if (activeVerificationChildId) return;
+
     // Fetch the latest verification child session
     try {
       const children = await ideationApi.sessions.getChildren(session.id, 'verification');
@@ -592,7 +595,7 @@ export function PlanningView({
       console.error('Failed to fetch verification children:', err);
       // Tab switches regardless — child panel stays hidden until child exists
     }
-  }, [session, setActiveIdeationTab, setActiveVerificationChildId]);
+  }, [session, activeVerificationChildId, setActiveIdeationTab, setActiveVerificationChildId]);
 
   return (
     <>
