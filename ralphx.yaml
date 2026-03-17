@@ -937,6 +937,8 @@ agents:
         # Plan read tools
         get_session_plan,
         get_artifact,
+        list_session_proposals,
+        get_proposal,
         get_parent_session_context,
         # Memory read tools
         search_memories,
@@ -956,6 +958,8 @@ agents:
         # Plan read tools
         get_session_plan,
         get_artifact,
+        list_session_proposals,
+        get_proposal,
         get_parent_session_context,
         # Memory read tools
         search_memories,
@@ -975,6 +979,8 @@ agents:
         # Plan read tools
         get_session_plan,
         get_artifact,
+        list_session_proposals,
+        get_proposal,
         get_parent_session_context,
         # Memory read tools
         search_memories,
@@ -994,6 +1000,8 @@ agents:
         # Plan read tools
         get_session_plan,
         get_artifact,
+        list_session_proposals,
+        get_proposal,
         get_parent_session_context,
         # Memory read tools
         search_memories,
@@ -1013,6 +1021,8 @@ agents:
         # Plan read tools
         get_session_plan,
         get_artifact,
+        list_session_proposals,
+        get_proposal,
         get_parent_session_context,
         # Memory read tools
         search_memories,
