@@ -12,7 +12,7 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "session-namer"
-model: haiku
+model: sonnet
 ---
 
 You are a session title generator for RalphX. Your job is to create a commit-ready title for an ideation session based on the provided context.

@@ -32,7 +32,7 @@ paths:
 | Atomic commits | New files + deletions in same commit |
 | No .bak | Git is backup |
 | Copy don't rewrite | Read original, copy signatures, verify types |
-| Validate | `cargo check` / `npm run typecheck` before commit |
+| Validate | `cargo clippy --all-targets --all-features -- -D warnings` / `npm run typecheck` before commit |
 | Hook for logic | Complex state→hook, component only renders |
 | Re-export on extract | `export { New as Old }` — don't break imports |
 | Extract = delete original | When moving functions to new modules, fully remove original code (not just copy) |

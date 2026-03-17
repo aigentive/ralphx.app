@@ -93,17 +93,43 @@ After adding a tool, verify MCP server stderr shows:
 
 ## Current Tool Grants (per-agent reference)
 
+> Last verified: 2026-03-17 against `ralphx.yaml`
+
 | Agent | Tools in `ralphx.yaml` `mcp_tools` |
 |-------|--------------------------------------|
-| `orchestrator-ideation` | `*_task_proposal`, `*_plan_artifact` (incl. `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `link_proposals_to_plan`), `get_session_plan`, `list_session_proposals`, `update_plan_verification`, `get_plan_verification`, `analyze_session_dependencies`, `get_parent_session_context`, `create_child_session`, `get_session_messages` |
-| `ideation-team-lead` | Same as `orchestrator-ideation` (listed separately — `mcp_tools` is full-override, not merged) |
-| `ralphx-worker` / `ralphx-coder` | `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `*_step`, `execution_complete`, `get_project_analysis` |
-| `ralphx-reviewer` | `complete_review`, `get_task_context` |
-| `ralphx-merger` | `report_conflict`, `report_incomplete`, `get_merge_target`, `get_task_context` |
-| `chat-task` | `update_task`, `add_task_note`, `get_task_details` |
-| `chat-project` | `suggest_task`, `list_tasks` |
+| `orchestrator-ideation` | `create_task_proposal`, `update_task_proposal`, `delete_task_proposal`, `list_session_proposals`, `get_proposal`, `analyze_session_dependencies`, `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `get_artifact`, `link_proposals_to_plan`, `get_session_plan`, `ask_user_question`, `create_child_session`, `get_parent_session_context`, `get_session_messages`, `update_plan_verification`, `get_plan_verification`, `revert_and_skip`, `search_memories`, `get_memory`, `get_memories_for_paths`, `list_projects`, `create_cross_project_session`, `cross_project_guide`, `get_child_session_status`, `send_child_session_message` |
+| `orchestrator-ideation-readonly` | `list_session_proposals`, `get_proposal`, `get_artifact`, `get_session_plan`, `get_parent_session_context`, `create_child_session`, `get_plan_verification`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-team-lead` | Extends `orchestrator-ideation` but **overrides** `mcp_tools` (full-replace). Effective list: `request_team_plan`, `request_teammate_spawn`, `create_team_artifact`, `get_team_artifacts`, `get_team_session_state`, `save_team_session_state`, `create_task_proposal`, `update_task_proposal`, `delete_task_proposal`, `list_session_proposals`, `get_proposal`, `analyze_session_dependencies`, `create_plan_artifact`, `update_plan_artifact`, `edit_plan_artifact`, `get_artifact`, `link_proposals_to_plan`, `get_session_plan`, `ask_user_question`, `create_child_session`, `get_parent_session_context`, `get_session_messages`, `update_plan_verification`, `get_plan_verification`, `revert_and_skip`, `search_memories`, `get_memory`, `get_memories_for_paths`, `list_projects`, `create_cross_project_session`, `cross_project_guide`, `get_child_session_status`, `send_child_session_message` |
+| `session-namer` | `update_session_title` |
+| `chat-task` | `update_task`, `add_task_note`, `get_task_details`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `chat-project` | `suggest_task`, `list_tasks`, `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript` |
+| `ralphx-review-chat` | `approve_task`, `request_task_changes`, `get_review_notes`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_task_steps`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-review-history` | `get_review_notes`, `get_task_context`, `get_task_issues`, `get_task_steps`, `get_step_progress`, `get_issue_progress`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-worker` | `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_step_progress`, `get_step_context`, `get_sub_steps`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`, `get_project_analysis`, `execution_complete`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-coder` | `start_step`, `complete_step`, `skip_step`, `fail_step`, `add_step`, `get_step_progress`, `get_step_context`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `mark_issue_in_progress`, `mark_issue_addressed`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-worker-team` | Extends `ralphx-worker`, does NOT override `mcp_tools` → **inherits** full list from `ralphx-worker` (see above) |
+| `ralphx-reviewer` | `complete_review`, `get_task_context`, `get_artifact`, `get_artifact_version`, `get_related_artifacts`, `search_project_artifacts`, `get_review_notes`, `get_task_steps`, `get_task_issues`, `get_step_progress`, `get_issue_progress`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-merger` | `report_conflict`, `report_incomplete`, `complete_merge`, `get_merge_target`, `get_task_context`, `get_project_analysis`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-orchestrator` | `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-deep-researcher` | `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ralphx-supervisor` | `[]` (empty — no MCP tools) |
+| `ralphx-qa-prep` | `[]` (empty — no MCP tools) |
+| `ralphx-qa-executor` | `[]` (empty — no MCP tools) |
+| `project-analyzer` | `save_project_analysis`, `get_project_analysis` |
+| `memory-maintainer` | `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript`, `upsert_memories`, `mark_memory_obsolete`, `refresh_memory_rule_index`, `ingest_rule_file`, `rebuild_archive_snapshots` |
+| `memory-capture` | `search_memories`, `get_memory`, `get_memories_for_paths`, `get_conversation_transcript`, `upsert_memories`, `mark_memory_obsolete` |
+| `plan-critic-layer1` | `get_session_plan`, `get_artifact` |
+| `plan-critic-layer2` | `get_session_plan`, `get_artifact` |
+| `plan-verifier` | `get_session_plan`, `get_parent_session_context`, `update_plan_verification`, `get_plan_verification`, `update_plan_artifact`, `edit_plan_artifact`, `get_child_session_status`, `send_child_session_message` |
+| `ideation-specialist-backend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-specialist-frontend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-specialist-infra` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-advocate` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-critic` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
 
-**Note:** `edit_plan_artifact` is explicitly included in both `orchestrator-ideation` and `ideation-team-lead` (added to `ralphx.yaml` 2026-03-11). `orchestrator-ideation-readonly` intentionally does NOT have it.
+**Key differences between `ralphx-worker` and `ralphx-coder`:** Worker has `get_sub_steps` and `execution_complete`; coder does not.
+
+**Note:** `edit_plan_artifact` is explicitly included in `orchestrator-ideation`, `ideation-team-lead`, and `plan-verifier`. `orchestrator-ideation-readonly` intentionally does NOT have it. `dependency-suggester` is referenced in `agent-type-map.md` but is NOT defined in `ralphx.yaml`.
 
 ## Example: Adding `get_merge_target` to `ralphx-merger`
 

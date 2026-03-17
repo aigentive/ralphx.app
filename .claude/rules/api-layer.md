@@ -40,7 +40,7 @@ Rust (snake_case) → Zod schema (snake_case) → Transform fn → TS types (cam
 | Context | JS | Rust | Failure |
 |---------|----|----- |---------|
 | Direct | `{ taskId }` | `task_id: String` | ❌ `{ task_id }` → silent missing |
-| Struct | `{ input: { task_id } }` | serde match | Must match exactly |
+| Struct | `{ input: { taskId } }` | serde match | Must match exactly |
 | Response | — | default snake_case | ❌ NEVER `rename_all` |
 
 ## Domain API Pattern
@@ -54,7 +54,7 @@ export const domainApi = {
 
 Files: `{domain}.ts` | `{domain}.schemas.ts` | `{domain}.transforms.ts` | `{domain}.types.ts`
 
-## Web Mode (Phase 55)
+## Web Mode
 
 | Component | Location | Purpose |
 |-----------|----------|---------|
