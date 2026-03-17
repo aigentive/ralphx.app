@@ -21,7 +21,14 @@ Tool allowlists are now driven by **`ralphx.yaml` → `--allowed-tools` CLI arg 
 
 **How it works:** Rust `create_mcp_config()` reads `mcp_tools` from `ralphx.yaml` and injects `--allowed-tools=tool1,tool2,...` into the MCP config JSON args. MCP server parses this at startup — no TOOL_ALLOWLIST lookup needed.
 
-**Agent `.md` frontmatter** → add `"mcp__ralphx__*"` to the `tools` list (NOT `allowedTools` — that key is invalid in frontmatter; only `tools` and `disallowedTools` are valid).
+**Agent `.md` frontmatter** → MCP tool names in `tools` list depend on spawning path (NOT `allowedTools` — that key is invalid in frontmatter; only `tools` and `disallowedTools` are valid):
+
+| Spawning Path | Wildcard in `tools`? | Why |
+|---------------|---------------------|-----|
+| **Backend-spawned** (Rust `create_mcp_config()`) | ✅ `"mcp__ralphx__*"` works | Backend handles tool injection via `--allowed-tools` CLI arg — different code path |
+| **Task-spawned** (Claude Code `Task()` tool) | ❌ `"mcp__ralphx__*"` fails silently | Wildcard not expanded against MCP server; treated as literal string matching nothing — MUST use explicit names |
+
+**Rule:** Task-spawned agents MUST list explicit MCP tool names (e.g., `"mcp__ralphx__get_session_plan"`). Pattern reference: `plan-critic-layer1.md` frontmatter.
 
 ## How to Add a New MCP Tool — Checklist
 
@@ -36,7 +43,10 @@ Tool allowlists are now driven by **`ralphx.yaml` → `--allowed-tools` CLI arg 
 **What you NO LONGER need to do:**
 - ~~Edit `TOOL_ALLOWLIST` in `tools.ts`~~ (bypassed by `--allowed-tools`)
 - ~~Edit Rust `AGENT_CONFIGS` `allowed_mcp_tools`~~ (removed — `ralphx.yaml` is now the single source of truth)
-- ~~Edit agent `.md` frontmatter `allowedTools`~~ (`allowedTools` is NOT a valid frontmatter field — add `"mcp__ralphx__*"` to `tools` instead)
+- ~~Edit agent `.md` frontmatter `allowedTools`~~ (`allowedTools` is NOT a valid frontmatter field — add tool names to `tools` instead)
+- ~~Add MCP tools to `disallowedTools` to restrict access~~ (unnecessary — frontmatter `tools` is a **strict allowlist**: only explicitly listed tools are accessible; unlisted tools are already blocked)
+
+**Frontmatter `tools` strict allowlist semantics:** Only tools explicitly listed in `tools` are available to the agent. MCP tools NOT in `tools` are inaccessible regardless of what the MCP server exposes. This means `disallowedTools` is unnecessary for MCP tool restriction — if a tool isn't in `tools`, it's already blocked.
 
 ## How to Add a Completely New Tool
 
@@ -75,11 +85,12 @@ After adding a tool, verify MCP server stderr shows:
 
 ## Tool Name Formats
 
-| Context | Format | Example |
-|---------|--------|---------|
-| `ralphx.yaml` `mcp_tools` | bare name | `get_merge_target` |
-| TS `ALL_TOOLS` definition | bare name | `name: "get_merge_target"` |
-| Agent frontmatter `tools` | wildcard | `"mcp__ralphx__*"` |
+| Context | Format | Example | Notes |
+|---------|--------|---------|-------|
+| `ralphx.yaml` `mcp_tools` | bare name | `get_merge_target` | — |
+| TS `ALL_TOOLS` definition | bare name | `name: "get_merge_target"` | — |
+| Agent frontmatter `tools` (backend-spawned) | wildcard OK | `"mcp__ralphx__*"` | Backend handles expansion via `--allowed-tools` |
+| Agent frontmatter `tools` (Task-spawned) | explicit names required | `"mcp__ralphx__get_session_plan"` | Wildcard not expanded; must enumerate each tool |
 
 ## Common Failure Modes
 
@@ -89,11 +100,41 @@ After adding a tool, verify MCP server stderr shows:
 | Tool listed but "not available" | Handler missing from `ALL_TOOLS` or `index.ts` dispatch | Register handler + rebuild |
 | MCP server logs "using fallback TOOL_ALLOWLIST" | `--allowed-tools` not injected | Check `ralphx.yaml` syntax; rebuild Rust |
 | Tool allowed but 404 | Handler missing or wrong route | Check `index.ts` dispatch + `mod.rs` route |
-| Subagent can't use tool | Agent `.md` doesn't have `"mcp__ralphx__*"` in `tools` | Add wildcard to frontmatter `tools` list |
+| Task-spawned agent can't use MCP tool | Agent `.md` uses `"mcp__ralphx__*"` wildcard (not expanded) | Replace wildcard with explicit tool names: `"mcp__ralphx__get_session_plan"` etc. |
+| Backend-spawned agent can't use tool | Agent `.md` doesn't have `"mcp__ralphx__*"` in `tools` | Add wildcard to frontmatter `tools` list |
+
+## Backend-Spawned vs Task-Spawned Agents
+
+> Wildcard `"mcp__ralphx__*"` in frontmatter `tools` only works for backend-spawned agents. Task-spawned agents MUST use explicit names.
+
+| Agent | Spawning Path | Wildcard in `tools`? |
+|-------|--------------|---------------------|
+| `orchestrator-ideation` | Backend-spawned (Rust `ClaudeCodeClient`) | ✅ OK |
+| `orchestrator-ideation-readonly` | Backend-spawned | ✅ OK |
+| `ideation-team-lead` | Backend-spawned | ✅ OK |
+| `ralphx-worker` | Backend-spawned | ✅ OK |
+| `ralphx-coder` | Backend-spawned | ✅ OK |
+| `ralphx-worker-team` | Backend-spawned (team mode) | ✅ OK |
+| `ralphx-reviewer` | Backend-spawned | ✅ OK |
+| `ralphx-merger` | Backend-spawned | ✅ OK |
+| `chat-task` | Backend-spawned | ✅ OK |
+| `chat-project` | Backend-spawned | ✅ OK |
+| `ralphx-review-chat` | Backend-spawned | ✅ OK |
+| `plan-verifier` | Backend-spawned | ✅ OK |
+| `ideation-specialist-backend` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ideation-specialist-frontend` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ideation-specialist-infra` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ideation-specialist-ux` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ideation-advocate` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `ideation-critic` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `plan-critic-layer1` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+| `plan-critic-layer2` | **Task-spawned** (via `Task()` tool) | ❌ Must use explicit names |
+
+**Warning:** If any backend-spawned agent above is ever reconfigured to be Task-spawned, update its frontmatter to use explicit tool names — the wildcard will silently stop working.
 
 ## Current Tool Grants (per-agent reference)
 
-> Last verified: 2026-03-17 against `ralphx.yaml`
+> Last verified: 2026-03-18 against `ralphx.yaml`
 
 | Agent | Tools in `ralphx.yaml` `mcp_tools` |
 |-------|--------------------------------------|
@@ -121,11 +162,12 @@ After adding a tool, verify MCP server stderr shows:
 | `plan-critic-layer1` | `get_session_plan`, `get_artifact` |
 | `plan-critic-layer2` | `get_session_plan`, `get_artifact` |
 | `plan-verifier` | `get_session_plan`, `get_parent_session_context`, `update_plan_verification`, `get_plan_verification`, `update_plan_artifact`, `edit_plan_artifact`, `get_child_session_status`, `send_child_session_message` |
-| `ideation-specialist-backend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-specialist-frontend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-specialist-infra` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-advocate` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
-| `ideation-critic` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-specialist-backend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-specialist-frontend` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-specialist-infra` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-specialist-ux` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-advocate` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
+| `ideation-critic` | `create_team_artifact`, `get_team_artifacts`, `get_session_plan`, `get_artifact`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths` |
 
 **Key differences between `ralphx-worker` and `ralphx-coder`:** Worker has `get_sub_steps` and `execution_complete`; coder does not.
 
@@ -175,21 +217,44 @@ mcpServers:
 
 Without `mcpServers`, the subagent has zero MCP tools — `tools` entries for `mcp__ralphx__*` are ignored because there's no MCP server connected.
 
-**Three fields work together:**
+**Three fields work together (Task-spawned agents):**
 
 | Field | Purpose | Without It |
 |-------|---------|------------|
 | `mcpServers` | Connects to MCP server | Zero MCP tools available |
-| `tools` (with `"mcp__ralphx__*"`) | Allowlists which MCP tools are exposed | All MCP tools from connected servers available |
-| `disallowedTools` | Blocks specific MCP tools | All allowed MCP tools available |
+| `tools` (with explicit names like `"mcp__ralphx__get_session_plan"`) | Strict allowlist — only listed tools accessible | All MCP tools from connected servers available |
+| `disallowedTools` | Blocks specific MCP tools | Unnecessary for MCP restriction — `tools` strict allowlist already blocks unlisted tools |
 
 ❌ `allowedTools` is NOT a valid frontmatter field — Claude Code silently ignores it
-✅ Add `"mcp__ralphx__*"` to the `tools` list AND include `mcpServers`
+❌ `"mcp__ralphx__*"` wildcard in `tools` does NOT work for Task-spawned agents — wildcard is treated as a literal string
+✅ Task-spawned: list explicit names (`"mcp__ralphx__get_session_plan"` etc.) AND include `mcpServers`
+✅ Backend-spawned: wildcard `"mcp__ralphx__*"` works (Rust `create_mcp_config()` handles expansion)
 
 ```yaml
-# ✅ Correct — mcpServers + MCP wildcard in tools
+# ✅ Correct — Task-spawned agent: explicit MCP tool names required (wildcard fails silently)
 ---
-name: my-agent
+name: my-task-agent
+tools:
+  - Read
+  - Grep
+  - "mcp__ralphx__get_session_plan"
+  - "mcp__ralphx__get_artifact"
+  - "mcp__ralphx__create_team_artifact"
+  - "mcp__ralphx__search_memories"
+  # ... list ALL needed tools explicitly
+mcpServers:
+  - ralphx:
+      type: stdio
+      command: node
+      args:
+        - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
+        - "--agent-type"
+        - "my-task-agent"
+---
+
+# ✅ Correct — Backend-spawned agent: wildcard works (Rust backend handles expansion via --allowed-tools)
+---
+name: my-backend-agent
 tools:
   - Read
   - Grep
@@ -201,7 +266,7 @@ mcpServers:
       args:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
-        - "my-agent"
+        - "my-backend-agent"
 ---
 
 # ❌ Wrong — allowedTools is not a valid frontmatter field (silently ignored)
