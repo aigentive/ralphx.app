@@ -97,6 +97,7 @@ fn test_team_constraints_defaults() {
     assert!(tc.budget_limit.is_none());
     assert!(tc.allowed_tools.is_empty());
     assert!(tc.presets.is_empty());
+    assert!(tc.auto_approve.is_none());
 }
 
 #[test]
@@ -844,6 +845,7 @@ fn test_validate_child_team_config_all_fields_capped() {
         presets: vec!["ralphx-coder".to_string(), "ralphx-reviewer".to_string()],
         timeout_minutes: 60,
         budget_limit: Some(100.0),
+        auto_approve: Some(true),
     };
     let ceiling = TeamConstraints {
         max_teammates: 3,
@@ -854,6 +856,7 @@ fn test_validate_child_team_config_all_fields_capped() {
         presets: vec!["ralphx-coder".to_string()],
         timeout_minutes: 30,
         budget_limit: Some(25.0),
+        auto_approve: Some(false),
     };
     let capped = validate_child_team_config(&resolved, &ceiling);
 
@@ -866,6 +869,8 @@ fn test_validate_child_team_config_all_fields_capped() {
     assert_eq!(capped.presets, vec!["ralphx-coder"]);
     assert_eq!(capped.timeout_minutes, 30);
     assert_eq!(capped.budget_limit, Some(25.0));
+    // auto_approve is inherited from ceiling (parent controls)
+    assert_eq!(capped.auto_approve, Some(false));
 }
 
 #[test]
@@ -976,6 +981,108 @@ team_constraints:
         resolve_process_agent(&config.process_mapping, "execution", "default"),
         Some("ralphx-worker".to_string())
     );
+}
+
+// ── auto_approve field tests ─────────────────────────────────────
+
+#[test]
+fn test_auto_approve_default_is_none() {
+    let tc = TeamConstraints::default();
+    assert!(tc.auto_approve.is_none());
+}
+
+#[test]
+fn test_auto_approve_merge_defaults_false_no_override_gives_false() {
+    // _defaults has auto_approve=false, no process-specific override → false
+    let defaults = TeamConstraints {
+        auto_approve: Some(false),
+        ..TeamConstraints::default()
+    };
+    let specific = TeamConstraints {
+        auto_approve: None,
+        ..TeamConstraints::default()
+    };
+    let merged = merge_constraints(&defaults, &specific);
+    assert_eq!(merged.auto_approve, Some(false));
+}
+
+#[test]
+fn test_auto_approve_merge_both_none_defaults_to_true() {
+    // Neither specific nor defaults has auto_approve → unwrap_or(true)
+    let defaults = TeamConstraints {
+        auto_approve: None,
+        ..TeamConstraints::default()
+    };
+    let specific = TeamConstraints {
+        auto_approve: None,
+        ..TeamConstraints::default()
+    };
+    let merged = merge_constraints(&defaults, &specific);
+    assert_eq!(merged.auto_approve, Some(true));
+}
+
+#[test]
+fn test_auto_approve_merge_specific_overrides_defaults() {
+    // _defaults=false, specific=true → specific wins
+    let defaults = TeamConstraints {
+        auto_approve: Some(false),
+        ..TeamConstraints::default()
+    };
+    let specific = TeamConstraints {
+        auto_approve: Some(true),
+        ..TeamConstraints::default()
+    };
+    let merged = merge_constraints(&defaults, &specific);
+    assert_eq!(merged.auto_approve, Some(true));
+}
+
+#[test]
+fn test_auto_approve_yaml_deserialization_true() {
+    let yaml = "auto_approve: true\n";
+    let tc: TeamConstraints = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(tc.auto_approve, Some(true));
+}
+
+#[test]
+fn test_auto_approve_yaml_deserialization_false() {
+    let yaml = "auto_approve: false\n";
+    let tc: TeamConstraints = serde_yaml::from_str(yaml).unwrap();
+    assert_eq!(tc.auto_approve, Some(false));
+}
+
+#[test]
+fn test_auto_approve_yaml_absent_gives_none() {
+    let yaml = "max_teammates: 3\n";
+    let tc: TeamConstraints = serde_yaml::from_str(yaml).unwrap();
+    assert!(tc.auto_approve.is_none());
+}
+
+#[test]
+fn test_auto_approve_child_inherits_ceiling() {
+    let resolved = TeamConstraints {
+        auto_approve: Some(true),
+        ..TeamConstraints::default()
+    };
+    let ceiling = TeamConstraints {
+        auto_approve: Some(false),
+        ..TeamConstraints::default()
+    };
+    let capped = validate_child_team_config(&resolved, &ceiling);
+    assert_eq!(capped.auto_approve, Some(false));
+}
+
+#[test]
+fn test_auto_approve_child_ceiling_none_gives_none() {
+    let resolved = TeamConstraints {
+        auto_approve: Some(true),
+        ..TeamConstraints::default()
+    };
+    let ceiling = TeamConstraints {
+        auto_approve: None,
+        ..TeamConstraints::default()
+    };
+    let capped = validate_child_team_config(&resolved, &ceiling);
+    assert_eq!(capped.auto_approve, None);
 }
 
 // ── Test helpers ────────────────────────────────────────────────

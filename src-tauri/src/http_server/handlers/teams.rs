@@ -140,30 +140,76 @@ pub async fn request_team_plan_register(
     // Register watch channel AFTER storing (before emitting to avoid race)
     state.team_tracker.register_plan_channel(&plan_id).await;
 
-    // Emit event for frontend to show approval UI
-    if let Some(app_handle) = &state.app_state.app_handle {
-        let emit_result = app_handle.emit(
-            "team:plan_requested",
-            serde_json::json!({
-                "plan_id": plan_id,
-                "context_type": req.context_type,
-                "context_id": req.context_id,
-                "process": req.process,
-                "teammates": req.teammates,
-                "validated": true,
-                "created_at": Utc::now().to_rfc3339(),
-            }),
-        );
-        info!(plan_id = %plan_id, emit_ok = emit_result.is_ok(), "Emitted team:plan_requested event");
-    } else {
-        warn!("No app_handle available — team:plan_requested event NOT emitted");
-    }
+    let auto_approve = constraints.auto_approve.unwrap_or(true);
 
-    Ok(Json(TeamPlanRegisterResponse {
-        success: true,
-        plan_id,
-        message: "Team plan submitted for approval".to_string(),
-    }))
+    if auto_approve {
+        // Auto-approve: take the pending plan and spawn teammates immediately.
+        // Channel cleanup on failure is handled by execute_team_spawn's internal rollback.
+        let plan = state
+            .team_tracker
+            .take_pending_plan(&plan_id)
+            .await
+            .ok_or((
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Failed to retrieve pending plan after storage".to_string(),
+            ))?;
+
+        match execute_team_spawn(&state, plan, &plan_id).await {
+            Ok(spawn_result) => {
+                if let Some(app_handle) = &state.app_state.app_handle {
+                    app_handle
+                        .emit(
+                            "team:plan_auto_approved",
+                            serde_json::json!({
+                                "plan_id": plan_id,
+                                "context_type": req.context_type,
+                                "context_id": req.context_id,
+                                "process": req.process,
+                                "team_name": spawn_result.team_name,
+                                "teammates_spawned": spawn_result.spawned_teammates,
+                                "message": spawn_result.message,
+                            }),
+                        )
+                        .ok();
+                    info!(plan_id = %plan_id, "Emitted team:plan_auto_approved event");
+                }
+                Ok(Json(TeamPlanRegisterResponse {
+                    success: true,
+                    plan_id: plan_id.clone(),
+                    message: format!("Plan auto-approved: {}", spawn_result.message),
+                }))
+            }
+            Err(e) => {
+                // Channel already cleaned up by execute_team_spawn's internal rollback
+                Err(e)
+            }
+        }
+    } else {
+        // Manual flow: emit team:plan_requested for frontend approval dialog
+        if let Some(app_handle) = &state.app_state.app_handle {
+            let emit_result = app_handle.emit(
+                "team:plan_requested",
+                serde_json::json!({
+                    "plan_id": plan_id,
+                    "context_type": req.context_type,
+                    "context_id": req.context_id,
+                    "process": req.process,
+                    "teammates": req.teammates,
+                    "validated": true,
+                    "created_at": Utc::now().to_rfc3339(),
+                }),
+            );
+            info!(plan_id = %plan_id, emit_ok = emit_result.is_ok(), "Emitted team:plan_requested event");
+        } else {
+            warn!("No app_handle available — team:plan_requested event NOT emitted");
+        }
+
+        Ok(Json(TeamPlanRegisterResponse {
+            success: true,
+            plan_id,
+            message: "Team plan submitted for approval".to_string(),
+        }))
+    }
 }
 
 // ============================================================================
@@ -313,20 +359,11 @@ pub async fn get_pending_plan(
 // POST /api/team/plan/approve — Approve a team plan and batch-spawn teammates
 // ============================================================================
 
-/// Approve a validated team plan and spawn all teammates at once.
+/// Thin wrapper: validates the channel is still alive, takes the pending plan,
+/// and delegates all spawn logic to `execute_team_spawn`.
 ///
-/// This is the SINGLE entry point for teammate CLI process creation. After the
-/// user approves the plan in the UI, this handler:
-///
-/// 1. Looks up the pending plan by plan_id
-/// 2. Creates the team in TeamService (DB + events)
-/// 3. For each teammate: generate name/color, register in DB, spawn CLI process,
-///    start stdout stream processing, register process handle
-/// 4. Signals the blocking `request_team_plan` handler with spawn results
-/// 5. Returns the list of spawned teammates
-///
-/// The lead agent's `Task` tool creates in-process subagents within its own Claude
-/// session, but these separate CLI processes are what the Tauri frontend tracks.
+/// The approve-at-timeout guard is manual-path-only — auto-approve runs within
+/// Phase 1 where the channel was just registered and cannot be stale.
 pub async fn approve_team_plan(
     State(state): State<HttpServerState>,
     Json(req): Json<ApproveTeamPlanRequest>,
@@ -362,14 +399,54 @@ pub async fn approve_team_plan(
             )
         })?;
 
-    // 2. Create team (or find existing) — via TeamService for DB persistence + events
+    let result = execute_team_spawn(&state, plan, &req.plan_id).await?;
+    Ok(Json(ApproveTeamPlanResponse {
+        success: result.spawned_count > 0,
+        team_name: result.team_name,
+        teammates_spawned: result.spawned_teammates,
+        message: result.message,
+    }))
+}
+
+// ============================================================================
+// Private: TeamSpawnResult + execute_team_spawn — shared spawn logic
+// ============================================================================
+
+/// Result returned by `execute_team_spawn` — consumed by approve callers to
+/// build their HTTP responses.
+struct TeamSpawnResult {
+    team_name: String,
+    spawned_teammates: Vec<SpawnedTeammateInfo>,
+    spawned_count: usize,
+    message: String,
+}
+
+/// Shared spawn logic — called by both auto-approve and manual approve paths.
+///
+/// Receives an already-taken `PendingTeamPlan` (removed from the tracker) and
+/// executes team creation, working directory resolution, the full spawn loop,
+/// rollback on partial failure, and watch channel resolution.
+///
+/// Channel lifecycle:
+/// - Success: resolves the watch channel (does NOT remove it — Phase 2 does that)
+/// - Failure/rollback: removes the channel so Phase 2 gets a fast 404 instead of
+///   hanging for 840s
+///
+/// Context fields (`context_type`, `context_id`) are taken from `plan` — the stored
+/// plan is the single source of truth for both auto-approve and manual approve paths.
+async fn execute_team_spawn(
+    state: &HttpServerState,
+    plan: PendingTeamPlan,
+    plan_id: &str,
+) -> Result<TeamSpawnResult, (StatusCode, String)> {
+    // 1. Create team (or find existing) — via TeamService for DB persistence + events
     // team_name comes from the lead agent's TeamCreate call (required field).
     let team_name = plan.team_name.clone();
     let team_exists = state.team_service.team_exists(&team_name).await;
     if !team_exists {
         state
             .team_service
-            .create_team(&team_name, &req.context_id, &req.context_type)
+            .create_team(&team_name, &plan.context_id, &plan.context_type)
             .await
             .map_err(|e| {
                 error!(error = %e, "Failed to create team");
@@ -377,26 +454,22 @@ pub async fn approve_team_plan(
             })?;
     }
 
-    // 3. Resolve the working directory (worktree-aware for task contexts)
+    // 2. Resolve the working directory (worktree-aware for task contexts)
     let working_dir =
-        resolve_teammate_working_dir(&state, &req.context_type, &req.context_id).await;
+        resolve_teammate_working_dir(state, &plan.context_type, &plan.context_id).await;
     info!(
-        plan_id = %req.plan_id,
-        context_type = %req.context_type,
-        context_id = %req.context_id,
+        plan_id = %plan_id,
+        context_type = %plan.context_type,
+        context_id = %plan.context_id,
         working_dir = %working_dir.display(),
         "Resolved teammate working directory"
     );
 
-    // 3b. Resolve project ID for RALPHX_PROJECT_ID env var on teammates
-    let project_id = resolve_teammate_project_id(
-        &state,
-        &req.context_type,
-        &req.context_id,
-    )
-    .await;
+    // 2b. Resolve project ID for RALPHX_PROJECT_ID env var on teammates
+    let project_id =
+        resolve_teammate_project_id(state, &plan.context_type, &plan.context_id).await;
 
-    // 4. Register, spawn, and stream each teammate as a separate CLI process.
+    // 3. Register, spawn, and stream each teammate as a separate CLI process.
     //    This is the ONLY place where teammate worker processes are created.
     //    The lead agent's Task tool creates in-process subagents within its own
     //    Claude session, but these separate CLI processes are what the frontend tracks.
@@ -404,8 +477,8 @@ pub async fn approve_team_plan(
     let mut spawn_error: Option<String> = None;
 
     'spawn_loop: for pending in &plan.teammates {
-        let teammate_name = generate_unique_teammate_name(&state, &team_name, &pending.role).await;
-        let teammate_color = assign_teammate_color(&state, &team_name).await;
+        let teammate_name = generate_unique_teammate_name(state, &team_name, &pending.role).await;
+        let teammate_color = assign_teammate_color(state, &team_name).await;
 
         // Register teammate in DB via TeamService (persistence + events)
         let _ = state
@@ -440,22 +513,22 @@ pub async fn approve_team_plan(
             sid
         } else {
             source = "context_id_fallback";
-            req.context_id.clone()
+            plan.context_id.clone()
         };
 
         tracing::info!(
             parent_session_id = %parent_session_id,
             source = %source,
             lead_session_id_from_mcp = ?plan.lead_session_id,
-            context_id = %req.context_id,
+            context_id = %plan.context_id,
             team = %team_name,
             "[TEAM_SPAWN] Resolved parent_session_id for teammate (plan flow)"
         );
 
         // Build RalphX session context (separate from parent_session_id)
         let teammate_context = TeammateContext {
-            context_id: req.context_id.clone(),
-            context_type: req.context_type.clone(),
+            context_id: plan.context_id.clone(),
+            context_type: plan.context_type.clone(),
             project_id: project_id.clone(),
         };
 
@@ -491,7 +564,7 @@ pub async fn approve_team_plan(
                     teammate = %teammate_name,
                     team = %team_name,
                     pid = ?spawn_result.child.id(),
-                    "Teammate worker process spawned in approve_team_plan"
+                    "Teammate worker process spawned in execute_team_spawn"
                 );
 
                 let child_pid = spawn_result.child.id();
@@ -563,14 +636,16 @@ pub async fn approve_team_plan(
                             exit_rx,
                             team_name.clone(),
                             teammate_name.clone(),
-                            req.context_type.clone(),
-                            req.context_id.clone(),
+                            plan.context_type.clone(),
+                            plan.context_id.clone(),
                             app_handle.clone(),
                             std::sync::Arc::new(state.team_tracker.clone()),
                             Some(state.team_service.clone()),
                             Some(std::sync::Arc::clone(&state.app_state.chat_conversation_repo)),
                             Some(std::sync::Arc::clone(&state.app_state.chat_message_repo)),
-                            Some(std::sync::Arc::clone(&state.app_state.interactive_process_registry)),
+                            Some(std::sync::Arc::clone(
+                                &state.app_state.interactive_process_registry,
+                            )),
                             Some(std::sync::Arc::clone(&state.execution_state)),
                         ),
                     ),
@@ -638,9 +713,10 @@ pub async fn approve_team_plan(
     }
 
     // Partial spawn rollback: if any spawn failed, kill already-spawned teammates.
+    // Also removes the watch channel so Phase 2 gets a fast 404 instead of hanging.
     if let Some(err) = spawn_error {
         error!(
-            plan_id = %req.plan_id,
+            plan_id = %plan_id,
             team = %team_name,
             already_spawned = spawned_teammates.len(),
             "Rolling back partial spawn due to failure"
@@ -648,7 +724,7 @@ pub async fn approve_team_plan(
         for t in &spawned_teammates {
             let _ = state.team_service.stop_teammate(&team_name, &t.name).await;
         }
-        state.team_tracker.remove_plan_channel(&req.plan_id).await;
+        state.team_tracker.remove_plan_channel(plan_id).await;
         return Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("Teammate spawn failed: {err}"),
@@ -659,14 +735,16 @@ pub async fn approve_team_plan(
     let total_count = plan.teammates.len();
 
     info!(
-        plan_id = %req.plan_id,
+        plan_id = %plan_id,
         team = %team_name,
         spawned = spawned_count,
         total = total_count,
         "Team plan approved — teammates spawned as CLI worker processes"
     );
 
-    // Signal the blocking request_team_plan handler with the spawn results
+    // Signal the blocking request_team_plan handler with the spawn results.
+    // Success path: resolve the channel but do NOT remove it — Phase 2 removes it
+    // after receiving the decision via `await_team_plan`.
     let decision_teammates: Vec<PlanDecisionTeammate> = spawned_teammates
         .iter()
         .map(|t| PlanDecisionTeammate {
@@ -677,31 +755,30 @@ pub async fn approve_team_plan(
         })
         .collect();
 
+    let message = format!(
+        "{}/{} teammates registered successfully",
+        spawned_count, total_count
+    );
+
     state
         .team_tracker
         .resolve_plan(
-            &req.plan_id,
+            plan_id,
             PlanDecision {
                 approved: spawned_count > 0,
                 team_name: Some(team_name.clone()),
                 teammates_spawned: decision_teammates,
-                message: format!(
-                    "{}/{} teammates registered successfully",
-                    spawned_count, total_count
-                ),
+                message: message.clone(),
             },
         )
         .await;
 
-    Ok(Json(ApproveTeamPlanResponse {
-        success: spawned_count > 0,
+    Ok(TeamSpawnResult {
         team_name,
-        teammates_spawned: spawned_teammates,
-        message: format!(
-            "{}/{} teammates registered successfully",
-            spawned_count, total_count
-        ),
-    }))
+        spawned_teammates,
+        spawned_count,
+        message,
+    })
 }
 
 // ============================================================================

@@ -15,6 +15,7 @@
  */
 
 import { useCallback, useEffect } from "react";
+import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import { useTeamStore } from "@/stores/teamStore";
 import { useChatStore } from "@/stores/chatStore";
@@ -32,6 +33,7 @@ import type {
   TeamMessagePayload,
   TeamCostUpdatePayload,
   TeamPlanRequestedPayload,
+  TeamPlanAutoApprovedPayload,
 } from "@/types/events";
 
 export function useTeamEvents(contextKey: string | null) {
@@ -147,8 +149,20 @@ export function useTeamEvents(contextKey: string | null) {
       }),
     );
 
+    // team:plan_auto_approved — backend auto-approved the plan; show info toast.
+    // Defensively clear any pending plan to prevent phantom approval dialog.
+    // Do NOT call setPendingPlan — team panel already appears via team:created + team:teammate_spawned.
+    unsubs.push(
+      bus.subscribe<TeamPlanAutoApprovedPayload>("team:plan_auto_approved", (payload) => {
+        if (matchKey(payload)) {
+          clearPendingPlan(contextKey);
+          toast.info(`Team plan auto-approved — ${payload.teammates_spawned.length} teammate${payload.teammates_spawned.length !== 1 ? "s" : ""} spawning`);
+        }
+      }),
+    );
+
     return () => unsubs.forEach((u) => u());
-  }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive, setPendingPlan, addTeammate, bumpArtifactVersion]);
+  }, [bus, contextKey, matchKey, createTeam, disbandTeam, setTeamActive, setPendingPlan, clearPendingPlan, addTeammate, bumpArtifactVersion]);
 
   // ── Effect 3: Mount-time hydration — restore pending plans on mount ───────
   // Handles app restarts or remounts where plan was pending before component mounted.
