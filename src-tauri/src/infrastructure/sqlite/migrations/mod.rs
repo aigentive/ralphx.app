@@ -95,6 +95,7 @@ mod v6_review_issues;
 mod v7_session_status_converted_to_accepted;
 mod v8_task_git_fields;
 mod v9_project_git_fields;
+mod v70_plan_branch_base_override;
 
 #[cfg(test)]
 mod tests;
@@ -202,7 +203,7 @@ mod v68_session_purpose_tests;
 mod v69_soft_delete_archived_at_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 69;
+pub const SCHEMA_VERSION: i32 = 70;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -561,6 +562,11 @@ const MIGRATIONS: &[Migration] = &[
         version: 69,
         name: "soft_delete_archived_at",
         migrate: v69_soft_delete_archived_at::migrate,
+    },
+    Migration {
+        version: 70,
+        name: "plan_branch_base_override",
+        migrate: v70_plan_branch_base_override::migrate,
     },
 ];
 

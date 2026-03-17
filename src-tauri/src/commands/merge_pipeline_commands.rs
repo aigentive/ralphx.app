@@ -93,7 +93,7 @@ fn resolve_merge_branches_from_cache(
             .iter()
             .find(|pb| pb.merge_task_id.as_ref() == Some(&task.id))
         {
-            return (pb.branch_name.clone(), base_branch);
+            return (pb.branch_name.clone(), pb.base_branch_override.clone().unwrap_or(base_branch));
         }
     }
 
@@ -313,6 +313,7 @@ mod tests {
             pr_push_status: Default::default(),
             merge_commit_sha: None,
             pr_draft: None,
+            base_branch_override: None,
         }
     }
 

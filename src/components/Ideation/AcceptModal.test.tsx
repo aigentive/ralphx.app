@@ -4,10 +4,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { AcceptModal } from "./AcceptModal";
+import { getGitBranches } from "@/api/projects";
 import type { TaskProposal, DependencyGraph } from "@/types/ideation";
+
+vi.mock("@/api/projects", () => ({
+  getGitBranches: vi.fn().mockResolvedValue(["main", "develop"]),
+}));
 
 const mockProposals: TaskProposal[] = [
   {
@@ -251,6 +256,103 @@ describe("AcceptModal", () => {
         expect.objectContaining({
           useFeatureBranch: true,
         })
+      );
+    });
+  });
+
+  describe("Base Branch Selector", () => {
+    it("degrades to free-text when get_git_branches rejects", async () => {
+      vi.mocked(getGitBranches).mockRejectedValueOnce(new Error("no git repo"));
+
+      render(
+        <AcceptModal
+          {...defaultProps}
+          defaultUseFeatureBranch={true}
+          workingDirectory="/some/path"
+          baseBranch="main"
+        />
+      );
+
+      // Wait for error state
+      await waitFor(() => {
+        expect(screen.getByTestId("branch-load-error")).toBeInTheDocument();
+      });
+
+      // Input should still be visible and editable with the default value
+      const input = screen.getByTestId("base-branch-input");
+      expect(input).toBeInTheDocument();
+      expect(input).toHaveValue("main");
+    });
+
+    it("shows branch selector only when feature branch is checked", async () => {
+      render(
+        <AcceptModal
+          {...defaultProps}
+          defaultUseFeatureBranch={false}
+          workingDirectory="/some/path"
+          baseBranch="develop"
+        />
+      );
+
+      // Branch input not visible when unchecked
+      expect(screen.queryByTestId("base-branch-input")).not.toBeInTheDocument();
+
+      // Check the checkbox
+      const checkbox = screen.getByRole("checkbox", { name: /use feature branch/i });
+      await userEvent.click(checkbox);
+
+      // Now branch input is visible
+      expect(screen.getByTestId("base-branch-input")).toBeInTheDocument();
+    });
+
+    it("sends baseBranchOverride in accept options when feature branch enabled", async () => {
+      vi.mocked(getGitBranches).mockResolvedValueOnce(["main", "develop", "feature/test"]);
+
+      const onAccept = vi.fn();
+      render(
+        <AcceptModal
+          {...defaultProps}
+          defaultUseFeatureBranch={true}
+          workingDirectory="/some/path"
+          baseBranch="main"
+          onAccept={onAccept}
+        />
+      );
+
+      // Change branch to develop
+      const input = screen.getByTestId("base-branch-input");
+      await userEvent.clear(input);
+      await userEvent.type(input, "develop");
+
+      // Click accept
+      const acceptButton = screen.getByRole("button", { name: /accept plan/i });
+      await userEvent.click(acceptButton);
+
+      expect(onAccept).toHaveBeenCalledWith(
+        expect.objectContaining({
+          baseBranchOverride: "develop",
+          useFeatureBranch: true,
+        })
+      );
+    });
+
+    it("does not send baseBranchOverride when feature branch unchecked", async () => {
+      const onAccept = vi.fn();
+      render(
+        <AcceptModal
+          {...defaultProps}
+          defaultUseFeatureBranch={false}
+          workingDirectory="/some/path"
+          baseBranch="main"
+          onAccept={onAccept}
+        />
+      );
+
+      const acceptButton = screen.getByRole("button", { name: /accept plan/i });
+      await userEvent.click(acceptButton);
+
+      expect(onAccept).toHaveBeenCalledWith(
+        expect.not.objectContaining({ baseBranchOverride: expect.anything() })
       );
     });
   });

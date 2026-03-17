@@ -64,6 +64,8 @@ export interface PlanGroupHeaderProps {
   onNavigateToSession?: () => void;
   /** Optional: Navigate to a specific task (merge task link) */
   onNavigateToTask?: (taskId: string) => void;
+  /** Working directory for fetching git branches in settings */
+  workingDirectory?: string;
 }
 
 // ============================================================================
@@ -203,6 +205,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   onToggleCollapse,
   onNavigateToSession,
   onNavigateToTask,
+  workingDirectory,
 }: PlanGroupHeaderProps) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
@@ -385,6 +388,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
                     setSettingsOpen(false);
                     onNavigateToTask?.(taskId);
                   }}
+                  {...(workingDirectory !== undefined && { workingDirectory })}
                 />
               </PopoverContent>
             </Popover>

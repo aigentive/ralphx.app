@@ -1424,6 +1424,7 @@ async fn test_external_apply_proposals_session_not_found() {
         proposal_ids: vec![],
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = external_apply_proposals(State(state), unrestricted_scope(), Json(req)).await;
@@ -1443,6 +1444,7 @@ async fn test_external_apply_proposals_project_scope_enforced() {
         proposal_ids: vec![],
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = external_apply_proposals(
@@ -1470,6 +1472,7 @@ async fn test_external_apply_proposals_unrestricted_scope_allowed() {
         proposal_ids: vec![],
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = external_apply_proposals(State(state), unrestricted_scope(), Json(req)).await;
@@ -1487,6 +1490,7 @@ async fn test_external_apply_proposals_correct_scope_allowed() {
         proposal_ids: vec![],
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = external_apply_proposals(
@@ -1530,6 +1534,7 @@ async fn test_external_apply_proposals_creates_tasks_from_proposals() {
         ],
         target_column: "auto".to_string(),
         use_feature_branch: Some(false), // no feature branch for test simplicity
+        base_branch_override: None,
     };
 
     let result = external_apply_proposals(State(state), unrestricted_scope(), Json(req)).await;
