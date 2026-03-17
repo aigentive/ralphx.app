@@ -1000,7 +1000,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                         ) \
                       THEN 1 ELSE 0 END), 0) as done \
                     FROM ideation_sessions s \
-                    WHERE s.project_id = ?1",
+                    WHERE s.project_id = ?1 \
+                      AND (s.session_purpose IS NULL OR s.session_purpose = 'general')",
                     [&project_id],
                     |row| {
                         let drafts: u32 = row.get::<_, i64>(0)? as u32;
@@ -1036,22 +1037,28 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
         self.db
             .run(move |conn| {
                 // Validate group and build WHERE clause
+                // Note: all variants include session_purpose filter to exclude verification child sessions
                 let where_clause = match group.as_str() {
-                    "drafts" => "s.status = 'active' AND s.project_id = ?1",
-                    "archived" => "s.status = 'archived' AND s.project_id = ?1",
+                    "drafts" => "s.status = 'active' AND s.project_id = ?1 \
+                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general')",
+                    "archived" => "s.status = 'archived' AND s.project_id = ?1 \
+                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general')",
                     "in_progress" => {
                         "s.status = 'accepted' AND s.project_id = ?1 \
+                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general') \
                          AND EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
                            AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped'))"
                     }
                     "done" => {
                         "s.status = 'accepted' AND s.project_id = ?1 \
+                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general') \
                          AND EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id) \
                          AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
                            AND t.internal_status NOT IN ('approved','merged','failed','cancelled','stopped'))"
                     }
                     "accepted" => {
                         "s.status = 'accepted' AND s.project_id = ?1 \
+                         AND (s.session_purpose IS NULL OR s.session_purpose = 'general') \
                          AND NOT EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id \
                            AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')) \
                          AND NOT (EXISTS (SELECT 1 FROM tasks t WHERE t.ideation_session_id = s.id) \
@@ -1093,7 +1100,9 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                            AND t.internal_status NOT IN ('backlog','ready','blocked','approved','merged','failed','cancelled','stopped')) as active_count, \
                          (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id \
                            AND t.internal_status IN ('approved','merged','failed','cancelled','stopped')) as done_count, \
-                         (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id) as total_count \
+                         (SELECT COUNT(*) FROM tasks t WHERE t.ideation_session_id = s.id) as total_count, \
+                         s.session_purpose, \
+                         (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count \
                          FROM ideation_sessions s \
                          LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
                          WHERE {} \
@@ -1109,7 +1118,9 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                          s.verification_status, s.verification_in_progress, s.verification_metadata, \
                          s.verification_generation, s.source_project_id, s.source_session_id, \
                          parent.title as parent_session_title, \
-                         NULL as active_count, NULL as done_count, NULL as total_count \
+                         NULL as active_count, NULL as done_count, NULL as total_count, \
+                         s.session_purpose, \
+                         (SELECT COUNT(*) FROM ideation_sessions vc WHERE vc.parent_session_id = s.id AND vc.session_purpose = 'verification') as verification_child_count \
                          FROM ideation_sessions s \
                          LEFT JOIN ideation_sessions parent ON s.parent_session_id = parent.id \
                          WHERE {} \
@@ -1129,6 +1140,8 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                             let active_count: Option<i64> = row.get(22)?;
                             let done_count: Option<i64> = row.get(23)?;
                             let total_count: Option<i64> = row.get(24)?;
+                            // position 25: s.session_purpose (read by name in from_row, not here)
+                            let verification_child_count: i64 = row.get(26)?;
 
                             let progress = if let (Some(active), Some(done_ct), Some(total)) =
                                 (active_count, done_count, total_count)
@@ -1151,6 +1164,7 @@ impl IdeationSessionRepository for SqliteIdeationSessionRepository {
                                 session,
                                 progress,
                                 parent_session_title,
+                                verification_child_count: verification_child_count as u32,
                             })
                         },
                     )?

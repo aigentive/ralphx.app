@@ -558,8 +558,8 @@ pub async fn spawn_session_namer(
     Ok(())
 }
 
-/// Get child sessions for a parent session, filtered by purpose.
-/// Only supports purpose="verification". Returns active (non-archived) children.
+/// Get child sessions for a parent session, with optional purpose filter.
+/// Returns all non-archived children. When purpose is provided, filters by session_purpose.
 #[tauri::command]
 pub async fn get_child_sessions(
     session_id: String,
@@ -567,21 +567,26 @@ pub async fn get_child_sessions(
     state: State<'_, AppState>,
 ) -> Result<Vec<IdeationSessionResponse>, String> {
     let parent_id = IdeationSessionId::from_string(session_id);
-    match purpose.as_deref() {
-        Some("verification") => state
-            .ideation_session_repo
-            .get_verification_children(&parent_id)
-            .await
-            .map(|sessions| {
-                sessions
-                    .into_iter()
-                    .map(IdeationSessionResponse::from)
-                    .collect()
-            })
-            .map_err(|e| e.to_string()),
-        Some(p) => Err(format!("Unsupported purpose filter: '{}'", p)),
-        None => Err("purpose is required (supported: \"verification\")".to_string()),
-    }
+    state
+        .ideation_session_repo
+        .get_children(&parent_id)
+        .await
+        .map(|mut sessions| {
+            // Exclude archived children
+            sessions.retain(|s| {
+                use crate::domain::entities::ideation::IdeationSessionStatus;
+                s.status != IdeationSessionStatus::Archived
+            });
+            // Optionally filter by purpose
+            if let Some(ref p) = purpose {
+                sessions.retain(|s| &s.session_purpose.to_string() == p);
+            }
+            sessions
+                .into_iter()
+                .map(IdeationSessionResponse::from)
+                .collect()
+        })
+        .map_err(|e| e.to_string())
 }
 
 /// Get group counts for all 5 session display groups for a project

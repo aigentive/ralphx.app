@@ -104,13 +104,17 @@ function MetadataLine({ group, plan, progress, isIdeationActive, isIdeationWaiti
   if (parentSessionTitle) {
     return (
       <div
-        className="flex items-center gap-1 text-[10px]"
+        className="flex flex-col gap-0.5 text-[10px]"
         style={{ color: "hsl(220 10% 45%)" }}
       >
-        {isIdeationActive && <span style={{ color: "hsl(14 100% 60%)" }}>Agent working... • </span>}
-        {isIdeationWaiting && <span>Awaiting input • </span>}
-        <CornerDownRight className="w-2.5 h-2.5" />
-        <span className="truncate">Follow-up of: {parentSessionTitle}</span>
+        {isIdeationActive && (
+          <span style={{ color: "hsl(14 100% 60%)" }}>Agent working...</span>
+        )}
+        {isIdeationWaiting && <span>Awaiting input</span>}
+        <div className="flex items-center gap-1">
+          <CornerDownRight className="w-2.5 h-2.5" />
+          <span className="truncate">Follow-up of: {parentSessionTitle}</span>
+        </div>
       </div>
     );
   }

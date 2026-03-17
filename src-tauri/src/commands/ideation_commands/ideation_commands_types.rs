@@ -166,6 +166,8 @@ pub struct IdeationSessionWithProgressResponse {
     pub progress: Option<SessionProgressResponse>,
     /// Parent session title resolved server-side via LEFT JOIN
     pub parent_session_title: Option<String>,
+    /// Count of verification child sessions (session_purpose = 'verification') for this session
+    pub verification_child_count: u32,
 }
 
 impl From<crate::domain::repositories::ideation_session_repository::IdeationSessionWithProgress>
@@ -184,6 +186,7 @@ impl From<crate::domain::repositories::ideation_session_repository::IdeationSess
             session: IdeationSessionResponse::from(item.session),
             progress,
             parent_session_title: item.parent_session_title,
+            verification_child_count: item.verification_child_count,
         }
     }
 }

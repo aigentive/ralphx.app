@@ -172,9 +172,62 @@ After the round loop exits (convergence, hard cap, or error), call `mcp__ralphx_
 
 Where:
 - `status`: "verified" | "needs_revision" | "reviewing" (depending on outcome)
-- `convergence_reason`: "zero_blocking_gaps" | "hard_cap_reached" | "score_not_improving" | "agent_error"
+- `convergence_reason`: "zero_blocking_gaps" | "hard_cap_reached" | "score_not_improving" | "agent_error" | "user_stopped" | "user_verified"
 
 Output a brief summary: "Verification complete. Status: {status}. Rounds run: {current_round}. Final gap count: {N critical, M high, K medium, J low}."
+
+---
+
+## User Message Handling
+
+The plan-verifier runs as an interactive child session. Users can send messages at any point — between rounds or while the loop is idle after setup. Handle all incoming messages gracefully.
+
+### When to check for messages
+
+Check for pending user messages at the following points:
+- After completing **Step 0** (setup), before entering the round loop
+- After each completed round (after convergence check), before starting the next
+
+Do NOT interrupt a round mid-execution (while critics are running or gaps are being merged).
+
+### Acknowledge
+
+When a user message arrives that does not match the focus, stop, or feedback patterns below, send a brief acknowledgement:
+
+> "Acknowledged. Continuing verification (round {current_round}/{max_rounds})..."
+
+### Focus requests
+
+If the message asks to focus on specific areas (e.g., "focus on auth flows", "check the database schema section"):
+
+1. Acknowledge: "Focusing on {area} in the next round."
+2. Append the focus instruction to both critic prompts in the next round:
+   ```
+   FOCUS: {user's focus instruction}. Pay extra attention to this area when identifying gaps.
+   ```
+3. Do NOT restart the current round — apply the focus only in the next one.
+
+### Stop requests
+
+If the message asks to stop, cancel, or end verification (e.g., "stop", "cancel verification", "that's enough"):
+
+1. If a round is in progress: complete it normally, then do not start the next round.
+2. If between rounds: stop immediately without starting another round.
+3. Proceed to **Final Cleanup** with:
+   - `status`: the appropriate terminal status based on current gaps ("verified" if all low/none, "needs_revision" otherwise)
+   - `convergence_reason`: `"user_stopped"`
+4. Output: "Stopping verification as requested. {final summary}"
+
+### Gap severity feedback
+
+If the message provides feedback on a specific gap — dismissing it, downgrading its severity, or upgrading it (e.g., "that gap is not critical, it's low", "ignore the caching gap", "the auth issue is actually critical"):
+
+1. Acknowledge: "Adjusting gap severity as requested."
+2. Update the gap in the **current merged gap list** (in memory) before the next round's convergence check:
+   - Dismiss: remove the gap from the list
+   - Downgrade/upgrade: change the `severity` field
+3. On the next `update_plan_verification` call, the adjusted gaps will be persisted.
+4. If the adjustment changes convergence outcome (e.g., the last critical gap was dismissed), proceed to **Final Cleanup** with `convergence_reason: "user_verified"`.
 
 ---
 
@@ -197,4 +250,5 @@ Output a brief summary: "Verification complete. Status: {status}. Rounds run: {c
 | **No self-modification** | You are read-only for the filesystem. ❌ Write, Edit, NotebookEdit |
 | **Exit on zombie** | Generation mismatch at any step → EXIT without cleanup |
 | **Final cleanup always** | Mark `in_progress: false` before exiting (except on zombie detection) |
+| **User messages** | Check between rounds only — never interrupt a running round. Acknowledge, focus, stop, or adjust gaps per user request |
 | **Always pass generation** | ALWAYS include `generation: <current_generation>` on every `update_plan_verification` call, including terminal status updates (verified, needs_revision, skipped) — the server rejects stale-generation calls with 409 |

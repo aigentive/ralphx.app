@@ -52,6 +52,7 @@ export type { PlanVerificationStatusChangedEvent, PlanVerificationStatusChangedP
 export function useVerificationEvents() {
   const bus = useEventBus();
   const updateSession = useIdeationStore((s) => s.updateSession);
+  const clearVerificationNotification = useIdeationStore((s) => s.clearVerificationNotification);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -99,7 +100,11 @@ export function useVerificationEvents() {
             toast.success("Plan verified — no critical gaps remain.", { duration: 5000 });
           } else if (status === "needs_revision") {
             toast.warning("Verification complete — gaps found that need attention.", { duration: 6000 });
+          } else if (status === "skipped") {
+            toast.info("Verification skipped.");
           }
+          // Clear verification notification banner on any terminal state
+          clearVerificationNotification(sessionId);
         }
 
         // Async portion wrapped in IIFE — bus.subscribe callbacks must be synchronous
@@ -163,11 +168,15 @@ export function useVerificationEvents() {
             // cancelQueries above also cancels user-initiated refetches (window refocus).
             // Acceptable: Tauri event is always more recent than in-flight HTTP response
             // (backend emits event AFTER DB write completes).
+            // Invalidate child sessions so history picker and VerificationPanel stay fresh.
+            queryClient.invalidateQueries({ queryKey: ["childSessions", sessionId] });
           } else {
             // No fast path data — must invalidate to trigger refetch.
             // This branch currently never fires (all emission points include full data)
             // but serves as safety net for future emission points.
             queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
+            // Invalidate child sessions (prefix match covers all purpose variants).
+            queryClient.invalidateQueries({ queryKey: ["childSessions", sessionId] });
           }
 
           // Always invalidate session queries (different data source, no race risk)
@@ -182,5 +191,5 @@ export function useVerificationEvents() {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, updateSession, queryClient]);
+  }, [bus, updateSession, clearVerificationNotification, queryClient]);
 }

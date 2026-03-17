@@ -48,6 +48,12 @@ interface IdeationState {
   isLoading: boolean;
   /** Error message, or null if no error */
   error: string | null;
+  /** Active tab per session (keyed by sessionId) */
+  activeIdeationTab: Record<string, 'plan' | 'verification' | 'proposals' | 'research'>;
+  /** Active verification child session ID per parent session (keyed by parent sessionId) */
+  activeVerificationChildId: Record<string, string | null>;
+  /** Pending verification notifications: parentSessionId → childSessionId */
+  verificationNotifications: Record<string, string>;
 }
 
 // ============================================================================
@@ -83,6 +89,16 @@ interface IdeationActions {
   setError: (error: string | null) => void;
   /** Clear error message */
   clearError: () => void;
+  /** Set the active tab for a session */
+  setActiveIdeationTab: (sessionId: string, tab: 'plan' | 'verification' | 'proposals' | 'research') => void;
+  /** Set the active verification child session ID for a parent session */
+  setActiveVerificationChildId: (sessionId: string, childId: string | null) => void;
+  /** Clear all tab-related state for a session (call on session unmount/archive) */
+  clearSessionTabState: (sessionId: string) => void;
+  /** Set a pending verification notification (parentSessionId → childSessionId) */
+  setVerificationNotification: (parentId: string, childId: string) => void;
+  /** Clear a pending verification notification (on terminal verification state or dismiss) */
+  clearVerificationNotification: (parentId: string) => void;
 }
 
 // ============================================================================
@@ -99,6 +115,9 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
     syncNotification: null,
     isLoading: false,
     error: null,
+    activeIdeationTab: {},
+    activeVerificationChildId: {},
+    verificationNotifications: {},
 
     // Actions
     setActiveSession: (sessionId) =>
@@ -246,6 +265,43 @@ export const useIdeationStore = create<IdeationState & IdeationActions>()(
       set((state) => {
         state.error = null;
       }),
+
+    setActiveIdeationTab: (sessionId, tab) =>
+      set((state) => {
+        state.activeIdeationTab[sessionId] = tab;
+        // LRU eviction: cap at MAX_CACHED_SESSIONS entries
+        const keys = Object.keys(state.activeIdeationTab);
+        if (keys.length > MAX_CACHED_SESSIONS) {
+          // Remove the oldest entry (first key, since we can't track access time easily)
+          const firstKey = keys[0];
+          if (firstKey && firstKey !== sessionId) {
+            delete state.activeIdeationTab[firstKey];
+            delete state.activeVerificationChildId[firstKey];
+          }
+        }
+      }),
+
+    setActiveVerificationChildId: (sessionId, childId) =>
+      set((state) => {
+        state.activeVerificationChildId[sessionId] = childId;
+      }),
+
+    clearSessionTabState: (sessionId) =>
+      set((state) => {
+        delete state.activeIdeationTab[sessionId];
+        delete state.activeVerificationChildId[sessionId];
+        delete state.verificationNotifications[sessionId];
+      }),
+
+    setVerificationNotification: (parentId, childId) =>
+      set((state) => {
+        state.verificationNotifications[parentId] = childId;
+      }),
+
+    clearVerificationNotification: (parentId) =>
+      set((state) => {
+        delete state.verificationNotifications[parentId];
+      }),
   }))
 );
 
@@ -281,3 +337,19 @@ export const selectSessionsByStatus =
   (status: IdeationSessionStatus) =>
   (state: IdeationState): IdeationSession[] =>
     Object.values(state.sessions).filter((s) => s.status === status);
+
+/**
+ * Select the effective chat session ID for a given parent session.
+ * Returns the verification child ID when verification tab is active, otherwise returns the parent session ID.
+ * @param sessionId - The parent session ID
+ * @returns Selector function returning the effective session ID for chat
+ */
+export const selectChatSessionId =
+  (sessionId: string) =>
+  (state: IdeationState & IdeationActions): string => {
+    const tab = state.activeIdeationTab[sessionId] ?? 'plan';
+    if (tab === 'verification') {
+      return state.activeVerificationChildId[sessionId] ?? sessionId;
+    }
+    return sessionId;
+  };

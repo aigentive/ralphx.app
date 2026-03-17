@@ -1906,6 +1906,102 @@ async fn test_reset_and_begin_reverify_sqlite_atomicity() {
     );
 }
 
+// ==================== SESSION PURPOSE FILTER TESTS ====================
+
+/// Regression guard: verification child sessions must be excluded from list_by_group results,
+/// verification_child_count must be correct, and existing column positions must not be corrupted.
+#[tokio::test]
+async fn test_list_by_group_excludes_verification_sessions_and_counts_children() {
+    use crate::domain::entities::ideation::SessionPurpose;
+
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/purpose");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+
+    // Create a regular (general) ideation session
+    let parent_session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .title("Parent General Session")
+        .build();
+    repo.create(parent_session.clone()).await.unwrap();
+
+    // Create a verification child session (should be excluded from list_by_group)
+    let verification_child = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .title("Verification Child")
+        .session_purpose(SessionPurpose::Verification)
+        .parent_session_id(parent_session.id.clone())
+        .build();
+    repo.create(verification_child.clone()).await.unwrap();
+
+    // List drafts group (active sessions)
+    let (sessions, total) = repo
+        .list_by_group(&project_id, "drafts", 0, 50)
+        .await
+        .unwrap();
+
+    // Verification session must be excluded
+    assert_eq!(total, 1, "Only 1 session should be visible (verification child excluded)");
+    assert_eq!(sessions.len(), 1);
+
+    let result = &sessions[0];
+
+    // Regression guard: title must survive column-index changes
+    assert_eq!(
+        result.session.title,
+        Some("Parent General Session".to_string()),
+        "parent_session_title must not be corrupted by new columns"
+    );
+
+    // verification_child_count must be 1 for the parent session
+    assert_eq!(
+        result.verification_child_count, 1,
+        "parent session should report 1 verification child"
+    );
+
+    // parent_session_title should be None (no parent for this session)
+    assert!(
+        result.parent_session_title.is_none(),
+        "parent_session_title should be None for a root session"
+    );
+}
+
+/// Regression guard: get_group_counts must exclude verification sessions from all counts.
+#[tokio::test]
+async fn test_get_group_counts_excludes_verification_sessions() {
+    use crate::domain::entities::ideation::SessionPurpose;
+
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test Project", "/test/counts");
+
+    let repo = SqliteIdeationSessionRepository::new(conn);
+
+    // Create 2 regular sessions
+    for i in 0..2u32 {
+        let session = IdeationSession::builder()
+            .project_id(project_id.clone())
+            .title(format!("General Session {i}"))
+            .build();
+        repo.create(session).await.unwrap();
+    }
+
+    // Create a verification session (must not be counted)
+    let verification_session = IdeationSession::builder()
+        .project_id(project_id.clone())
+        .title("Verification Session")
+        .session_purpose(SessionPurpose::Verification)
+        .build();
+    repo.create(verification_session).await.unwrap();
+
+    let counts = repo.get_group_counts(&project_id).await.unwrap();
+
+    // Only 2 general sessions should appear as drafts
+    assert_eq!(counts.drafts, 2, "Drafts count must exclude verification sessions");
+}
+
 // ==================== ARCHIVE CLEARS VERIFICATION_IN_PROGRESS TESTS ====================
 
 #[tokio::test]

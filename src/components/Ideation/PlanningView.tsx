@@ -8,17 +8,18 @@
  * - Clean, minimal aesthetic
  */
 
-import { useState, useCallback, useRef, useEffect, useLayoutEffect, useMemo } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import {
   MessageSquare,
   Archive,
   Loader2,
-  Upload,
   Sparkles,
   RotateCcw,
   RefreshCw,
   ArrowLeft,
+  CheckCircle,
+  AlertTriangle,
+  ShieldCheck,
 } from "lucide-react";
 import { useEventBus } from "@/providers/EventProvider";
 import { toast } from "sonner";
@@ -29,9 +30,6 @@ import type {
 import type { ApplyProposalsInput, ApplyProposalsResultResponse } from "@/api/ideation.types";
 import { Button } from "@/components/ui/button";
 import { ResizeHandle, CHAT_PANEL_DEFAULT_WIDTH, CHAT_PANEL_MIN_WIDTH } from "@/components/ui/ResizeHandle";
-import { PlanDisplay } from "./PlanDisplay";
-import type { TeamMetadata } from "./PlanDisplay";
-import { TeamResearchView } from "./TeamResearchView";
 import { getTeamArtifacts } from "@/api/team";
 import type { TeamArtifactSummary } from "@/api/team";
 import { useTeamStore } from "@/stores/teamStore";
@@ -40,30 +38,26 @@ import { useIdeationStore } from "@/stores/ideationStore";
 import { useProposalStore } from "@/stores/proposalStore";
 import { usePlanStore } from "@/stores/planStore";
 import { useProjectStore, selectActiveProject } from "@/stores/projectStore";
-import { useChatStore, selectAgentStatus } from "@/stores/chatStore";
 import { AcceptModal } from "./AcceptModal";
 import { IntegratedChatPanel } from "@/components/Chat/IntegratedChatPanel";
 import { ConversationEmptyState } from "./EmptyStates";
 import { animationStyles } from "./PlanningView.constants";
 import { PlanBrowser } from "./PlanBrowser";
 import { StartSessionPanel } from "./StartSessionPanel";
-import { ProposalsToolbar } from "./ProposalsToolbar";
-import { TieredProposalList } from "./TieredProposalList";
+import type { TeamMetadata } from "./PlanDisplay";
 import type { ProposalDetailEnrichment } from "./ProposalDetailSheet";
-import { ProactiveSyncNotificationBanner } from "./ProactiveSyncNotification";
-import { ProposalsEmptyState } from "./ProposalsEmptyState";
-import { AcceptedSessionBanner } from "./AcceptedSessionBanner";
 import { useIdeationHandlers } from "./useIdeationHandlers";
 import { useFileDrop } from "@/hooks/useFileDrop";
 import { useDependencyGraph } from "@/hooks/useDependencyGraph";
 import { DropZoneOverlay } from "./DropZoneOverlay";
-import { ideationApi, type SessionWithDataResponse } from "@/api/ideation";
-import { chatApi } from "@/api/chat";
 import { ReopenSessionDialog } from "./ReopenSessionDialog";
 import type { ReopenMode } from "./ReopenSessionDialog";
-import { useReopenSession, useResetAndReaccept, ideationKeys, useIdeationSessions } from "@/hooks/useIdeation";
-import { ExportPlanDialog } from "./ExportPlanDialog";
-
+import { useReopenSession, useResetAndReaccept, useIdeationSessions } from "@/hooks/useIdeation";
+import { ideationApi } from "@/api/ideation";
+import { PlanTabContent } from "./PlanTabContent";
+import { ProposalsTabContent } from "./ProposalsTabContent";
+import { TeamResearchTabContent } from "./TeamResearchTabContent";
+import { VerificationPanel } from "./VerificationPanel";
 
 // ============================================================================
 // Types
@@ -149,64 +143,25 @@ export function PlanningView({
   const [isResizing, setIsResizing] = useState(false);
   const [isAcceptModalOpen, setIsAcceptModalOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const proposalsScrollRef = useRef<HTMLDivElement>(null);
-
-  const queryClient = useQueryClient();
 
   const planArtifact = useIdeationStore((state) => state.planArtifact);
-
-  // Fetch full verification data (currentRound, maxRounds, convergenceReason) beyond what session carries
-  const { data: verificationData } = useQuery({
-    queryKey: ["verification", session?.id],
-    queryFn: () => ideationApi.verification.getStatus(session!.id),
-    enabled: !!session?.id && !!planArtifact,
-    staleTime: 30_000,
-    // B5: retry on transient failures to avoid permanent spinner
-    retry: 2,
-    retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
-    // B7: omitting placeholderData (default) — no stale data carried over on session switch
-  });
-  // Poll for verification child sessions to detect active verification agent
-  const { data: verificationChildren } = useQuery({
-    queryKey: ["childSessions", session?.id, "verification"],
-    queryFn: () => ideationApi.sessions.getChildren(session!.id, "verification"),
-    enabled: !!session?.id,
-    refetchInterval: 5000,
-    staleTime: 4000,
-  });
-
-  // Get agent status of the verification child session (null-safe)
-  const verificationChildId = verificationChildren?.[0]?.id ?? null;
-  const verificationChildStoreKey = verificationChildId ? `session:${verificationChildId}` : "";
-  const verificationChildStatus = useChatStore(
-    useMemo(() => selectAgentStatus(verificationChildStoreKey), [verificationChildStoreKey])
-  );
-  const isVerificationAgentGenerating = !!verificationChildId && verificationChildStatus === "generating";
-
-  const ideationSettings = useIdeationStore((state) => state.ideationSettings);
   const fetchPlanArtifact = useIdeationStore((state) => state.fetchPlanArtifact);
   const showSyncNotification = useIdeationStore((state) => state.showSyncNotification);
-  const syncNotification = useIdeationStore((state) => state.syncNotification);
   const dismissSyncNotification = useIdeationStore((state) => state.dismissSyncNotification);
+  const syncNotification = useIdeationStore((state) => state.syncNotification);
 
   // Fetch dependency graph for the session
   const { data: dependencyGraph, isFetching: isDependencyUpdating } = useDependencyGraph(session?.id ?? "");
 
-  // Build critical path set from the graph (TieredProposalList handles other computations)
+  // Build critical path set from the graph
   const criticalPathSet = useMemo(() => {
-    if (!dependencyGraph) {
-      return new Set<string>();
-    }
+    if (!dependencyGraph) return new Set<string>();
     return new Set(dependencyGraph.criticalPath);
   }, [dependencyGraph]);
 
   const lastDependencyFetchRef = useRef<boolean>(false);
   const lastDependencyToastAtRef = useRef<number | null>(null);
   const lastDependencyRefreshRequestedAt = useProposalStore((state) => state.lastDependencyRefreshRequestedAt);
-  const lastProposalUpdatedAt = useProposalStore((state) => state.lastProposalUpdatedAt);
-  const lastUpdatedProposalId = useProposalStore((state) => state.lastUpdatedProposalId);
-  const autoOpenedPlanRef = useRef(false);
-  const userOverrideRef = useRef(false);
 
   // Read-only mode: plans that are not active are read-only
   const isReadOnly = session?.status !== "active";
@@ -214,9 +169,6 @@ export function PlanningView({
   // Reopen/Reset dialog state
   const [reopenDialogOpen, setReopenDialogOpen] = useState(false);
   const [reopenDialogMode, setReopenDialogMode] = useState<ReopenMode>("reopen");
-
-  // Export plan dialog state
-  const [exportDialogOpen, setExportDialogOpen] = useState(false);
   const reopenMutation = useReopenSession();
   const resetMutation = useResetAndReaccept();
 
@@ -232,7 +184,7 @@ export function PlanningView({
   const activePlanByProject = usePlanStore((state) => state.activePlanByProject);
   const activeProjectId = useProjectStore((state) => state.activeProjectId);
 
-  // Sessions list for breadcrumb parent resolution — deduped by React Query (shared cache with App.tsx)
+  // Sessions list for breadcrumb parent resolution
   const projectIdForSessions = activeProjectId || session?.projectId || "";
   const { data: allSessionsForBreadcrumb = [] } = useIdeationSessions(projectIdForSessions);
 
@@ -311,8 +263,7 @@ export function PlanningView({
     }
   }, [isDependencyUpdating, session?.id, proposals.length, lastDependencyRefreshRequestedAt]);
 
-  // Stable ref for fetchPlanArtifact to avoid re-triggering the effect
-  // when the Zustand action reference changes.
+  // Stable ref for fetchPlanArtifact (must stay in PlanningView — always mounted)
   const fetchPlanArtifactRef = useRef(fetchPlanArtifact);
   useEffect(() => { fetchPlanArtifactRef.current = fetchPlanArtifact; }, [fetchPlanArtifact]);
 
@@ -325,7 +276,6 @@ export function PlanningView({
   }, [session?.planArtifactId, planArtifactId]);
 
   // Fetch team artifact summaries for team-ideated sessions
-  // Refetches when artifactVersion bumps (from team:artifact_created events)
   const [teamArtifacts, setTeamArtifacts] = useState<TeamArtifactSummary[]>([]);
   const artifactVersion = useTeamStore((s) => s.artifactVersion[session?.id ?? ""] ?? 0);
   useEffect(() => {
@@ -351,15 +301,31 @@ export function PlanningView({
     return () => { cancelled = true; };
   }, [session?.id, session?.teamMode, artifactVersion]);
 
-  // Tab state for plan vs research content
-  const [activeTab, setActiveTab] = useState<"plan" | "research">("plan");
+  // Tab state managed in Zustand (enables cross-component tab switching from notifications)
+  const setActiveIdeationTab = useIdeationStore((s) => s.setActiveIdeationTab);
+  const setActiveVerificationChildId = useIdeationStore((s) => s.setActiveVerificationChildId);
+  const activeTab = useIdeationStore(
+    (s) => s.activeIdeationTab[session?.id ?? ''] ?? 'plan'
+  );
+  const activeVerificationChildId = useIdeationStore(
+    (s) => s.activeVerificationChildId[session?.id ?? ''] ?? null
+  );
 
   // Reset to plan tab when switching sessions
+  const prevSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
-    setActiveTab("plan");
-  }, [session?.id]);
+    if (!session?.id) return;
+    if (prevSessionIdRef.current !== null && prevSessionIdRef.current !== session.id) {
+      // Session changed — reset new session to plan tab
+      setActiveIdeationTab(session.id, 'plan');
+      setActiveVerificationChildId(session.id, null);
+    }
+    prevSessionIdRef.current = session.id;
+  }, [session?.id, setActiveIdeationTab, setActiveVerificationChildId]);
 
-  // Construct TeamMetadata when session is a team session (badge only — findings shown via chips)
+  const isVerificationTabActive = activeTab === 'verification';
+
+  // Construct TeamMetadata when session is a team session
   const teamMetadata = useMemo<TeamMetadata | undefined>(() => {
     if (!session?.teamMode || session.teamMode === "solo") return undefined;
     return {
@@ -370,11 +336,24 @@ export function PlanningView({
     };
   }, [session?.teamMode, session?.teamConfig?.maxTeammates, teamArtifacts.length]);
 
+  // Verification tab visibility + badge state
+  const verificationStatus = session?.verificationStatus ?? "unverified";
+  const showVerificationTab = Boolean(
+    verificationStatus !== "unverified" || planArtifact
+  );
+  const verificationBadge: "in_progress" | "verified" | "warning" | null = (() => {
+    if (!session) return null;
+    if (session.verificationInProgress) return "in_progress";
+    if (verificationStatus === "verified" || verificationStatus === "imported_verified") return "verified";
+    if (verificationStatus === "needs_revision") return "warning";
+    return null;
+  })();
+
+  // Subscribe to plan:proposals_may_need_update — must stay mounted (not inside a conditional tab)
   useEffect(() => {
     const unsubProposalsUpdate = eventBus.subscribe<{ artifact_id: string; proposal_ids: string[]; session_id?: string }>(
       "plan:proposals_may_need_update",
       (payload) => {
-        // Only show notification for the active session
         if (payload.session_id && session?.id && payload.session_id !== session.id) {
           return;
         }
@@ -406,7 +385,6 @@ export function PlanningView({
     const handleMouseMove = (e: MouseEvent) => {
       if (!containerRef.current) return;
       const rect = containerRef.current.getBoundingClientRect();
-      // Chat panel is on the right, so width = container right edge - mouse position
       const newWidth = rect.right - e.clientX;
       setChatPanelWidth(Math.max(CHAT_PANEL_MIN_WIDTH, Math.min(600, newWidth)));
     };
@@ -422,37 +400,34 @@ export function PlanningView({
     };
   }, [isResizing]);
 
-  // Navigate to task handler - switches to kanban view and selects the task
+  // Navigate to task handler
   const setCurrentView = useUiStore((state) => state.setCurrentView);
   const setSelectedTaskId = useUiStore((state) => state.setSelectedTaskId);
 
   // Get active project for feature branch setting
   const activeProject = useProjectStore(selectActiveProject);
 
-  // Accept Plan - opens the confirmation modal (instead of applying directly)
+  // Accept Plan — opens the confirmation modal
   const handleAcceptPlan = useCallback(() => {
     setIsAcceptModalOpen(true);
   }, []);
 
-  // Handle confirmed accept from modal - applies proposals with user-selected options
+  // Handle confirmed accept from modal
   const handleAcceptConfirm = useCallback(async (options: ApplyProposalsInput) => {
     if (!session) return;
     const projectId = activeProjectId || session.projectId;
     if (!projectId) return;
 
-    // Close modal immediately
     setIsAcceptModalOpen(false);
 
-    // Apply proposals to Kanban and capture executionPlanId from the response
     let executionPlanId: string | null | undefined;
     try {
       const applyResult = await onApply(options);
       executionPlanId = applyResult?.executionPlanId;
     } catch {
-      return; // Apply failed, toast already shown, don't proceed to setActivePlan
+      return;
     }
 
-    // Set this session as the active plan — pass executionPlanId for atomic update
     try {
       await setActivePlan(projectId, session.id, "ideation", executionPlanId);
     } catch (error) {
@@ -510,7 +485,6 @@ export function PlanningView({
     syncNotification
   );
 
-
   // File drop hook for drag-and-drop markdown import
   const { isDragging, dropProps, error: fileDropError } = useFileDrop({
     acceptedExtensions: [".md"],
@@ -527,6 +501,9 @@ export function PlanningView({
   }, [fileDropError, setImportStatus]);
 
   // Auto-expand plan when there are no proposals
+  const autoOpenedPlanRef = useRef(false);
+  const userOverrideRef = useRef(false);
+
   useEffect(() => {
     if (userOverrideRef.current) return;
     if (isSessionLoading) return;
@@ -560,7 +537,7 @@ export function PlanningView({
     }
   }, [proposals.length, isPlanExpanded, isSessionLoading, setIsPlanExpanded]);
 
-  // Reset plan expansion when switching sessions — default to expanded if session already has a plan
+  // Reset plan expansion when switching sessions
   const lastSessionIdRef = useRef<string | null>(null);
   useEffect(() => {
     if (!session?.id) return;
@@ -568,7 +545,6 @@ export function PlanningView({
       lastSessionIdRef.current = session.id;
       autoOpenedPlanRef.current = false;
       userOverrideRef.current = false;
-      // Auto-expand on initial load if the session already has a plan
       setIsPlanExpanded(!!session.planArtifactId);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -580,161 +556,43 @@ export function PlanningView({
     setIsPlanExpanded(expanded);
   }, [setIsPlanExpanded]);
 
-  // ── Verification action handlers ─────────────────────────────────────────
-
-  // Trigger verification by sending 'verify' message to the ideation orchestrator
-  const handleTriggerVerification = useCallback(async () => {
-    if (!session) return;
-    try {
-      await chatApi.sendAgentMessage("ideation", session.id, "verify");
-    } catch (err) {
-      console.error("Failed to trigger verification:", err);
-      toast.error("Failed to start verification");
-    }
-  }, [session]);
-
-  // Create proposals by sending message to the ideation orchestrator
-  const handleCreateProposals = useCallback(async () => {
-    if (!session) return;
-    try {
-      await chatApi.sendAgentMessage("ideation", session.id, "create task proposals from the approved plan");
-    } catch (err) {
-      console.error("Failed to create proposals:", err);
-      toast.error("Failed to request proposal creation");
-    }
-  }, [session]);
-
-  // Address gaps by sending a targeted message to the ideation orchestrator
-  const handleAddressGaps = useCallback(async (gapDescriptions: string[]) => {
-    if (!session) return;
-    const allGapCount = verificationData?.gaps?.length ?? 0;
-    const isAll = gapDescriptions.length === allGapCount || allGapCount === 0;
-    const message = isAll
-      ? "update the plan to address all verification gaps"
-      : `update the plan to address these specific verification gaps:\n${gapDescriptions.map((d, i) => `${i + 1}. ${d}`).join("\n")}`;
-    try {
-      await chatApi.sendAgentMessage("ideation", session.id, message);
-    } catch (err) {
-      console.error("Failed to address gaps:", err);
-      toast.error("Failed to request gap resolution");
-    }
-  }, [session, verificationData?.gaps]);
-
-  const handleSkipVerification = useCallback(async () => {
-    if (!session) return;
-    // Optimistic update: immediately set verificationStatus to 'skipped' for instant accept button enablement
-    queryClient.setQueryData<SessionWithDataResponse | null>(
-      ideationKeys.sessionWithData(session.id),
-      (old) => old ? { ...old, session: { ...old.session, verificationStatus: "skipped" } } : old
-    );
-    try {
-      await ideationApi.verification.skip(session.id);
-      queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
-      queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(session.id) });
-      queryClient.invalidateQueries({ queryKey: ["verification", session.id] });
-    } catch (err) {
-      // Roll back optimistic update on failure
-      queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(session.id) });
-      console.error("Failed to skip verification:", err);
-      toast.error("Failed to skip verification");
-    }
-  }, [session, queryClient]);
-
-  // planVersionBeforeVerification: not yet surfaced by the API — PlanDisplay hides the button until defined
-  const planVersionBeforeVerification: string | undefined = undefined;
-
-  const handleRevertAndSkip = useCallback(async () => {
-    if (!session || !planVersionBeforeVerification) return;
-    try {
-      await ideationApi.verification.revertAndSkip(session.id, planVersionBeforeVerification);
-      queryClient.invalidateQueries({ queryKey: ideationKeys.sessions() });
-      queryClient.invalidateQueries({ queryKey: ideationKeys.sessionWithData(session.id) });
-      queryClient.invalidateQueries({ queryKey: ["verification", session.id] });
-    } catch (err) {
-      console.error("Failed to revert and skip verification:", err);
-      toast.error("Failed to revert plan");
-    }
-  }, [session, queryClient, planVersionBeforeVerification]);
-
-  // ── End verification handlers ─────────────────────────────────────────────
-
-  // Historical plan version state - set when user clicks "View plan as of proposal creation (vX)"
-  const [historicalPlanVersion, setHistoricalPlanVersion] = useState<number | null>(null);
+  // Historical plan version — set when user clicks "View plan as of proposal creation (vX)"
+  const [requestedHistoricalVersion, setRequestedHistoricalVersion] = useState<number | null>(null);
 
   const handleViewHistoricalPlan = useCallback((_artifactId: string, version: number) => {
-    setHistoricalPlanVersion(version);
+    setRequestedHistoricalVersion(version);
+    if (session) setActiveIdeationTab(session.id, 'plan');
     userOverrideRef.current = true;
     setIsPlanExpanded(true);
-  }, [setIsPlanExpanded]);
+  }, [session, setActiveIdeationTab, setIsPlanExpanded]);
 
-  // Auto-scroll to bottom only when a new proposal is added
-  const lastScrollSessionIdRef = useRef<string | null>(null);
-  const lastScrollProposalAddedAtRef = useRef<number | null>(null);
-  const lastScrollProposalUpdatedAtRef = useRef<number | null>(null);
-  const [recentlyUpdatedProposalId, setRecentlyUpdatedProposalId] = useState<string | null>(null);
-  useLayoutEffect(() => {
-    const currentSessionId = session?.id ?? null;
-    if (lastScrollSessionIdRef.current !== currentSessionId) {
-      lastScrollSessionIdRef.current = currentSessionId;
-      lastScrollProposalAddedAtRef.current = null;
-      if (proposalsScrollRef.current) {
-        proposalsScrollRef.current.scrollTo({ top: 0, behavior: "auto" });
+  const handleTabChange = useCallback((tab: 'plan' | 'proposals' | 'research') => {
+    if (!session) return;
+    setActiveIdeationTab(session.id, tab);
+  }, [session, setActiveIdeationTab]);
+
+  const handleVerificationTabClick = useCallback(async () => {
+    if (!session) return;
+    setActiveIdeationTab(session.id, 'verification');
+
+    // Fetch the latest verification child session
+    try {
+      const children = await ideationApi.sessions.getChildren(session.id, 'verification');
+      if (children.length > 0) {
+        // Sort by createdAt descending, take the most recent
+        const sorted = [...children].sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
+        const latest = sorted[0];
+        if (latest) {
+          setActiveVerificationChildId(session.id, latest.id);
+        }
       }
-      return;
+    } catch (err) {
+      console.error('Failed to fetch verification children:', err);
+      // Tab switches regardless — child panel stays hidden until child exists
     }
-
-    if (!lastProposalAddedAt || lastProposalAddedAt === lastScrollProposalAddedAtRef.current) {
-      return;
-    }
-
-    if (proposalsScrollRef.current) {
-      proposalsScrollRef.current.scrollTo({
-        top: proposalsScrollRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
-    lastScrollProposalAddedAtRef.current = lastProposalAddedAt;
-  }, [lastProposalAddedAt, session?.id]);
-
-  // Auto-scroll to updated proposal (from chat updates or edits)
-  useLayoutEffect(() => {
-    if (!lastProposalUpdatedAt || lastProposalUpdatedAt === lastScrollProposalUpdatedAtRef.current) {
-      return;
-    }
-
-    if (!lastUpdatedProposalId) {
-      return;
-    }
-
-    if (!proposals.some((p) => p.id === lastUpdatedProposalId)) {
-      return;
-    }
-
-    if (proposalsScrollRef.current) {
-      const target = proposalsScrollRef.current.querySelector(
-        `[data-testid="proposal-card-${lastUpdatedProposalId}"]`
-      );
-      if (target instanceof HTMLElement) {
-        target.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }
-
-    setRecentlyUpdatedProposalId(lastUpdatedProposalId);
-    lastScrollProposalUpdatedAtRef.current = lastProposalUpdatedAt;
-  }, [lastProposalUpdatedAt, lastUpdatedProposalId, proposals]);
-
-  useEffect(() => {
-    if (!recentlyUpdatedProposalId) return;
-    const timeout = setTimeout(() => setRecentlyUpdatedProposalId(null), 2400);
-    return () => clearTimeout(timeout);
-  }, [recentlyUpdatedProposalId]);
-
-  const highlightedProposalIdsWithUpdates = useMemo(() => {
-    if (!recentlyUpdatedProposalId) return highlightedProposalIds;
-    const updated = new Set(highlightedProposalIds);
-    updated.add(recentlyUpdatedProposalId);
-    return updated;
-  }, [highlightedProposalIds, recentlyUpdatedProposalId]);
+  }, [session, setActiveIdeationTab, setActiveVerificationChildId]);
 
   return (
     <>
@@ -896,9 +754,9 @@ export function PlanningView({
             </header>
           )}
 
-          {/* Split Layout - Left section with footer support, Conversation right (matching Kanban pattern) */}
+          {/* Split Layout - Left section with footer support, Conversation right */}
           <div data-testid="ideation-main-content" className="flex flex-1 overflow-hidden">
-            {/* Left Section - Column layout with proposals content and optional footer */}
+            {/* Left Section - Column layout with tab content and optional footer */}
             <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
               {/* Main Content Area - Session or No-Session */}
               <div
@@ -922,51 +780,113 @@ export function PlanningView({
                 {/* Active-Session State */}
                 {session && (
                   <>
-                    {/* Proposals Toolbar (replaces panel header) */}
-                    {proposals.length > 0 && (
-                      <ProposalsToolbar
-                        proposals={proposals}
-                        graph={dependencyGraph}
-                        isReadOnly={isReadOnly}
-                        onClearAll={handleClearAll}
-                        onAcceptPlan={handleAcceptPlan}
-                        session={session}
-                      />
-                    )}
-
-                    {/* Tab bar — only when team artifacts exist */}
-                    {teamArtifacts.length > 0 && (
-                      <div
-                        className="flex items-center gap-0 px-4 shrink-0"
+                    {/* Tab bar — Plan | Proposals | Team Research (conditional) */}
+                    <div
+                      className="flex items-center gap-0 px-4 shrink-0"
+                      style={{
+                        height: "36px",
+                        borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
+                        background: "hsla(220 10% 12% / 0.6)",
+                        backdropFilter: "blur(12px)",
+                        WebkitBackdropFilter: "blur(12px)",
+                      }}
+                      data-testid="content-tab-bar"
+                    >
+                      <button
+                        onClick={() => handleTabChange('plan')}
+                        className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150"
                         style={{
-                          height: "36px",
-                          borderBottom: "1px solid hsla(220 10% 100% / 0.06)",
-                          background: "hsla(220 10% 12% / 0.6)",
-                          backdropFilter: "blur(12px)",
-                          WebkitBackdropFilter: "blur(12px)",
+                          color: activeTab === "plan"
+                            ? "hsl(220 10% 90%)"
+                            : "hsl(220 10% 50%)",
                         }}
-                        data-testid="content-tab-bar"
+                        data-testid="tab-plan"
                       >
+                        Plan
+                        {activeTab === "plan" && (
+                          <span
+                            className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
+                            style={{ background: "hsl(14 100% 60%)" }}
+                          />
+                        )}
+                      </button>
+                      {showVerificationTab && (
                         <button
-                          onClick={() => setActiveTab("plan")}
-                          className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150"
+                          onClick={handleVerificationTabClick}
+                          className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
                           style={{
-                            color: activeTab === "plan"
+                            color: activeTab === "verification"
                               ? "hsl(220 10% 90%)"
                               : "hsl(220 10% 50%)",
                           }}
-                          data-testid="tab-plan"
+                          data-testid="tab-verification"
                         >
-                          Plan & Proposals
-                          {activeTab === "plan" && (
+                          Verification
+                          {verificationBadge === "in_progress" && (
+                            <span
+                              data-testid="verification-badge-in-progress"
+                              className="w-2 h-2 rounded-full animate-pulse shrink-0"
+                              style={{ background: "hsl(38 100% 60%)" }}
+                            />
+                          )}
+                          {verificationBadge === "verified" && (
+                            <CheckCircle
+                              data-testid="verification-badge-verified"
+                              className="w-3 h-3 shrink-0"
+                              style={{ color: "hsl(142 71% 45%)" }}
+                            />
+                          )}
+                          {verificationBadge === "warning" && (
+                            <AlertTriangle
+                              data-testid="verification-badge-warning"
+                              className="w-3 h-3 shrink-0"
+                              style={{ color: "hsl(38 100% 60%)" }}
+                            />
+                          )}
+                          {activeTab === "verification" && (
                             <span
                               className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
                               style={{ background: "hsl(14 100% 60%)" }}
                             />
                           )}
                         </button>
+                      )}
+                      <button
+                        onClick={() => handleTabChange('proposals')}
+                        className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
+                        style={{
+                          color: activeTab === "proposals"
+                            ? "hsl(220 10% 90%)"
+                            : "hsl(220 10% 50%)",
+                        }}
+                        data-testid="tab-proposals"
+                      >
+                        Proposals
+                        {proposals.length > 0 && (
+                          <span
+                            className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full"
+                            style={{
+                              background: activeTab === "proposals"
+                                ? "hsla(14 100% 60% / 0.15)"
+                                : "hsla(220 10% 100% / 0.06)",
+                              color: activeTab === "proposals"
+                                ? "hsl(14 100% 65%)"
+                                : "hsl(220 10% 50%)",
+                            }}
+                          >
+                            {proposals.length}
+                          </span>
+                        )}
+                        {activeTab === "proposals" && (
+                          <span
+                            className="absolute bottom-0 left-3 right-3 h-[2px] rounded-full"
+                            style={{ background: "hsl(14 100% 60%)" }}
+                          />
+                        )}
+                      </button>
+                      {teamArtifacts.length > 0 && (
                         <button
-                          onClick={() => setActiveTab("research")}
+                          onClick={() => handleTabChange('research')}
                           className="relative h-full px-3 text-[12px] font-medium transition-colors duration-150 flex items-center gap-1.5"
                           style={{
                             color: activeTab === "research"
@@ -996,163 +916,63 @@ export function PlanningView({
                             />
                           )}
                         </button>
+                      )}
+                    </div>
+
+                    {/* Tab content — delegates to extracted components */}
+                    {activeTab === "plan" && (
+                      <PlanTabContent
+                        session={session}
+                        proposals={proposals}
+                        {...(teamMetadata !== undefined && { teamMetadata })}
+                        isReadOnly={isReadOnly}
+                        importStatus={importStatus}
+                        onImportStatusChange={setImportStatus}
+                        onImportPlan={handleImportPlan}
+                        onViewWork={handleViewWork}
+                        isPlanExpanded={isPlanExpanded}
+                        onExpandedChange={handlePlanExpandedChange}
+                        requestedHistoricalVersion={requestedHistoricalVersion}
+                        onHistoricalVersionViewed={() => setRequestedHistoricalVersion(null)}
+                      />
+                    )}
+
+                    {activeTab === "verification" && (
+                      <div
+                        data-testid="verification-tab-content"
+                        className="flex flex-col flex-1 min-h-0"
+                      >
+                        <VerificationPanel session={session} />
                       </div>
                     )}
 
-                    {/* Content area — switches on activeTab */}
-                    {activeTab === "plan" ? (
-                    <div ref={proposalsScrollRef} className="flex-1 overflow-y-auto p-4">
-                      {session.status === "accepted" && (
-                        <AcceptedSessionBanner
-                          projectId={session.projectId}
-                          proposals={proposals}
-                          convertedAt={session.convertedAt}
-                          onViewWork={handleViewWork}
-                        />
-                      )}
-
-                      {importStatus && (
-                        <div
-                          className="mb-4 p-4 rounded-xl"
-                          style={{
-                            background: importStatus.type === "success"
-                              ? "hsla(145 70% 40% / 0.1)"
-                              : "hsla(0 70% 50% / 0.1)",
-                            border: `1px solid ${importStatus.type === "success"
-                              ? "hsla(145 70% 40% / 0.3)"
-                              : "hsla(0 70% 50% / 0.3)"}`,
-                          }}
-                        >
-                          <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium" style={{ color: "hsl(220 10% 90%)" }}>{importStatus.message}</p>
-                            <Button variant="ghost" size="icon" onClick={() => setImportStatus(null)} className="h-7 w-7">×</Button>
-                          </div>
-                        </div>
-                      )}
-
-                      {syncNotification && (
-                        <ProactiveSyncNotificationBanner
-                          notification={syncNotification}
-                          onDismiss={handleDismissSync}
-                          onReview={handleReviewSync}
-                          onUndo={handleUndoSync}
-                        />
-                      )}
-
-                      {!planArtifact && proposals.length > 0 && (
-                        <Button
-                          variant="outline"
-                          onClick={handleImportPlan}
-                          className="w-full mb-4 gap-2 transition-colors duration-150"
-                          style={{
-                            border: "1px solid hsla(220 10% 100% / 0.1)",
-                            background: "transparent",
-                            color: "hsl(220 10% 70%)",
-                          }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.2)";
-                            e.currentTarget.style.background = "hsla(220 10% 100% / 0.03)";
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = "hsla(220 10% 100% / 0.1)";
-                            e.currentTarget.style.background = "transparent";
-                          }}
-                          data-testid="import-plan-button"
-                        >
-                          <Upload className="w-4 h-4" />
-                          Import Implementation Plan
-                        </Button>
-                      )}
-
-                      {planArtifact && (
-                        <div className="mb-4">
-                          <PlanDisplay
-                            plan={planArtifact}
-                            showApprove={ideationSettings?.requirePlanApproval ?? false}
-                            linkedProposalsCount={proposals.filter((p) => p.planArtifactId === planArtifact.id).length}
-                            onEdit={() => {}}
-                            onExport={() => setExportDialogOpen(true)}
-                            isExpanded={isPlanExpanded}
-                            onExpandedChange={handlePlanExpandedChange}
-                            {...(teamMetadata !== undefined && { teamMetadata })}
-                            {...(historicalPlanVersion !== null && {
-                              requestedVersion: historicalPlanVersion,
-                              onVersionViewed: () => setHistoricalPlanVersion(null),
-                            })}
-                            verificationStatus={session?.verificationStatus ?? "unverified"}
-                            verificationInProgress={session?.verificationInProgress ?? false}
-                            verificationAgentGenerating={isVerificationAgentGenerating}
-                            {...(session?.gapScore != null && { gapScore: session.gapScore })}
-                            {...(planVersionBeforeVerification !== undefined && { planVersionBeforeVerification })}
-                            {...(verificationData?.currentRound !== undefined && { currentRound: verificationData.currentRound })}
-                            {...(verificationData?.maxRounds !== undefined && { maxRounds: verificationData.maxRounds })}
-                            {...(verificationData?.convergenceReason !== undefined && { convergenceReason: verificationData.convergenceReason })}
-                            {...(verificationData?.gaps !== undefined && { verificationGaps: verificationData.gaps })}
-                            {...(verificationData?.rounds !== undefined && { verificationRounds: verificationData.rounds })}
-                            {...(planArtifact?.metadata.version !== undefined && { planVersion: planArtifact.metadata.version })}
-                            {...(verificationData?.planVersion !== undefined && { verificationPlanVersion: verificationData.planVersion })}
-                            onVerifyFirst={handleTriggerVerification}
-                            onSkipVerification={handleSkipVerification}
-                            onRevertAndSkip={handleRevertAndSkip}
-                            onRetryVerification={handleTriggerVerification}
-                            onAddressGaps={handleAddressGaps}
-                            onCreateProposals={handleCreateProposals}
-                          />
-                        </div>
-                      )}
-
-                      <ExportPlanDialog
-                        open={exportDialogOpen}
-                        onOpenChange={setExportDialogOpen}
-                        sessionId={session?.id ?? ""}
-                        sessionTitle={session?.title ?? null}
-                        verificationStatus={session?.verificationStatus ?? "unverified"}
-                        planArtifact={planArtifact}
-                        projectId={activeProjectId || session?.projectId || ""}
+                    {activeTab === "proposals" && (
+                      <ProposalsTabContent
+                        session={session}
+                        proposals={proposals}
+                        dependencyGraph={dependencyGraph}
+                        criticalPathSet={criticalPathSet}
+                        highlightedIds={highlightedProposalIds}
+                        isReadOnly={isReadOnly}
+                        onEditProposal={onEditProposal}
+                        onNavigateToTask={handleNavigateToTask}
+                        onViewHistoricalPlan={handleViewHistoricalPlan}
+                        {...(onViewProposal !== undefined && { onViewProposal })}
+                        {...(selectedProposalId !== undefined && { selectedProposalId })}
+                        onImportPlan={handleImportPlan}
+                        onClearAll={handleClearAll}
+                        onAcceptPlan={handleAcceptPlan}
+                        onReviewSync={handleReviewSync}
+                        onUndoSync={handleUndoSync}
+                        onDismissSync={handleDismissSync}
                       />
+                    )}
 
-                      {!planArtifact && ideationSettings?.planMode === "required" && proposals.length === 0 && (
-                        <div className="flex flex-col items-center justify-center h-full p-8">
-                          <div className="relative">
-                            <div
-                              className="relative p-8 rounded-2xl text-center"
-                              style={{
-                                background: "hsla(220 10% 14% / 0.6)",
-                                border: "1px solid hsla(220 10% 100% / 0.06)",
-                              }}
-                            >
-                              <Loader2 className="w-10 h-10 mx-auto mb-4 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
-                              <p className="font-medium" style={{ color: "hsl(220 10% 70%)" }}>Waiting for implementation plan...</p>
-                              <p className="text-sm mt-1" style={{ color: "hsl(220 10% 50%)" }}>The orchestrator will create a plan first</p>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {proposals.length === 0 && !(!planArtifact && ideationSettings?.planMode === "required") && <ProposalsEmptyState onBrowse={handleImportPlan} />}
-
-                      {proposals.length > 0 && (
-                        <TieredProposalList
-                          proposals={proposals}
-                          dependencyGraph={dependencyGraph}
-                          highlightedIds={highlightedProposalIdsWithUpdates}
-                          criticalPathIds={criticalPathSet}
-                          onEdit={onEditProposal}
-                          {...(planArtifact?.metadata.version !== undefined && {
-                            currentPlanVersion: planArtifact.metadata.version,
-                          })}
-                          {...(isReadOnly && { isReadOnly })}
-                          onNavigateToTask={handleNavigateToTask}
-                          onViewHistoricalPlan={handleViewHistoricalPlan}
-                          {...(onViewProposal !== undefined && { onViewDetail: onViewProposal })}
-                          {...(selectedProposalId != null && { selectedProposalId })}
-                        />
-                      )}
-                    </div>
-                    ) : (
-                    <div className="flex-1 overflow-y-auto p-4">
-                      <TeamResearchView artifacts={teamArtifacts} sessionId={session.id} />
-                    </div>
+                    {activeTab === "research" && (
+                      <TeamResearchTabContent
+                        teamArtifacts={teamArtifacts}
+                        sessionId={session.id}
+                      />
                     )}
                   </>
                 )}
@@ -1182,19 +1002,80 @@ export function PlanningView({
               className="flex flex-col shrink-0"
               style={{ width: `${chatPanelWidth}px` }}
             >
-              <IntegratedChatPanel
-                key={session.id}
-                projectId={session.projectId}
-                ideationSessionId={session.id}
-                emptyState={<ConversationEmptyState />}
-                showHelperTextAlways={true}
-                headerContent={
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
-                    <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
-                    <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
-                  </div>
-                }
-              />
+              {/* Parent chat panel — always mounted, hidden when showing verification child */}
+              <div
+                className="flex flex-col flex-1"
+                style={{ display: (!isVerificationTabActive || !activeVerificationChildId) ? 'flex' : 'none' }}
+              >
+                <IntegratedChatPanel
+                  key={session.id}
+                  projectId={session.projectId}
+                  ideationSessionId={session.id}
+                  emptyState={<ConversationEmptyState />}
+                  showHelperTextAlways={true}
+                  isVisible={!isVerificationTabActive || !activeVerificationChildId}
+                  headerContent={
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <MessageSquare className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(220 10% 50%)" }} />
+                      <span className="text-[13px] font-medium" style={{ color: "hsl(220 10% 90%)" }}>Conversation</span>
+                    </div>
+                  }
+                />
+              </div>
+              {/* Verification child chat panel — mounted only when child session exists */}
+              {activeVerificationChildId && (
+                <div
+                  className="flex flex-col flex-1"
+                  style={{
+                    display: isVerificationTabActive ? 'flex' : 'none',
+                    borderLeft: '2px solid hsla(38 100% 60% / 0.25)',
+                  }}
+                >
+                  <IntegratedChatPanel
+                    key={activeVerificationChildId}
+                    projectId={session.projectId}
+                    ideationSessionId={activeVerificationChildId}
+                    emptyState={<ConversationEmptyState />}
+                    showHelperTextAlways={true}
+                    isVisible={isVerificationTabActive}
+                    headerContent={
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <ShieldCheck className="w-3.5 h-3.5 shrink-0" style={{ color: "hsl(38 100% 60%)" }} />
+                        <div className="flex flex-col min-w-0 flex-1">
+                          <span className="text-[11px] font-semibold leading-tight truncate" style={{ color: "hsl(38 100% 65%)" }}>
+                            Verification
+                          </span>
+                          <span className="text-[10px] leading-tight truncate" style={{ color: "hsl(220 10% 50%)" }}>
+                            {session.title || "Untitled"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={() => setActiveIdeationTab(session.id, 'plan')}
+                          className="flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-medium shrink-0 transition-colors duration-150"
+                          style={{
+                            color: "hsl(220 10% 55%)",
+                            background: "hsla(220 10% 100% / 0.04)",
+                            border: "1px solid hsla(220 10% 100% / 0.08)",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background = "hsla(220 10% 100% / 0.08)";
+                            e.currentTarget.style.color = "hsl(220 10% 80%)";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "hsla(220 10% 100% / 0.04)";
+                            e.currentTarget.style.color = "hsl(220 10% 55%)";
+                          }}
+                          data-testid="back-to-plan-button"
+                          title="Back to plan"
+                        >
+                          <ArrowLeft className="w-3 h-3" />
+                          Plan
+                        </button>
+                      </div>
+                    }
+                  />
+                </div>
+              )}
             </div>
             )}
           </div>

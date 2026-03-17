@@ -457,10 +457,12 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
     }
 
     async fn get_group_counts(&self, project_id: &ProjectId) -> AppResult<SessionGroupCounts> {
+        use crate::domain::entities::ideation::SessionPurpose;
         let sessions = self.sessions.read().unwrap();
+        // Exclude verification child sessions from counts
         let project_sessions: Vec<_> = sessions
             .values()
-            .filter(|s| &s.project_id == project_id)
+            .filter(|s| &s.project_id == project_id && s.session_purpose != SessionPurpose::Verification)
             .collect();
 
         let drafts = project_sessions
@@ -502,13 +504,18 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
             )));
         }
 
+        use crate::domain::entities::ideation::SessionPurpose;
         let sessions = self.sessions.read().unwrap();
 
         // Simplified classification: no task repo access, so in_progress/done always empty
+        // Exclude verification child sessions from results
         let mut matching: Vec<_> = sessions
             .values()
             .filter(|s| {
                 if s.project_id != *project_id {
+                    return false;
+                }
+                if s.session_purpose == SessionPurpose::Verification {
                     return false;
                 }
                 match group {
@@ -524,14 +531,26 @@ impl IdeationSessionRepository for MemoryIdeationSessionRepository {
 
         matching.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
         let total = matching.len() as u32;
+
+        // Count verification children for each session
         let page: Vec<_> = matching
             .into_iter()
             .skip(offset as usize)
             .take(limit as usize)
-            .map(|session| IdeationSessionWithProgress {
-                session,
-                progress: None,
-                parent_session_title: None,
+            .map(|session| {
+                let verification_child_count = sessions
+                    .values()
+                    .filter(|s| {
+                        s.parent_session_id.as_ref() == Some(&session.id)
+                            && s.session_purpose == SessionPurpose::Verification
+                    })
+                    .count() as u32;
+                IdeationSessionWithProgress {
+                    session,
+                    progress: None,
+                    parent_session_title: None,
+                    verification_child_count,
+                }
             })
             .collect();
 

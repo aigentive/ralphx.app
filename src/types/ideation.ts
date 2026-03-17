@@ -487,6 +487,7 @@ export interface SessionProgress {
 export interface IdeationSessionWithProgress extends IdeationSession {
   progress: SessionProgress | null;
   parentSessionTitle: string | null;
+  verificationChildCount: number;
 }
 
 export interface SessionListResponse {

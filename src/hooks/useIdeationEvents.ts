@@ -55,6 +55,7 @@ const ChildSessionCreatedEventSchema = z.object({
   sessionId: z.string(),
   parentSessionId: z.string(),
   title: z.string(),
+  purpose: z.enum(['general', 'verification']).optional(),
 });
 
 /**
@@ -83,6 +84,7 @@ const SessionCreatedEventSchema = z.object({
 export function useIdeationEvents() {
   const bus = useEventBus();
   const updateSession = useIdeationStore((s) => s.updateSession);
+  const setVerificationNotification = useIdeationStore((s) => s.setVerificationNotification);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -206,6 +208,11 @@ export function useIdeationEvents() {
           return;
         }
 
+        // Track verification children in the store for notification display
+        if (parsed.data.purpose === 'verification') {
+          setVerificationNotification(parsed.data.parentSessionId, parsed.data.sessionId);
+        }
+
         // Emit a local event for UI components to handle
         // This allows the PlanningView to show a "View Follow-up" link
         bus.emit("ideation:child_session_created:local", parsed.data);
@@ -218,5 +225,5 @@ export function useIdeationEvents() {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, updateSession, queryClient]);
+  }, [bus, updateSession, setVerificationNotification, queryClient]);
 }
