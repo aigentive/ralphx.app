@@ -279,13 +279,26 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const isApproved = session.status === "accepted";
   const isInProgress = session.verificationInProgress ?? false;
 
-  // Fetch full verification data (decoupled from planArtifact gate)
+  // Fetch full verification data — always fires when a plan exists (not gated on verificationStatus)
+  // so that page-load hydration works even when the session cache still shows "unverified".
   const { data: verificationData } = useQuery({
     queryKey: ["verification", session.id],
-    queryFn: () => ideationApi.verification.getStatus(session.id),
-    enabled: verificationStatus !== "unverified" && session.sessionPurpose !== "verification",
+    queryFn: async () => {
+      try {
+        return await ideationApi.verification.getStatus(session.id);
+      } catch (err) {
+        // 404 = no verification started yet — return null so the empty state renders correctly.
+        if (err instanceof Error && err.message.includes("404")) return null;
+        throw err;
+      }
+    },
+    enabled: hasPlan && session.sessionPurpose !== "verification",
     staleTime: 30_000,
-    retry: 2,
+    retry: (failureCount: number, err: unknown) => {
+      // Don't retry 404s — they mean no verification data exists
+      if (err instanceof Error && err.message.includes("404")) return false;
+      return failureCount < 2;
+    },
     retryDelay: (attempt) => Math.min(1000 * 2 ** attempt, 10000),
   });
 
@@ -293,10 +306,35 @@ export function VerificationPanel({ session }: VerificationPanelProps) {
   const { data: childSessions = [] } = useQuery({
     queryKey: ["childSessions", session.id, "verification"],
     queryFn: () => ideationApi.sessions.getChildren(session.id, "verification"),
-    enabled: verificationStatus !== "unverified" && session.sessionPurpose !== "verification",
+    enabled: hasPlan && session.sessionPurpose !== "verification",
     staleTime: 4_000,
     refetchInterval: 10_000,
   });
+
+  // Hydrate session query cache from verification API response on page load.
+  // The session schema defaults verificationStatus to "unverified", so if the server
+  // omits it the query gate would have blocked loading — this effect bootstraps the UI.
+  useEffect(() => {
+    if (!verificationData) return;
+    if (verificationData.status === "unverified") return;
+    // Only update if the session still shows the default (unverified); avoids overwriting
+    // live event-driven updates that may have already set the correct status.
+    if (verificationStatus !== "unverified") return;
+    queryClient.setQueryData<SessionWithDataResponse | null>(
+      ideationKeys.sessionWithData(session.id),
+      (old) =>
+        old
+          ? {
+              ...old,
+              session: {
+                ...old.session,
+                verificationStatus: verificationData.status as VerificationStatus,
+                verificationInProgress: verificationData.inProgress,
+              },
+            }
+          : old
+    );
+  }, [verificationData, verificationStatus, session.id, queryClient]);
 
   // Auto-update activeVerificationChildId when a new verification run appears
   useEffect(() => {
