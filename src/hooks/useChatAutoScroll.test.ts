@@ -15,9 +15,18 @@ import { renderHook, act } from "@testing-library/react";
 import { useChatAutoScroll } from "./useChatAutoScroll";
 import type { VirtuosoHandle } from "react-virtuoso";
 
+const mockShouldUseWebkitSafeScrollBehavior = vi.fn(() => false);
+
+vi.mock("@/lib/platform-quirks", () => ({
+  shouldUseWebkitSafeScrollBehavior: () => mockShouldUseWebkitSafeScrollBehavior(),
+}));
+
+type FollowOutputResult = "smooth" | "auto" | false;
+
 describe("useChatAutoScroll", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockShouldUseWebkitSafeScrollBehavior.mockReturnValue(false);
   });
 
   describe("initial state", () => {
@@ -233,6 +242,18 @@ describe("useChatAutoScroll", () => {
 
       expect(result.current.handleFollowOutput(true)).toBe(false);
     });
+
+    it("should return 'auto' in Tauri macOS compatibility mode", () => {
+      mockShouldUseWebkitSafeScrollBehavior.mockReturnValue(true);
+
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 0,
+        })
+      );
+
+      expect(result.current.handleFollowOutput(true)).toBe("auto");
+    });
   });
 
   describe("single scroll path guarantee (no DOM-based auto-scroll)", () => {
@@ -378,7 +399,7 @@ describe("useChatAutoScroll", () => {
 
       // Simulate rapid streaming updates — each should produce exactly one
       // instruction from followOutput (either "smooth" or false, never both)
-      const results: Array<"smooth" | false> = [];
+      const results: FollowOutputResult[] = [];
       for (let i = 6; i <= 15; i++) {
         rerender({ messageCount: i });
         results.push(result.current.handleFollowOutput(true));
@@ -392,7 +413,7 @@ describe("useChatAutoScroll", () => {
         result.current.handleAtBottomStateChange(false);
       });
 
-      const scrolledUpResults: Array<"smooth" | false> = [];
+      const scrolledUpResults: FollowOutputResult[] = [];
       for (let i = 16; i <= 20; i++) {
         rerender({ messageCount: i });
         scrolledUpResults.push(result.current.handleFollowOutput(false));
@@ -453,6 +474,32 @@ describe("useChatAutoScroll", () => {
       });
 
       expect(result.current.isAtBottom).toBe(true);
+    });
+
+    it("should use non-animated Virtuoso scrolling in Tauri macOS compatibility mode", () => {
+      mockShouldUseWebkitSafeScrollBehavior.mockReturnValue(true);
+
+      const mockScrollToIndex = vi.fn();
+      const virtuosoRef = {
+        current: { scrollToIndex: mockScrollToIndex } as unknown as VirtuosoHandle,
+      };
+
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 10,
+          virtuosoRef,
+        })
+      );
+
+      act(() => {
+        result.current.scrollToBottom();
+      });
+
+      expect(mockScrollToIndex).toHaveBeenCalledWith({
+        index: 9,
+        align: "end",
+        behavior: "auto",
+      });
     });
 
     it("should not call Virtuoso scrollToIndex when messageCount is 0", () => {
@@ -523,6 +570,29 @@ describe("useChatAutoScroll", () => {
       });
 
       expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "smooth" });
+    });
+
+    it("should use non-animated DOM scrolling in Tauri macOS compatibility mode", () => {
+      mockShouldUseWebkitSafeScrollBehavior.mockReturnValue(true);
+
+      const mockScrollIntoView = vi.fn();
+      const { result } = renderHook(() =>
+        useChatAutoScroll({
+          messageCount: 5,
+        })
+      );
+
+      act(() => {
+        result.current.messagesEndRef.current = {
+          scrollIntoView: mockScrollIntoView,
+        } as unknown as HTMLDivElement;
+      });
+
+      act(() => {
+        result.current.scrollToBottom();
+      });
+
+      expect(mockScrollIntoView).toHaveBeenCalledWith({ behavior: "auto" });
     });
 
     it("should set isAtBottom=true and trigger scroll", () => {

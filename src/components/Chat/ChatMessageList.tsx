@@ -27,6 +27,7 @@ import { isDiffToolCall } from "./DiffToolCallView.utils";
 import { DiffToolCallView } from "./DiffToolCallView";
 import { TaskSubagentCard } from "./TaskSubagentCard";
 import { useChatAutoScroll } from "@/hooks/useChatAutoScroll";
+import { shouldUseWebkitSafeScrollBehavior } from "@/lib/platform-quirks";
 import { useMessageAttachments } from "@/hooks/useMessageAttachments";
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -139,6 +140,10 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
     },
     ref
   ) {
+    const preferredScrollBehavior = shouldUseWebkitSafeScrollBehavior()
+      ? "auto"
+      : "smooth";
+
     // Internal ref for scroll operations
     const virtuosoRef = useRef<VirtuosoHandle>(null);
     const hasScrolledRef = useRef<string | null>(null);
@@ -380,13 +385,13 @@ export const ChatMessageList = forwardRef<VirtuosoHandle, ChatMessageListProps>(
           virtuosoRef.current?.scrollToIndex({
             index: targetIndex,
             align: "start",
-            behavior: "smooth",
+            behavior: preferredScrollBehavior,
           });
         }, MARKDOWN_RENDER_DELAY_MS);
         return () => clearTimeout(timeoutId);
       }
       return undefined;
-    }, [scrollToTimestamp, messages]);
+    }, [scrollToTimestamp, messages, preferredScrollBehavior]);
 
     // Build timeline data for Virtuoso. Always wraps messages as TimelineItem
     // for consistent typing. When hook events exist, they're interleaved and sorted.
