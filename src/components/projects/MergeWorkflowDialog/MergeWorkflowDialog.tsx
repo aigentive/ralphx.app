@@ -10,7 +10,7 @@
  * - Discard changes (delete worktree and branch)
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import type { Project } from "@/types/project";
 import {
   Dialog,
@@ -146,40 +146,42 @@ interface MergeOptionConfig {
   warning?: string;
 }
 
-const MERGE_OPTIONS: MergeOptionConfig[] = [
-  {
-    value: "merge",
-    label: "Merge to main",
-    description: "Creates a merge commit preserving branch history",
-    icon: <GitMerge className="h-4 w-4" />,
-  },
-  {
-    value: "rebase",
-    label: "Rebase onto main",
-    description: "Replays commits on top of main for linear history",
-    icon: <RebaseIcon className="h-4 w-4" />,
-  },
-  {
-    value: "create_pr",
-    label: "Create Pull Request",
-    description: "Opens GitHub to create a PR for code review",
-    icon: <GitPullRequest className="h-4 w-4" />,
-  },
-  {
-    value: "keep_worktree",
-    label: "Keep worktree",
-    description: "Leave as-is and merge manually later",
-    icon: <WorktreeIcon className="h-4 w-4" />,
-  },
-  {
-    value: "discard",
-    label: "Discard changes",
-    description: "Delete the worktree and branch permanently",
-    icon: <Trash2 className="h-4 w-4" />,
-    destructive: true,
-    warning: "This cannot be undone. All commits will be lost.",
-  },
-];
+function getMergeOptions(baseBranch: string): MergeOptionConfig[] {
+  return [
+    {
+      value: "merge",
+      label: `Merge to ${baseBranch}`,
+      description: "Creates a merge commit preserving branch history",
+      icon: <GitMerge className="h-4 w-4" />,
+    },
+    {
+      value: "rebase",
+      label: `Rebase onto ${baseBranch}`,
+      description: `Replays commits on top of ${baseBranch} for linear history`,
+      icon: <RebaseIcon className="h-4 w-4" />,
+    },
+    {
+      value: "create_pr",
+      label: "Create Pull Request",
+      description: "Opens GitHub to create a PR for code review",
+      icon: <GitPullRequest className="h-4 w-4" />,
+    },
+    {
+      value: "keep_worktree",
+      label: "Keep worktree",
+      description: "Leave as-is and merge manually later",
+      icon: <WorktreeIcon className="h-4 w-4" />,
+    },
+    {
+      value: "discard",
+      label: "Discard changes",
+      description: "Delete the worktree and branch permanently",
+      icon: <Trash2 className="h-4 w-4" />,
+      destructive: true,
+      warning: "This cannot be undone. All commits will be lost.",
+    },
+  ];
+}
 
 // ============================================================================
 // Sub-components
@@ -301,6 +303,11 @@ export function MergeWorkflowDialog({
 }: MergeWorkflowDialogProps) {
   const [selectedOption, setSelectedOption] = useState<MergeOption>("merge");
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+
+  const mergeOptions = useMemo(
+    () => getMergeOptions(project.baseBranch ?? "main"),
+    [project.baseBranch]
+  );
 
   // Reset state when dialog opens
   useEffect(() => {
@@ -425,7 +432,7 @@ export function MergeWorkflowDialog({
 
           {/* Options */}
           <div className="space-y-2">
-            {MERGE_OPTIONS.map((config) => (
+            {mergeOptions.map((config) => (
               <RadioOption
                 key={config.value}
                 config={config}

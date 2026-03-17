@@ -182,6 +182,10 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
   // Use completedAt as mergedAt (merge happens after approval which sets completedAt)
   const mergedAt = task.completedAt ?? task.updatedAt;
 
+  const mergedIntoSubtitle = planBranch?.baseBranchOverride
+    ? `Merged into ${planBranch.baseBranchOverride}`
+    : "Changes have been merged into the base branch";
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -203,7 +207,7 @@ export function MergedTaskDetail({ task, isHistorical: _isHistorical = false }: 
       <StatusBanner
         icon={CheckCircle2}
         title="Task Merged"
-        subtitle="Changes have been merged into the base branch"
+        subtitle={mergedIntoSubtitle}
         variant="success"
         badge={
           <StatusPill

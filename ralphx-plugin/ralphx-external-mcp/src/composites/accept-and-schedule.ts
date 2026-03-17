@@ -19,6 +19,8 @@ import type { ApiKeyContext } from "../types.js";
 
 export interface AcceptAndScheduleInput {
   sessionId: string;
+  baseBranchOverride?: string;
+  useFeatureBranch?: boolean;
 }
 
 export interface AcceptAndScheduleProgress {
@@ -95,6 +97,8 @@ export async function acceptAndSchedule(
       {
         session_id: input.sessionId,
         proposal_ids: proposalIds,
+        ...(input.baseBranchOverride !== undefined && { base_branch_override: input.baseBranchOverride }),
+        ...(input.useFeatureBranch !== undefined && { use_feature_branch: input.useFeatureBranch }),
       }
     );
 

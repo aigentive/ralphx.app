@@ -81,6 +81,8 @@ type TaskNodeData = Record<string, unknown> & {
   isCriticalPath: boolean;
   description?: string | null;
   category?: string;
+  /** Target branch for plan_merge category nodes */
+  mergeTarget?: string;
 };
 
 // Edge data for custom DependencyEdge component
@@ -462,7 +464,8 @@ function computeLayoutWithCache(
   cache: React.MutableRefObject<CachedLayout | null>,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onCancelAll?: (sessionId: string) => void
+  onCancelAll?: (sessionId: string) => void,
+  planBranchMap?: Map<string, string>
 ): LayoutResult {
   // Helper to get per-node dimensions from the mode lookup
   const getNodeDimensions = (nodeId: string) => {
@@ -596,6 +599,9 @@ function computeLayoutWithCache(
     const pos = positions.get(graphNode.taskId) ?? { x: 0, y: 0 };
     const dims = getNodeDimensions(graphNode.taskId);
 
+    const planId = graphNode.category === "plan_merge" ? taskToPlanMap.get(graphNode.taskId) : undefined;
+    const mergeTarget = planId && planBranchMap ? planBranchMap.get(planId) : undefined;
+
     return {
       id: graphNode.taskId,
       type: "task", // Use custom TaskNode component
@@ -610,6 +616,7 @@ function computeLayoutWithCache(
         internalStatus: graphNode.internalStatus,
         priority: graphNode.priority,
         isCriticalPath: criticalPathSet.has(graphNode.taskId),
+        ...(mergeTarget !== undefined && { mergeTarget }),
       } satisfies TaskNodeData,
       sourcePosition,
       targetPosition,
@@ -1057,7 +1064,8 @@ export function useTaskGraphLayout(
   onToggleAllTiers?: (planArtifactId: string, action: "expand" | "collapse") => void,
   projectId?: string,
   onNavigateToTask?: (taskId: string) => void,
-  onCancelAll?: (sessionId: string) => void
+  onCancelAll?: (sessionId: string) => void,
+  planBranchMap?: Map<string, string>
 ): LayoutResult {
   // Merge with default config
   const fullConfig = useMemo(
@@ -1088,7 +1096,8 @@ export function useTaskGraphLayout(
       layoutCache,
       projectId,
       onNavigateToTask,
-      onCancelAll
+      onCancelAll,
+      planBranchMap
     );
   }, [
     graphNodes,
@@ -1105,6 +1114,7 @@ export function useTaskGraphLayout(
     projectId,
     onNavigateToTask,
     onCancelAll,
+    planBranchMap,
   ]);
 
   return layout;
