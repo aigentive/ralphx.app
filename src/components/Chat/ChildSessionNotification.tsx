@@ -8,8 +8,9 @@
  */
 
 import { useState, useEffect } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { useEventBus } from "@/providers/EventProvider";
-import { ExternalLink, ShieldCheck } from "lucide-react";
+import { ExternalLink, ShieldCheck, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { logger } from "@/lib/logger";
 import { useIdeationStore } from "@/stores/ideationStore";
@@ -45,6 +46,37 @@ export function ChildSessionNotification({
   const verificationChildId = useIdeationStore((s) => s.verificationNotifications[sessionId]);
   const setActiveIdeationTab = useIdeationStore((s) => s.setActiveIdeationTab);
   const setActiveVerificationChildId = useIdeationStore((s) => s.setActiveVerificationChildId);
+  const clearVerificationNotification = useIdeationStore((s) => s.clearVerificationNotification);
+
+  // Reactive selector — re-evaluates when session verification state changes in the store
+  const sessionVerificationState = useIdeationStore(
+    useShallow((s) => {
+      const session = s.sessions[sessionId];
+      if (!session) return null;
+      return {
+        verificationStatus: session.verificationStatus,
+        verificationInProgress: session.verificationInProgress,
+      };
+    }),
+  );
+
+  // Reconciliation effect — clears stale notifications when session reaches terminal state.
+  // Handles agent crash or missing terminal event where the normal clear path never fires.
+  useEffect(() => {
+    if (!verificationChildId || !sessionVerificationState) return;
+
+    const { verificationStatus, verificationInProgress } = sessionVerificationState;
+
+    // Terminal: not in progress AND not currently reviewing or unverified
+    const isTerminal =
+      !verificationInProgress &&
+      verificationStatus !== "unverified" &&
+      verificationStatus !== "reviewing";
+
+    if (isTerminal) {
+      clearVerificationNotification(sessionId);
+    }
+  }, [sessionId, verificationChildId, sessionVerificationState, clearVerificationNotification]);
 
   // Listen for child session created events (general follow-ups only)
   useEffect(() => {
@@ -121,25 +153,36 @@ export function ChildSessionNotification({
                 Verification started
               </p>
             </div>
-            <Button
-              size="sm"
-              onClick={handleViewVerification}
-              data-testid="view-verification-button"
-              className="gap-2 h-7 text-xs shrink-0"
-              style={{
-                background: "hsla(14 100% 60% / 0.12)",
-                border: "1px solid hsla(14 100% 60% / 0.2)",
-                color: "hsl(14 100% 60%)",
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = "hsla(14 100% 60% / 0.18)";
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = "hsla(14 100% 60% / 0.12)";
-              }}
-            >
-              View
-            </Button>
+            <div className="flex items-center gap-2 shrink-0">
+              <Button
+                size="sm"
+                onClick={handleViewVerification}
+                data-testid="view-verification-button"
+                className="gap-2 h-7 text-xs"
+                style={{
+                  background: "hsla(14 100% 60% / 0.12)",
+                  border: "1px solid hsla(14 100% 60% / 0.2)",
+                  color: "hsl(14 100% 60%)",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "hsla(14 100% 60% / 0.18)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "hsla(14 100% 60% / 0.12)";
+                }}
+              >
+                View
+              </Button>
+              <button
+                onClick={() => clearVerificationNotification(sessionId)}
+                data-testid="dismiss-verification-button"
+                className="w-5 h-5 flex items-center justify-center rounded opacity-50 hover:opacity-100 transition-opacity"
+                style={{ color: "hsl(220 10% 60%)" }}
+                aria-label="Dismiss verification notification"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </div>
           </div>
         </div>
       )}
