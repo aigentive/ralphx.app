@@ -157,6 +157,30 @@ impl QuestionState {
         }
     }
 
+    /// Expire a pending question due to timeout.
+    ///
+    /// Returns the removed question metadata when the request_id existed in the
+    /// in-memory map. Repo persistence is best-effort and marks the question as
+    /// expired instead of deleting audit history.
+    pub async fn expire(&self, request_id: &str) -> Option<PendingQuestionInfo> {
+        let info = self
+            .pending
+            .lock()
+            .await
+            .remove(request_id)
+            .map(|question| question.info);
+
+        if info.is_some() {
+            if let Some(repo) = &self.repo {
+                if let Err(e) = repo.expire_by_request_id(request_id).await {
+                    error!("Failed to persist question expiry {}: {}", request_id, e);
+                }
+            }
+        }
+
+        info
+    }
+
     /// Get the answer for a resolved question from the repository.
     ///
     /// Returns `Ok(None)` when there is no repo (test mode without persistence).

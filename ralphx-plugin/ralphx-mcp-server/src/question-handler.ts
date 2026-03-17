@@ -3,16 +3,18 @@
  *
  * Mirrors the permission_request pattern:
  * 1. POST /api/question/request — registers question, emits Tauri event
- * 2. GET /api/question/await/:request_id — long-polls for user answer (5 min timeout)
+ * 2. GET /api/question/await/:request_id — long-polls for user answer (about 5 min timeout)
  * 3. Returns answer to agent as tool result
  */
 
+import {
+  createHumanWaitAbortController,
+  HUMAN_WAIT_CLIENT_TIMEOUT_MS,
+  isHumanWaitTimeoutError,
+} from "./human-wait.js";
 import { safeError } from "./redact.js";
 
 const TAURI_API_URL = process.env.TAURI_API_URL || "http://127.0.0.1:3847";
-
-/** Timeout for long-polling (15 minutes — staggered 1 min above backend's 14 min) */
-const QUESTION_TIMEOUT_MS = 15 * 60 * 1000;
 
 interface QuestionOption {
   label: string;
@@ -38,7 +40,7 @@ interface QuestionAnswer {
  *
  * Flow:
  * 1. POST to /api/question/request — registers the question, backend emits Tauri event
- * 2. GET /api/question/await/:request_id — blocks until user answers (5 min timeout)
+ * 2. GET /api/question/await/:request_id — blocks until user answers (about 5 min timeout)
  * 3. Return the answer JSON to the agent
  */
 export async function handleAskUserQuestion(
@@ -100,9 +102,11 @@ export async function handleAskUserQuestion(
     };
   }
 
-  // 2. Long-poll for user answer (5 minute timeout)
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), QUESTION_TIMEOUT_MS);
+  // 2. Long-poll for user answer. Keep our timeout just below the effective
+  // MCP tool ceiling so this path returns structured timeout JSON instead of
+  // surfacing a raw transport error back to the agent.
+  const { controller, timeoutId } = createHumanWaitAbortController();
+  const waitStartedAt = Date.now();
 
   try {
     const answerResponse = await fetch(
@@ -154,9 +158,10 @@ export async function handleAskUserQuestion(
   } catch (error) {
     clearTimeout(timeoutId);
 
-    if (error instanceof Error && error.name === "AbortError") {
+    const elapsedMs = Date.now() - waitStartedAt;
+    if (isHumanWaitTimeoutError(error, elapsedMs, HUMAN_WAIT_CLIENT_TIMEOUT_MS)) {
       safeError(
-        `[RalphX MCP] Question ${request_id} timed out (client)`
+        `[RalphX MCP] Question ${request_id} timed out (client/transport)`
       );
       return {
         content: [
