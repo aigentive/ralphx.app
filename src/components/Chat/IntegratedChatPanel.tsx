@@ -178,6 +178,7 @@ export function IntegratedChatPanel({
     // Pass history mode overrides for conversation selection
     overrideConversationId: taskHistoryState?.conversationId,
     overrideAgentRunId: taskHistoryState?.agentRunId,
+    isVisible,
   });
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);

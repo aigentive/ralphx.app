@@ -567,6 +567,127 @@ describe("useChatPanelContext", () => {
     });
   });
 
+  describe("isVisible re-trigger", () => {
+    it("should reset hasAutoSelectedRef when panel transitions from hidden to visible", async () => {
+      mockStore.activeConversationId = null;
+
+      const { result, rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+            isVisible: true,
+          },
+        }
+      );
+
+      // First auto-select runs
+      const mockConversations: ConversationData[] = [
+        { id: "conv-parent", lastMessageAt: "2026-03-17T10:00:00Z", createdAt: "2026-03-17T09:00:00Z" },
+      ];
+      act(() => {
+        result.current.autoSelectConversation({ data: mockConversations, isLoading: false });
+      });
+      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("conv-parent");
+      mockStore.activeConversationId = "conv-parent";
+      mockStore.setActiveConversation.mockClear();
+
+      // Panel becomes hidden (verification tab shown)
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-1",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+        isVisible: false,
+      });
+
+      // While hidden, global activeConversationId gets stomped by child panel
+      mockStore.activeConversationId = "conv-child";
+
+      // Panel becomes visible again (Plan tab clicked)
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-1",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+        isVisible: true,
+      });
+
+      // autoSelectConversation should now re-fire (hasAutoSelectedRef was reset)
+      // and re-select conv-parent because conv-child doesn't belong to this context
+      act(() => {
+        result.current.autoSelectConversation({ data: mockConversations, isLoading: false });
+      });
+
+      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("conv-parent");
+    });
+
+    it("should NOT reset hasAutoSelectedRef when panel stays visible across renders", async () => {
+      mockStore.activeConversationId = null;
+
+      const { result, rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+            isVisible: true,
+          },
+        }
+      );
+
+      // First auto-select runs
+      const mockConversations: ConversationData[] = [
+        { id: "conv-1", lastMessageAt: "2026-03-17T10:00:00Z", createdAt: "2026-03-17T09:00:00Z" },
+      ];
+      act(() => {
+        result.current.autoSelectConversation({ data: mockConversations, isLoading: false });
+      });
+      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("conv-1");
+      mockStore.activeConversationId = "conv-1";
+      mockStore.setActiveConversation.mockClear();
+
+      // Re-render with isVisible still true (no transition)
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-1",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+        isVisible: true,
+      });
+
+      // autoSelectConversation should NOT re-select (hasAutoSelectedRef still true)
+      act(() => {
+        result.current.autoSelectConversation({ data: mockConversations, isLoading: false });
+      });
+
+      // conv-1 already belongs to context, so no redundant setActiveConversation call
+      expect(mockStore.setActiveConversation).not.toHaveBeenCalled();
+    });
+  });
+
   describe("pending plan rejection on session switch", () => {
     it("should NOT call rejectTeamPlan when switching sessions with a pending plan (backend plan survives for re-discovery)", async () => {
       const prevContextKey = "session:session-1";

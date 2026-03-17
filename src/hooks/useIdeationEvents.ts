@@ -85,6 +85,7 @@ export function useIdeationEvents() {
   const bus = useEventBus();
   const updateSession = useIdeationStore((s) => s.updateSession);
   const setVerificationNotification = useIdeationStore((s) => s.setVerificationNotification);
+  const setActiveVerificationChildId = useIdeationStore((s) => s.setActiveVerificationChildId);
   const queryClient = useQueryClient();
 
   useEffect(() => {
@@ -211,6 +212,7 @@ export function useIdeationEvents() {
         // Track verification children in the store for notification display
         if (parsed.data.purpose === 'verification') {
           setVerificationNotification(parsed.data.parentSessionId, parsed.data.sessionId);
+          setActiveVerificationChildId(parsed.data.parentSessionId, parsed.data.sessionId);
         }
 
         // Emit a local event for UI components to handle
@@ -225,5 +227,5 @@ export function useIdeationEvents() {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, updateSession, setVerificationNotification, queryClient]);
+  }, [bus, updateSession, setVerificationNotification, setActiveVerificationChildId, queryClient]);
 }

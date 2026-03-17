@@ -33,6 +33,8 @@ interface UseChatPanelContextProps {
   overrideConversationId?: string | undefined;
   /** Override agent run ID for history mode - used for scroll positioning */
   overrideAgentRunId?: string | undefined;
+  /** Whether this panel is currently visible — re-triggers autoSelectConversation on false→true transition */
+  isVisible?: boolean;
 }
 
 interface ConversationData {
@@ -56,6 +58,7 @@ export function useChatPanelContext({
   isHistoryMode,
   overrideConversationId,
   overrideAgentRunId,
+  isVisible = true,
 }: UseChatPanelContextProps) {
   const queryClient = useQueryClient();
   const activeConversationId = useChatStore(selectActiveConversationId);
@@ -146,6 +149,21 @@ export function useChatPanelContext({
 
   // Auto-select tracking
   const hasAutoSelectedRef = useRef(false);
+
+  // Track previous visibility to detect false→true transitions
+  const prevIsVisibleRef = useRef(isVisible);
+
+  // Re-trigger autoSelectConversation when panel becomes visible again.
+  // Both IntegratedChatPanel instances (parent + child) share a global activeConversationId,
+  // so the hidden panel's context may be stale when the user switches back to it.
+  // Resetting hasAutoSelectedRef on false→true ensures autoSelectConversation re-fires
+  // and picks the correct conversation for the now-visible panel's context.
+  useEffect(() => {
+    if (!prevIsVisibleRef.current && isVisible) {
+      hasAutoSelectedRef.current = false;
+    }
+    prevIsVisibleRef.current = isVisible;
+  }, [isVisible]);
 
   // Handle context changes
   useEffect(() => {
