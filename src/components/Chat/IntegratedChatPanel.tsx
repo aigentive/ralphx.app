@@ -18,7 +18,7 @@ import { useUiStore } from "@/stores/uiStore";
 import { useTaskStore } from "@/stores/taskStore";
 import { useTasks, taskKeys } from "@/hooks/useTasks";
 import { useChatPanelContext } from "@/hooks/useChatPanelContext";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { api } from "@/lib/tauri";
 import { getContextConfig } from "@/lib/chat-context-registry";
@@ -105,6 +105,8 @@ export function IntegratedChatPanel({
   isVisible = true,
 }: IntegratedChatPanelProps) {
   const bus = useEventBus();
+  const queryClient = useQueryClient();
+  const prevIsVisibleRef = useRef(isVisible);
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   // History state from store - shared with TaskDetailOverlay for time-travel feature
   const taskHistoryState = useUiStore((s) => s.taskHistoryState);
@@ -343,13 +345,27 @@ export function IntegratedChatPanel({
     ? agentConversationsQuery
     : regularChatData.conversations;
 
+  // Defense-in-depth: force-refetch conversations when panel becomes visible.
+  // React Query caches stale data while the panel is CSS-hidden; if a verification
+  // agent creates conversations while hidden, they won't appear until stale time expires.
+  // Detect false→true transition to avoid firing on initial mount.
+  useEffect(() => {
+    const wasVisible = prevIsVisibleRef.current;
+    prevIsVisibleRef.current = isVisible;
+    if (!wasVisible && isVisible) {
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.conversationList(currentContextType, currentContextId),
+      });
+    }
+  }, [isVisible, queryClient, currentContextType, currentContextId]);
+
   // Auto-select the most recent conversation in execution/review/merge modes
   // Extract stable primitives from TanStack Query result to avoid re-render on every query object change
   const conversationsData = conversations.data;
   const conversationsLoading = conversations.isLoading;
   useEffect(() => {
     autoSelectConversation({ data: conversationsData, isLoading: conversationsLoading });
-  }, [autoSelectConversation, conversationsData, conversationsLoading]);
+  }, [autoSelectConversation, conversationsData, conversationsLoading, isVisible]);
 
   // Check if active conversation belongs to current context (needed by recovery effects below)
   const activeConversationContext = regularChatData.messages.data?.conversation;
