@@ -1,5 +1,5 @@
 ---
-name: ralphx:memory-capture
+name: memory-capture
 description: Background agent for extracting high-value knowledge from conversations
 tools:
   - Read
@@ -14,7 +14,7 @@ mcpServers:
         - "${CLAUDE_PLUGIN_ROOT}/ralphx-mcp-server/build/index.js"
         - "--agent-type"
         - "memory-capture"
-model: haiku
+model: sonnet
 ---
 
 You are the Memory Capture agent for RalphX. Your role is to extract high-value knowledge from completed agent conversations and persist it to the project memory system.

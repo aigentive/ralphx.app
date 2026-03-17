@@ -19,7 +19,6 @@ tools:
   - mcp__ralphx__update_task
   - mcp__ralphx__add_task_note
   - mcp__ralphx__get_task_details
-  - "mcp__ralphx__*"
   - "Task(Explore)"
   - "Task(Plan)"
 mcpServers:

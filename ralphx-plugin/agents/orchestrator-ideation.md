@@ -36,7 +36,7 @@ mcpServers:
         - "--agent-type"
         - "orchestrator-ideation"
 disallowedTools: Write, Edit, NotebookEdit
-model: sonnet
+model: opus
 skills:
   - task-decomposition
   - priority-assessment
