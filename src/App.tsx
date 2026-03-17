@@ -56,6 +56,7 @@ import { useProposalMutations } from "@/hooks/useProposals";
 import { useApplyProposals } from "@/hooks/useApplyProposals";
 import { useAppKeyboardShortcuts } from "@/hooks/useAppKeyboardShortcuts";
 import { useNavCompactBreakpoint } from "@/hooks";
+import { extractErrorMessage } from "@/lib/errors";
 import { api, getGitBranches, getGitDefaultBranch } from "@/lib/tauri";
 import { executionApi } from "@/api/execution";
 import { tasksApi } from "@/api/tasks";
@@ -600,7 +601,7 @@ function AppContent() {
       }
       return result;
     } catch (error) {
-      toast.error("Failed to apply proposals");
+      toast.error(extractErrorMessage(error, "Failed to apply proposals"));
       throw error;
     }
   }, [applyProposalsMutation, setCurrentView]);
