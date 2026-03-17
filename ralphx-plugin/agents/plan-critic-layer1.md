@@ -49,6 +49,8 @@ Do NOT analyze any plan content embedded in the user message — fetch it yourse
 
 Review the plan fetched via `mcp__ralphx__get_session_plan` for gaps, risks, and missing details. Focus on **completeness** — are all the pieces there? Are the connections specified? Could the plan be executed and produce a correct, complete result?
 
+Treat the plan's `Constraints`, `Avoid`, and `Proof Obligations` sections as first-class completeness checks when present. Missing, vague, or self-contradictory entries in those sections are high-signal gaps because they usually predict rework later.
+
 ## Proposed vs Existing State (NON-NEGOTIABLE)
 
 CRITICAL INSTRUCTION — Proposed vs Existing State:
@@ -94,6 +96,17 @@ If the user message includes a PRIOR ROUND CONTEXT section, treat those gaps as 
 - **Observability gaps** — No logging, no metrics for critical paths
 - **Dead additions** — Items proposed but never wired, read, or used after creation
 - **Missing wiring** — Services/repos created but not added to AppState/DI container
+- **Violated anti-goals** — The plan's `Avoid` section says not to do X, but the rest of the plan still does X
+- **Missing proof** — A `Proof Obligation` is listed but the plan never names the concrete file, call path, or verification step that satisfies it
+
+## Outcome Optimization Lens
+
+Return the gaps most predictive of implementation failure, not the most numerous gaps.
+
+For each gap, think in this order:
+1. Which failure dimension is being violated? (architecture fit, wiring completeness, task atomicity, testing, recovery, constraint adherence)
+2. What is the concrete break scenario?
+3. What is the minimal repair direction that would lower risk?
 
 ## Output Format (STRICT)
 
@@ -105,8 +118,8 @@ Respond with ONLY a JSON object — no preamble, no markdown fences around the J
     {
       "severity": "critical|high|medium|low",
       "category": "architecture|security|testing|performance|scalability|maintainability|completeness",
-      "description": "Concise description of the gap (1-2 sentences max)",
-      "why_it_matters": "Concrete impact if not addressed (1 sentence)"
+      "description": "Dimension: <dimension>. Concise description of the gap (1-2 sentences max)",
+      "why_it_matters": "Concrete impact if not addressed (1 sentence). Minimal repair: <smallest credible repair direction>."
     }
   ],
   "summary": "One-sentence synthesis of the plan's single most important risk"

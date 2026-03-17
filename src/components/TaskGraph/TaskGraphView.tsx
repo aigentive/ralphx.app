@@ -25,7 +25,7 @@ import {
   type OnEdgesChange,
 } from "@xyflow/react";
 
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQueries } from "@tanstack/react-query";
 import "@xyflow/react/dist/style.css";
 
 import { useTaskGraph } from "./hooks/useTaskGraph";
@@ -1121,6 +1121,26 @@ function TaskGraphViewInner({
     [archiveTasksInGroupMutation, projectId, queryClient]
   );
 
+  // Fetch plan branches for all plan groups to populate mergeTarget on plan_merge nodes
+  const planBranchQueries = useQueries({
+    queries: (filteredGraphData.planGroups ?? []).map((group) => ({
+      queryKey: ["plan-branch", group.planArtifactId] as const,
+      queryFn: () => api.planBranches.getByPlan(group.planArtifactId),
+      staleTime: 5_000,
+    })),
+  });
+
+  const planBranchMergeTargetMap = useMemo(() => {
+    const map = new Map<string, string>();
+    (filteredGraphData.planGroups ?? []).forEach((group, i) => {
+      const branch = planBranchQueries[i]?.data;
+      if (branch?.baseBranchOverride) {
+        map.set(group.planArtifactId, branch.baseBranchOverride);
+      }
+    });
+    return map;
+  }, [planBranchQueries, filteredGraphData.planGroups]);
+
   // Compute layout using dagre (includes plan grouping)
   const { nodes: layoutNodes, edges: layoutEdges, groupNodes } = useTaskGraphLayout(
     filteredGraphData.nodes,
@@ -1136,7 +1156,8 @@ function TaskGraphViewInner({
     handleToggleAllTiers,
     projectId,
     handleViewDetails,
-    handleCancelAllInGroup
+    handleCancelAllInGroup,
+    planBranchMergeTargetMap
   );
 
   useEffect(() => {

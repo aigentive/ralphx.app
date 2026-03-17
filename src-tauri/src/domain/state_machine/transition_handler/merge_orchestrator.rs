@@ -939,6 +939,7 @@ impl<'a> super::TransitionHandler<'a> {
         task: &Task,
         task_id_str: &str,
         source_branch: &str,
+        target_branch: &str,
     ) -> String {
         if task.category == TaskCategory::PlanMerge {
             if let (Some(session_id), Some(task_repo), Some(session_repo)) = (
@@ -950,7 +951,7 @@ impl<'a> super::TransitionHandler<'a> {
                     .ideation_session_repo
                     .as_deref(),
             ) {
-                build_plan_merge_commit_msg(session_id, source_branch, task_repo, session_repo)
+                build_plan_merge_commit_msg(session_id, source_branch, target_branch, task_repo, session_repo)
                     .await
             } else {
                 tracing::warn!(

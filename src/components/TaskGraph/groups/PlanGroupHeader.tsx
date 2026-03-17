@@ -66,6 +66,8 @@ export interface PlanGroupHeaderProps {
   onNavigateToTask?: (taskId: string) => void;
   /** Working directory for fetching git branches in settings */
   workingDirectory?: string;
+  /** Project's default base branch for initializing branch selector */
+  baseBranch?: string;
 }
 
 // ============================================================================
@@ -206,6 +208,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
   onNavigateToSession,
   onNavigateToTask,
   workingDirectory,
+  baseBranch,
 }: PlanGroupHeaderProps) {
   const queryClient = useQueryClient();
   const eventBus = useEventBus();
@@ -389,6 +392,7 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
                     onNavigateToTask?.(taskId);
                   }}
                   {...(workingDirectory !== undefined && { workingDirectory })}
+                  {...(baseBranch !== undefined && { baseBranch })}
                 />
               </PopoverContent>
             </Popover>
@@ -396,13 +400,22 @@ export const PlanGroupHeader = memo(function PlanGroupHeader({
         </div>
       </div>
 
-      {/* Row 2: branch badge + progress bar */}
+      {/* Row 2: branch badge + merge target + progress bar */}
       <div className="flex items-center gap-2 pl-6 w-full">
         {planBranch && planBranch.status !== "abandoned" && (
           <FeatureBranchBadge
             branchName={planBranch.branchName}
             status={planBranch.status}
           />
+        )}
+        {planBranch && planBranch.baseBranchOverride && (
+          <div
+            className="flex items-center gap-0.5 px-1 py-px rounded text-[9px] font-mono bg-[hsl(var(--bg-surface))] text-[hsl(var(--text-muted))]"
+            title={`Merging into: ${planBranch.baseBranchOverride}`}
+          >
+            <span style={{ opacity: 0.5 }}>→</span>
+            <span>{planBranch.baseBranchOverride}</span>
+          </div>
         )}
         <ProgressBar completed={counts.done} total={counts.total} />
       </div>

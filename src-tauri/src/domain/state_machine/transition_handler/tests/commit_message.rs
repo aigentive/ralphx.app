@@ -93,6 +93,7 @@ async fn test_build_plan_merge_commit_msg_with_session_title_and_tasks() {
     let msg = build_plan_merge_commit_msg(
         &sid,
         "ralphx/ralphx/plan-a3b2c1d0",
+        "main",
         &task_repo,
         &session_repo,
     )
@@ -130,7 +131,7 @@ async fn test_build_plan_merge_commit_msg_no_session_title_falls_back_to_first_t
     session_repo.create(session).await.unwrap();
 
     let msg =
-        build_plan_merge_commit_msg(&sid, "ralphx/ralphx/plan-111", &task_repo, &session_repo)
+        build_plan_merge_commit_msg(&sid, "ralphx/ralphx/plan-111", "main", &task_repo, &session_repo)
             .await;
 
     assert!(
@@ -151,7 +152,7 @@ async fn test_build_plan_merge_commit_msg_no_session_no_tasks_uses_generic() {
     session_repo.create(session).await.unwrap();
 
     let msg =
-        build_plan_merge_commit_msg(&sid, "ralphx/ralphx/plan-222", &task_repo, &session_repo)
+        build_plan_merge_commit_msg(&sid, "ralphx/ralphx/plan-222", "main", &task_repo, &session_repo)
             .await;
 
     assert!(
@@ -175,7 +176,7 @@ async fn test_build_plan_merge_commit_msg_truncates_at_20_tasks() {
     session_repo.create(session).await.unwrap();
 
     let msg =
-        build_plan_merge_commit_msg(&sid, "ralphx/ralphx/plan-333", &task_repo, &session_repo)
+        build_plan_merge_commit_msg(&sid, "ralphx/ralphx/plan-333", "main", &task_repo, &session_repo)
             .await;
 
     assert!(
@@ -205,12 +206,45 @@ async fn test_build_plan_merge_commit_msg_user_renamed_title() {
     session_repo.create(session).await.unwrap();
 
     let msg =
-        build_plan_merge_commit_msg(&sid, "ralphx/ralphx/plan-444", &task_repo, &session_repo)
+        build_plan_merge_commit_msg(&sid, "ralphx/ralphx/plan-444", "main", &task_repo, &session_repo)
             .await;
 
     assert_eq!(
         msg.lines().next().unwrap(),
         "feat: Add OAuth2 login and JWT sessions",
         "Should use user-renamed session title as subject"
+    );
+}
+
+#[tokio::test]
+async fn test_build_plan_merge_commit_msg_no_session_no_tasks_uses_target_branch_in_fallback() {
+    // When there is no session title and no tasks, the fallback should include target_branch
+    // (not hard-coded "main"). This verifies the target_branch parameter is propagated.
+    let session_id = "sess-007";
+    let session = make_session_no_title(session_id);
+
+    let task_repo = MemoryTaskRepository::new();
+    let session_repo = MemoryIdeationSessionRepository::new();
+    let sid = IdeationSessionId::from_string(session_id.to_string());
+    session_repo.create(session).await.unwrap();
+
+    let msg = build_plan_merge_commit_msg(
+        &sid,
+        "ralphx/ralphx/plan-555",
+        "develop",
+        &task_repo,
+        &session_repo,
+    )
+    .await;
+
+    assert!(
+        msg.contains("develop"),
+        "Fallback subject should contain target_branch 'develop', got: {}",
+        msg
+    );
+    assert!(
+        msg.contains("Merge plan into develop"),
+        "Fallback should be 'Merge plan into develop', got: {}",
+        msg
     );
 }

@@ -260,6 +260,72 @@ describe("AcceptModal", () => {
     });
   });
 
+  describe("Branch Loading Spinner", () => {
+    it("shows loading spinner while branches are being fetched", async () => {
+      let resolveGetBranches!: (branches: string[]) => void;
+      vi.mocked(getGitBranches).mockReturnValueOnce(
+        new Promise((resolve) => {
+          resolveGetBranches = resolve;
+        })
+      );
+
+      render(
+        <AcceptModal
+          {...defaultProps}
+          defaultUseFeatureBranch={true}
+          workingDirectory="/some/path"
+          baseBranch="main"
+        />
+      );
+
+      expect(screen.getByTestId("branch-loading-spinner")).toBeInTheDocument();
+
+      resolveGetBranches(["main", "develop"]);
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("branch-loading-spinner")).not.toBeInTheDocument();
+      });
+    });
+
+    it("hides loading spinner after branches load with error", async () => {
+      let rejectGetBranches!: (err: Error) => void;
+      vi.mocked(getGitBranches).mockReturnValueOnce(
+        new Promise((_, reject) => {
+          rejectGetBranches = reject;
+        })
+      );
+
+      render(
+        <AcceptModal
+          {...defaultProps}
+          defaultUseFeatureBranch={true}
+          workingDirectory="/some/path"
+          baseBranch="main"
+        />
+      );
+
+      expect(screen.getByTestId("branch-loading-spinner")).toBeInTheDocument();
+
+      rejectGetBranches(new Error("no git repo"));
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("branch-loading-spinner")).not.toBeInTheDocument();
+      });
+    });
+
+    it("does not show loading spinner when feature branch is unchecked", () => {
+      render(
+        <AcceptModal
+          {...defaultProps}
+          defaultUseFeatureBranch={false}
+          workingDirectory="/some/path"
+        />
+      );
+
+      expect(screen.queryByTestId("branch-loading-spinner")).not.toBeInTheDocument();
+    });
+  });
+
   describe("Base Branch Selector", () => {
     it("degrades to free-text when get_git_branches rejects", async () => {
       vi.mocked(getGitBranches).mockRejectedValueOnce(new Error("no git repo"));
@@ -334,6 +400,66 @@ describe("AcceptModal", () => {
           useFeatureBranch: true,
         })
       );
+    });
+
+    it("blocks accept when typed branch does not exist locally", async () => {
+      vi.mocked(getGitBranches).mockResolvedValueOnce(["main", "develop", "feature/test"]);
+
+      const onAccept = vi.fn();
+      render(
+        <AcceptModal
+          {...defaultProps}
+          defaultUseFeatureBranch={true}
+          workingDirectory="/some/path"
+          baseBranch="main"
+          onAccept={onAccept}
+        />
+      );
+
+      const input = screen.getByTestId("base-branch-input");
+      await userEvent.clear(input);
+      await userEvent.type(input, "Branch-override");
+
+      await waitFor(() => {
+        expect(screen.getByTestId("branch-validation-error")).toHaveTextContent(
+          "Branch 'Branch-override' does not exist locally"
+        );
+      });
+
+      const acceptButton = screen.getByRole("button", { name: /accept plan/i });
+      expect(acceptButton).toBeDisabled();
+      await userEvent.click(acceptButton);
+
+      expect(onAccept).not.toHaveBeenCalled();
+    });
+
+    it("disables accept button when feature branch checked and branch input is empty", async () => {
+      vi.mocked(getGitBranches).mockResolvedValueOnce(["main", "develop"]);
+
+      const onAccept = vi.fn();
+      render(
+        <AcceptModal
+          {...defaultProps}
+          defaultUseFeatureBranch={true}
+          workingDirectory="/some/path"
+          baseBranch="main"
+          onAccept={onAccept}
+        />
+      );
+
+      // Wait for branches to load
+      await waitFor(() => {
+        expect(screen.queryByTestId("branch-loading-spinner")).not.toBeInTheDocument();
+      });
+
+      const input = screen.getByTestId("base-branch-input");
+      await userEvent.clear(input);
+
+      // Button should be disabled with empty branch input
+      const acceptButton = screen.getByRole("button", { name: /accept plan/i });
+      expect(acceptButton).toBeDisabled();
+      await userEvent.click(acceptButton);
+      expect(onAccept).not.toHaveBeenCalled();
     });
 
     it("does not send baseBranchOverride when feature branch unchecked", async () => {

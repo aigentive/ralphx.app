@@ -1929,6 +1929,65 @@ async fn test_apply_proposals_core_idempotency_guard() {
 }
 
 #[tokio::test]
+async fn test_apply_proposals_core_repairs_stale_orphaned_execution_plan() {
+    use chrono::{Duration, Utc};
+
+    use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
+    use crate::commands::ideation_commands::ApplyProposalsInput;
+    use crate::domain::entities::{ExecutionPlan, ExecutionPlanStatus, IdeationSessionStatus};
+
+    let state = setup_test_state();
+    let (_project_id, session, proposal_ids) = setup_session_with_proposals(&state, 2).await;
+
+    let stale_after_secs =
+        crate::infrastructure::agents::claude::verification_config()
+            .accept_stale_execution_plan_secs as i64;
+    let mut stale_plan = ExecutionPlan::new(session.id.clone());
+    stale_plan.created_at = Utc::now() - Duration::seconds(stale_after_secs + 1);
+    let stale_plan_id = stale_plan.id.clone();
+    state
+        .execution_plan_repo
+        .create(stale_plan)
+        .await
+        .expect("Failed to create stale execution plan");
+
+    let input = ApplyProposalsInput {
+        session_id: session.id.as_str().to_string(),
+        proposal_ids,
+        target_column: "auto".to_string(),
+        use_feature_branch: Some(false),
+        base_branch_override: None,
+    };
+
+    let result = apply_proposals_core(&state, input)
+        .await
+        .expect("Retry should supersede stale execution plan and succeed");
+
+    assert_eq!(result.created_task_ids.len(), 2, "Retry should create tasks");
+    assert!(result.session_converted, "Retry should convert the session");
+
+    let stale_plan = state
+        .execution_plan_repo
+        .get_by_id(&stale_plan_id)
+        .await
+        .expect("repo error")
+        .expect("stale plan should still exist");
+    assert_eq!(
+        stale_plan.status,
+        ExecutionPlanStatus::Superseded,
+        "stale execution plan should be superseded"
+    );
+
+    let updated_session = state
+        .ideation_session_repo
+        .get_by_id(&session.id)
+        .await
+        .expect("repo error")
+        .expect("session should exist");
+    assert_eq!(updated_session.status, IdeationSessionStatus::Accepted);
+}
+
+#[tokio::test]
 async fn test_apply_proposals_core_rejects_inactive_session() {
     use crate::commands::ideation_commands::ideation_commands_apply::apply_proposals_core;
     use crate::commands::ideation_commands::ApplyProposalsInput;

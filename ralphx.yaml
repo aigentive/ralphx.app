@@ -255,6 +255,9 @@ ideation:
     reconciliation_stale_after_secs: 5400
     # How often the reconciliation service scans for stuck sessions (seconds). Env: RALPHX_VERIFICATION_RECONCILIATION_INTERVAL_SECS
     reconciliation_interval_secs: 300
+    # accept-plan retry self-heal — supersede orphaned execution plans with no tasks/links after this many seconds
+    # Env: RALPHX_VERIFICATION_ACCEPT_STALE_EXECUTION_PLAN_SECS
+    accept_stale_execution_plan_secs: 30
 
 # ── External MCP server ────────────────────────────────────────────────────
 # Controls the optional external MCP server spawned by the backend.

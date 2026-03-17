@@ -634,7 +634,10 @@ impl<'a> super::TransitionHandler<'a> {
             MergeRecoveryEventKind::AutoRetryTriggered,
             MergeRecoverySource::Auto,
             MergeRecoveryReasonCode::BranchNotFound,
-            format!("Branch '{}' does not exist", missing_branch),
+            format!(
+                "Target branch {} does not exist. Create the branch or update the plan.",
+                missing_branch
+            ),
         )
         .with_target_branch(target_branch)
         .with_source_branch(source_branch)
@@ -656,7 +659,7 @@ impl<'a> super::TransitionHandler<'a> {
                 tracing::error!(task_id = task_id_str, error = %e, "Failed to serialize recovery metadata");
                 task.metadata = Some(
                     serde_json::json!({
-                        "error": format!("Branch '{}' does not exist", missing_branch),
+                        "error": format!("Target branch {} does not exist. Create the branch or update the plan.", missing_branch),
                         "missing_branch": missing_branch, "source_branch": source_branch,
                         "target_branch": target_branch, "branch_missing": true
                     })

@@ -131,6 +131,9 @@ export const PlanGroup = memo(function PlanGroup({
   const workingDirectory = useProjectStore(
     (s) => (projectId ? s.projects[projectId]?.workingDirectory : undefined)
   );
+  const baseBranch = useProjectStore(
+    (s) => (projectId ? (s.projects[projectId]?.baseBranch ?? undefined) : undefined)
+  );
 
   const hasTierControls = Boolean(
     tierGroupIds && tierGroupIds.length > 0 && onToggleAllTiers
@@ -189,6 +192,7 @@ export const PlanGroup = memo(function PlanGroup({
         onToggleCollapse={() => onToggleCollapse?.(planArtifactId)}
         {...(onNavigateToTask ? { onNavigateToTask } : {})}
         {...(workingDirectory ? { workingDirectory } : {})}
+        {...(baseBranch !== undefined ? { baseBranch } : {})}
       />
 
       {/* Content area - empty, task nodes are positioned inside by React Flow */}

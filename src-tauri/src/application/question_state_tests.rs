@@ -95,7 +95,7 @@ async fn test_register_and_resolve_question() {
     }
 
     // Resolve with an answer
-    let resolved = state
+    let (resolved, session_id) = state
         .resolve(
             &request_id,
             QuestionAnswer {
@@ -105,6 +105,7 @@ async fn test_register_and_resolve_question() {
         )
         .await;
     assert!(resolved);
+    assert_eq!(session_id, Some("session-1".to_string()));
 
     // Check the answer was received
     let answer = rx.borrow().clone();
@@ -176,7 +177,7 @@ async fn test_remove_pending_question() {
 async fn test_resolve_nonexistent_question() {
     let state = QuestionState::new();
 
-    let resolved = state
+    let (resolved, session_id) = state
         .resolve(
             "nonexistent",
             QuestionAnswer {
@@ -186,6 +187,7 @@ async fn test_resolve_nonexistent_question() {
         )
         .await;
     assert!(!resolved);
+    assert!(session_id.is_none());
 }
 
 #[tokio::test]
@@ -303,14 +305,19 @@ mod with_repo {
             selected_options: vec!["a".to_string()],
             text: None,
         };
-        let resolved = state.resolve("req-1", answer).await;
+        let (resolved, session_id) = state.resolve("req-1", answer).await;
         assert!(resolved);
+        assert_eq!(session_id, Some("session-1".to_string()));
+
+        // After resolve, HashMap should be empty (immediate removal)
+        let pending_info = state.get_pending_info().await;
+        assert!(pending_info.is_empty());
 
         // After resolve, repo should have no pending
         let repo_pending = repo.get_pending().await.unwrap();
         assert!(repo_pending.is_empty());
 
-        // But the record still exists
+        // But the record still exists in the repo
         let found = repo.get_by_request_id("req-1").await.unwrap();
         assert!(found.is_some());
     }
@@ -369,5 +376,298 @@ mod with_repo {
         let state = QuestionState::new();
         // Should not panic when no repo
         state.expire_stale_on_startup().await;
+    }
+
+    // --- New tests for immediate removal on resolve ---
+
+    #[tokio::test]
+    async fn test_resolve_removes_from_hashmap_immediately() {
+        let (state, _repo) = make_state_with_repo();
+
+        state
+            .register(
+                "req-imm".to_string(),
+                "session-1".to_string(),
+                "Immediate?".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        let pending_before = state.get_pending_info().await;
+        assert_eq!(pending_before.len(), 1);
+
+        let (resolved, _) = state
+            .resolve(
+                "req-imm",
+                QuestionAnswer {
+                    selected_options: vec!["yes".to_string()],
+                    text: None,
+                },
+            )
+            .await;
+        assert!(resolved);
+
+        // HashMap must be empty immediately after resolve
+        let pending_after = state.get_pending_info().await;
+        assert!(pending_after.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_receiver_gets_answer_after_hashmap_removal() {
+        let (state, _repo) = make_state_with_repo();
+
+        let rx = state
+            .register(
+                "req-rx".to_string(),
+                "session-1".to_string(),
+                "Receive?".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        let (resolved, _) = state
+            .resolve(
+                "req-rx",
+                QuestionAnswer {
+                    selected_options: vec!["opt-a".to_string()],
+                    text: Some("hello".to_string()),
+                },
+            )
+            .await;
+        assert!(resolved);
+
+        // HashMap is now empty, but the Receiver must still have the answer
+        let pending_after = state.get_pending_info().await;
+        assert!(pending_after.is_empty());
+
+        let answer = rx.borrow().clone();
+        assert!(answer.is_some());
+        let answer = answer.unwrap();
+        assert_eq!(answer.selected_options, vec!["opt-a"]);
+        assert_eq!(answer.text, Some("hello".to_string()));
+    }
+
+    #[tokio::test]
+    async fn test_resolve_removes_from_hashmap_even_when_repo_errors() {
+        use crate::error::AppError;
+
+        // Use a failing repo that always errors on resolve
+        struct FailingRepo(MemoryQuestionRepository);
+
+        #[async_trait::async_trait]
+        impl QuestionRepository for FailingRepo {
+            async fn create_pending(
+                &self,
+                info: &PendingQuestionInfo,
+            ) -> crate::error::AppResult<()> {
+                self.0.create_pending(info).await
+            }
+            async fn resolve(
+                &self,
+                _request_id: &str,
+                _answer: &QuestionAnswer,
+            ) -> crate::error::AppResult<bool> {
+                Err(AppError::Database("simulated DB failure".to_string()))
+            }
+            async fn get_pending(&self) -> crate::error::AppResult<Vec<PendingQuestionInfo>> {
+                self.0.get_pending().await
+            }
+            async fn get_by_request_id(
+                &self,
+                request_id: &str,
+            ) -> crate::error::AppResult<Option<PendingQuestionInfo>> {
+                self.0.get_by_request_id(request_id).await
+            }
+            async fn expire_all_pending(&self) -> crate::error::AppResult<u64> {
+                self.0.expire_all_pending().await
+            }
+            async fn expire_by_request_id(&self, request_id: &str) -> crate::error::AppResult<()> {
+                self.0.expire_by_request_id(request_id).await
+            }
+            async fn remove(
+                &self,
+                request_id: &str,
+            ) -> crate::error::AppResult<bool> {
+                self.0.remove(request_id).await
+            }
+            async fn get_resolved_answer(
+                &self,
+                _request_id: &str,
+            ) -> crate::error::AppResult<Option<QuestionAnswer>> {
+                Ok(None)
+            }
+        }
+
+        let repo = Arc::new(FailingRepo(MemoryQuestionRepository::new()));
+        let state = QuestionState::with_repo(
+            repo as Arc<dyn crate::domain::repositories::QuestionRepository>,
+        );
+
+        state
+            .register(
+                "req-fail".to_string(),
+                "session-1".to_string(),
+                "Fail repo?".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        let (resolved, _) = state
+            .resolve(
+                "req-fail",
+                QuestionAnswer {
+                    selected_options: vec![],
+                    text: None,
+                },
+            )
+            .await;
+        assert!(resolved);
+
+        // HashMap must be empty even though repo.resolve() errored
+        let pending_after = state.get_pending_info().await;
+        assert!(pending_after.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_get_resolved_answer_returns_some_for_resolved() {
+        let (state, _repo) = make_state_with_repo();
+
+        state
+            .register(
+                "req-ans".to_string(),
+                "session-1".to_string(),
+                "Answer me?".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        let (resolved, _) = state
+            .resolve(
+                "req-ans",
+                QuestionAnswer {
+                    selected_options: vec!["choice-a".to_string()],
+                    text: None,
+                },
+            )
+            .await;
+        assert!(resolved);
+
+        // get_resolved_answer should return Some after resolve persisted to memory repo
+        let answer = state.get_resolved_answer("req-ans").await.unwrap();
+        assert!(answer.is_some());
+        let answer = answer.unwrap();
+        assert_eq!(answer.selected_options, vec!["choice-a"]);
+    }
+
+    #[tokio::test]
+    async fn test_get_resolved_answer_returns_none_for_pending_and_unknown() {
+        let (state, _repo) = make_state_with_repo();
+
+        state
+            .register(
+                "req-pend".to_string(),
+                "session-1".to_string(),
+                "Still pending?".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        // Pending question — not yet resolved → None
+        let answer = state.get_resolved_answer("req-pend").await.unwrap();
+        assert!(answer.is_none());
+
+        // Unknown request_id → None
+        let answer = state.get_resolved_answer("unknown-req").await.unwrap();
+        assert!(answer.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_get_resolved_answer_returns_none_without_repo() {
+        let state = QuestionState::new(); // no repo
+        let answer = state.get_resolved_answer("any-req").await.unwrap();
+        assert!(answer.is_none());
+    }
+
+    // --- Sweep stale tests (from plan branch) ---
+
+    #[tokio::test]
+    async fn test_sweep_stale_removes_old_questions() {
+        let repo = Arc::new(MemoryQuestionRepository::new());
+        let state = QuestionState::with_repo(repo.clone());
+
+        // Register a question
+        state
+            .register(
+                "old-req-1".to_string(),
+                "session-1".to_string(),
+                "Old question?".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        // Verify it's in pending
+        {
+            let pending = state.pending.lock().await;
+            assert!(pending.contains_key("old-req-1"));
+        }
+
+        // Sweep with zero max_age — everything is older than 0 duration
+        state.sweep_stale(std::time::Duration::from_secs(0)).await;
+
+        // Should be removed from in-memory HashMap
+        {
+            let pending = state.pending.lock().await;
+            assert!(!pending.contains_key("old-req-1"));
+        }
+
+        // Should also be expired in repo (removed from pending in MemoryQuestionRepository)
+        let repo_pending = repo.get_pending().await.unwrap();
+        assert!(repo_pending.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_sweep_stale_keeps_fresh_questions() {
+        let repo = Arc::new(MemoryQuestionRepository::new());
+        let state = QuestionState::with_repo(repo.clone());
+
+        // Register a question
+        state
+            .register(
+                "fresh-req-1".to_string(),
+                "session-1".to_string(),
+                "Fresh question?".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        // Sweep with a very large max_age — nothing should be swept
+        state
+            .sweep_stale(std::time::Duration::from_secs(3600))
+            .await;
+
+        // Should still be in pending
+        {
+            let pending = state.pending.lock().await;
+            assert!(pending.contains_key("fresh-req-1"));
+        }
+
+        // Should still be pending in repo
+        let repo_pending = repo.get_pending().await.unwrap();
+        assert_eq!(repo_pending.len(), 1);
+        assert_eq!(repo_pending[0].request_id, "fresh-req-1");
     }
 }

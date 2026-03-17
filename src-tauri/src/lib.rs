@@ -299,6 +299,19 @@ pub fn run() {
                 });
             }
 
+            // Periodic sweep for orphaned in-memory pending questions.
+            // Cleans up questions from agents that died without resolving them
+            // (complement to expire_stale_on_startup which only runs once at boot).
+            {
+                let qs = Arc::clone(&app_state.question_state);
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        tokio::time::sleep(std::time::Duration::from_secs(60)).await;
+                        qs.sweep_stale(std::time::Duration::from_secs(900)).await;
+                    }
+                });
+            }
+
             // Cleanup stale process state from previous session.
             // All spawned agent team processes are children of the Tauri app, so any
             // restart (including crash) leaves their DB rows in an active state.

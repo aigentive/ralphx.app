@@ -71,6 +71,21 @@ Call `mcp__ralphx__get_session_plan(session_id: <YOUR_OWN_SESSION_ID>)` to read 
 
 ---
 
+## Verification Objective (MANDATORY)
+
+Treat the plan as a point in design space. Critics estimate local derivatives of plan failure risk; your job is to reduce blocking penalty mass, not to chase issue counts.
+
+Use this qualitative penalty heuristic internally:
+- `penalty_mass ~= severity x confidence x blast_radius`
+
+Rules:
+- Treat the plan's `Constraints`, `Avoid`, and `Proof Obligations` sections as hard evaluation surfaces when present
+- Sort merged gaps by estimated penalty mass before revising
+- Prefer the smallest revision that materially lowers blocking penalty mass
+- Do not add content unless it reduces a named penalty or satisfies a missing proof obligation
+
+---
+
 ## Round Loop
 
 Repeat for each round (up to `max_rounds`):
@@ -86,8 +101,8 @@ Output: "Starting verification round {current_round}/{max_rounds}..."
 Dispatch both critics in a SINGLE response message:
 
 ```
-Task(subagent_type: "ralphx:plan-critic-layer1", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}")
-Task(subagent_type: "ralphx:plan-critic-layer2", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}")
+Task(subagent_type: "ralphx:plan-critic-layer1", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
+Task(subagent_type: "ralphx:plan-critic-layer2", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
 ```
 
 ❌ Do NOT dispatch critics one at a time across multiple responses — that is sequential and wastes time.
@@ -112,6 +127,7 @@ Deduplicate gaps across Layer 1 and Layer 2 results:
 - Two gaps are duplicates if they describe the same file/function/issue
 - Keep the higher-severity version when merging duplicates
 - Assign source: "layer1" | "layer2" | "both"
+- Estimate penalty mass qualitatively for each merged gap and sort highest-first before revising
 
 ### D. Call update_plan_verification
 
@@ -138,7 +154,8 @@ If any gap has severity "critical" or "high":
 1. Analyze each critical/high gap and determine the minimal plan revision needed.
 2. For small revisions (<30% of plan): use `mcp__ralphx__edit_plan_artifact(artifact_id: <plan_artifact_id>, caller_session_id: <OWN_SESSION_ID>, ...)` with targeted edits.
 3. For large revisions (≥30% of plan): use `mcp__ralphx__update_plan_artifact(artifact_id: <plan_artifact_id>, caller_session_id: <OWN_SESSION_ID>, ...)` with the full revised content.
-4. Make plan revisions address the gaps — do not add unrelated content.
+4. Make plan revisions address the highest-penalty gaps first — do not add unrelated content.
+5. If the current plan is missing `Constraints`, `Avoid`, or `Proof Obligations`, add or repair those sections before the next round.
 
 If only "medium" or "low" gaps found (no critical/high): skip plan revision for this round.
 
@@ -150,6 +167,7 @@ Check for convergence conditions:
 1. **Verified**: All gaps from this round are "low" severity or none → `status: "verified"`, `convergence_reason: "zero_blocking_gaps"`
 2. **Hard cap reached**: `current_round >= max_rounds` → convergence even if gaps remain
 3. **Score not improving**: If the gap score is not decreasing from the previous round → soft convergence
+4. **Penalty surface stable**: If the same blocking gaps remain with no material improvement after revision, stop and report `needs_revision` rather than churn wording
 
 If converged → proceed to **FINAL CLEANUP** with the appropriate status and reason.
 If not converged → continue to next round.

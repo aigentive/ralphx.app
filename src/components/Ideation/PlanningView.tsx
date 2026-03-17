@@ -54,6 +54,8 @@ import { ReopenSessionDialog } from "./ReopenSessionDialog";
 import type { ReopenMode } from "./ReopenSessionDialog";
 import { useReopenSession, useResetAndReaccept, useIdeationSessions } from "@/hooks/useIdeation";
 import { ideationApi } from "@/api/ideation";
+import { useQuery } from "@tanstack/react-query";
+import { planBranchApi } from "@/api/plan-branch";
 import { PlanTabContent } from "./PlanTabContent";
 import { ProposalsTabContent } from "./ProposalsTabContent";
 import { TeamResearchTabContent } from "./TeamResearchTabContent";
@@ -275,6 +277,13 @@ export function PlanningView({
     }
   }, [session?.planArtifactId, planArtifactId]);
 
+  // Fetch plan branch to show preserved branch config in reopen dialog
+  const { data: planBranch } = useQuery({
+    queryKey: ["plan-branch", planArtifactId],
+    queryFn: () => planBranchApi.getByPlan(planArtifactId!),
+    enabled: planArtifactId != null,
+  });
+
   // Fetch team artifact summaries for team-ideated sessions
   const [teamArtifacts, setTeamArtifacts] = useState<TeamArtifactSummary[]>([]);
   const artifactVersion = useTeamStore((s) => s.artifactVersion[session?.id ?? ""] ?? 0);
@@ -423,6 +432,9 @@ export function PlanningView({
     let executionPlanId: string | null | undefined;
     try {
       const applyResult = await onApply(options);
+      if (!applyResult?.sessionConverted) {
+        return;
+      }
       executionPlanId = applyResult?.executionPlanId;
     } catch {
       return;
@@ -1104,6 +1116,8 @@ export function PlanningView({
         taskCount={sessionTaskCount}
         onConfirm={handleConfirmReopen}
         isLoading={reopenMutation.isPending || resetMutation.isPending}
+        {...(planBranch?.branchName !== undefined && { featureBranch: planBranch.branchName })}
+        {...(planBranch?.baseBranchOverride != null && { targetBranch: planBranch.baseBranchOverride })}
       />
 
       {/* Accept Plan Confirmation Modal */}

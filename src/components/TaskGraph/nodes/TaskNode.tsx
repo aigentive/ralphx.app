@@ -64,6 +64,8 @@ export type TaskNodeData = Record<string, unknown> & {
   description?: string | null;
   /** Task category for badge display */
   category?: string;
+  /** Target branch for plan_merge category nodes (e.g., 'develop', 'main') */
+  mergeTarget?: string;
   /** Whether this node is highlighted (e.g., from timeline click) */
   isHighlighted?: boolean;
   /** Whether this node is keyboard-focused (for keyboard navigation) */
@@ -124,7 +126,8 @@ function getStepDotStyle(
 
 
 function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
-  const { label, taskId, internalStatus, priority, isCriticalPath, description, category, isHighlighted, isFocused, handlers, groupInfo } = data;
+  const { label, taskId, internalStatus, priority, isCriticalPath, description, category, mergeTarget, isHighlighted, isFocused, handlers, groupInfo } = data;
+  const mergeLabel = mergeTarget ? `Merge → ${mergeTarget}` : "Merge";
   const statusColor = getStatusBorderColor(internalStatus);
   const { data: stepProgress } = useStepProgress(taskId);
   const isTerminalComplete = internalStatus === "merged" || internalStatus === "approved";
@@ -294,7 +297,7 @@ function TaskNodeComponent({ data, selected }: NodeProps<TaskNodeType>) {
                 textTransform: "capitalize",
               }}
             >
-              {category === "plan_merge" ? "Merge to main" : category}
+              {category === "plan_merge" ? mergeLabel : category}
             </span>
           )}
           {/* Show dots when we have step data */}
