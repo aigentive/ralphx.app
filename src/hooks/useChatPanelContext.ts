@@ -155,17 +155,30 @@ export function useChatPanelContext({
   // Track previous visibility to detect false→true transitions
   const prevIsVisibleRef = useRef(false);
 
-  // Re-trigger autoSelectConversation when panel becomes visible again.
-  // Both IntegratedChatPanel instances (parent + child) share a global activeConversationId,
-  // so the hidden panel's context may be stale when the user switches back to it.
-  // Resetting hasAutoSelectedRef on false→true ensures autoSelectConversation re-fires
-  // and picks the correct conversation for the now-visible panel's context.
+  // Determine current context type and ID for validation
+  // Declared here (before visibility effect) to avoid temporal dead zone when used in deps array
+  const currentContextType: ContextType = ideationSessionId
+    ? "ideation"
+    : selectedTaskId
+      ? (isMergeMode ? "merge" : isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
+      : "project";
+  const currentContextId = ideationSessionId || selectedTaskId || projectId;
+
+  // Re-trigger autoSelectConversation when panel becomes visible again, and invalidate
+  // the conversation list so new conversations created while hidden are discovered.
+  // Both operations happen atomically in the same useEffect to avoid the race where
+  // hasAutoSelectedRef resets (allows re-select) but the list is still stale (selects wrong conv).
   useEffect(() => {
     if (!prevIsVisibleRef.current && isVisible) {
       hasAutoSelectedRef.current = false;
+      // Invalidate conversation list on false→true transition (defense-in-depth: conversations
+      // created while panel was hidden won't appear until stale time expires without this).
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.conversationList(currentContextType, currentContextId),
+      });
     }
     prevIsVisibleRef.current = isVisible;
-  }, [isVisible]);
+  }, [isVisible, currentContextType, currentContextId, queryClient]);
 
   // Handle context changes
   useEffect(() => {
@@ -275,14 +288,6 @@ export function useChatPanelContext({
       }
     }
   }, [overrideConversationId, setActiveConversation, storeContextKey]);
-
-  // Determine current context type and ID for validation
-  const currentContextType: ContextType = ideationSessionId
-    ? "ideation"
-    : selectedTaskId
-      ? (isMergeMode ? "merge" : isExecutionMode ? "task_execution" : isReviewMode ? "review" : "task")
-      : "project";
-  const currentContextId = ideationSessionId || selectedTaskId || projectId;
 
   // Auto-select the most recent conversation for execution/review/merge modes
   const autoSelectConversation = useCallback((

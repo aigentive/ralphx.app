@@ -241,6 +241,12 @@ impl StreamingStateCache {
         let states = self.states.lock().await;
         states.get(conversation_id).cloned()
     }
+
+    /// Returns a raw pointer to the inner Arc's allocation for use in Arc::ptr_eq tests.
+    #[cfg(test)]
+    pub fn states_arc(&self) -> &Arc<Mutex<HashMap<String, ConversationStreamingState>>> {
+        &self.states
+    }
 }
 
 #[cfg(test)]

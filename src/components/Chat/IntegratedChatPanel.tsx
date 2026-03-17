@@ -9,7 +9,7 @@
  * Design spec: specs/design/refined-studio-patterns.md
  */
 
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { type VirtuosoHandle } from "react-virtuoso";
 import { useChat, useConversation, chatKeys } from "@/hooks/useChat";
@@ -106,7 +106,6 @@ export function IntegratedChatPanel({
 }: IntegratedChatPanelProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
-  const prevIsVisibleRef = useRef(false);
   const pollStartRef = useRef<number | null>(null);
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   // History state from store - shared with TaskDetailOverlay for time-travel feature
@@ -185,6 +184,19 @@ export function IntegratedChatPanel({
   });
 
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
+
+  // Refs for stable agent:run_started handler — prevent stale closure writes during context transitions.
+  // useLayoutEffect keeps refs synchronised before any Tauri IPC events can arrive.
+  const storeContextKeyRef = useRef(storeContextKey);
+  const currentContextTypeRef = useRef(currentContextType);
+  const currentContextIdRef = useRef(currentContextId);
+  const isHistoryModeRef = useRef(isHistoryMode);
+  useLayoutEffect(() => {
+    storeContextKeyRef.current = storeContextKey;
+    currentContextTypeRef.current = currentContextType;
+    currentContextIdRef.current = currentContextId;
+    isHistoryModeRef.current = isHistoryMode;
+  }, [storeContextKey, currentContextType, currentContextId, isHistoryMode]);
 
   // Team mode state
   const isTeamActiveSelector = useMemo(() => selectIsTeamActive(storeContextKey), [storeContextKey]);
@@ -280,28 +292,26 @@ export function IntegratedChatPanel({
 
   // Agent lifecycle events (useAgentEvents) are handled inside useChat — no duplicate subscription needed.
 
-  // If a new run starts in this context, switch to its conversation (live mode only)
+  // If a new run starts in this context, switch to its conversation (live mode only).
+  // Reads context values from refs to avoid stale closure writes during teardown/resubscribe window.
   useEffect(() => {
-    if (isHistoryMode) {
-      return undefined;
-    }
-
     return bus.subscribe<{
       context_type: string;
       context_id: string;
       conversation_id: string;
       teammate_name?: string | null;
     }>("agent:run_started", (payload) => {
+      if (isHistoryModeRef.current) return;
       // Ignore teammate run_started — their conversations are handled via team filter tabs
       if (payload.teammate_name) return;
 
       // Existing exact match
       if (
-        payload.context_type === currentContextType &&
-        payload.context_id === currentContextId &&
+        payload.context_type === currentContextTypeRef.current &&
+        payload.context_id === currentContextIdRef.current &&
         payload.conversation_id
       ) {
-        setActiveConversation(storeContextKey, payload.conversation_id);
+        setActiveConversation(storeContextKeyRef.current, payload.conversation_id);
         return;
       }
       // Handle retry scenario: task context watching a new execution starting
@@ -313,18 +323,32 @@ export function IntegratedChatPanel({
       // to task_execution context the conversation is already set.
       if (
         payload.context_type === "task_execution" &&
-        currentContextType === "task" &&
-        payload.context_id === currentContextId &&
+        currentContextTypeRef.current === "task" &&
+        payload.context_id === currentContextIdRef.current &&
         payload.conversation_id
       ) {
-        setActiveConversation(storeContextKey, payload.conversation_id);
+        setActiveConversation(storeContextKeyRef.current, payload.conversation_id);
         const executionKey = buildStoreKey(payload.context_type as ContextType, payload.context_id);
-        if (executionKey !== storeContextKey) {
+        if (executionKey !== storeContextKeyRef.current) {
           setActiveConversation(executionKey, payload.conversation_id);
         }
       }
     });
-  }, [bus, currentContextType, currentContextId, isHistoryMode, setActiveConversation, storeContextKey]);
+  }, [bus, setActiveConversation]);
+
+  // Subscribe to agent:conversation_created — invalidate conversation list query so new conversations appear immediately.
+  useEffect(() => {
+    return bus.subscribe<{
+      context_id: string;
+      context_type: string;
+      conversation_id: string;
+    }>("agent:conversation_created", (payload) => {
+      if (payload.context_id !== currentContextId) return;
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.conversationList(payload.context_type as ContextType, payload.context_id),
+      });
+    });
+  }, [bus, queryClient, currentContextId]);
 
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
@@ -337,7 +361,7 @@ export function IntegratedChatPanel({
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
   // For execution/review mode, fetch conversations directly with specific context type
-  const regularChatData = useChat(chatContext, { isVisible });
+  const regularChatData = useChat(chatContext, { isVisible, storeKey: storeContextKey, disableAutoSelect: true });
 
   // Single dynamic query for all agent contexts (execution/review/merge)
   // When currentContextType changes, the query key changes and a fresh fetch fires
@@ -347,26 +371,13 @@ export function IntegratedChatPanel({
     queryKey: chatKeys.conversationList(currentContextType, selectedTaskId ?? ""),
     queryFn: () => chatApi.listConversations(currentContextType as ContextType, selectedTaskId ?? ""),
     enabled: isAgentContext && !!selectedTaskId,
+    staleTime: 0,
   });
 
   // Use agent query for agent contexts, regular chat data otherwise
   const conversations = isAgentContext
     ? agentConversationsQuery
     : regularChatData.conversations;
-
-  // Defense-in-depth: force-refetch conversations when panel becomes visible.
-  // React Query caches stale data while the panel is CSS-hidden; if a verification
-  // agent creates conversations while hidden, they won't appear until stale time expires.
-  // Detect false→true transition to avoid firing on initial mount.
-  useEffect(() => {
-    const wasVisible = prevIsVisibleRef.current;
-    prevIsVisibleRef.current = isVisible;
-    if (!wasVisible && isVisible) {
-      void queryClient.invalidateQueries({
-        queryKey: chatKeys.conversationList(currentContextType, currentContextId),
-      });
-    }
-  }, [isVisible, queryClient, currentContextType, currentContextId]);
 
   // Poll every 3s (up to 60s) when visible, non-agent context, and no conversations yet.
   // Drives the auto-select chain: invalidateQueries → React Query refetch → conversationsData updates → auto-select re-fires.

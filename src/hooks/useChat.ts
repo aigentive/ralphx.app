@@ -80,6 +80,7 @@ export function useConversations(context: ChatContext) {
   return useQuery<ChatConversation[], Error>({
     queryKey: chatKeys.conversationList(contextType, contextId),
     queryFn: () => chatApi.listConversations(contextType, contextId),
+    staleTime: 0,
   });
 }
 
@@ -152,7 +153,7 @@ export function useAgentRunStatus(conversationId: string | null) {
  * });
  * ```
  */
-export function useChat(context: ChatContext, options?: { isVisible?: boolean; storeKey?: string }) {
+export function useChat(context: ChatContext, options?: { isVisible?: boolean; storeKey?: string; disableAutoSelect?: boolean }) {
   const queryClient = useQueryClient();
   const { contextType, contextId } = getContextTypeAndId(context);
   const contextKey = buildStoreKey(contextType, contextId);
@@ -160,6 +161,7 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean; s
   // This is critical when IntegratedChatPanel uses execution-mode-aware storeKeys (e.g., "task_execution:id")
   // while chatContext is still view="task_detail" (which would derive "task:id" internally).
   const effectiveStoreKey = options?.storeKey ?? contextKey;
+  const disableAutoSelect = options?.disableAutoSelect ?? false;
 
   const activeConversationId = useChatStore((s) => s.activeConversationIds[effectiveStoreKey] ?? null);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
@@ -306,6 +308,9 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean; s
   const hasInitializedRef = useRef(false);
 
   useEffect(() => {
+    // Skip auto-select when caller manages active conversation selection externally
+    if (disableAutoSelect) return;
+
     // Only initialize once per context change
     if (hasInitializedRef.current) {
       return;
@@ -325,7 +330,7 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean; s
         setActiveConversation(effectiveStoreKey, mostRecent.id);
       }
     }
-  }, [activeConversationId, conversations.data, setActiveConversation, effectiveStoreKey]);
+  }, [activeConversationId, conversations.data, setActiveConversation, effectiveStoreKey, disableAutoSelect]);
 
   // Reset initialization flag when context changes
   useEffect(() => {

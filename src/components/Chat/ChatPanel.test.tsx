@@ -683,6 +683,18 @@ describe("ChatPanel", () => {
     });
   });
 
+  describe("auto-select behavior", () => {
+    it("calls useChat without disableAutoSelect so auto-select path is preserved", () => {
+      render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });
+
+      // ChatPanel passes storeKey but NOT disableAutoSelect — auto-select must remain active
+      const useChatCalls = vi.mocked(useChat).mock.calls;
+      expect(useChatCalls.length).toBeGreaterThan(0);
+      const options = useChatCalls[0]?.[1];
+      expect(options?.disableAutoSelect).toBeUndefined();
+    });
+  });
+
   describe("accessibility", () => {
     it("has appropriate aria labels", () => {
       render(<ChatPanel context={defaultContext} />, { wrapper: createWrapper() });

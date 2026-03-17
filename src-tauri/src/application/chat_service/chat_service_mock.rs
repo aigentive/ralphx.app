@@ -147,7 +147,7 @@ impl ChatService for MockChatService {
             ));
         }
 
-        let conversation = self
+        let (conversation, _) = self
             .get_or_create_conversation(context_type, context_id)
             .await?;
         let agent_run = AgentRun::new(conversation.id);
@@ -203,14 +203,14 @@ impl ChatService for MockChatService {
         &self,
         context_type: ChatContextType,
         context_id: &str,
-    ) -> Result<ChatConversation, ChatServiceError> {
+    ) -> Result<(ChatConversation, bool), ChatServiceError> {
         let conversations = self.conversations.lock().await;
 
         if let Some(conv) = conversations
             .iter()
             .find(|c| c.context_type == context_type && c.context_id == context_id)
         {
-            return Ok(conv.clone());
+            return Ok((conv.clone(), false));
         }
         drop(conversations);
 
@@ -236,7 +236,7 @@ impl ChatService for MockChatService {
         };
 
         self.conversations.lock().await.push(conv.clone());
-        Ok(conv)
+        Ok((conv, true))
     }
 
     async fn get_conversation_with_messages(

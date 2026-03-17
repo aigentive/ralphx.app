@@ -61,6 +61,7 @@ All handled by `useAgentEvents` hook (`src/hooks/useAgentEvents.ts`).
 | Event | Source | State Transition | Notes |
 |---|---|---|---|
 | `agent:run_started` | Agent process spawned | `idle` → `generating` | Sets active conversation |
+| `agent:conversation_created` | Backend conversation creation | — (query invalidation) | Fires when new ChatConversation row is created. Frontend invalidates conversation list. |
 | `agent:message_created` | Agent produces output | — (query invalidation) | Appends to message list |
 | `agent:turn_completed` | Agent finishes one turn | `generating` → `waiting_for_input` | Agent alive, awaiting user input |
 | `agent:run_completed` | Agent process exits | `*` → `idle` | Flushes queued messages |

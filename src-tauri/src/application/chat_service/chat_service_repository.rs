@@ -11,12 +11,13 @@ use crate::domain::repositories::{ChatConversationRepository, ChatMessageReposit
 
 use super::chat_service_types::{ChatConversationWithMessages, ChatServiceError};
 
-/// Get or create a conversation for a context
+/// Get or create a conversation for a context.
+/// Returns `(conversation, is_new)` where `is_new` is `true` when a new conversation was created.
 pub async fn get_or_create_conversation(
     conversation_repo: Arc<dyn ChatConversationRepository>,
     context_type: ChatContextType,
     context_id: &str,
-) -> Result<ChatConversation, ChatServiceError> {
+) -> Result<(ChatConversation, bool), ChatServiceError> {
     // TaskExecution + Merge: ALWAYS create a fresh conversation — never reuse prior run context.
     // - TaskExecution: Worker agents reconstruct context via MCP tools (get_task_context, etc.).
     // - Merge: Each merge attempt (conflict resolution or validation recovery) needs a fresh
@@ -31,7 +32,7 @@ pub async fn get_or_create_conversation(
             .await
             .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?
         {
-            return Ok(conv);
+            return Ok((conv, false));
         }
     }
 
@@ -70,10 +71,11 @@ pub async fn get_or_create_conversation(
 
     conv.parent_conversation_id = parent_conversation_id;
 
-    conversation_repo
+    let created = conversation_repo
         .create(conv.clone())
         .await
-        .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))
+        .map_err(|e| ChatServiceError::RepositoryError(e.to_string()))?;
+    Ok((created, true))
 }
 
 /// Get a conversation by ID with all its messages

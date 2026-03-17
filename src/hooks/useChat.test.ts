@@ -572,6 +572,25 @@ describe("useChat", () => {
     expect(result.current.contextKey).toBe("session:session-1");
   });
 
+  it("should skip auto-select when disableAutoSelect is true", async () => {
+    const mockConversations = [mockConversation1, mockConversation2];
+    vi.mocked(chatApi.listConversations).mockResolvedValueOnce(mockConversations);
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(null);
+
+    renderHook(
+      () => useChat(ideationContext, { storeKey: "task_execution:task-1", disableAutoSelect: true }),
+      { wrapper: createWrapper() }
+    );
+
+    // Wait for conversations to load
+    await waitFor(() => {
+      expect(chatApi.listConversations).toHaveBeenCalled();
+    });
+
+    // setActiveConversation must NOT be called — disableAutoSelect prevents it
+    expect(mockStoreState.setActiveConversation).not.toHaveBeenCalled();
+  });
+
   it("should handle send message error", async () => {
     const error = new Error("Failed to send message");
     vi.mocked(chatApi.sendAgentMessage).mockRejectedValueOnce(error);

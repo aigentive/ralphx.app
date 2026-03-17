@@ -65,6 +65,42 @@ async fn test_unshared_registries_are_independent() {
     );
 }
 
+/// Verifies that streaming_state_cache is shared between the two AppState instances
+/// (Tauri + HTTP) using Arc::ptr_eq on the inner Arc. This prevents RC-2 (CRITICAL
+/// streaming hydration failure) where the HTTP endpoint always returns empty streaming
+/// data even when an agent is actively generating.
+#[test]
+fn test_streaming_state_cache_shared_arc() {
+    let a = AppState::new_test();
+    let mut b = AppState::new_test();
+    // Simulate lib.rs sharing: b uses a's cache (shallow Arc clone)
+    b.streaming_state_cache = a.streaming_state_cache.clone();
+
+    assert!(
+        Arc::ptr_eq(
+            a.streaming_state_cache.states_arc(),
+            b.streaming_state_cache.states_arc()
+        ),
+        "streaming_state_cache must share the same inner Arc after lib.rs sharing"
+    );
+}
+
+/// Proves that without explicit sharing, two AppState instances have independent
+/// streaming caches — confirms the bug scenario.
+#[test]
+fn test_unshared_streaming_state_cache_are_independent() {
+    let a = AppState::new_test();
+    let b = AppState::new_test();
+
+    assert!(
+        !Arc::ptr_eq(
+            a.streaming_state_cache.states_arc(),
+            b.streaming_state_cache.states_arc()
+        ),
+        "Unshared streaming_state_cache instances must NOT point to the same Arc"
+    );
+}
+
 /// Verifies that sharing message_queue between two AppState instances allows
 /// messages enqueued on one to be dequeued from the other.
 #[tokio::test]
