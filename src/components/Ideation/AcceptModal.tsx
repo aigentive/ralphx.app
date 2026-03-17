@@ -90,6 +90,17 @@ export function AcceptModal({
     e.stopPropagation();
   }, []);
 
+  const normalizedBaseBranch = baseBranchOverride.trim();
+  const branchExists =
+    branchLoadError || branches.length === 0 || branches.includes(normalizedBaseBranch);
+  const baseBranchValidationError = !useFeatureBranch
+    ? null
+    : normalizedBaseBranch.length === 0
+      ? "Enter a base branch"
+      : !branchExists
+        ? `Branch '${normalizedBaseBranch}' does not exist locally`
+        : null;
+
   const handleAccept = useCallback(() => {
     const options: ApplyProposalsInput = {
       sessionId,
@@ -99,12 +110,12 @@ export function AcceptModal({
       // - Has blockers → Blocked
       targetColumn: "auto",
       useFeatureBranch,
-      ...(useFeatureBranch && baseBranchOverride !== undefined && {
-        baseBranchOverride,
+      ...(useFeatureBranch && normalizedBaseBranch !== "" && {
+        baseBranchOverride: normalizedBaseBranch,
       }),
     };
     onAccept(options);
-  }, [sessionId, proposals, useFeatureBranch, baseBranchOverride, onAccept]);
+  }, [sessionId, proposals, useFeatureBranch, normalizedBaseBranch, onAccept]);
 
   if (!isOpen) return null;
 
@@ -116,7 +127,8 @@ export function AcceptModal({
   const canAccept =
     proposalCount > 0 &&
     !isAccepting &&
-    !verificationBlocked;
+    !verificationBlocked &&
+    !baseBranchValidationError;
 
   return (
     <div
@@ -341,10 +353,13 @@ export function AcceptModal({
                 disabled={isAccepting}
                 placeholder="e.g. main"
                 data-testid="base-branch-input"
+                aria-invalid={baseBranchValidationError ? "true" : "false"}
                 className="w-full px-2 py-1.5 text-sm rounded border outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
                 style={{
                   backgroundColor: "var(--bg-base)",
-                  borderColor: "var(--border-subtle)",
+                  borderColor: baseBranchValidationError
+                    ? "var(--status-danger)"
+                    : "var(--border-subtle)",
                   color: "var(--text-primary)",
                   boxShadow: "none",
                 }}
@@ -361,6 +376,15 @@ export function AcceptModal({
                   data-testid="branch-load-error"
                 >
                   Could not load branches — type branch name manually
+                </p>
+              )}
+              {baseBranchValidationError && (
+                <p
+                  className="mt-1 text-xs"
+                  style={{ color: "var(--status-danger)" }}
+                  data-testid="branch-validation-error"
+                >
+                  {baseBranchValidationError}
                 </p>
               )}
             </div>
