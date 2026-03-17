@@ -55,7 +55,8 @@ impl SqliteTaskProposalRepository {
             "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                     suggested_priority, priority_score, priority_reason, priority_factors,
                     estimated_complexity, user_priority, user_modified, status, selected,
-                    created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at
+                    created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
+                    target_project, migrated_from_session_id, migrated_from_proposal_id
              FROM task_proposals
              WHERE plan_artifact_id = ?1
              ORDER BY sort_order ASC",
@@ -129,9 +130,11 @@ impl SqliteTaskProposalRepository {
                 id, session_id, title, description, category, steps, acceptance_criteria,
                 suggested_priority, priority_score, priority_reason, priority_factors,
                 estimated_complexity, user_priority, user_modified, status, selected,
-                created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at
+                created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at,
+                target_project, migrated_from_session_id, migrated_from_proposal_id
             ) VALUES (
-                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22
+                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22,
+                ?23, ?24, ?25
             )",
             rusqlite::params![
                 proposal.id.as_str(),
@@ -156,6 +159,9 @@ impl SqliteTaskProposalRepository {
                 proposal.sort_order,
                 proposal.created_at.to_rfc3339(),
                 proposal.updated_at.to_rfc3339(),
+                proposal.target_project,
+                proposal.migrated_from_session_id,
+                proposal.migrated_from_proposal_id,
             ],
         )?;
         Ok(proposal)
@@ -193,7 +199,8 @@ impl SqliteTaskProposalRepository {
                 suggested_priority = ?7, priority_score = ?8, priority_reason = ?9, priority_factors = ?10,
                 estimated_complexity = ?11, user_priority = ?12, user_modified = ?13, status = ?14,
                 selected = ?15, created_task_id = ?16, plan_artifact_id = ?17, plan_version_at_creation = ?18,
-                sort_order = ?19, updated_at = ?20
+                target_project = ?19, sort_order = ?20, updated_at = ?21,
+                migrated_from_session_id = ?22, migrated_from_proposal_id = ?23
              WHERE id = ?1",
             rusqlite::params![
                 proposal.id.as_str(),
@@ -214,8 +221,11 @@ impl SqliteTaskProposalRepository {
                 proposal.created_task_id.as_ref().map(|id| id.as_str()),
                 proposal.plan_artifact_id.as_ref().map(|id| id.as_str()),
                 proposal.plan_version_at_creation,
+                proposal.target_project,
                 proposal.sort_order,
                 now.to_rfc3339(),
+                proposal.migrated_from_session_id,
+                proposal.migrated_from_proposal_id,
             ],
         )?;
         let mut updated = proposal.clone();
@@ -255,7 +265,8 @@ impl SqliteTaskProposalRepository {
             "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                     suggested_priority, priority_score, priority_reason, priority_factors,
                     estimated_complexity, user_priority, user_modified, status, selected,
-                    created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at
+                    created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
+                    target_project, migrated_from_session_id, migrated_from_proposal_id
              FROM task_proposals WHERE id = ?1",
             [id.as_str()],
             |row| TaskProposal::from_row(row),
@@ -281,7 +292,8 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
-                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at
+                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
+                            target_project, migrated_from_session_id, migrated_from_proposal_id
                      FROM task_proposals WHERE id = ?1",
                     [&id],
                     |row| TaskProposal::from_row(row),
@@ -298,7 +310,8 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
-                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at
+                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
+                            target_project, migrated_from_session_id, migrated_from_proposal_id
                      FROM task_proposals WHERE session_id = ?1 AND archived_at IS NULL ORDER BY sort_order ASC",
                 )?;
                 let proposals = stmt
@@ -445,7 +458,8 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
-                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at
+                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
+                            target_project, migrated_from_session_id, migrated_from_proposal_id
                      FROM task_proposals
                      WHERE session_id = ?1 AND selected = 1 AND archived_at IS NULL
                      ORDER BY sort_order ASC",
@@ -493,7 +507,8 @@ impl TaskProposalRepository for SqliteTaskProposalRepository {
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
-                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at
+                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
+                            target_project, migrated_from_session_id, migrated_from_proposal_id
                      FROM task_proposals
                      WHERE plan_artifact_id = ?1 AND archived_at IS NULL
                      ORDER BY sort_order ASC",

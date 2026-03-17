@@ -85,6 +85,11 @@ pub struct IdeationSession {
     /// Purpose of this session: General (default) or Verification (plan-verifier child)
     #[serde(default)]
     pub session_purpose: SessionPurpose,
+    /// Whether cross_project_guide has been called on this session's plan.
+    /// False = proposal creation is blocked until cross_project_guide sets it.
+    /// Default false for new sessions; existing DB rows default to true via migration.
+    #[serde(default)]
+    pub cross_project_checked: bool,
 }
 
 /// Builder for creating IdeationSession instances
@@ -112,6 +117,7 @@ pub struct IdeationSessionBuilder {
     source_project_id: Option<String>,
     source_session_id: Option<String>,
     session_purpose: Option<SessionPurpose>,
+    cross_project_checked: Option<bool>,
 }
 
 impl IdeationSessionBuilder {
@@ -240,6 +246,12 @@ impl IdeationSessionBuilder {
         self
     }
 
+    /// Set whether cross-project guide has been called
+    pub fn cross_project_checked(mut self, checked: bool) -> Self {
+        self.cross_project_checked = Some(checked);
+        self
+    }
+
     /// Build the IdeationSession
     /// Panics if project_id is not set
     pub fn build(self) -> IdeationSession {
@@ -267,6 +279,7 @@ impl IdeationSessionBuilder {
             source_project_id: self.source_project_id,
             source_session_id: self.source_session_id,
             session_purpose: self.session_purpose.unwrap_or_default(),
+            cross_project_checked: self.cross_project_checked.unwrap_or(false),
         }
     }
 }
@@ -409,6 +422,11 @@ impl IdeationSession {
                 .as_deref()
                 .and_then(|s| s.parse().ok())
                 .unwrap_or_default(),
+            cross_project_checked: row
+                .get::<_, Option<i64>>("cross_project_checked")
+                .unwrap_or(None)
+                .map(|v| v != 0)
+                .unwrap_or(false),
         })
     }
 

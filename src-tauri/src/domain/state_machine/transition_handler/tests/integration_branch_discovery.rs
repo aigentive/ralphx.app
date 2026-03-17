@@ -10,7 +10,7 @@ use std::sync::Arc;
 fn init_git_repo(repo_path: &std::path::Path) {
     use std::process::Command;
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo_path)
         .output()
         .unwrap();

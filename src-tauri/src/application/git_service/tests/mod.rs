@@ -10,7 +10,7 @@ mod worktree_tests;
 
 fn init_test_repo(dir: &Path) {
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(dir)
         .output()
         .unwrap();

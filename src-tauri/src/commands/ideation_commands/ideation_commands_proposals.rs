@@ -52,6 +52,7 @@ pub async fn create_task_proposal(
         steps,
         acceptance_criteria,
         estimated_complexity: input.complexity,
+        target_project: input.target_project,
         depends_on: input.depends_on,
     };
 
@@ -135,6 +136,7 @@ pub async fn update_task_proposal(
         acceptance_criteria,
         user_priority,
         estimated_complexity: input.complexity,
+        target_project: input.target_project.map(Some),
         source: UpdateSource::TauriIpc,
         add_depends_on: input.add_depends_on,
         add_blocks: input.add_blocks,

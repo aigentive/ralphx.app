@@ -12,7 +12,7 @@ async fn test_clean_working_tree_removes_untracked_files() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -67,7 +67,7 @@ async fn test_clean_working_tree_resets_modified_tracked_files() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -117,7 +117,7 @@ async fn test_clean_working_tree_noop_when_clean() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -170,7 +170,7 @@ async fn test_clean_working_tree_handles_symlinks() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -231,7 +231,7 @@ async fn test_create_feature_branch_success() {
 
     // Initialize repo with initial commit
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -292,7 +292,7 @@ async fn test_create_feature_branch_from_specific_source() {
 
     // Initialize repo with initial commit on main
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -357,7 +357,7 @@ async fn test_create_feature_branch_already_exists() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -403,7 +403,7 @@ async fn test_create_feature_branch_invalid_source() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -444,7 +444,7 @@ async fn test_delete_feature_branch_success() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -503,7 +503,7 @@ async fn test_delete_feature_branch_nonexistent() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -609,7 +609,7 @@ async fn test_branch_exists_returns_true_for_existing_branch() {
     let repo = temp_dir.path();
 
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -658,7 +658,7 @@ async fn test_branch_exists_returns_false_for_nonexistent_branch() {
     let repo = temp_dir.path();
 
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -699,7 +699,7 @@ async fn test_branch_exists_returns_false_for_nonexistent_branch() {
 /// Helper: initialize a repo, make an initial commit, return HEAD sha
 fn setup_repo_with_commit(repo: &std::path::Path) -> String {
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -838,7 +838,7 @@ async fn test_is_ancestor_returns_false_for_invalid_ref() {
 /// Helper: create a minimal git repo with one initial commit on main/master.
 fn setup_squash_test_repo(repo: &std::path::Path) {
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();

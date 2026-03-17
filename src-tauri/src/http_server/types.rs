@@ -116,6 +116,8 @@ pub struct CreateProposalRequest {
     /// Optional list of proposal IDs this proposal depends on
     #[serde(default)]
     pub depends_on: Vec<String>,
+    /// Optional target project ID for cross-project proposal execution
+    pub target_project: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -133,6 +135,8 @@ pub struct UpdateProposalRequest {
     /// Additive: proposal IDs this proposal should block (reverse direction)
     #[serde(default)]
     pub add_blocks: Vec<String>,
+    /// Optional target project ID for cross-project proposal execution
+    pub target_project: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -159,6 +163,8 @@ pub struct ProposalResponse {
     pub created_at: String,
     /// Partial failure contract: non-fatal dependency errors encountered during create/update
     pub dependency_errors: Vec<String>,
+    /// Optional target project ID for cross-project proposal execution
+    pub target_project: Option<String>,
 }
 
 impl From<TaskProposal> for ProposalResponse {
@@ -174,6 +180,7 @@ impl From<TaskProposal> for ProposalResponse {
             acceptance_criteria: proposal.acceptance_criteria,
             created_at: proposal.created_at.to_rfc3339(),
             dependency_errors: Vec::new(),
+            target_project: proposal.target_project.clone(),
         }
     }
 }
@@ -187,6 +194,8 @@ pub struct ProposalSummary {
     pub priority: String,
     pub depends_on: Vec<String>,
     pub plan_artifact_id: Option<String>,
+    /// Optional target project ID for cross-project proposal execution
+    pub target_project: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -209,6 +218,8 @@ pub struct ProposalDetailResponse {
     pub depends_on: Vec<String>,
     pub plan_artifact_id: Option<String>,
     pub created_at: String,
+    /// Optional target project ID for cross-project proposal execution
+    pub target_project: Option<String>,
 }
 
 // ============================================================================

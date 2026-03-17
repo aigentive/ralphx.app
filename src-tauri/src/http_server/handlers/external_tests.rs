@@ -126,6 +126,35 @@ async fn test_list_projects_empty_scope_returns_nothing() {
     assert_eq!(response.projects.len(), 0);
 }
 
+#[tokio::test]
+async fn test_list_projects_external_does_not_expose_working_directory() {
+    // Security boundary regression: external ProjectSummary must NOT include
+    // working_directory. Filesystem paths must never be visible to API key holders.
+    let state = setup_test_state().await;
+
+    let p1 = make_project("sec-proj-1", "SecureProject");
+    state.app_state.project_repo.create(p1).await.unwrap();
+
+    let result = list_projects_http(State(state), unrestricted_scope()).await;
+    let response = result.unwrap().0;
+    assert_eq!(response.projects.len(), 1);
+
+    // Serialize and verify no working_directory field is present
+    let json_str = serde_json::to_string(&response.projects[0]).unwrap();
+    assert!(
+        !json_str.contains("working_directory"),
+        "external ProjectSummary must not contain working_directory: {}",
+        json_str
+    );
+
+    // Verify expected fields are present via deserialized map
+    let obj: serde_json::Map<String, serde_json::Value> =
+        serde_json::from_str(&json_str).unwrap();
+    assert!(obj.contains_key("id"), "missing id");
+    assert!(obj.contains_key("name"), "missing name");
+    assert!(obj.contains_key("task_count"), "missing task_count");
+}
+
 // ============================================================================
 // get_project_status_http
 // ============================================================================

@@ -57,6 +57,15 @@ pub struct TaskProposal {
     /// When the proposal was archived (soft-deleted). None = active.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archived_at: Option<DateTime<Utc>>,
+    /// Target project for task creation (optional override)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target_project: Option<String>,
+    /// ID of the source session this proposal was migrated from (traceability)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub migrated_from_session_id: Option<String>,
+    /// ID of the original proposal this was migrated from (traceability)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub migrated_from_proposal_id: Option<String>,
 }
 
 impl TaskProposal {
@@ -92,6 +101,9 @@ impl TaskProposal {
             created_at: now,
             updated_at: now,
             archived_at: None,
+            target_project: None,
+            migrated_from_session_id: None,
+            migrated_from_proposal_id: None,
         }
     }
 
@@ -203,6 +215,13 @@ impl TaskProposal {
             archived_at: row
                 .get::<_, Option<String>>("archived_at")?
                 .map(parse_datetime_helper),
+            target_project: row.get::<_, Option<String>>("target_project").unwrap_or(None),
+            migrated_from_session_id: row
+                .get::<_, Option<String>>("migrated_from_session_id")
+                .unwrap_or(None),
+            migrated_from_proposal_id: row
+                .get::<_, Option<String>>("migrated_from_proposal_id")
+                .unwrap_or(None),
         })
     }
 }
