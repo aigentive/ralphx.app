@@ -343,7 +343,7 @@ impl ResearchProcess {
         if interval == 0 {
             return false;
         }
-        #[allow(clippy::manual_is_multiple_of)]
+        #[allow(unknown_lints, clippy::manual_is_multiple_of)]
         let is_checkpoint = self.progress.current_iteration > 0
             && self.progress.current_iteration % interval == 0;
         is_checkpoint

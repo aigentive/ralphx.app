@@ -25,7 +25,7 @@ use crate::application::GitService;
 use crate::infrastructure::agents::claude::{reconciliation_config, scheduler_config};
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
-    task_metadata::MergeFailureSource,
+    task_metadata::{CleanupPhase, MergeFailureSource},
     InternalStatus, MergeValidationMode, PlanBranch, Project,
     Task, TaskId,
 };
@@ -501,7 +501,8 @@ impl<'a> super::TransitionHandler<'a> {
                 // Set debris metadata so GUARD knows this is a retry on next attempt
                 // (prevents is_first_clean_attempt from skipping cleanup when stale worktree remains)
                 super::merge_helpers::merge_metadata_into(task, &serde_json::json!({
-                    "merge_failure_source": serde_json::to_value(MergeFailureSource::TransientGit).unwrap_or_default(),
+                    "merge_failure_source": serde_json::to_value(MergeFailureSource::CleanupTimeout).unwrap_or_default(),
+                    "cleanup_phase": serde_json::to_value(CleanupPhase::PreMergeWorktreeScan).unwrap_or_default(),
                 }));
                 if let Err(e) = task_repo.update(task).await {
                     tracing::warn!(

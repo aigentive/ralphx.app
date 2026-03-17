@@ -21,7 +21,7 @@ use crate::application::memory_orchestration::trigger_memory_pipelines;
 use crate::application::question_state::QuestionState;
 use crate::commands::ExecutionState;
 use crate::domain::entities::ChatConversation;
-use crate::domain::entities::{AgentRunId, ChatContextType, ChatConversationId};
+use crate::domain::entities::{AgentRunId, ChatContextType, ChatConversationId, InternalStatus, TaskId};
 use crate::domain::repositories::{
     ActivityEventRepository, AgentRunRepository, ChatAttachmentRepository,
     ChatConversationRepository, ChatMessageRepository, IdeationSessionRepository,
@@ -502,9 +502,33 @@ pub fn spawn_send_message_background<R: Runtime>(ctx: BackgroundRunContext<R>) {
                 // When TurnComplete freed the execution slot and the process exited
                 // while idle, re-increment temporarily so that the state transition's
                 // on_exit decrement produces the correct final count (net zero).
+                //
+                // Defense-in-depth: for Review context, skip re-increment if the task has
+                // already transitioned past Reviewing. In that case the transition on_exit
+                // won't fire again, so re-incrementing would produce a leaked count=1 that
+                // causes false merge deferral. chat_service_handlers.rs catches this too
+                // (else-branch), but this guard prevents the increment from firing at all.
+                let review_allows_reincrement = if context_type == ChatContextType::Review {
+                    let task_id = TaskId::from_string(context_id.clone());
+                    match task_repo.get_by_id(&task_id).await {
+                        Ok(Some(task)) if task.internal_status != InternalStatus::Reviewing => {
+                            tracing::debug!(
+                                context_id = %context_id,
+                                status = ?task.internal_status,
+                                "Skipping re-increment for Review context — task already past Reviewing"
+                            );
+                            false
+                        }
+                        _ => true,
+                    }
+                } else {
+                    true
+                };
+
                 if !execution_slot_held
                     && super::uses_execution_slot(context_type)
                     && !(outcome.silent_interactive_exit && context_type == ChatContextType::Ideation)
+                    && review_allows_reincrement
                 {
                     if let Some(ref exec) = execution_state {
                         exec.increment_running();

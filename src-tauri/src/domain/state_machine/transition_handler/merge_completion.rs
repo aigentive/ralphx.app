@@ -15,8 +15,8 @@ use crate::infrastructure::agents::claude::git_runtime_config;
 use crate::domain::entities::{
     merge_progress_event::{MergePhase, MergePhaseStatus},
     task_metadata::{
-        MergeRecoveryEvent, MergeRecoveryEventKind, MergeRecoveryMetadata, MergeRecoveryReasonCode,
-        MergeRecoverySource, MergeRecoveryState,
+        CleanupPhase, MergeFailureSource, MergeRecoveryEvent, MergeRecoveryEventKind,
+        MergeRecoveryMetadata, MergeRecoveryReasonCode, MergeRecoverySource, MergeRecoveryState,
     },
     InternalStatus, Project, Task, TaskId,
 };
@@ -368,14 +368,32 @@ pub async fn deferred_merge_cleanup(
     );
 
     // Step 1: Kill worktree processes via SIGKILL (instant, no SIGTERM wait)
-    if let Some(ref wt_path_str) = worktree_path {
+    // Wrapped in OS-thread timeout to prevent Phase 3 from stalling if kill hangs.
+    let kill_step_timed_out = if let Some(ref wt_path_str) = worktree_path {
         let wt_path = PathBuf::from(wt_path_str);
         if wt_path.exists() {
-            // Use lsof to find PIDs, then SIGKILL each
             let lsof_timeout = git_runtime_config().worktree_lsof_timeout_secs;
-            crate::domain::services::kill_worktree_processes_async(&wt_path, lsof_timeout, true).await;
+            let kill_timeout_secs = git_runtime_config().step_0b_kill_timeout_secs;
+            match super::cleanup_helpers::os_thread_timeout(
+                std::time::Duration::from_secs(kill_timeout_secs),
+                crate::domain::services::kill_worktree_processes_async(&wt_path, lsof_timeout, true),
+            ).await {
+                Ok(_) => false,
+                Err(_) => {
+                    tracing::warn!(
+                        task_id = %task_id_str,
+                        kill_timeout_secs,
+                        "Phase 3: deferred_merge_cleanup worktree kill timed out (OS-thread timeout)"
+                    );
+                    true
+                }
+            }
+        } else {
+            false
         }
-    }
+    } else {
+        false
+    };
 
     // Step 2: Delete worktree via fast path (rm -rf + git worktree prune)
     if let Some(ref wt_path_str) = worktree_path {
@@ -484,6 +502,27 @@ pub async fn deferred_merge_cleanup(
             fresh_task.task_branch = None;
             fresh_task.worktree_path = None;
             clear_pending_cleanup_metadata(&mut fresh_task);
+
+            // Persist cleanup timeout metadata if the worktree kill step timed out.
+            // Recorded on the Merged task for post-mortem visibility.
+            if kill_step_timed_out {
+                let mut meta: serde_json::Value = fresh_task.metadata
+                    .as_deref()
+                    .and_then(|m| serde_json::from_str(m).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Some(obj) = meta.as_object_mut() {
+                    obj.insert(
+                        "merge_failure_source".to_string(),
+                        serde_json::to_value(MergeFailureSource::CleanupTimeout).unwrap_or_default(),
+                    );
+                    obj.insert(
+                        "cleanup_phase".to_string(),
+                        serde_json::to_value(CleanupPhase::DeferredWorktreeKill).unwrap_or_default(),
+                    );
+                }
+                fresh_task.metadata = Some(meta.to_string());
+            }
+
             fresh_task.touch();
 
             if let Err(e) = task_repo.update(&fresh_task).await {
