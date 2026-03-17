@@ -312,6 +312,7 @@ async fn build_ideation_recovery_metadata<R: Runtime>(
                     false,
                     None,
                     None,
+                    Some(session.verification_generation),
                 );
             }
         }

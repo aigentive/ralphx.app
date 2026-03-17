@@ -10,12 +10,13 @@
  * Tests for race condition fix (async IIFE, cancelQueries, round guard, conditional invalidation, planVersion):
  * 5. cancelQueries called before setQueryData
  * 6. Out-of-order event (round < cached) is rejected by round guard
- * 7. Reset event (status=unverified) allowed even when round regresses
- * 8. Undefined round always accepted (no guard applied)
- * 9. Fallback path (no currentGaps/rounds) calls invalidateQueries for verification
- * 10. Fast path skips verification invalidateQueries
- * 11. planVersion stamped from store onto setQueryData call
- * 12. planVersion omitted when store has no planArtifact
+ * 7. Newer generation bypasses stale round rejection
+ * 8. Reset event (status=unverified) allowed even when round regresses
+ * 9. Undefined round always accepted (no guard applied)
+ * 10. Fallback path (no currentGaps/rounds) calls invalidateQueries for verification
+ * 11. Fast path skips verification invalidateQueries unless generation changes
+ * 12. planVersion stamped from store onto setQueryData call
+ * 13. planVersion omitted when store has no planArtifact
  *
  * Tests for toast notifications (terminal transitions):
  * 13. success toast on verified + in_progress=false
@@ -128,6 +129,7 @@ const makeVerificationEvent = (overrides: Record<string, unknown> = {}) => ({
   session_id: SESSION_ID,
   status: "reviewing",
   in_progress: true,
+  generation: 1,
   gap_score: 42,
   ...overrides,
 });
@@ -136,6 +138,7 @@ const makeFullVerificationEvent = (overrides: Record<string, unknown> = {}) => (
   session_id: SESSION_ID,
   status: "needs_revision",
   in_progress: false,
+  generation: 1,
   gap_score: 55,
   round: 2,
   max_rounds: 5,
@@ -328,7 +331,7 @@ describe("useVerificationEvents — race condition fix", () => {
 
   it("(6) out-of-order event (round < cached.currentRound) is rejected by round guard", async () => {
     // Cached has round=3
-    mockGetQueryData = vi.fn().mockReturnValue({ currentRound: 3, gaps: [], rounds: [] });
+    mockGetQueryData = vi.fn().mockReturnValue({ generation: 1, currentRound: 3, gaps: [], rounds: [] });
     renderHook(() => useVerificationEvents());
 
     await act(async () => {
@@ -339,9 +342,30 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(mockSetQueryData).not.toHaveBeenCalled();
   });
 
-  it("(7) reset event (status=unverified) allowed even when round regresses below cached", async () => {
+  it("(7) newer generation bypasses stale round rejection", async () => {
+    mockGetQueryData = vi.fn().mockReturnValue({ generation: 1, currentRound: 3, gaps: [], rounds: [] });
+    renderHook(() => useVerificationEvents());
+
+    await act(async () => {
+      fireEvent(
+        "plan_verification:status_changed",
+        makeFullVerificationEvent({ generation: 2, round: 1, status: "reviewing", in_progress: true })
+      );
+    });
+
+    expect(mockSetQueryData).toHaveBeenCalledTimes(1);
+    const [, cacheData] = mockSetQueryData.mock.calls[0] as [
+      unknown,
+      { generation?: number; currentRound?: number }
+    ];
+    expect(cacheData.generation).toBe(2);
+    expect(cacheData.currentRound).toBe(1);
+    expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["verification", SESSION_ID] });
+  });
+
+  it("(8) reset event (status=unverified) allowed even when round regresses below cached", async () => {
     // Cached has round=3
-    mockGetQueryData = vi.fn().mockReturnValue({ currentRound: 3, gaps: [], rounds: [] });
+    mockGetQueryData = vi.fn().mockReturnValue({ generation: 1, currentRound: 3, gaps: [], rounds: [] });
     renderHook(() => useVerificationEvents());
 
     await act(async () => {
@@ -352,7 +376,7 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(mockSetQueryData).toHaveBeenCalledTimes(1);
   });
 
-  it("(8) undefined round in event always accepted (no guard applied)", async () => {
+  it("(9) undefined round in event always accepted (no guard applied)", async () => {
     // Cached has a round
     mockGetQueryData = vi.fn().mockReturnValue({ currentRound: 2, gaps: [], rounds: [] });
     renderHook(() => useVerificationEvents());
@@ -365,7 +389,7 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(mockSetQueryData).toHaveBeenCalledTimes(1);
   });
 
-  it("(9) fallback path (no currentGaps/rounds) calls invalidateQueries for verification", async () => {
+  it("(10) fallback path (no currentGaps/rounds) calls invalidateQueries for verification", async () => {
     renderHook(() => useVerificationEvents());
 
     await act(async () => {
@@ -379,7 +403,8 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(verificationInvalidation).toBeDefined();
   });
 
-  it("(10) fast path skips verification invalidateQueries", async () => {
+  it("(11) fast path skips verification invalidateQueries when generation is unchanged", async () => {
+    mockGetQueryData = vi.fn().mockReturnValue({ generation: 1, currentRound: 2, gaps: [], rounds: [] });
     renderHook(() => useVerificationEvents());
 
     await act(async () => {
@@ -394,7 +419,7 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(mockInvalidateQueries).toHaveBeenCalledWith({ queryKey: ["sessions"] });
   });
 
-  it("(11) planVersion stamped from store onto setQueryData when planArtifact present", async () => {
+  it("(12) planVersion stamped from store onto setQueryData when planArtifact present", async () => {
     // Set planArtifact with just the fields the hook reads (metadata.version)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     useIdeationStore.setState({ planArtifact: { id: "art-1", metadata: { version: 3 } } as any });
@@ -410,7 +435,7 @@ describe("useVerificationEvents — race condition fix", () => {
     expect(cacheData.planVersion).toBe(3);
   });
 
-  it("(12) planVersion omitted from setQueryData when store has no planArtifact", async () => {
+  it("(13) planVersion omitted from setQueryData when store has no planArtifact", async () => {
     // planArtifact is null (default in beforeEach)
     renderHook(() => useVerificationEvents());
 

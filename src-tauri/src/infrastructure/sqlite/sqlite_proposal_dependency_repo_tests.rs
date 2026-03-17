@@ -1041,6 +1041,57 @@ async fn test_get_all_for_session_with_source_filters_by_session() {
 }
 
 #[tokio::test]
+async fn test_get_all_for_session_ignores_archived_proposal_endpoints() {
+    let conn = setup_test_db();
+    let project_id = ProjectId::new();
+    create_test_project(&conn, &project_id, "Test", "/test");
+    let session = create_test_session(&conn, &project_id);
+    let proposal_a = create_test_proposal(&conn, &session.id, "Proposal A");
+    let proposal_b = create_test_proposal(&conn, &session.id, "Proposal B");
+    let proposal_c = create_test_proposal(&conn, &session.id, "Proposal C");
+
+    let repo = SqliteProposalDependencyRepository::new(conn);
+
+    repo.add_dependency(&proposal_a.id, &proposal_b.id, None, Some("auto"))
+        .await
+        .unwrap();
+    repo.add_dependency(&proposal_c.id, &proposal_a.id, None, Some("manual"))
+        .await
+        .unwrap();
+
+    repo.db
+        .run({
+            let proposal_a_id = proposal_a.id.as_str().to_string();
+            move |conn| {
+                conn.execute(
+                    "UPDATE task_proposals
+                     SET archived_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
+                     WHERE id = ?1",
+                    rusqlite::params![proposal_a_id],
+                )?;
+                Ok(())
+            }
+        })
+        .await
+        .unwrap();
+
+    let deps = repo.get_all_for_session(&session.id).await.unwrap();
+    assert!(
+        deps.is_empty(),
+        "archived proposals must be ignored whether they are the source or target"
+    );
+
+    let deps_with_source = repo
+        .get_all_for_session_with_source(&session.id)
+        .await
+        .unwrap();
+    assert!(
+        deps_with_source.is_empty(),
+        "archived proposals must be ignored in source-aware query"
+    );
+}
+
+#[tokio::test]
 async fn test_would_create_cycle_includes_both_auto_and_manual() {
     let conn = setup_test_db();
     let project_id = ProjectId::new();

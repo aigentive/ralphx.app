@@ -554,6 +554,7 @@ describe("PlanVerificationStatusChangedSchema — contract test", () => {
   it("accepts fixture and exposes current_gaps array", () => {
     const raw: unknown = JSON.parse(readFileSync(fixturePath, "utf-8"));
     const result = PlanVerificationStatusChangedSchema.parse(raw);
+    expect(result.generation).toBe(3);
     expect(result.current_gaps).toBeDefined();
     expect(Array.isArray(result.current_gaps)).toBe(true);
     expect(result.current_gaps!.length).toBeGreaterThan(0);
@@ -588,5 +589,24 @@ describe("PlanVerificationStatusChangedSchema — contract test", () => {
       expect(result.data.current_gaps).toBeUndefined();
       expect(result.data.rounds).toBeUndefined();
     }
+  });
+
+  it("accepts null numeric fields from reset/start events", () => {
+    const raw = {
+      session_id: "sess-001",
+      status: "unverified",
+      in_progress: false,
+      generation: null,
+      round: null,
+      max_rounds: null,
+      gap_score: null,
+      current_gaps: [],
+      rounds: [],
+    };
+    const result = PlanVerificationStatusChangedSchema.parse(raw);
+    expect(result.generation).toBeNull();
+    expect(result.round).toBeNull();
+    expect(result.max_rounds).toBeNull();
+    expect(result.gap_score).toBeNull();
   });
 });

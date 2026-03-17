@@ -346,9 +346,10 @@ export const PlanVerificationStatusChangedSchema = z.object({
   session_id: z.string(),
   status: z.enum(["unverified", "reviewing", "verified", "needs_revision", "skipped"]),
   in_progress: z.boolean(),
-  round: z.number().int().optional(),
-  max_rounds: z.number().int().optional(),
-  gap_score: z.number().int().optional(),
+  generation: z.number().int().nullable().optional(),
+  round: z.number().int().nullable().optional(),
+  max_rounds: z.number().int().nullable().optional(),
+  gap_score: z.number().int().nullable().optional(),
   convergence_reason: z.string().nullable().optional(),
   // Extended payload (B1): fast-path data for setQueryData cache update
   current_gaps: z.array(EventVerificationGapSchema).optional(),
@@ -362,6 +363,7 @@ export type PlanVerificationStatusChangedEvent = {
   sessionId: string;
   status: PlanVerificationStatusChangedPayload["status"];
   inProgress: boolean;
+  generation?: number;
   round?: number;
   maxRounds?: number;
   gapScore?: number;

@@ -623,6 +623,11 @@ pub async fn archive_proposal_impl(
 
             // Archive proposal scoped to session (prevents cross-session deletions)
             let proposal_id_typed = TaskProposalId::from_string(pid.clone());
+            conn.execute(
+                "DELETE FROM proposal_dependencies
+                 WHERE proposal_id = ?1 OR depends_on_proposal_id = ?1",
+                rusqlite::params![proposal_id_typed.as_str()],
+            )?;
             ProposalRepo::archive_sync(conn, &proposal_id_typed)?;
 
             Ok(session_id)

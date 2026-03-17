@@ -1,5 +1,6 @@
 use super::*;
 use crate::domain::entities::{IdeationSessionId, IdeationSessionStatus, ProjectId};
+use crate::infrastructure::agents::claude::verification_config;
 
 fn make_session(team_mode: Option<&str>) -> IdeationSession {
     IdeationSession {
@@ -65,6 +66,7 @@ mod verification_init_tests {
         VerificationStatus,
     };
     use crate::http_server::types::CreateChildSessionRequest;
+    use crate::infrastructure::agents::claude::verification_config;
     use crate::infrastructure::sqlite::SqliteIdeationSessionRepository;
     use std::sync::Arc;
 
@@ -482,7 +484,7 @@ mod verification_init_tests {
                 content
             );
             assert!(
-                content.contains("max_rounds: 3"),
+                content.contains(&format!("max_rounds: {}", verification_config().max_rounds)),
                 "Content should contain max_rounds metadata, got: {}",
                 content
             );
@@ -570,26 +572,32 @@ mod verification_init_tests {
 
 #[test]
 fn test_synthesize_verification_prompt_basic() {
+    let max_rounds = verification_config().max_rounds;
     let result = synthesize_verification_prompt(
         &Some("verification".to_string()),
         Some(1),
+        max_rounds,
         &None,
         "parent-abc",
     );
     assert_eq!(
         result,
         Some(
-            "Begin plan verification.\n\nparent_session_id: parent-abc, generation: 1, max_rounds: 3"
-                .to_string()
+            format!(
+                "Begin plan verification.\n\nparent_session_id: parent-abc, generation: 1, max_rounds: {}",
+                max_rounds
+            )
         )
     );
 }
 
 #[test]
 fn test_synthesize_verification_prompt_no_generation_defaults_to_1() {
+    let max_rounds = verification_config().max_rounds;
     let result = synthesize_verification_prompt(
         &Some("verification".to_string()),
         None,
+        max_rounds,
         &None,
         "parent-xyz",
     );
@@ -605,6 +613,7 @@ fn test_synthesize_verification_prompt_description_present_returns_none() {
     let result = synthesize_verification_prompt(
         &Some("verification".to_string()),
         Some(1),
+        verification_config().max_rounds,
         &Some("user description".to_string()),
         "parent-abc",
     );
@@ -616,6 +625,7 @@ fn test_synthesize_verification_prompt_non_verification_purpose_returns_none() {
     let result = synthesize_verification_prompt(
         &Some("general".to_string()),
         None,
+        verification_config().max_rounds,
         &None,
         "parent-abc",
     );
@@ -624,23 +634,33 @@ fn test_synthesize_verification_prompt_non_verification_purpose_returns_none() {
 
 #[test]
 fn test_synthesize_verification_prompt_no_purpose_returns_none() {
-    let result = synthesize_verification_prompt(&None, None, &None, "parent-abc");
+    let result = synthesize_verification_prompt(
+        &None,
+        None,
+        verification_config().max_rounds,
+        &None,
+        "parent-abc",
+    );
     assert_eq!(result, None, "Should return None when purpose is None");
 }
 
 #[test]
 fn test_synthesize_verification_prompt_generation_2() {
+    let max_rounds = verification_config().max_rounds;
     let result = synthesize_verification_prompt(
         &Some("verification".to_string()),
         Some(2),
+        max_rounds,
         &None,
         "parent-gen2",
     );
     assert_eq!(
         result,
         Some(
-            "Begin plan verification.\n\nparent_session_id: parent-gen2, generation: 2, max_rounds: 3"
-                .to_string()
+            format!(
+                "Begin plan verification.\n\nparent_session_id: parent-gen2, generation: 2, max_rounds: {}",
+                max_rounds
+            )
         )
     );
 }
