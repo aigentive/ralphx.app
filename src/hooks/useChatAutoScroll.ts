@@ -17,6 +17,7 @@
 
 import { useRef, useCallback, useState, useEffect } from "react";
 import type { VirtuosoHandle } from "react-virtuoso";
+import { shouldUseWebkitSafeScrollBehavior } from "@/lib/platform-quirks";
 
 // ============================================================================
 // Types
@@ -49,7 +50,7 @@ export interface UseChatAutoScrollReturn {
   /** Virtuoso callback: atBottomStateChange */
   handleAtBottomStateChange: (atBottom: boolean) => void;
   /** Virtuoso callback: followOutput */
-  handleFollowOutput: (isAtBottom: boolean) => "smooth" | false;
+  handleFollowOutput: (isAtBottom: boolean) => "smooth" | "auto" | false;
 }
 
 // ============================================================================
@@ -62,6 +63,10 @@ export function useChatAutoScroll({
   virtuosoRef,
   conversationId,
 }: UseChatAutoScrollProps): UseChatAutoScrollReturn {
+  const preferredScrollBehavior = shouldUseWebkitSafeScrollBehavior()
+    ? "auto"
+    : "smooth";
+
   // Refs for div-based scroll components (non-Virtuoso fallback)
   const containerRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -96,10 +101,10 @@ export function useChatAutoScroll({
   // follows new content (messages, footer height changes).
   const handleFollowOutput = useCallback(
     (atBottom: boolean) => {
-      if (atBottom && !disabled) return "smooth" as const;
+      if (atBottom && !disabled) return preferredScrollBehavior;
       return false as const;
     },
-    [disabled]
+    [disabled, preferredScrollBehavior]
   );
 
   // Stable ref for messageCount — keeps scrollToBottom identity stable across
@@ -120,12 +125,12 @@ export function useChatAutoScroll({
       virtuosoRef.current.scrollToIndex({
         index: count - 1,
         align: "end",
-        behavior: "smooth",
+        behavior: preferredScrollBehavior,
       });
     } else {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      messagesEndRef.current?.scrollIntoView({ behavior: preferredScrollBehavior });
     }
-  }, [virtuosoRef]);
+  }, [preferredScrollBehavior, virtuosoRef]);
 
   // NOTE: No useEffect auto-scroll triggers here for Virtuoso mode.
   // Virtuoso's followOutput callback handles all auto-scrolling natively.
