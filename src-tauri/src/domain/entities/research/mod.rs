@@ -343,8 +343,10 @@ impl ResearchProcess {
         if interval == 0 {
             return false;
         }
-        self.progress.current_iteration > 0
-            && self.progress.current_iteration % interval == 0
+        #[allow(clippy::manual_is_multiple_of)]
+        let is_checkpoint = self.progress.current_iteration > 0
+            && self.progress.current_iteration % interval == 0;
+        is_checkpoint
     }
 
     /// Returns true if the process has reached max iterations

@@ -899,6 +899,7 @@ pub fn start_teammate_stream<R: Runtime>(
                     }
 
                     // Periodic progress logging (every 50 lines at INFO level for diagnostics)
+                    #[allow(clippy::manual_is_multiple_of)]
                     if lines_seen > 0 && lines_seen % 50 == 0 {
                         tracing::info!(
                             teammate = %teammate_name,

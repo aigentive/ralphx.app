@@ -37,6 +37,7 @@ function ensureMockData(): void {
     prStatus: null,
     prPollingActive: false,
     prEligible: false,
+    baseBranchOverride: null,
   };
   mockPlanBranches.set(branch.id, branch);
 }
@@ -82,6 +83,7 @@ export const mockPlanBranchApi = {
       prStatus: null,
       prPollingActive: false,
       prEligible: false,
+      baseBranchOverride: input.baseBranchOverride ?? null,
     };
     mockPlanBranches.set(branch.id, branch);
     return branch;
@@ -127,5 +129,6 @@ export function toSnakeCasePlanBranch(b: PlanBranch) {
     pr_status: b.prStatus,
     pr_polling_active: b.prPollingActive,
     pr_eligible: b.prEligible,
+    base_branch_override: b.baseBranchOverride,
   };
 }

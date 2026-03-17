@@ -9,6 +9,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { ShieldAlert } from "lucide-react";
 import { useVerificationGate } from "@/hooks/useVerificationGate";
+import { getGitBranches } from "@/api/projects";
 import type { TaskProposal } from "@/types/ideation";
 import type { ApplyProposalsInput, DependencyGraphResponse } from "@/api/ideation.types";
 import type { IdeationSessionResponse } from "@/api/ideation";
@@ -26,6 +27,10 @@ interface AcceptModalProps {
   defaultUseFeatureBranch?: boolean;
   /** Session for verification gate — shows warning and blocks accept when unverified */
   session?: Pick<IdeationSessionResponse, "verificationStatus" | "verificationInProgress"> | null;
+  /** Working directory for git branch listing */
+  workingDirectory?: string | undefined;
+  /** Default base branch to pre-fill the selector */
+  baseBranch?: string | undefined;
 }
 
 export function AcceptModal({
@@ -39,9 +44,14 @@ export function AcceptModal({
   warnings = [],
   defaultUseFeatureBranch = false,
   session = null,
+  workingDirectory,
+  baseBranch = "main",
 }: AcceptModalProps) {
   const verificationGate = useVerificationGate(session);
   const [useFeatureBranch, setUseFeatureBranch] = useState(defaultUseFeatureBranch);
+  const [baseBranchOverride, setBaseBranchOverride] = useState<string>(baseBranch);
+  const [branches, setBranches] = useState<string[]>([]);
+  const [branchLoadError, setBranchLoadError] = useState(false);
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -56,6 +66,19 @@ export function AcceptModal({
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, isAccepting, onCancel]);
+
+  // Load git branches when feature branch is enabled
+  useEffect(() => {
+    if (!useFeatureBranch || !workingDirectory) return;
+
+    setBranchLoadError(false);
+    getGitBranches(workingDirectory)
+      .then((result) => setBranches(result))
+      .catch(() => {
+        setBranchLoadError(true);
+        setBranches([]);
+      });
+  }, [useFeatureBranch, workingDirectory]);
 
   const handleOverlayClick = useCallback(() => {
     if (!isAccepting) {
@@ -76,9 +99,12 @@ export function AcceptModal({
       // - Has blockers → Blocked
       targetColumn: "auto",
       useFeatureBranch,
+      ...(useFeatureBranch && baseBranchOverride !== undefined && {
+        baseBranchOverride,
+      }),
     };
     onAccept(options);
-  }, [sessionId, proposals, useFeatureBranch, onAccept]);
+  }, [sessionId, proposals, useFeatureBranch, baseBranchOverride, onAccept]);
 
   if (!isOpen) return null;
 
@@ -269,7 +295,14 @@ export function AcceptModal({
             <input
               type="checkbox"
               checked={useFeatureBranch}
-              onChange={(e) => setUseFeatureBranch(e.target.checked)}
+              onChange={(e) => {
+                setUseFeatureBranch(e.target.checked);
+                if (!e.target.checked) {
+                  setBaseBranchOverride(baseBranch);
+                  setBranches([]);
+                  setBranchLoadError(false);
+                }
+              }}
               disabled={isAccepting}
               className="mt-1"
               aria-label="Use feature branch for tasks"
@@ -289,6 +322,49 @@ export function AcceptModal({
               </p>
             </div>
           </label>
+
+          {useFeatureBranch && (
+            <div className="mt-3 ml-6">
+              <label
+                className="block text-xs font-medium mb-1"
+                style={{ color: "var(--text-secondary)" }}
+                htmlFor="base-branch-input"
+              >
+                Base branch
+              </label>
+              <input
+                id="base-branch-input"
+                type="text"
+                list="base-branch-datalist"
+                value={baseBranchOverride}
+                onChange={(e) => setBaseBranchOverride(e.target.value)}
+                disabled={isAccepting}
+                placeholder="e.g. main"
+                data-testid="base-branch-input"
+                className="w-full px-2 py-1.5 text-sm rounded border outline-none ring-0 focus:ring-0 focus:outline-none focus-visible:outline-none"
+                style={{
+                  backgroundColor: "var(--bg-base)",
+                  borderColor: "var(--border-subtle)",
+                  color: "var(--text-primary)",
+                  boxShadow: "none",
+                }}
+              />
+              <datalist id="base-branch-datalist">
+                {branches.map((branch) => (
+                  <option key={branch} value={branch} />
+                ))}
+              </datalist>
+              {branchLoadError && (
+                <p
+                  className="mt-1 text-xs"
+                  style={{ color: "var(--text-muted)" }}
+                  data-testid="branch-load-error"
+                >
+                  Could not load branches — type branch name manually
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Verification blocked warning */}
