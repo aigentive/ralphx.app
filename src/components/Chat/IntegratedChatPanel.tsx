@@ -106,7 +106,8 @@ export function IntegratedChatPanel({
 }: IntegratedChatPanelProps) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
-  const prevIsVisibleRef = useRef(isVisible);
+  const prevIsVisibleRef = useRef(false);
+  const pollStartRef = useRef<number | null>(null);
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
   // History state from store - shared with TaskDetailOverlay for time-travel feature
   const taskHistoryState = useUiStore((s) => s.taskHistoryState);
@@ -358,6 +359,33 @@ export function IntegratedChatPanel({
       });
     }
   }, [isVisible, queryClient, currentContextType, currentContextId]);
+
+  // Poll every 3s (up to 60s) when visible, non-agent context, and no conversations yet.
+  // Drives the auto-select chain: invalidateQueries → React Query refetch → conversationsData updates → auto-select re-fires.
+  const POLL_INTERVAL_MS = 3000;
+  const POLL_MAX_MS = 60_000;
+  useEffect(() => {
+    if (!isVisible || isAgentContext) {
+      pollStartRef.current = null;
+      return;
+    }
+    if ((conversations.data?.length ?? 0) > 0) {
+      pollStartRef.current = null;
+      return;
+    }
+    pollStartRef.current = Date.now();
+    const id = setInterval(() => {
+      if (pollStartRef.current !== null && Date.now() - pollStartRef.current >= POLL_MAX_MS) {
+        clearInterval(id);
+        pollStartRef.current = null;
+        return;
+      }
+      void queryClient.invalidateQueries({
+        queryKey: chatKeys.conversationList(currentContextType, currentContextId),
+      });
+    }, POLL_INTERVAL_MS);
+    return () => { clearInterval(id); };
+  }, [isVisible, isAgentContext, conversations.data, queryClient, currentContextType, currentContextId]);
 
   // Auto-select the most recent conversation in execution/review/merge modes
   // Extract stable primitives from TanStack Query result to avoid re-render on every query object change

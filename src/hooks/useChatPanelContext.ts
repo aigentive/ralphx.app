@@ -151,7 +151,7 @@ export function useChatPanelContext({
   const hasAutoSelectedRef = useRef(false);
 
   // Track previous visibility to detect false→true transitions
-  const prevIsVisibleRef = useRef(isVisible);
+  const prevIsVisibleRef = useRef(false);
 
   // Re-trigger autoSelectConversation when panel becomes visible again.
   // Both IntegratedChatPanel instances (parent + child) share a global activeConversationId,
