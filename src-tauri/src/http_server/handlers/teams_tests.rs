@@ -375,3 +375,78 @@ fn team_plan_request_converts_to_spawn_requests() {
     assert_eq!(spawn_requests[1].model, "haiku");
 }
 
+// ============================================================================
+// resolve_mcp_agent_type tests
+// ============================================================================
+
+#[test]
+fn resolve_mcp_agent_type_returns_preset_when_some() {
+    assert_eq!(
+        resolve_mcp_agent_type("ideation", Some("ideation-specialist-backend")),
+        "ideation-specialist-backend"
+    );
+}
+
+#[test]
+fn resolve_mcp_agent_type_ideation_process_no_preset() {
+    assert_eq!(
+        resolve_mcp_agent_type("ideation", None),
+        "ideation-team-member"
+    );
+}
+
+#[test]
+fn resolve_mcp_agent_type_worker_process_no_preset() {
+    assert_eq!(
+        resolve_mcp_agent_type("worker-parallel", None),
+        "worker-team-member"
+    );
+}
+
+#[test]
+fn resolve_mcp_agent_type_preset_overrides_worker_process() {
+    // Even if process is worker-*, preset takes priority
+    assert_eq!(
+        resolve_mcp_agent_type("worker-parallel", Some("ideation-specialist-frontend")),
+        "ideation-specialist-frontend"
+    );
+}
+
+#[test]
+fn resolve_mcp_agent_type_specialist_preset_variants() {
+    for preset in &[
+        "ideation-specialist-backend",
+        "ideation-specialist-frontend",
+        "ideation-specialist-infra",
+        "ideation-critic",
+        "ideation-advocate",
+    ] {
+        assert_eq!(
+            resolve_mcp_agent_type("ideation", Some(preset)),
+            *preset,
+            "Expected preset '{}' to be returned",
+            preset
+        );
+    }
+}
+
+// ============================================================================
+// resolve_effort integration tests
+// ============================================================================
+
+#[test]
+fn resolve_effort_for_ideation_team_member_returns_default() {
+    use crate::infrastructure::agents::claude::resolve_effort;
+    // ideation-team-member has no YAML entry, so should return default effort
+    let effort = resolve_effort(Some("ideation-team-member"));
+    // Just ensure it returns a non-empty string (the default)
+    assert!(!effort.is_empty(), "Expected non-empty effort for ideation-team-member");
+}
+
+#[test]
+fn resolve_effort_for_specialist_returns_non_empty() {
+    use crate::infrastructure::agents::claude::resolve_effort;
+    // ideation-specialist-backend has a YAML entry with opus model
+    let effort = resolve_effort(Some("ideation-specialist-backend"));
+    assert!(!effort.is_empty(), "Expected non-empty effort for ideation-specialist-backend");
+}
