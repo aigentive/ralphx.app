@@ -14,11 +14,13 @@ fn test_none_metadata_produces_empty_arrays() {
         false,
         None,
         None,
+        None,
     );
 
     assert_eq!(payload["session_id"], "sess-1");
     assert_eq!(payload["status"], "unverified");
     assert_eq!(payload["in_progress"], false);
+    assert_eq!(payload["generation"], serde_json::Value::Null);
     assert_eq!(payload["round"], serde_json::Value::Null);
     assert_eq!(payload["max_rounds"], serde_json::Value::Null);
     assert_eq!(payload["gap_score"], serde_json::Value::Null);
@@ -38,9 +40,11 @@ fn test_none_metadata_with_convergence_reason_override() {
         false,
         None,
         Some("user_reverted"),
+        Some(7),
     );
 
     assert_eq!(payload["status"], "skipped");
+    assert_eq!(payload["generation"], 7);
     assert_eq!(payload["convergence_reason"], "user_reverted");
     assert_eq!(
         payload["current_gaps"],
@@ -99,10 +103,12 @@ fn test_some_metadata_includes_gaps_and_rounds() {
         false,
         Some(&metadata),
         None,
+        Some(3),
     );
 
     assert_eq!(payload["session_id"], "sess-3");
     assert_eq!(payload["status"], "needs_revision");
+    assert_eq!(payload["generation"], 3);
     assert_eq!(payload["round"], 2);
     assert_eq!(payload["max_rounds"], 5);
     // critical*10 + high*3 + medium*1 = 10 + 3 + 1 = 14
@@ -136,6 +142,7 @@ fn test_some_metadata_convergence_reason_override_wins() {
         false,
         Some(&metadata),
         Some("explicit_override"),
+        Some(4),
     );
 
     // Explicit override takes precedence over metadata's value
@@ -152,8 +159,10 @@ fn test_some_metadata_empty_gaps_and_rounds() {
         true,
         Some(&metadata),
         None,
+        Some(5),
     );
 
+    assert_eq!(payload["generation"], 5);
     assert_eq!(payload["gap_score"], 0u32);
     assert_eq!(payload["convergence_reason"], serde_json::Value::Null);
     assert_eq!(
@@ -206,6 +215,7 @@ fn test_gap_score_weighted_calculation() {
         false,
         Some(&metadata),
         None,
+        None,
     );
 
     // 2*10 + 1*3 + 0*1 + 0 = 23
@@ -232,6 +242,7 @@ fn test_fixture_schema_matches_canonical_payload() {
         "session_id",
         "status",
         "in_progress",
+        "generation",
         "round",
         "max_rounds",
         "gap_score",
@@ -311,12 +322,14 @@ fn test_payload_shape_matches_fixture_schema() {
         false,
         Some(&metadata),
         None,
+        Some(9),
     );
 
     // All required fields present with correct types
     assert!(payload["session_id"].is_string());
     assert!(payload["status"].is_string());
     assert!(payload["in_progress"].is_boolean());
+    assert!(payload["generation"].is_number());
     assert!(payload["round"].is_number());
     assert!(payload["max_rounds"].is_number());
     assert!(payload["gap_score"].is_number());
@@ -355,10 +368,12 @@ fn test_imported_verified_payload_does_not_panic() {
         false,
         None,
         None,
+        None,
     );
     assert_eq!(payload["session_id"], "sess-imported");
     assert_eq!(payload["status"], "imported_verified");
     assert_eq!(payload["in_progress"], false);
+    assert_eq!(payload["generation"], serde_json::Value::Null);
     // All numeric fields are null when metadata is None
     assert_eq!(payload["round"], serde_json::Value::Null);
     assert_eq!(payload["max_rounds"], serde_json::Value::Null);
@@ -381,8 +396,10 @@ fn test_imported_verified_payload_with_metadata() {
         false,
         Some(&metadata),
         None,
+        Some(11),
     );
     assert_eq!(payload["status"], "imported_verified");
+    assert_eq!(payload["generation"], 11);
     assert_eq!(payload["gap_score"], 0u32);
     assert_eq!(payload["current_gaps"], serde_json::Value::Array(vec![]));
 }

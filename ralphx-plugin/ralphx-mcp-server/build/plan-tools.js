@@ -123,7 +123,7 @@ export const PLAN_TOOLS = [
                             why_it_matters: { type: "string" },
                             source: {
                                 type: "string",
-                                enum: ["layer1", "layer2"],
+                                enum: ["layer1", "layer2", "both"],
                                 description: "Which critic layer identified this gap (for per-critic tracking)",
                             },
                         },
@@ -138,6 +138,8 @@ export const PLAN_TOOLS = [
                         "jaccard_converged",
                         "max_rounds",
                         "critic_parse_failure",
+                        "agent_error",
+                        "user_stopped",
                         "user_skipped",
                         "user_reverted",
                     ],

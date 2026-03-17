@@ -160,6 +160,7 @@ impl VerificationReconciliationService {
                             false,
                             None,
                             None,
+                            Some(session.verification_generation),
                         );
                     }
                     // Archive any orphaned verification children for this parent session
@@ -307,6 +308,7 @@ impl VerificationReconciliationService {
                             false,
                             None,
                             Some("app_restart"),
+                            Some(session.verification_generation),
                         );
                     }
                     // Archive any orphaned verification children for this parent
@@ -521,6 +523,7 @@ pub async fn reconcile_verification_on_child_complete<R: Runtime>(
             false,
             emit_metadata.as_ref(),
             convergence_reason_override.as_deref(),
+            Some(parent.verification_generation),
         );
     }
 
@@ -683,6 +686,7 @@ pub async fn reset_verification_on_child_error<R: Runtime>(
             false,
             None,
             Some(convergence_reason),
+            Some(parent.verification_generation),
         );
     }
 

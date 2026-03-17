@@ -30,6 +30,7 @@ export interface VerificationStatusResponse {
   sessionId: string;
   status: VerificationStatus;
   inProgress: boolean;
+  generation?: number;
   currentRound?: number;
   maxRounds?: number;
   gapScore?: number;

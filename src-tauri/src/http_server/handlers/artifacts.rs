@@ -12,7 +12,9 @@ use crate::domain::entities::{
     IdeationSession, IdeationSessionId, VerificationStatus,
 };
 use rusqlite::Connection;
-use crate::domain::services::emit_verification_status_changed;
+use crate::domain::services::{
+    emit_verification_started, emit_verification_status_changed,
+};
 use crate::domain::repositories::IdeationSessionRepository;
 use crate::domain::services::running_agent_registry::{RunningAgentKey, RunningAgentRegistry};
 use crate::error::AppError;
@@ -318,6 +320,9 @@ pub async fn create_plan_artifact(
     // Fire-and-forget: spawn failure resets in_progress so reconciler/user can retry.
     if let Some(generation) = auto_verify_generation {
         let cfg = verification_config();
+        if let Some(app_handle) = &state.app_state.app_handle {
+            emit_verification_started(app_handle, session_id.as_str(), generation, cfg.max_rounds);
+        }
         let title = format!("Auto-verification (gen {generation})");
         let description = format!(
             "Run verification round loop. parent_session_id: {}, generation: {generation}, max_rounds: {}",
@@ -351,6 +356,16 @@ pub async fn create_plan_artifact(
                         session_id.as_str(),
                         reset_err
                     );
+                } else if let Some(app_handle) = &state.app_state.app_handle {
+                    emit_verification_status_changed(
+                        app_handle,
+                        session_id.as_str(),
+                        VerificationStatus::Unverified,
+                        false,
+                        None,
+                        Some("spawn_failed"),
+                        Some(generation),
+                    );
                 }
             }
             Err(e) => {
@@ -370,6 +385,16 @@ pub async fn create_plan_artifact(
                         "Failed to reset auto-verify state for session {} after spawn failure: {}",
                         session_id.as_str(),
                         reset_err
+                    );
+                } else if let Some(app_handle) = &state.app_state.app_handle {
+                    emit_verification_status_changed(
+                        app_handle,
+                        session_id.as_str(),
+                        VerificationStatus::Unverified,
+                        false,
+                        None,
+                        Some("spawn_failed"),
+                        Some(generation),
                     );
                 }
             }
@@ -477,6 +502,7 @@ pub async fn update_plan_artifact(
                     false,
                     None,
                     None,
+                    Some(session.verification_generation),
                 );
             }
         }
@@ -658,6 +684,7 @@ pub async fn edit_plan_artifact(
                     false,
                     None,
                     None,
+                    Some(session.verification_generation),
                 );
             }
         }

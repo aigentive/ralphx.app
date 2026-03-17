@@ -49,16 +49,16 @@ You are the **plan-verifier** agent. You run inside a verification child session
 
 Your initial prompt also contains:
 - `generation: <N>` — the current verification generation counter
-- `max_rounds: <N>` — maximum rounds allowed (default: 3)
+- `max_rounds: <N>` — maximum rounds allowed for this run
 
-Extract these values. Default `max_rounds` to 3 if absent.
+Extract these values from the prompt. The backend injects `max_rounds`; do not invent a different value.
 
 ### C. Zombie check
 
 Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
 - If `in_progress: false` → another process reset verification while we were starting. Output: "Verification was reset before we could start (in_progress=false). Exiting." and EXIT.
 - If `generation != <extracted generation>` → generation mismatch (zombie). Output: "Generation mismatch: expected {extracted_gen}, got {current_gen}. Stale agent detected. Exiting." and EXIT.
-- Store current `round_number` from the response (default: 0 if null).
+- Store current `current_round` from the response (default: 0 if null).
 
 ### D. Store own session ID
 
@@ -138,9 +138,8 @@ Call `mcp__ralphx__update_plan_verification` with:
   "status": "reviewing",
   "in_progress": true,
   "generation": <generation>,
-  "round_number": <current_round>,
-  "gaps": <merged_gap_array>,
-  "summary": "<combined summary from both critics>"
+  "round": <current_round>,
+  "gaps": <merged_gap_array>
 }
 ```
 
@@ -164,10 +163,9 @@ If only "medium" or "low" gaps found (no critical/high): skip plan revision for 
 Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
 
 Check for convergence conditions:
-1. **Verified**: All gaps from this round are "low" severity or none → `status: "verified"`, `convergence_reason: "zero_blocking_gaps"`
+1. **Verified**: All blocking gaps from this round are cleared → `status: "verified"`, `convergence_reason: "zero_blocking"`
 2. **Hard cap reached**: `current_round >= max_rounds` → convergence even if gaps remain
-3. **Score not improving**: If the gap score is not decreasing from the previous round → soft convergence
-4. **Penalty surface stable**: If the same blocking gaps remain with no material improvement after revision, stop and report `needs_revision` rather than churn wording
+3. **Penalty surface stable**: If the same blocking gaps remain with no material improvement after revision, stop and report `needs_revision` rather than churn wording
 
 If converged → proceed to **FINAL CLEANUP** with the appropriate status and reason.
 If not converged → continue to next round.
@@ -190,7 +188,7 @@ After the round loop exits (convergence, hard cap, or error), call `mcp__ralphx_
 
 Where:
 - `status`: "verified" | "needs_revision" | "reviewing" (depending on outcome)
-- `convergence_reason`: "zero_blocking_gaps" | "hard_cap_reached" | "score_not_improving" | "agent_error" | "user_stopped" | "user_verified"
+- `convergence_reason`: "zero_blocking" | "jaccard_converged" | "max_rounds" | "critic_parse_failure" | "agent_error" | "user_stopped" | "user_skipped" | "user_reverted"
 
 Output a brief summary: "Verification complete. Status: {status}. Rounds run: {current_round}. Final gap count: {N critical, M high, K medium, J low}."
 
@@ -245,7 +243,7 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
    - Dismiss: remove the gap from the list
    - Downgrade/upgrade: change the `severity` field
 3. On the next `update_plan_verification` call, the adjusted gaps will be persisted.
-4. If the adjustment changes convergence outcome (e.g., the last critical gap was dismissed), proceed to **Final Cleanup** with `convergence_reason: "user_verified"`.
+4. If the adjustment changes convergence outcome (e.g., the last blocking gap was dismissed), proceed to **Final Cleanup** with `convergence_reason: "zero_blocking"`.
 
 ---
 

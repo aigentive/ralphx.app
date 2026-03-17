@@ -820,6 +820,7 @@ describe("VerificationResponseSchema", () => {
       session_id: "session-1",
       status: "reviewing",
       in_progress: true,
+      verification_generation: 1,
       current_round: 1,
       max_rounds: 3,
       gap_score: 60,
@@ -842,6 +843,7 @@ describe("VerificationResponseSchema", () => {
       session_id: "session-1",
       status: "unverified",
       in_progress: false,
+      verification_generation: 0,
     };
     const result = VerificationResponseSchema.parse(raw);
     expect(result.current_gaps).toEqual([]);
@@ -853,6 +855,7 @@ describe("VerificationResponseSchema", () => {
       session_id: "session-1",
       status: "needs_revision",
       in_progress: false,
+      verification_generation: 3,
       current_gaps: [
         {
           severity: "critical",
@@ -870,6 +873,7 @@ describe("VerificationResponseSchema", () => {
       description: "No error handling",
       whyItMatters: "Will crash in prod",
     });
+    expect(result.verification_generation).toBe(3);
   });
 });
 
@@ -929,6 +933,7 @@ describe("ideationApi.verification", () => {
     session_id: "session-1",
     status: "reviewing",
     in_progress: true,
+    verification_generation: 2,
     current_round: 1,
     max_rounds: 3,
     gap_score: 80,
@@ -956,6 +961,7 @@ describe("ideationApi.verification", () => {
       expect(result.sessionId).toBe("session-1");
       expect(result.status).toBe("reviewing");
       expect(result.inProgress).toBe(true);
+      expect(result.generation).toBe(2);
       expect(result.gapScore).toBe(80);
       expect(result.gaps).toEqual([
         { severity: "high", category: "security", description: "Missing auth", whyItMatters: "Critical risk" },
@@ -973,7 +979,12 @@ describe("ideationApi.verification", () => {
 
   describe("skip", () => {
     it("sends POST and returns transformed VerificationStatusResponse", async () => {
-      const raw = makeVerificationRaw({ status: "skipped", in_progress: false, convergence_reason: "user_skipped" });
+      const raw = makeVerificationRaw({
+        status: "skipped",
+        in_progress: false,
+        convergence_reason: "user_skipped",
+        verification_generation: 4,
+      });
       mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(raw) });
 
       const result = await ideationApi.verification.skip("session-1");
@@ -983,6 +994,7 @@ describe("ideationApi.verification", () => {
         expect.objectContaining({ method: "POST" })
       );
       expect(result.status).toBe("skipped");
+      expect(result.generation).toBe(4);
       expect(result.convergenceReason).toBe("user_skipped");
       expect(result.gaps).toHaveLength(1);
       expect(result.rounds).toHaveLength(1);
@@ -998,7 +1010,12 @@ describe("ideationApi.verification", () => {
 
   describe("revertAndSkip", () => {
     it("sends POST to revert-and-skip endpoint and returns response", async () => {
-      const raw = makeVerificationRaw({ status: "skipped", in_progress: false });
+      const raw = makeVerificationRaw({
+        status: "skipped",
+        in_progress: false,
+        convergence_reason: "user_reverted",
+        verification_generation: 6,
+      });
       mockFetch.mockResolvedValue({ ok: true, json: () => Promise.resolve(raw) });
 
       const result = await ideationApi.verification.revertAndSkip("session-1", "v2");
@@ -1011,6 +1028,8 @@ describe("ideationApi.verification", () => {
         })
       );
       expect(result.sessionId).toBe("session-1");
+      expect(result.generation).toBe(6);
+      expect(result.convergenceReason).toBe("user_reverted");
       expect(result.gaps).toHaveLength(1);
       expect(result.rounds).toHaveLength(1);
     });

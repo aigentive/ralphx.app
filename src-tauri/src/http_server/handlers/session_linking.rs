@@ -14,8 +14,12 @@ use crate::domain::entities::{
     ChatContextType, IdeationSession, IdeationSessionId, IdeationSessionStatus, SessionLink,
     SessionPurpose, SessionRelationship, VerificationStatus,
 };
+use crate::domain::services::{
+    emit_verification_started, emit_verification_status_changed,
+};
 use crate::infrastructure::agents::claude::{
-    get_team_constraints, team_constraints_config, validate_child_team_config, TeamConstraints,
+    get_team_constraints, team_constraints_config, validate_child_team_config,
+    verification_config, TeamConstraints,
 };
 use crate::infrastructure::sqlite::SqliteIdeationSessionRepository as SessionRepo;
 
@@ -98,10 +102,11 @@ fn validate_resolved_team_config(
 /// - `effective_description` is `Some` (description branch handles auto-spawn in that case)
 ///
 /// When returning `Some`, the prompt includes the metadata suffix that `plan-verifier`
-/// expects to parse: `parent_session_id: X, generation: Y, max_rounds: 3`.
+/// expects to parse: `parent_session_id: X, generation: Y, max_rounds: N`.
 pub(super) fn synthesize_verification_prompt(
     purpose: &Option<String>,
     verification_generation: Option<i32>,
+    max_rounds: u32,
     effective_description: &Option<String>,
     parent_session_id: &str,
 ) -> Option<String> {
@@ -110,8 +115,8 @@ pub(super) fn synthesize_verification_prompt(
     }
     let gen = verification_generation.unwrap_or(1);
     Some(format!(
-        "Begin plan verification.\n\nparent_session_id: {}, generation: {}, max_rounds: 3",
-        parent_session_id, gen
+        "Begin plan verification.\n\nparent_session_id: {}, generation: {}, max_rounds: {}",
+        parent_session_id, gen, max_rounds
     ))
 }
 
@@ -124,6 +129,7 @@ pub async fn create_child_session(
     Json(req): Json<CreateChildSessionRequest>,
 ) -> Result<Json<CreateChildSessionResponse>, JsonError> {
     let parent_id = IdeationSessionId::from_string(req.parent_session_id.clone());
+    let verify_cfg = verification_config();
 
     // Verification generation; set below when purpose == "verification" and init succeeds
     let mut verification_generation: Option<i32> = None;
@@ -205,6 +211,14 @@ pub async fn create_child_session(
             Some(new_gen) => {
                 // Verification initialized; record generation for prompt augmentation and response
                 verification_generation = Some(new_gen);
+                if let Some(app_handle) = &state.app_state.app_handle {
+                    emit_verification_started(
+                        app_handle,
+                        parent_id.as_str(),
+                        new_gen,
+                        verify_cfg.max_rounds,
+                    );
+                }
             }
             None => {
                 // Either already in_progress or imported_verified — re-query for fresh state
@@ -310,12 +324,27 @@ pub async fn create_child_session(
         .map_err(|e| {
             error!("Failed to create child session: {}", e);
             // Rollback verification state if we initialized it
-            if verification_generation.is_some() {
+            if let Some(current_generation) = verification_generation {
                 let pid = parent_id.as_str().to_string();
+                let pid_for_reset = pid.clone();
                 let db = state.app_state.db.clone();
+                let app_handle = state.app_state.app_handle.clone();
                 tauri::async_runtime::spawn(async move {
-                    if let Err(re) = db.run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid)).await {
+                    if let Err(re) = db
+                        .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid_for_reset))
+                        .await
+                    {
                         error!("Failed to rollback verification state after child DB insert failure: {}", re);
+                    } else if let Some(handle) = app_handle {
+                        emit_verification_status_changed(
+                            &handle,
+                            &pid,
+                            VerificationStatus::Unverified,
+                            false,
+                            None,
+                            Some("spawn_failed"),
+                            Some(current_generation),
+                        );
                     }
                 });
             }
@@ -339,6 +368,30 @@ pub async fn create_child_session(
         .await
         .map_err(|e| {
             error!("Failed to create session link: {}", e);
+            if let Some(current_generation) = verification_generation {
+                let pid = parent_id.as_str().to_string();
+                let pid_for_reset = pid.clone();
+                let db = state.app_state.db.clone();
+                let app_handle = state.app_state.app_handle.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(re) = db
+                        .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid_for_reset))
+                        .await
+                    {
+                        error!("Failed to rollback verification state after link creation failure: {}", re);
+                    } else if let Some(handle) = app_handle {
+                        emit_verification_status_changed(
+                            &handle,
+                            &pid,
+                            VerificationStatus::Unverified,
+                            false,
+                            None,
+                            Some("spawn_failed"),
+                            Some(current_generation),
+                        );
+                    }
+                });
+            }
             json_error(
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("Failed to create session link: {}", e),
@@ -411,10 +464,11 @@ pub async fn create_child_session(
     let effective_initial_prompt: Option<String> = req.initial_prompt.as_ref().map(|p| {
         if let Some(gen) = verification_generation {
             format!(
-                "{}\n\nparent_session_id: {}, generation: {}, max_rounds: 3",
+                "{}\n\nparent_session_id: {}, generation: {}, max_rounds: {}",
                 p,
                 parent_session_str,
-                gen
+                gen,
+                verify_cfg.max_rounds
             )
         } else {
             p.clone()
@@ -423,10 +477,11 @@ pub async fn create_child_session(
     let effective_description: Option<String> = req.description.as_ref().map(|d| {
         if let Some(gen) = verification_generation {
             format!(
-                "{}\n\nparent_session_id: {}, generation: {}, max_rounds: 3",
+                "{}\n\nparent_session_id: {}, generation: {}, max_rounds: {}",
                 d,
                 parent_session_str,
-                gen
+                gen,
+                verify_cfg.max_rounds
             )
         } else {
             d.clone()
@@ -440,6 +495,7 @@ pub async fn create_child_session(
         synthesize_verification_prompt(
             &req.purpose,
             verification_generation,
+            verify_cfg.max_rounds,
             &effective_description,
             &parent_session_str,
         )
@@ -487,12 +543,27 @@ pub async fn create_child_session(
                     child_session_str, e
                 );
                 // Rollback verification state — parent's in_progress must not stay locked
-                if verification_generation.is_some() {
+                if let Some(current_generation) = verification_generation {
                     let pid = parent_id.as_str().to_string();
+                    let pid_for_reset = pid.clone();
                     let db = state.app_state.db.clone();
+                    let app_handle = state.app_state.app_handle.clone();
                     tauri::async_runtime::spawn(async move {
-                        if let Err(re) = db.run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid)).await {
+                        if let Err(re) = db
+                            .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid_for_reset))
+                            .await
+                        {
                             error!("Failed to rollback verification state after spawn failure: {}", re);
+                        } else if let Some(handle) = app_handle {
+                            emit_verification_status_changed(
+                                &handle,
+                                &pid,
+                                VerificationStatus::Unverified,
+                                false,
+                                None,
+                                Some("spawn_failed"),
+                                Some(current_generation),
+                            );
                         }
                     });
                     // Reset local generation so response reflects failure
@@ -543,12 +614,27 @@ pub async fn create_child_session(
                         child_session_str, e
                     );
                     // Rollback verification state — parent's in_progress must not stay locked
-                    if verification_generation.is_some() {
+                    if let Some(current_generation) = verification_generation {
                         let pid = parent_id.as_str().to_string();
+                        let pid_for_reset = pid.clone();
                         let db = state.app_state.db.clone();
+                        let app_handle = state.app_state.app_handle.clone();
                         tauri::async_runtime::spawn(async move {
-                            if let Err(re) = db.run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid)).await {
+                            if let Err(re) = db
+                                .run(move |conn| SessionRepo::reset_auto_verify_sync(conn, &pid_for_reset))
+                                .await
+                            {
                                 error!("Failed to rollback verification state after spawn failure: {}", re);
+                            } else if let Some(handle) = app_handle {
+                                emit_verification_status_changed(
+                                    &handle,
+                                    &pid,
+                                    VerificationStatus::Unverified,
+                                    false,
+                                    None,
+                                    Some("spawn_failed"),
+                                    Some(current_generation),
+                                );
                             }
                         });
                         verification_generation = None;

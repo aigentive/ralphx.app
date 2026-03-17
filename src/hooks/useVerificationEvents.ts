@@ -10,6 +10,7 @@
  *   session_id: string,
  *   status: VerificationStatus,
  *   in_progress: boolean,
+ *   generation?: number | null,
  *   round?: number,
  *   max_rounds?: number,
  *   gap_score?: number,
@@ -76,13 +77,18 @@ export function useVerificationEvents() {
           session_id: sessionId,
           status,
           in_progress: inProgress,
-          gap_score: gapScore,
-          round,
-          max_rounds: maxRounds,
+          generation: rawGeneration,
+          gap_score: rawGapScore,
+          round: rawRound,
+          max_rounds: rawMaxRounds,
           convergence_reason: convergenceReason,
           current_gaps: currentGaps,
           rounds,
         } = parsed.data;
+        const generation = rawGeneration ?? undefined;
+        const gapScore = rawGapScore ?? undefined;
+        const round = rawRound ?? undefined;
+        const maxRounds = rawMaxRounds ?? undefined;
 
         // Partial store update so components re-render immediately (sync)
         // Increment verificationUpdateSeq so resolvedSession merge prefers store over stale React Query data
@@ -118,18 +124,30 @@ export function useVerificationEvents() {
           //    so UI updates instantly without waiting for a refetch round-trip.
           if (currentGaps !== undefined && rounds !== undefined) {
             const cached = queryClient.getQueryData<VerificationStatusResponse>(["verification", sessionId]);
+            const generationChanged =
+              generation !== undefined && generation !== cached?.generation;
+            const generationAdvanced =
+              generation !== undefined &&
+              (cached?.generation === undefined || generation > cached.generation);
 
-            // Round guard: reject out-of-order events UNLESS verification was reset.
-            // Reset sends status=unverified (round undefined) → always accept.
-            // When reset happens cached round may be higher — allow new data through.
+            // Round guard: reject out-of-order events within the same generation only.
+            // A newer generation must always win even if its round number is lower.
             const isStaleRound =
+              !generationAdvanced &&
               cached?.currentRound !== undefined &&
               round !== undefined &&
               round < cached.currentRound &&
               status !== "unverified";
 
             if (isStaleRound) {
-              logger.debug("[VerificationEvents] Skipping stale event: round", round, "< cached", cached?.currentRound);
+              logger.debug(
+                "[VerificationEvents] Skipping stale event: round",
+                round,
+                "< cached",
+                cached?.currentRound,
+                "for generation",
+                generation ?? cached?.generation
+              );
             } else {
               const transformedGaps: VerificationGap[] = currentGaps.map((g) => ({
                 severity: g.severity,
@@ -152,6 +170,7 @@ export function useVerificationEvents() {
                 sessionId,
                 status: status as VerificationStatusResponse["status"],
                 inProgress,
+                ...(generation !== undefined && { generation }),
                 ...(round !== undefined && { currentRound: round }),
                 ...(maxRounds !== undefined && { maxRounds }),
                 ...(gapScore !== undefined && { gapScore }),
@@ -161,13 +180,21 @@ export function useVerificationEvents() {
                 ...(planVersion !== undefined && { planVersion }),
               };
               queryClient.setQueryData(["verification", sessionId], cacheData);
-              logger.debug("[VerificationEvents] setQueryData fast path for", sessionId, "round", round);
+              logger.debug(
+                "[VerificationEvents] setQueryData fast path for",
+                sessionId,
+                "generation",
+                generation,
+                "round",
+                round
+              );
             }
 
-            // Fast path has authoritative data — skip verification invalidation.
-            // cancelQueries above also cancels user-initiated refetches (window refocus).
-            // Acceptable: Tauri event is always more recent than in-flight HTTP response
-            // (backend emits event AFTER DB write completes).
+            // Fast path has authoritative data. On generation changes we still invalidate as a
+            // safety net so the HTTP cache re-hydrates any fields the start/reset event omitted.
+            if (generationChanged) {
+              queryClient.invalidateQueries({ queryKey: ["verification", sessionId] });
+            }
             // Invalidate child sessions so history picker and VerificationPanel stay fresh.
             queryClient.invalidateQueries({ queryKey: ["childSessions", sessionId] });
           } else {

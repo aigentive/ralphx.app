@@ -2,6 +2,7 @@
   "session_id": "sess-contract-test-001",
   "status": "needs_revision",
   "in_progress": false,
+  "generation": 3,
   "round": 3,
   "max_rounds": 5,
   "gap_score": 47,

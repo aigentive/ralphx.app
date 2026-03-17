@@ -77,6 +77,25 @@ async function typedInvoke<T>(
   return schema.parse(result);
 }
 
+function toVerificationStatusResponse(
+  raw: z.infer<typeof VerificationResponseSchema>
+): VerificationStatusResponse {
+  return {
+    sessionId: raw.session_id,
+    status: raw.status as VerificationStatusResponse["status"],
+    inProgress: raw.in_progress,
+    ...(raw.verification_generation !== undefined && { generation: raw.verification_generation }),
+    ...(raw.current_round !== undefined && { currentRound: raw.current_round }),
+    ...(raw.max_rounds !== undefined && { maxRounds: raw.max_rounds }),
+    ...(raw.gap_score !== undefined && { gapScore: raw.gap_score }),
+    ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
+    ...(raw.best_round_index !== undefined && { bestRoundIndex: raw.best_round_index }),
+    gaps: raw.current_gaps,
+    rounds: raw.rounds,
+    ...(raw.plan_version !== undefined && { planVersion: raw.plan_version }),
+  };
+}
+
 // ============================================================================
 // API Object
 // ============================================================================
@@ -581,20 +600,9 @@ export const ideationApi = {
       if (!res.ok) {
         throw new Error(`Failed to get verification status: ${res.status}`);
       }
-      const raw = VerificationResponseSchema.parse(await res.json());
-      return {
-        sessionId: raw.session_id,
-        status: raw.status as VerificationStatusResponse["status"],
-        inProgress: raw.in_progress,
-        ...(raw.current_round !== undefined && { currentRound: raw.current_round }),
-        ...(raw.max_rounds !== undefined && { maxRounds: raw.max_rounds }),
-        ...(raw.gap_score !== undefined && { gapScore: raw.gap_score }),
-        ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
-        ...(raw.best_round_index !== undefined && { bestRoundIndex: raw.best_round_index }),
-        gaps: raw.current_gaps,
-        rounds: raw.rounds,
-        ...(raw.plan_version !== undefined && { planVersion: raw.plan_version }),
-      };
+      return toVerificationStatusResponse(
+        VerificationResponseSchema.parse(await res.json())
+      );
     },
 
     /**
@@ -619,15 +627,9 @@ export const ideationApi = {
       if (!res.ok) {
         throw new Error(`Failed to skip verification: ${res.status}`);
       }
-      const raw = VerificationResponseSchema.parse(await res.json());
-      return {
-        sessionId: raw.session_id,
-        status: raw.status as VerificationStatusResponse["status"],
-        inProgress: raw.in_progress,
-        ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
-        gaps: raw.current_gaps,
-        rounds: raw.rounds,
-      };
+      return toVerificationStatusResponse(
+        VerificationResponseSchema.parse(await res.json())
+      );
     },
 
     /**
@@ -652,15 +654,9 @@ export const ideationApi = {
       if (!res.ok) {
         throw new Error(`Failed to revert and skip: ${res.status}`);
       }
-      const raw = VerificationResponseSchema.parse(await res.json());
-      return {
-        sessionId: raw.session_id,
-        status: raw.status as VerificationStatusResponse["status"],
-        inProgress: raw.in_progress,
-        ...(raw.convergence_reason !== undefined && { convergenceReason: raw.convergence_reason }),
-        gaps: raw.current_gaps,
-        rounds: raw.rounds,
-      };
+      return toVerificationStatusResponse(
+        VerificationResponseSchema.parse(await res.json())
+      );
     },
   },
 } as const;

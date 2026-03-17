@@ -914,6 +914,7 @@ pub async fn update_plan_verification(
                 true,
                 Some(&cleared_metadata),
                 None,
+                Some(new_gen),
             );
         }
 
@@ -1152,6 +1153,7 @@ pub async fn update_plan_verification(
             effective_in_progress,
             Some(&metadata),
             None,
+            Some(session.verification_generation),
         );
     }
 
@@ -1470,6 +1472,7 @@ pub async fn revert_and_skip(
             false,
             None,
             Some("user_reverted"),
+            Some(session.verification_generation),
         );
     }
 

@@ -28,8 +28,11 @@ use crate::domain::entities::{
     ideation::IdeationSession, types::ProjectId, ChatContextType, IdeationSessionId, InternalStatus,
     TaskId,
 };
-use crate::domain::services::check_verification_gate;
+use crate::domain::services::{
+    check_verification_gate, emit_verification_started, emit_verification_status_changed,
+};
 use crate::http_server::project_scope::{ProjectScope, ProjectScopeGuard};
+use crate::infrastructure::agents::claude::verification_config;
 
 use super::{HttpError, HttpServerState};
 
@@ -2065,7 +2068,6 @@ pub async fn trigger_verification_http(
     Json(req): Json<TriggerVerificationRequest>,
 ) -> Result<Json<TriggerVerificationResponse>, StatusCode> {
     use crate::infrastructure::sqlite::sqlite_ideation_session_repo::SqliteIdeationSessionRepository as SessionRepo;
-    use crate::infrastructure::agents::claude::verification_config;
 
     let session_id = req.session_id.clone();
     let session_id_obj = IdeationSessionId::from_string(session_id.clone());
@@ -2114,6 +2116,9 @@ pub async fn trigger_verification_http(
 
     // Spawn verifier; reset on failure
     let cfg = verification_config();
+    if let Some(app_handle) = &state.app_state.app_handle {
+        emit_verification_started(app_handle, &session_id, generation, cfg.max_rounds);
+    }
     let title = format!("Auto-verification (gen {generation})");
     let description = format!(
         "Run verification round loop. parent_session_id: {session_id}, generation: {generation}, max_rounds: {}",
@@ -2143,6 +2148,16 @@ pub async fn trigger_verification_http(
                 error!(
                     "Failed to reset auto-verify state for session {} after spawn failure: {}",
                     session_id, reset_err
+                );
+            } else if let Some(app_handle) = &state.app_state.app_handle {
+                emit_verification_status_changed(
+                    app_handle,
+                    &session_id,
+                    crate::domain::entities::VerificationStatus::Unverified,
+                    false,
+                    None,
+                    Some("spawn_failed"),
+                    Some(generation),
                 );
             }
             return Err(StatusCode::INTERNAL_SERVER_ERROR);
