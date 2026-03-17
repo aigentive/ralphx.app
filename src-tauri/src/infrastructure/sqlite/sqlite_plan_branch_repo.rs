@@ -40,8 +40,8 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
         self.db
             .run(move |conn| {
                 conn.execute(
-                    "INSERT INTO plan_branches (id, plan_artifact_id, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at, execution_plan_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    "INSERT INTO plan_branches (id, plan_artifact_id, session_id, project_id, branch_name, source_branch, status, merge_task_id, created_at, merged_at, execution_plan_id, pr_eligible, base_branch_override)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
                     rusqlite::params![
                         branch.id.as_str(),
                         branch.plan_artifact_id.as_str(),
@@ -54,6 +54,8 @@ impl PlanBranchRepository for SqlitePlanBranchRepository {
                         branch.created_at.to_rfc3339(),
                         branch.merged_at.map(|dt| dt.to_rfc3339()),
                         branch.execution_plan_id.as_ref().map(|id| id.as_str().to_string()),
+                        branch.pr_eligible as i64,
+                        branch.base_branch_override,
                     ],
                 )
                 .map_err(|e| AppError::Database(format!("Failed to create plan branch: {}", e)))?;

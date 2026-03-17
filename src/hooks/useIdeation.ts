@@ -8,8 +8,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { invoke } from "@tauri-apps/api/core";
 import { ideationApi, type SessionWithDataResponse, type IdeationSessionResponse, type ApplyProposalsInput } from "@/api/ideation";
+import { planBranchApi } from "@/api/plan-branch";
 import { taskKeys } from "@/hooks/useTasks";
 import type { SessionGroupCounts } from "@/types/ideation";
+import { useIdeationStore } from "@/stores/ideationStore";
 
 /**
  * Query key factory for ideation
@@ -237,6 +239,12 @@ export function useResetAndReaccept() {
 
   return useMutation<void, Error, ResetAndReacceptInput>({
     mutationFn: async ({ sessionId, proposalIds }) => {
+      // Fetch existing plan branch BEFORE reopen (reopen deletes the record)
+      const planArtifactId = useIdeationStore.getState().planArtifact?.id;
+      const existingPlanBranch = planArtifactId
+        ? await planBranchApi.getByPlan(planArtifactId).catch(() => null)
+        : null;
+
       // Step 1: Reopen (deletes tasks, cleans git, resets to Active)
       await ideationApi.sessions.reopen(sessionId);
       // Step 2: Re-apply proposals as fresh tasks
@@ -244,6 +252,12 @@ export function useResetAndReaccept() {
         sessionId,
         proposalIds,
         targetColumn: "backlog",
+        ...(existingPlanBranch && {
+          useFeatureBranch: true,
+          ...(existingPlanBranch.baseBranchOverride != null && {
+            baseBranchOverride: existingPlanBranch.baseBranchOverride,
+          }),
+        }),
       };
       await ideationApi.apply.toKanban(applyInput);
     },

@@ -674,6 +674,50 @@ describe("ideationApi.apply", () => {
       expect(result.warnings).toHaveLength(1);
       expect(result.sessionConverted).toBe(true);
     });
+
+    it("sends base_branch_override in snake_case when baseBranchOverride provided", async () => {
+      mockInvoke.mockResolvedValue({
+        created_task_ids: ["task-1"],
+        dependencies_created: 0,
+        warnings: [],
+        session_converted: false,
+      });
+
+      await ideationApi.apply.toKanban({
+        sessionId: "session-1",
+        proposalIds: ["p1"],
+        targetColumn: "backlog",
+        useFeatureBranch: true,
+        baseBranchOverride: "develop",
+      });
+
+      expect(mockInvoke).toHaveBeenCalledWith(
+        "apply_proposals_to_kanban",
+        expect.objectContaining({
+          input: expect.objectContaining({
+            base_branch_override: "develop",
+          }),
+        })
+      );
+    });
+
+    it("omits base_branch_override key when baseBranchOverride is undefined", async () => {
+      mockInvoke.mockResolvedValue({
+        created_task_ids: ["task-1"],
+        dependencies_created: 0,
+        warnings: [],
+        session_converted: false,
+      });
+
+      await ideationApi.apply.toKanban({
+        sessionId: "session-1",
+        proposalIds: ["p1"],
+        targetColumn: "backlog",
+      });
+
+      const invokeArgs = mockInvoke.mock.calls[0]![1] as { input: Record<string, unknown> };
+      expect(invokeArgs.input).not.toHaveProperty("base_branch_override");
+    });
   });
 });
 

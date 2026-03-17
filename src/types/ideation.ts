@@ -287,6 +287,7 @@ export const ApplyProposalsInputSchema = z.object({
   proposalIds: z.array(z.string().min(1)).min(1),
   targetColumn: z.string().min(1),
   useFeatureBranch: z.boolean().optional(),
+  baseBranchOverride: z.string().optional(),
 });
 
 export type ApplyProposalsInput = z.infer<typeof ApplyProposalsInputSchema>;

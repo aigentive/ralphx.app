@@ -155,6 +155,7 @@ export interface ApplyProposalsInput {
   proposalIds: string[];
   targetColumn: string;
   useFeatureBranch?: boolean;
+  baseBranchOverride?: string;
 }
 
 // Session linking response types

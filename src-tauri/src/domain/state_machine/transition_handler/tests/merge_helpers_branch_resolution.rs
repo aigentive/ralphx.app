@@ -494,3 +494,83 @@ async fn resolve_merge_branches_after_branch_discovery_returns_valid_source() {
         "Target branch should be project base branch"
     );
 }
+
+// ==================
+// base_branch_override tests
+// ==================
+
+#[tokio::test]
+async fn resolve_merge_branches_merge_task_uses_override_as_target() {
+    // When PlanBranch has base_branch_override set, merge-task path returns override as target
+    let project = make_project(Some("main"));
+    let mut task = make_task(None, None);
+    task.id = TaskId::from_string("merge-task-override".to_string());
+
+    let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let mut pb = make_plan_branch(
+        "art-override",
+        "ralphx/test/plan-override",
+        PlanBranchStatus::Active,
+        Some("merge-task-override"),
+    );
+    pb.base_branch_override = Some("develop".to_string());
+    mem_repo.create(pb).await.unwrap();
+
+    let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+    let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+    assert_eq!(source, "ralphx/test/plan-override");
+    // Override takes precedence over project base_branch ("main")
+    assert_eq!(target, "develop");
+}
+
+#[tokio::test]
+async fn resolve_merge_branches_plan_task_returns_feature_branch_not_override() {
+    // Plan-task path always merges into the feature branch, regardless of override
+    let project = make_project(Some("main"));
+    let mut task = make_task_with_session(
+        Some("art-override"),
+        Some("ralphx/test/task-plan"),
+        Some("sess-1"), // must match the session_id used by make_plan_branch
+    );
+    task.id = TaskId::from_string("plan-task-override".to_string());
+
+    let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let mut pb = make_plan_branch(
+        "art-override",
+        "ralphx/test/plan-override",
+        PlanBranchStatus::Active,
+        None,
+    );
+    pb.base_branch_override = Some("develop".to_string());
+    mem_repo.create(pb).await.unwrap();
+
+    let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+    let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+    assert_eq!(source, "ralphx/test/task-plan");
+    // Plan-task always merges into feature branch, NOT override
+    assert_eq!(target, "ralphx/test/plan-override");
+}
+
+#[tokio::test]
+async fn resolve_merge_branches_merge_task_fallback_when_no_override() {
+    // When no base_branch_override, merge-task uses project base_branch
+    let project = make_project(Some("staging"));
+    let mut task = make_task(None, None);
+    task.id = TaskId::from_string("merge-task-no-override".to_string());
+
+    let mem_repo = Arc::new(MemoryPlanBranchRepository::new());
+    let pb = make_plan_branch(
+        "art-no-override",
+        "ralphx/test/plan-no-override",
+        PlanBranchStatus::Active,
+        Some("merge-task-no-override"),
+    );
+    // base_branch_override is None (default from make_plan_branch)
+    mem_repo.create(pb).await.unwrap();
+
+    let repo: Option<Arc<dyn PlanBranchRepository>> = Some(mem_repo);
+    let (source, target) = resolve_merge_branches(&task, &project, &repo).await;
+    assert_eq!(source, "ralphx/test/plan-no-override");
+    // Falls back to project base_branch
+    assert_eq!(target, "staging");
+}

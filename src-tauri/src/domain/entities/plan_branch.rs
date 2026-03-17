@@ -225,6 +225,10 @@ pub struct PlanBranch {
     /// Whether the PR was created as a draft
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub pr_draft: Option<bool>,
+    /// User-selected base branch override for this plan (merge target).
+    /// When set, the plan branch merges into this branch instead of the project default.
+    #[serde(default)]
+    pub base_branch_override: Option<String>,
 }
 
 impl PlanBranch {
@@ -256,6 +260,7 @@ impl PlanBranch {
             pr_push_status: PrPushStatus::default(),
             merge_commit_sha: None,
             pr_draft: None,
+            base_branch_override: None,
         }
     }
 
@@ -308,6 +313,9 @@ impl PlanBranch {
                 .get::<_, Option<i64>>("pr_draft")
                 .unwrap_or(None)
                 .map(|v| v != 0),
+            base_branch_override: row
+                .get::<_, Option<String>>("base_branch_override")
+                .unwrap_or(None),
         })
     }
 

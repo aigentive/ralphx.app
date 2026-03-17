@@ -16,7 +16,9 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
 import { api } from "@/lib/tauri";
+import { getGitBranches } from "@/api/projects";
 import type { PlanBranch } from "@/api/plan-branch.types";
 
 // ============================================================================
@@ -35,6 +37,8 @@ export interface PlanGroupSettingsProps {
   onBranchChange?: () => void;
   /** Navigate to merge task in graph */
   onNavigateToMergeTask?: (taskId: string) => void;
+  /** Working directory for fetching git branches */
+  workingDirectory?: string;
 }
 
 // ============================================================================
@@ -83,33 +87,68 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
   hasMergedTasks,
   onBranchChange,
   onNavigateToMergeTask,
+  workingDirectory,
 }: PlanGroupSettingsProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pendingBranch, setPendingBranch] = useState<string>("");
+  const [branches, setBranches] = useState<string[]>([]);
+  const [showBranchSelector, setShowBranchSelector] = useState(false);
 
   const isEnabled = planBranch !== null && planBranch.status !== "abandoned";
   const canDisable = isEnabled && !hasMergedTasks && planBranch?.status === "active";
 
   const handleToggle = useCallback(async (checked: boolean) => {
     setError(null);
+    if (checked) {
+      // Load branches and show selector
+      setShowBranchSelector(true);
+      if (workingDirectory) {
+        try {
+          const branchList = await getGitBranches(workingDirectory);
+          setBranches(branchList);
+          if (branchList.length > 0) {
+            setPendingBranch(branchList[0] ?? "");
+          }
+        } catch {
+          // No git repo or inaccessible — user can type manually
+          setBranches([]);
+        }
+      }
+    } else {
+      setIsLoading(true);
+      try {
+        await api.planBranches.disable(planArtifactId);
+      } catch (err) {
+        const message = typeof err === "string"
+          ? err
+          : err instanceof Error
+            ? err.message
+            : "Failed to disable feature branch";
+        setError(message);
+      } finally {
+        setIsLoading(false);
+        onBranchChange?.();
+      }
+    }
+  }, [planArtifactId, workingDirectory, onBranchChange]);
+
+  const handleConfirmEnable = useCallback(async () => {
+    setShowBranchSelector(false);
     setIsLoading(true);
     try {
-      if (checked) {
-        await api.planBranches.enable({
-          planArtifactId,
-          sessionId,
-          projectId,
-        });
-      } else {
-        await api.planBranches.disable(planArtifactId);
-      }
+      await api.planBranches.enable({
+        planArtifactId,
+        sessionId,
+        projectId,
+        ...(pendingBranch ? { baseBranchOverride: pendingBranch } : {}),
+      });
     } catch (err) {
       const message = typeof err === "string"
         ? err
         : err instanceof Error
           ? err.message
-          : "Failed to update feature branch";
-      // Silence "already exists" — just stale UI state, refetch will correct it
+          : "Failed to enable feature branch";
       if (!message.toLowerCase().includes("already exists")) {
         setError(message);
       }
@@ -117,7 +156,7 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
       setIsLoading(false);
       onBranchChange?.();
     }
-  }, [planArtifactId, sessionId, projectId, onBranchChange]);
+  }, [planArtifactId, sessionId, projectId, pendingBranch, onBranchChange]);
 
   return (
     <div className="flex flex-col gap-3 min-w-[240px]">
@@ -146,6 +185,48 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
           />
         </div>
       </div>
+
+      {/* Branch selector when enabling */}
+      {showBranchSelector && (
+        <div className="flex flex-col gap-2 pt-1">
+          <span className="text-[11px] text-[hsl(var(--text-secondary))]">
+            Base branch to merge into:
+          </span>
+          {branches.length > 0 ? (
+            <select
+              value={pendingBranch}
+              onChange={(e) => setPendingBranch(e.target.value)}
+              className="text-[11px] bg-[hsl(var(--bg-surface))] text-[hsl(var(--text-primary))] border border-[hsl(var(--border-subtle))] rounded px-1.5 py-1 outline-none"
+            >
+              {branches.map((b) => (
+                <option key={b} value={b}>{b}</option>
+              ))}
+            </select>
+          ) : (
+            <Input
+              value={pendingBranch}
+              onChange={(e) => setPendingBranch(e.target.value)}
+              placeholder="e.g. main"
+              className="h-7 text-[11px]"
+            />
+          )}
+          <div className="flex gap-2">
+            <button
+              onClick={handleConfirmEnable}
+              disabled={!pendingBranch}
+              className="text-[11px] px-2 py-1 rounded bg-[hsl(var(--accent-primary))] text-white disabled:opacity-50"
+            >
+              Enable
+            </button>
+            <button
+              onClick={() => setShowBranchSelector(false)}
+              className="text-[11px] px-2 py-1 rounded bg-[hsl(var(--bg-surface))] text-[hsl(var(--text-secondary))]"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Warning if tasks merged (can't disable) */}
       {isEnabled && hasMergedTasks && (

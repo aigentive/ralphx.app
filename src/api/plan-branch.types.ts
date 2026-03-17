@@ -20,10 +20,12 @@ export interface PlanBranch {
   prStatus: "Draft" | "Open" | "Merged" | "Closed" | null;
   prPollingActive: boolean;
   prEligible: boolean;
+  baseBranchOverride: string | null;
 }
 
 export interface EnableFeatureBranchInput {
   planArtifactId: string;
   sessionId: string;
   projectId: string;
+  baseBranchOverride?: string;
 }

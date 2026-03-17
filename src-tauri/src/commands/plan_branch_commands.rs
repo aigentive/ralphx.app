@@ -32,6 +32,7 @@ pub struct PlanBranchResponse {
     pub pr_status: Option<String>,
     pub pr_polling_active: bool,
     pub pr_eligible: bool,
+    pub base_branch_override: Option<String>,
 }
 
 impl From<PlanBranch> for PlanBranchResponse {
@@ -54,6 +55,7 @@ impl From<PlanBranch> for PlanBranchResponse {
             pr_status: pb.pr_status.as_ref().map(|s| s.to_db_string().to_string()),
             pr_polling_active: pb.pr_polling_active,
             pr_eligible: pb.pr_eligible,
+            base_branch_override: pb.base_branch_override,
         }
     }
 }
@@ -64,6 +66,9 @@ pub struct EnableFeatureBranchInput {
     pub plan_artifact_id: String,
     pub session_id: String,
     pub project_id: String,
+    /// Per-plan override for base branch (None = use project default)
+    #[serde(default)]
+    pub base_branch_override: Option<String>,
 }
 
 // ============================================================================
@@ -186,8 +191,23 @@ pub async fn enable_feature_branch(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Project not found: {}", project_id.as_str()))?;
 
-    let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
+    let base_branch = input.base_branch_override.clone().unwrap_or_else(|| {
+        project.base_branch.as_deref().unwrap_or("main").to_string()
+    });
     let repo_path = PathBuf::from(&project.working_directory);
+
+    // Validate override branch exists before git operations
+    if input.base_branch_override.is_some() {
+        let exists = GitService::branch_exists(&repo_path, &base_branch)
+            .await
+            .map_err(|e| format!("Failed to check branch: {}", e))?;
+        if !exists {
+            return Err(format!(
+                "Base branch '{}' not found locally. Run 'git fetch' and try again.",
+                base_branch
+            ));
+        }
+    }
 
     // Generate branch name: ralphx/{project-slug}/plan-{short-artifact-id}
     let project_slug = slug_from_name(&project.name);
@@ -200,13 +220,14 @@ pub async fn enable_feature_branch(
         .map_err(|e| format!("Failed to create feature branch: {}", e))?;
 
     // Insert plan_branches DB record
-    let plan_branch = PlanBranch::new(
+    let mut plan_branch = PlanBranch::new(
         plan_artifact_id.clone(),
         session_id.clone(),
         project_id.clone(),
         branch_name,
         base_branch.clone(),
     );
+    plan_branch.base_branch_override = input.base_branch_override.clone();
     let created_branch = state
         .plan_branch_repo
         .create(plan_branch)
