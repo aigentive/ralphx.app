@@ -94,6 +94,8 @@ pub struct TeamConstraints {
     pub timeout_minutes: u32,
     #[serde(default)]
     pub budget_limit: Option<f64>,
+    #[serde(default)]
+    pub auto_approve: Option<bool>,
 }
 
 impl Default for TeamConstraints {
@@ -107,6 +109,7 @@ impl Default for TeamConstraints {
             presets: Vec::new(),
             timeout_minutes: default_timeout(),
             budget_limit: None,
+            auto_approve: None,
         }
     }
 }
@@ -279,6 +282,12 @@ fn merge_constraints(defaults: &TeamConstraints, specific: &TeamConstraints) -> 
         },
         timeout_minutes: specific.timeout_minutes,
         budget_limit: specific.budget_limit.or(defaults.budget_limit),
+        auto_approve: Some(
+            specific
+                .auto_approve
+                .or(defaults.auto_approve)
+                .unwrap_or(true),
+        ),
     }
 }
 
@@ -296,6 +305,7 @@ fn merge_constraints(defaults: &TeamConstraints, specific: &TeamConstraints) -> 
 /// - `timeout_minutes`: min(resolved, ceiling)
 /// - `budget_limit`: min(resolved, ceiling); None is most restrictive
 /// - `mode`: inherited from resolved (not capped)
+/// - `auto_approve`: inherited from ceiling (parent controls whether child can auto-approve)
 pub fn validate_child_team_config(
     resolved: &TeamConstraints,
     ceiling: &TeamConstraints,
@@ -309,6 +319,7 @@ pub fn validate_child_team_config(
         presets: intersect_lists(&resolved.presets, &ceiling.presets),
         timeout_minutes: resolved.timeout_minutes.min(ceiling.timeout_minutes),
         budget_limit: min_budget(resolved.budget_limit, ceiling.budget_limit),
+        auto_approve: ceiling.auto_approve,
     }
 }
 

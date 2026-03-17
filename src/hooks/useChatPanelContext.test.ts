@@ -635,6 +635,128 @@ describe("useChatPanelContext", () => {
       expect(mockStore.setActiveConversation).toHaveBeenCalledWith("session:session-1", "conv-parent");
     });
 
+    it("should invalidate conversation list atomically with hasAutoSelectedRef reset on hidden→visible transition", async () => {
+      const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+      const { rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+            isVisible: true,
+          },
+        }
+      );
+
+      // Wait for initial mount effect (prevIsVisibleRef starts false → isVisible true fires)
+      await waitFor(() => {
+        expect(invalidateSpy).toHaveBeenCalledWith({
+          queryKey: ["conversations", "ideation", "session-1"],
+        });
+      });
+      invalidateSpy.mockClear();
+
+      // Panel becomes hidden
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-1",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+        isVisible: false,
+      });
+
+      // No invalidation on hidden transition
+      expect(invalidateSpy).not.toHaveBeenCalled();
+
+      // Panel becomes visible again
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: "session-1",
+        selectedTaskId: undefined,
+        isExecutionMode: false,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+        isVisible: true,
+      });
+
+      // Should invalidate with the correct contextType and contextId
+      await waitFor(() => {
+        expect(invalidateSpy).toHaveBeenCalledWith({
+          queryKey: ["conversations", "ideation", "session-1"],
+        });
+      });
+    });
+
+    it("should use updated contextType/contextId in invalidation after context change", async () => {
+      const invalidateSpy = vi.spyOn(queryClient, "invalidateQueries");
+
+      const { rerender } = renderHook(
+        (props) => useChatPanelContext(props),
+        {
+          wrapper,
+          initialProps: {
+            projectId: "project-1",
+            ideationSessionId: "session-1",
+            selectedTaskId: undefined,
+            isExecutionMode: false,
+            isReviewMode: false,
+            isMergeMode: false,
+            isHistoryMode: false,
+            isVisible: false,
+          },
+        }
+      );
+
+      // Context changes to a task while hidden
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: undefined,
+        selectedTaskId: "task-42",
+        isExecutionMode: true,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+        isVisible: false,
+      });
+
+      invalidateSpy.mockClear();
+
+      // Panel becomes visible — invalidation should use the NEW context (task_execution:task-42)
+      rerender({
+        projectId: "project-1",
+        ideationSessionId: undefined,
+        selectedTaskId: "task-42",
+        isExecutionMode: true,
+        isReviewMode: false,
+        isMergeMode: false,
+        isHistoryMode: false,
+        isVisible: true,
+      });
+
+      await waitFor(() => {
+        expect(invalidateSpy).toHaveBeenCalledWith({
+          queryKey: ["conversations", "task_execution", "task-42"],
+        });
+      });
+
+      // Must NOT have used the stale ideation context
+      const staleCall = invalidateSpy.mock.calls.find(
+        (call) => JSON.stringify(call[0]).includes("session-1")
+      );
+      expect(staleCall).toBeUndefined();
+    });
+
     it("should NOT reset hasAutoSelectedRef when panel stays visible across renders", async () => {
       mockStore.activeConversationIds = {};
 

@@ -355,6 +355,9 @@ pub fn run() {
             http_app_state_inner.interactive_process_registry = shared_interactive_process_registry;
             http_app_state_inner.github_service = shared_github_service;
             http_app_state_inner.pr_poller_registry = shared_pr_poller_registry;
+            // INVARIANT: streaming_state_cache uses Arc internally — .clone() shares the same data.
+            // Do NOT change StreamingStateCache to deep-clone without updating this sharing.
+            http_app_state_inner.streaming_state_cache = app_state.streaming_state_cache.clone();
             let http_app_state = Arc::new(http_app_state_inner);
             // Spawn HTTP server with pre-cloned state
             tauri::async_runtime::spawn(async move {

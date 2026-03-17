@@ -7,7 +7,7 @@
  * Uses EventBus abstraction for browser/Tauri compatibility.
  */
 
-import { useEffect } from "react";
+import { useEffect, useLayoutEffect, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
@@ -35,6 +35,13 @@ import type { Unsubscribe } from "@/lib/event-bus";
 export function useAgentEvents(activeConversationId: string | null, storeKey?: string) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
+
+  // Ref for storeKey — prevents stale closure writes during teardown/resubscribe window.
+  // useLayoutEffect keeps ref synchronised before any Tauri IPC events can arrive.
+  const storeKeyRef = useRef(storeKey);
+  useLayoutEffect(() => {
+    storeKeyRef.current = storeKey;
+  }, [storeKey]);
   const setAgentStatus = useChatStore((s) => s.setAgentStatus);
   const updateLastAgentEvent = useChatStore((s) => s.updateLastAgentEvent);
   const deleteQueuedMessage = useChatStore((s) => s.deleteQueuedMessage);
@@ -94,7 +101,7 @@ export function useAgentEvents(activeConversationId: string | null, storeKey?: s
         // Use caller-provided storeKey when available — the caller knows which panel slot to
         // write to. Cross-context events are handled by IntegratedChatPanel's bus.subscribe.
         if (!activeConversationId && conversation_id) {
-          setActiveConversation(storeKey ?? eventContextKey, conversation_id);
+          setActiveConversation(storeKeyRef.current ?? eventContextKey, conversation_id);
         }
       })
     );

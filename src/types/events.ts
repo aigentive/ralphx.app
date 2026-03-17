@@ -496,3 +496,18 @@ export interface TeamPlanRequestedPayload {
   context_type: string;
   context_id: string;
 }
+
+export interface TeamPlanAutoApprovedPayload {
+  plan_id: string;
+  context_type: string;
+  context_id: string;
+  process: string;
+  team_name: string;
+  teammates_spawned: Array<{
+    name: string;
+    role: string;
+    model: string;
+    color: string;
+  }>;
+  message: string;
+}

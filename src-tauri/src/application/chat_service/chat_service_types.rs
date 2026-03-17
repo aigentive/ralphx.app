@@ -227,6 +227,14 @@ pub struct AgentMessageQueuedPayload {
     pub created_at: String,
 }
 
+/// Payload for agent:conversation_created event
+#[derive(Debug, Clone, Serialize)]
+pub struct AgentConversationCreatedPayload {
+    pub conversation_id: String,
+    pub context_type: String,
+    pub context_id: String,
+}
+
 /// Payload for agent:hook event (discriminated by `hook_type`)
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentHookPayload {

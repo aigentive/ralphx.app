@@ -71,12 +71,12 @@ pub use chat_service_mock::{MockChatResponse, MockChatService};
 pub use chat_service_replay::{build_rehydration_prompt, ConversationReplay, ReplayBuilder, Turn};
 pub use chat_service_streaming::process_stream_background;
 pub use chat_service_types::{
-    events, AgentChunkPayload, AgentErrorPayload, AgentHookPayload, AgentMessageCreatedPayload,
-    AgentMessageQueuedPayload, AgentQueueSentPayload, AgentRunCompletedPayload,
-    AgentRunStartedPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload,
-    AgentToolCallPayload, ChatConversationWithMessages, ChatServiceError, SendResult,
-    TeamCostUpdatePayload, TeamArtifactCreatedPayload, TeamCreatedPayload, TeamDisbandedPayload,
-    TeamMessagePayload, TeamTeammateIdlePayload, TeamTeammateShutdownPayload,
+    events, AgentChunkPayload, AgentConversationCreatedPayload, AgentErrorPayload, AgentHookPayload,
+    AgentMessageCreatedPayload, AgentMessageQueuedPayload, AgentQueueSentPayload,
+    AgentRunCompletedPayload, AgentRunStartedPayload, AgentTaskCompletedPayload,
+    AgentTaskStartedPayload, AgentToolCallPayload, ChatConversationWithMessages, ChatServiceError,
+    SendResult, TeamCostUpdatePayload, TeamArtifactCreatedPayload, TeamCreatedPayload,
+    TeamDisbandedPayload, TeamMessagePayload, TeamTeammateIdlePayload, TeamTeammateShutdownPayload,
     TeamTeammateSpawnedPayload,
 };
 pub use chat_service_types::events::AGENT_MESSAGE_QUEUED;
@@ -209,12 +209,13 @@ pub trait ChatService: Send + Sync {
         message_id: &str,
     ) -> Result<bool, ChatServiceError>;
 
-    /// Get or create a conversation for a context
+    /// Get or create a conversation for a context.
+    /// Returns `(conversation, is_new)` where `is_new` is `true` when a new conversation was created.
     async fn get_or_create_conversation(
         &self,
         context_type: ChatContextType,
         context_id: &str,
-    ) -> Result<ChatConversation, ChatServiceError>;
+    ) -> Result<(ChatConversation, bool), ChatServiceError>;
 
     /// Get a conversation by ID with all its messages
     async fn get_conversation_with_messages(
@@ -687,7 +688,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                                 context_id,
                                 "Gate 1: no existing conversation found despite IPR entry, creating new"
                             );
-                            self.get_or_create_conversation(context_type, context_id).await?
+                            let (conversation, _) = self.get_or_create_conversation(context_type, context_id).await?;
+                            conversation
                         }
                     };
 
@@ -758,7 +760,7 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         // 2. Get or create conversation (only reached when Gate 1 misses or fails).
         //    For TaskExecution/Merge this creates a fresh conversation (force_fresh=true),
         //    which is correct for new spawns.
-        let conversation = self
+        let (conversation, _) = self
             .get_or_create_conversation(context_type, context_id)
             .await?;
         tracing::debug!(
@@ -1274,7 +1276,8 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
                                 context_id,
                                 "queue_message: no existing conversation found despite IPR entry, creating new"
                             );
-                            self.get_or_create_conversation(context_type, context_id).await?
+                            let (conversation, _) = self.get_or_create_conversation(context_type, context_id).await?;
+                            conversation
                         }
                     };
                     let user_msg = chat_service_context::create_user_message(
@@ -1373,13 +1376,24 @@ impl<R: Runtime + 'static> ChatService for ClaudeChatService<R> {
         &self,
         context_type: ChatContextType,
         context_id: &str,
-    ) -> Result<ChatConversation, ChatServiceError> {
-        chat_service_repository::get_or_create_conversation(
+    ) -> Result<(ChatConversation, bool), ChatServiceError> {
+        let (conv, is_new) = chat_service_repository::get_or_create_conversation(
             Arc::clone(&self.conversation_repo),
             context_type,
             context_id,
         )
-        .await
+        .await?;
+        if is_new {
+            self.emit_event(
+                "agent:conversation_created",
+                AgentConversationCreatedPayload {
+                    conversation_id: conv.id.as_str().to_string(),
+                    context_type: context_type.to_string(),
+                    context_id: context_id.to_string(),
+                },
+            );
+        }
+        Ok((conv, is_new))
     }
 
     async fn get_conversation_with_messages(

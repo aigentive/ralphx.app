@@ -336,6 +336,7 @@ team_constraints:
     mode: dynamic
     timeout_minutes: 20
     budget_limit: null
+    auto_approve: true
 
   ideation:
     max_teammates: 5
