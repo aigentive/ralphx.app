@@ -1144,6 +1144,7 @@ function AppContent() {
         isReadOnly={isIdeationReadOnly}
         onClose={() => { setViewingProposalId(null); setViewingEnrichment(undefined); }}
         onEdit={handleEditProposal}
+        onDelete={handleRemoveProposal}
         onNavigateToTask={handleNavigateToTaskFromSheet}
       />
 

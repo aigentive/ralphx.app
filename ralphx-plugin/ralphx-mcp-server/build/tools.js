@@ -115,6 +115,20 @@ export const ALL_TOOLS = [
         },
     },
     {
+        name: "delete_task_proposal",
+        description: "Delete a task proposal. Alias for archive_task_proposal — routes to the same endpoint. Use when the user or agent wants to delete/remove a proposal during ideation.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                proposal_id: {
+                    type: "string",
+                    description: "The proposal ID to delete",
+                },
+            },
+            required: ["proposal_id"],
+        },
+    },
+    {
         name: "update_session_title",
         description: "Update the title of an ideation session. Used by session-namer agent to set auto-generated titles.",
         inputSchema: {
@@ -1304,6 +1318,7 @@ export const TOOL_ALLOWLIST = {
         "create_task_proposal",
         "update_task_proposal",
         "archive_task_proposal",
+        "delete_task_proposal",
         "list_session_proposals",
         "get_proposal",
         "analyze_session_dependencies",
@@ -1565,6 +1580,7 @@ export const TOOL_ALLOWLIST = {
         "create_task_proposal",
         "update_task_proposal",
         "archive_task_proposal",
+        "delete_task_proposal",
         "list_session_proposals",
         "get_proposal",
         "analyze_session_dependencies",

@@ -965,6 +965,7 @@ export function PlanningView({
                         onReviewSync={handleReviewSync}
                         onUndoSync={handleUndoSync}
                         onDismissSync={handleDismissSync}
+                        onDeleteProposal={onRemoveProposal}
                       />
                     )}
 

@@ -536,6 +536,50 @@ describe('getAllowedToolNames - CLI arg priority chain', () => {
 });
 
 // ===========================================================================
+// delete_task_proposal MCP tool — alias for archive_task_proposal
+// ===========================================================================
+
+describe('delete_task_proposal tool', () => {
+  const allTools = getAllTools();
+  const tool = allTools.find((t) => t.name === 'delete_task_proposal');
+
+  it('should exist in ALL_TOOLS', () => {
+    expect(tool).toBeDefined();
+  });
+
+  it('should have correct inputSchema with required proposal_id field', () => {
+    expect(tool?.inputSchema).toBeDefined();
+    expect(tool?.inputSchema.type).toBe('object');
+    expect(tool?.inputSchema.properties).toHaveProperty('proposal_id');
+    expect(tool?.inputSchema.required).toContain('proposal_id');
+  });
+
+  it('should be in TOOL_ALLOWLIST for orchestrator-ideation', () => {
+    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION]).toContain('delete_task_proposal');
+  });
+
+  it('should be in TOOL_ALLOWLIST for ideation-team-lead', () => {
+    expect(TOOL_ALLOWLIST[IDEATION_TEAM_LEAD]).toContain('delete_task_proposal');
+  });
+
+  it('should NOT be in TOOL_ALLOWLIST for orchestrator-ideation-readonly', () => {
+    expect(TOOL_ALLOWLIST[ORCHESTRATOR_IDEATION_READONLY]).not.toContain('delete_task_proposal');
+  });
+
+  it('should be returned by getFilteredTools for orchestrator-ideation', () => {
+    setAgentType(ORCHESTRATOR_IDEATION);
+    const toolNames = getFilteredTools().map((t) => t.name);
+    expect(toolNames).toContain('delete_task_proposal');
+  });
+
+  it('should be returned by getFilteredTools for ideation-team-lead', () => {
+    setAgentType(IDEATION_TEAM_LEAD);
+    const toolNames = getFilteredTools().map((t) => t.name);
+    expect(toolNames).toContain('delete_task_proposal');
+  });
+});
+
+// ===========================================================================
 // revert_and_skip MCP tool — tool definition, allowlist, and dispatch coverage
 // ===========================================================================
 

@@ -111,6 +111,8 @@ export interface TieredProposalListProps {
   onViewDetail?: (proposalId: string, enrichment: ProposalDetailEnrichment) => void;
   /** ID of the currently selected proposal (for highlight state) */
   selectedProposalId?: string | null;
+  /** Callback to delete a proposal (passes proposalId for confirmation in parent) */
+  onDelete?: (proposalId: string) => void;
 }
 
 // ============================================================================
@@ -222,6 +224,7 @@ export const TieredProposalList = React.memo(function TieredProposalList({
   onNavigateToTask,
   onViewDetail,
   selectedProposalId,
+  onDelete,
 }: TieredProposalListProps) {
   // Compute tier assignments from dependency graph
   const { tierMap, maxTier } = useDependencyTiers(dependencyGraph);
@@ -337,6 +340,7 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                     onNavigateToTask?: (taskId: string) => void;
                     onViewDetail?: (proposalId: string, enrichment: ProposalDetailEnrichment) => void;
                     isSelected?: boolean;
+                    onDelete?: (proposalId: string) => void;
                   } = {};
 
                   if (dependsOnDetails.length > 0) {
@@ -369,6 +373,9 @@ export const TieredProposalList = React.memo(function TieredProposalList({
                   }
                   if (selectedProposalId === proposal.id) {
                     optionalProps.isSelected = true;
+                  }
+                  if (onDelete !== undefined) {
+                    optionalProps.onDelete = onDelete;
                   }
 
                   return (

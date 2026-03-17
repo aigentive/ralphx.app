@@ -13,7 +13,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { FileEdit, Eye, ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
+import { FileEdit, Eye, ChevronDown, ChevronRight, ExternalLink, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { TaskProposal } from "@/types/ideation";
 import { PRIORITY_CONFIG } from "./PlanningView.constants";
@@ -46,6 +46,8 @@ export interface ProposalCardProps {
   onViewDetail?: (proposalId: string, enrichment: { dependsOnDetails: DependencyDetail[]; blocksCount: number; isOnCriticalPath: boolean }) => void;
   /** Whether this card is currently selected (detail sheet open) */
   isSelected?: boolean;
+  /** Callback to delete this proposal (triggers confirmation in parent) */
+  onDelete?: (proposalId: string) => void;
 }
 
 // ============================================================================
@@ -68,6 +70,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   onNavigateToTask,
   onViewDetail,
   isSelected = false,
+  onDelete,
 }: ProposalCardProps) {
   const [isDepsExpanded, setIsDepsExpanded] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
@@ -175,6 +178,26 @@ export const ProposalCard = React.memo(function ProposalCard({
                     <TooltipContent>Edit</TooltipContent>
                   </Tooltip>
                 </TooltipProvider>
+                {onDelete !== undefined && (
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-7 w-7 rounded-lg transition-colors duration-150"
+                          style={{ background: "transparent" }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(0 85% 60% / 0.1)"; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+                          onClick={(e) => { e.stopPropagation(); onDelete(proposal.id); }}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" style={{ color: "hsl(0 85% 55%)" }} />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>Delete</TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                )}
               </div>
             )}
           </div>
