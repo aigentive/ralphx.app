@@ -133,12 +133,17 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         let session_id = session_id.as_str().to_string();
         self.db
             .run(move |conn| {
-                // Join with task_proposals to filter by session
+                // Join both endpoints so stale rows referencing archived/cross-session
+                // proposals never leak into dependency analysis.
                 let mut stmt = conn.prepare(
                     "SELECT pd.proposal_id, pd.depends_on_proposal_id, pd.reason
                      FROM proposal_dependencies pd
-                     INNER JOIN task_proposals tp ON pd.proposal_id = tp.id
-                     WHERE tp.session_id = ?1",
+                     INNER JOIN task_proposals source_tp ON pd.proposal_id = source_tp.id
+                     INNER JOIN task_proposals target_tp ON pd.depends_on_proposal_id = target_tp.id
+                     WHERE source_tp.session_id = ?1
+                       AND target_tp.session_id = ?1
+                       AND source_tp.archived_at IS NULL
+                       AND target_tp.archived_at IS NULL",
                 )?;
                 let deps = stmt
                     .query_map([session_id.as_str()], |row| {
@@ -160,12 +165,17 @@ impl ProposalDependencyRepository for SqliteProposalDependencyRepository {
         let session_id = session_id.as_str().to_string();
         self.db
             .run(move |conn| {
-                // Join with task_proposals to filter by session
+                // Join both endpoints so stale rows referencing archived/cross-session
+                // proposals never leak into dependency analysis.
                 let mut stmt = conn.prepare(
                     "SELECT pd.proposal_id, pd.depends_on_proposal_id, pd.reason, pd.source
                      FROM proposal_dependencies pd
-                     INNER JOIN task_proposals tp ON pd.proposal_id = tp.id
-                     WHERE tp.session_id = ?1",
+                     INNER JOIN task_proposals source_tp ON pd.proposal_id = source_tp.id
+                     INNER JOIN task_proposals target_tp ON pd.depends_on_proposal_id = target_tp.id
+                     WHERE source_tp.session_id = ?1
+                       AND target_tp.session_id = ?1
+                       AND source_tp.archived_at IS NULL
+                       AND target_tp.archived_at IS NULL",
                 )?;
                 let deps = stmt
                     .query_map([session_id.as_str()], |row| {

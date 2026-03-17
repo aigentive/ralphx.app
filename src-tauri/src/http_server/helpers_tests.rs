@@ -623,6 +623,52 @@ async fn test_archive_proposal_on_accepted_session_blocked() {
     );
 }
 
+#[tokio::test]
+async fn test_archive_proposal_clears_dependency_rows() {
+    let state = AppState::new_sqlite_test();
+    let (session, _) = setup_session_with_gate(&state, "verified", false).await;
+
+    let dependency_target_id = create_test_proposal(&state, &session.id).await;
+    let dependent_id = create_test_proposal(&state, &session.id).await;
+
+    let (_, dep_errors) = update_proposal_impl(
+        &state,
+        &dependent_id,
+        UpdateProposalOptions {
+            add_depends_on: vec![dependency_target_id.as_str().to_string()],
+            source: UpdateSource::Api,
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    assert!(
+        dep_errors.is_empty(),
+        "dependency setup should succeed: {dep_errors:?}"
+    );
+
+    archive_proposal_impl(&state, dependency_target_id.clone())
+        .await
+        .unwrap();
+
+    let proposal_id = dependency_target_id.as_str().to_string();
+    let stale_count: i64 = state
+        .db
+        .run(move |conn| {
+            let count: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM proposal_dependencies
+                 WHERE proposal_id = ?1 OR depends_on_proposal_id = ?1",
+                rusqlite::params![proposal_id],
+                |row| row.get(0),
+            )?;
+            Ok(count)
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(stale_count, 0, "archiving must remove related dependency rows");
+}
+
 // Scenario 20: Settings — require_verification_for_proposals roundtrip.
 // Validates that the settings field persists and is read correctly.
 #[tokio::test]
