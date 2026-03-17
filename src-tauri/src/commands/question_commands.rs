@@ -2,7 +2,7 @@
 // Allows frontend to resolve pending questions from agents (AskUserQuestion)
 
 use serde::{Deserialize, Serialize};
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::application::{PendingQuestionInfo, QuestionAnswer};
 use crate::AppState;
@@ -37,9 +37,20 @@ pub async fn resolve_user_question(
         text: args.custom_response,
     };
 
-    let resolved = state.question_state.resolve(&args.request_id, answer).await;
+    let (resolved, session_id) = state.question_state.resolve(&args.request_id, answer).await;
 
     if resolved {
+        if let Some(ref sid) = session_id {
+            if let Some(ref app_handle) = state.app_handle {
+                let _ = app_handle.emit(
+                    "agent:question_resolved",
+                    serde_json::json!({
+                        "sessionId": sid,
+                        "requestId": &args.request_id,
+                    }),
+                );
+            }
+        }
         Ok(ResolveQuestionResponse {
             success: true,
             message: Some(format!("Question {} resolved", args.request_id)),

@@ -61,9 +61,22 @@ impl QuestionRepository for MockQuestionRepository {
         Ok(count)
     }
 
+    async fn expire_by_request_id(&self, request_id: &str) -> AppResult<()> {
+        let mut questions = self.questions.write().unwrap();
+        questions.remove(request_id);
+        Ok(())
+    }
+
     async fn remove(&self, request_id: &str) -> AppResult<bool> {
         let mut questions = self.questions.write().unwrap();
         Ok(questions.remove(request_id).is_some())
+    }
+
+    async fn get_resolved_answer(&self, request_id: &str) -> AppResult<Option<QuestionAnswer>> {
+        let questions = self.questions.read().unwrap();
+        Ok(questions
+            .get(request_id)
+            .and_then(|(_, answer)| answer.clone()))
     }
 }
 

@@ -7,6 +7,7 @@
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
+import { z } from "zod";
 import { toast } from "sonner";
 import { useEventBus } from "@/providers/EventProvider";
 import { api } from "@/lib/tauri";
@@ -15,6 +16,26 @@ import {
   AskUserQuestionPayloadSchema,
   type AskUserQuestionResponse,
 } from "@/types/ask-user-question";
+
+const QuestionResolvedPayloadSchema = z.object({
+  sessionId: z.string().min(1),
+  requestId: z.string().min(1),
+});
+
+/**
+ * Module-level map of recently answered requestIds → timestamp.
+ * Used as a hydration guard to prevent resolved questions from reappearing
+ * on mount. TTL: 5 minutes.
+ */
+const answeredRequestIds = new Map<string, number>();
+const ANSWERED_TTL_MS = 5 * 60 * 1000;
+
+function pruneAnsweredRequestIds() {
+  const cutoff = Date.now() - ANSWERED_TTL_MS;
+  for (const [id, ts] of answeredRequestIds) {
+    if (ts < cutoff) answeredRequestIds.delete(id);
+  }
+}
 
 /**
  * Hook to handle agent questions requiring user input, scoped to a session.
@@ -69,6 +90,8 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
     api.askUserQuestion.getPendingQuestions().then((questions) => {
       const match = questions.find((q) => q.sessionId === currentSessionId);
       if (match) {
+        // Skip hydration if this question was already answered in this session
+        if (answeredRequestIds.has(match.requestId)) return;
         cancelAutoDismissTimer();
         setActiveQuestion(currentSessionId, match);
       } else {
@@ -155,6 +178,23 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
     return unsubscribe;
   }, [setActiveQuestion, eventBus, currentSessionId, cancelAutoDismissTimer, clearAnsweredQuestion]);
 
+  // Listen for backend-emitted question_resolved events (defense-in-depth cleanup).
+  // Uses fresh store state to avoid stale closure, clears only if requestId matches.
+  useEffect(() => {
+    const unsubscribe = eventBus.subscribe<unknown>("agent:question_resolved", (payload) => {
+      const parsed = QuestionResolvedPayloadSchema.safeParse(payload);
+      if (!parsed.success) return;
+
+      const { sessionId, requestId } = parsed.data;
+      const fresh = useUiStore.getState().activeQuestions[sessionId];
+      if (fresh && fresh.requestId === requestId) {
+        clearActiveQuestion(sessionId);
+      }
+    });
+
+    return unsubscribe;
+  }, [eventBus, clearActiveQuestion]);
+
   /**
    * Submit an answer to the agent's question.
    * Routes to resolveQuestion (MCP flow) when requestId is present,
@@ -184,6 +224,8 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
         // Only clear if the question hasn't been replaced by a new one while we were awaiting.
         const currentQuestion = useUiStore.getState().activeQuestions[currentSessionId];
         if (!currentQuestion || currentQuestion.requestId === submittedRequestId) {
+          answeredRequestIds.set(submittedRequestId, Date.now());
+          pruneAnsweredRequestIds();
           const summary = response.selectedOptions.length > 0
             ? response.selectedOptions.join(", ")
             : response.customResponse ?? "";
@@ -229,6 +271,8 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
 
     // If there's an active question with a requestId, send dismiss to backend
     if (question?.requestId) {
+      answeredRequestIds.set(question.requestId, Date.now());
+      pruneAnsweredRequestIds();
       try {
         await api.askUserQuestion.resolveQuestion({
           requestId: question.requestId,

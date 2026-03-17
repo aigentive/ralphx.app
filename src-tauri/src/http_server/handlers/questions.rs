@@ -62,12 +62,29 @@ pub async fn await_question(
     State(state): State<HttpServerState>,
     Path(request_id): Path<String>,
 ) -> Result<Json<QuestionAnswer>, StatusCode> {
-    // Get the receiver for this request
-    let mut rx = {
+    // Three-way branch:
+    // (1) Found in HashMap → subscribe + wait for answer
+    // (2) Not in HashMap, but resolved answer in DB → return it directly (race window)
+    // (3) Not in HashMap, no resolved answer → NOT_FOUND (unknown request_id)
+    let maybe_rx = {
         let pending = state.app_state.question_state.pending.lock().await;
-        match pending.get(&request_id).map(|req| req.sender.subscribe()) {
-            Some(rx) => rx,
-            None => return Err(StatusCode::NOT_FOUND),
+        pending.get(&request_id).map(|req| req.sender.subscribe())
+    };
+
+    let mut rx = match maybe_rx {
+        Some(rx) => rx,
+        None => {
+            // HashMap miss — check if already resolved (race: resolve() ran before we got here)
+            match state
+                .app_state
+                .question_state
+                .get_resolved_answer(&request_id)
+                .await
+            {
+                Ok(Some(answer)) => return Ok(Json(answer)),
+                Ok(None) => return Err(StatusCode::NOT_FOUND),
+                Err(_) => return Err(StatusCode::NOT_FOUND),
+            }
         }
     };
 
@@ -83,7 +100,7 @@ pub async fn await_question(
         };
 
         if let Some(answer) = maybe_answer {
-            // Clean up
+            // resolve() already removed from HashMap; remove() is idempotent (no-op if gone)
             state.app_state.question_state.remove(&request_id).await;
             return Ok(Json(answer));
         }
@@ -99,9 +116,18 @@ pub async fn await_question(
         match tokio::time::timeout(remaining, rx.changed()).await {
             Ok(Ok(())) => continue,
             Ok(Err(_)) => {
-                // Channel closed
+                // Sender dropped — resolve() ran concurrently and removed the entry.
+                // Fall back to DB to retrieve the answer rather than returning an error.
                 state.app_state.question_state.remove(&request_id).await;
-                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+                match state
+                    .app_state
+                    .question_state
+                    .get_resolved_answer(&request_id)
+                    .await
+                {
+                    Ok(Some(answer)) => return Ok(Json(answer)),
+                    _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
+                }
             }
             Err(_) => {
                 // Timeout
@@ -116,7 +142,7 @@ pub async fn resolve_question(
     State(state): State<HttpServerState>,
     Json(input): Json<ResolveQuestionInput>,
 ) -> StatusCode {
-    let resolved = state
+    let (resolved, session_id) = state
         .app_state
         .question_state
         .resolve(
@@ -129,6 +155,17 @@ pub async fn resolve_question(
         .await;
 
     if resolved {
+        if let Some(ref sid) = session_id {
+            if let Some(ref app_handle) = state.app_state.app_handle {
+                let _ = app_handle.emit(
+                    "agent:question_resolved",
+                    serde_json::json!({
+                        "sessionId": sid,
+                        "requestId": &input.request_id,
+                    }),
+                );
+            }
+        }
         StatusCode::OK
     } else {
         StatusCode::NOT_FOUND

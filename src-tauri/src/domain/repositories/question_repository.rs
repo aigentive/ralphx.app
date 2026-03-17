@@ -28,8 +28,14 @@ pub trait QuestionRepository: Send + Sync {
     /// Expire all pending questions (e.g., on startup — agents that asked are gone)
     async fn expire_all_pending(&self) -> AppResult<u64>;
 
+    /// Expire a single pending question by request_id (for runtime sweep — audit trail preserved)
+    async fn expire_by_request_id(&self, request_id: &str) -> AppResult<()>;
+
     /// Remove a question record by request_id
     async fn remove(&self, request_id: &str) -> AppResult<bool>;
+
+    /// Get the answer for a resolved question (returns None if not found or not yet resolved)
+    async fn get_resolved_answer(&self, request_id: &str) -> AppResult<Option<QuestionAnswer>>;
 }
 
 #[cfg(test)]

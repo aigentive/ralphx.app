@@ -178,6 +178,22 @@ impl QuestionRepository for SqliteQuestionRepository {
             .await
     }
 
+    async fn expire_by_request_id(&self, request_id: &str) -> AppResult<()> {
+        let request_id = request_id.to_string();
+        self.db
+            .run(move |conn| {
+                conn.execute(
+                    "UPDATE pending_questions
+                     SET status = 'expired',
+                         resolved_at = strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now')
+                     WHERE request_id = ?1",
+                    rusqlite::params![request_id],
+                )?;
+                Ok(())
+            })
+            .await
+    }
+
     async fn remove(&self, request_id: &str) -> AppResult<bool> {
         let request_id = request_id.to_string();
         self.db
@@ -187,6 +203,41 @@ impl QuestionRepository for SqliteQuestionRepository {
                     rusqlite::params![request_id],
                 )?;
                 Ok(rows > 0)
+            })
+            .await
+    }
+
+    async fn get_resolved_answer(&self, request_id: &str) -> AppResult<Option<QuestionAnswer>> {
+        let request_id = request_id.to_string();
+        self.db
+            .run(move |conn| {
+                let result = conn.query_row(
+                    "SELECT answer_selected_options, answer_text
+                     FROM pending_questions WHERE request_id = ?1 AND status = 'resolved'",
+                    rusqlite::params![request_id],
+                    |row| {
+                        Ok((
+                            row.get::<_, Option<String>>(0)?,
+                            row.get::<_, Option<String>>(1)?,
+                        ))
+                    },
+                );
+
+                match result {
+                    Ok((selected_json, answer_text)) => {
+                        let selected_options = match selected_json {
+                            Some(json) => serde_json::from_str::<Vec<String>>(&json)
+                                .map_err(|e| AppError::Database(e.to_string()))?,
+                            None => vec![],
+                        };
+                        Ok(Some(QuestionAnswer {
+                            selected_options,
+                            text: answer_text,
+                        }))
+                    }
+                    Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                    Err(e) => Err(AppError::Database(e.to_string())),
+                }
             })
             .await
     }

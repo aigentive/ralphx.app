@@ -5,6 +5,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::sync::{watch, Mutex};
 use tracing::{error, info};
 
@@ -40,6 +41,7 @@ pub struct QuestionOption {
 pub struct PendingQuestion {
     pub info: PendingQuestionInfo,
     pub sender: watch::Sender<Option<QuestionAnswer>>,
+    pub created_at: Instant,
 }
 
 /// Shared state for managing pending questions from agents
@@ -103,19 +105,44 @@ impl QuestionState {
             }
         }
 
-        let request = PendingQuestion { info, sender: tx };
+        let request = PendingQuestion {
+            info,
+            sender: tx,
+            created_at: Instant::now(),
+        };
         self.pending.lock().await.insert(request_id, request);
         rx
     }
 
-    /// Resolve a pending question with an answer
-    /// Returns true if the question was found and resolved
-    pub async fn resolve(&self, request_id: &str, answer: QuestionAnswer) -> bool {
-        let pending = self.pending.lock().await;
-        if let Some(question) = pending.get(request_id) {
-            let _ = question.sender.send(Some(answer.clone()));
+    /// Resolve a pending question with an answer.
+    ///
+    /// Returns `(true, Some(session_id))` if found and resolved,
+    /// `(false, None)` if the request_id was not in the HashMap.
+    ///
+    /// Phase 1 (lock held): send answer via watch channel, then remove from HashMap.
+    /// Phase 2 (lock free): persist resolution to repo.
+    ///
+    /// IMPORTANT: send() happens BEFORE HashMap::remove() so any subscriber that
+    /// holds a Receiver sees the value change before the Sender is dropped.
+    /// HashMap removal is unconditional — if repo.resolve() fails, the entry stays
+    /// removed (no re-insert) to avoid inconsistent in-memory state.
+    pub async fn resolve(&self, request_id: &str, answer: QuestionAnswer) -> (bool, Option<String>) {
+        // Phase 1: lock held — signal channel and remove from HashMap atomically
+        let session_id = {
+            let mut pending = self.pending.lock().await;
+            if let Some(question) = pending.get(request_id) {
+                let session_id = question.info.session_id.clone();
+                // send() BEFORE remove() so Receiver sees the value before Sender drops
+                let _ = question.sender.send(Some(answer.clone()));
+                pending.remove(request_id);
+                Some(session_id)
+            } else {
+                None
+            }
+        };
 
-            // Fire-and-forget persist to repo
+        if let Some(ref sid) = session_id {
+            // Phase 2: lock free — persist to repo (best-effort)
             if let Some(repo) = &self.repo {
                 if let Err(e) = repo.resolve(request_id, &answer).await {
                     error!(
@@ -124,10 +151,22 @@ impl QuestionState {
                     );
                 }
             }
-
-            true
+            (true, Some(sid.clone()))
         } else {
-            false
+            (false, None)
+        }
+    }
+
+    /// Get the answer for a resolved question from the repository.
+    ///
+    /// Returns `Ok(None)` when there is no repo (test mode without persistence).
+    pub async fn get_resolved_answer(
+        &self,
+        request_id: &str,
+    ) -> crate::error::AppResult<Option<QuestionAnswer>> {
+        match &self.repo {
+            Some(repo) => repo.get_resolved_answer(request_id).await,
+            None => Ok(None),
         }
     }
 
@@ -159,6 +198,39 @@ impl QuestionState {
                 Ok(_) => {}
                 Err(e) => {
                     error!("Failed to expire stale pending questions: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Sweep stale in-memory pending questions and expire them in the repository.
+    /// Call periodically (e.g., every 60 seconds) to clean up questions from agents
+    /// that died without resolving them.
+    pub async fn sweep_stale(&self, max_age: Duration) {
+        let stale_ids: Vec<String> = {
+            let pending = self.pending.lock().await;
+            pending
+                .iter()
+                .filter(|(_, q)| q.created_at.elapsed() > max_age)
+                .map(|(id, _)| id.clone())
+                .collect()
+        };
+
+        if stale_ids.is_empty() {
+            return;
+        }
+
+        info!(count = stale_ids.len(), "Sweeping stale pending questions");
+
+        let mut pending = self.pending.lock().await;
+        for request_id in &stale_ids {
+            pending.remove(request_id);
+            if let Some(repo) = &self.repo {
+                if let Err(e) = repo.expire_by_request_id(request_id).await {
+                    error!(
+                        "Failed to expire stale question {} in repo: {}",
+                        request_id, e
+                    );
                 }
             }
         }
