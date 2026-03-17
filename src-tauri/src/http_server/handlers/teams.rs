@@ -41,7 +41,7 @@ use crate::http_server::types::{
     TeamPlanRegisterResponse, TeamSessionStateResponse,
 };
 use crate::infrastructure::agents::claude::{
-    get_team_constraints, team_constraints_config, validate_team_plan,
+    get_team_constraints, resolve_effort, team_constraints_config, validate_team_plan,
     ClaudeCodeClient, TeammateContext, TeammateSpawnConfig, TeammateSpawnRequest,
 };
 
@@ -478,6 +478,7 @@ pub async fn approve_team_plan(
                 .with_mcp_tools(pending.mcp_tools.clone())
                 .with_color(&teammate_color)
                 .with_mcp_agent_type(mcp_type)
+                .with_effort(resolve_effort(Some(mcp_type)))
                 .with_working_dir(working_dir.clone())
                 .with_plugin_dir(working_dir.join("ralphx-plugin"));
 

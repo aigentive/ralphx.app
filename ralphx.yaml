@@ -376,6 +376,7 @@ claude:
   mcp_server_name: ralphx
   setting_sources: [user, project, local]
   permission_mode: default
+  default_effort: medium
   dangerously_skip_permissions: false
   permission_prompt_tool: permission_request
   append_system_prompt_file: true
@@ -436,6 +437,7 @@ agents:
   - name: orchestrator-ideation
     system_prompt_file: ralphx-plugin/agents/orchestrator-ideation.md
     model: opus
+    effort: max
     tools: { extends: base_tools, include: [Task] }
     mcp_tools: [
         create_task_proposal,
@@ -894,6 +896,9 @@ agents:
         get_child_session_status,
         send_child_session_message,
       ]
+
+  - name: ideation-team-member
+    effort: max
 
   - name: ralphx-worker-team
     extends: ralphx-worker

@@ -41,6 +41,7 @@ pub const SHORT_PLAN_VERIFIER: &str = "plan-verifier";
 // ── Team lead variants (extends base agents) ────────────────────────────
 pub const SHORT_IDEATION_TEAM_LEAD: &str = "ideation-team-lead";
 pub const SHORT_WORKER_TEAM: &str = "ralphx-worker-team";
+pub const SHORT_IDEATION_TEAM_MEMBER: &str = "ideation-team-member";
 
 // ── Ideation specialist agents (spawned by ideation-team-lead) ───────────
 pub const SHORT_IDEATION_SPECIALIST_BACKEND: &str = "ideation-specialist-backend";

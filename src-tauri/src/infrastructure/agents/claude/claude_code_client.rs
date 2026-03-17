@@ -142,6 +142,8 @@ pub struct TeammateSpawnConfig {
     pub print_mode_prompt: Option<String>,
     /// RalphX session/project context (propagated as env vars to teammates)
     pub context: TeammateContext,
+    /// Effort level override (e.g. "max"). Falls back to global default_effort when None.
+    pub effort: Option<String>,
 }
 
 impl TeammateSpawnConfig {
@@ -171,6 +173,7 @@ impl TeammateSpawnConfig {
             env: HashMap::new(),
             print_mode_prompt: None,
             context: TeammateContext::default(),
+            effort: None,
         }
     }
 
@@ -247,6 +250,11 @@ impl TeammateSpawnConfig {
     /// Set print-mode prompt for one-shot `-p` execution (auto-spawn mode).
     pub fn with_print_mode_prompt(mut self, prompt: impl Into<String>) -> Self {
         self.print_mode_prompt = Some(prompt.into());
+        self
+    }
+
+    pub fn with_effort(mut self, effort: impl Into<String>) -> Self {
+        self.effort = Some(effort.into());
         self
     }
 }
@@ -887,6 +895,13 @@ impl ClaudeCodeClient {
 
         // Model selection (within model ceiling)
         args.extend(["--model".to_string(), config.model.clone()]);
+
+        // Effort level — explicitly passed by spawner via .with_effort(), or global default
+        let effort = config
+            .effort
+            .clone()
+            .unwrap_or_else(|| claude_runtime_config().default_effort.clone());
+        args.extend(["--effort".to_string(), effort]);
 
         // CLI tools restriction
         if !config.tools.is_empty() {

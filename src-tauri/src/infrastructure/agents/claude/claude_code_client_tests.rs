@@ -1054,3 +1054,43 @@ fn test_create_mcp_config_injects_agent_type() {
 
     let _ = std::fs::remove_file(&config_path);
 }
+
+// ==================== Effort Flag Tests (build_teammate_cli_args) ====================
+
+#[test]
+fn test_build_teammate_cli_args_includes_effort_when_some() {
+    let client = ClaudeCodeClient::new();
+    let config = TeammateSpawnConfig::new("dev", "team-1", "Do stuff")
+        .with_plugin_dir("/test/plugin")
+        .with_effort("high");
+    let args = client.build_teammate_cli_args(&config);
+
+    let effort_idx = args
+        .iter()
+        .position(|a| a == "--effort")
+        .expect("--effort flag must be present when config.effort is Some");
+    assert_eq!(
+        args[effort_idx + 1], "high",
+        "--effort must be followed by the configured effort level"
+    );
+}
+
+#[test]
+fn test_build_teammate_cli_args_falls_back_to_global_default_effort() {
+    use crate::infrastructure::agents::claude::agent_config::claude_runtime_config;
+    let client = ClaudeCodeClient::new();
+    let config = TeammateSpawnConfig::new("dev", "team-1", "Do stuff")
+        .with_plugin_dir("/test/plugin");
+    // effort is None (default) — should fall back to global default_effort
+    let args = client.build_teammate_cli_args(&config);
+
+    let effort_idx = args
+        .iter()
+        .position(|a| a == "--effort")
+        .expect("--effort flag must always be present (falls back to global default)");
+    let expected_default = &claude_runtime_config().default_effort;
+    assert_eq!(
+        &args[effort_idx + 1], expected_default,
+        "--effort must fall back to global default_effort when config.effort is None"
+    );
+}
