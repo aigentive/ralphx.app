@@ -199,9 +199,17 @@ describe("useAskUserQuestion", () => {
   });
 
   describe("return values", () => {
-    it("should return activeQuestion from store for current session", () => {
-      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+    it("should return activeQuestion from store for current session", async () => {
+      act(() => {
+        useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      });
+      mockGetPending.mockResolvedValueOnce([validPayload]);
       const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
       expect(result.current.activeQuestion).toEqual(validPayload);
     });
 
@@ -472,6 +480,85 @@ describe("useAskUserQuestion", () => {
       const state = useUiStore.getState();
       expect(state.activeQuestions["session-1"]?.requestId).toBe("req-1");
       expect(state.activeQuestions["session-2"]?.requestId).toBe("req-2");
+    });
+  });
+
+  describe("question lifecycle events", () => {
+    it("clears the active question when a matching question_expired event arrives", async () => {
+      const activeQuestion = { ...validPayload, requestId: "req-expire-active" };
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, activeQuestion);
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        emitEvent("agent:question_expired", {
+          sessionId: TEST_SESSION,
+          requestId: activeQuestion.requestId,
+        });
+      });
+
+      expect(useUiStore.getState().activeQuestions[TEST_SESSION]).toBeUndefined();
+    });
+
+    it("does not clear the active question when question_expired is for another request", async () => {
+      const activeQuestion = { ...validPayload, requestId: "req-expire-other" };
+      useUiStore.getState().setActiveQuestion(TEST_SESSION, activeQuestion);
+      mockGetPending.mockResolvedValueOnce([activeQuestion]);
+      renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        emitEvent("agent:question_expired", {
+          sessionId: TEST_SESSION,
+          requestId: "req-other",
+        });
+      });
+
+      expect(useUiStore.getState().activeQuestions[TEST_SESSION]).toEqual(activeQuestion);
+    });
+
+    it("does not rehydrate a question after it has already expired", async () => {
+      const expiredQuestion: AskUserQuestionPayload = {
+        requestId: "req-expired-1",
+        sessionId: TEST_SESSION,
+        question: "Expired question",
+        options: [],
+        multiSelect: false,
+      };
+
+      const { unmount } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      act(() => {
+        emitEvent("agent:question_expired", {
+          sessionId: TEST_SESSION,
+          requestId: expiredQuestion.requestId,
+        });
+      });
+
+      unmount();
+      useUiStore.setState({
+        activeQuestions: {},
+        answeredQuestions: {},
+      });
+      mockGetPending.mockResolvedValueOnce([expiredQuestion]);
+
+      const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
+
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      expect(result.current.activeQuestion).toBeNull();
     });
   });
 
@@ -781,13 +868,18 @@ describe("useAskUserQuestion", () => {
     it("does not show error toast when question already cleared by agent death", async () => {
       const { toast: toastMock } = await import("sonner");
 
-      useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      act(() => {
+        useUiStore.getState().setActiveQuestion(TEST_SESSION, validPayload);
+      });
+      mockGetPending.mockResolvedValueOnce([validPayload]);
       const { result } = renderHook(() => useAskUserQuestion(TEST_SESSION));
 
       mockResolve.mockRejectedValueOnce(new Error("Session expired"));
 
       // Agent death clears the question before submit's catch runs
-      useUiStore.getState().clearActiveQuestion(TEST_SESSION);
+      act(() => {
+        useUiStore.getState().clearActiveQuestion(TEST_SESSION);
+      });
 
       const response: AskUserQuestionResponse = {
         requestId: "req-test-123",

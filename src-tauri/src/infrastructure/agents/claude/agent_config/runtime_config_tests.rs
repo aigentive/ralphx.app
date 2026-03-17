@@ -456,6 +456,7 @@ fn test_external_mcp_config_defaults() {
     assert_eq!(cfg.host, "127.0.0.1");
     assert_eq!(cfg.max_restart_attempts, 3);
     assert_eq!(cfg.restart_delay_ms, 2000);
+    assert_eq!(cfg.human_wait_timeout_secs, 285);
     assert!(cfg.auth_token.is_none());
     assert!(cfg.node_path.is_none());
 }
@@ -568,6 +569,27 @@ fn test_external_mcp_env_override_node_path() {
 }
 
 #[test]
+fn test_external_mcp_env_override_human_wait_timeout() {
+    let mut cfg = AllRuntimeConfig {
+        stream: StreamTimeoutsConfig::default(),
+        reconciliation: ReconciliationConfig::default(),
+        git: GitRuntimeConfig::default(),
+        scheduler: SchedulerConfig::default(),
+        supervisor: SupervisorRuntimeConfig::default(),
+        limits: LimitsConfig::default(),
+        verification: VerificationConfig::default(),
+        external_mcp: ExternalMcpConfig::default(),
+        child_session_activity_threshold_secs: None,
+    };
+
+    apply_env_overrides_with(&mut cfg, &|name| match name {
+        "RALPHX_EXTERNAL_MCP_HUMAN_WAIT_TIMEOUT_SECS" => Some("240".to_string()),
+        _ => None,
+    });
+    assert_eq!(cfg.external_mcp.human_wait_timeout_secs, 240);
+}
+
+#[test]
 fn test_external_mcp_invalid_port_env_keeps_default() {
     let mut cfg = AllRuntimeConfig {
         stream: StreamTimeoutsConfig::default(),
@@ -608,6 +630,17 @@ fn test_validate_external_mcp_config_empty_host() {
     let result = validate_external_mcp_config(&cfg);
     assert!(result.is_err());
     assert!(result.unwrap_err().contains("host"));
+}
+
+#[test]
+fn test_validate_external_mcp_config_zero_human_wait_timeout() {
+    let cfg = ExternalMcpConfig {
+        human_wait_timeout_secs: 0,
+        ..ExternalMcpConfig::default()
+    };
+    let result = validate_external_mcp_config(&cfg);
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("human_wait_timeout_secs"));
 }
 
 #[test]

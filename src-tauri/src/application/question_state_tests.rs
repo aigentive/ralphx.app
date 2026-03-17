@@ -174,6 +174,29 @@ async fn test_remove_pending_question() {
 }
 
 #[tokio::test]
+async fn test_expire_pending_question() {
+    let state = QuestionState::new();
+
+    state
+        .register(
+            "to-expire".to_string(),
+            "session-1".to_string(),
+            "Expire me?".to_string(),
+            None,
+            vec![],
+            false,
+        )
+        .await;
+
+    let expired = state.expire("to-expire").await;
+    assert!(expired.is_some());
+    assert_eq!(expired.unwrap().session_id, "session-1");
+
+    let pending = state.pending.lock().await;
+    assert!(!pending.contains_key("to-expire"));
+}
+
+#[tokio::test]
 async fn test_resolve_nonexistent_question() {
     let state = QuestionState::new();
 
@@ -343,6 +366,36 @@ mod with_repo {
         // Repo record should be gone
         let found = repo.get_by_request_id("req-rm").await.unwrap();
         assert!(found.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_expire_persists_to_repo() {
+        let conn = crate::infrastructure::sqlite::open_memory_connection().unwrap();
+        crate::infrastructure::sqlite::run_migrations(&conn).unwrap();
+        let repo = Arc::new(crate::infrastructure::sqlite::SqliteQuestionRepository::new(conn));
+        let state = QuestionState::with_repo(
+            repo.clone() as Arc<dyn crate::domain::repositories::QuestionRepository>,
+        );
+
+        state
+            .register(
+                "req-exp".to_string(),
+                "session-1".to_string(),
+                "Expire me".to_string(),
+                None,
+                vec![],
+                false,
+            )
+            .await;
+
+        let expired = state.expire("req-exp").await;
+        assert!(expired.is_some());
+
+        let pending = repo.get_pending().await.unwrap();
+        assert!(pending.is_empty());
+
+        let found = repo.get_by_request_id("req-exp").await.unwrap();
+        assert!(found.is_some());
     }
 
     #[tokio::test]

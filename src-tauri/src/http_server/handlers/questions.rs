@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::*;
 use crate::application::{QuestionAnswer, QuestionOption};
+use crate::infrastructure::agents::claude::external_mcp_config;
 
 pub async fn request_question(
     State(state): State<HttpServerState>,
@@ -58,6 +59,45 @@ pub async fn request_question(
     Json(QuestionRequestResponse { request_id })
 }
 
+fn question_wait_timeout() -> tokio::time::Duration {
+    tokio::time::Duration::from_secs(external_mcp_config().human_wait_timeout_secs)
+}
+
+async fn resolved_answer_or_timeout(
+    state: &HttpServerState,
+    request_id: &str,
+) -> Result<Json<QuestionAnswer>, StatusCode> {
+    match state
+        .app_state
+        .question_state
+        .get_resolved_answer(request_id)
+        .await
+    {
+        Ok(Some(answer)) => Ok(Json(answer)),
+        _ => Err(StatusCode::REQUEST_TIMEOUT),
+    }
+}
+
+async fn expire_question_and_emit(
+    state: &HttpServerState,
+    request_id: &str,
+) -> Result<Json<QuestionAnswer>, StatusCode> {
+    if let Some(info) = state.app_state.question_state.expire(request_id).await {
+        if let Some(ref app_handle) = state.app_state.app_handle {
+            let _ = app_handle.emit(
+                "agent:question_expired",
+                serde_json::json!({
+                    "sessionId": info.session_id,
+                    "requestId": info.request_id,
+                }),
+            );
+        }
+        Err(StatusCode::REQUEST_TIMEOUT)
+    } else {
+        resolved_answer_or_timeout(state, request_id).await
+    }
+}
+
 pub async fn await_question(
     State(state): State<HttpServerState>,
     Path(request_id): Path<String>,
@@ -88,8 +128,9 @@ pub async fn await_question(
         }
     };
 
-    // Wait for answer with 14 minute timeout (840s backend < 900s MCP AbortController)
-    let timeout = tokio::time::Duration::from_secs(840);
+    // Keep the backend deadline ahead of the effective MCP tool ceiling so this
+    // path can expire the question cleanly and return a structured 408.
+    let timeout = question_wait_timeout();
     let start = tokio::time::Instant::now();
 
     loop {
@@ -107,8 +148,7 @@ pub async fn await_question(
 
         // Check timeout
         if start.elapsed() >= timeout {
-            state.app_state.question_state.remove(&request_id).await;
-            return Err(StatusCode::REQUEST_TIMEOUT);
+            return expire_question_and_emit(&state, &request_id).await;
         }
 
         // Wait for change with remaining timeout
@@ -117,22 +157,12 @@ pub async fn await_question(
             Ok(Ok(())) => continue,
             Ok(Err(_)) => {
                 // Sender dropped — resolve() ran concurrently and removed the entry.
-                // Fall back to DB to retrieve the answer rather than returning an error.
-                state.app_state.question_state.remove(&request_id).await;
-                match state
-                    .app_state
-                    .question_state
-                    .get_resolved_answer(&request_id)
-                    .await
-                {
-                    Ok(Some(answer)) => return Ok(Json(answer)),
-                    _ => return Err(StatusCode::INTERNAL_SERVER_ERROR),
-                }
+                // Fall back to DB; if there is no resolved answer, the question
+                // was expired or otherwise closed without an answer.
+                return resolved_answer_or_timeout(&state, &request_id).await;
             }
             Err(_) => {
-                // Timeout
-                state.app_state.question_state.remove(&request_id).await;
-                return Err(StatusCode::REQUEST_TIMEOUT);
+                return expire_question_and_emit(&state, &request_id).await;
             }
         }
     }

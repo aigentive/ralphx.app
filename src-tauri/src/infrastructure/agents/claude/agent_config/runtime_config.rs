@@ -89,6 +89,9 @@ pub struct ExternalMcpConfig {
     pub max_restart_attempts: u32,
     /// Delay between restart attempts in milliseconds. Default: 2000.
     pub restart_delay_ms: u64,
+    /// Backend deadline for human-in-the-loop MCP waits (question/team-plan).
+    /// Must stay below the effective MCP tool ceiling so backend 408 responses win.
+    pub human_wait_timeout_secs: u64,
     /// Optional auth token for the external MCP server (placeholder for future use).
     #[serde(default)]
     pub auth_token: Option<String>,
@@ -109,6 +112,7 @@ impl Default for ExternalMcpConfig {
             host: "127.0.0.1".to_string(),
             max_restart_attempts: 3,
             restart_delay_ms: 2000,
+            human_wait_timeout_secs: 285,
             auth_token: None,
             node_path: None,
             max_external_ideation_sessions: 1,
@@ -698,6 +702,10 @@ fn apply_env_overrides_with(cfg: &mut AllRuntimeConfig, lookup: &dyn Fn(&str) ->
     if let Some(v) = lookup("RALPHX_EXTERNAL_MCP_HOST") {
         cfg.external_mcp.host = v;
     }
+    env_u64!(
+        cfg.external_mcp.human_wait_timeout_secs,
+        "RALPHX_EXTERNAL_MCP_HUMAN_WAIT_TIMEOUT_SECS"
+    );
     if let Some(v) = lookup("RALPHX_NODE_PATH") {
         cfg.external_mcp.node_path = Some(v);
     }
@@ -819,6 +827,11 @@ pub fn validate_external_mcp_config(cfg: &ExternalMcpConfig) -> Result<(), Strin
     }
     if cfg.host.is_empty() {
         return Err("external_mcp.host must not be empty".to_string());
+    }
+    if cfg.human_wait_timeout_secs == 0 {
+        return Err(
+            "external_mcp.human_wait_timeout_secs must be greater than 0".to_string(),
+        );
     }
     if cfg.enabled {
         let is_local = cfg.host == "localhost" || cfg.host == "127.0.0.1";

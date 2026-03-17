@@ -22,6 +22,11 @@ const QuestionResolvedPayloadSchema = z.object({
   requestId: z.string().min(1),
 });
 
+const QuestionExpiredPayloadSchema = z.object({
+  sessionId: z.string().min(1),
+  requestId: z.string().min(1),
+});
+
 /**
  * Module-level map of recently answered requestIds → timestamp.
  * Used as a hydration guard to prevent resolved questions from reappearing
@@ -186,6 +191,24 @@ export function useAskUserQuestion(currentSessionId: string | undefined) {
       if (!parsed.success) return;
 
       const { sessionId, requestId } = parsed.data;
+      const fresh = useUiStore.getState().activeQuestions[sessionId];
+      if (fresh && fresh.requestId === requestId) {
+        clearActiveQuestion(sessionId);
+      }
+    });
+
+    return unsubscribe;
+  }, [eventBus, clearActiveQuestion]);
+
+  useEffect(() => {
+    const unsubscribe = eventBus.subscribe<unknown>("agent:question_expired", (payload) => {
+      const parsed = QuestionExpiredPayloadSchema.safeParse(payload);
+      if (!parsed.success) return;
+
+      const { sessionId, requestId } = parsed.data;
+      answeredRequestIds.set(requestId, Date.now());
+      pruneAnsweredRequestIds();
+
       const fresh = useUiStore.getState().activeQuestions[sessionId];
       if (fresh && fresh.requestId === requestId) {
         clearActiveQuestion(sessionId);
