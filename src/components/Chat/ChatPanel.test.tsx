@@ -262,7 +262,7 @@ describe("ChatPanel", () => {
       startEditingQueuedMessage: mockStartEditingQueuedMessage,
       queuedMessages: [],
       agentStatus: {},
-      activeConversationId: null,
+      activeConversationIds: {},
     };
 
     // Reset UI store state for chat visibility (all views visible by default for tests)

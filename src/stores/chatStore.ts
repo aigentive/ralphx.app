@@ -67,8 +67,8 @@ interface ChatState {
   width: number;
   /** Loading state for async operations */
   isLoading: boolean;
-  /** Active conversation ID for the current context */
-  activeConversationId: string | null;
+  /** Active conversation IDs scoped per context key (e.g., "session:abc-123") */
+  activeConversationIds: Record<string, string | null>;
   /** Messages queued to send when agent finishes, keyed by context key (e.g., "task:id", "task_execution:id", "review:id") */
   queuedMessages: Record<string, QueuedMessage[]>;
   /** Agent status keyed by context key. Absent = "idle". Values: "generating" | "waiting_for_input" */
@@ -98,8 +98,8 @@ interface ChatActions {
   clearMessages: (contextKey: string) => void;
   /** Set loading state */
   setLoading: (isLoading: boolean) => void;
-  /** Set the active conversation ID */
-  setActiveConversation: (conversationId: string | null) => void;
+  /** Set the active conversation ID for a specific context key */
+  setActiveConversation: (storeKey: string, conversationId: string | null) => void;
   /** Set agent status for a context (tri-state: "idle" | "generating" | "waiting_for_input") */
   setAgentStatus: (contextKey: string, status: AgentStatus) => void;
   /** Backward-compat wrapper: true → "generating", false → "idle" */
@@ -137,7 +137,7 @@ export const useChatStore = create<ChatState & ChatActions>()(
     context: null,
     width: DEFAULT_WIDTH,
     isLoading: false,
-    activeConversationId: null,
+    activeConversationIds: {},
     queuedMessages: {},
     agentStatus: {},
     isSending: {},
@@ -178,10 +178,10 @@ export const useChatStore = create<ChatState & ChatActions>()(
         state.isLoading = isLoading;
       }),
 
-    setActiveConversation: (conversationId) =>
+    setActiveConversation: (storeKey, conversationId) =>
       set((state) => {
-        if (state.activeConversationId === conversationId) return;
-        state.activeConversationId = conversationId;
+        if (state.activeConversationIds[storeKey] === conversationId) return;
+        state.activeConversationIds[storeKey] = conversationId;
       }),
 
     setAgentStatus: (contextKey, status) =>
@@ -416,12 +416,16 @@ export const selectIsSending =
     state.isSending[contextKey] ?? false;
 
 /**
- * Select active conversation ID
- * @returns Selector function returning active conversation ID
+ * Select active conversation ID for a specific context key.
+ * Prefer inline usage: `useChatStore((s) => s.activeConversationIds[storeKey])`
+ * Use this factory only when a named selector reference is required.
+ * @param storeKey - The context key (e.g., "session:abc-123")
+ * @returns Selector function returning scoped active conversation ID or undefined
  */
-export const selectActiveConversationId = (
-  state: ChatState & ChatActions
-): string | null => state.activeConversationId;
+export const selectActiveConversationId =
+  (storeKey: string) =>
+  (state: ChatState): string | null | undefined =>
+    state.activeConversationIds[storeKey];
 
 /**
  * Select whether a team is active for a context

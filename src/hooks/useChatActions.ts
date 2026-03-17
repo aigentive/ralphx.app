@@ -92,7 +92,7 @@ export function useChatActions({
                 queryKey: chatKeys.conversation(result.conversationId),
               });
               if (result.isNewConversation) {
-                setActiveConversation(result.conversationId);
+                setActiveConversation(storeContextKey, result.conversationId);
               }
             }
           } finally {

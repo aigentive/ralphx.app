@@ -30,7 +30,7 @@ vi.mock("@/stores/ideationStore", () => ({
 }));
 
 interface MockState {
-  activeConversationId: string | null;
+  activeConversationIds: Record<string, string | null>;
   setActiveConversation: ReturnType<typeof vi.fn>;
   clearMessages: ReturnType<typeof vi.fn>;
   setAgentRunning: ReturnType<typeof vi.fn>;
@@ -47,7 +47,7 @@ interface ChatContext {
 // Mock chat store
 vi.mock("@/stores/chatStore", () => ({
   useChatStore: vi.fn(),
-  selectActiveConversationId: vi.fn((state: MockState) => state.activeConversationId),
+  selectActiveConversationId: vi.fn((storeKey: string) => (state: MockState) => state.activeConversationIds[storeKey] ?? null),
   getContextKey: vi.fn((context: ChatContext) => {
     // Mirrors real implementation: ideation uses "session" prefix (from chat-context-registry storeKeyPrefix)
     if (context.view === "ideation") return `session:${context.ideationSessionId}`;
@@ -109,7 +109,7 @@ describe("useChatPanelContext", () => {
 
     // Setup mock store
     mockStore = {
-      activeConversationId: null,
+      activeConversationIds: {},
       setActiveConversation: vi.fn(),
       clearMessages: vi.fn(),
       setAgentRunning: vi.fn(),
@@ -261,7 +261,7 @@ describe("useChatPanelContext", () => {
     });
 
     it("should NOT set activeConversationId to null during context switch", async () => {
-      mockStore.activeConversationId = "conv-1";
+      mockStore.activeConversationIds["session:session-1"] = "conv-1";
 
       const { rerender } = renderHook(
         (props) => useChatPanelContext(props),
@@ -280,7 +280,7 @@ describe("useChatPanelContext", () => {
       );
 
       // Verify initial conversation is set
-      expect(mockStore.activeConversationId).toBe("conv-1");
+      expect(mockStore.activeConversationIds["session:session-1"]).toBe("conv-1");
 
       // Switch context
       rerender({
@@ -293,10 +293,10 @@ describe("useChatPanelContext", () => {
         isHistoryMode: false,
       });
 
-      // Verify setActiveConversation(null) was NOT called during context switch
+      // Verify setActiveConversation(storeKey, null) was NOT called during context switch
       // (it should only be called by autoSelectConversation if needed)
       const nullCalls = mockStore.setActiveConversation.mock.calls.filter(
-        (call: [string | null]) => call[0] === null
+        (call: [string, string | null]) => call[1] === null
       );
       expect(nullCalls.length).toBe(0);
     });
@@ -304,7 +304,7 @@ describe("useChatPanelContext", () => {
 
   describe("autoSelectConversation", () => {
     it("should directly select new conversation when current is stale, without intermediate null", async () => {
-      mockStore.activeConversationId = "conv-1";
+      mockStore.activeConversationIds["task_execution:task-1"] = "conv-1";
 
       const { result } = renderHook(
         (props) => useChatPanelContext(props),
@@ -346,15 +346,15 @@ describe("useChatPanelContext", () => {
       // Should have selected conv-2 (most recent) directly without setting null first
       const calls = mockStore.setActiveConversation.mock.calls;
       expect(calls.length).toBe(1);
-      expect(calls[0][0]).toBe("conv-2");
+      expect(calls[0][1]).toBe("conv-2"); // second arg is the conv ID (first is storeKey)
 
       // Verify no null was set
-      const nullCalls = calls.filter((call: [string | null]) => call[0] === null);
+      const nullCalls = calls.filter((call: [string, string | null]) => call[1] === null);
       expect(nullCalls.length).toBe(0);
     });
 
     it("should NOT clear conversation when new context has no conversations (early return)", async () => {
-      mockStore.activeConversationId = "conv-1";
+      mockStore.activeConversationIds["task_execution:task-1"] = "conv-1";
 
       const { result } = renderHook(
         (props) => useChatPanelContext(props),
@@ -388,7 +388,7 @@ describe("useChatPanelContext", () => {
     });
 
     it("should select most recent conversation by lastMessageAt", async () => {
-      mockStore.activeConversationId = "conv-old";
+      mockStore.activeConversationIds["task:task-1"] = "conv-old";
 
       const { result } = renderHook(
         (props) => useChatPanelContext(props),
@@ -432,11 +432,11 @@ describe("useChatPanelContext", () => {
       });
 
       // Should select conv-2 (most recent lastMessageAt)
-      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("conv-2");
+      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("task:task-1", "conv-2");
     });
 
     it("should have stable callback reference across re-renders (activeConversationId not in deps)", async () => {
-      mockStore.activeConversationId = null;
+      mockStore.activeConversationIds = {};
 
       const { result, rerender } = renderHook(
         (props) => useChatPanelContext(props),
@@ -457,7 +457,7 @@ describe("useChatPanelContext", () => {
       const firstRef = result.current.autoSelectConversation;
 
       // Simulate activeConversationId changing (e.g., after autoSelect runs)
-      mockStore.activeConversationId = "conv-1";
+      mockStore.activeConversationIds["task_execution:task-1"] = "conv-1";
 
       // Re-render with same props — only activeConversationId changed in store
       rerender({
@@ -478,7 +478,7 @@ describe("useChatPanelContext", () => {
 
     it("should read activeConversationId from store snapshot inside callback", async () => {
       // Start with no active conversation
-      mockStore.activeConversationId = null;
+      mockStore.activeConversationIds = {};
 
       const { result } = renderHook(
         (props) => useChatPanelContext(props),
@@ -497,7 +497,7 @@ describe("useChatPanelContext", () => {
       );
 
       // Now update the store directly (simulating a previous selection)
-      mockStore.activeConversationId = "conv-existing";
+      mockStore.activeConversationIds["task_execution:task-1"] = "conv-existing";
 
       const mockConversations: ConversationData[] = [
         {
@@ -540,7 +540,7 @@ describe("useChatPanelContext", () => {
 
       // Wait for override effect to run
       await waitFor(() => {
-        expect(mockStore.setActiveConversation).toHaveBeenCalledWith("conv-history");
+        expect(mockStore.setActiveConversation).toHaveBeenCalledWith("review:task-1", "conv-history");
       });
 
       // Clear the mock calls
@@ -569,7 +569,7 @@ describe("useChatPanelContext", () => {
 
   describe("isVisible re-trigger", () => {
     it("should reset hasAutoSelectedRef when panel transitions from hidden to visible", async () => {
-      mockStore.activeConversationId = null;
+      mockStore.activeConversationIds = {};
 
       const { result, rerender } = renderHook(
         (props) => useChatPanelContext(props),
@@ -595,8 +595,8 @@ describe("useChatPanelContext", () => {
       act(() => {
         result.current.autoSelectConversation({ data: mockConversations, isLoading: false });
       });
-      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("conv-parent");
-      mockStore.activeConversationId = "conv-parent";
+      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("session:session-1", "conv-parent");
+      mockStore.activeConversationIds["session:session-1"] = "conv-parent";
       mockStore.setActiveConversation.mockClear();
 
       // Panel becomes hidden (verification tab shown)
@@ -611,8 +611,8 @@ describe("useChatPanelContext", () => {
         isVisible: false,
       });
 
-      // While hidden, global activeConversationId gets stomped by child panel
-      mockStore.activeConversationId = "conv-child";
+      // While hidden, activeConversationId for this context gets stomped
+      mockStore.activeConversationIds["session:session-1"] = "conv-child";
 
       // Panel becomes visible again (Plan tab clicked)
       rerender({
@@ -632,11 +632,11 @@ describe("useChatPanelContext", () => {
         result.current.autoSelectConversation({ data: mockConversations, isLoading: false });
       });
 
-      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("conv-parent");
+      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("session:session-1", "conv-parent");
     });
 
     it("should NOT reset hasAutoSelectedRef when panel stays visible across renders", async () => {
-      mockStore.activeConversationId = null;
+      mockStore.activeConversationIds = {};
 
       const { result, rerender } = renderHook(
         (props) => useChatPanelContext(props),
@@ -662,8 +662,8 @@ describe("useChatPanelContext", () => {
       act(() => {
         result.current.autoSelectConversation({ data: mockConversations, isLoading: false });
       });
-      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("conv-1");
-      mockStore.activeConversationId = "conv-1";
+      expect(mockStore.setActiveConversation).toHaveBeenCalledWith("session:session-1", "conv-1");
+      mockStore.activeConversationIds["session:session-1"] = "conv-1";
       mockStore.setActiveConversation.mockClear();
 
       // Re-render with isVisible still true (no transition)

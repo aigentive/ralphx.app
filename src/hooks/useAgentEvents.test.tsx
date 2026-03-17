@@ -92,11 +92,7 @@ describe("useAgentEvents", () => {
 
     // Reset chat store
     useChatStore.setState({
-      messages: {},
-      context: null,
-      width: 320,
-      isLoading: false,
-      activeConversationId: null,
+      activeConversationIds: {},
       queuedMessages: {},
       agentStatus: {},
       isSending: {},
@@ -188,6 +184,89 @@ describe("useAgentEvents", () => {
 
       const state = useChatStore.getState();
       expect(state.agentStatus["session:session-789"]).toBe("generating");
+    });
+  });
+
+  describe("agent:run_started — storeKey param", () => {
+    it("uses caller-provided storeKey for setActiveConversation when no active conversation", () => {
+      const wrapper = createWrapper();
+      // Hook called from a panel with storeKey "task_execution:task-123"
+      // but event arrives for "task_execution:task-123" too
+      renderHook(() => useAgentEvents(null, "task_execution:task-123"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-new",
+        });
+      });
+
+      const state = useChatStore.getState();
+      // Should write to the caller-provided storeKey
+      expect(state.activeConversationIds["task_execution:task-123"]).toBe("conv-new");
+    });
+
+    it("uses caller-provided storeKey instead of event-derived key when they differ", () => {
+      const wrapper = createWrapper();
+      // Panel is in "task" context but event is "task_execution" —
+      // caller says to write to "task:task-123" (current panel slot)
+      renderHook(() => useAgentEvents(null, "task:task-123"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-exec",
+        });
+      });
+
+      const state = useChatStore.getState();
+      // Should write to the caller-provided "task:task-123", NOT event-derived "task_execution:task-123"
+      expect(state.activeConversationIds["task:task-123"]).toBe("conv-exec");
+      expect(state.activeConversationIds["task_execution:task-123"]).toBeUndefined();
+    });
+
+    it("falls back to event-derived key when no storeKey provided", () => {
+      const wrapper = createWrapper();
+      renderHook(() => useAgentEvents(null), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "task_execution",
+          context_id: "task-456",
+          conversation_id: "conv-456",
+        });
+      });
+
+      const state = useChatStore.getState();
+      expect(state.activeConversationIds["task_execution:task-456"]).toBe("conv-456");
+    });
+
+    it("does not overwrite existing active conversation", () => {
+      const wrapper = createWrapper();
+      // Pre-set an active conversation for this slot
+      act(() => {
+        useChatStore.getState().setActiveConversation("task_execution:task-123", "conv-existing");
+      });
+
+      renderHook(() => useAgentEvents("conv-existing", "task_execution:task-123"), { wrapper });
+
+      act(() => {
+        emitEvent("agent:run_started", {
+          run_id: "run-1",
+          context_type: "task_execution",
+          context_id: "task-123",
+          conversation_id: "conv-new",
+        });
+      });
+
+      // Should NOT overwrite because activeConversationId is already set
+      const state = useChatStore.getState();
+      expect(state.activeConversationIds["task_execution:task-123"]).toBe("conv-existing");
     });
   });
 

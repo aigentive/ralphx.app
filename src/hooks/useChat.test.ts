@@ -148,7 +148,7 @@ function createWrapper() {
 
 // Mock chat store state
 const mockStoreState = {
-  activeConversationId: null as string | null,
+  activeConversationIds: {} as Record<string, string | null>,
   setActiveConversation: vi.fn(),
   setAgentRunning: vi.fn(),
   setSending: vi.fn(),
@@ -411,7 +411,7 @@ describe("useChat", () => {
       "ideation",
       "session-1"
     );
-    expect(mockStoreState.setActiveConversation).toHaveBeenCalledWith("conv-1");
+    expect(mockStoreState.setActiveConversation).toHaveBeenCalledWith("session:session-1", "conv-1");
   });
 
   it("should switch conversation", async () => {
@@ -426,7 +426,7 @@ describe("useChat", () => {
       result.current.switchConversation("conv-2");
     });
 
-    expect(mockStoreState.setActiveConversation).toHaveBeenCalledWith("conv-2");
+    expect(mockStoreState.setActiveConversation).toHaveBeenCalledWith("session:session-1", "conv-2");
   });
 
   it("should update agent running state from agent run status", async () => {
@@ -436,7 +436,7 @@ describe("useChat", () => {
     // Set active conversation in store
     const storeWithConversation = {
       ...mockStoreState,
-      activeConversationId: "conv-1" as string | null,
+      activeConversationIds: { "session:session-1": "conv-1" as string | null },
     };
     vi.mocked(useChatStore).mockImplementation(<T = StoreMock>(selector?: StoreSelector<T>) => {
       if (typeof selector === "function") {
@@ -469,6 +469,7 @@ describe("useChat", () => {
     await waitFor(() => {
       // Should set the most recent conversation (conv-2 has later lastMessageAt)
       expect(mockStoreState.setActiveConversation).toHaveBeenCalledWith(
+        "session:session-1",
         "conv-2"
       );
     });
@@ -492,7 +493,7 @@ describe("useChat", () => {
     // Set active conversation in store
     const storeWithConversation = {
       ...mockStoreState,
-      activeConversationId: "conv-1" as string | null,
+      activeConversationIds: { "session:session-1": "conv-1" as string | null },
     };
     vi.mocked(useChatStore).mockImplementation(<T = StoreMock>(selector?: StoreSelector<T>) => {
       if (typeof selector === "function") {
@@ -524,6 +525,51 @@ describe("useChat", () => {
     });
 
     expect(result.current.agentRunStatus.data).toEqual(mockAgentRun);
+  });
+
+  it("should use provided storeKey for active conversation operations instead of derived contextKey", async () => {
+    vi.mocked(chatApi.listConversations).mockResolvedValueOnce([]);
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(null);
+
+    // taskDetailContext derives contextKey = "task:task-1" internally
+    // but we pass storeKey = "task_execution:task-1" to override
+    const { result } = renderHook(
+      () => useChat(taskDetailContext, { storeKey: "task_execution:task-1" }),
+      { wrapper: createWrapper() }
+    );
+
+    await act(async () => {
+      result.current.switchConversation("conv-exec");
+    });
+
+    // Must use caller-provided storeKey, NOT the derived "task:task-1"
+    expect(mockStoreState.setActiveConversation).toHaveBeenCalledWith("task_execution:task-1", "conv-exec");
+  });
+
+  it("should return effectiveStoreKey as contextKey when storeKey option is provided", async () => {
+    vi.mocked(chatApi.listConversations).mockResolvedValueOnce([]);
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(null);
+
+    const { result } = renderHook(
+      () => useChat(taskDetailContext, { storeKey: "task_execution:task-1" }),
+      { wrapper: createWrapper() }
+    );
+
+    // contextKey in return value should reflect the effectiveStoreKey
+    expect(result.current.contextKey).toBe("task_execution:task-1");
+  });
+
+  it("should fall back to derived contextKey when no storeKey option provided", async () => {
+    vi.mocked(chatApi.listConversations).mockResolvedValueOnce([]);
+    vi.mocked(chatApi.getAgentRunStatus).mockResolvedValueOnce(null);
+
+    const { result } = renderHook(
+      () => useChat(ideationContext),
+      { wrapper: createWrapper() }
+    );
+
+    // contextKey falls back to derived "session:session-1"
+    expect(result.current.contextKey).toBe("session:session-1");
   });
 
   it("should handle send message error", async () => {
