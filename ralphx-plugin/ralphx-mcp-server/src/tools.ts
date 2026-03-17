@@ -39,6 +39,7 @@ import {
   IDEATION_SPECIALIST_BACKEND,
   IDEATION_SPECIALIST_FRONTEND,
   IDEATION_SPECIALIST_INFRA,
+  IDEATION_SPECIALIST_UX,
   IDEATION_CRITIC,
   IDEATION_ADVOCATE,
 } from "./agentNames.js";
@@ -1769,6 +1770,18 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     "get_memory",
     "get_memories_for_paths",
   ],
+  [IDEATION_SPECIALIST_UX]: [
+    "create_team_artifact",
+    "get_team_artifacts",
+    "get_session_plan",
+    "get_artifact",
+    "list_session_proposals",
+    "get_proposal",
+    "get_parent_session_context",
+    "search_memories",
+    "get_memory",
+    "get_memories_for_paths",
+  ],
   [IDEATION_CRITIC]: [
     "create_team_artifact",
     "get_team_artifacts",
@@ -1877,6 +1890,9 @@ export const TOOL_ALLOWLIST: Record<string, string[]> = {
     // Child session tools
     "get_child_session_status",
     "send_child_session_message",
+    // Specialist artifact retrieval (read-only — NOT create_team_artifact)
+    "get_team_artifacts",
+    "get_artifact",
   ],
   // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
   debug: ALL_TOOLS.map((t) => t.name),

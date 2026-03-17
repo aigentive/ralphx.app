@@ -29,6 +29,7 @@ export const IDEATION_TEAM_MEMBER = "ideation-team-member";
 export const IDEATION_SPECIALIST_BACKEND = "ideation-specialist-backend";
 export const IDEATION_SPECIALIST_FRONTEND = "ideation-specialist-frontend";
 export const IDEATION_SPECIALIST_INFRA = "ideation-specialist-infra";
+export const IDEATION_SPECIALIST_UX = "ideation-specialist-ux";
 export const IDEATION_CRITIC = "ideation-critic";
 export const IDEATION_ADVOCATE = "ideation-advocate";
 export const WORKER_TEAM_LEAD = "ralphx-worker-team";

@@ -49,10 +49,27 @@ Source of truth: `ChatContextType` (Rust: `domain/entities/chat_conversation.rs`
 | `ideation-specialist-backend` | — | opus | Research Rust/Tauri/SQLite patterns for ideation teams |
 | `ideation-specialist-frontend` | — | opus | Research React/TypeScript/Tailwind patterns for ideation teams |
 | `ideation-specialist-infra` | — | opus | Research database schema, MCP, config, and git patterns for ideation teams |
+| `ideation-specialist-ux` | — | opus | UX/flow verification specialist — ASCII wireframes, user flow diagrams, screen inventory, UX gap analysis. Tools: Read, Grep, Glob, WebFetch, WebSearch. MCP: `get_session_plan`, `get_artifact`, `create_team_artifact`, `get_team_artifacts`, `list_session_proposals`, `get_proposal`, `get_parent_session_context`, `search_memories`, `get_memory`, `get_memories_for_paths`. DisallowedTools: Write, Edit, NotebookEdit, Bash. Spawned by plan-verifier when Affected Files contains `.tsx`/`.ts` in `src/`. |
 | `ideation-advocate` | — | opus | Advocate for a specific approach in architectural debates |
 | `ideation-critic` | — | opus | Stress-test all approaches with adversarial analysis |
 
 **Memory tools:** Most agents also have memory read tools (`search_memories`, `get_memory`, `get_memories_for_paths`) — see `ralphx.yaml` for the authoritative `mcp_tools` list per agent.
+
+## Verification Specialist Extensibility Pattern
+
+Adding a new specialist to the plan verification pipeline requires these 7 steps:
+
+| Step | File | Change |
+|------|------|--------|
+| 1 | `ralphx-plugin/agents/<name>.md` | Create agent prompt with role/scope/refuse boundaries and output format |
+| 2 | `ralphx-plugin/ralphx.yaml` | Register agent: model, tools, mcp_tools, disallowedTools |
+| 3 | `ralphx-plugin/ralphx-mcp-server/src/agentNames.ts` | Add `export const IDEATION_SPECIALIST_<NAME> = "<name>"` constant |
+| 4 | `ralphx-plugin/ralphx-mcp-server/src/tools.ts` | Import constant; add `[IDEATION_SPECIALIST_<NAME>]: [...]` to TOOL_ALLOWLIST |
+| 5 | `ralphx-plugin/agents/plan-verifier.md` frontmatter | Add `Task(ralphx:<name>)` to `tools` list |
+| 6 | `ralphx-plugin/ralphx.yaml` plan-verifier entry | Add `Task(ralphx:<name>)` to `preapproved_cli_tools` array |
+| 7 | `ralphx-plugin/agents/plan-verifier.md` prompt | Add signal → specialist mapping in dynamic role selection section |
+
+**Signal mapping rules:** Scan `## Affected Files` and `## Architecture` sections only (not full plan text). Return: specialist name, trigger signal, signal source. Specialists run in parallel with critics — failure is non-blocking. Specialists create artifacts on the **parent ideation session_id** (not the verification child session_id) so they appear in the Team Artifacts tab.
 
 ## Agent Lifecycle Events
 

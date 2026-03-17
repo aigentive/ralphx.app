@@ -8,7 +8,10 @@ tools:
   - Bash
   - "Task(ralphx:plan-critic-layer1)"
   - "Task(ralphx:plan-critic-layer2)"
+  - "Task(ralphx:ideation-specialist-ux)"
   - "mcp__ralphx__get_session_plan"
+  - "mcp__ralphx__get_team_artifacts"
+  - "mcp__ralphx__get_artifact"
   - "mcp__ralphx__get_parent_session_context"
   - "mcp__ralphx__update_plan_verification"
   - "mcp__ralphx__get_plan_verification"
@@ -96,20 +99,60 @@ Increment round counter: `current_round = current_round + 1`.
 
 Output: "Starting verification round {current_round}/{max_rounds}..."
 
-### A. Spawn critics in PARALLEL (one message, two Task calls)
+### A. Dynamic Specialist Selection + Parallel Dispatch (one message, all Task calls)
 
-Dispatch both critics in a SINGLE response message:
+#### A1. Select specialists for this round
+
+Before dispatching critics, determine which specialists to spawn for this round.
+
+**UX specialist selection rules:**
+1. If `## UX Flow` section already exists in the current plan AND no UI-related gaps were raised in the previous round → **skip UX specialist** this round.
+2. Otherwise, scan the plan's **Affected Files** and **Architecture** sections for frontend signals:
+   - File patterns: `.tsx` or `.ts` files under `src/` (e.g., `src/components/Foo.tsx`, `src/hooks/useBar.ts`)
+   - React/UI keywords: `modal`, `toast`, `sidebar`, `tab`, `form`, `button`, `dialog`, `dropdown`, `component`, `screen`, `page`, `view`
+   - If neither section exists: fallback — scan the full plan text for `.tsx` or `.ts` file extension patterns ONLY (not UI keywords, to avoid false positives)
+3. If signals found → spawn `ideation-specialist-ux` alongside critics.
+4. Pure backend/infra plans with no frontend files → no UX specialist.
+
+**Extensible signal table:**
+
+| Signal | Specialist | Signal Source |
+|--------|------------|---------------|
+| `.tsx`/`.ts` in `src/`, React/UI keywords (modal, toast, sidebar, tab, form, button, dialog, dropdown, component, screen, page, view) | `ideation-specialist-ux` | Affected Files + Architecture sections |
+| *(future: auth, tokens, encryption, RBAC)* | *(security specialist)* | — |
+| *(future: DB queries, caching, batch processing)* | *(performance specialist)* | — |
+
+Record round start timestamp now (before dispatching): `round_start_time = <current ISO timestamp>`.
+
+#### A2. Dispatch critics + selected specialists in ONE response
+
+Dispatch ALL agents (critics + specialists) in a SINGLE response message — this is how Claude Code runs Tasks in parallel:
 
 ```
 Task(subagent_type: "ralphx:plan-critic-layer1", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
 Task(subagent_type: "ralphx:plan-critic-layer2", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nTreat plan sections Constraints/Avoid/Proof Obligations as first-class checks. Return highest-signal failure predictors only.")
+[If UX specialist selected]:
+Task(subagent_type: "ralphx:ideation-specialist-ux", prompt: "SESSION_ID: <parent_session_id>\nROUND: {current_round}\nAnalyze the plan from a UI/UX perspective. Read the plan via get_session_plan. Create your TeamResearch artifact using session_id: <parent_session_id> — this is the PARENT IDEATION SESSION ID, not your own session. Title the artifact with prefix 'UX: ' followed by the feature name.")
 ```
 
 ❌ Do NOT dispatch critics one at a time across multiple responses — that is sequential and wastes time.
+❌ `run_in_background: true` does NOT exist on the Task tool — do not use it.
 
-Wait for BOTH to return.
+Wait for ALL dispatched Tasks to return (critics + any specialists).
 
-### B. Parse critic results
+### B. Collect specialist artifacts (if specialists were dispatched)
+
+If any specialists were dispatched in step A2, collect their artifacts via two-step flow:
+
+1. Call `mcp__ralphx__get_team_artifacts(session_id: <parent_session_id>)` — returns summaries with 200-char `content_preview`.
+2. Filter artifacts **client-side** by `created_at` timestamp: keep only artifacts where `created_at >= (round_start_time minus 5 seconds)`. This filters out artifacts from prior rounds.
+3. For each matching artifact (newest first, by `created_at`): call `mcp__ralphx__get_artifact(artifact_id: <id>)` to retrieve full content.
+4. If multiple artifacts from the same specialist type exist, use only the **latest** (highest `created_at`).
+5. If `get_team_artifacts` fails or returns no matches → treat as "no specialist artifacts" and continue with critic results only.
+
+Store retrieved specialist artifact content for use in step F2 (plan revision).
+
+### C. Parse critic results
 
 Each critic returns a JSON object: `{"gaps": [...], "summary": "..."}`.
 
@@ -121,7 +164,7 @@ Extract all gaps from both critics. Each gap has:
 - `description`: string
 - `why_it_matters`: string (optional)
 
-### C. Merge gaps (deduplicate)
+### D. Merge gaps (deduplicate)
 
 Deduplicate gaps across Layer 1 and Layer 2 results:
 - Two gaps are duplicates if they describe the same file/function/issue
@@ -129,7 +172,7 @@ Deduplicate gaps across Layer 1 and Layer 2 results:
 - Assign source: "layer1" | "layer2" | "both"
 - Estimate penalty mass qualitatively for each merged gap and sort highest-first before revising
 
-### D. Call update_plan_verification
+### E. Call update_plan_verification
 
 Call `mcp__ralphx__update_plan_verification` with:
 ```json
@@ -145,9 +188,11 @@ Call `mcp__ralphx__update_plan_verification` with:
 
 Check the response for a generation conflict error (HTTP 409). If generation mismatch → EXIT: "Zombie detected mid-round. Exiting."
 
-### E. Revise plan if CRITICAL or HIGH gaps found
+### F. Revise plan (incorporate critic gaps + specialist findings)
 
 > **Note:** `update_plan_artifact` and `edit_plan_artifact` take `artifact_id` (not `session_id`). There is no `session_id` parameter on these tools — use `caller_session_id` instead to bypass the write lock.
+
+#### F1. Critic gap revisions
 
 If any gap has severity "critical" or "high":
 1. Analyze each critical/high gap and determine the minimal plan revision needed.
@@ -156,9 +201,18 @@ If any gap has severity "critical" or "high":
 4. Make plan revisions address the highest-penalty gaps first — do not add unrelated content.
 5. If the current plan is missing `Constraints`, `Avoid`, or `Proof Obligations`, add or repair those sections before the next round.
 
-If only "medium" or "low" gaps found (no critical/high): skip plan revision for this round.
+If only "medium" or "low" gaps found (no critical/high): skip critic-driven revision for this round.
 
-### F. Check convergence
+#### F2. Specialist findings integration
+
+If UX specialist artifact was collected in step B:
+1. Add or update a `## UX Flow` section in the plan (place it before `## Architecture` if that section exists, otherwise after `## Overview`). Populate it with the flow diagrams and screen inventory from the UX specialist artifact.
+2. Merge UX gaps from the specialist's "UX Gap Analysis" section into the plan's `## Constraints` or `## Avoid` sections where relevant.
+3. If the plan already has a `## UX Flow` section from a prior round, update it with any new findings from this round's artifact.
+
+If specialist failure (Task returned error or empty): log "UX specialist returned no artifact — proceeding with critic results only." Do not block plan revision.
+
+### G. Check convergence
 
 Call `mcp__ralphx__get_plan_verification(session_id: <parent_session_id>)`.
 
@@ -262,7 +316,9 @@ If the message provides feedback on a specific gap — dismissing it, downgradin
 | **update/get_plan_verification** | Use `session_id: <parent_session_id>` — these tools take a session_id |
 | **generation parameter (NON-NEGOTIABLE)** | ALWAYS pass `generation` on every `update_plan_verification` call, including terminal status updates (`verified`, `skipped`, `needs_revision`). Read the generation from the response of your most recent `get_plan_verification` or `update_plan_verification` call. |
 | **update/edit_plan_artifact** | Use `artifact_id: <plan_artifact_id>` + `caller_session_id: <OWN_SESSION_ID>` — these tools take artifact_id, NOT session_id |
-| **Parallel critic dispatch** | Both critic Task calls MUST be in ONE response message — never one at a time |
+| **Parallel dispatch (critics + specialists)** | ALL Task calls (critics + selected specialists) MUST be in ONE response message — never one at a time. ❌ `run_in_background: true` does not exist on Task tool. |
+| **Specialist failure is non-blocking** | If specialist Task errors or returns empty → log and continue with critic results. Convergence is driven by critic gaps only. |
+| **Artifact session_id** | Specialists create artifacts on `parent_session_id` (NOT their own session) — artifacts must appear in parent ideation session's Team Artifacts tab |
 | **No self-modification** | You are read-only for the filesystem. ❌ Write, Edit, NotebookEdit |
 | **Exit on zombie** | Generation mismatch at any step → EXIT without cleanup |
 | **Final cleanup always** | Mark `in_progress: false` before exiting (except on zombie detection) |

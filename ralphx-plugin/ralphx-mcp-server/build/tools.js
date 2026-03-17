@@ -7,7 +7,7 @@ import { PLAN_TOOLS } from "./plan-tools.js";
 import { WORKER_CONTEXT_TOOLS } from "./worker-context-tools.js";
 import { STEP_TOOLS } from "./step-tools.js";
 import { ISSUE_TOOLS } from "./issue-tools.js";
-import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, CODER, SESSION_NAMER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, PLAN_CRITIC_LAYER1, PLAN_CRITIC_LAYER2, PLAN_VERIFIER, IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_CRITIC, IDEATION_ADVOCATE, } from "./agentNames.js";
+import { ORCHESTRATOR_IDEATION, ORCHESTRATOR_IDEATION_READONLY, CHAT_TASK, CHAT_PROJECT, REVIEWER, REVIEW_CHAT, REVIEW_HISTORY, WORKER, CODER, SESSION_NAMER, MERGER, PROJECT_ANALYZER, SUPERVISOR, QA_PREP, QA_TESTER, ORCHESTRATOR, DEEP_RESEARCHER, MEMORY_MAINTAINER, MEMORY_CAPTURE, PLAN_CRITIC_LAYER1, PLAN_CRITIC_LAYER2, PLAN_VERIFIER, IDEATION_TEAM_LEAD, IDEATION_TEAM_MEMBER, WORKER_TEAM_LEAD, WORKER_TEAM_MEMBER, IDEATION_SPECIALIST_BACKEND, IDEATION_SPECIALIST_FRONTEND, IDEATION_SPECIALIST_INFRA, IDEATION_SPECIALIST_UX, IDEATION_CRITIC, IDEATION_ADVOCATE, } from "./agentNames.js";
 /**
  * All available MCP tools
  * Tools are filtered based on RALPHX_AGENT_TYPE environment variable
@@ -1664,6 +1664,18 @@ export const TOOL_ALLOWLIST = {
         "get_memory",
         "get_memories_for_paths",
     ],
+    [IDEATION_SPECIALIST_UX]: [
+        "create_team_artifact",
+        "get_team_artifacts",
+        "get_session_plan",
+        "get_artifact",
+        "list_session_proposals",
+        "get_proposal",
+        "get_parent_session_context",
+        "search_memories",
+        "get_memory",
+        "get_memories_for_paths",
+    ],
     [IDEATION_CRITIC]: [
         "create_team_artifact",
         "get_team_artifacts",
@@ -1772,6 +1784,9 @@ export const TOOL_ALLOWLIST = {
         // Child session tools
         "get_child_session_status",
         "send_child_session_message",
+        // Specialist artifact retrieval (read-only — NOT create_team_artifact)
+        "get_team_artifacts",
+        "get_artifact",
     ],
     // Debug mode: shows ALL tools (use RALPHX_AGENT_TYPE=debug)
     debug: ALL_TOOLS.map((t) => t.name),
