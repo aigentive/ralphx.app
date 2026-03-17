@@ -1785,6 +1785,7 @@ async fn test_apply_proposals_core_creates_tasks_with_ready_status() {
         proposal_ids: proposal_ids.clone(),
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = apply_proposals_core(&state, input)
@@ -1829,6 +1830,7 @@ async fn test_apply_proposals_core_session_converts_to_accepted() {
         proposal_ids,
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = apply_proposals_core(&state, input)
@@ -1861,6 +1863,7 @@ async fn test_apply_proposals_core_partial_apply_does_not_convert_session() {
         proposal_ids: vec![proposal_ids[0].clone()],
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = apply_proposals_core(&state, input)
@@ -1903,6 +1906,7 @@ async fn test_apply_proposals_core_idempotency_guard() {
         proposal_ids,
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = apply_proposals_core(&state, input)
@@ -1945,6 +1949,7 @@ async fn test_apply_proposals_core_rejects_inactive_session() {
         proposal_ids,
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let err = apply_proposals_core(&state, input)
@@ -1972,6 +1977,7 @@ async fn test_apply_proposals_core_rejects_unknown_proposals() {
         proposal_ids: vec!["nonexistent-proposal-id".to_string()],
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let err = apply_proposals_core(&state, input)
@@ -1998,6 +2004,7 @@ async fn test_apply_proposals_core_result_contains_context_fields() {
         proposal_ids,
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = apply_proposals_core(&state, input)
@@ -2072,6 +2079,7 @@ async fn test_apply_proposals_core_preserves_dependencies() {
         ],
         target_column: "auto".to_string(),
         use_feature_branch: Some(false),
+        base_branch_override: None,
     };
 
     let result = apply_proposals_core(&state, input)

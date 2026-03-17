@@ -1072,7 +1072,7 @@ pub async fn resolve_merge_branches(
             base_branch = %base_branch,
             "Merge task: merging feature branch into base"
         );
-        return (pb.branch_name, base_branch);
+        return (pb.branch_name, pb.base_branch_override.clone().unwrap_or(base_branch));
     }
 
     // Check if this task belongs to a plan with a feature branch

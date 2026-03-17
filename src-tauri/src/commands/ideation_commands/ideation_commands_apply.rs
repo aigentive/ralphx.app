@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use tauri::{Manager, State};
 
-use crate::application::{AppState, TaskCleanupService, TaskSchedulerService};
+use crate::application::{git_service::GitService, AppState, TaskCleanupService, TaskSchedulerService};
 use crate::commands::ExecutionState;
 use crate::domain::entities::{
     ArtifactId, ExecutionPlan, IdeationSessionId, IdeationSessionStatus, InternalStatus,
@@ -200,7 +200,25 @@ pub async fn apply_proposals_core(
                 );
             }
 
-            let base_branch = project.base_branch.as_deref().unwrap_or("main").to_string();
+            let base_branch = input.base_branch_override.clone().unwrap_or_else(|| {
+                project.base_branch.as_deref().unwrap_or("main").to_string()
+            });
+
+            // Validate override branch exists locally (NON-NEGOTIABLE for external API safety)
+            if input.base_branch_override.is_some() {
+                let repo_path = std::path::PathBuf::from(&project.working_directory);
+                let exists = GitService::branch_exists(&repo_path, &base_branch)
+                    .await
+                    .map_err(|e| {
+                        AppError::Validation(format!("Failed to check branch existence: {}", e))
+                    })?;
+                if !exists {
+                    return Err(AppError::Validation(format!(
+                        "Base branch '{}' not found locally. Ensure the branch exists and try again.",
+                        base_branch
+                    )));
+                }
+            }
 
             // Generate branch name: ralphx/{project-slug}/plan-{short-id}
             // Use execution_plan_id (not plan_artifact_id) so each re-accept gets a unique branch
@@ -218,6 +236,7 @@ pub async fn apply_proposals_core(
             );
             plan_branch.execution_plan_id = Some(execution_plan_id.clone());
             plan_branch.pr_eligible = project.github_pr_enabled;
+            plan_branch.base_branch_override = input.base_branch_override.clone();
             let created_branch = app_state
                 .plan_branch_repo
                 .create(plan_branch)

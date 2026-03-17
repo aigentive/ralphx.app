@@ -484,6 +484,9 @@ export const ideationApi = {
             ...(input.useFeatureBranch !== undefined && {
               use_feature_branch: input.useFeatureBranch,
             }),
+            ...(input.baseBranchOverride !== undefined && {
+              base_branch_override: input.baseBranchOverride,
+            }),
           },
         },
         ApplyProposalsResultResponseSchema

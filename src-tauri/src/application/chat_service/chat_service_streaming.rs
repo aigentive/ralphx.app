@@ -1511,6 +1511,7 @@ pub async fn process_stream_background<R: Runtime>(
             last_heartbeat = std::time::Instant::now();
         }
 
+        #[allow(clippy::manual_is_multiple_of)]
         if lines_seen > 0 && lines_seen % 50 == 0 {
             tracing::debug!(
                 conversation_id = %conversation_id_str,

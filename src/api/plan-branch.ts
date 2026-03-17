@@ -92,6 +92,9 @@ export const planBranchApi = {
           plan_artifact_id: input.planArtifactId,
           session_id: input.sessionId,
           project_id: input.projectId,
+          ...(input.baseBranchOverride !== undefined && {
+            base_branch_override: input.baseBranchOverride,
+          }),
         },
       },
       PlanBranchSchema,
