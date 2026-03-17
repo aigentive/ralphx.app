@@ -20,6 +20,10 @@ interface ReopenSessionDialogProps {
   taskCount: number;
   onConfirm: () => void;
   isLoading: boolean;
+  /** Feature branch preserved from previous acceptance */
+  featureBranch?: string;
+  /** Merge target branch preserved from previous acceptance */
+  targetBranch?: string;
 }
 
 const CONTENT: Record<
@@ -55,6 +59,8 @@ export function ReopenSessionDialog({
   taskCount,
   onConfirm,
   isLoading,
+  featureBranch,
+  targetBranch,
 }: ReopenSessionDialogProps) {
   const content = CONTENT[mode];
 
@@ -78,6 +84,11 @@ export function ReopenSessionDialog({
             {content.description(sessionTitle, taskCount)}
           </AlertDialogDescription>
         </AlertDialogHeader>
+        {featureBranch && (
+          <div className="text-xs text-muted-foreground px-1 py-2 rounded-md bg-muted/40 font-mono">
+            Feature branch: {featureBranch} → {targetBranch ?? "main"}
+          </div>
+        )}
         <AlertDialogFooter>
           <AlertDialogCancel disabled={isLoading}>Cancel</AlertDialogCancel>
           <AlertDialogAction

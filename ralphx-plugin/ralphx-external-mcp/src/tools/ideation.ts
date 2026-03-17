@@ -182,7 +182,18 @@ export async function handleAcceptPlanAndSchedule(
     return JSON.stringify({ error: "missing_argument", message: "session_id is required" }, null, 2);
   }
   try {
-    const result = await acceptAndSchedule({ sessionId }, context);
+    const result = await acceptAndSchedule(
+      {
+        sessionId,
+        ...(args.base_branch_override !== undefined && {
+          baseBranchOverride: args.base_branch_override as string,
+        }),
+        ...(args.use_feature_branch !== undefined && {
+          useFeatureBranch: args.use_feature_branch as boolean,
+        }),
+      },
+      context
+    );
     return JSON.stringify(result, null, 2);
   } catch (err) {
     return handleError(err);

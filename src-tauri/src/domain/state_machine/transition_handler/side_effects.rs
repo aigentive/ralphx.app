@@ -904,7 +904,7 @@ impl<'a> super::TransitionHandler<'a> {
 
         // Build squash commit message
         let squash_commit_msg = self
-            .build_squash_commit_message(task, task_id_str, &source_branch)
+            .build_squash_commit_message(task, task_id_str, &source_branch, &target_branch)
             .await;
 
         // Dispatch merge strategy with timeout — remaining time computed from function start

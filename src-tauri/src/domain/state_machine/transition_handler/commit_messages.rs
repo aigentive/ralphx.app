@@ -60,12 +60,13 @@ pub(super) fn derive_commit_type(tasks: &[Task]) -> &'static str {
 /// Fallback chain for subject:
 /// 1. `session.title` (live fetch) — set by session-namer or user rename
 /// 2. First sibling task title — if session title is NULL
-/// 3. `"Merge plan into {base_branch}"` — no session title, no tasks
+/// 3. `"Merge plan into {target_branch}"` — no session title, no tasks
 ///
 /// Task list is capped at 20 entries with `(+N more)` overflow.
 pub(super) async fn build_plan_merge_commit_msg(
     ideation_session_id: &IdeationSessionId,
     source_branch: &str,
+    target_branch: &str,
     task_repo: &dyn TaskRepository,
     session_repo: &dyn IdeationSessionRepository,
 ) -> String {
@@ -91,7 +92,7 @@ pub(super) async fn build_plan_merge_commit_msg(
         .as_deref()
         .map(str::to_owned)
         .or_else(|| sibling_tasks.first().map(|t| t.title.clone()))
-        .unwrap_or_else(|| "Merge plan into main".to_string());
+        .unwrap_or_else(|| format!("Merge plan into {}", target_branch));
 
     // Build task list body (capped at 20)
     let task_count = sibling_tasks.len();

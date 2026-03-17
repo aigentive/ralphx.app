@@ -52,6 +52,7 @@ export function AcceptModal({
   const [baseBranchOverride, setBaseBranchOverride] = useState<string>(baseBranch);
   const [branches, setBranches] = useState<string[]>([]);
   const [branchLoadError, setBranchLoadError] = useState(false);
+  const [branchesLoading, setBranchesLoading] = useState(false);
 
   // Handle Escape key to close modal
   useEffect(() => {
@@ -72,12 +73,14 @@ export function AcceptModal({
     if (!useFeatureBranch || !workingDirectory) return;
 
     setBranchLoadError(false);
+    setBranchesLoading(true);
     getGitBranches(workingDirectory)
       .then((result) => setBranches(result))
       .catch(() => {
         setBranchLoadError(true);
         setBranches([]);
-      });
+      })
+      .finally(() => setBranchesLoading(false));
   }, [useFeatureBranch, workingDirectory]);
 
   const handleOverlayClick = useCallback(() => {
@@ -337,13 +340,23 @@ export function AcceptModal({
 
           {useFeatureBranch && (
             <div className="mt-3 ml-6">
-              <label
-                className="block text-xs font-medium mb-1"
-                style={{ color: "var(--text-secondary)" }}
-                htmlFor="base-branch-input"
-              >
-                Base branch
-              </label>
+              <div className="flex items-center gap-2 mb-1">
+                <label
+                  className="block text-xs font-medium"
+                  style={{ color: "var(--text-secondary)" }}
+                  htmlFor="base-branch-input"
+                >
+                  Base branch
+                </label>
+                {branchesLoading && (
+                  <div
+                    data-testid="branch-loading-spinner"
+                    className="w-3 h-3 rounded-full border border-current border-t-transparent animate-spin"
+                    style={{ color: "var(--text-muted)" }}
+                    aria-label="Loading branches"
+                  />
+                )}
+              </div>
               <input
                 id="base-branch-input"
                 type="text"

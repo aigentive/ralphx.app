@@ -5,7 +5,7 @@
  * Opens from the gear icon in PlanGroupHeader.
  */
 
-import { memo, useCallback, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import {
   GitBranch,
   Check,
@@ -17,6 +17,13 @@ import {
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { api } from "@/lib/tauri";
 import { getGitBranches } from "@/api/projects";
 import type { PlanBranch } from "@/api/plan-branch.types";
@@ -39,6 +46,8 @@ export interface PlanGroupSettingsProps {
   onNavigateToMergeTask?: (taskId: string) => void;
   /** Working directory for fetching git branches */
   workingDirectory?: string;
+  /** Project's default base branch — initializes pendingBranch when feature branch is being enabled */
+  baseBranch?: string;
 }
 
 // ============================================================================
@@ -88,11 +97,21 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
   onBranchChange,
   onNavigateToMergeTask,
   workingDirectory,
+  baseBranch,
 }: PlanGroupSettingsProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [pendingBranch, setPendingBranch] = useState<string>("");
+  // hasUserSelected: prevents useEffect from overwriting user's manual branch selection when baseBranch prop re-hydrates from store
+  const hasUserSelected = useRef(false);
+  const [pendingBranch, setPendingBranch] = useState<string>(baseBranch ?? "main");
   const [branches, setBranches] = useState<string[]>([]);
+
+  // Sync pendingBranch when baseBranch prop changes (handles async store hydration)
+  useEffect(() => {
+    if (baseBranch && !hasUserSelected.current) {
+      setPendingBranch(baseBranch);
+    }
+  }, [baseBranch]);
   const [showBranchSelector, setShowBranchSelector] = useState(false);
 
   const isEnabled = planBranch !== null && planBranch.status !== "abandoned";
@@ -107,9 +126,7 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
         try {
           const branchList = await getGitBranches(workingDirectory);
           setBranches(branchList);
-          if (branchList.length > 0) {
-            setPendingBranch(branchList[0] ?? "");
-          }
+          // pendingBranch is already initialized from baseBranch — no auto-select override
         } catch {
           // No git repo or inaccessible — user can type manually
           setBranches([]);
@@ -193,19 +210,31 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
             Base branch to merge into:
           </span>
           {branches.length > 0 ? (
-            <select
+            <Select
               value={pendingBranch}
-              onChange={(e) => setPendingBranch(e.target.value)}
-              className="text-[11px] bg-[hsl(var(--bg-surface))] text-[hsl(var(--text-primary))] border border-[hsl(var(--border-subtle))] rounded px-1.5 py-1 outline-none"
+              onValueChange={(value) => {
+                hasUserSelected.current = true;
+                setPendingBranch(value);
+              }}
             >
-              {branches.map((b) => (
-                <option key={b} value={b}>{b}</option>
-              ))}
-            </select>
+              <SelectTrigger className="h-7 text-[11px] bg-[hsl(var(--bg-surface))] border-[hsl(var(--border-subtle))]">
+                <SelectValue placeholder="Select branch" />
+              </SelectTrigger>
+              <SelectContent>
+                {branches.map((b) => (
+                  <SelectItem key={b} value={b} className="text-[11px] font-mono">
+                    {b}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : (
             <Input
               value={pendingBranch}
-              onChange={(e) => setPendingBranch(e.target.value)}
+              onChange={(e) => {
+                hasUserSelected.current = true;
+                setPendingBranch(e.target.value);
+              }}
               placeholder="e.g. main"
               className="h-7 text-[11px]"
             />
@@ -278,6 +307,18 @@ export const PlanGroupSettings = memo(function PlanGroupSettings({
               {planBranch.sourceBranch}
             </span>
           </div>
+
+          {/* Merge target */}
+          {planBranch.baseBranchOverride && (
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-[hsl(var(--text-muted))]">
+                Merge Target
+              </span>
+              <span className="text-[11px] font-mono text-[hsl(var(--text-muted))]">
+                {planBranch.baseBranchOverride}
+              </span>
+            </div>
+          )}
 
           {/* Merge task link */}
           {planBranch.mergeTaskId && onNavigateToMergeTask && (
