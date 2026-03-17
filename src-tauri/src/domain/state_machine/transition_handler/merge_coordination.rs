@@ -713,6 +713,12 @@ pub(super) async fn check_main_merge_deferral(
         }
     }
 
+    tracing::debug!(
+        task_id = task_id_str,
+        running_count = running_agent_count.unwrap_or(0),
+        proceeding = true,
+        "check_main_merge_deferral: all guards passed — proceeding with merge"
+    );
     false
 }
 

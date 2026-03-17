@@ -235,9 +235,26 @@ pub enum MergeFailureSource {
     RateLimited,
     /// Target branch is busy with another merge — deferral-based, never counts toward circuit breaker
     TargetBranchBusy,
+    /// Merge cleanup step timed out (pre-merge worktree scan or deferred kill) — safe to auto-retry
+    CleanupTimeout,
+    /// Running count leaked due to reviewer/executor exit after task already transitioned — safe to auto-retry
+    TeardownRace,
+    /// merge_pipeline_active TTL expired — possible crash during prior merge attempt — safe to auto-retry
+    PipelineActiveExpired,
     /// Unrecognized failure source from stored metadata (backward compat)
     #[serde(other)]
     Unknown,
+}
+
+/// Phase of merge cleanup that encountered an issue.
+/// Used alongside `merge_failure_source: cleanup_timeout` to pinpoint where cleanup failed.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CleanupPhase {
+    /// Phase 3: deferred_merge_cleanup kill of worktree processes (post-merge)
+    DeferredWorktreeKill,
+    /// Phase 0b: pre_merge_cleanup lsof/kill scan before merge pipeline starts
+    PreMergeWorktreeScan,
 }
 
 /// Whether the system will automatically retry a failure.

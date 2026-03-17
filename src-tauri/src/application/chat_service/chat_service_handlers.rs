@@ -387,6 +387,21 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                             "Failed to transition reviewing task to Escalated after incomplete review"
                         );
                     }
+                } else {
+                    // Task has already transitioned past Reviewing (e.g. PendingMerge, Merging).
+                    // chat_service_send_background.rs re-incremented running_count before this
+                    // handler ran, but the balancing on_exit decrement won't fire for the old
+                    // Reviewing state. Negate the re-increment to prevent a running_count leak
+                    // that would cause merge deferral checks to incorrectly see count=1.
+                    let count_before = exec_state.running_count();
+                    let count_after = exec_state.decrement_running();
+                    tracing::info!(
+                        task_id = task_id.as_str(),
+                        status = ?task.internal_status,
+                        count_before,
+                        count_after,
+                        "Review context: task already past Reviewing — negating re-increment to prevent running_count leak"
+                    );
                 }
             }
         } else {

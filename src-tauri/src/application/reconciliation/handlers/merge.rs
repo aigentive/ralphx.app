@@ -323,12 +323,57 @@ impl<R: Runtime> ReconciliationRunner<R> {
         // Merge-pipeline-active guard: if attempt_programmatic_merge is actively running
         // (set at start, cleared at end), skip reconciliation to prevent the reconciler
         // from killing the merge mid-pipeline (cleanup 60s + freshness 60s > stale 2min).
+        let merge_pipeline_age_secs = task.merge_pipeline_active.as_deref().and_then(|ts| {
+            chrono::DateTime::parse_from_rfc3339(ts)
+                .ok()
+                .map(|started| (chrono::Utc::now() - started.with_timezone(&chrono::Utc)).num_seconds())
+        });
+        let merge_pipeline_ttl = reconciliation_config().attempt_merge_deadline_secs as i64;
+        if let Some(age_secs) = merge_pipeline_age_secs {
+            if age_secs >= merge_pipeline_ttl {
+                warn!(
+                    task_id = task.id.as_str(),
+                    age_secs = age_secs,
+                    "merge_pipeline_active TTL expired after {}s — possible crash during prior merge attempt",
+                    age_secs
+                );
+            }
+        }
         if Self::has_merge_pipeline_active(task) {
             tracing::info!(
                 task_id = task.id.as_str(),
-                "Skipping PendingMerge reconciliation — merge pipeline active"
+                age_secs = merge_pipeline_age_secs.unwrap_or(0),
+                ttl_secs = merge_pipeline_ttl,
+                "Skipping PendingMerge reconciliation — merge_pipeline_active set {}s ago (TTL: {}s)",
+                merge_pipeline_age_secs.unwrap_or(0),
+                merge_pipeline_ttl
             );
             return true;
+        }
+
+        // Detect TTL expiry: merge_pipeline_active was set but has expired.
+        // This means the merge pipeline started but the app crashed or was killed mid-run.
+        // Write metadata so the task UI shows the failure source on next MergeIncomplete.
+        if Self::is_merge_pipeline_active_expired(task) {
+            tracing::warn!(
+                task_id = task.id.as_str(),
+                "merge_pipeline_active TTL expired — possible crash during prior merge attempt"
+            );
+            if let Ok(Some(mut fresh_task)) = self.task_repo.get_by_id(&task.id).await {
+                let mut meta: serde_json::Value = fresh_task.metadata
+                    .as_deref()
+                    .and_then(|m| serde_json::from_str(m).ok())
+                    .unwrap_or_else(|| serde_json::json!({}));
+                if let Some(obj) = meta.as_object_mut() {
+                    obj.insert(
+                        "merge_failure_source".to_string(),
+                        serde_json::to_value(MergeFailureSource::PipelineActiveExpired).unwrap_or_default(),
+                    );
+                }
+                fresh_task.metadata = Some(meta.to_string());
+                fresh_task.touch();
+                let _ = self.task_repo.update(&fresh_task).await;
+            }
         }
 
         // Validation-in-progress guard: if validation commands are actively running
@@ -926,5 +971,19 @@ impl<R: Runtime> ReconciliationRunner<R> {
         any_arc
             .downcast::<crate::application::TaskTransitionService<tauri::Wry>>()
             .ok()
+    }
+
+    /// Returns true if `merge_pipeline_active` is set but has EXPIRED (age >= deadline).
+    /// Distinguishes the "expired crash" case from "never set" (both return false from has_merge_pipeline_active).
+    pub(crate) fn is_merge_pipeline_active_expired(task: &crate::domain::entities::Task) -> bool {
+        task.merge_pipeline_active
+            .as_deref()
+            .and_then(|ts| {
+                let started = chrono::DateTime::parse_from_rfc3339(ts).ok()?;
+                let age = chrono::Utc::now() - started.with_timezone(&chrono::Utc);
+                let deadline_secs = reconciliation_config().attempt_merge_deadline_secs;
+                Some(age >= chrono::Duration::seconds(deadline_secs as i64))
+            })
+            .unwrap_or(false)
     }
 }

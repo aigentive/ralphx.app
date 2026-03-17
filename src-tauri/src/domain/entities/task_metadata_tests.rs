@@ -1115,6 +1115,9 @@ fn test_merge_failure_source_serde_roundtrip() {
         MergeFailureSource::SpawnFailure,
         MergeFailureSource::LockContention,
         MergeFailureSource::RateLimited,
+        MergeFailureSource::CleanupTimeout,
+        MergeFailureSource::TeardownRace,
+        MergeFailureSource::PipelineActiveExpired,
     ];
     for variant in &variants {
         let json = serde_json::to_string(variant).unwrap();
@@ -1125,10 +1128,11 @@ fn test_merge_failure_source_serde_roundtrip() {
 
 #[test]
 fn test_merge_failure_source_unknown_fallback() {
-    // Old strings from side_effects.rs should deserialize as Unknown
+    // cleanup_timeout now maps to the CleanupTimeout variant (no longer Unknown)
     let result: MergeFailureSource = serde_json::from_str("\"cleanup_timeout\"").unwrap();
-    assert_eq!(result, MergeFailureSource::Unknown);
+    assert_eq!(result, MergeFailureSource::CleanupTimeout);
 
+    // Truly unrecognized strings still deserialize as Unknown
     let result: MergeFailureSource = serde_json::from_str("\"BranchFreshnessTimeout\"").unwrap();
     assert_eq!(result, MergeFailureSource::Unknown);
 }

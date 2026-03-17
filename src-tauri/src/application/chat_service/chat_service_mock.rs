@@ -4,6 +4,7 @@
 // Provides a mock implementation for testing purposes.
 
 use async_trait::async_trait;
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -30,6 +31,9 @@ pub struct MockChatService {
     call_count: std::sync::atomic::AtomicU32,
     /// When set, send_message returns Ok(was_queued: true) after this many successful calls.
     already_running_after: Mutex<Option<u32>>,
+    /// Configurable per-context agent running state for is_agent_running().
+    /// Key: "{context_type}/{context_id}". Defaults to false if not set.
+    running_agents: Mutex<HashMap<String, bool>>,
 }
 
 pub struct MockChatResponse {
@@ -48,6 +52,7 @@ impl MockChatService {
             message_queue: Arc::new(MessageQueue::new()),
             call_count: std::sync::atomic::AtomicU32::new(0),
             already_running_after: Mutex::new(None),
+            running_agents: Mutex::new(HashMap::new()),
         }
     }
 
@@ -60,7 +65,15 @@ impl MockChatService {
             message_queue,
             call_count: std::sync::atomic::AtomicU32::new(0),
             already_running_after: Mutex::new(None),
+            running_agents: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// Set the agent running state for a specific context.
+    /// Key format: "{context_type}/{context_id}" — e.g., "review/task-abc-123".
+    /// Used in tests to simulate a running agent without spawning a real process.
+    pub async fn set_agent_running(&self, context_key: String, running: bool) {
+        self.running_agents.lock().await.insert(context_key, running);
     }
 
     pub fn call_count(&self) -> u32 {
@@ -275,8 +288,13 @@ impl ChatService for MockChatService {
         Ok(false)
     }
 
-    async fn is_agent_running(&self, _context_type: ChatContextType, _context_id: &str) -> bool {
-        // Mock implementation - always returns false
-        false
+    async fn is_agent_running(&self, context_type: ChatContextType, context_id: &str) -> bool {
+        let key = format!("{}/{}", context_type, context_id);
+        self.running_agents
+            .lock()
+            .await
+            .get(&key)
+            .copied()
+            .unwrap_or(false)
     }
 }

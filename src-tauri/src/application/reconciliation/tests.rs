@@ -7825,3 +7825,159 @@ async fn reconcile_failed_execution_e7_terminal_metadata_not_overwritten() {
         "flat failure_source must not be overwritten"
     );
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// RC3 regression tests: deferred_merge_cleanup safety nets (Phase 2A + 2B)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// RC3 Test 4: deferred_merge_cleanup with existing worktree path clears task fields.
+///
+/// Verifies Phase 2A fix (OS timeout wrapping) and Phase 3 cleanup chain:
+///   - Step 1: kill_worktree_processes_async wrapped in os_thread_timeout — no hang
+///   - Steps 2-4: worktree removal, branch deletion, field clearing all execute
+///   - task_branch, worktree_path, and pending_cleanup metadata are all cleared
+///
+/// The worktree path in this test points to a real temp directory (no processes open),
+/// so the kill step completes immediately — verifying the OS-timeout-wrapped path
+/// does not break the happy case and that the deferred cleanup chain completes correctly.
+///
+/// Before Phase 2A: deferred_merge_cleanup called kill_worktree_processes_async without
+/// an outer OS timeout (unlike pre_merge_cleanup which had one), risking Phase 3 stall
+/// on systems where lsof hangs.
+#[tokio::test]
+async fn test_deferred_merge_cleanup_with_existing_worktree_clears_task_fields() {
+    use crate::domain::state_machine::transition_handler::{
+        deferred_merge_cleanup, has_pending_cleanup_metadata,
+    };
+
+    // Create a real temp directory as the worktree path (no processes inside)
+    let tmp = tempfile::TempDir::new().expect("create temp dir for worktree");
+    let worktree_path = tmp.path().to_str().unwrap().to_string();
+
+    let app_state = AppState::new_test();
+    let project = Project::new("RC3 project".to_string(), "/tmp/rc3-project".to_string());
+    app_state.project_repo.create(project.clone()).await.unwrap();
+
+    // Set up a Merged task with pending_cleanup metadata, task_branch, and worktree_path
+    let mut task = Task::new(project.id.clone(), "RC3 deferred cleanup test".to_string());
+    task.internal_status = InternalStatus::Merged;
+    task.task_branch = Some("ralphx/test/rc3-cleanup-branch".to_string());
+    task.worktree_path = Some(worktree_path.clone());
+    task.metadata = Some(serde_json::json!({"pending_cleanup": true}).to_string());
+    let task_id = task.id.clone();
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    let task_repo = Arc::clone(&app_state.task_repo) as Arc<dyn crate::domain::repositories::TaskRepository>;
+
+    // Run Phase 3 deferred cleanup. kill step completes quickly (no processes in temp dir),
+    // so the OS timeout does not fire — verifying the wrapped happy path works correctly.
+    deferred_merge_cleanup(
+        task_id.clone(),
+        Arc::clone(&task_repo),
+        "/tmp/rc3-project".to_string(), // project_working_dir (nonexistent, skips git ops)
+        Some("ralphx/test/rc3-cleanup-branch".to_string()),
+        Some(worktree_path.clone()),
+        None, // no plan_branch
+    )
+    .await;
+
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task_id)
+        .await
+        .unwrap()
+        .expect("task must exist after cleanup");
+
+    assert!(
+        updated.task_branch.is_none(),
+        "RC3 Test 4: task_branch must be cleared after deferred_merge_cleanup. \
+         Phase 2A wraps kill in os_thread_timeout — cleanup chain must still complete."
+    );
+    assert!(
+        updated.worktree_path.is_none(),
+        "RC3 Test 4: worktree_path must be cleared after deferred_merge_cleanup"
+    );
+    assert!(
+        !has_pending_cleanup_metadata(&updated),
+        "RC3 Test 4: pending_cleanup metadata must be cleared after Phase 3 cleanup"
+    );
+
+    // kill step completed without timeout → no cleanup_timeout metadata written
+    let meta: serde_json::Value = updated
+        .metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str(m).ok())
+        .unwrap_or_default();
+    assert!(
+        meta.get("merge_failure_source").is_none(),
+        "RC3 Test 4: no merge_failure_source expected when kill completed without timeout. \
+         merge_failure_source=CleanupTimeout is only written when os_thread_timeout fires."
+    );
+}
+
+/// RC3 Test 5: deferred_merge_cleanup timeout → merge_failure_source metadata populated.
+///
+/// Verifies Phase 2B fix (failure classification metadata):
+///   When the OS timeout fires during the worktree kill step, deferred_merge_cleanup
+///   must write merge_failure_source=CleanupTimeout and cleanup_phase=DeferredWorktreeKill
+///   to the task metadata for post-mortem visibility.
+///
+/// This test verifies the metadata format contract: the serialized JSON values must match
+/// exactly what consumers (UI detail views, reconciler diagnostics) expect to read.
+///
+/// The domain types tested:
+///   - MergeFailureSource::CleanupTimeout → "cleanup_timeout"
+///   - CleanupPhase::DeferredWorktreeKill → "deferred_worktree_kill"
+///
+/// These are the exact values written by deferred_merge_cleanup when kill_step_timed_out=true
+/// (merge_completion.rs:508-524). If the enum variant serialization changes, this test breaks.
+#[test]
+fn test_deferred_merge_cleanup_timeout_metadata_format_matches_domain_types() {
+    use crate::domain::entities::task_metadata::CleanupPhase;
+
+    // Verify MergeFailureSource::CleanupTimeout serializes to "cleanup_timeout"
+    let source_json =
+        serde_json::to_value(MergeFailureSource::CleanupTimeout).expect("serialize CleanupTimeout");
+    assert_eq!(
+        source_json,
+        serde_json::json!("cleanup_timeout"),
+        "RC3 Test 5: MergeFailureSource::CleanupTimeout must serialize to 'cleanup_timeout'. \
+         This is the exact value written to task metadata by deferred_merge_cleanup when \
+         the OS timeout fires during the worktree kill step (merge_completion.rs:516)."
+    );
+
+    // Verify CleanupPhase::DeferredWorktreeKill serializes to "deferred_worktree_kill"
+    let phase_json =
+        serde_json::to_value(CleanupPhase::DeferredWorktreeKill).expect("serialize DeferredWorktreeKill");
+    assert_eq!(
+        phase_json,
+        serde_json::json!("deferred_worktree_kill"),
+        "RC3 Test 5: CleanupPhase::DeferredWorktreeKill must serialize to 'deferred_worktree_kill'. \
+         This is the exact value written to task metadata by deferred_merge_cleanup when \
+         the OS timeout fires (merge_completion.rs:520)."
+    );
+
+    // Verify the full metadata round-trip as written by the timeout path
+    let metadata = serde_json::json!({
+        "merge_failure_source": source_json,
+        "cleanup_phase": phase_json,
+    });
+
+    let deserialized_source: MergeFailureSource = serde_json::from_value(
+        metadata["merge_failure_source"].clone(),
+    )
+    .expect("deserialize merge_failure_source");
+    assert!(
+        matches!(deserialized_source, MergeFailureSource::CleanupTimeout),
+        "RC3 Test 5: metadata round-trip must deserialize back to CleanupTimeout variant"
+    );
+
+    let deserialized_phase: CleanupPhase = serde_json::from_value(
+        metadata["cleanup_phase"].clone(),
+    )
+    .expect("deserialize cleanup_phase");
+    assert!(
+        matches!(deserialized_phase, CleanupPhase::DeferredWorktreeKill),
+        "RC3 Test 5: metadata round-trip must deserialize back to DeferredWorktreeKill variant"
+    );
+}
