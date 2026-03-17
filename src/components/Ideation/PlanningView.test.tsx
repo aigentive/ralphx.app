@@ -323,6 +323,9 @@ describe("PlanningView", () => {
     const user = userEvent.setup();
     render(<PlanningView {...defaultProps} onApply={onApply} />);
 
+    // Switch to the Proposals tab (ProposalsToolbar now lives there)
+    await user.click(screen.getByTestId("tab-proposals"));
+
     // Click "Accept Plan" to open the modal
     await user.click(screen.getByRole("button", { name: "Accept Plan" }));
     // Click confirm in the modal
@@ -335,8 +338,11 @@ describe("PlanningView", () => {
     });
   });
 
-  it("shows empty-state component when there are no proposals", () => {
+  it("shows empty-state component when there are no proposals", async () => {
+    const user = userEvent.setup();
     render(<PlanningView {...defaultProps} proposals={[]} />);
+    // ProposalsEmptyState now lives in the Proposals tab
+    await user.click(screen.getByTestId("tab-proposals"));
     expect(screen.getByTestId("proposals-empty-state")).toBeInTheDocument();
   });
 
@@ -378,6 +384,9 @@ describe("PlanningView", () => {
     });
     const user = userEvent.setup();
     render(<PlanningView {...defaultProps} onApply={onApply} />);
+
+    // Switch to the Proposals tab (ProposalsToolbar now lives there)
+    await user.click(screen.getByTestId("tab-proposals"));
 
     // Click "Accept Plan" to open the modal, then confirm
     await user.click(screen.getByRole("button", { name: "Accept Plan" }));
@@ -559,5 +568,116 @@ describe("PlanningView", () => {
   it("does not auto-expand plan when session has no planArtifactId", () => {
     render(<PlanningView {...defaultProps} session={mockSession} proposals={[]} />);
     expect(mockSetIsPlanExpanded).not.toHaveBeenCalledWith(true);
+  });
+
+  describe("Verification tab", () => {
+    it("does not show Verification tab when verificationStatus is unverified and no planArtifact", () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "unverified", planArtifactId: null }}
+        />
+      );
+      expect(screen.queryByTestId("tab-verification")).not.toBeInTheDocument();
+    });
+
+    it("shows Verification tab when verificationStatus is reviewing", () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "reviewing" }}
+        />
+      );
+      expect(screen.getByTestId("tab-verification")).toBeInTheDocument();
+    });
+
+    it("shows Verification tab when verificationStatus is verified", () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "verified" }}
+        />
+      );
+      expect(screen.getByTestId("tab-verification")).toBeInTheDocument();
+    });
+
+    it("shows Verification tab when verificationStatus is needs_revision", () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "needs_revision" }}
+        />
+      );
+      expect(screen.getByTestId("tab-verification")).toBeInTheDocument();
+    });
+
+    it("renders Verification tab between Plan and Proposals in the tab bar", () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "reviewing" }}
+        />
+      );
+      const planTab = screen.getByTestId("tab-plan");
+      const verificationTab = screen.getByTestId("tab-verification");
+      const proposalsTab = screen.getByTestId("tab-proposals");
+      // Check DOM ordering using compareDocumentPosition
+      expect(planTab.compareDocumentPosition(verificationTab) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+      expect(verificationTab.compareDocumentPosition(proposalsTab) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+
+    it("shows pulsing badge when verificationInProgress is true", () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "reviewing", verificationInProgress: true }}
+        />
+      );
+      expect(screen.getByTestId("verification-badge-in-progress")).toBeInTheDocument();
+    });
+
+    it("shows checkmark badge when verificationStatus is verified", () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "verified" }}
+        />
+      );
+      expect(screen.getByTestId("verification-badge-verified")).toBeInTheDocument();
+    });
+
+    it("shows warning badge when verificationStatus is needs_revision", () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "needs_revision" }}
+        />
+      );
+      expect(screen.getByTestId("verification-badge-warning")).toBeInTheDocument();
+    });
+
+    it("badge is visible when Plan tab is active (not just Verification tab)", async () => {
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "needs_revision" }}
+        />
+      );
+      // Plan tab is active by default — badge should still be visible in the tab bar
+      expect(screen.getByTestId("content-tab-bar")).toBeInTheDocument();
+      expect(screen.getByTestId("verification-badge-warning")).toBeInTheDocument();
+    });
+
+    it("switches to Verification tab content when tab is clicked", async () => {
+      const user = userEvent.setup();
+      render(
+        <PlanningView
+          {...defaultProps}
+          session={{ ...mockSession, verificationStatus: "reviewing" }}
+        />
+      );
+      await user.click(screen.getByTestId("tab-verification"));
+      expect(screen.getByTestId("verification-tab-content")).toBeInTheDocument();
+    });
   });
 });

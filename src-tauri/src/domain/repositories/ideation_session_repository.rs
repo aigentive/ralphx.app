@@ -39,6 +39,8 @@ pub struct IdeationSessionWithProgress {
     pub progress: Option<SessionProgress>,
     /// Resolved server-side via LEFT JOIN on parent_session_id
     pub parent_session_title: Option<String>,
+    /// Count of verification child sessions (session_purpose = 'verification') for this session
+    pub verification_child_count: u32,
 }
 
 /// Repository trait for IdeationSession persistence.

@@ -7,7 +7,7 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
-import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ShieldCheck, SkipForward, RotateCcw, Wand2, ListPlus, AlertTriangle, Clock, MoreHorizontal, Copy } from "lucide-react";
+import { FileEdit, Download, CheckCircle2, ChevronDown, FileText, Sparkles, History, Loader2, ArrowLeft, ListPlus, MoreHorizontal, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
@@ -28,10 +28,6 @@ import { cn } from "@/lib/utils";
 import type { TeamFinding } from "./TeamFindingsSection";
 import { DebateSummary } from "./DebateSummary";
 import type { DebateSummaryData } from "./DebateSummary";
-import { VerificationBadge } from "./VerificationBadge";
-import { VerificationGapList } from "./VerificationGapList";
-import { VerificationHistory } from "./VerificationHistory";
-import type { RoundSummary, VerificationGap, VerificationStatus } from "@/types/ideation";
 
 // ============================================================================
 // Types
@@ -65,33 +61,8 @@ export interface PlanDisplayProps {
   requestedVersion?: number;
   /** Called after requestedVersion has been applied, to clear the parent's state */
   onVersionViewed?: () => void;
-  // ---- Verification ----
-  verificationStatus?: VerificationStatus;
-  verificationInProgress?: boolean;
-  currentRound?: number;
-  maxRounds?: number;
-  convergenceReason?: string;
-  verificationGaps?: VerificationGap[];
-  verificationRounds?: RoundSummary[];
-  gapScore?: number;
-  /** Artifact ID of the plan version to revert to (set when best version differs from current) */
-  planVersionBeforeVerification?: string;
-  onVerifyFirst?: () => void;
-  onSkipVerification?: () => void;
-  onRevertAndSkip?: () => void;
-  onRetryVerification?: () => void;
-  /** Called when user clicks "Address Gaps" — receives descriptions of selected (or all) gaps */
-  onAddressGaps?: (selectedGapDescriptions: string[]) => void;
   /** Called when user clicks "Create Proposals" — triggers orchestrator to decompose plan into tasks */
   onCreateProposals?: () => void;
-  /** Source project name — shown in imported_verified tooltip */
-  sourceProjectName?: string;
-  /** Current plan artifact version — used with verificationPlanVersion to detect stale gaps */
-  planVersion?: number;
-  /** Plan artifact version at time of verification — used to detect stale gaps */
-  verificationPlanVersion?: number;
-  /** When true, a verification agent is actively generating — edit button is disabled */
-  verificationAgentGenerating?: boolean;
 }
 
 // ============================================================================
@@ -248,84 +219,15 @@ export function PlanDisplay({
   teamMetadata,
   requestedVersion,
   onVersionViewed,
-  verificationStatus,
-  verificationInProgress = false,
-  currentRound,
-  maxRounds,
-  convergenceReason,
-  verificationGaps,
-  verificationRounds,
-  gapScore,
-  planVersionBeforeVerification,
-  onVerifyFirst,
-  onSkipVerification,
-  onRevertAndSkip,
-  onRetryVerification,
-  onAddressGaps,
   onCreateProposals,
-  planVersion,
-  verificationPlanVersion,
-  sourceProjectName,
-  verificationAgentGenerating = false,
 }: PlanDisplayProps) {
   // Use controlled state if isExpanded prop is provided, otherwise use internal state
   // Default to collapsed (false) for initial render
   const [internalIsOpen, setInternalIsOpen] = useState(false);
 
-  // Tab state: "content" (plan markdown) or "history" (verification history)
-  const [activeTab, setActiveTab] = useState<"content" | "history">("content");
-
-  // Gap selection state for "Address Gaps" feature
-  const [selectedGaps, setSelectedGaps] = useState<Set<number>>(new Set());
-
-  // Reset selection when gaps change (new verification round)
-  useEffect(() => {
-    setSelectedGaps(new Set());
-  }, [verificationGaps]);
-
-  // Verification-derived state
-  const hasVerification = verificationStatus !== undefined;
-  const verificationBlocked =
-    hasVerification &&
-    verificationStatus !== "verified" &&
-    verificationStatus !== "skipped";
-  const hasGaps = verificationGaps !== undefined && verificationGaps.length > 0;
-  // Gaps are stale when the plan was updated after verification ran.
-  // Defaults to false (not stale) when either version is unavailable.
-  const gapsStale =
-    hasGaps &&
-    planVersion !== undefined &&
-    verificationPlanVersion !== undefined &&
-    planVersion > verificationPlanVersion;
-  const showVerifyFirst = hasVerification && verificationStatus === "unverified" && onVerifyFirst;
-  const showRevertAndSkip =
-    hasVerification &&
-    verificationStatus === "needs_revision" &&
-    planVersionBeforeVerification !== undefined &&
-    onRevertAndSkip;
-  const showSkipVerification =
-    hasVerification &&
-    verificationStatus !== "verified" &&
-    verificationStatus !== "skipped" &&
-    onSkipVerification;
   const showCreateProposals =
     onCreateProposals &&
-    (verificationStatus === "verified" || verificationStatus === "skipped" || verificationStatus === "imported_verified") &&
-    !verificationInProgress &&
     (linkedProposalsCount === undefined || linkedProposalsCount === 0);
-  // Show history tab when rounds exist and verification is not actively in progress
-  // Includes unverified+rounds case (incomplete/reset) so "View partial results" link works
-  const showHistoryTab =
-    hasVerification &&
-    !verificationInProgress &&
-    verificationRounds !== undefined &&
-    verificationRounds.length > 0;
-  // Show incomplete verification message when reset to unverified but rounds exist
-  const showIncompleteMessage =
-    hasVerification &&
-    verificationStatus === "unverified" &&
-    verificationRounds !== undefined &&
-    verificationRounds.length > 0;
   const isOpen = isExpanded !== undefined ? isExpanded : internalIsOpen;
   const setIsOpen = onExpandedChange ?? setInternalIsOpen;
 
@@ -399,16 +301,6 @@ export function PlanDisplay({
     onVersionViewed?.();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [requestedVersion]);
-
-  const handleAddressGapsClick = useCallback(() => {
-    if (!onAddressGaps || !verificationGaps) return;
-    const selected = [...selectedGaps];
-    const descriptions =
-      selected.length === 0
-        ? verificationGaps.map((g) => g.description)
-        : selected.map((i) => verificationGaps[i]!.description);
-    onAddressGaps(descriptions);
-  }, [selectedGaps, verificationGaps, onAddressGaps]);
 
   const handleExport = useCallback(() => {
     if (onExport) {
@@ -501,17 +393,6 @@ export function PlanDisplay({
                       </span>
                     )}
 
-                    {hasVerification && (
-                      <VerificationBadge
-                        status={verificationStatus!}
-                        inProgress={verificationInProgress}
-                        {...(currentRound !== undefined && { currentRound })}
-                        {...(maxRounds !== undefined && { maxRounds })}
-                        {...(convergenceReason !== undefined && { convergenceReason })}
-                        {...(sourceProjectName !== undefined && { sourceProjectName })}
-                        {...(onRetryVerification !== undefined && { onRetry: onRetryVerification })}
-                      />
-                    )}
                   </div>
 
                   {linkedProposalsCount > 0 && (
@@ -539,114 +420,23 @@ export function PlanDisplay({
               "flex items-center gap-1 transition-opacity duration-150",
               isVersionDropdownOpen || isOpen ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             )}>
-              {/* Verification buttons — visible whenever plan has verification, regardless of approval settings */}
-              {hasVerification && !isApproved && (
-                <>
-                  {/* Verify First — shown when unverified */}
-                  {showVerifyFirst && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={onVerifyFirst}
-                      className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
-                      style={{
-                        color: "hsl(14 100% 60%)",
-                        background: "hsla(14 100% 60% / 0.1)",
-                        border: "1px solid hsla(14 100% 60% / 0.2)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
-                      }}
-                    >
-                      <ShieldCheck className="w-3 h-3" />
-                      Verify First
-                    </Button>
-                  )}
-
-                  {/* Revert & Skip — single atomic action when needs_revision */}
-                  {showRevertAndSkip && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={onRevertAndSkip}
-                      className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
-                      style={{
-                        color: "hsl(45 93% 60%)",
-                        background: "hsla(45 93% 50% / 0.1)",
-                        border: "1px solid hsla(45 93% 50% / 0.2)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "hsla(45 93% 50% / 0.15)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "hsla(45 93% 50% / 0.1)";
-                      }}
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      Revert &amp; Skip
-                    </Button>
-                  )}
-
-                  {/* Skip Verification */}
-                  {showSkipVerification && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={onSkipVerification}
-                      className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
-                      style={{
-                        color: "hsl(220 10% 55%)",
-                        background: "transparent",
-                        border: "1px solid hsla(220 10% 100% / 0.08)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                        e.currentTarget.style.color = "hsl(220 10% 75%)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = "hsl(220 10% 55%)";
-                      }}
-                    >
-                      <SkipForward className="w-3 h-3" />
-                      Skip
-                    </Button>
-                  )}
-                </>
-              )}
-
               {/* Approve — only when plan approval is enabled */}
               {showApprove && !isApproved && (
                 <Button
                   variant="ghost"
                   size="sm"
-                  onClick={verificationBlocked ? undefined : onApprove}
-                  disabled={verificationBlocked}
-                  title={
-                    verificationBlocked
-                      ? "Complete or skip verification before approving"
-                      : undefined
-                  }
-                  className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={onApprove}
+                  className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
                   style={{
-                    color: verificationBlocked ? "hsl(220 10% 50%)" : "hsl(14 100% 60%)",
-                    background: verificationBlocked ? "transparent" : "hsla(14 100% 60% / 0.1)",
-                    border: verificationBlocked
-                      ? "1px solid hsla(220 10% 100% / 0.08)"
-                      : "1px solid hsla(14 100% 60% / 0.2)",
+                    color: "hsl(14 100% 60%)",
+                    background: "hsla(14 100% 60% / 0.1)",
+                    border: "1px solid hsla(14 100% 60% / 0.2)",
                   }}
                   onMouseEnter={(e) => {
-                    if (!verificationBlocked) {
-                      e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
-                    }
+                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
                   }}
                   onMouseLeave={(e) => {
-                    if (!verificationBlocked) {
-                      e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
-                    }
+                    e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
                   }}
                 >
                   <Sparkles className="w-3 h-3" />
@@ -804,7 +594,6 @@ export function PlanDisplay({
                   </DropdownMenuItem>
                   <DropdownMenuItem
                     onClick={onEdit}
-                    disabled={verificationInProgress || verificationAgentGenerating}
                     className="text-[12px] cursor-pointer gap-2 px-3 py-2"
                   >
                     <FileEdit className="w-3.5 h-3.5" />
@@ -839,195 +628,8 @@ export function PlanDisplay({
               </div>
             )}
 
-            {/* Verification gap list — shown when there are gaps to display */}
-            {hasGaps && (
-              <>
-                <div
-                  className="mb-2 rounded-lg p-3"
-                  style={{
-                    background: "hsla(220 10% 100% / 0.02)",
-                    border: "1px solid hsla(220 10% 100% / 0.06)",
-                    ...(gapsStale && { opacity: 0.5 }),
-                  }}
-                  {...(gapsStale && {
-                    "aria-label": "Verification gaps — plan has been updated since these were identified",
-                  })}
-                >
-                  <div
-                    className="text-[11px] font-semibold uppercase tracking-wider mb-3"
-                    style={{ color: "hsl(220 10% 50%)" }}
-                  >
-                    Verification Gaps
-                  </div>
-                  {gapsStale && (
-                    <div className="text-[11px] mb-2" style={{ color: "hsl(45 93% 55%)" }}>
-                      Plan updated — these gaps may be resolved. Re-verify to confirm.
-                    </div>
-                  )}
-                  {verificationStatus === "verified" && (
-                    <div
-                      className="text-[11px] mb-2"
-                      style={{ color: "hsl(220 10% 55%)" }}
-                    >
-                      Verified with acceptable gaps — no critical issues remain.
-                    </div>
-                  )}
-                  <VerificationGapList
-                    gaps={verificationGaps!}
-                    {...(verificationRounds !== undefined && { rounds: verificationRounds })}
-                    {...(gapScore !== undefined && { gapScore })}
-                    selectable={
-                      !gapsStale &&
-                      verificationStatus === "needs_revision" &&
-                      !verificationInProgress &&
-                      !!onAddressGaps
-                    }
-                    selectedGaps={selectedGaps}
-                    onSelectionChange={setSelectedGaps}
-                  />
-                </div>
-
-                {/* Address Gaps button — only in needs_revision state, not while in progress, and not when stale */}
-                {verificationStatus === "needs_revision" &&
-                  !verificationInProgress &&
-                  !gapsStale &&
-                  onAddressGaps && (
-                    <div className="mb-4">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleAddressGapsClick}
-                        className="h-7 px-2.5 text-[11px] font-semibold gap-1.5 rounded-lg transition-colors duration-150"
-                        style={{
-                          color: "hsl(14 100% 60%)",
-                          background: "hsla(14 100% 60% / 0.1)",
-                          border: "1px solid hsla(14 100% 60% / 0.2)",
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = "hsla(14 100% 60% / 0.15)";
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = "hsla(14 100% 60% / 0.1)";
-                        }}
-                      >
-                        <Wand2 className="w-3 h-3" />
-                        {selectedGaps.size === 0
-                          ? "Address All Gaps"
-                          : `Address ${selectedGaps.size} Gap${selectedGaps.size !== 1 ? "s" : ""}`}
-                      </Button>
-                    </div>
-                  )}
-
-                {/* Re-verify Plan button — shown when gaps are stale */}
-                {gapsStale && onRetryVerification && (
-                  <div className="mb-4">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={onRetryVerification}
-                      className="h-7 px-2.5 text-[11px] font-medium gap-1.5 rounded-lg transition-colors duration-150"
-                      style={{
-                        color: "hsl(220 10% 55%)",
-                        background: "transparent",
-                        border: "1px solid hsla(220 10% 100% / 0.08)",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "hsla(220 10% 100% / 0.06)";
-                        e.currentTarget.style.color = "hsl(220 10% 75%)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = "hsl(220 10% 55%)";
-                      }}
-                    >
-                      <RotateCcw className="w-3 h-3" />
-                      Re-verify Plan
-                    </Button>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Incomplete verification message — shown when unverified but partial rounds exist */}
-            {showIncompleteMessage && (
-              <div
-                className="flex items-start gap-2.5 rounded-lg px-3 py-2.5 mb-4"
-                style={{
-                  background: "hsla(45 93% 50% / 0.08)",
-                  border: "1px solid hsla(45 93% 50% / 0.15)",
-                }}
-              >
-                <AlertTriangle
-                  className="w-3.5 h-3.5 flex-shrink-0 mt-0.5"
-                  style={{ color: "hsl(45 93% 55%)" }}
-                />
-                <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <span
-                    className="text-[12px]"
-                    style={{ color: "hsl(45 93% 65%)" }}
-                  >
-                    Verification incomplete — {verificationRounds!.length} round{verificationRounds!.length !== 1 ? "s" : ""} completed.
-                  </span>
-                  {showHistoryTab && (
-                    <button
-                      onClick={() => { setIsOpen(true); setActiveTab("history"); }}
-                      className="text-[11px] font-medium underline underline-offset-2 flex-shrink-0"
-                      style={{ color: "hsl(45 93% 55%)" }}
-                    >
-                      View partial results
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
-
-            {/* Tab switcher — shown when history tab is available */}
-            {showHistoryTab && (
-              <div
-                className="flex gap-1 mb-4 p-0.5 rounded-lg"
-                style={{
-                  background: "hsla(220 10% 100% / 0.03)",
-                  border: "1px solid hsla(220 10% 100% / 0.06)",
-                }}
-              >
-                <button
-                  onClick={() => setActiveTab("content")}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-150 flex-1 justify-center"
-                  style={{
-                    background: activeTab === "content" ? "hsla(220 10% 100% / 0.06)" : "transparent",
-                    color: activeTab === "content" ? "hsl(220 10% 85%)" : "hsl(220 10% 50%)",
-                  }}
-                >
-                  <FileText className="w-3 h-3" />
-                  Plan
-                </button>
-                <button
-                  onClick={() => setActiveTab("history")}
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all duration-150 flex-1 justify-center"
-                  style={{
-                    background: activeTab === "history" ? "hsla(220 10% 100% / 0.06)" : "transparent",
-                    color: activeTab === "history" ? "hsl(220 10% 85%)" : "hsl(220 10% 50%)",
-                  }}
-                >
-                  <Clock className="w-3 h-3" />
-                  Verification History
-                </button>
-              </div>
-            )}
-
-            {/* Verification History tab content */}
-            {showHistoryTab && activeTab === "history" && (
-              <VerificationHistory
-                rounds={verificationRounds!}
-                {...(verificationGaps !== undefined && { currentGaps: verificationGaps })}
-                {...(gapScore !== undefined && { gapScore })}
-                {...(verificationStatus !== undefined && { status: verificationStatus })}
-                {...(convergenceReason !== undefined && { convergenceReason })}
-              />
-            )}
-
-            {/* Version banner when viewing historical — only on content tab */}
-            {isViewingHistorical && (!showHistoryTab || activeTab === "content") && (
+            {/* Version banner when viewing historical */}
+            {isViewingHistorical && (
               <div
                 className="flex items-center justify-between mb-4 px-3 py-2.5 rounded-lg"
                 style={{
@@ -1060,9 +662,8 @@ export function PlanDisplay({
               </div>
             )}
 
-            {/* Loading state / plan content — only shown when on "content" tab */}
-            {(!showHistoryTab || activeTab === "content") && (
-              isLoadingVersion ? (
+            {/* Loading state / plan content */}
+            {isLoadingVersion ? (
                 <div className="flex items-center justify-center py-12">
                   <div className="flex flex-col items-center gap-3">
                     <Loader2 className="w-6 h-6 animate-spin" style={{ color: "hsl(14 100% 60%)" }} />
@@ -1084,8 +685,7 @@ export function PlanDisplay({
                 >
                   No content available
                 </p>
-              )
-            )}
+              )}
           </div>
         </CollapsibleContent>
       </Collapsible>

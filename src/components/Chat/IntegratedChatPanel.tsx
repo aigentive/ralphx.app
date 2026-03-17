@@ -89,6 +89,8 @@ interface IntegratedChatPanelProps {
   onClose?: () => void;
   /** Whether to autofocus chat input on mount */
   autoFocusInput?: boolean;
+  /** Whether this panel is currently visible (used in dual-panel mode to suppress toasts on hidden panel) */
+  isVisible?: boolean;
 }
 
 export function IntegratedChatPanel({
@@ -100,6 +102,7 @@ export function IntegratedChatPanel({
   headerContent,
   onClose,
   autoFocusInput = true,
+  isVisible = true,
 }: IntegratedChatPanelProps) {
   const bus = useEventBus();
   const selectedTaskId = useUiStore((s) => s.selectedTaskId);
@@ -322,7 +325,7 @@ export function IntegratedChatPanel({
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
   // For execution/review mode, fetch conversations directly with specific context type
-  const regularChatData = useChat(chatContext);
+  const regularChatData = useChat(chatContext, { isVisible });
 
   // Single dynamic query for all agent contexts (execution/review/merge)
   // When currentContextType changes, the query key changes and a fresh fetch fires

@@ -152,7 +152,7 @@ export function useAgentRunStatus(conversationId: string | null) {
  * });
  * ```
  */
-export function useChat(context: ChatContext) {
+export function useChat(context: ChatContext, options?: { isVisible?: boolean }) {
   const queryClient = useQueryClient();
   const { contextType, contextId } = getContextTypeAndId(context);
   const contextKey = buildStoreKey(contextType, contextId);
@@ -207,6 +207,9 @@ export function useChat(context: ChatContext) {
       // Mark this error as shown
       shownErrorRef.current = agentRunStatus.data?.id ?? null;
 
+      // Only show toast when panel is visible (prevents duplicate toasts in dual-panel mode)
+      if (options?.isVisible === false) return;
+
       // Import toast dynamically to avoid circular deps
       import("sonner").then(({ toast }) => {
         toast.error("Previous agent run failed", {
@@ -215,7 +218,7 @@ export function useChat(context: ChatContext) {
         });
       });
     }
-  }, [isFailed, errorMessage, agentRunStatus.data?.id]);
+  }, [isFailed, errorMessage, agentRunStatus.data?.id, options?.isVisible]);
 
   // Send message mutation
   const sendMessage = useMutation<SendAgentMessageResult, Error, { content: string; attachmentIds?: string[]; target?: string }>({
