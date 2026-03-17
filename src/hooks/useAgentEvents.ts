@@ -27,8 +27,12 @@ import type { Unsubscribe } from "@/lib/event-bus";
  * Uses unified agent:* events (Phase 5-6 consolidation).
  *
  * @param activeConversationId - The currently active conversation ID to filter events
+ * @param storeKey - Caller-provided store key for scoped setActiveConversation writes.
+ *   When provided, agent:run_started uses this key instead of the event-derived key.
+ *   Callers know which panel slot to write to; cross-context events are handled
+ *   separately by IntegratedChatPanel's own bus.subscribe handler.
  */
-export function useAgentEvents(activeConversationId: string | null) {
+export function useAgentEvents(activeConversationId: string | null, storeKey?: string) {
   const bus = useEventBus();
   const queryClient = useQueryClient();
   const setAgentStatus = useChatStore((s) => s.setAgentStatus);
@@ -86,9 +90,11 @@ export function useAgentEvents(activeConversationId: string | null) {
         });
 
         // If no active conversation is set, set it to this one
-        // This handles the case where a new conversation was just created by the backend
+        // This handles the case where a new conversation was just created by the backend.
+        // Use caller-provided storeKey when available — the caller knows which panel slot to
+        // write to. Cross-context events are handled by IntegratedChatPanel's bus.subscribe.
         if (!activeConversationId && conversation_id) {
-          setActiveConversation(conversation_id);
+          setActiveConversation(storeKey ?? eventContextKey, conversation_id);
         }
       })
     );
@@ -373,7 +379,7 @@ export function useAgentEvents(activeConversationId: string | null) {
     return () => {
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [bus, activeConversationId, queryClient, setAgentStatus, updateLastAgentEvent, deleteQueuedMessage, queueMessage, setActiveConversation, clearActiveQuestion, clearPendingPlan]);
+  }, [bus, activeConversationId, storeKey, queryClient, setAgentStatus, updateLastAgentEvent, deleteQueuedMessage, queueMessage, setActiveConversation, clearActiveQuestion, clearPendingPlan]);
 
   // Global singleton watchdog — defense-in-depth for stuck generating state.
   // If the backend misses run_completed for any reason, this forces idle after

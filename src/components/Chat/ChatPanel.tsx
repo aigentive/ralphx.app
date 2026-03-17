@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useChat, chatKeys } from "@/hooks/useChat";
-import { useChatStore, selectQueuedMessages, selectAgentStatus, selectActiveConversationId, selectIsTeamActive } from "@/stores/chatStore";
+import { useChatStore, selectQueuedMessages, selectAgentStatus, selectIsTeamActive } from "@/stores/chatStore";
 import { useTeamStore, selectTeammates, selectActiveTeam } from "@/stores/teamStore";
 import { useUiStore } from "@/stores/uiStore";
 import type { ChatContext } from "@/types/chat";
@@ -185,7 +185,6 @@ function ChatPanelContent({ context }: ChatPanelProps) {
   const width = useChatStore((s) => s.width);
   const setWidth = useChatStore((s) => s.setWidth);
   const toggleChatVisible = useUiStore((s) => s.toggleChatVisible);
-  const activeConversationId = useChatStore(selectActiveConversationId);
 
   // Detect task status for context type resolution
   const selectedTask = useTaskStore((state) =>
@@ -206,6 +205,7 @@ function ChatPanelContent({ context }: ChatPanelProps) {
     () => buildStoreKey(contextType, contextId),
     [contextType, contextId]
   );
+  const activeConversationId = useChatStore((s) => s.activeConversationIds[contextKey] ?? null);
   const isExecutionMode = contextType === "task_execution";
 
   // Team mode state
@@ -247,7 +247,10 @@ function ChatPanelContent({ context }: ChatPanelProps) {
 
   // For execution mode, fetch execution conversations directly using task_execution context
   // For regular chat, use the standard useChat hook
-  const regularChatData = useChat(context);
+  // Pass storeKey so useChat reads/writes the same scoped slot this panel is reading.
+  // Without this, useChat derives its own contextKey which may differ from contextKey
+  // computed here (e.g., execution-mode-aware key vs plain task key).
+  const regularChatData = useChat(context, { storeKey: contextKey });
 
   // Fetch execution conversations when in execution mode
   const executionConversationsQuery = useQuery({

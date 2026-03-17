@@ -40,7 +40,7 @@ describe("chatStore", () => {
       context: null,
       width: 320,
       isLoading: false,
-      activeConversationId: null,
+      activeConversationIds: {},
       queuedMessages: {},
       agentStatus: {},
       isSending: {},
@@ -68,9 +68,9 @@ describe("chatStore", () => {
       expect(state.isLoading).toBe(false);
     });
 
-    it("has null activeConversationId", () => {
+    it("has empty activeConversationIds", () => {
       const state = useChatStore.getState();
-      expect(state.activeConversationId).toBeNull();
+      expect(state.activeConversationIds).toEqual({});
     });
 
     it("has empty queuedMessages", () => {
@@ -297,53 +297,74 @@ describe("chatStore", () => {
   });
 
   describe("setActiveConversation", () => {
-    it("sets activeConversationId", () => {
-      useChatStore.getState().setActiveConversation("conv-123");
+    const storeKeyA = "session:session-a";
+    const storeKeyB = "task_execution:task-b";
+
+    it("sets activeConversationIds for a storeKey", () => {
+      useChatStore.getState().setActiveConversation(storeKeyA, "conv-123");
 
       const state = useChatStore.getState();
-      expect(state.activeConversationId).toBe("conv-123");
+      expect(state.activeConversationIds[storeKeyA]).toBe("conv-123");
     });
 
-    it("replaces previous conversation ID", () => {
-      useChatStore.setState({ activeConversationId: "conv-old" });
+    it("replaces previous conversation ID for same storeKey", () => {
+      useChatStore.setState({ activeConversationIds: { [storeKeyA]: "conv-old" } });
 
-      useChatStore.getState().setActiveConversation("conv-new");
+      useChatStore.getState().setActiveConversation(storeKeyA, "conv-new");
 
       const state = useChatStore.getState();
-      expect(state.activeConversationId).toBe("conv-new");
+      expect(state.activeConversationIds[storeKeyA]).toBe("conv-new");
     });
 
-    it("sets to null", () => {
-      useChatStore.setState({ activeConversationId: "conv-123" });
+    it("sets to null for a storeKey", () => {
+      useChatStore.setState({ activeConversationIds: { [storeKeyA]: "conv-123" } });
 
-      useChatStore.getState().setActiveConversation(null);
+      useChatStore.getState().setActiveConversation(storeKeyA, null);
 
       const state = useChatStore.getState();
-      expect(state.activeConversationId).toBeNull();
+      expect(state.activeConversationIds[storeKeyA]).toBeNull();
     });
 
-    it("is no-op when setting same conversation ID", () => {
-      useChatStore.getState().setActiveConversation("conv-123");
+    it("is no-op when setting same conversation ID for same storeKey", () => {
+      useChatStore.getState().setActiveConversation(storeKeyA, "conv-123");
 
       // Get state reference after first set
       const stateBefore = useChatStore.getState();
 
       // Call with same value — should be a no-op
-      useChatStore.getState().setActiveConversation("conv-123");
+      useChatStore.getState().setActiveConversation(storeKeyA, "conv-123");
 
       const stateAfter = useChatStore.getState();
       // State object reference should be unchanged (no new immer draft)
       expect(stateAfter).toBe(stateBefore);
     });
 
-    it("is no-op when setting null and already null", () => {
-      // Initial state has null activeConversationId
+    it("isolates storeKey A from storeKey B", () => {
+      useChatStore.getState().setActiveConversation(storeKeyA, "conv-a");
+      useChatStore.getState().setActiveConversation(storeKeyB, "conv-b");
+
+      const state = useChatStore.getState();
+      expect(state.activeConversationIds[storeKeyA]).toBe("conv-a");
+      expect(state.activeConversationIds[storeKeyB]).toBe("conv-b");
+    });
+
+    it("setting storeKey B does not affect storeKey A", () => {
+      useChatStore.getState().setActiveConversation(storeKeyA, "conv-a");
       const stateBefore = useChatStore.getState();
 
-      useChatStore.getState().setActiveConversation(null);
+      useChatStore.getState().setActiveConversation(storeKeyB, "conv-b");
 
       const stateAfter = useChatStore.getState();
-      expect(stateAfter).toBe(stateBefore);
+      expect(stateAfter.activeConversationIds[storeKeyA]).toBe("conv-a");
+      // State for storeKeyA did not change
+      expect(stateAfter.activeConversationIds[storeKeyA]).toBe(
+        stateBefore.activeConversationIds[storeKeyA]
+      );
+    });
+
+    it("returns undefined for unknown storeKey", () => {
+      const state = useChatStore.getState();
+      expect(state.activeConversationIds["unknown:key"]).toBeUndefined();
     });
   });
 
@@ -783,10 +804,9 @@ describe("selectors", () => {
     useChatStore.setState({
       messages: {},
       context: null,
-      isOpen: false,
       width: 320,
       isLoading: false,
-      activeConversationId: null,
+      activeConversationIds: {},
       queuedMessages: {},
       agentStatus: {},
       isSending: {},
@@ -891,18 +911,30 @@ describe("selectors", () => {
   });
 
   describe("selectActiveConversationId", () => {
-    it("returns active conversation ID", () => {
-      useChatStore.setState({ activeConversationId: "conv-123" });
+    const storeKeyA = "session:session-a";
+    const storeKeyB = "task_execution:task-b";
 
-      const result = selectActiveConversationId(useChatStore.getState());
+    it("returns active conversation ID for storeKey", () => {
+      useChatStore.setState({ activeConversationIds: { [storeKeyA]: "conv-123" } });
+
+      const result = selectActiveConversationId(storeKeyA)(useChatStore.getState());
 
       expect(result).toBe("conv-123");
     });
 
-    it("returns null when no active conversation", () => {
-      const result = selectActiveConversationId(useChatStore.getState());
+    it("returns undefined when no active conversation for storeKey", () => {
+      const result = selectActiveConversationId(storeKeyA)(useChatStore.getState());
 
-      expect(result).toBeNull();
+      expect(result).toBeUndefined();
+    });
+
+    it("isolates results — storeKey A does not return storeKey B value", () => {
+      useChatStore.setState({
+        activeConversationIds: { [storeKeyA]: "conv-a", [storeKeyB]: "conv-b" },
+      });
+
+      expect(selectActiveConversationId(storeKeyA)(useChatStore.getState())).toBe("conv-a");
+      expect(selectActiveConversationId(storeKeyB)(useChatStore.getState())).toBe("conv-b");
     });
   });
 

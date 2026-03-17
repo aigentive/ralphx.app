@@ -152,12 +152,16 @@ export function useAgentRunStatus(conversationId: string | null) {
  * });
  * ```
  */
-export function useChat(context: ChatContext, options?: { isVisible?: boolean }) {
+export function useChat(context: ChatContext, options?: { isVisible?: boolean; storeKey?: string }) {
   const queryClient = useQueryClient();
   const { contextType, contextId } = getContextTypeAndId(context);
   const contextKey = buildStoreKey(contextType, contextId);
+  // effectiveStoreKey: caller-provided storeKey takes precedence over the internally derived contextKey.
+  // This is critical when IntegratedChatPanel uses execution-mode-aware storeKeys (e.g., "task_execution:id")
+  // while chatContext is still view="task_detail" (which would derive "task:id" internally).
+  const effectiveStoreKey = options?.storeKey ?? contextKey;
 
-  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const activeConversationId = useChatStore((s) => s.activeConversationIds[effectiveStoreKey] ?? null);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
   const setSending = useChatStore((s) => s.setSending);
@@ -182,8 +186,8 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean })
   const errorMessage = agentRunStatus.data?.errorMessage;
 
   useEffect(() => {
-    const contextChanged = prevContextKeyRef.current !== contextKey;
-    prevContextKeyRef.current = contextKey;
+    const contextChanged = prevContextKeyRef.current !== effectiveStoreKey;
+    prevContextKeyRef.current = effectiveStoreKey;
 
     // On context change, skip recovery — useChatPanelContext cleanup handles clearing.
     // Without this guard, stale cached isRunning from the old conversation overrides
@@ -195,9 +199,9 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean })
     // Normal recovery: sync UI with backend state (e.g., page refresh with running agent)
     // Don't set to false here - let the agent:run_completed event (or agent:turn_completed in interactive mode) handle that
     if (isRunning) {
-      setAgentRunning(contextKey, true);
+      setAgentRunning(effectiveStoreKey, true);
     }
-  }, [contextKey, isRunning, setAgentRunning]);
+  }, [effectiveStoreKey, isRunning, setAgentRunning]);
 
   // Show error toast when a failed run is detected (e.g., when user comes back)
   // Track which errors we've shown to avoid duplicate toasts
@@ -226,10 +230,10 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean })
       return chatApi.sendAgentMessage(contextType, contextId, content, attachmentIds, target);
     },
     onMutate: () => {
-      setSending(contextKey, true);
+      setSending(effectiveStoreKey, true);
     },
     onSettled: () => {
-      setSending(contextKey, false);
+      setSending(effectiveStoreKey, false);
     },
     onSuccess: () => {
       // Invalidate active conversation to refetch messages
@@ -253,7 +257,7 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean })
     },
     onError: () => {
       // Reset agent running state on error
-      setAgentRunning(contextKey, false);
+      setAgentRunning(effectiveStoreKey, false);
     },
   });
 
@@ -265,7 +269,7 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean })
       },
       onSuccess: (newConversation) => {
         // Set as active conversation
-        setActiveConversation(newConversation.id);
+        setActiveConversation(effectiveStoreKey, newConversation.id);
 
         // Invalidate conversations list
         queryClient.invalidateQueries({
@@ -278,14 +282,14 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean })
   // Switch conversation
   const switchConversation = useCallback(
     (conversationId: string) => {
-      setActiveConversation(conversationId);
+      setActiveConversation(effectiveStoreKey, conversationId);
 
       // Invalidate the conversation query to ensure fresh data is fetched
       queryClient.invalidateQueries({
         queryKey: chatKeys.conversation(conversationId),
       });
     },
-    [setActiveConversation, queryClient]
+    [setActiveConversation, queryClient, effectiveStoreKey]
   );
 
   // Create new conversation
@@ -294,7 +298,8 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean })
   }, [createConversationMutation]);
 
   // Subscribe to agent events for real-time updates
-  useAgentEvents(activeConversationId);
+  // Pass effectiveStoreKey so setActiveConversation writes to the correct scoped slot.
+  useAgentEvents(activeConversationId, effectiveStoreKey);
 
   // Initialize active conversation if none is set
   // Use a ref to track initialization and prevent infinite loops
@@ -317,10 +322,10 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean })
 
       if (mostRecent) {
         hasInitializedRef.current = true;
-        setActiveConversation(mostRecent.id);
+        setActiveConversation(effectiveStoreKey, mostRecent.id);
       }
     }
-  }, [activeConversationId, conversations.data, setActiveConversation]);
+  }, [activeConversationId, conversations.data, setActiveConversation, effectiveStoreKey]);
 
   // Reset initialization flag when context changes
   useEffect(() => {
@@ -341,8 +346,8 @@ export function useChat(context: ChatContext, options?: { isVisible?: boolean })
     // Conversation management
     switchConversation,
     createConversation,
-    // Context key for queue/agent state operations
-    contextKey,
+    // Effective store key for active conversation operations (caller-provided storeKey or derived contextKey)
+    contextKey: effectiveStoreKey,
     // Context info
     contextType,
     contextId,

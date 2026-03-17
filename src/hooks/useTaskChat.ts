@@ -58,16 +58,20 @@ export type TaskContextType = "task" | "task_execution" | "review" | "merge";
  * } = useTaskChat(taskId, "review", "executing");
  * ```
  */
-export function useTaskChat(taskId: string, contextType: TaskContextType, historicalStatus?: string) {
+export function useTaskChat(taskId: string, contextType: TaskContextType, historicalStatus?: string, storeKey?: string) {
   const queryClient = useQueryClient();
   const contextKey = buildStoreKey(contextType, taskId);
+  // effectiveStoreKey: caller-provided storeKey takes precedence over internally derived contextKey.
+  // Consistent with useChat pattern — allows callers to pass an execution-mode-aware key.
+  // In most cases storeKey === contextKey since contextType is passed explicitly.
+  const effectiveStoreKey = storeKey ?? contextKey;
   const isHistoricalMode = !!historicalStatus;
   logger.debug(`[useTaskChat] taskId=${taskId}, contextType=${contextType}, contextKey=${contextKey}, historicalStatus=${historicalStatus}`);
 
   // Fetch state transitions for historical message filtering
   const stateTransitions = useTaskStateTransitions(isHistoricalMode ? taskId : undefined);
 
-  const activeConversationId = useChatStore((s) => s.activeConversationId);
+  const activeConversationId = useChatStore((s) => s.activeConversationIds[effectiveStoreKey] ?? null);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
 
@@ -103,22 +107,23 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
   });
 
   // Subscribe to agent events for real-time updates
-  useAgentEvents(activeConversationId);
+  // Pass effectiveStoreKey so setActiveConversation writes to the correct scoped slot.
+  useAgentEvents(activeConversationId, effectiveStoreKey);
 
   // Track previous context to detect changes
   const prevContextRef = useRef<string | null>(null);
 
   // Reset activeConversationId and clear stale agent state when context type or task changes
   useEffect(() => {
-    const currentContext = `${contextType}:${taskId}`;
+    const currentContext = effectiveStoreKey;
     if (prevContextRef.current !== null && prevContextRef.current !== currentContext) {
       // Context changed - clear agent state on OLD context key and reset conversation
       // This prevents stale isAgentRunning entries from previous context types
       setAgentRunning(prevContextRef.current, false);
-      setActiveConversation(null);
+      setActiveConversation(prevContextRef.current, null);
     }
     prevContextRef.current = currentContext;
-  }, [contextType, taskId, setActiveConversation, setAgentRunning]);
+  }, [effectiveStoreKey, setActiveConversation, setAgentRunning]);
 
   // Auto-select the most recent conversation for this context
   // Use a ref to track initialization and prevent infinite loops
@@ -127,7 +132,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
   useEffect(() => {
     // Reset auto-select flag when context changes
     hasAutoSelectedRef.current = false;
-  }, [contextType, taskId]);
+  }, [effectiveStoreKey]);
 
   useEffect(() => {
     // CRITICAL: Check for stale activeConversationId FIRST, before checking hasAutoSelectedRef.
@@ -136,10 +141,10 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
     if (activeConversationId && conversations.data && conversations.data.length > 0) {
       const belongsToContext = conversations.data.some(c => c.id === activeConversationId);
       if (!belongsToContext) {
-        logger.debug(`[useTaskChat] Stale activeConversationId=${activeConversationId} not in context ${contextKey}, resetting`);
+        logger.debug(`[useTaskChat] Stale activeConversationId=${activeConversationId} not in context ${effectiveStoreKey}, resetting`);
         // Reset both the ID and the flag so auto-select can run
         hasAutoSelectedRef.current = false;
-        setActiveConversation(null);
+        setActiveConversation(effectiveStoreKey, null);
         return; // Will re-run on next render with null activeConversationId
       }
     }
@@ -161,12 +166,12 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
       const mostRecent = sorted[0];
 
       if (mostRecent) {
-        logger.debug(`[useTaskChat] Auto-selecting conversation ${mostRecent.id} for context ${contextKey}`);
+        logger.debug(`[useTaskChat] Auto-selecting conversation ${mostRecent.id} for context ${effectiveStoreKey}`);
         hasAutoSelectedRef.current = true;
-        setActiveConversation(mostRecent.id);
+        setActiveConversation(effectiveStoreKey, mostRecent.id);
       }
     }
-  }, [activeConversationId, conversations.data, setActiveConversation, contextKey, contextType]);
+  }, [activeConversationId, conversations.data, setActiveConversation, effectiveStoreKey, contextType]);
 
   // Sync agent running state based on backend status
   const isRunning = agentRunStatus.data?.status === "running";
@@ -175,9 +180,9 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
     // Only set to true based on backend status (for initial load recovery)
     // Don't set to false here - let the agent:run_completed event (or agent:turn_completed in interactive mode) handle that
     if (isRunning) {
-      setAgentRunning(contextKey, true);
+      setAgentRunning(effectiveStoreKey, true);
     }
-  }, [contextKey, isRunning, setAgentRunning]);
+  }, [effectiveStoreKey, isRunning, setAgentRunning]);
 
   // Unified loading state
   const isLoading =
@@ -246,32 +251,32 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
 
       // If this is a new conversation, set it as active
       if (result.isNewConversation) {
-        setActiveConversation(result.conversationId);
+        setActiveConversation(effectiveStoreKey, result.conversationId);
       }
     },
     onError: () => {
       // Reset agent running state on error
-      setAgentRunning(contextKey, false);
+      setAgentRunning(effectiveStoreKey, false);
     },
   });
 
   // Switch conversation
   const switchConversation = useCallback(
     (conversationId: string) => {
-      setActiveConversation(conversationId);
+      setActiveConversation(effectiveStoreKey, conversationId);
 
       // Invalidate the conversation query to ensure fresh data is fetched
       queryClient.invalidateQueries({
         queryKey: chatKeys.conversation(conversationId),
       });
     },
-    [setActiveConversation, queryClient]
+    [setActiveConversation, queryClient, effectiveStoreKey]
   );
 
   // Create new conversation
   const createConversation = useCallback(async () => {
     const newConversation = await chatApi.createConversation(contextType, taskId);
-    setActiveConversation(newConversation.id);
+    setActiveConversation(effectiveStoreKey, newConversation.id);
 
     // Invalidate conversations list
     queryClient.invalidateQueries({
@@ -279,7 +284,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
     });
 
     return newConversation;
-  }, [contextType, taskId, setActiveConversation, queryClient]);
+  }, [contextType, taskId, setActiveConversation, queryClient, effectiveStoreKey]);
 
   return {
     // Data
@@ -291,7 +296,7 @@ export function useTaskChat(taskId: string, contextType: TaskContextType, histor
     isLoading,
     isHistoricalMode,
     activeConversationId,
-    contextKey,
+    contextKey: effectiveStoreKey,
     contextType,
     // Actions
     sendMessage,

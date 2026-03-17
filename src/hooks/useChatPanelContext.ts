@@ -11,7 +11,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { toast } from "sonner";
 import { useQueryClient } from "@tanstack/react-query";
-import { useChatStore, selectActiveConversationId, getContextKey } from "@/stores/chatStore";
+import { useChatStore, getContextKey } from "@/stores/chatStore";
 import { useTeamStore } from "@/stores/teamStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import { buildStoreKey } from "@/lib/chat-context-registry";
@@ -61,7 +61,6 @@ export function useChatPanelContext({
   isVisible = true,
 }: UseChatPanelContextProps) {
   const queryClient = useQueryClient();
-  const activeConversationId = useChatStore(selectActiveConversationId);
   const setActiveConversation = useChatStore((s) => s.setActiveConversation);
   const clearMessages = useChatStore((s) => s.clearMessages);
   const setAgentRunning = useChatStore((s) => s.setAgentRunning);
@@ -117,6 +116,9 @@ export function useChatPanelContext({
     return getContextKey(chatContext);
   }, [isMergeMode, isExecutionMode, isReviewMode, selectedTaskId, chatContext]);
 
+  // Active conversation ID scoped to this panel's storeContextKey
+  const activeConversationId = useChatStore((s) => s.activeConversationIds[storeContextKey] ?? null);
+
   // Context key for tracking changes
   const contextKey = ideationSessionId
     ? `ideation:${ideationSessionId}`
@@ -169,7 +171,9 @@ export function useChatPanelContext({
   useEffect(() => {
     if (prevContextKeyRef.current !== contextKey) {
       // Context changed - capture OLD context from refs BEFORE updating them
-      const currentConversationId = useChatStore.getState().activeConversationId;
+      // CRITICAL: use prevStoreContextKeyRef.current (OLD key) to read the OLD conversation.
+      // storeContextKey here is already the NEW key — reading it would get null for the new slot.
+      const currentConversationId = useChatStore.getState().activeConversationIds[prevStoreContextKeyRef.current];
       const oldContext = prevContextTypeRef.current;
 
       // DO NOT clear active conversation here - let autoSelectConversation handle
@@ -266,11 +270,11 @@ export function useChatPanelContext({
 
       if (overrideConversationId) {
         // In history mode with a specific conversation - select it
-        setActiveConversation(overrideConversationId);
+        setActiveConversation(storeContextKey, overrideConversationId);
         hasAutoSelectedRef.current = true; // Prevent auto-select from overriding
       }
     }
-  }, [overrideConversationId, setActiveConversation]);
+  }, [overrideConversationId, setActiveConversation, storeContextKey]);
 
   // Determine current context type and ID for validation
   const currentContextType: ContextType = ideationSessionId
@@ -311,7 +315,7 @@ export function useChatPanelContext({
     // Read activeConversationId from store snapshot at call-time (not from closure)
     // to avoid including it in useCallback deps — which would cause self-invalidation
     // when autoSelectConversation calls setActiveConversation.
-    const currentActiveId = useChatStore.getState().activeConversationId;
+    const currentActiveId = useChatStore.getState().activeConversationIds[storeContextKey];
 
     // CRITICAL: Check for stale activeConversationId FIRST, before checking hasAutoSelectedRef.
     // If current conversation is stale but new context has conversations, directly select replacement.
@@ -328,7 +332,7 @@ export function useChatPanelContext({
           const mostRecent = sorted[0];
           if (mostRecent) {
             hasAutoSelectedRef.current = true;
-            setActiveConversation(mostRecent.id);
+            setActiveConversation(storeContextKey, mostRecent.id);
           }
         } else {
           // Empty list — conversation may be freshly created and list hasn't
@@ -346,7 +350,7 @@ export function useChatPanelContext({
       const mostRecent = sorted[0];
       if (mostRecent && mostRecent.id !== currentActiveId) {
         hasAutoSelectedRef.current = true;
-        setActiveConversation(mostRecent.id);
+        setActiveConversation(storeContextKey, mostRecent.id);
         return;
       }
     }
@@ -367,10 +371,10 @@ export function useChatPanelContext({
 
       if (mostRecent) {
         hasAutoSelectedRef.current = true;
-        setActiveConversation(mostRecent.id);
+        setActiveConversation(storeContextKey, mostRecent.id);
       }
     }
-  }, [isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, overrideConversationId, setActiveConversation]);
+  }, [isMergeMode, isExecutionMode, isReviewMode, isHistoryMode, overrideConversationId, setActiveConversation, storeContextKey]);
 
   return {
     chatContext,

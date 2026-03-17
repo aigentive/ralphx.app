@@ -193,7 +193,7 @@ describe("useChatActions", () => {
         await result.current.handleSend("review this");
       });
 
-      expect(mockActions.setActiveConversation).toHaveBeenCalledWith("new-conv");
+      expect(mockActions.setActiveConversation).toHaveBeenCalledWith("review:task-42", "new-conv");
     });
 
     it("ideation first message triggers auto-naming", async () => {

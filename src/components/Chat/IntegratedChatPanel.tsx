@@ -21,7 +21,7 @@ import { useChatPanelContext } from "@/hooks/useChatPanelContext";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { chatApi } from "@/api/chat";
 import { api } from "@/lib/tauri";
-import { getContextConfig } from "@/lib/chat-context-registry";
+import { getContextConfig, buildStoreKey } from "@/lib/chat-context-registry";
 import type { Task } from "@/types/task";
 import type { ContextType } from "@/types/chat-conversation";
 import { ALL_REVIEW_STATUSES, EXECUTION_STATUSES, MERGE_STATUSES } from "@/types/status";
@@ -301,22 +301,30 @@ export function IntegratedChatPanel({
         payload.context_id === currentContextId &&
         payload.conversation_id
       ) {
-        setActiveConversation(payload.conversation_id);
+        setActiveConversation(storeContextKey, payload.conversation_id);
         return;
       }
       // Handle retry scenario: task context watching a new execution starting
       // When task is in failed/ready state, currentContextType is "task" but
       // the new execution emits "task_execution". Accept if task ID matches.
+      // Dual-write: set on the panel's current slot (storeContextKey) so the
+      // current panel immediately shows the conversation with no blank flash,
+      // AND pre-populate the new execution slot so when the panel transitions
+      // to task_execution context the conversation is already set.
       if (
         payload.context_type === "task_execution" &&
         currentContextType === "task" &&
         payload.context_id === currentContextId &&
         payload.conversation_id
       ) {
-        setActiveConversation(payload.conversation_id);
+        setActiveConversation(storeContextKey, payload.conversation_id);
+        const executionKey = buildStoreKey(payload.context_type as ContextType, payload.context_id);
+        if (executionKey !== storeContextKey) {
+          setActiveConversation(executionKey, payload.conversation_id);
+        }
       }
     });
-  }, [bus, currentContextType, currentContextId, isHistoryMode, setActiveConversation]);
+  }, [bus, currentContextType, currentContextId, isHistoryMode, setActiveConversation, storeContextKey]);
 
   // Use context-aware selectors - unified queue works for all modes
   const queuedMessagesSelector = useMemo(() => selectQueuedMessages(storeContextKey), [storeContextKey]);
