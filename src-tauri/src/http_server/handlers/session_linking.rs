@@ -92,6 +92,29 @@ fn validate_resolved_team_config(
     (Some(team_mode), validated_json)
 }
 
+/// Synthesize a default initial prompt for verification child sessions that were created
+/// without an explicit `initial_prompt` or `description`. Returns `None` when:
+/// - `purpose` is not `"verification"`, OR
+/// - `effective_description` is `Some` (description branch handles auto-spawn in that case)
+///
+/// When returning `Some`, the prompt includes the metadata suffix that `plan-verifier`
+/// expects to parse: `parent_session_id: X, generation: Y, max_rounds: 3`.
+pub(super) fn synthesize_verification_prompt(
+    purpose: &Option<String>,
+    verification_generation: Option<i32>,
+    effective_description: &Option<String>,
+    parent_session_id: &str,
+) -> Option<String> {
+    if purpose.as_deref() != Some("verification") || effective_description.is_some() {
+        return None;
+    }
+    let gen = verification_generation.unwrap_or(1);
+    Some(format!(
+        "Begin plan verification.\n\nparent_session_id: {}, generation: {}, max_rounds: 3",
+        parent_session_id, gen
+    ))
+}
+
 /// Create a child session linked to a parent session
 ///
 /// Validates parent exists, checks for cycles, creates session with parent_session_id,
@@ -408,6 +431,18 @@ pub async fn create_child_session(
         } else {
             d.clone()
         }
+    });
+
+    // Verification sessions MUST auto-spawn — the parent's in_progress flag is already set.
+    // If no explicit prompt was provided, synthesize a default with verification metadata.
+    // Only fires when BOTH initial_prompt AND description are absent for verification sessions.
+    let effective_initial_prompt = effective_initial_prompt.or_else(|| {
+        synthesize_verification_prompt(
+            &req.purpose,
+            verification_generation,
+            &effective_description,
+            &parent_session_str,
+        )
     });
 
     // Auto-spawn orchestrator agent on child session if initial_prompt is set.
