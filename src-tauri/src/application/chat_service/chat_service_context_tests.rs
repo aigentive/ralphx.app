@@ -1459,3 +1459,126 @@ async fn resolve_working_directory_merge_context_rejects_task_prefix() {
          Got Ok instead of Err."
     );
 }
+
+#[tokio::test]
+async fn resolve_working_directory_review_rejects_missing_worktree_path() {
+    let parent = tempfile::TempDir::new().unwrap();
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let project_dir = parent.path().join("main-repo");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let mut project = Project::new(
+        "test".to_string(),
+        project_dir.to_str().unwrap().to_string(),
+    );
+    project.id = project_id.clone();
+    project.git_mode = GitMode::Worktree;
+    project_repo.create(project).await.unwrap();
+
+    let task = Task::new(project_id, "test task".to_string());
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let result = resolve_working_directory(
+        ChatContextType::Review,
+        task_id.as_str(),
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        std::path::Path::new("/tmp/default"),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Review context in Worktree mode must fail when worktree_path is missing"
+    );
+}
+
+#[tokio::test]
+async fn resolve_working_directory_task_execution_rejects_missing_worktree_dir() {
+    let parent = tempfile::TempDir::new().unwrap();
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let project_dir = parent.path().join("main-repo");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let mut project = Project::new(
+        "test".to_string(),
+        project_dir.to_str().unwrap().to_string(),
+    );
+    project.id = project_id.clone();
+    project.git_mode = GitMode::Worktree;
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, "test task".to_string());
+    task.worktree_path = Some(
+        parent
+            .path()
+            .join("task-missing")
+            .to_string_lossy()
+            .to_string(),
+    );
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let result = resolve_working_directory(
+        ChatContextType::TaskExecution,
+        task_id.as_str(),
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        std::path::Path::new("/tmp/default"),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "TaskExecution in Worktree mode must fail when worktree_path directory is missing"
+    );
+}
+
+#[tokio::test]
+async fn resolve_working_directory_review_rejects_merge_worktree_path() {
+    let parent = tempfile::TempDir::new().unwrap();
+    let wt = parent.path().join("merge-abc123");
+    std::fs::create_dir_all(&wt).unwrap();
+    let wt_path = wt.to_str().unwrap().to_string();
+
+    let task_repo = Arc::new(MemoryTaskRepository::new());
+    let project_repo = Arc::new(MemoryProjectRepository::new());
+
+    let project_id = ProjectId::from_string("proj-1".to_string());
+    let project_dir = parent.path().join("main-repo");
+    std::fs::create_dir_all(&project_dir).unwrap();
+    let mut project = Project::new(
+        "test".to_string(),
+        project_dir.to_str().unwrap().to_string(),
+    );
+    project.id = project_id.clone();
+    project.git_mode = GitMode::Worktree;
+    project_repo.create(project).await.unwrap();
+
+    let mut task = Task::new(project_id, "test task".to_string());
+    task.worktree_path = Some(wt_path);
+    let task_id = task.id.clone();
+    task_repo.create(task).await.unwrap();
+
+    let result = resolve_working_directory(
+        ChatContextType::Review,
+        task_id.as_str(),
+        Arc::clone(&project_repo) as Arc<dyn ProjectRepository>,
+        Arc::clone(&task_repo) as Arc<dyn TaskRepository>,
+        Arc::new(MockIdeationRepo::empty()) as Arc<dyn IdeationSessionRepository>,
+        std::path::Path::new("/tmp/default"),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "Review context must reject merge-* worktree paths"
+    );
+}

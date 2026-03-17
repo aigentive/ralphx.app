@@ -257,12 +257,29 @@ impl GitService {
                         })
                     });
                 if let Some(other) = other_path {
-                    debug!("Removing stale worktree at {:?} to free branch", other);
+                    let other_path = std::path::PathBuf::from(other);
+                    let same_as_repo = {
+                        let repo_norm = repo.canonicalize().unwrap_or_else(|_| repo.to_path_buf());
+                        let other_norm = other_path
+                            .canonicalize()
+                            .unwrap_or_else(|_| other_path.clone());
+                        other_norm == repo_norm
+                    };
+
+                    if same_as_repo {
+                        return Err(AppError::GitOperation(format!(
+                            "Refusing to remove primary repo path '{}' while creating worktree for branch '{}'",
+                            other_path.display(),
+                            branch
+                        )));
+                    }
+
+                    debug!("Removing stale worktree at {:?} to free branch", other_path);
                     let _ = git_cmd::run(&["worktree", "unlock", other], repo).await;
                     let _ = git_cmd::run(&["worktree", "remove", "-f", "-f", other], repo).await;
                     // Also try tokio::fs::remove_dir_all as fallback for unregistered dirs
-                    if std::path::Path::new(other).exists() {
-                        let _ = tokio::fs::remove_dir_all(other).await;
+                    if other_path.exists() {
+                        let _ = tokio::fs::remove_dir_all(&other_path).await;
                     }
                 }
                 let _ = git_cmd::run(&["worktree", "prune"], repo).await;

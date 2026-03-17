@@ -284,24 +284,71 @@ pub async fn resolve_working_directory(
                 .await
             {
                 if let Ok(Some(project)) = project_repo.get_by_id(&task.project_id).await {
-                    // For Worktree mode, use task's worktree_path if available and exists
                     if project.git_mode == GitMode::Worktree {
-                        if let Some(worktree_path) = &task.worktree_path {
-                            let path = PathBuf::from(worktree_path);
-                            if path.exists() {
-                                return Ok(path);
-                            }
+                        let project_path = PathBuf::from(&project.working_directory);
+                        let Some(worktree_path) = task.worktree_path.as_ref() else {
+                            tracing::error!(
+                                context_type = ?context_type,
+                                context_id = context_id,
+                                "Worktree mode task has no worktree_path — refusing to run in main repo"
+                            );
+                            return Err(format!(
+                                "{} context {} has no worktree_path in Worktree mode",
+                                context_type, context_id
+                            ));
+                        };
+
+                        let path = PathBuf::from(worktree_path);
+                        if !path.exists() {
+                            tracing::error!(
+                                context_type = ?context_type,
+                                context_id = context_id,
+                                worktree_path = worktree_path,
+                                "Worktree mode task has non-existent worktree_path — refusing to run in main repo"
+                            );
+                            return Err(format!(
+                                "{} context {} has missing worktree_path {} in Worktree mode",
+                                context_type, context_id, worktree_path
+                            ));
                         }
-                    }
-                    // No worktree_path available — fall back to project's working directory.
-                    // This is risky: the agent may run git operations in the user's checkout.
-                    if project.git_mode == GitMode::Worktree {
-                        tracing::warn!(
-                            context_type = ?context_type,
-                            context_id = context_id,
-                            "Agent CWD falling back to main repo: task has no worktree_path. \
-                             Agent may run git operations in the user's checkout."
-                        );
+
+                        if path == project_path {
+                            tracing::error!(
+                                context_type = ?context_type,
+                                context_id = context_id,
+                                "Worktree mode task points to main repo — refusing to run in user's checkout"
+                            );
+                            return Err(format!(
+                                "{} context {} points to main repo path in Worktree mode",
+                                context_type, context_id
+                            ));
+                        }
+
+                        let is_merge_like = path
+                            .file_name()
+                            .and_then(|name| name.to_str())
+                            .map(|name| {
+                                name.starts_with("merge-")
+                                    || name.starts_with("rebase-")
+                                    || name.starts_with("plan-update-")
+                                    || name.starts_with("source-update-")
+                            })
+                            .unwrap_or(false);
+
+                        if is_merge_like {
+                            tracing::error!(
+                                context_type = ?context_type,
+                                context_id = context_id,
+                                worktree_path = worktree_path,
+                                "Task/review context points to merge worktree — refusing unsafe CWD"
+                            );
+                            return Err(format!(
+                                "{} context {} points to merge worktree {}",
+                                context_type, context_id, worktree_path
+                            ));
+                        }
+
+                        return Ok(path);
                     }
                     return Ok(PathBuf::from(&project.working_directory));
                 }
