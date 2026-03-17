@@ -650,6 +650,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // POST /api/ideation/sessions/:id/message
       const { session_id, message } = args as { session_id: string; message: string };
       result = await callTauri(`ideation/sessions/${session_id}/message`, { message });
+    } else if (name === "delete_task_proposal") {
+      // Alias for archive_task_proposal — no /api/delete_task_proposal route exists in backend
+      const { proposal_id } = args as { proposal_id: string };
+      result = await callTauri("archive_task_proposal", { proposal_id });
     } else {
       // Default: POST request
       result = await callTauri(name, (args as Record<string, unknown>) || {});

@@ -1,4 +1,14 @@
-import { useRef, useState, useEffect, useLayoutEffect, useMemo } from "react";
+import { useRef, useState, useCallback, useEffect, useLayoutEffect, useMemo } from "react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { useProposalStore } from "@/stores/proposalStore";
 import { useIdeationStore } from "@/stores/ideationStore";
 import type { IdeationSession, TaskProposal } from "@/types/ideation";
@@ -32,6 +42,7 @@ interface ProposalsTabContentProps {
   onReviewSync: () => void;
   onUndoSync: () => void;
   onDismissSync: () => void;
+  onDeleteProposal?: (proposalId: string) => void;
 }
 
 // ============================================================================
@@ -56,9 +67,26 @@ export function ProposalsTabContent({
   onReviewSync,
   onUndoSync,
   onDismissSync,
+  onDeleteProposal,
 }: ProposalsTabContentProps) {
   const proposalsScrollRef = useRef<HTMLDivElement>(null);
   const [recentlyUpdatedProposalId, setRecentlyUpdatedProposalId] = useState<string | null>(null);
+  const [deletingProposalId, setDeletingProposalId] = useState<string | null>(null);
+
+  const handleDeleteRequest = useCallback((proposalId: string) => {
+    setDeletingProposalId(proposalId);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(() => {
+    if (deletingProposalId && onDeleteProposal) {
+      onDeleteProposal(deletingProposalId);
+    }
+    setDeletingProposalId(null);
+  }, [deletingProposalId, onDeleteProposal]);
+
+  const handleDeleteCancel = useCallback(() => {
+    setDeletingProposalId(null);
+  }, []);
 
   // Track scroll state across session switches and proposal changes
   const lastScrollSessionIdRef = useRef<string | null>(null);
@@ -183,9 +211,25 @@ export function ProposalsTabContent({
             onViewHistoricalPlan={onViewHistoricalPlan}
             {...(onViewProposal !== undefined && { onViewDetail: onViewProposal })}
             {...(selectedProposalId != null && { selectedProposalId })}
+            {...(!isReadOnly && onDeleteProposal !== undefined && { onDelete: handleDeleteRequest })}
           />
         )}
       </div>
+
+      <AlertDialog open={deletingProposalId !== null} onOpenChange={(open) => { if (!open) handleDeleteCancel(); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete proposal?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the proposal. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeleteCancel}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

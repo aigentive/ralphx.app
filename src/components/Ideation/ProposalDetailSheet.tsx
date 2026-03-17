@@ -4,9 +4,19 @@
  * Design: Dark glass aesthetic with backdrop blur, warm orange accent
  */
 
-import React, { useEffect, useCallback } from "react";
-import { X, FileEdit, ExternalLink, CheckSquare } from "lucide-react";
+import React, { useEffect, useCallback, useState } from "react";
+import { X, FileEdit, Trash2, ExternalLink, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { TaskProposal } from "@/types/ideation";
 import type { DependencyDetail } from "./ProposalCard";
 import { PRIORITY_CONFIG } from "./PlanningView.constants";
@@ -27,6 +37,7 @@ export interface ProposalDetailSheetProps {
   isReadOnly?: boolean;
   onClose: () => void;
   onEdit?: (proposalId: string) => void;
+  onDelete?: (proposalId: string) => void;
   onNavigateToTask?: (taskId: string) => void;
 }
 
@@ -63,8 +74,11 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
   isReadOnly = false,
   onClose,
   onEdit,
+  onDelete,
   onNavigateToTask,
 }: ProposalDetailSheetProps) {
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
@@ -157,6 +171,21 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
                 title="Edit proposal"
               >
                 <FileEdit className="w-3.5 h-3.5" />
+              </Button>
+            )}
+            {!isReadOnly && onDelete && (
+              <Button
+                data-testid="delete-proposal-button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 rounded-lg"
+                style={{ color: "hsl(220 10% 55%)" }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "hsla(0 85% 60% / 0.08)"; e.currentTarget.style.color = "hsl(0 85% 60%)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "hsl(220 10% 55%)"; }}
+                onClick={() => setDeleteDialogOpen(true)}
+                title="Delete proposal"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
               </Button>
             )}
             <Button
@@ -365,6 +394,31 @@ export const ProposalDetailSheet = React.memo(function ProposalDetailSheet({
           </div>
         </div>
       </div>
+      {onDelete && (
+        <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete Proposal</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete "{proposal.title}"? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  onDelete(proposal.id);
+                  onClose();
+                }}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </>
   );
 });
