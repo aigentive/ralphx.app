@@ -1809,7 +1809,3 @@ pub async fn send_child_session_message_handler(
         }
     }
 }
-
-#[cfg(test)]
-#[path = "ideation_tests.rs"]
-mod tests;

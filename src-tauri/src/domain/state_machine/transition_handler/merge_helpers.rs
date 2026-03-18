@@ -563,7 +563,7 @@ pub(crate) fn clear_merge_deferred_metadata(task: &mut Task) {
 }
 
 /// Default timeout in seconds after which a deferred merge is forced to retry.
-pub(crate) const DEFERRED_MERGE_TIMEOUT_SECONDS: i64 = 120;
+pub const DEFERRED_MERGE_TIMEOUT_SECONDS: i64 = 120;
 
 /// Check if a `merge_deferred` task has exceeded the configured timeout.
 ///

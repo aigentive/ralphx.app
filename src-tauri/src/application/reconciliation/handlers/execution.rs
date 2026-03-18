@@ -40,7 +40,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// - If IPR has no entry → returns false (no interactive process)
     /// - If IPR has entry AND registry has entry with alive PID → returns true
     /// - If IPR has entry BUT no registry entry or PID is dead → removes stale IPR entry, returns false
-    pub(crate) async fn is_ipr_process_alive(
+    #[doc(hidden)]
+    pub async fn is_ipr_process_alive(
         &self,
         context_type: ChatContextType,
         context_id: &str,
@@ -526,7 +527,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
-    pub(crate) async fn reconcile_completed_execution(
+    #[doc(hidden)]
+    pub async fn reconcile_completed_execution(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -796,7 +798,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// 11. Emit ActivityEvent for visibility (H10)
     /// 12. Record AutoRetryTriggered event in recovery metadata
     /// 13. Dispatch TaskEvent::Retry → Failed → Ready
-    pub(crate) async fn reconcile_failed_execution_task(
+    #[doc(hidden)]
+    pub async fn reconcile_failed_execution_task(
         &self,
         task: &crate::domain::entities::Task,
         _status: InternalStatus,
@@ -1182,7 +1185,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
         true
     }
 
-    pub(crate) async fn reconcile_reviewing_task(
+    #[doc(hidden)]
+    pub async fn reconcile_reviewing_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -1477,7 +1481,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// - ProviderError with retry_after passed and resume_attempts < MAX → resume via entry actions
     /// - ProviderError with max attempts exceeded → transition to Failed
     /// - No metadata → skip (user-paused task)
-    pub(crate) async fn reconcile_paused_provider_error(
+    #[doc(hidden)]
+    pub async fn reconcile_paused_provider_error(
         &self,
         task: &crate::domain::entities::Task,
     ) -> bool {

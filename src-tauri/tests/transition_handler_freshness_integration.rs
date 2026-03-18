@@ -15,10 +15,14 @@
 // sequential scenarios using mocked and real repos. These integration tests
 // focus on verifiable end-to-end git interaction patterns.
 
-use super::helpers::*;
-use super::super::freshness::{ensure_branches_fresh, FreshnessAction, FreshnessMetadata};
-use crate::domain::entities::{Project, ProjectId, Task};
-use crate::infrastructure::agents::claude::ReconciliationConfig;
+mod support;
+
+use ralphx_lib::domain::entities::{Project, ProjectId, Task};
+use ralphx_lib::domain::state_machine::transition_handler::freshness::{
+    ensure_branches_fresh, FreshnessAction, FreshnessMetadata,
+};
+use ralphx_lib::infrastructure::agents::claude::ReconciliationConfig;
+use support::real_git_repo::{setup_real_git_repo, RealGitRepo};
 
 // ==================
 // Local helpers
@@ -118,7 +122,6 @@ fn setup_conflicting_git_repo() -> RealGitRepo {
 
     RealGitRepo {
         dir,
-        _main_branch: "main".to_string(),
         task_branch,
     }
 }

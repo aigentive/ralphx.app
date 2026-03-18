@@ -120,14 +120,6 @@ mod merge_target_resolution;
 // Branch freshness timeout tests: config, env override, YAML deserialization
 mod branch_freshness_timeout;
 
-// Unit tests for ensure_branches_fresh(): config toggle, skip window, plan/source
-// result mapping, retry counting, dual-conflict sequential scenario
-mod freshness_tests;
-
-// Real git integration tests for ensure_branches_fresh(): fresh branch passes,
-// stale branch routes to Merging, disabled config skips
-mod freshness_integration_tests;
-
 // Merge pipeline timeout integration tests: real git + memory repos + mock agents
 // Covers: lsof timeout, pre-merge cleanup, stale index.lock, stale worktree, full E2E
 mod merge_pipeline_timeout_tests;
@@ -213,10 +205,6 @@ mod phase2_phase3_merge_tests;
 // Locked worktree tests: empirical verification of unlock + double-force behavior
 // RC1: single --force fails on locked worktrees; -f -f and unlock+prune succeed
 mod locked_worktree_tests;
-
-// Concurrent plan branch freshness tests: multi-task concurrency, stress scenarios,
-// dirty worktree edge cases, git lock contention handling
-mod concurrent_freshness_tests;
 
 // Integration tests for conflict marker scan before reviewer spawn (Fix 2) and
 // BranchFreshnessConflict metadata persistence during on_enter(Reviewing)

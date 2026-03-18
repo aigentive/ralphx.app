@@ -1,11 +1,13 @@
-// Tests for require_admin_key middleware and management route auth enforcement.
-
-use super::*;
-use crate::application::AppState;
-use crate::commands::ExecutionState;
-use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE};
-use crate::domain::services::key_crypto::{generate_raw_key, hash_key, key_prefix};
 use axum::{body::Body, extract::{Path, State}, http::Request, routing::get, Json};
+use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{
+    ApiKey, ApiKeyId, PERMISSION_ADMIN, PERMISSION_READ, PERMISSION_WRITE,
+};
+use ralphx_lib::domain::services::key_crypto::{generate_raw_key, hash_key, key_prefix};
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::types::HttpServerState;
+use ralphx_lib::testing::SqliteTestDb;
 use std::sync::Arc;
 use tower::ServiceExt;
 
@@ -16,10 +18,8 @@ use tower::ServiceExt;
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     HttpServerState {
         app_state,
         execution_state,
@@ -31,12 +31,12 @@ async fn setup_test_state() -> HttpServerState {
 /// Build a test state where the api_key_repo is backed by a real SQLite in-memory database.
 /// Needed for tests that rely on real error semantics (e.g., NotFound from
 /// update_api_key_permissions when a key doesn't exist).
-fn setup_sqlite_api_key_state() -> (crate::testing::SqliteTestDb, HttpServerState) {
-    use crate::infrastructure::sqlite::sqlite_api_key_repo::SqliteApiKeyRepository;
+fn setup_sqlite_api_key_state() -> (SqliteTestDb, HttpServerState) {
+    use ralphx_lib::infrastructure::sqlite::sqlite_api_key_repo::SqliteApiKeyRepository;
 
-    let db = crate::testing::SqliteTestDb::new("http-handler-api-keys");
+    let db = SqliteTestDb::new("http-handler-api-keys");
     let shared_conn = db.shared_conn();
-    let sqlite_repo: Arc<dyn crate::domain::repositories::ApiKeyRepository> =
+    let sqlite_repo: Arc<dyn ralphx_lib::domain::repositories::ApiKeyRepository> =
         Arc::new(SqliteApiKeyRepository::from_shared(shared_conn));
 
     // Build a base test state, then override the api_key_repo with the real SQLite one.
@@ -44,10 +44,8 @@ fn setup_sqlite_api_key_state() -> (crate::testing::SqliteTestDb, HttpServerStat
     app_state.api_key_repo = sqlite_repo;
 
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     let state = HttpServerState {
         app_state: Arc::new(app_state),
         execution_state,

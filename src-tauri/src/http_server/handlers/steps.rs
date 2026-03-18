@@ -704,7 +704,3 @@ pub async fn execution_complete_http(
         message: format!("Execution complete for task {}", task_id_str),
     }))
 }
-
-#[cfg(test)]
-#[path = "steps_tests.rs"]
-mod tests;

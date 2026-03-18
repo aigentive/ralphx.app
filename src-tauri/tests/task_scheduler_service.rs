@@ -1,9 +1,13 @@
-use super::*;
-use crate::application::AppState;
-use crate::domain::entities::{Project, Task};
-use crate::domain::entities::{
-    ArtifactId, ExecutionPlanId, IdeationSessionId, PlanBranch, PlanBranchStatus,
+use ralphx_lib::application::{AppState, ReadyWatchdog, TaskSchedulerService};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{
+    ArtifactId, ExecutionPlanId, GitMode, IdeationSession, IdeationSessionId, InternalStatus,
+    PlanBranch, PlanBranchStatus, Project, ProjectId, Task,
 };
+use ralphx_lib::domain::state_machine::services::TaskScheduler;
+use ralphx_lib::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
+use ralphx_lib::infrastructure::agents::claude::scheduler_config;
+use std::sync::Arc;
 
 /// Helper to create test state
 async fn setup_test_state() -> (Arc<ExecutionState>, AppState) {
@@ -281,7 +285,7 @@ async fn test_find_oldest_schedulable_task() {
     let scheduler = build_scheduler(&app_state, &execution_state);
 
     // Should find only the Ready task
-    let found = scheduler.find_oldest_schedulable_task().await;
+    let found = scheduler.find_oldest_schedulable_task_for_test().await;
     assert!(found.is_some());
     assert_eq!(found.unwrap().id, ready_task.id);
 }
@@ -298,8 +302,6 @@ async fn test_trait_object_safety() {
 
 #[tokio::test]
 async fn test_worktree_mode_allows_parallel_tasks() {
-    use crate::domain::entities::GitMode;
-
     let (execution_state, app_state) = setup_test_state().await;
     execution_state.set_max_concurrent(10);
 
@@ -329,7 +331,7 @@ async fn test_worktree_mode_allows_parallel_tasks() {
     let scheduler = build_scheduler(&app_state, &execution_state);
 
     // Should find the Ready task (Worktree mode allows parallel)
-    let found = scheduler.find_oldest_schedulable_task().await;
+    let found = scheduler.find_oldest_schedulable_task_for_test().await;
     assert!(
         found.is_some(),
         "Worktree mode should allow parallel task execution"
@@ -343,8 +345,6 @@ async fn test_worktree_mode_allows_parallel_tasks() {
 
 #[tokio::test]
 async fn test_schedules_multiple_tasks_up_to_capacity() {
-    use crate::domain::entities::GitMode;
-
     let (execution_state, app_state) = setup_test_state().await;
 
     // Set max concurrent to 3
@@ -405,8 +405,6 @@ async fn test_schedules_multiple_tasks_up_to_capacity() {
 
 #[tokio::test]
 async fn test_loop_stops_at_capacity() {
-    use crate::domain::entities::GitMode;
-
     let (execution_state, app_state) = setup_test_state().await;
 
     // Set max concurrent to 2, pre-fill 1 running slot
@@ -1093,13 +1091,13 @@ async fn test_contention_queues_retry_when_self_ref_set() {
 
     // Verify no pending retries initially
     assert_eq!(
-        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        scheduler.contention_retry_pending_for_test(),
         0,
         "No pending retries at start"
     );
 
     // Hold the scheduling_lock to simulate contention
-    let _guard = scheduler.scheduling_lock.lock().await;
+    let _guard = scheduler.lock_scheduling_for_test().await;
 
     // Call try_schedule_ready_tasks while lock is held — should queue a retry
     // We can't await it directly because it would block. Spawn it.
@@ -1112,7 +1110,7 @@ async fn test_contention_queues_retry_when_self_ref_set() {
 
     // A retry should now be pending (spawned but sleeping for 200ms)
     assert_eq!(
-        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        scheduler.contention_retry_pending_for_test(),
         1,
         "One retry should be pending after contention"
     );
@@ -1125,7 +1123,7 @@ async fn test_contention_queues_retry_when_self_ref_set() {
 
     // After retry completes, counter should be back to 0
     assert_eq!(
-        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        scheduler.contention_retry_pending_for_test(),
         0,
         "Retry counter should return to 0 after retry fires"
     );
@@ -1141,7 +1139,7 @@ async fn test_contention_drops_silently_without_self_ref() {
     let scheduler = Arc::new(build_scheduler(&app_state, &execution_state));
     // Deliberately do NOT call set_self_ref
 
-    let _guard = scheduler.scheduling_lock.lock().await;
+    let _guard = scheduler.lock_scheduling_for_test().await;
 
     let scheduler2 = Arc::clone(&scheduler);
     tokio::spawn(async move {
@@ -1152,7 +1150,7 @@ async fn test_contention_drops_silently_without_self_ref() {
 
     // No retry queued because self_ref is None
     assert_eq!(
-        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        scheduler.contention_retry_pending_for_test(),
         0,
         "No retry queued when self_ref is not set"
     );
@@ -1170,11 +1168,9 @@ async fn test_contention_respects_max_retry_limit() {
 
     // Pre-fill the retry counter to the maximum
     let max_retries = scheduler_config().max_contention_retries as u32;
-    scheduler
-        .contention_retry_pending
-        .store(max_retries, Ordering::Relaxed);
+    scheduler.set_contention_retry_pending_for_test(max_retries);
 
-    let _guard = scheduler.scheduling_lock.lock().await;
+    let _guard = scheduler.lock_scheduling_for_test().await;
 
     let scheduler2 = Arc::clone(&scheduler);
     tokio::spawn(async move {
@@ -1186,7 +1182,7 @@ async fn test_contention_respects_max_retry_limit() {
 
     // Counter must stay at MAX (not incremented further)
     assert_eq!(
-        scheduler.contention_retry_pending.load(Ordering::Relaxed),
+        scheduler.contention_retry_pending_for_test(),
         max_retries,
         "Counter must not exceed max_contention_retries"
     );
@@ -1353,8 +1349,8 @@ async fn test_watchdog_configurable_threshold() {
     .with_stale_threshold_secs(120)
     .with_interval_secs(30);
 
-    assert_eq!(watchdog.stale_threshold_secs, 120);
-    assert_eq!(watchdog.interval_secs, 30);
+    assert_eq!(watchdog.stale_threshold_secs_for_test(), 120);
+    assert_eq!(watchdog.interval_secs_for_test(), 30);
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -1363,7 +1359,7 @@ async fn test_watchdog_configurable_threshold() {
 
 /// Helper: create a task with merge_deferred flag and a timestamp in the past
 fn make_deferred_task_with_age(
-    project_id: &crate::domain::entities::ProjectId,
+    project_id: &ProjectId,
     title: &str,
     seconds_ago: i64,
 ) -> Task {
@@ -1383,7 +1379,7 @@ fn make_deferred_task_with_age(
 
 /// Helper: create a task with main_merge_deferred flag and a timestamp in the past
 fn make_main_deferred_task_with_age(
-    project_id: &crate::domain::entities::ProjectId,
+    project_id: &ProjectId,
     title: &str,
     seconds_ago: i64,
 ) -> Task {
@@ -1403,8 +1399,6 @@ fn make_main_deferred_task_with_age(
 
 #[tokio::test]
 async fn test_retry_deferred_merges_proceeds_when_within_timeout() {
-    use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
-
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
@@ -1444,8 +1438,6 @@ async fn test_retry_deferred_merges_proceeds_when_within_timeout() {
 
 #[tokio::test]
 async fn test_retry_deferred_merges_logs_warning_when_timeout_exceeded() {
-    use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
-
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
@@ -1486,8 +1478,6 @@ async fn test_retry_deferred_merges_logs_warning_when_timeout_exceeded() {
 
 #[tokio::test]
 async fn test_retry_main_merges_bypasses_sibling_guard_when_timeout_exceeded() {
-    use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
-
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
@@ -1498,7 +1488,7 @@ async fn test_retry_main_merges_bypasses_sibling_guard_when_timeout_exceeded() {
         .unwrap();
 
     // Create an ideation session
-    let session = crate::domain::entities::IdeationSession::new(project.id.clone());
+    let session = IdeationSession::new(project.id.clone());
     app_state
         .ideation_session_repo
         .create(session.clone())
@@ -1552,7 +1542,7 @@ async fn test_retry_main_merges_respects_sibling_guard_when_not_timed_out() {
         .unwrap();
 
     // Create an ideation session
-    let session = crate::domain::entities::IdeationSession::new(project.id.clone());
+    let session = IdeationSession::new(project.id.clone());
     app_state
         .ideation_session_repo
         .create(session.clone())
@@ -1594,8 +1584,6 @@ async fn test_retry_main_merges_respects_sibling_guard_when_not_timed_out() {
 
 #[tokio::test]
 async fn test_retry_main_merges_retries_when_no_session_and_timed_out() {
-    use crate::domain::state_machine::transition_handler::DEFERRED_MERGE_TIMEOUT_SECONDS;
-
     let (execution_state, app_state) = setup_test_state().await;
 
     let project = Project::new("Test Project".to_string(), "/test/path".to_string());
@@ -1886,7 +1874,7 @@ async fn test_scheduler_schedules_ready_task_with_cancelled_blocker() {
 
 /// Helper to create a plan branch linked to an execution plan
 fn create_plan_branch_for_exec_plan(
-    project_id: &crate::domain::entities::ProjectId,
+    project_id: &ProjectId,
     session_id: &IdeationSessionId,
     exec_plan_id: &ExecutionPlanId,
     status: PlanBranchStatus,

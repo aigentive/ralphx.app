@@ -18,7 +18,8 @@ use super::super::policy::{
 use super::super::ReconciliationRunner;
 
 impl<R: Runtime> ReconciliationRunner<R> {
-    pub(crate) async fn reconcile_merging_task(
+    #[doc(hidden)]
+    pub async fn reconcile_merging_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -293,7 +294,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await
     }
 
-    pub(crate) async fn reconcile_pending_merge_task(
+    #[doc(hidden)]
+    pub async fn reconcile_pending_merge_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -470,7 +472,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .await
     }
 
-    pub(crate) async fn reconcile_merge_incomplete_task(
+    #[doc(hidden)]
+    pub async fn reconcile_merge_incomplete_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,
@@ -833,7 +836,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
         }
     }
 
-    pub(crate) async fn reconcile_merge_conflict_task(
+    #[doc(hidden)]
+    pub async fn reconcile_merge_conflict_task(
         &self,
         task: &crate::domain::entities::Task,
         status: InternalStatus,

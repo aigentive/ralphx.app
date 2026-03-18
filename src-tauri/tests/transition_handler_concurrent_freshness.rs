@@ -11,11 +11,15 @@
 // These tests complement freshness_tests.rs (unit) and freshness_integration_tests.rs
 // (basic integration) by focusing on multi-task concurrency and edge-case resilience.
 
-use super::super::freshness::{ensure_branches_fresh, FreshnessAction};
-use super::helpers::*;
-use crate::domain::entities::{Project, ProjectId, Task};
-use crate::infrastructure::agents::claude::ReconciliationConfig;
+mod support;
+
+use ralphx_lib::domain::entities::{Project, ProjectId, Task};
+use ralphx_lib::domain::state_machine::transition_handler::freshness::{
+    ensure_branches_fresh, FreshnessAction,
+};
+use ralphx_lib::infrastructure::agents::claude::ReconciliationConfig;
 use std::sync::Arc;
+use support::real_git_repo::setup_real_git_repo;
 
 // ==================
 // Shared test helpers

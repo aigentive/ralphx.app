@@ -18,7 +18,8 @@ use super::ReconciliationRunner;
 
 impl<R: Runtime> ReconciliationRunner<R> {
     /// Count `AttemptFailed` events in merge recovery metadata (Merging state retries).
-    pub(crate) fn merging_auto_retry_count(task: &Task) -> u32 {
+    #[doc(hidden)]
+    pub fn merging_auto_retry_count(task: &Task) -> u32 {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()
@@ -76,7 +77,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Count `AutoRetryTriggered` events for circuit-breaker purposes.
     /// Excludes events where `failure_source == Some(TargetBranchBusy)` because deferral-based
     /// retries must never count toward the circuit breaker threshold (`AutoRetryNoCB` strategy).
-    pub(crate) fn merge_incomplete_auto_retry_count(task: &Task) -> u32 {
+    #[doc(hidden)]
+    pub fn merge_incomplete_auto_retry_count(task: &Task) -> u32 {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()
@@ -107,7 +109,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .unwrap_or(0)
     }
 
-    pub(crate) fn merge_incomplete_retry_delay(retry_count: u32) -> chrono::Duration {
+    #[doc(hidden)]
+    pub fn merge_incomplete_retry_delay(retry_count: u32) -> chrono::Duration {
         use rand::Rng;
         let exponent = retry_count.min(6);
         let scaled = (reconciliation_config().merge_incomplete_retry_base_secs as i64)
@@ -136,7 +139,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
             .unwrap_or(0)
     }
 
-    pub(crate) fn merge_conflict_retry_delay(retry_count: u32) -> chrono::Duration {
+    #[doc(hidden)]
+    pub fn merge_conflict_retry_delay(retry_count: u32) -> chrono::Duration {
         use rand::Rng;
         let exponent = retry_count.min(6);
         let scaled = (reconciliation_config().merge_conflict_retry_base_secs as i64)
@@ -149,7 +153,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Returns true if the task's failure was explicitly reported by the merger agent
     /// (via report_conflict or report_incomplete endpoints). These should NOT be auto-retried
     /// because the agent made a deliberate decision requiring human intervention.
-    pub(crate) fn is_agent_reported_failure(task: &Task) -> bool {
+    #[doc(hidden)]
+    pub fn is_agent_reported_failure(task: &Task) -> bool {
         task.metadata
             .as_deref()
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
@@ -162,7 +167,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Returns true if a user-initiated merge retry is currently in progress.
     /// The flag is a RFC3339 timestamp; it auto-expires after 60 s to prevent stuck state
     /// if the background task panics before clearing the guard.
-    pub(crate) fn has_merge_retry_in_progress(task: &Task) -> bool {
+    #[doc(hidden)]
+    pub fn has_merge_retry_in_progress(task: &Task) -> bool {
         task.metadata
             .as_deref()
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
@@ -201,7 +207,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Returns true if the merge pipeline (attempt_programmatic_merge) is actively running.
     /// Reads from the dedicated `merge_pipeline_active` column (RFC3339 timestamp).
     /// Auto-expires after attempt_merge_deadline_secs as a crash safety net.
-    pub(crate) fn has_merge_pipeline_active(task: &Task) -> bool {
+    #[doc(hidden)]
+    pub fn has_merge_pipeline_active(task: &Task) -> bool {
         task.merge_pipeline_active
             .as_deref()
             .and_then(|ts| {
@@ -215,7 +222,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     /// Returns the number of times post-merge validation has reverted the merge commit.
     /// Used to break validation→revert→retry loops.
-    pub(crate) fn validation_revert_count(task: &Task) -> u32 {
+    #[doc(hidden)]
+    pub fn validation_revert_count(task: &Task) -> u32 {
         task.metadata
             .as_deref()
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
@@ -304,7 +312,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Returns true if the task has mode_switch=true in metadata (AD12).
     /// Set by handle_pr_mode_switch when toggling PR→push-to-main mid-Merging.
     /// Used by reconcile_merge_incomplete_task to bypass all guards and retry immediately.
-    pub(crate) fn is_mode_switch(task: &Task) -> bool {
+    #[doc(hidden)]
+    pub fn is_mode_switch(task: &Task) -> bool {
         task.metadata
             .as_deref()
             .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
@@ -314,7 +323,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     /// Returns true if the circuit breaker has been triggered, preventing auto-retry.
     /// The circuit breaker is cleared when the user manually retries.
-    pub(crate) fn is_circuit_breaker_active(task: &Task) -> bool {
+    #[doc(hidden)]
+    pub fn is_circuit_breaker_active(task: &Task) -> bool {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()
@@ -331,7 +341,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// excludes them because `AutoRetryNoCB != AutoRetry`. Deferral-based retries can recur
     /// many times while other tasks hold the target branch — triggering the circuit breaker
     /// would incorrectly block a healthy task.
-    pub(crate) fn should_circuit_break(
+    #[doc(hidden)]
+    pub fn should_circuit_break(
         task: &Task,
         threshold: usize,
         window: usize,
@@ -420,7 +431,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     }
 
     /// Get rate_limit_retry_after from merge recovery metadata, if set.
-    pub(crate) fn get_rate_limit_retry_after(task: &Task) -> Option<String> {
+    #[doc(hidden)]
+    pub fn get_rate_limit_retry_after(task: &Task) -> Option<String> {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()
@@ -453,7 +465,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     }
 
     /// Get the last stored source branch SHA from merge recovery events.
-    pub(crate) fn last_stored_source_sha(task: &Task) -> Option<String> {
+    #[doc(hidden)]
+    pub fn last_stored_source_sha(task: &Task) -> Option<String> {
         MergeRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()
@@ -507,7 +520,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 // Called by reconcile_failed_execution_task() (Wave 3 handler in execution.rs).
 impl<R: Runtime> ReconciliationRunner<R> {
     /// Count `AutoRetryTriggered` events in execution recovery metadata.
-    pub(crate) fn execution_failed_auto_retry_count(task: &Task) -> u32 {
+    #[doc(hidden)]
+    pub fn execution_failed_auto_retry_count(task: &Task) -> u32 {
         ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()
@@ -522,7 +536,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     /// Count `AutoRetryTriggered` events filtered by failure source.
     /// Used for per-source retry budgets — keeps GitIsolation and timeout budgets independent.
-    pub(crate) fn execution_failed_auto_retry_count_for_source(
+    #[doc(hidden)]
+    pub fn execution_failed_auto_retry_count_for_source(
         task: &Task,
         source: ExecutionFailureSource,
     ) -> u32 {
@@ -538,7 +553,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// When `failure_source` is `Some(GitIsolation)`, uses `git_isolation_retry_base_secs`
     /// (shorter — git transient issues resolve quickly after cleanup).
     /// Mirrors `merge_incomplete_retry_delay()`.
-    pub(crate) fn execution_failed_retry_delay(
+    #[doc(hidden)]
+    pub fn execution_failed_retry_delay(
         retry_count: u32,
         failure_source: Option<ExecutionFailureSource>,
     ) -> chrono::Duration {
@@ -557,7 +573,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     /// Returns true if the task's execution recovery has `stop_retrying` set.
     #[allow(dead_code)]
-    pub(crate) fn has_execution_stop_retrying(task: &Task) -> bool {
+    #[doc(hidden)]
+    pub fn has_execution_stop_retrying(task: &Task) -> bool {
         ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
             .ok()
             .flatten()
@@ -567,7 +584,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     /// Append an `AutoRetryTriggered` event to the task's execution recovery metadata.
     /// Uses targeted `update_metadata()` SQL path to prevent metadata write races (GAP H7).
-    pub(crate) async fn record_execution_auto_retry_event(
+    #[doc(hidden)]
+    pub async fn record_execution_auto_retry_event(
         &self,
         task: &Task,
         attempt: u32,
@@ -604,7 +622,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Set `stop_retrying = true` in the task's execution recovery metadata.
     /// Appends a `StopRetrying` event and transitions state to `Failed`.
     /// Uses targeted `update_metadata()` SQL path (GAP H7).
-    pub(crate) async fn set_execution_stop_retrying(&self, task: &Task) -> Result<(), String> {
+    #[doc(hidden)]
+    pub async fn set_execution_stop_retrying(&self, task: &Task) -> Result<(), String> {
         let mut recovery =
             ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
                 .unwrap_or(None)
@@ -670,7 +689,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// events exist yet (GAPs M6, M8).
     /// `failure_source` is passed through to `execution_failed_retry_delay()` so that
     /// git-isolation tasks use the shorter base delay.
-    pub(crate) fn execution_next_retry_at(
+    #[doc(hidden)]
+    pub fn execution_next_retry_at(
         task: &Task,
         failure_source: Option<ExecutionFailureSource>,
     ) -> Option<chrono::DateTime<chrono::Utc>> {
@@ -697,7 +717,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Remove stale flat failure metadata keys (`is_timeout`, `failure_error`) from task metadata.
     /// Preserves structured `execution_recovery` metadata intact.
     /// Uses targeted `update_metadata()` SQL path (GAPs B7, H7).
-    pub(crate) async fn clear_execution_flat_metadata(&self, task: &Task) -> Result<(), String> {
+    #[doc(hidden)]
+    pub async fn clear_execution_flat_metadata(&self, task: &Task) -> Result<(), String> {
         let mut json: serde_json::Value = task
             .metadata
             .as_deref()
@@ -720,7 +741,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Gives the user a fresh retry budget after manual intervention (GAP H9).
     /// Uses targeted `update_metadata()` SQL path (GAP H7).
     /// Used by Wave 4 (apply_user_recovery_action).
-    pub(crate) async fn reset_execution_recovery_metadata(
+    #[doc(hidden)]
+    pub async fn reset_execution_recovery_metadata(
         &self,
         task: &Task,
     ) -> Result<(), String> {
@@ -756,7 +778,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Set `stop_retrying = true` with User source — user explicitly cancelled auto-retry.
     /// Task remains Failed permanently (GAP H2, Cancel action).
     /// Uses targeted `update_metadata()` SQL path (GAP H7).
-    pub(crate) async fn stop_execution_retrying_by_user(&self, task: &Task) -> Result<(), String> {
+    #[doc(hidden)]
+    pub async fn stop_execution_retrying_by_user(&self, task: &Task) -> Result<(), String> {
         let mut recovery =
             ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref())
                 .unwrap_or(None)
@@ -785,7 +808,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     /// Record a `ManualRetry` event in execution recovery metadata.
     /// Used when the user manually restarts a Failed task (GAP H2, Restart action).
     /// Uses targeted `update_metadata()` SQL path (GAP H7).
-    pub(crate) async fn record_execution_manual_retry_event(
+    #[doc(hidden)]
+    pub async fn record_execution_manual_retry_event(
         &self,
         task: &Task,
     ) -> Result<(), String> {
@@ -815,7 +839,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     /// Returns true if `recover_timeout_failures()` processed this task within the last 60s.
     /// Used by the reconciler loop to skip tasks already handled at startup (GAP M5 sentinel).
-    pub(crate) fn has_recent_startup_recovery(task: &Task) -> bool {
+    #[doc(hidden)]
+    pub fn has_recent_startup_recovery(task: &Task) -> bool {
         let recovery =
             match ExecutionRecoveryMetadata::from_task_metadata(task.metadata.as_deref()) {
                 Ok(Some(r)) => r,
@@ -833,7 +858,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
     ///
     /// `failure_source` and `reason_code` are passed explicitly so that git-isolation and
     /// timeout startup recoveries record the correct source in the event log.
-    pub(crate) async fn record_execution_startup_retry_event(
+    #[doc(hidden)]
+    pub async fn record_execution_startup_retry_event(
         &self,
         task: &Task,
         attempt: u32,

@@ -645,7 +645,7 @@ impl MemoryRunningAgentRegistry {
 
     /// Insert a running agent entry for test setup.
     /// Uses minimal RunningAgentInfo values — only `is_running` (key presence) matters.
-    #[cfg(test)]
+    #[doc(hidden)]
     pub async fn set_running(&self, key: RunningAgentKey) {
         let info = RunningAgentInfo {
             pid: 0,

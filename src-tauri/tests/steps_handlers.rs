@@ -1,17 +1,19 @@
-use super::*;
-use crate::application::AppState;
-use crate::commands::ExecutionState;
-use crate::domain::entities::{ProjectId, Task};
-use crate::http_server::project_scope::ProjectScope;
+use axum::{extract::{Path, State}, Json};
+use ralphx_lib::application::{
+    AppState, InteractiveProcessKey, TeamService, TeamStateTracker,
+};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{ProjectId, Task, TaskStep};
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::project_scope::ProjectScope;
+use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
 
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
 
     HttpServerState {
         app_state,
@@ -183,10 +185,7 @@ async fn test_execution_complete_removes_ipr_entry() {
 
     // Register a live IPR entry
     let (mut child, stdin) = spawn_test_stdin().await;
-    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-        "task_execution",
-        task_id.as_str(),
-    );
+    let key = InteractiveProcessKey::new("task_execution", task_id.as_str());
     state
         .app_state
         .interactive_process_registry
@@ -285,10 +284,7 @@ async fn test_execution_complete_double_call_idempotent() {
     state.app_state.task_repo.create(task).await.unwrap();
 
     let (mut child, stdin) = spawn_test_stdin().await;
-    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-        "task_execution",
-        task_id.as_str(),
-    );
+    let key = InteractiveProcessKey::new("task_execution", task_id.as_str());
     state
         .app_state
         .interactive_process_registry
@@ -380,10 +376,7 @@ async fn test_complete_step_all_done_removes_ipr() {
 
     // Register IPR entry for the worker
     let (mut child, stdin) = spawn_test_stdin().await;
-    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-        "task_execution",
-        task_id.as_str(),
-    );
+    let key = InteractiveProcessKey::new("task_execution", task_id.as_str());
     state
         .app_state
         .interactive_process_registry
@@ -489,10 +482,7 @@ async fn test_skip_step_all_done_removes_ipr() {
 
     // Register IPR entry for the worker
     let (mut child, stdin) = spawn_test_stdin().await;
-    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-        "task_execution",
-        task_id.as_str(),
-    );
+    let key = InteractiveProcessKey::new("task_execution", task_id.as_str());
     state
         .app_state
         .interactive_process_registry
@@ -729,10 +719,7 @@ async fn test_complete_step_partial_done_keeps_ipr() {
 
     // Register IPR
     let (mut child, stdin) = spawn_test_stdin().await;
-    let key = crate::application::interactive_process_registry::InteractiveProcessKey::new(
-        "task_execution",
-        task_id.as_str(),
-    );
+    let key = InteractiveProcessKey::new("task_execution", task_id.as_str());
     state
         .app_state
         .interactive_process_registry

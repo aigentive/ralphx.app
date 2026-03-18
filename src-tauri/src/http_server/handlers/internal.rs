@@ -222,7 +222,3 @@ pub async fn set_cross_project_checked(
         Ok(StatusCode::OK)
     }
 }
-
-#[cfg(test)]
-#[path = "internal_handler_tests.rs"]
-mod tests;

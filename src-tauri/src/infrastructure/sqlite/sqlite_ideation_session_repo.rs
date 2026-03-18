@@ -224,7 +224,8 @@ impl SqliteIdeationSessionRepository {
     ///
     /// Returns `Some(new_generation)` if the trigger was applied, `None` if already in_progress
     /// or if the session is `imported_verified`.
-    pub(crate) fn trigger_auto_verify_sync(
+    #[doc(hidden)]
+    pub fn trigger_auto_verify_sync(
         conn: &Connection,
         id: &str,
     ) -> AppResult<Option<i32>> {
@@ -253,7 +254,8 @@ impl SqliteIdeationSessionRepository {
     /// Reset auto-verify state after a spawn failure.
     /// Sets in_progress=0 and verification_status=unverified.
     /// ImportedVerified sessions are never reset — their pre-verified status must be preserved.
-    pub(crate) fn reset_auto_verify_sync(conn: &Connection, id: &str) -> AppResult<()> {
+    #[doc(hidden)]
+    pub fn reset_auto_verify_sync(conn: &Connection, id: &str) -> AppResult<()> {
         let now = Utc::now();
         conn.execute(
             "UPDATE ideation_sessions SET \

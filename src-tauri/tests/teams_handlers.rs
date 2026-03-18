@@ -1,5 +1,10 @@
-use super::*;
-use crate::application::team_state_tracker::TeamStateTracker;
+use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::ArtifactType;
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::types::{HttpServerState, TeamPlanTeammate};
+use ralphx_lib::infrastructure::agents::claude::TeammateSpawnRequest;
+use std::sync::Arc;
 
 #[test]
 fn team_artifact_type_mapping() {
@@ -165,14 +170,11 @@ fn teammate_colors_rotate() {
 // ── find_active_team tests ───────────────────────────────────────
 
 fn test_state() -> HttpServerState {
-    use std::sync::Arc;
     let tracker = TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     HttpServerState {
-        app_state: Arc::new(crate::application::AppState::new_test()),
-        execution_state: Arc::new(crate::commands::ExecutionState::new()),
+        app_state: Arc::new(AppState::new_test()),
+        execution_state: Arc::new(ExecutionState::new()),
         team_tracker: tracker,
         team_service,
     }
@@ -332,7 +334,7 @@ fn team_plan_request_converts_to_spawn_requests() {
         context_id: "session-abc123".to_string(),
         process: "ideation".to_string(),
         teammates: vec![
-            crate::http_server::types::TeamPlanTeammate {
+            TeamPlanTeammate {
                 role: "researcher".to_string(),
                 tools: vec!["Read".to_string(), "Grep".to_string()],
                 mcp_tools: vec![],
@@ -341,7 +343,7 @@ fn team_plan_request_converts_to_spawn_requests() {
                 prompt_summary: "Research patterns".to_string(),
                 prompt: None,
             },
-            crate::http_server::types::TeamPlanTeammate {
+            TeamPlanTeammate {
                 role: "analyzer".to_string(),
                 tools: vec!["Read".to_string()],
                 mcp_tools: vec![],
@@ -436,7 +438,7 @@ fn resolve_mcp_agent_type_specialist_preset_variants() {
 
 #[test]
 fn resolve_effort_for_ideation_team_member_returns_default() {
-    use crate::infrastructure::agents::claude::resolve_effort;
+    use ralphx_lib::infrastructure::agents::claude::resolve_effort;
     // ideation-team-member has no YAML entry, so should return default effort
     let effort = resolve_effort(Some("ideation-team-member"));
     // Just ensure it returns a non-empty string (the default)
@@ -445,7 +447,7 @@ fn resolve_effort_for_ideation_team_member_returns_default() {
 
 #[test]
 fn resolve_effort_for_specialist_returns_non_empty() {
-    use crate::infrastructure::agents::claude::resolve_effort;
+    use ralphx_lib::infrastructure::agents::claude::resolve_effort;
     // ideation-specialist-backend has a YAML entry with opus model
     let effort = resolve_effort(Some("ideation-specialist-backend"));
     assert!(!effort.is_empty(), "Expected non-empty effort for ideation-specialist-backend");

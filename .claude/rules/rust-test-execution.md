@@ -29,10 +29,12 @@ paths:
 | Target discovery | `cargo test --manifest-path src-tauri/Cargo.toml --lib -- --list | rg "<module>"` |
 | Async SQLite repo tests | `SqliteTestDb` + repo `from_shared(db.shared_conn())` |
 | AppState integration tests | `SqliteStateFixture::new(...)` |
+| HTTP handler integration tests | Import handlers/types through `ralphx_lib::http_server::{handlers, types}` from `src-tauri/tests/*.rs`; use `AppState::new_sqlite_test()` or `AppState::new_sqlite_test_with_registry(...)` only when the handler calls SQLite sync helpers via `db.run(...)` |
 | Sync SQLite repo tests | `SqliteTestDb` + `db.new_connection()` |
 | Setup/seeding | Shared suite helpers/builders on top of `SqliteTestDb`; one migration pass per temp DB only |
 | Concurrency | File-backed temp DBs for shared access; `:memory:` only for intentionally isolated narrow tests |
-| Broad-run runner config | Repo config lives in `.config/nextest.toml`; keep group changes there, not in ad hoc shell flags |
+| Compile-scope reduction | Move oversized state-machine/worktree/orchestration suites out of `src-tauri/src/**` lib tests into dedicated `src-tauri/tests/*.rs` integration binaries when they only need explicit public/internal-facing APIs |
+| Broad-run runner config | Rust workspace config lives in `src-tauri/.config/nextest.toml`; keep group changes there, not in ad hoc shell flags |
 | Formatter policy | No broad `cargo fmt`; if formatting is required, keep it scoped and separate |
 
 ## Scale Direction
@@ -44,7 +46,9 @@ paths:
 | Compile vs run | Optimize both separately: narrow targets to reduce compile scope, then keep per-test runtime setup cheap |
 | Large-suite runner | `cargo-nextest` is the adopted broad-runner for large-scale execution; targeted edit-loop runs still stay on `cargo test` |
 | Test layers | Keep fast repo/unit suites separate from slower integration/state-machine/git suites |
+| Large lib suites | When a lib-side test file becomes a massive orchestration suite, prefer moving it to `src-tauri/tests/` and exposing only the minimum internal-facing API with `#[doc(hidden)] pub` rather than keeping it in the giant `--lib` binary |
 | Internal support | Invest early in a thin shared test-support layer under `src-tauri/src/testing/` when setup repeats |
+| CI coverage split | CI runs broad lib coverage via `cargo nextest run --lib --profile ci` and doctests via separate `cargo test --doc` |
 
 ## Selective Commands
 
@@ -55,6 +59,28 @@ cargo test --manifest-path src-tauri/Cargo.toml --test state_machine_flows --tes
 cargo test --manifest-path src-tauri/Cargo.toml --test per_project_execution_scoping
 cargo test --manifest-path src-tauri/Cargo.toml --test review_flows
 cargo test --manifest-path src-tauri/Cargo.toml --test execution_control_flows
+cargo test --manifest-path src-tauri/Cargo.toml --test external_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test artifacts_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test ideation_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test reviews_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test projects_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test git_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test api_keys_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test conversations_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test internal_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test session_linking_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test steps_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test teams_handlers
+cargo test --manifest-path src-tauri/Cargo.toml --test http_helpers
+cargo test --manifest-path src-tauri/Cargo.toml --test task_scheduler_service
+cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_context
+cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_errors
+cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_merge
+cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_freshness
+cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_concurrent_freshness
+cargo test --manifest-path src-tauri/Cargo.toml --test transition_handler_freshness_integration
+cargo test --manifest-path src-tauri/Cargo.toml --test startup_jobs_runner
+cargo test --manifest-path src-tauri/Cargo.toml --test chat_service_streaming
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib
 cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 ```
@@ -71,6 +97,7 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 | Broad CI-style lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` |
 | Pinpoint module/test validation | `cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib` or `cargo test --manifest-path src-tauri/Cargo.toml --test <target>` |
 | Doctests | `cargo test --manifest-path src-tauri/Cargo.toml --doc` |
+| CI broad coverage | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci && cargo test --manifest-path src-tauri/Cargo.toml --doc` |
 
 ## Nextest Groups
 
@@ -79,7 +106,7 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 | `git-heavy` | Caps the heaviest git/worktree integration binaries at 2 threads |
 | `sqlite-integration` | Caps file-backed SQLite integration binaries at 4 threads |
 | `perf-serial` | Forces `plan_selector_performance` to 1 thread |
-| Config source | Edit `.config/nextest.toml` rather than pasting long `-E` filters into docs or CI |
+| Config source | Edit `src-tauri/.config/nextest.toml` rather than pasting long `-E` filters into docs or CI |
 
 ## Filter Rules
 
@@ -147,15 +174,50 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 |---|---|
 | Converting an old SQLite test | Replace `open_memory_connection() + run_migrations()` with `SqliteTestDb` first, then extract shared seed helpers |
 | Seeing remaining `open_memory_connection()` calls after migration work | Check whether the suite is connection/formatting-only before converting it; optimize real migration-replay hotspots first |
+| Splitting oversized lib suites | Move them to `src-tauri/tests/<suite>.rs`, compile them as a separate integration binary, and keep the exported surface minimal and explicitly internal-facing |
+| Splitting HTTP handler suites | Make the handler/types module reachable from integration tests, import through `ralphx_lib::http_server::{handlers, types}`, and keep SQLite-only handler helpers on `AppState::new_sqlite_test()` / `new_sqlite_test_with_registry()` instead of duplicating ad hoc setup |
+| Exposing helper surfaces for moved integration suites | Prefer `#[doc(hidden)] pub` on the smallest needed helper fn/const instead of keeping `#[cfg(test)]` visibility tied to lib-side sidecar tests |
+| Prefer test accessors over exposed fields | If an integration suite needs scheduler/cache/watchdog internals, add narrow `*_for_test()` accessors instead of making raw fields public |
 | Adding a new repo suite | Start from a suite-local `setup_*()` helper; only introduce a shared helper when repetition appears in multiple files |
 | Verifying a migration | Test the migration itself explicitly; do not force every repo test to replay the full migration chain |
-| Considering `cargo-nextest` or extra tooling | Document it as the scale target; until adopted in CI/dev commands, optimize around targeted Cargo runs and shared fixtures |
+| Considering `cargo-nextest` tuning | Adjust `src-tauri/.config/nextest.toml` groups/profiles instead of ad hoc command-line concurrency flags |
 
-## Future Adoption
+## Adding Tests Framework
 
-| Planned improvement | Why |
+| Question | Decision |
 |---|---|
-| Adopt `cargo-nextest` as the default large-suite runner | Better concurrency control, retries, partitioning, and resource grouping for thousands of tests |
+| Is this pure logic with no DB/git/process/AppState setup? | Keep it in `src-tauri/src/**` as a normal `--lib` test |
+| Does it need real SQLite schema/repositories? | Start with `SqliteTestDb` / `SqliteStateFixture` |
+| Does it mostly exercise handlers, orchestration, state machines, worktrees, or large service flows? | Put it in `src-tauri/tests/<suite>.rs` as a dedicated integration target |
+| Did you move a suite out of `--lib`? | Import through `ralphx_lib::*`, not `super::*` / `crate::*` |
+| Does the moved suite need internals? | Expose the smallest seam: re-export, `#[doc(hidden)] pub`, or `*_for_test()` |
+| Does it only need one small test helper from a private module? | Localize that helper in the integration target instead of exporting a broad test-only helper tree |
+| Are you repeating a setup graph twice? | Extract a suite helper now; promote to `src-tauri/src/testing/` once a second file needs it |
+| Do multiple integration targets need the same non-production helper? | Promote it into `src-tauri/tests/support/` rather than duplicating it or exporting it from production code |
+| Are you validating several targeted suites? | Run them sequentially; do not launch parallel Cargo jobs against the same target dir |
+
+## Move Decision Framework
+
+| Question | If yes | If no |
+|---|---|---|
+| Is the suite large enough to materially bloat `--lib` compile scope? | Prefer moving it to `src-tauri/tests/<suite>.rs` | Keep it in `--lib` |
+| Does the suite mostly exercise public behavior or explicit internal helpers? | Move it | Keep it local if it only probes private implementation details |
+| Does the suite rely on SQLite migrations or real git/process setup? | Move it and give it a dedicated integration target | Keep pure logic tests in `--lib` |
+| Can the suite work with `ralphx_lib::*` imports plus a few narrow helper exports? | Move it | Do not widen large surfaces just to move it |
+| Would moving require exposing raw mutable fields or broad internal modules? | Add narrow `#[doc(hidden)] pub` helpers or `*_for_test()` accessors first | If that still needs broad exposure, leave the suite in place |
+
+| Preferred seam | Use when |
+|---|---|
+| Re-export existing public helper from module root | The helper is already stable and test-appropriate |
+| `#[doc(hidden)] pub` free function/const | Integration test needs one narrow private helper |
+| `*_for_test()` accessor | Integration test needs to observe internal state without exposing fields |
+| Keep suite in `--lib` | The only alternative is broad visibility churn or leaking implementation-only APIs |
+
+## Ongoing Tuning
+
+| Improvement | Why |
+|---|---|
+| Tune `cargo-nextest` groups/profiles as suites grow | Better concurrency control, retries, partitioning, and resource grouping for thousands of tests |
 | Add shared seed helpers for common row graphs | Removes repeated SQL and makes suite setup cheaper to maintain |
 | Group resource-sensitive tests explicitly | Prevent DB/file/git-heavy tests from competing with fast unit coverage |
 

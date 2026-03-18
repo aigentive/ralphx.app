@@ -3,16 +3,25 @@
 // Uses direct handler calls (same pattern as external_tests.rs) for unit tests,
 // and a minimal test router with tower::ServiceExt::oneshot for CORS header tests.
 
-use super::*;
-use crate::application::AppState;
-use crate::commands::ExecutionState;
-use crate::domain::entities::{project::Project, types::ProjectId};
 use axum::{
     body::Body,
+    extract::State,
     http::{header, Method, Request, StatusCode},
     routing::get,
-    Router,
+    Json, Router,
 };
+use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ideation_commands::{
+    migrate_proposals_impl, CreateCrossProjectSessionInput, MigrateProposalsInput,
+};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{
+    project::{GitMode, Project},
+    IdeationSession, IdeationSessionId, Priority, ProjectId, ProposalCategory, TaskProposal,
+    TaskProposalId,
+};
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
 use tower::ServiceExt;
 use tower_http::cors::{Any, CorsLayer};
@@ -24,10 +33,8 @@ use tower_http::cors::{Any, CorsLayer};
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     HttpServerState {
         app_state,
         execution_state,
@@ -41,7 +48,7 @@ fn make_project(id: &str, name: &str, dir: &str) -> Project {
         id: ProjectId::from_string(id.to_string()),
         name: name.to_string(),
         working_directory: dir.to_string(),
-        git_mode: crate::domain::entities::project::GitMode::Worktree,
+        git_mode: GitMode::Worktree,
         base_branch: None,
         worktree_parent_directory: None,
         use_feature_branches: true,
@@ -140,7 +147,7 @@ async fn test_create_cross_project_session_http_no_app_handle_returns_500() {
     // with a clear error message in the test environment.
     let state = setup_test_state().await;
 
-    let input = crate::commands::ideation_commands::CreateCrossProjectSessionInput {
+    let input = CreateCrossProjectSessionInput {
         target_project_path: "/tmp/target-project".to_string(),
         source_session_id: "nonexistent-session-id".to_string(),
         title: None,
@@ -278,13 +285,7 @@ async fn test_internal_route_options_preflight_has_no_cors() {
 // migrate_proposals_http
 // ============================================================================
 
-use crate::commands::ideation_commands::{MigrateProposalsInput, migrate_proposals_impl};
-use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, Priority, ProposalCategory, TaskProposal, TaskProposalId,
-};
-
 fn make_session(project_id_str: &str) -> IdeationSession {
-    use crate::domain::entities::ProjectId;
     IdeationSession::new(ProjectId::from_string(project_id_str.to_string()))
 }
 

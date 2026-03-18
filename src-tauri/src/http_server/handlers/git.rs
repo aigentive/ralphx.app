@@ -887,7 +887,12 @@ pub async fn get_merge_target(
 pub type JsonError = (StatusCode, Json<serde_json::Value>);
 
 /// Create a JSON error response with an error message and optional details
-fn json_error(status: StatusCode, error: impl Into<String>, details: Option<String>) -> JsonError {
+#[doc(hidden)]
+pub fn json_error(
+    status: StatusCode,
+    error: impl Into<String>,
+    details: Option<String>,
+) -> JsonError {
     let mut body = serde_json::json!({ "error": error.into() });
     if let Some(d) = details {
         body["details"] = serde_json::Value::String(d);
@@ -896,7 +901,8 @@ fn json_error(status: StatusCode, error: impl Into<String>, details: Option<Stri
 }
 
 /// Validates that a string is a valid full git SHA (40 hexadecimal characters)
-fn is_valid_git_sha(sha: &str) -> bool {
+#[doc(hidden)]
+pub fn is_valid_git_sha(sha: &str) -> bool {
     sha.len() == 40 && sha.chars().all(|c| c.is_ascii_hexdigit())
 }
 
@@ -959,7 +965,3 @@ fn build_transition_service(state: &HttpServerState) -> TaskTransitionService<ta
 // ============================================================================
 // Tests
 // ============================================================================
-
-#[cfg(test)]
-#[path = "git_tests.rs"]
-mod tests;

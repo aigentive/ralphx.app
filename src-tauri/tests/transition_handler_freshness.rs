@@ -4,11 +4,15 @@
 // result mapping, retry counting, and dual-conflict sequential scenarios.
 // Also covers: FreshnessMetadata struct API (cleanup scopes, backoff, serde defaults).
 
-use super::helpers::*;
-use super::super::freshness::{ensure_branches_fresh, FreshnessAction, FreshnessCleanupScope, FreshnessMetadata};
-use crate::domain::entities::{Project, ProjectId, Task};
-use crate::infrastructure::agents::claude::ReconciliationConfig;
+mod support;
+
 use chrono::Utc;
+use ralphx_lib::domain::entities::{Project, ProjectId, Task};
+use ralphx_lib::domain::state_machine::transition_handler::freshness::{
+    ensure_branches_fresh, FreshnessAction, FreshnessCleanupScope, FreshnessMetadata,
+};
+use ralphx_lib::infrastructure::agents::claude::ReconciliationConfig;
+use support::real_git_repo::setup_real_git_repo;
 
 // ==================
 // Helpers
@@ -1098,7 +1102,20 @@ fn cleanup_scope_conflict_state_resets_count_and_backoff() {
 #[test]
 fn cleanup_scope_full_removes_all_freshness_keys() {
     // FreshnessCleanupScope::Full should remove ALL 11 freshness keys.
-    // Iterates FreshnessMetadata::KEYS so coverage stays complete when new keys are added.
+    // Keep the key list local here instead of widening the production helper surface.
+    const FRESHNESS_KEYS: &[&str] = &[
+        "branch_freshness_conflict",
+        "freshness_origin_state",
+        "freshness_conflict_count",
+        "plan_update_conflict",
+        "source_update_conflict",
+        "last_freshness_check_at",
+        "conflict_files",
+        "source_branch",
+        "target_branch",
+        "freshness_backoff_until",
+        "freshness_auto_reset_count",
+    ];
     let mut meta = serde_json::json!({
         "branch_freshness_conflict": true,
         "freshness_origin_state": "reviewing",
@@ -1117,7 +1134,7 @@ fn cleanup_scope_full_removes_all_freshness_keys() {
     FreshnessMetadata::cleanup(FreshnessCleanupScope::Full, &mut meta);
 
     let obj = meta.as_object().unwrap();
-    for key in FreshnessMetadata::KEYS {
+    for key in FRESHNESS_KEYS {
         assert!(!obj.contains_key(*key), "Full scope must remove '{key}'");
     }
     assert_eq!(meta["other_key"], "preserved", "Non-freshness key must survive Full cleanup");

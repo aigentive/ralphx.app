@@ -33,11 +33,11 @@ use crate::domain::repositories::{
 };
 use crate::domain::services::{MessageQueue, RunningAgentRegistry};
 
-pub(crate) use policy::RecoveryPolicy;
+#[doc(hidden)]
+pub use policy::{
+    RecoveryActionKind, RecoveryContext, RecoveryDecision, RecoveryEvidence, RecoveryPolicy,
+};
 pub use policy::UserRecoveryAction;
-// Re-exported for tests (use super::*)
-#[cfg(test)]
-pub(crate) use policy::{RecoveryActionKind, RecoveryContext, RecoveryEvidence};
 
 pub struct ReconciliationRunner<R: Runtime = tauri::Wry> {
     pub(crate) task_repo: Arc<dyn TaskRepository>,
@@ -142,6 +142,3 @@ impl<R: Runtime> ReconciliationRunner<R> {
         self
     }
 }
-
-#[cfg(test)]
-mod tests;

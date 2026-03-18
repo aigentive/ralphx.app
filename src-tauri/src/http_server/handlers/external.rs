@@ -7,10 +7,6 @@
 // (injected by the external MCP server) and enforce scope boundaries via
 // `ProjectScopeGuard::assert_project_scope`.
 
-#[cfg(test)]
-#[path = "external_tests.rs"]
-mod tests;
-
 use axum::{
     extract::{Path, Query, State},
     http::StatusCode,

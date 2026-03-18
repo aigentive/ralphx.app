@@ -908,8 +908,3 @@ pub async fn get_task_context_impl(state: &AppState, task_id: &TaskId) -> AppRes
         worktree_path,
     })
 }
-
-
-#[cfg(test)]
-#[path = "helpers_tests.rs"]
-mod tests;

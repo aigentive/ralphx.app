@@ -1,6 +1,16 @@
-use super::*;
-use crate::domain::entities::{IdeationSessionId, IdeationSessionStatus, ProjectId};
-use crate::infrastructure::agents::claude::verification_config;
+use axum::{extract::State, Json};
+use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{
+    ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, MessageRole, ProjectId,
+    VerificationStatus,
+};
+use ralphx_lib::error::AppError;
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::types::{CreateChildSessionRequest, HttpServerState};
+use ralphx_lib::infrastructure::agents::claude::verification_config;
+use ralphx_lib::infrastructure::sqlite::SqliteIdeationSessionRepository;
+use std::sync::Arc;
 
 fn make_session(team_mode: Option<&str>) -> IdeationSession {
     IdeationSession {
@@ -60,24 +70,12 @@ fn test_session_is_team_mode_none_returns_false() {
 
 mod verification_init_tests {
     use super::*;
-    use crate::application::AppState;
-    use crate::commands::ExecutionState;
-    use crate::domain::entities::{
-        ArtifactId, IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId,
-        VerificationStatus,
-    };
-    use crate::http_server::types::CreateChildSessionRequest;
-    use crate::infrastructure::agents::claude::verification_config;
-    use crate::infrastructure::sqlite::SqliteIdeationSessionRepository;
-    use std::sync::Arc;
 
     async fn setup_sqlite_state() -> HttpServerState {
         let app_state = Arc::new(AppState::new_sqlite_test());
         let execution_state = Arc::new(ExecutionState::new());
-        let tracker = crate::application::TeamStateTracker::new();
-        let team_service = Arc::new(crate::application::TeamService::new_without_events(
-            Arc::new(tracker.clone()),
-        ));
+        let tracker = TeamStateTracker::new();
+        let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
         HttpServerState {
             app_state,
             execution_state,
@@ -226,7 +224,7 @@ mod verification_init_tests {
                      WHERE id = ?1",
                     rusqlite::params![pid],
                 )
-                .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
+                .map_err(|e| AppError::Database(e.to_string()))?;
                 Ok(())
             })
             .await
@@ -472,7 +470,7 @@ mod verification_init_tests {
         // If a message was stored, it must contain the verification metadata augmentation
         let user_msg = messages
             .iter()
-            .find(|m| m.role == crate::domain::entities::MessageRole::User);
+            .find(|m| m.role == MessageRole::User);
         if let Some(msg) = user_msg {
             let content = &msg.content;
             assert!(
@@ -550,7 +548,7 @@ mod verification_init_tests {
 
         let user_msg = messages
             .iter()
-            .find(|m| m.role == crate::domain::entities::MessageRole::User);
+            .find(|m| m.role == MessageRole::User);
         if let Some(msg) = user_msg {
             let content = &msg.content;
             assert!(

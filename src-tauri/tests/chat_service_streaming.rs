@@ -1,5 +1,12 @@
-use super::*;
-use crate::application::chat_service::StreamError;
+use ralphx_lib::application::chat_service::{
+    events, should_kill_on_timeout, ActiveTaskTracker, AgentChunkPayload,
+    AgentRunCompletedPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload,
+    AgentToolCallPayload, StreamError, StreamOutcome, StreamTimeoutConfig,
+};
+use ralphx_lib::domain::entities::ChatContextType;
+use ralphx_lib::infrastructure::agents::claude::stream_timeouts;
+use ralphx_lib::utils::secret_redactor::redact;
+use std::time::Duration;
 
 // ── should_kill_on_timeout unit tests ────────────────────────────────────────
 
@@ -198,10 +205,6 @@ fn test_timeout_config_ordering() {
 
 #[test]
 fn test_payloads_serialize_with_seq() {
-    use crate::application::chat_service::{
-        AgentChunkPayload, AgentTaskCompletedPayload, AgentTaskStartedPayload, AgentToolCallPayload,
-    };
-
     // Verify AgentChunkPayload includes seq field
     let chunk = AgentChunkPayload {
         text: "test".to_string(),
@@ -431,8 +434,6 @@ fn test_active_task_tracker_prevents_timeout_during_sidechain() {
 
 #[test]
 fn test_turn_completed_event_name_is_distinct_from_run_completed() {
-    use crate::application::chat_service::events;
-
     // The whole point of the TurnComplete feature: interactive turns emit
     // a DIFFERENT event name so the frontend doesn't set isAgentRunning=false.
     assert_ne!(
@@ -454,8 +455,6 @@ fn test_turn_completed_event_name_is_distinct_from_run_completed() {
 
 #[test]
 fn test_turn_completed_payload_shape_matches_run_completed() {
-    use crate::application::chat_service::AgentRunCompletedPayload;
-
     // TurnComplete reuses AgentRunCompletedPayload — verify it serializes
     // with all required fields for the frontend to correctly identify the context.
     let payload = AgentRunCompletedPayload {
@@ -480,8 +479,6 @@ fn test_turn_completed_payload_shape_matches_run_completed() {
 
 #[test]
 fn test_turn_completed_payload_with_no_session_id() {
-    use crate::application::chat_service::AgentRunCompletedPayload;
-
     // Early turns may not yet have a session_id from Claude.
     let payload = AgentRunCompletedPayload {
         conversation_id: "conv-interactive-2".to_string(),
@@ -504,8 +501,6 @@ fn test_turn_completed_payload_with_no_session_id() {
 
 #[test]
 fn test_non_interactive_run_completed_includes_run_chain_id() {
-    use crate::application::chat_service::AgentRunCompletedPayload;
-
     // Non-interactive (one-shot) agents pass run_chain_id through.
     // Interactive TurnComplete always sets run_chain_id: None.
     let payload = AgentRunCompletedPayload {
@@ -621,8 +616,6 @@ fn test_stream_outcome_execution_slot_held_reflects_interactive_state() {
 /// - Post-loop (interactive, turns_finalized>0, no output) → skip (already emitted turn_completed)
 #[test]
 fn test_event_name_selection_decision_tree() {
-    use crate::application::chat_service::events;
-
     // Scenario 1: Interactive turn completes during streaming
     // The TurnComplete arm in the stream loop emits this:
     let interactive_event_name = events::AGENT_TURN_COMPLETED;
@@ -831,8 +824,6 @@ fn test_re_increment_skip_scoped_to_ideation_only() {
 /// in `StreamError::AgentExit`. The `to_string()` of the error must not leak.
 #[test]
 fn test_agent_exit_stderr_redacted_before_construction() {
-    use crate::utils::secret_redactor::redact;
-
     let raw_stderr = "Error: ANTHROPIC_AUTH_TOKEN=sk-ant-api03-AbCdEfGhIjKlMnOpQrStUvWxYz01234567890123456789 not accepted";
     let redacted_stderr = redact(raw_stderr);
 
@@ -869,8 +860,6 @@ fn test_agent_exit_stderr_redacted_before_construction() {
 /// Verifies redaction of an OpenRouter key appearing in stderr.
 #[test]
 fn test_agent_exit_openrouter_key_redacted() {
-    use crate::utils::secret_redactor::redact;
-
     let raw_stderr =
         "API call failed: sk-or-v1-abcdefghijklmnopqrstuvwxyz0123456789abcdef returned 401";
     let redacted = redact(raw_stderr);
@@ -898,8 +887,6 @@ fn test_agent_exit_openrouter_key_redacted() {
 /// when redaction is applied before payload assembly.
 #[test]
 fn test_debug_file_payload_contains_redacted_stderr() {
-    use crate::utils::secret_redactor::redact;
-
     let raw_stderr = "fatal: Bearer sk-ant-api03-XxXxXxXxXxXxXxXxXxXxXxXxXxXxXxXx01234567890 rejected";
     let redacted_stderr = redact(raw_stderr);
 
@@ -929,8 +916,6 @@ fn test_debug_file_payload_contains_redacted_stderr() {
 /// when redaction is applied before constructing the preview slice.
 #[test]
 fn test_stderr_preview_for_warn_contains_redacted_content() {
-    use crate::utils::secret_redactor::redact;
-
     let raw_stderr = "sk-ant-api03-AAABBBCCC111222333444555666777888999000aabbccddee error in provider call".to_string();
     let redacted = redact(&raw_stderr);
     let preview = &redacted[..redacted.len().min(2000)];

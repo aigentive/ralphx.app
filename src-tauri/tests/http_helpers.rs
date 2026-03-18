@@ -1,10 +1,12 @@
-use super::*;
-use crate::application::{AppState, UpdateProposalOptions, UpdateSource};
-use crate::domain::entities::{
-    Artifact, ArtifactId, ArtifactType, IdeationSession, IdeationSessionStatus, ProjectId,
-    ProposalCategory,
+use ralphx_lib::application::{
+    AppState, CreateProposalOptions, UpdateProposalOptions, UpdateSource,
 };
-use crate::error::AppError;
+use ralphx_lib::domain::entities::{
+    Artifact, ArtifactId, ArtifactType, IdeationSession, IdeationSessionId,
+    IdeationSessionStatus, Priority, ProjectId, ProposalCategory, TaskProposalId,
+};
+use ralphx_lib::error::AppError;
+use ralphx_lib::http_server::helpers::*;
 
 // -------------------------------------------------------------------------
 // assert_session_mutable tests
@@ -707,7 +709,7 @@ async fn test_settings_require_proposals_roundtrip_via_db() {
     let proposals_enabled = state
         .db
         .run(|conn| {
-            use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
+            use ralphx_lib::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
             let s = get_settings_sync(conn)?;
             Ok(s.require_verification_for_proposals)
         })
@@ -733,7 +735,7 @@ async fn test_settings_require_proposals_roundtrip_via_db() {
     let proposals_disabled = state
         .db
         .run(|conn| {
-            use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
+            use ralphx_lib::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
             let s = get_settings_sync(conn)?;
             Ok(s.require_verification_for_proposals)
         })
@@ -768,7 +770,7 @@ async fn test_settings_both_verification_fields_independent() {
     let (accept, proposals) = state
         .db
         .run(|conn| {
-            use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
+            use ralphx_lib::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
             let s = get_settings_sync(conn)?;
             Ok((s.require_verification_for_accept, s.require_verification_for_proposals))
         })
@@ -795,7 +797,7 @@ async fn test_settings_both_verification_fields_independent() {
     let (accept2, proposals2) = state
         .db
         .run(|conn| {
-            use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
+            use ralphx_lib::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
             let s = get_settings_sync(conn)?;
             Ok((s.require_verification_for_accept, s.require_verification_for_proposals))
         })
@@ -828,7 +830,7 @@ async fn test_settings_require_accept_roundtrip_true_case() {
     let accept_enabled = state
         .db
         .run(|conn| {
-            use crate::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
+            use ralphx_lib::infrastructure::sqlite::sqlite_ideation_settings_repo::get_settings_sync;
             let s = get_settings_sync(conn)?;
             Ok(s.require_verification_for_accept)
         })

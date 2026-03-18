@@ -5,17 +5,24 @@
 // get_task_review_summary_http, get_merge_pipeline_http, and related handlers
 // using the in-memory AppState.
 
-use super::*;
-use crate::application::AppState;
-use crate::commands::ExecutionState;
-use crate::domain::entities::{
-    ideation::IdeationSession,
-    project::Project,
+use axum::{
+    extract::{Path, Query, State},
+    Json,
+};
+use ralphx_lib::application::{AppState, InteractiveProcessKey, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{
+    ideation::{ChatMessage, IdeationSession, IdeationSessionStatus, VerificationStatus},
+    project::{GitMode, Project},
     task::Task,
     types::ProjectId,
-    InternalStatus,
+    IdeationSessionId, InternalStatus, Priority, ProposalCategory, TaskProposal,
 };
-use crate::http_server::project_scope::ProjectScope;
+use ralphx_lib::domain::services::running_agent_registry::RunningAgentKey;
+use ralphx_lib::error::AppError;
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::project_scope::ProjectScope;
+use ralphx_lib::http_server::types::HttpServerState;
 use std::sync::Arc;
 
 // ============================================================================
@@ -25,10 +32,8 @@ use std::sync::Arc;
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     HttpServerState {
         app_state,
         execution_state,
@@ -42,7 +47,7 @@ fn make_project(id: &str, name: &str) -> Project {
         id: ProjectId::from_string(id.to_string()),
         name: name.to_string(),
         working_directory: "/tmp".to_string(),
-        git_mode: crate::domain::entities::project::GitMode::Worktree,
+        git_mode: GitMode::Worktree,
         base_branch: None,
         worktree_parent_directory: None,
         use_feature_branches: true,
@@ -448,7 +453,7 @@ async fn test_start_ideation_with_title_preserved() {
     assert_eq!(response.status, "ideating");
 
     // Verify the session was stored with the correct title
-    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+    let session_id = IdeationSessionId::from_string(
         response.session_id.clone(),
     );
     let fetched = state
@@ -516,7 +521,7 @@ async fn test_start_ideation_initial_prompt_backward_compat() {
     assert!(!response.session_id.is_empty());
     assert_eq!(response.status, "ideating");
     // Session must have been created
-    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+    let session_id = IdeationSessionId::from_string(
         response.session_id.clone(),
     );
     let fetched = state
@@ -555,7 +560,7 @@ async fn test_start_ideation_prompt_takes_precedence_over_initial_prompt() {
     let response = result.unwrap().0;
     assert_eq!(response.status, "ideating");
     // Session was created regardless of which prompt field was used
-    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+    let session_id = IdeationSessionId::from_string(
         response.session_id.clone(),
     );
     assert!(
@@ -600,7 +605,7 @@ async fn test_start_ideation_with_prompt_returns_200_regardless_of_spawn_outcome
     assert!(!response.session_id.is_empty());
     assert_eq!(response.status, "ideating");
     // Session persisted regardless of spawn outcome
-    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+    let session_id = IdeationSessionId::from_string(
         response.session_id.clone(),
     );
     assert!(
@@ -711,7 +716,7 @@ async fn test_start_ideation_spawn_failure_populates_blocked_reason() {
     assert!(!response.session_id.is_empty());
     assert_eq!(response.status, "ideating");
     // Session was persisted
-    let session_id = crate::domain::entities::IdeationSessionId::from_string(
+    let session_id = IdeationSessionId::from_string(
         response.session_id.clone(),
     );
     assert!(
@@ -760,22 +765,22 @@ async fn test_poll_events_cursor_based() {
                     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
                 );",
             )
-            .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
+            .map_err(|e| AppError::Database(e.to_string()))?;
             conn.execute(
                 "INSERT INTO external_events (event_type, project_id, payload) VALUES ('task.created', ?1, '{\"id\":\"t1\"}')",
                 rusqlite::params![proj_id_clone],
             )
-            .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
+            .map_err(|e| AppError::Database(e.to_string()))?;
             conn.execute(
                 "INSERT INTO external_events (event_type, project_id, payload) VALUES ('task.created', ?1, '{\"id\":\"t2\"}')",
                 rusqlite::params![proj_id_clone],
             )
-            .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
+            .map_err(|e| AppError::Database(e.to_string()))?;
             conn.execute(
                 "INSERT INTO external_events (event_type, project_id, payload) VALUES ('task.merged', ?1, '{\"id\":\"t3\"}')",
                 rusqlite::params![proj_id_clone],
             )
-            .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
+            .map_err(|e| AppError::Database(e.to_string()))?;
             Ok(())
         })
         .await
@@ -841,13 +846,13 @@ async fn test_poll_events_limit_and_has_more() {
                     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))
                 );",
             )
-            .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
+            .map_err(|e| AppError::Database(e.to_string()))?;
             for i in 0..3 {
                 conn.execute(
                     "INSERT INTO external_events (event_type, project_id, payload) VALUES ('ev', ?1, '{}')",
                     rusqlite::params![proj_id_clone],
                 )
-                .map_err(|e| crate::error::AppError::Database(e.to_string()))?;
+                .map_err(|e| AppError::Database(e.to_string()))?;
                 let _ = i;
             }
             Ok(())
@@ -1417,8 +1422,6 @@ async fn test_get_execution_capacity_scope_violation() {
 // external_apply_proposals (POST /api/external/apply_proposals)
 // ============================================================================
 
-use crate::domain::entities::{IdeationSessionId, Priority, ProposalCategory, TaskProposal};
-
 fn make_proposal(session_id: IdeationSessionId, title: &str) -> TaskProposal {
     TaskProposal::new(session_id, title, ProposalCategory::Feature, Priority::Medium)
 }
@@ -1589,8 +1592,6 @@ async fn test_external_apply_proposals_creates_tasks_from_proposals() {
 // ideation_message_http
 // ============================================================================
 
-use crate::domain::services::running_agent_registry::RunningAgentKey;
-
 #[tokio::test]
 async fn test_ideation_message_invalid_session_returns_404() {
     let state = setup_test_state().await;
@@ -1611,8 +1612,6 @@ async fn test_ideation_message_invalid_session_returns_404() {
 
 #[tokio::test]
 async fn test_ideation_message_session_not_active_returns_400() {
-    use crate::domain::entities::ideation::IdeationSessionStatus;
-
     let state = setup_test_state().await;
     let (_, session_id_str) = setup_session(&state, "proj-msg-inactive", "Inactive Session").await;
 
@@ -1713,7 +1712,7 @@ async fn test_ideation_message_sent_when_interactive_process_registered() {
         .expect("failed to spawn cat for test");
     let stdin = child.stdin.take().expect("no stdin on cat process");
 
-    let ipr_key = crate::application::InteractiveProcessKey::new("session", &session_id_str);
+    let ipr_key = InteractiveProcessKey::new("session", &session_id_str);
     state
         .app_state
         .interactive_process_registry
@@ -1776,8 +1775,6 @@ async fn test_list_sessions_no_scope_returns_all() {
 /// Filter by status=active — only active sessions returned
 #[tokio::test]
 async fn test_list_sessions_filter_active() {
-    use crate::domain::entities::ideation::IdeationSessionStatus;
-
     let state = setup_test_state().await;
 
     let project_id = "proj-list-active";
@@ -1818,8 +1815,6 @@ async fn test_list_sessions_filter_active() {
 /// Filter by status=accepted — only accepted sessions returned
 #[tokio::test]
 async fn test_list_sessions_filter_accepted() {
-    use crate::domain::entities::ideation::IdeationSessionStatus;
-
     let state = setup_test_state().await;
 
     let project_id = "proj-list-accepted";
@@ -1864,8 +1859,6 @@ async fn test_list_sessions_filter_accepted() {
 /// Filter by status=archived — only archived sessions returned
 #[tokio::test]
 async fn test_list_sessions_filter_archived() {
-    use crate::domain::entities::ideation::IdeationSessionStatus;
-
     let state = setup_test_state().await;
 
     let project_id = "proj-list-archived";
@@ -1910,8 +1903,6 @@ async fn test_list_sessions_filter_archived() {
 /// Filter by status=all — same as no filter, returns all sessions
 #[tokio::test]
 async fn test_list_sessions_filter_all() {
-    use crate::domain::entities::ideation::IdeationSessionStatus;
-
     let state = setup_test_state().await;
 
     let project_id = "proj-list-filter-all";
@@ -2061,10 +2052,8 @@ async fn test_list_sessions_includes_proposal_count() {
 async fn setup_sqlite_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_sqlite_test());
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     HttpServerState {
         app_state,
         execution_state,
@@ -2109,8 +2098,6 @@ async fn test_trigger_verification_no_plan() {
 async fn test_trigger_verification_already_running() {
     // Session with plan + verification_in_progress=true → "already_running"
     // Uses SQLite-backed state so trigger_auto_verify_sync can operate on the DB.
-    use crate::domain::entities::ideation::{IdeationSessionStatus, VerificationStatus};
-
     let state = setup_sqlite_test_state().await;
 
     let pid = ProjectId::from_string("proj-verify-running".to_string());
@@ -2207,8 +2194,6 @@ async fn test_trigger_verification_session_not_found() {
 #[tokio::test]
 async fn test_get_plan_verification_basic() {
     // Session with verification state → reads it correctly
-    use crate::domain::entities::ideation::VerificationStatus;
-
     let state = setup_test_state().await;
     let (_, session_id) = setup_session(&state, "proj-verify-get", "Verify Get Project").await;
     let session_id_obj = IdeationSessionId::from_string(session_id.clone());
@@ -2264,7 +2249,7 @@ async fn test_get_plan_verification_scope_403() {
 
 async fn create_message(
     state: &HttpServerState,
-    msg: crate::domain::entities::ideation::ChatMessage,
+    msg: ChatMessage,
 ) {
     state
         .app_state
@@ -2297,9 +2282,6 @@ async fn test_get_ideation_messages_empty() {
 
 #[tokio::test]
 async fn test_get_ideation_messages_returns_user_and_orchestrator() {
-    use crate::domain::entities::ideation::ChatMessage;
-    use crate::domain::entities::IdeationSessionId;
-
     let state = setup_test_state().await;
     let (_, session_id_str) =
         setup_session(&state, "proj-msg-roles", "Role Filter Session").await;
@@ -2343,9 +2325,6 @@ async fn test_get_ideation_messages_returns_user_and_orchestrator() {
 
 #[tokio::test]
 async fn test_get_ideation_messages_pagination() {
-    use crate::domain::entities::ideation::ChatMessage;
-    use crate::domain::entities::IdeationSessionId;
-
     let state = setup_test_state().await;
     let (_, session_id_str) =
         setup_session(&state, "proj-msg-page", "Pagination Session").await;
@@ -2425,8 +2404,6 @@ async fn test_get_ideation_messages_not_found() {
 
 #[tokio::test]
 async fn test_get_ideation_messages_agent_status_generating() {
-    use crate::domain::services::running_agent_registry::RunningAgentKey;
-
     let state = setup_test_state().await;
     let (_, session_id_str) =
         setup_session(&state, "proj-msg-agent", "Agent Status Session").await;

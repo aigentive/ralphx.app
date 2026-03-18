@@ -1,18 +1,21 @@
-use super::*;
-use crate::application::chat_service::{CachedStreamingTask, CachedToolCall};
-use crate::application::AppState;
-use crate::commands::ExecutionState;
-use crate::domain::entities::{ChatContextType, IdeationSessionId, TaskId};
-use crate::domain::services::RunningAgentKey;
+use axum::extract::{Path, State};
+use axum::http::StatusCode;
+use ralphx_lib::application::chat_service::{CachedStreamingTask, CachedToolCall};
+use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{
+    ChatContextType, ChatConversation, IdeationSessionId, TaskId,
+};
+use ralphx_lib::domain::services::RunningAgentKey;
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::types::{ActiveStreamingTask, HttpServerState};
 use std::sync::Arc;
 
 async fn setup_test_state() -> HttpServerState {
     let app_state = Arc::new(AppState::new_test());
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
 
     HttpServerState {
         app_state,
@@ -42,7 +45,7 @@ async fn test_get_active_state_returns_empty_for_inactive_conversation() {
 
     // Create a conversation using the context-specific constructor
     let task_id = TaskId::new();
-    let conversation = crate::domain::entities::ChatConversation::new_task(task_id.clone());
+    let conversation = ChatConversation::new_task(task_id.clone());
     let conversation_id = conversation.id.as_str().to_string();
     state
         .app_state
@@ -67,7 +70,7 @@ async fn test_get_active_state_returns_cached_tool_calls() {
 
     // Create a conversation
     let task_id = TaskId::new();
-    let conversation = crate::domain::entities::ChatConversation::new_task(task_id.clone());
+    let conversation = ChatConversation::new_task(task_id.clone());
     let conversation_id = conversation.id.as_str().to_string();
     state
         .app_state
@@ -108,7 +111,7 @@ async fn test_get_active_state_returns_cached_streaming_tasks() {
 
     // Create a conversation
     let task_id = TaskId::new();
-    let conversation = crate::domain::entities::ChatConversation::new_task(task_id.clone());
+    let conversation = ChatConversation::new_task(task_id.clone());
     let conversation_id = conversation.id.as_str().to_string();
     state
         .app_state
@@ -150,7 +153,7 @@ async fn test_get_active_state_returns_partial_text() {
 
     // Create a conversation
     let session_id = IdeationSessionId::new();
-    let conversation = crate::domain::entities::ChatConversation::new_ideation(session_id.clone());
+    let conversation = ChatConversation::new_ideation(session_id.clone());
     let conversation_id = conversation.id.as_str().to_string();
     state
         .app_state
@@ -184,7 +187,7 @@ async fn test_get_active_state_reflects_running_agent() {
 
     // Create a conversation
     let task_id = TaskId::new();
-    let conversation = crate::domain::entities::ChatConversation::new_task(task_id.clone());
+    let conversation = ChatConversation::new_task(task_id.clone());
     let conversation_id = conversation.id.as_str().to_string();
     let context_id = conversation.context_id.clone();
     state
@@ -222,8 +225,7 @@ async fn test_get_active_state_combines_all_data() {
 
     // Create a conversation
     let task_id = TaskId::new();
-    let conversation =
-        crate::domain::entities::ChatConversation::new_task_execution(task_id.clone());
+    let conversation = ChatConversation::new_task_execution(task_id.clone());
     let conversation_id = conversation.id.as_str().to_string();
     let context_id = conversation.context_id.clone();
     state
@@ -300,8 +302,6 @@ async fn test_get_active_state_combines_all_data() {
 
 #[tokio::test]
 async fn test_active_streaming_task_from_impl_forwards_stats() {
-    use crate::http_server::types::ActiveStreamingTask;
-
     let cached = CachedStreamingTask {
         tool_use_id: "toolu_stats_test".to_string(),
         description: Some("Test task".to_string()),
@@ -325,8 +325,6 @@ async fn test_active_streaming_task_from_impl_forwards_stats() {
 
 #[tokio::test]
 async fn test_active_streaming_task_from_impl_handles_none_stats() {
-    use crate::http_server::types::ActiveStreamingTask;
-
     let cached = CachedStreamingTask {
         tool_use_id: "toolu_no_stats".to_string(),
         description: None,

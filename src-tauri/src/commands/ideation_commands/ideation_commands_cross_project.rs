@@ -237,7 +237,8 @@ pub async fn create_cross_project_session(
 ///    - One end outside migration set → drop with warning.
 /// 6. Insert new proposals and dependencies.
 /// 7. Return migration mappings and dropped dependency warnings.
-pub(crate) async fn migrate_proposals_impl(
+#[doc(hidden)]
+pub async fn migrate_proposals_impl(
     state: &AppState,
     input: MigrateProposalsInput,
 ) -> Result<MigrateProposalsResult, String> {

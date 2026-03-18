@@ -435,7 +435,3 @@ fn resolve_template_vars(
         })
         .collect()
 }
-
-#[cfg(test)]
-#[path = "projects_tests.rs"]
-mod projects_tests;

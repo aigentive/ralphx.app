@@ -5,21 +5,24 @@
 // - run_transaction rollback semantics are correctly exercised
 // - auto-scope-add and duplicate checks see consistent state
 
-use super::*;
-use crate::application::AppState;
-use crate::commands::ExecutionState;
-use crate::domain::entities::{ApiKey, ApiKeyId, PERMISSION_CREATE_PROJECT, PERMISSION_MAX, PERMISSION_READ};
-use crate::domain::services::key_crypto::{generate_raw_key, hash_key, key_prefix};
-use crate::http_server::handlers::api_keys::{create_api_key, update_key_permissions};
-use crate::http_server::types::{CreateApiKeyRequest, RegisterProjectExternalRequest, UpdatePermissionsRequest};
-use crate::http_server::handlers::external_auth::ValidatedExternalKey;
-use crate::infrastructure::sqlite::{
+use axum::extract::{Json, Path, State};
+use axum::http::StatusCode;
+use ralphx_lib::application::{AppState, TeamService, TeamStateTracker};
+use ralphx_lib::commands::ExecutionState;
+use ralphx_lib::domain::entities::{
+    ApiKey, ApiKeyId, Project, PERMISSION_CREATE_PROJECT, PERMISSION_MAX, PERMISSION_READ,
+};
+use ralphx_lib::domain::services::key_crypto::{generate_raw_key, hash_key, key_prefix};
+use ralphx_lib::error::AppError;
+use ralphx_lib::http_server::handlers::*;
+use ralphx_lib::http_server::types::{
+    CreateApiKeyRequest, HttpServerState, RegisterProjectExternalRequest, UpdatePermissionsRequest,
+};
+use ralphx_lib::infrastructure::sqlite::{
     sqlite_api_key_repo::SqliteApiKeyRepository,
     sqlite_project_repo::SqliteProjectRepository,
     DbConnection,
 };
-use axum::extract::{Json, Path, State};
-use axum::http::StatusCode;
 use std::sync::Arc;
 
 // ============================================================================
@@ -30,8 +33,8 @@ use std::sync::Arc;
 /// and db all share the same in-memory connection with applied migrations.
 /// This is required for register_project_external integration tests to see
 /// consistent state across repo lookups and direct db.run_transaction() inserts.
-fn setup_sqlite_register_state() -> (crate::testing::SqliteTestDb, HttpServerState) {
-    let db = crate::testing::SqliteTestDb::new("http-handler-projects");
+fn setup_sqlite_register_state() -> (ralphx_lib::testing::SqliteTestDb, HttpServerState) {
+    let db = ralphx_lib::testing::SqliteTestDb::new("http-handler-projects");
     // Disable FK enforcement: tests insert partial data (no FK targets) for speed
     db.with_connection(|conn| {
         conn.execute("PRAGMA foreign_keys = OFF", [])
@@ -47,10 +50,8 @@ fn setup_sqlite_register_state() -> (crate::testing::SqliteTestDb, HttpServerSta
     app_state.db = DbConnection::from_shared(Arc::clone(&shared_conn));
 
     let execution_state = Arc::new(ExecutionState::new());
-    let tracker = crate::application::TeamStateTracker::new();
-    let team_service = Arc::new(crate::application::TeamService::new_without_events(
-        Arc::new(tracker.clone()),
-    ));
+    let tracker = TeamStateTracker::new();
+    let team_service = Arc::new(TeamService::new_without_events(Arc::new(tracker.clone())));
     let state = HttpServerState {
         app_state: Arc::new(app_state),
         execution_state,
@@ -350,7 +351,7 @@ async fn test_run_transaction_rolls_back_both_inserts_on_error() {
     let key_id_str = key_id.as_str().to_string();
 
     // Build a project domain object (same as handler would)
-    let project = crate::domain::entities::Project::new(
+    let project = Project::new(
         "RollbackTest".to_string(),
         "/tmp/rollback-test".to_string(),
     );
@@ -387,10 +388,10 @@ async fn test_run_transaction_rolls_back_both_inserts_on_error() {
                     project.github_pr_enabled as i64,
                 ],
             )
-            .map_err(|e| crate::error::AppError::Database(format!("Insert project: {e}")))?;
+            .map_err(|e| AppError::Database(format!("Insert project: {e}")))?;
 
             // Deliberately inject failure AFTER the first INSERT to test rollback
-            Err::<(), _>(crate::error::AppError::Database(
+            Err::<(), _>(AppError::Database(
                 "Injected failure to test rollback atomicity".to_string(),
             ))
         })
