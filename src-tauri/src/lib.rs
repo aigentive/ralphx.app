@@ -969,6 +969,7 @@ pub fn run() {
             // Ideation session commands
             commands::ideation_commands::create_ideation_session,
             commands::ideation_commands::create_cross_project_session,
+            commands::ideation_commands::migrate_proposals,
             commands::ideation_commands::get_ideation_session,
             commands::ideation_commands::get_ideation_session_with_data,
             commands::ideation_commands::list_ideation_sessions,

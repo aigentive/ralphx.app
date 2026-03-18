@@ -17,7 +17,7 @@ async fn test_merge_verification_detects_unmerged_task_branch() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -134,7 +134,7 @@ async fn test_merge_verification_uses_correct_repo_path() {
 
     // Initialize main repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(&main_repo)
         .output()
         .unwrap();
@@ -195,7 +195,7 @@ async fn test_merge_verification_uses_correct_repo_path() {
     // Simulate creating a worktree (just init a separate repo for simplicity)
     // In real code, worktree would have task branch checked out
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(&worktree)
         .output()
         .unwrap();
@@ -278,7 +278,7 @@ async fn test_try_continue_rebase_no_rebase_in_progress() {
     let repo = temp_dir.path();
 
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -319,7 +319,7 @@ async fn test_try_continue_rebase_auto_resolved_step() {
 
     // Initialize repo with main branch
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -425,7 +425,7 @@ async fn test_rebase_onto_auto_resolved_conflicts() {
     let repo = temp_dir.path();
 
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -525,7 +525,7 @@ async fn test_try_continue_rebase_completes_no_rebase() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -569,7 +569,7 @@ async fn test_try_continue_rebase_with_auto_resolved_conflicts() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -687,7 +687,7 @@ async fn test_try_complete_stale_rebase_no_rebase() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -728,7 +728,7 @@ async fn test_try_complete_stale_rebase_auto_resolved_completes() {
 
     // Initialize repo with main branch
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();
@@ -843,7 +843,7 @@ async fn test_try_complete_stale_rebase_has_real_conflicts() {
 
     // Initialize repo
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(repo)
         .output()
         .unwrap();

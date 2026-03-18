@@ -109,6 +109,9 @@ async fn create_session_with_plan_and_proposals(
             updated_at: chrono::Utc::now(),
             archived_at: None,
             sort_order: i,
+            target_project: None,
+            migrated_from_session_id: None,
+            migrated_from_proposal_id: None,
         };
         proposal_ids.push(proposal.id.to_string());
         state.task_proposal_repo.create(proposal).await.unwrap();

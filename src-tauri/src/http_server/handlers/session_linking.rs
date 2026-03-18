@@ -309,6 +309,7 @@ pub async fn create_child_session(
             .as_deref()
             .and_then(|p| p.parse::<SessionPurpose>().ok())
             .unwrap_or_default(),
+        cross_project_checked: true,
     };
 
     let child_id = child_session.id.clone();
@@ -856,6 +857,7 @@ pub(crate) async fn create_verification_child_session(
         source_project_id: None,
         source_session_id: None,
         session_purpose: SessionPurpose::Verification,
+        cross_project_checked: true,
     };
 
     let child_id = child_session.id.clone();

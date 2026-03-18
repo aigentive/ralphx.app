@@ -39,6 +39,26 @@ import { handleAskUserQuestion, AskUserQuestionArgs } from "./question-handler.j
 import { handleRequestTeamPlan, RequestTeamPlanArgs } from "./team-plan-handler.js";
 
 /**
+ * Semantic keyword patterns for cross-project detection in plan text.
+ * Exported for unit testing.
+ */
+export const CROSS_PROJECT_KEYWORDS = [
+  "cross[- ]?project",
+  "multi[- ]?project",
+  "target project",
+  "another project",
+  "different project",
+  "project[_ ]?b\\b",
+  "separate\\s+repo(?:sitory)?",
+  "new\\s+repo(?:sitory)?",
+  "different\\s+codebase",
+  "other\\s+codebase",
+  "monorepo\\s+boundary",
+  "external\\s+package",
+  "external\\s+module",
+];
+
+/**
  * Parse command line arguments for --agent-type
  * Returns the agent type if found, undefined otherwise
  */
@@ -586,6 +606,20 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         sourceSessionId: source_session_id,
         title,
       });
+    } else if (name === "migrate_proposals") {
+      // POST /api/internal/cross_project/migrate_proposals
+      const { source_session_id, target_session_id, proposal_ids, target_project_filter } = args as {
+        source_session_id: string;
+        target_session_id: string;
+        proposal_ids?: string[];
+        target_project_filter?: string;
+      };
+      result = await callTauri("internal/cross_project/migrate_proposals", {
+        sourceSessionId: source_session_id,
+        targetSessionId: target_session_id,
+        proposalIds: proposal_ids,
+        targetProjectFilter: target_project_filter,
+      });
     } else if (name === "cross_project_guide") {
       // MCP-server-only: analyze plan for cross-project paths and return guidance
       const { session_id, plan_content } = args as {
@@ -624,11 +658,13 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
+      const crossProjectKeywordRegex = new RegExp(CROSS_PROJECT_KEYWORDS.join("|"), "i");
+
       const hasCrossProjectContent =
         detectedPaths.length > 0 ||
-        /cross[- ]?project|multi[- ]?project|target project|another project|different project|project[_ ]?b\b/i.test(planText);
+        crossProjectKeywordRegex.test(planText);
 
-      result = {
+      const analysisResult = {
         has_cross_project_paths: hasCrossProjectContent,
         detected_paths: detectedPaths,
         guidance: hasCrossProjectContent
@@ -657,6 +693,27 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               detected_paths: [],
             },
       };
+
+      if (session_id) {
+        try {
+          await callTauri(`internal/sessions/${session_id}/cross_project_check`, {});
+          result = { ...analysisResult, gate_status: "set" };
+        } catch (err) {
+          const errMsg = err instanceof Error ? err.message : String(err);
+          safeError(`[RalphX MCP] cross_project_guide: failed to set gate for session ${session_id}:`, err);
+          result = {
+            ...analysisResult,
+            gate_status: "backend_unavailable",
+            gate_error: `Backend call failed: ${errMsg}`,
+          };
+        }
+      } else {
+        result = {
+          ...analysisResult,
+          gate_status: "no_session_id",
+          gate_message: "Provide session_id to set the cross-project gate and unlock proposal creation",
+        };
+      }
     } else if (name === "get_child_session_status") {
       // GET /api/ideation/sessions/:id/child-status
       const { session_id, include_recent_messages, message_limit } = args as {

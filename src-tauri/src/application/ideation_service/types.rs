@@ -57,6 +57,8 @@ pub struct CreateProposalOptions {
     pub acceptance_criteria: Option<String>,
     /// Optional estimated complexity string (parsed to Complexity enum in impl)
     pub estimated_complexity: Option<String>,
+    /// Optional target project ID for cross-project proposals
+    pub target_project: Option<String>,
     /// List of proposal IDs to add as dependencies after creation
     pub depends_on: Vec<String>,
 }
@@ -78,6 +80,8 @@ pub struct UpdateProposalOptions {
     pub user_priority: Option<Priority>,
     /// Estimated complexity string (parsed to Complexity enum in impl, if provided)
     pub estimated_complexity: Option<String>,
+    /// Optional target project ID for cross-project proposals (None=not provided, Some(None)=clear, Some(Some(v))=set)
+    pub target_project: Option<Option<String>>,
     /// Source of the update — controls `user_modified` tracking and `touch()` call
     pub source: UpdateSource,
     /// Additive: proposal IDs this proposal should depend on

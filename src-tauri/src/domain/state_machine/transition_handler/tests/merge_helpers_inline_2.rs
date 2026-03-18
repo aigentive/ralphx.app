@@ -22,7 +22,7 @@ fn create_temp_git_repo() -> (TempDir, PathBuf) {
     let repo_path = temp_dir.path().to_path_buf();
 
     Command::new("git")
-        .args(["init"])
+        .args(["init", "-b", "main"])
         .current_dir(&repo_path)
         .output()
         .unwrap();

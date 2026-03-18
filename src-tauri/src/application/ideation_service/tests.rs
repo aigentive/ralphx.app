@@ -849,6 +849,7 @@ fn create_proposal_options() -> CreateProposalOptions {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     }
 }

@@ -285,10 +285,39 @@ After creating or verifying a plan, check if it proposes changes spanning multip
 - Architecture decisions affecting multiple codebases
 - Proposals that naturally belong to different project scopes
 
-If cross-project paths detected → call `cross_project_guide({ sessionId })` for contextual guidance on:
-1. How to split proposals across projects
-2. When to use `create_cross_project_session` to spawn sessions in target projects
-3. How to create task proposals for each involved project's session
+The backend enforces that `cross_project_guide` is called when cross-project paths are detected — this section defines how to respond to the results.
+
+**If `cross_project_guide` returns `has_cross_project_paths: true` — mandatory 6-step workflow:**
+
+1. **Present detected paths** — show the user the detected project paths from the response
+2. **Check list_projects** — call `list_projects` and match each detected path against `working_directory` fields to see which projects are already registered
+3. **Inform about auto-registration** — for any detected path not found in `list_projects`, tell the user: "This project isn't registered yet — `create_cross_project_session` will auto-register it from the directory"
+4. **Confirm with user** — call `ask_user_question` with: "Create implementation sessions in these projects? [Y/n]" listing each target project path
+5. **On confirmation** — call `create_cross_project_session` for each confirmed target project directory
+6. **Tag proposals with target_project** — when creating proposals in Phase 6 PROPOSE, set the `target_project` field to route each proposal to the correct project session
+
+**If `cross_project_guide` returns `has_cross_project_paths: false` — proceed normally, no user prompt needed.**
+
+**Concrete example:**
+
+```
+cross_project_guide returns:
+  has_cross_project_paths: true
+  detected_paths: ["/Users/dev/reefagent-mcp-jira"]
+
+→ list_projects → "/Users/dev/reefagent-mcp-jira" not found in results
+
+→ ask_user_question:
+  "I detected implementation work in another project:
+   - /Users/dev/reefagent-mcp-jira (not yet registered)
+
+   Create implementation sessions in these projects? [Y/n]"
+
+→ User confirms → create_cross_project_session("/Users/dev/reefagent-mcp-jira")
+
+→ In Phase 6: create_task_proposal(..., target_project: "/Users/dev/reefagent-mcp-jira")
+  for proposals belonging to that project
+```
 
 ### Phase 5: CONFIRM
 Present plan to user → wait for approval. Include: team research summary, architecture overview, key decisions, affected files, implementation phases, `Constraints`, `Avoid`, and `Proof Obligations`.

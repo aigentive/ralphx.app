@@ -9,26 +9,47 @@
 // restricted by network topology (only processes on the same machine can
 // reach this server).
 
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::{Path, State}, http::StatusCode, Json};
+use serde::Serialize;
 
 use super::*;
 use crate::commands::ideation_commands::{
-    create_cross_project_session_impl, CreateCrossProjectSessionInput, IdeationSessionResponse,
+    create_cross_project_session_impl, migrate_proposals_impl, CreateCrossProjectSessionInput,
+    IdeationSessionResponse, MigrateProposalsInput, MigrateProposalsResult,
 };
+
+// ============================================================================
+// GET /api/internal/projects — response types
+// ============================================================================
+
+/// Internal-only project summary that includes the filesystem path.
+///
+/// Intentionally separate from `ProjectSummary` (external.rs) which must NOT
+/// expose filesystem paths to external API key holders.
+#[derive(Debug, Serialize)]
+pub struct InternalProjectSummary {
+    pub id: String,
+    pub name: String,
+    pub working_directory: String,
+    pub task_count: u32,
+}
 
 // ============================================================================
 // GET /api/internal/projects
 // ============================================================================
 
-/// Returns all projects without scope filtering.
+/// Returns all projects without scope filtering, including filesystem paths.
 ///
 /// Unlike `GET /api/external/projects` (which requires a `ProjectScope` header
 /// and filters by it), this endpoint returns every project in the database.
 /// It is used by the internal MCP server to let ideation agents discover
 /// available projects when orchestrating cross-project session creation.
+///
+/// The response includes `working_directory` (filesystem path) which is
+/// intentionally excluded from the external endpoint for security reasons.
 pub async fn list_projects_internal(
     State(state): State<HttpServerState>,
-) -> Result<Json<ListProjectsResponse>, StatusCode> {
+) -> Result<Json<Vec<InternalProjectSummary>>, StatusCode> {
     let projects = state
         .app_state
         .project_repo
@@ -48,16 +69,15 @@ pub async fn list_projects_internal(
             .await
             .unwrap_or(0);
 
-        summaries.push(ProjectSummary {
+        summaries.push(InternalProjectSummary {
             id: project.id.to_string(),
             name: project.name.clone(),
-            description: None,
-            created_at: project.created_at.to_rfc3339(),
+            working_directory: project.working_directory.clone(),
             task_count,
         });
     }
 
-    Ok(Json(ListProjectsResponse { projects: summaries }))
+    Ok(Json(summaries))
 }
 
 // ============================================================================
@@ -120,6 +140,87 @@ pub async fn create_cross_project_session_http(
                 }
             }
         })
+}
+
+// ============================================================================
+// POST /api/internal/cross_project/migrate_proposals
+// ============================================================================
+
+/// Migrates proposals from a source session to a target session.
+/// Delegates to the shared `migrate_proposals_impl` function (same logic used by the Tauri
+/// IPC command) to avoid code duplication.
+///
+/// Used by the internal MCP server's `migrate_proposals` tool.
+///
+/// # Errors
+///
+/// - `404 Not Found` — source or target session not found.
+/// - `500 Internal Server Error` — unexpected database or application error.
+pub async fn migrate_proposals_http(
+    State(state): State<HttpServerState>,
+    Json(input): Json<MigrateProposalsInput>,
+) -> Result<Json<MigrateProposalsResult>, HttpError> {
+    migrate_proposals_impl(&state.app_state, input)
+        .await
+        .map(Json)
+        .map_err(|e| {
+            if e.contains("not found") {
+                HttpError {
+                    status: StatusCode::NOT_FOUND,
+                    message: Some(e),
+                }
+            } else {
+                tracing::error!("migrate_proposals_http: unexpected error: {}", e);
+                HttpError {
+                    status: StatusCode::INTERNAL_SERVER_ERROR,
+                    message: Some(e),
+                }
+            }
+        })
+}
+
+// ============================================================================
+// POST /api/internal/sessions/:id/cross_project_check
+// ============================================================================
+
+/// Sets cross_project_checked = true on the given ideation session.
+/// Called by the cross_project_guide MCP tool after analysis is complete.
+///
+/// # Errors
+///
+/// - `404 Not Found` — session ID does not exist.
+/// - `500 Internal Server Error` — database error.
+pub async fn set_cross_project_checked(
+    State(state): State<HttpServerState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<serde_json::Value>)> {
+    let rows_affected = state
+        .app_state
+        .db
+        .run(move |conn| {
+            conn.execute(
+                "UPDATE ideation_sessions SET cross_project_checked = 1, updated_at = datetime('now') WHERE id = ?1",
+                [&id],
+            )
+            .map_err(|e| crate::error::AppError::Database(e.to_string()))
+        })
+        .await
+        .map_err(|e| {
+            tracing::error!("set_cross_project_checked: DB error: {}", e);
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        })?;
+
+    if rows_affected == 0 {
+        Err((
+            StatusCode::NOT_FOUND,
+            Json(serde_json::json!({ "error": "Session not found" })),
+        ))
+    } else {
+        Ok(StatusCode::OK)
+    }
 }
 
 #[cfg(test)]

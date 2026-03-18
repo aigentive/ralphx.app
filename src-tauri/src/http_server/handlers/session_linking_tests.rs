@@ -26,6 +26,7 @@ fn make_session(team_mode: Option<&str>) -> IdeationSession {
         source_project_id: None,
         source_session_id: None,
         session_purpose: Default::default(),
+        cross_project_checked: true,
     }
 }
 
@@ -109,6 +110,7 @@ mod verification_init_tests {
             source_project_id: None,
             source_session_id: None,
             session_purpose: Default::default(),
+            cross_project_checked: true,
         }
     }
 

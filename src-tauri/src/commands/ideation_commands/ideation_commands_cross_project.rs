@@ -1,18 +1,25 @@
-// Cross-project session creation command
+// Cross-project session creation and proposal migration commands
 //
-// Creates a new ideation session in a target project by inheriting a verified plan
-// from a source session in another project on the same RalphX instance.
+// Provides cross-project orchestration:
+// - create_cross_project_session: inherit a verified plan in a target project
+// - migrate_proposals: copy proposals from one session to another with dependency remapping
+
+use std::collections::HashMap;
 
 use tauri::{Emitter, State};
 
 use crate::application::AppState;
 use crate::domain::entities::{
-    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, VerificationStatus,
+    IdeationSession, IdeationSessionId, IdeationSessionStatus, ProjectId, TaskProposalId,
+    VerificationStatus,
 };
 use crate::domain::services::validate_project_path;
 use crate::infrastructure::sqlite::SqliteIdeationSessionRepository;
 
-use super::ideation_commands_types::{CreateCrossProjectSessionInput, IdeationSessionResponse};
+use super::ideation_commands_types::{
+    CreateCrossProjectSessionInput, DroppedDependency, IdeationSessionResponse,
+    MigrateProposalsInput, MigrateProposalsResult, MigratedProposalEntry,
+};
 
 // ============================================================================
 // Core Implementation
@@ -137,7 +144,8 @@ pub(crate) async fn create_cross_project_session_impl<R: tauri::Runtime>(
         .status(IdeationSessionStatus::Active)
         .verification_status(VerificationStatus::ImportedVerified)
         .source_project_id(source_session.project_id.as_str().to_string())
-        .source_session_id(input.source_session_id.clone());
+        .source_session_id(input.source_session_id.clone())
+        .cross_project_checked(true);
 
     if let Some(title) = input.title {
         builder = builder.title(title);
@@ -210,4 +218,224 @@ pub async fn create_cross_project_session(
     app: tauri::AppHandle,
 ) -> Result<IdeationSessionResponse, String> {
     create_cross_project_session_impl(&app, &state, input).await
+}
+
+// ============================================================================
+// Proposal Migration Implementation
+// ============================================================================
+
+/// Core implementation for migrating proposals from one session to another.
+///
+/// Logic:
+/// 1. Fetch all proposals from the source session.
+/// 2. Filter by proposal_ids (if provided) and/or target_project_filter.
+/// 3. For each selected proposal, clone it with a new UUID, the target session_id,
+///    and migrated_from traceability fields.
+/// 4. Fetch all dependencies for the source session.
+/// 5. For each dependency:
+///    - Both ends in migration set → remap to new IDs.
+///    - One end outside migration set → drop with warning.
+/// 6. Insert new proposals and dependencies.
+/// 7. Return migration mappings and dropped dependency warnings.
+pub(crate) async fn migrate_proposals_impl(
+    state: &AppState,
+    input: MigrateProposalsInput,
+) -> Result<MigrateProposalsResult, String> {
+    tracing::info!(
+        source_session_id = %input.source_session_id,
+        target_session_id = %input.target_session_id,
+        "Migrating proposals between sessions"
+    );
+
+    let source_session_id = IdeationSessionId::from_string(input.source_session_id.clone());
+    let target_session_id = IdeationSessionId::from_string(input.target_session_id.clone());
+
+    // 1. Validate both sessions exist
+    let _source_session = state
+        .ideation_session_repo
+        .get_by_id(&source_session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Source session not found: {}", input.source_session_id))?;
+
+    let _target_session = state
+        .ideation_session_repo
+        .get_by_id(&target_session_id)
+        .await
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Target session not found: {}", input.target_session_id))?;
+
+    // 2. Fetch source proposals
+    let source_proposals = state
+        .task_proposal_repo
+        .get_by_session(&source_session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    // 3. Filter by proposal_ids and/or target_project_filter
+    let selected_proposals: Vec<_> = source_proposals
+        .into_iter()
+        .filter(|p| {
+            // Filter by explicit proposal_ids if provided
+            if let Some(ids) = &input.proposal_ids {
+                if !ids.contains(&p.id.as_str().to_string()) {
+                    return false;
+                }
+            }
+            // Filter by target_project_filter if provided
+            if let Some(filter) = &input.target_project_filter {
+                if p.target_project.as_deref() != Some(filter.as_str()) {
+                    return false;
+                }
+            }
+            true
+        })
+        .collect();
+
+    if selected_proposals.is_empty() {
+        return Ok(MigrateProposalsResult {
+            migrated: vec![],
+            dropped_dependencies: vec![],
+        });
+    }
+
+    // Build a set of source IDs for dependency filtering
+    let source_ids: std::collections::HashSet<String> = selected_proposals
+        .iter()
+        .map(|p| p.id.as_str().to_string())
+        .collect();
+
+    // 4. Clone proposals with new UUIDs
+    let now = chrono::Utc::now();
+    let mut id_map: HashMap<String, String> = HashMap::new(); // old_id → new_id
+    let mut new_proposals = Vec::new();
+
+    for proposal in &selected_proposals {
+        let new_id = TaskProposalId::new();
+        id_map.insert(proposal.id.as_str().to_string(), new_id.as_str().to_string());
+
+        let mut cloned = proposal.clone();
+        cloned.id = new_id;
+        cloned.session_id = target_session_id.clone();
+        cloned.migrated_from_session_id = Some(input.source_session_id.clone());
+        cloned.migrated_from_proposal_id = Some(proposal.id.as_str().to_string());
+        // Reset fields that shouldn't carry over
+        cloned.created_task_id = None;
+        cloned.created_at = now;
+        cloned.updated_at = now;
+        new_proposals.push(cloned);
+    }
+
+    // 5. Insert new proposals
+    for proposal in new_proposals {
+        state
+            .task_proposal_repo
+            .create(proposal)
+            .await
+            .map_err(|e| format!("Failed to create migrated proposal: {}", e))?;
+    }
+
+    // 6. Fetch and remap dependencies
+    let all_deps = state
+        .proposal_dependency_repo
+        .get_all_for_session(&source_session_id)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    let mut dropped_dependencies = Vec::new();
+
+    for (dep_proposal_id, dep_depends_on_id, reason) in all_deps {
+        let from_str = dep_proposal_id.as_str().to_string();
+        let to_str = dep_depends_on_id.as_str().to_string();
+
+        let from_in_set = source_ids.contains(&from_str);
+        let to_in_set = source_ids.contains(&to_str);
+
+        match (from_in_set, to_in_set) {
+            (true, true) => {
+                // Both ends migrated — remap to new IDs
+                let new_from = id_map.get(&from_str).expect("id_map must contain migrated proposal");
+                let new_to = id_map.get(&to_str).expect("id_map must contain migrated proposal");
+
+                let new_from_id = TaskProposalId::from_string(new_from.clone());
+                let new_to_id = TaskProposalId::from_string(new_to.clone());
+
+                state
+                    .proposal_dependency_repo
+                    .add_dependency(
+                        &new_from_id,
+                        &new_to_id,
+                        reason.as_deref(),
+                        Some("migration"),
+                    )
+                    .await
+                    .map_err(|e| format!("Failed to create remapped dependency: {}", e))?;
+            }
+            (true, false) => {
+                // Source depends on something outside migration set — drop
+                dropped_dependencies.push(DroppedDependency {
+                    proposal_id: from_str.clone(),
+                    dropped_dep_id: to_str.clone(),
+                    reason: format!(
+                        "Dependency target '{}' was not included in the migration set",
+                        to_str
+                    ),
+                });
+            }
+            (false, true) => {
+                // Something outside migration set depends on a migrated proposal — drop
+                dropped_dependencies.push(DroppedDependency {
+                    proposal_id: from_str.clone(),
+                    dropped_dep_id: to_str.clone(),
+                    reason: format!(
+                        "Dependency source '{}' was not included in the migration set",
+                        from_str
+                    ),
+                });
+            }
+            (false, false) => {
+                // Neither end in migration set — skip silently
+            }
+        }
+    }
+
+    let migrated: Vec<MigratedProposalEntry> = selected_proposals
+        .iter()
+        .map(|p| {
+            let source_id = p.id.as_str().to_string();
+            let target_id = id_map[&source_id].clone();
+            MigratedProposalEntry { source_id, target_id }
+        })
+        .collect();
+
+    tracing::info!(
+        migrated_count = migrated.len() as u64,
+        dropped_dep_count = dropped_dependencies.len() as u64,
+        "Proposal migration complete"
+    );
+
+    Ok(MigrateProposalsResult {
+        migrated,
+        dropped_dependencies,
+    })
+}
+
+// ============================================================================
+// Tauri Command Wrapper — migrate_proposals
+// ============================================================================
+
+/// Migrate proposals from one ideation session to another.
+///
+/// Proposals are cloned with new UUIDs and traceability fields set.
+/// Dependencies between migrated proposals are remapped; cross-session dependencies are dropped.
+///
+/// # Errors
+///
+/// Returns an error string if either session is not found, or if a database error occurs.
+#[tauri::command]
+pub async fn migrate_proposals(
+    input: MigrateProposalsInput,
+    state: State<'_, AppState>,
+) -> Result<MigrateProposalsResult, String> {
+    migrate_proposals_impl(&state, input).await
 }

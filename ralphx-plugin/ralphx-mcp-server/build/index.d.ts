@@ -11,5 +11,9 @@
  * - Filters available tools based on agent type (hard enforcement)
  * - Each agent only sees tools appropriate for its role
  */
-export {};
+/**
+ * Semantic keyword patterns for cross-project detection in plan text.
+ * Exported for unit testing.
+ */
+export declare const CROSS_PROJECT_KEYWORDS: string[];
 //# sourceMappingURL=index.d.ts.map

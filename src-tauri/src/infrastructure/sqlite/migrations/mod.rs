@@ -96,6 +96,9 @@ mod v7_session_status_converted_to_accepted;
 mod v8_task_git_fields;
 mod v9_project_git_fields;
 mod v70_plan_branch_base_override;
+mod v71_add_target_project_to_proposals;
+mod v72_cross_project_check;
+mod v72_proposal_migrated_from;
 
 #[cfg(test)]
 mod tests;
@@ -201,9 +204,15 @@ mod v67_tasks_session_status_index_tests;
 mod v68_session_purpose_tests;
 #[cfg(test)]
 mod v69_soft_delete_archived_at_tests;
+#[cfg(test)]
+mod v71_add_target_project_to_proposals_tests;
+#[cfg(test)]
+mod v72_cross_project_check_tests;
+#[cfg(test)]
+mod v72_proposal_migrated_from_tests;
 
 /// Current schema version - bump this when adding a new migration
-pub const SCHEMA_VERSION: i32 = 70;
+pub const SCHEMA_VERSION: i32 = 73;
 
 /// Migration function signature
 type MigrationFn = fn(&Connection) -> AppResult<()>;
@@ -567,6 +576,21 @@ const MIGRATIONS: &[Migration] = &[
         version: 70,
         name: "plan_branch_base_override",
         migrate: v70_plan_branch_base_override::migrate,
+    },
+    Migration {
+        version: 71,
+        name: "add_target_project_to_proposals",
+        migrate: v71_add_target_project_to_proposals::migrate,
+    },
+    Migration {
+        version: 72,
+        name: "cross_project_check",
+        migrate: v72_cross_project_check::migrate,
+    },
+    Migration {
+        version: 73,
+        name: "proposal_migrated_from",
+        migrate: v72_proposal_migrated_from::migrate,
     },
 ];
 

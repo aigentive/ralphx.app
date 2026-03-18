@@ -70,6 +70,7 @@ async fn test_create_proposal_without_plan_artifact_returns_validation_error() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
 
@@ -108,6 +109,7 @@ async fn test_create_proposal_with_plan_artifact_succeeds_and_auto_links() {
         .project_id(project_id.clone())
         .title("Test Session")
         .plan_artifact_id(artifact_id.clone())
+        .cross_project_checked(true)
         .build();
     let session_id = session.id.clone();
     state.ideation_session_repo.create(session).await.unwrap();
@@ -120,6 +122,7 @@ async fn test_create_proposal_with_plan_artifact_succeeds_and_auto_links() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
 
@@ -154,6 +157,7 @@ async fn test_create_proposal_sets_plan_version_at_creation() {
         .project_id(project_id.clone())
         .title("Test Session")
         .plan_artifact_id(artifact_id.clone())
+        .cross_project_checked(true)
         .build();
     let session_id = session.id.clone();
     state.ideation_session_repo.create(session).await.unwrap();
@@ -166,6 +170,7 @@ async fn test_create_proposal_sets_plan_version_at_creation() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
 
@@ -201,6 +206,7 @@ async fn setup_session_with_gate(
         .project_id(project_id)
         .title("Gate Test Session")
         .plan_artifact_id(artifact_id.clone())
+        .cross_project_checked(true)
         .build();
     state.ideation_session_repo.create(session.clone()).await.unwrap();
 
@@ -239,6 +245,7 @@ async fn create_test_proposal(state: &AppState, session_id: &IdeationSessionId) 
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
     create_proposal_impl(state, session_id.clone(), options)
@@ -262,6 +269,7 @@ async fn test_create_gate_blocks_unverified_when_enabled() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
 
@@ -295,6 +303,7 @@ async fn test_create_gate_ipc_parity_same_error_as_http() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
     let http_options = CreateProposalOptions {
@@ -305,6 +314,7 @@ async fn test_create_gate_ipc_parity_same_error_as_http() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
 
@@ -428,6 +438,7 @@ async fn test_create_proposal_inserted_exactly_once() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
 
@@ -512,6 +523,7 @@ async fn test_create_proposal_with_estimated_complexity_roundtrip() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: Some("complex".to_string()),
+        target_project: None,
         depends_on: vec![],
     };
     let (proposal, _dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
@@ -547,6 +559,7 @@ async fn test_update_proposal_on_archived_session_blocked() {
         .project_id(project_id)
         .title("Archived Session")
         .plan_artifact_id(artifact_id)
+        .cross_project_checked(true)
         .build();
     let session_id = session.id.clone();
     state.ideation_session_repo.create(session).await.unwrap();
@@ -595,6 +608,7 @@ async fn test_archive_proposal_on_accepted_session_blocked() {
         .project_id(project_id)
         .title("Accepted Session")
         .plan_artifact_id(artifact_id)
+        .cross_project_checked(true)
         .build();
     let session_id = session.id.clone();
     state.ideation_session_repo.create(session).await.unwrap();
@@ -842,6 +856,7 @@ async fn test_create_gate_off_allows_any_status() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
 
@@ -871,6 +886,7 @@ async fn test_concurrent_creates_produce_unique_sort_orders() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
 
@@ -923,6 +939,7 @@ async fn test_create_with_valid_depends_on_inserts_dependency() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![a_id.as_str().to_string()],
     };
     let (b_proposal, dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
@@ -954,6 +971,7 @@ async fn test_create_with_nonexistent_dep_partial_failure() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec!["nonexistent-proposal-id".to_string()],
     };
     let (proposal, dep_errors) = create_proposal_impl(&state, session.id.clone(), options)
@@ -992,6 +1010,7 @@ async fn test_create_with_cross_session_dep_rejected() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![other_proposal_id.as_str().to_string()],
     };
     let (_, dep_errors) = create_proposal_impl(&state, session1.id.clone(), options)
@@ -1206,6 +1225,7 @@ async fn test_concurrent_create_during_status_transition_no_partial_state() {
         steps: None,
         acceptance_criteria: None,
         estimated_complexity: None,
+        target_project: None,
         depends_on: vec![],
     };
 

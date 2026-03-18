@@ -54,6 +54,10 @@ export const ALL_TOOLS = [
                     items: { type: "string" },
                     description: "Testable criteria to verify task completion (e.g., 'API returns 200 with valid schema', 'All tests pass'). Typically 3-5 criteria.",
                 },
+                target_project: {
+                    type: "string",
+                    description: "Optional: target project ID or filesystem path for cross-project ideation. Tag this proposal with the project it targets.",
+                },
             },
             required: ["session_id", "title", "category"],
         },
@@ -95,6 +99,10 @@ export const ALL_TOOLS = [
                     type: "array",
                     items: { type: "string" },
                     description: "Updated acceptance criteria. Testable criteria to verify task completion (e.g., 'API returns 200 with valid schema'). Typically 3-5 criteria.",
+                },
+                target_project: {
+                    type: "string",
+                    description: "Optional: set or update the target project for this proposal. Pass null or omit to leave unchanged.",
                 },
             },
             required: ["proposal_id"],
@@ -1242,7 +1250,8 @@ export const ALL_TOOLS = [
         description: "Analyze a plan for cross-project paths and return structured guidance for multi-project orchestration. " +
             "Detects file paths referencing different project roots, suggests how to split proposals across projects, " +
             "and provides step-by-step instructions for creating sessions in target projects. " +
-            "This tool runs locally in the MCP server — no backend call needed.",
+            "When session_id is provided: calls the backend to set the cross-project gate, unlocking proposal creation (gate_status: 'set'). " +
+            "Without session_id: returns analysis only, gate is not set (gate_status: 'no_session_id').",
         inputSchema: {
             type: "object",
             properties: {
@@ -1258,6 +1267,38 @@ export const ALL_TOOLS = [
                 },
             },
             required: [],
+        },
+    },
+    {
+        name: "migrate_proposals",
+        description: "Copy proposals from a source ideation session to a target ideation session. " +
+            "Each proposal is cloned with a new UUID; migrated_from traceability fields are set automatically. " +
+            "Dependencies between migrated proposals are remapped to the new IDs. " +
+            "Dependencies to proposals outside the migration set are dropped with warnings in the response. " +
+            "Use this to move cross-project proposals to the correct project session after using create_cross_project_session.",
+        inputSchema: {
+            type: "object",
+            properties: {
+                source_session_id: {
+                    type: "string",
+                    description: "ID of the source ideation session to copy proposals from.",
+                },
+                target_session_id: {
+                    type: "string",
+                    description: "ID of the target ideation session to copy proposals into.",
+                },
+                proposal_ids: {
+                    type: "array",
+                    items: { type: "string" },
+                    description: "Optional list of proposal IDs to migrate. If omitted, all proposals from the source session are considered (subject to target_project_filter).",
+                },
+                target_project_filter: {
+                    type: "string",
+                    description: "Optional: only migrate proposals whose target_project field matches this string. " +
+                        "Useful for migrating only the proposals intended for a specific project.",
+                },
+            },
+            required: ["source_session_id", "target_session_id"],
         },
     },
     // ========================================================================
@@ -1348,6 +1389,7 @@ export const TOOL_ALLOWLIST = {
         "list_projects",
         "create_cross_project_session",
         "cross_project_guide",
+        "migrate_proposals",
         // child session tools
         "get_child_session_status",
         "send_child_session_message",
@@ -1608,6 +1650,7 @@ export const TOOL_ALLOWLIST = {
         "list_projects",
         "create_cross_project_session",
         "cross_project_guide",
+        "migrate_proposals",
         // Child session tools
         "get_child_session_status",
         "send_child_session_message",

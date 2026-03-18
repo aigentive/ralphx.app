@@ -102,6 +102,14 @@ pub async fn start_http_server(
         .route(
             "/api/internal/cross_project/create_session",
             post(create_cross_project_session_http),
+        )
+        .route(
+            "/api/internal/cross_project/migrate_proposals",
+            post(migrate_proposals_http),
+        )
+        .route(
+            "/api/internal/sessions/:id/cross_project_check",
+            post(set_cross_project_checked),
         );
 
     // Public API routes — permissive CORS.

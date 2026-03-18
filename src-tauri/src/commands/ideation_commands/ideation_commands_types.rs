@@ -70,6 +70,7 @@ pub struct IdeationSessionResponse {
     pub source_project_id: Option<String>,
     pub source_session_id: Option<String>,
     pub session_purpose: String,
+    pub cross_project_checked: bool,
 }
 
 impl From<IdeationSession> for IdeationSessionResponse {
@@ -103,6 +104,7 @@ impl From<IdeationSession> for IdeationSessionResponse {
             source_project_id: session.source_project_id,
             source_session_id: session.source_session_id,
             session_purpose: session.session_purpose.to_string(),
+            cross_project_checked: session.cross_project_checked,
         }
     }
 }
@@ -216,6 +218,8 @@ pub struct CreateProposalInput {
     pub acceptance_criteria: Option<Vec<String>>,
     pub priority: Option<String>,
     pub complexity: Option<String>,
+    /// Optional target project ID for cross-project proposals
+    pub target_project: Option<String>,
     /// Optional list of proposal IDs this proposal depends on
     #[serde(default)]
     pub depends_on: Vec<String>,
@@ -231,6 +235,8 @@ pub struct UpdateProposalInput {
     pub acceptance_criteria: Option<Vec<String>>,
     pub user_priority: Option<String>,
     pub complexity: Option<String>,
+    /// Optional target project ID for cross-project proposals
+    pub target_project: Option<String>,
     /// Additive: proposal IDs this proposal should depend on
     #[serde(default)]
     pub add_depends_on: Vec<String>,
@@ -263,6 +269,8 @@ pub struct TaskProposalResponse {
     pub sort_order: i32,
     pub created_at: String,
     pub updated_at: String,
+    /// Optional target project ID for cross-project proposals
+    pub target_project: Option<String>,
     /// Partial failure contract: non-fatal dependency errors encountered during create/update
     #[serde(default)]
     pub dependency_errors: Vec<String>,
@@ -302,6 +310,7 @@ impl From<TaskProposal> for TaskProposalResponse {
             sort_order: proposal.sort_order,
             created_at: proposal.created_at.to_rfc3339(),
             updated_at: proposal.updated_at.to_rfc3339(),
+            target_project: proposal.target_project.clone(),
             dependency_errors: Vec::new(),
         }
     }
@@ -489,4 +498,53 @@ pub struct ToolCallResultResponse {
     pub success: bool,
     pub result: Option<serde_json::Value>,
     pub error: Option<String>,
+}
+
+// ============================================================================
+// Proposal Migration Types
+// ============================================================================
+
+/// Input for migrating proposals from one session to another.
+///
+/// Used by both the Tauri IPC command and the HTTP endpoint.
+/// If proposal_ids is omitted, all proposals from the source session are considered.
+/// If target_project_filter is provided, only proposals with a matching target_project are migrated.
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MigrateProposalsInput {
+    /// ID of the source ideation session
+    pub source_session_id: String,
+    /// ID of the target ideation session
+    pub target_session_id: String,
+    /// Optional list of proposal IDs to migrate. If omitted, migrate all (subject to filter).
+    pub proposal_ids: Option<Vec<String>>,
+    /// Optional: only migrate proposals whose target_project matches this string.
+    pub target_project_filter: Option<String>,
+}
+
+/// A single migrated proposal mapping (source → target).
+#[derive(Debug, Serialize)]
+pub struct MigratedProposalEntry {
+    pub source_id: String,
+    pub target_id: String,
+}
+
+/// A dependency that was dropped because one or both ends were not in the migration set.
+#[derive(Debug, Serialize)]
+pub struct DroppedDependency {
+    /// The proposal ID that had the dependency (in the source session)
+    pub proposal_id: String,
+    /// The dependency that was dropped
+    pub dropped_dep_id: String,
+    /// Why it was dropped
+    pub reason: String,
+}
+
+/// Response from migrate_proposals.
+#[derive(Debug, Serialize)]
+pub struct MigrateProposalsResult {
+    /// Successfully migrated proposal mappings
+    pub migrated: Vec<MigratedProposalEntry>,
+    /// Dependencies that were dropped with explanations
+    pub dropped_dependencies: Vec<DroppedDependency>,
 }

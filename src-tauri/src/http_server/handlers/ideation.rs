@@ -98,6 +98,7 @@ pub async fn create_task_proposal(
         acceptance_criteria,
         estimated_complexity: None,
         depends_on: req.depends_on,
+        target_project: req.target_project,
     };
 
     // Create proposal — events and dep analysis emitted inside create_proposal_impl()
@@ -187,6 +188,7 @@ pub async fn update_task_proposal(
         source: UpdateSource::Api,
         add_depends_on: req.add_depends_on,
         add_blocks: req.add_blocks,
+        target_project: req.target_project.map(Some),
     };
 
     // Update proposal — events and dep analysis emitted inside update_proposal_impl()
@@ -317,6 +319,7 @@ pub async fn list_session_proposals(
                 priority,
                 depends_on: dep_map.remove(&id_str).unwrap_or_default(),
                 plan_artifact_id,
+                target_project: p.target_project.clone(),
             }
         })
         .collect();
@@ -385,6 +388,7 @@ pub async fn get_proposal(
         depends_on: deps.iter().map(|d| d.to_string()).collect(),
         plan_artifact_id,
         created_at,
+        target_project: proposal.target_project.clone(),
     }))
 }
 

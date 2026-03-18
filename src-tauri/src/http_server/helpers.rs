@@ -191,6 +191,14 @@ pub async fn create_proposal_impl(
                 )));
             }
 
+            // Cross-project gate: block proposal creation if plan has not been cross-project-checked
+            if session.plan_artifact_id.is_some() && !session.cross_project_checked {
+                return Err(AppError::Validation(
+                    "Cross-project check required: call cross_project_guide before creating proposals"
+                        .to_string(),
+                ));
+            }
+
             // Verification gate: block creation if plan hasn't been verified (when enabled)
             {
                 let settings = get_settings_sync(conn)?;
@@ -254,6 +262,7 @@ pub async fn create_proposal_impl(
                     proposal.estimated_complexity = c;
                 }
             }
+            proposal.target_project = options.target_project;
 
             ProposalRepo::create_sync(conn, proposal)
         })
@@ -367,7 +376,8 @@ pub async fn update_proposal_impl(
                     "SELECT id, session_id, title, description, category, steps, acceptance_criteria,
                             suggested_priority, priority_score, priority_reason, priority_factors,
                             estimated_complexity, user_priority, user_modified, status, selected,
-                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at
+                            created_task_id, plan_artifact_id, plan_version_at_creation, sort_order, created_at, updated_at, archived_at,
+                            target_project
                      FROM task_proposals WHERE id = ?1",
                     [&pid],
                     |row| TaskProposal::from_row(row),
@@ -459,6 +469,9 @@ pub async fn update_proposal_impl(
                         proposal.user_modified = true;
                     }
                 }
+            }
+            if let Some(target_project) = options.target_project {
+                proposal.target_project = target_project;
             }
 
             // Touch timestamp when user-originated (matches IPC command behaviour)

@@ -72,10 +72,10 @@ async fn test_list_projects_internal_returns_all_projects() {
 
     let result = list_projects_internal(State(state)).await;
     assert!(result.is_ok());
-    let resp = result.unwrap().0;
-    assert_eq!(resp.projects.len(), 2);
+    let summaries = result.unwrap().0;
+    assert_eq!(summaries.len(), 2);
 
-    let names: Vec<&str> = resp.projects.iter().map(|p| p.name.as_str()).collect();
+    let names: Vec<&str> = summaries.iter().map(|p| p.name.as_str()).collect();
     assert!(names.contains(&"Alpha"));
     assert!(names.contains(&"Beta"));
 }
@@ -86,8 +86,8 @@ async fn test_list_projects_internal_empty() {
 
     let result = list_projects_internal(State(state)).await;
     assert!(result.is_ok());
-    let resp = result.unwrap().0;
-    assert_eq!(resp.projects.len(), 0);
+    let summaries = result.unwrap().0;
+    assert_eq!(summaries.len(), 0);
 }
 
 #[tokio::test]
@@ -104,9 +104,30 @@ async fn test_list_projects_internal_no_scope_filtering() {
     state.app_state.project_repo.create(p3).await.unwrap();
 
     let result = list_projects_internal(State(state)).await;
-    let resp = result.unwrap().0;
+    let summaries = result.unwrap().0;
     // All 3 projects returned — no scope filtering applied
-    assert_eq!(resp.projects.len(), 3);
+    assert_eq!(summaries.len(), 3);
+}
+
+#[tokio::test]
+async fn test_list_projects_internal_includes_working_directory() {
+    // Verify that internal endpoint returns working_directory matching the project path.
+    let state = setup_test_state().await;
+
+    let p1 = make_project("wdtest-1", "RepoA", "/home/user/projects/repo-a");
+    let p2 = make_project("wdtest-2", "RepoB", "/srv/repos/repo-b");
+    state.app_state.project_repo.create(p1).await.unwrap();
+    state.app_state.project_repo.create(p2).await.unwrap();
+
+    let result = list_projects_internal(State(state)).await;
+    let summaries = result.unwrap().0;
+    assert_eq!(summaries.len(), 2);
+
+    let repo_a = summaries.iter().find(|p| p.name == "RepoA").expect("RepoA not found");
+    assert_eq!(repo_a.working_directory, "/home/user/projects/repo-a");
+
+    let repo_b = summaries.iter().find(|p| p.name == "RepoB").expect("RepoB not found");
+    assert_eq!(repo_b.working_directory, "/srv/repos/repo-b");
 }
 
 // ============================================================================
@@ -251,4 +272,370 @@ async fn test_internal_route_options_preflight_has_no_cors() {
         response.headers().get("access-control-allow-origin").is_none(),
         "CORS preflight to internal route must not return Access-Control-Allow-Origin"
     );
+}
+
+// ============================================================================
+// migrate_proposals_http
+// ============================================================================
+
+use crate::commands::ideation_commands::{MigrateProposalsInput, migrate_proposals_impl};
+use crate::domain::entities::{
+    IdeationSession, IdeationSessionId, Priority, ProposalCategory, TaskProposal, TaskProposalId,
+};
+
+fn make_session(project_id_str: &str) -> IdeationSession {
+    use crate::domain::entities::ProjectId;
+    IdeationSession::new(ProjectId::from_string(project_id_str.to_string()))
+}
+
+fn make_proposal(session_id: &IdeationSessionId, title: &str) -> TaskProposal {
+    TaskProposal::new(
+        session_id.clone(),
+        title,
+        ProposalCategory::Feature,
+        Priority::Medium,
+    )
+}
+
+fn make_proposal_with_target(
+    session_id: &IdeationSessionId,
+    title: &str,
+    target_project: &str,
+) -> TaskProposal {
+    let mut p = make_proposal(session_id, title);
+    p.target_project = Some(target_project.to_string());
+    p
+}
+
+#[tokio::test]
+async fn test_migrate_proposals_source_not_found() {
+    let state = setup_test_state().await;
+
+    let input = MigrateProposalsInput {
+        source_session_id: "nonexistent-source".to_string(),
+        target_session_id: "nonexistent-target".to_string(),
+        proposal_ids: None,
+        target_project_filter: None,
+    };
+
+    let result = migrate_proposals_impl(&state.app_state, input).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Source session not found"));
+}
+
+#[tokio::test]
+async fn test_migrate_proposals_target_not_found() {
+    let state = setup_test_state().await;
+
+    let session = make_session("proj-1");
+    let source_id = session.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(session).await.unwrap();
+
+    let input = MigrateProposalsInput {
+        source_session_id: source_id,
+        target_session_id: "nonexistent-target".to_string(),
+        proposal_ids: None,
+        target_project_filter: None,
+    };
+
+    let result = migrate_proposals_impl(&state.app_state, input).await;
+    assert!(result.is_err());
+    assert!(result.unwrap_err().contains("Target session not found"));
+}
+
+#[tokio::test]
+async fn test_migrate_proposals_empty_source_returns_empty() {
+    let state = setup_test_state().await;
+
+    let src = make_session("proj-1");
+    let dst = make_session("proj-2");
+    let source_id = src.id.as_str().to_string();
+    let target_id = dst.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(src).await.unwrap();
+    state.app_state.ideation_session_repo.create(dst).await.unwrap();
+
+    let input = MigrateProposalsInput {
+        source_session_id: source_id,
+        target_session_id: target_id,
+        proposal_ids: None,
+        target_project_filter: None,
+    };
+
+    let result = migrate_proposals_impl(&state.app_state, input).await.unwrap();
+    assert!(result.migrated.is_empty());
+    assert!(result.dropped_dependencies.is_empty());
+}
+
+#[tokio::test]
+async fn test_migrate_proposals_basic_export() {
+    let state = setup_test_state().await;
+
+    let src = make_session("proj-1");
+    let dst = make_session("proj-2");
+    let source_sid = IdeationSessionId::from_string(src.id.as_str().to_string());
+    let source_id = src.id.as_str().to_string();
+    let target_id = dst.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(src).await.unwrap();
+    state.app_state.ideation_session_repo.create(dst).await.unwrap();
+
+    let p1 = make_proposal(&source_sid, "Proposal A");
+    let p2 = make_proposal(&source_sid, "Proposal B");
+    let p1 = state.app_state.task_proposal_repo.create(p1).await.unwrap();
+    let p2 = state.app_state.task_proposal_repo.create(p2).await.unwrap();
+
+    let input = MigrateProposalsInput {
+        source_session_id: source_id,
+        target_session_id: target_id.clone(),
+        proposal_ids: None,
+        target_project_filter: None,
+    };
+
+    let result = migrate_proposals_impl(&state.app_state, input).await.unwrap();
+
+    assert_eq!(result.migrated.len(), 2, "Should migrate both proposals");
+    assert!(result.dropped_dependencies.is_empty());
+
+    // Verify source IDs match
+    let source_ids: std::collections::HashSet<_> =
+        result.migrated.iter().map(|m| m.source_id.as_str()).collect();
+    assert!(source_ids.contains(p1.id.as_str()));
+    assert!(source_ids.contains(p2.id.as_str()));
+
+    // Verify target proposals were created in target session
+    let target_session_id = IdeationSessionId::from_string(target_id);
+    let target_proposals = state
+        .app_state
+        .task_proposal_repo
+        .get_by_session(&target_session_id)
+        .await
+        .unwrap();
+    assert_eq!(target_proposals.len(), 2);
+
+    // Verify traceability fields
+    for p in &target_proposals {
+        assert!(p.migrated_from_session_id.is_some());
+        assert!(p.migrated_from_proposal_id.is_some());
+    }
+}
+
+#[tokio::test]
+async fn test_migrate_proposals_partial_subset() {
+    let state = setup_test_state().await;
+
+    let src = make_session("proj-1");
+    let dst = make_session("proj-2");
+    let source_sid = IdeationSessionId::from_string(src.id.as_str().to_string());
+    let source_id = src.id.as_str().to_string();
+    let target_id = dst.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(src).await.unwrap();
+    state.app_state.ideation_session_repo.create(dst).await.unwrap();
+
+    let p1 = make_proposal(&source_sid, "Proposal A");
+    let p2 = make_proposal(&source_sid, "Proposal B");
+    let p3 = make_proposal(&source_sid, "Proposal C");
+    let p1 = state.app_state.task_proposal_repo.create(p1).await.unwrap();
+    let _p2 = state.app_state.task_proposal_repo.create(p2).await.unwrap();
+    let p3 = state.app_state.task_proposal_repo.create(p3).await.unwrap();
+
+    // Migrate only p1 and p3
+    let input = MigrateProposalsInput {
+        source_session_id: source_id,
+        target_session_id: target_id.clone(),
+        proposal_ids: Some(vec![
+            p1.id.as_str().to_string(),
+            p3.id.as_str().to_string(),
+        ]),
+        target_project_filter: None,
+    };
+
+    let result = migrate_proposals_impl(&state.app_state, input).await.unwrap();
+
+    assert_eq!(result.migrated.len(), 2, "Should migrate only the 2 specified proposals");
+
+    let target_session_id = IdeationSessionId::from_string(target_id);
+    let target_proposals = state
+        .app_state
+        .task_proposal_repo
+        .get_by_session(&target_session_id)
+        .await
+        .unwrap();
+    assert_eq!(target_proposals.len(), 2);
+}
+
+#[tokio::test]
+async fn test_migrate_proposals_target_project_filter() {
+    let state = setup_test_state().await;
+
+    let src = make_session("proj-1");
+    let dst = make_session("proj-2");
+    let source_sid = IdeationSessionId::from_string(src.id.as_str().to_string());
+    let source_id = src.id.as_str().to_string();
+    let target_id = dst.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(src).await.unwrap();
+    state.app_state.ideation_session_repo.create(dst).await.unwrap();
+
+    let p1 = make_proposal_with_target(&source_sid, "Proposal A", "project-alpha");
+    let p2 = make_proposal_with_target(&source_sid, "Proposal B", "project-beta");
+    let p3 = make_proposal(&source_sid, "Proposal C"); // no target_project
+
+    state.app_state.task_proposal_repo.create(p1).await.unwrap();
+    state.app_state.task_proposal_repo.create(p2).await.unwrap();
+    state.app_state.task_proposal_repo.create(p3).await.unwrap();
+
+    // Migrate only proposals with target_project = "project-alpha"
+    let input = MigrateProposalsInput {
+        source_session_id: source_id,
+        target_session_id: target_id.clone(),
+        proposal_ids: None,
+        target_project_filter: Some("project-alpha".to_string()),
+    };
+
+    let result = migrate_proposals_impl(&state.app_state, input).await.unwrap();
+
+    assert_eq!(result.migrated.len(), 1, "Should migrate only the alpha proposal");
+
+    let target_session_id = IdeationSessionId::from_string(target_id);
+    let target_proposals = state
+        .app_state
+        .task_proposal_repo
+        .get_by_session(&target_session_id)
+        .await
+        .unwrap();
+    assert_eq!(target_proposals.len(), 1);
+    assert_eq!(target_proposals[0].target_project.as_deref(), Some("project-alpha"));
+}
+
+#[tokio::test]
+async fn test_migrate_proposals_dependency_remapping() {
+    let state = setup_test_state().await;
+
+    let src = make_session("proj-1");
+    let dst = make_session("proj-2");
+    let source_sid = IdeationSessionId::from_string(src.id.as_str().to_string());
+    let source_id = src.id.as_str().to_string();
+    let target_id = dst.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(src).await.unwrap();
+    state.app_state.ideation_session_repo.create(dst).await.unwrap();
+
+    let p1 = make_proposal(&source_sid, "Proposal A");
+    let p2 = make_proposal(&source_sid, "Proposal B");
+    let p1 = state.app_state.task_proposal_repo.create(p1).await.unwrap();
+    let p2 = state.app_state.task_proposal_repo.create(p2).await.unwrap();
+
+    // p2 depends on p1
+    state
+        .app_state
+        .proposal_dependency_repo
+        .add_dependency(&p2.id, &p1.id, None, Some("test"))
+        .await
+        .unwrap();
+
+    let input = MigrateProposalsInput {
+        source_session_id: source_id,
+        target_session_id: target_id.clone(),
+        proposal_ids: None,
+        target_project_filter: None,
+    };
+
+    let result = migrate_proposals_impl(&state.app_state, input).await.unwrap();
+
+    assert_eq!(result.migrated.len(), 2);
+    assert!(result.dropped_dependencies.is_empty(), "Internal dependency should be remapped, not dropped");
+
+    // Find the target IDs for p1 and p2
+    let new_p1_id = result.migrated.iter().find(|m| m.source_id == p1.id.as_str()).map(|m| &m.target_id).unwrap();
+    let new_p2_id = result.migrated.iter().find(|m| m.source_id == p2.id.as_str()).map(|m| &m.target_id).unwrap();
+
+    // Verify dependency was remapped
+    let new_p2 = TaskProposalId::from_string(new_p2_id.clone());
+    let deps = state
+        .app_state
+        .proposal_dependency_repo
+        .get_dependencies(&new_p2)
+        .await
+        .unwrap();
+    assert_eq!(deps.len(), 1);
+    assert_eq!(deps[0].as_str(), new_p1_id.as_str());
+}
+
+#[tokio::test]
+async fn test_migrate_proposals_cross_session_dep_dropped_with_warning() {
+    let state = setup_test_state().await;
+
+    let src = make_session("proj-1");
+    let dst = make_session("proj-2");
+    let source_sid = IdeationSessionId::from_string(src.id.as_str().to_string());
+    let source_id = src.id.as_str().to_string();
+    let target_id = dst.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(src).await.unwrap();
+    state.app_state.ideation_session_repo.create(dst).await.unwrap();
+
+    // p1 and p2 are in source session; only p1 will be migrated
+    let p1 = make_proposal(&source_sid, "Proposal A");
+    let p2 = make_proposal(&source_sid, "Proposal B");
+    let p1 = state.app_state.task_proposal_repo.create(p1).await.unwrap();
+    let p2 = state.app_state.task_proposal_repo.create(p2).await.unwrap();
+
+    // p1 depends on p2 — but we only migrate p1, so the dep should be dropped
+    state
+        .app_state
+        .proposal_dependency_repo
+        .add_dependency(&p1.id, &p2.id, None, Some("test"))
+        .await
+        .unwrap();
+
+    // Migrate only p1
+    let input = MigrateProposalsInput {
+        source_session_id: source_id,
+        target_session_id: target_id,
+        proposal_ids: Some(vec![p1.id.as_str().to_string()]),
+        target_project_filter: None,
+    };
+
+    let result = migrate_proposals_impl(&state.app_state, input).await.unwrap();
+
+    assert_eq!(result.migrated.len(), 1);
+    assert_eq!(result.dropped_dependencies.len(), 1, "Cross-session dep should be dropped with warning");
+    assert!(result.dropped_dependencies[0].reason.contains("not included in the migration set"));
+}
+
+#[tokio::test]
+async fn test_migrate_proposals_traceability_fields_set() {
+    let state = setup_test_state().await;
+
+    let src = make_session("proj-1");
+    let dst = make_session("proj-2");
+    let source_sid = IdeationSessionId::from_string(src.id.as_str().to_string());
+    let source_id = src.id.as_str().to_string();
+    let target_id = dst.id.as_str().to_string();
+    state.app_state.ideation_session_repo.create(src).await.unwrap();
+    state.app_state.ideation_session_repo.create(dst).await.unwrap();
+
+    let p1 = make_proposal(&source_sid, "Proposal A");
+    let p1 = state.app_state.task_proposal_repo.create(p1).await.unwrap();
+    let p1_id = p1.id.as_str().to_string();
+
+    let input = MigrateProposalsInput {
+        source_session_id: source_id.clone(),
+        target_session_id: target_id.clone(),
+        proposal_ids: None,
+        target_project_filter: None,
+    };
+
+    let result = migrate_proposals_impl(&state.app_state, input).await.unwrap();
+    assert_eq!(result.migrated.len(), 1);
+
+    let new_id = &result.migrated[0].target_id;
+    let target_session_id = IdeationSessionId::from_string(target_id);
+    let target_proposals = state
+        .app_state
+        .task_proposal_repo
+        .get_by_session(&target_session_id)
+        .await
+        .unwrap();
+
+    let migrated = target_proposals.iter().find(|p| p.id.as_str() == new_id).unwrap();
+    assert_eq!(migrated.migrated_from_session_id.as_deref(), Some(source_id.as_str()));
+    assert_eq!(migrated.migrated_from_proposal_id.as_deref(), Some(p1_id.as_str()));
+    assert!(migrated.created_task_id.is_none(), "created_task_id should be reset on migration");
 }
