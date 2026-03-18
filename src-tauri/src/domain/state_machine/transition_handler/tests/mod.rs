@@ -117,10 +117,6 @@ mod merge_target_resolution;
 // Branch freshness timeout tests: config, env override, YAML deserialization
 mod branch_freshness_timeout;
 
-// Unit tests for ensure_branches_fresh(): config toggle, skip window, plan/source
-// result mapping, retry counting, dual-conflict sequential scenario
-mod freshness_tests;
-
 // Real git integration tests for ensure_branches_fresh(): fresh branch passes,
 // stale branch routes to Merging, disabled config skips
 mod freshness_integration_tests;

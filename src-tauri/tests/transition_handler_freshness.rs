@@ -4,11 +4,12 @@
 // result mapping, retry counting, and dual-conflict sequential scenarios.
 // Also covers: FreshnessMetadata struct API (cleanup scopes, backoff, serde defaults).
 
-use super::helpers::*;
-use super::super::freshness::{ensure_branches_fresh, FreshnessAction, FreshnessCleanupScope, FreshnessMetadata};
-use crate::domain::entities::{Project, ProjectId, Task};
-use crate::infrastructure::agents::claude::ReconciliationConfig;
 use chrono::Utc;
+use ralphx_lib::domain::entities::{Project, ProjectId, Task};
+use ralphx_lib::domain::state_machine::transition_handler::freshness::{
+    ensure_branches_fresh, FreshnessAction, FreshnessCleanupScope, FreshnessMetadata,
+};
+use ralphx_lib::infrastructure::agents::claude::ReconciliationConfig;
 
 // ==================
 // Helpers
@@ -49,6 +50,76 @@ fn freshness_config() -> ReconciliationConfig {
         freshness_backoff_base_secs: 0,
         ..Default::default()
     }
+}
+
+/// A real git repository created in a temp directory.
+///
+/// Localized here instead of re-exporting the transition-handler test helper module.
+struct RealGitRepo {
+    dir: tempfile::TempDir,
+    task_branch: String,
+}
+
+impl RealGitRepo {
+    fn path(&self) -> &std::path::Path {
+        self.dir.path()
+    }
+
+    fn path_string(&self) -> String {
+        self.dir.path().to_string_lossy().to_string()
+    }
+}
+
+fn setup_real_git_repo() -> RealGitRepo {
+    let dir = tempfile::TempDir::new().expect("create temp dir");
+    let path = dir.path();
+
+    let _ = std::process::Command::new("git")
+        .args(["init", "-b", "main"])
+        .current_dir(path)
+        .output()
+        .expect("git init");
+
+    let _ = std::process::Command::new("git")
+        .args(["config", "user.email", "test@test.com"])
+        .current_dir(path)
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["config", "user.name", "Test"])
+        .current_dir(path)
+        .output();
+
+    std::fs::write(path.join("README.md"), "# test repo").unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["commit", "-m", "initial commit"])
+        .current_dir(path)
+        .output();
+
+    let task_branch = "task/test-task-branch".to_string();
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "-b", &task_branch])
+        .current_dir(path)
+        .output();
+    std::fs::write(path.join("feature.rs"), "// feature code\nfn feature() {}").unwrap();
+    let _ = std::process::Command::new("git")
+        .args(["add", "."])
+        .current_dir(path)
+        .output();
+    let _ = std::process::Command::new("git")
+        .args(["commit", "-m", "add feature"])
+        .current_dir(path)
+        .output();
+
+    let _ = std::process::Command::new("git")
+        .args(["checkout", "main"])
+        .current_dir(path)
+        .output();
+
+    RealGitRepo { dir, task_branch }
 }
 
 // ==================
@@ -1098,7 +1169,20 @@ fn cleanup_scope_conflict_state_resets_count_and_backoff() {
 #[test]
 fn cleanup_scope_full_removes_all_freshness_keys() {
     // FreshnessCleanupScope::Full should remove ALL 11 freshness keys.
-    // Iterates FreshnessMetadata::KEYS so coverage stays complete when new keys are added.
+    // Keep the key list local here instead of widening the production helper surface.
+    const FRESHNESS_KEYS: &[&str] = &[
+        "branch_freshness_conflict",
+        "freshness_origin_state",
+        "freshness_conflict_count",
+        "plan_update_conflict",
+        "source_update_conflict",
+        "last_freshness_check_at",
+        "conflict_files",
+        "source_branch",
+        "target_branch",
+        "freshness_backoff_until",
+        "freshness_auto_reset_count",
+    ];
     let mut meta = serde_json::json!({
         "branch_freshness_conflict": true,
         "freshness_origin_state": "reviewing",
@@ -1117,7 +1201,7 @@ fn cleanup_scope_full_removes_all_freshness_keys() {
     FreshnessMetadata::cleanup(FreshnessCleanupScope::Full, &mut meta);
 
     let obj = meta.as_object().unwrap();
-    for key in FreshnessMetadata::KEYS {
+    for key in FRESHNESS_KEYS {
         assert!(!obj.contains_key(*key), "Full scope must remove '{key}'");
     }
     assert_eq!(meta["other_key"], "preserved", "Non-freshness key must survive Full cleanup");
