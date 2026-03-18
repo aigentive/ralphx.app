@@ -2,35 +2,41 @@
 
 use crate::domain::entities::{ExecutionPlan, ExecutionPlanId, ExecutionPlanStatus, IdeationSessionId};
 use crate::domain::repositories::ExecutionPlanRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations, SqliteExecutionPlanRepository};
+use crate::infrastructure::sqlite::SqliteExecutionPlanRepository;
+use crate::testing::SqliteTestDb;
 
-fn setup_repo_with_session(session_id: &str) -> SqliteExecutionPlanRepository {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+fn setup_repo_with_session(
+    fixture_name: &str,
+    session_id: &str,
+) -> (SqliteTestDb, SqliteExecutionPlanRepository) {
+    let db = SqliteTestDb::new(fixture_name);
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
+             VALUES (?1, 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            ["proj-test-123"],
+        )
+        .unwrap();
 
-    // Insert test project (required for ideation_session foreign key)
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory, created_at, updated_at)
-         VALUES (?1, 'Test Project', '/test', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        ["proj-test-123"],
-    )
-    .unwrap();
+        conn.execute(
+            "INSERT INTO ideation_sessions (id, project_id, status, created_at, updated_at)
+             VALUES (?1, 'proj-test-123', 'accepted', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
+            [session_id],
+        )
+        .unwrap();
+    });
 
-    // Insert test ideation session (required for execution_plan foreign key)
-    conn.execute(
-        "INSERT INTO ideation_sessions (id, project_id, status, created_at, updated_at)
-         VALUES (?1, 'proj-test-123', 'accepted', strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'), strftime('%Y-%m-%dT%H:%M:%S+00:00', 'now'))",
-        [session_id],
-    )
-    .unwrap();
-
-    SqliteExecutionPlanRepository::new(conn)
+    let repo = SqliteExecutionPlanRepository::from_shared(db.shared_conn());
+    (db, repo)
 }
 
 #[tokio::test]
 async fn test_create_execution_plan() {
     let session_id = IdeationSessionId::from_string("session-test-1");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-create",
+        session_id.as_str(),
+    );
 
     let plan = ExecutionPlan::new(session_id.clone());
     let created = repo.create(plan.clone()).await.unwrap();
@@ -43,7 +49,8 @@ async fn test_create_execution_plan() {
 #[tokio::test]
 async fn test_get_by_id() {
     let session_id = IdeationSessionId::from_string("session-test-2");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) =
+        setup_repo_with_session("sqlite_execution_plan_repo_tests-get-by-id", session_id.as_str());
 
     let plan = ExecutionPlan::new(session_id);
     let created = repo.create(plan.clone()).await.unwrap();
@@ -56,7 +63,10 @@ async fn test_get_by_id() {
 #[tokio::test]
 async fn test_get_by_id_not_found() {
     let session_id = IdeationSessionId::from_string("session-test-3");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-get-by-id-miss",
+        session_id.as_str(),
+    );
     let fake_id = ExecutionPlanId::new();
 
     let result = repo.get_by_id(&fake_id).await.unwrap();
@@ -66,14 +76,20 @@ async fn test_get_by_id_not_found() {
 #[tokio::test]
 async fn test_get_by_session() {
     let session_id = IdeationSessionId::from_string("session-test-4");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-get-by-session",
+        session_id.as_str(),
+    );
 
     let plan1 = ExecutionPlan::new(session_id.clone());
     repo.create(plan1).await.unwrap();
 
     // Create another plan for a different session (need separate repo with different session)
     let other_session = IdeationSessionId::from_string("session-test-other");
-    let other_repo = setup_repo_with_session(other_session.as_str());
+    let (_other_db, other_repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-get-by-session-other",
+        other_session.as_str(),
+    );
     let plan2 = ExecutionPlan::new(other_session);
     other_repo.create(plan2).await.unwrap();
 
@@ -85,7 +101,10 @@ async fn test_get_by_session() {
 #[tokio::test]
 async fn test_get_active_for_session() {
     let session_id = IdeationSessionId::from_string("session-test-5");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-get-active",
+        session_id.as_str(),
+    );
 
     // Create first plan (will be superseded)
     let plan1 = ExecutionPlan::new(session_id.clone());
@@ -104,7 +123,10 @@ async fn test_get_active_for_session() {
 #[tokio::test]
 async fn test_mark_superseded() {
     let session_id = IdeationSessionId::from_string("session-test-6");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-mark-superseded",
+        session_id.as_str(),
+    );
 
     let plan = ExecutionPlan::new(session_id);
     let created = repo.create(plan.clone()).await.unwrap();
@@ -118,7 +140,10 @@ async fn test_mark_superseded() {
 #[tokio::test]
 async fn test_mark_superseded_not_found() {
     let session_id = IdeationSessionId::from_string("session-test-7");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-mark-superseded-miss",
+        session_id.as_str(),
+    );
     let fake_id = ExecutionPlanId::new();
 
     let result = repo.mark_superseded(&fake_id).await;
@@ -128,7 +153,8 @@ async fn test_mark_superseded_not_found() {
 #[tokio::test]
 async fn test_delete() {
     let session_id = IdeationSessionId::from_string("session-test-8");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) =
+        setup_repo_with_session("sqlite_execution_plan_repo_tests-delete", session_id.as_str());
 
     let plan = ExecutionPlan::new(session_id);
     let created = repo.create(plan.clone()).await.unwrap();
@@ -142,7 +168,10 @@ async fn test_delete() {
 #[tokio::test]
 async fn test_delete_not_found() {
     let session_id = IdeationSessionId::from_string("session-test-9");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-delete-miss",
+        session_id.as_str(),
+    );
     let fake_id = ExecutionPlanId::new();
 
     let result = repo.delete(&fake_id).await;
@@ -156,7 +185,10 @@ async fn test_delete_not_found() {
 #[tokio::test]
 async fn test_create_duplicate_id_fails() {
     let session_id = IdeationSessionId::from_string("session-dup-1");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-duplicate",
+        session_id.as_str(),
+    );
 
     let plan = ExecutionPlan::new(session_id);
     repo.create(plan.clone()).await.unwrap();
@@ -169,7 +201,10 @@ async fn test_create_duplicate_id_fails() {
 #[tokio::test]
 async fn test_get_by_session_multiple_plans() {
     let session_id = IdeationSessionId::from_string("session-multi-1");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-multi",
+        session_id.as_str(),
+    );
 
     // Create first plan
     let plan1 = ExecutionPlan::new(session_id.clone());
@@ -193,7 +228,10 @@ async fn test_get_by_session_multiple_plans() {
 #[tokio::test]
 async fn test_get_by_session_none() {
     let session_id = IdeationSessionId::from_string("session-none-1");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-none",
+        session_id.as_str(),
+    );
 
     let plans = repo.get_by_session(&session_id).await.unwrap();
     assert!(plans.is_empty(), "Should return empty vec when no plans exist for session");
@@ -202,7 +240,10 @@ async fn test_get_by_session_none() {
 #[tokio::test]
 async fn test_get_active_for_session_none_when_all_superseded() {
     let session_id = IdeationSessionId::from_string("session-all-super");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-all-superseded",
+        session_id.as_str(),
+    );
 
     let plan = ExecutionPlan::new(session_id.clone());
     let created = repo.create(plan).await.unwrap();
@@ -215,7 +256,10 @@ async fn test_get_active_for_session_none_when_all_superseded() {
 #[tokio::test]
 async fn test_get_active_for_session_none_when_no_plans() {
     let session_id = IdeationSessionId::from_string("session-no-plans");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-no-plans",
+        session_id.as_str(),
+    );
 
     let active = repo.get_active_for_session(&session_id).await.unwrap();
     assert!(active.is_none(), "Should return None when no plans exist");
@@ -224,7 +268,10 @@ async fn test_get_active_for_session_none_when_no_plans() {
 #[tokio::test]
 async fn test_mark_superseded_already_superseded() {
     let session_id = IdeationSessionId::from_string("session-double-super");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-double-supersede",
+        session_id.as_str(),
+    );
 
     let plan = ExecutionPlan::new(session_id);
     let created = repo.create(plan).await.unwrap();
@@ -243,7 +290,10 @@ async fn test_mark_superseded_already_superseded() {
 #[tokio::test]
 async fn test_re_accept_flow_supersedes_old_creates_new() {
     let session_id = IdeationSessionId::from_string("session-re-accept");
-    let repo = setup_repo_with_session(session_id.as_str());
+    let (_db, repo) = setup_repo_with_session(
+        "sqlite_execution_plan_repo_tests-reaccept",
+        session_id.as_str(),
+    );
 
     // First accept: create active plan
     let plan1 = ExecutionPlan::new(session_id.clone());

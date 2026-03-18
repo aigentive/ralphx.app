@@ -1,16 +1,15 @@
 use super::*;
-use crate::infrastructure::sqlite::connection::open_memory_connection;
-use crate::infrastructure::sqlite::migrations::run_migrations;
+use crate::testing::SqliteTestDb;
 
-async fn create_test_repo() -> SqliteAgentProfileRepository {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    SqliteAgentProfileRepository::new(conn)
+fn create_test_repo() -> (SqliteTestDb, SqliteAgentProfileRepository) {
+    let db = SqliteTestDb::new("sqlite_agent_profile_repo_tests");
+    let repo = SqliteAgentProfileRepository::from_shared(db.shared_conn());
+    (db, repo)
 }
 
 #[tokio::test]
 async fn test_create_and_get_by_id() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
     let profile = AgentProfile::worker();
     let id = AgentProfileId::from_string("worker-1");
 
@@ -23,7 +22,7 @@ async fn test_create_and_get_by_id() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
     let id = AgentProfileId::from_string("nonexistent");
 
     let retrieved = repo.get_by_id(&id).await.unwrap();
@@ -32,7 +31,7 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_by_name() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
     let profile = AgentProfile::worker();
     let id = AgentProfileId::from_string("worker-1");
 
@@ -45,7 +44,7 @@ async fn test_get_by_name() {
 
 #[tokio::test]
 async fn test_get_by_name_not_found() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
 
     let retrieved = repo.get_by_name("Nonexistent Profile").await.unwrap();
     assert!(retrieved.is_none());
@@ -53,7 +52,7 @@ async fn test_get_by_name_not_found() {
 
 #[tokio::test]
 async fn test_get_all() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
 
     repo.create(
         &AgentProfileId::from_string("w1"),
@@ -76,7 +75,7 @@ async fn test_get_all() {
 
 #[tokio::test]
 async fn test_get_by_role() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
 
     repo.create(
         &AgentProfileId::from_string("w1"),
@@ -100,7 +99,7 @@ async fn test_get_by_role() {
 
 #[tokio::test]
 async fn test_get_builtin_vs_custom() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
 
     repo.create(
         &AgentProfileId::from_string("w1"),
@@ -128,7 +127,7 @@ async fn test_get_builtin_vs_custom() {
 
 #[tokio::test]
 async fn test_update() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
     let mut profile = AgentProfile::worker();
     let id = AgentProfileId::from_string("worker-1");
 
@@ -143,7 +142,7 @@ async fn test_update() {
 
 #[tokio::test]
 async fn test_delete() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
     let profile = AgentProfile::worker();
     let id = AgentProfileId::from_string("worker-1");
 
@@ -156,7 +155,7 @@ async fn test_delete() {
 
 #[tokio::test]
 async fn test_exists_by_name() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
     let profile = AgentProfile::worker();
     let id = AgentProfileId::from_string("worker-1");
 
@@ -169,7 +168,7 @@ async fn test_exists_by_name() {
 
 #[tokio::test]
 async fn test_seed_builtin_profiles() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
 
     repo.seed_builtin_profiles().await.unwrap();
 
@@ -182,7 +181,7 @@ async fn test_seed_builtin_profiles() {
 
 #[tokio::test]
 async fn test_seed_builtin_profiles_idempotent() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
 
     repo.seed_builtin_profiles().await.unwrap();
     repo.seed_builtin_profiles().await.unwrap();
@@ -196,7 +195,7 @@ async fn test_seed_builtin_profiles_idempotent() {
 
 #[tokio::test]
 async fn test_profile_json_serialization() {
-    let repo = create_test_repo().await;
+    let (_db, repo) = create_test_repo();
     let profile = AgentProfile::supervisor();
     let id = AgentProfileId::from_string("supervisor-1");
 

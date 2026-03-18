@@ -1,11 +1,10 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
 #[tokio::test]
 async fn test_get_default_settings() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteIdeationSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-default");
+    let repo = SqliteIdeationSettingsRepository::from_shared(db.shared_conn());
 
     let settings = repo.get_settings().await.unwrap();
     assert_eq!(settings.plan_mode, IdeationPlanMode::Optional);
@@ -18,9 +17,8 @@ async fn test_get_default_settings() {
 
 #[tokio::test]
 async fn test_update_settings() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteIdeationSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-update");
+    let repo = SqliteIdeationSettingsRepository::from_shared(db.shared_conn());
 
     let new_settings = IdeationSettings {
         plan_mode: IdeationPlanMode::Required,
@@ -47,9 +45,8 @@ async fn test_update_settings() {
 
 #[tokio::test]
 async fn test_update_settings_all_modes() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteIdeationSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-all-modes");
+    let repo = SqliteIdeationSettingsRepository::from_shared(db.shared_conn());
 
     // Test Required mode
     let required_settings = IdeationSettings {
@@ -83,9 +80,8 @@ async fn test_update_settings_all_modes() {
 
 #[tokio::test]
 async fn test_from_shared_returns_defaults() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let shared = Arc::new(Mutex::new(conn));
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-shared");
+    let shared = db.shared_conn();
     let repo = SqliteIdeationSettingsRepository::from_shared(Arc::clone(&shared));
 
     let settings = repo.get_settings().await.unwrap();
@@ -97,11 +93,12 @@ async fn test_from_shared_returns_defaults() {
 
 #[tokio::test]
 async fn test_get_settings_fallback_when_no_row() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-fallback");
     // Remove the default row (if any) seeded by migrations
-    conn.execute("DELETE FROM ideation_settings", []).unwrap();
-    let repo = SqliteIdeationSettingsRepository::new(conn);
+    db.with_connection(|conn| {
+        conn.execute("DELETE FROM ideation_settings", []).unwrap();
+    });
+    let repo = SqliteIdeationSettingsRepository::from_shared(db.shared_conn());
 
     let settings = repo.get_settings().await.unwrap();
     // Must return defaults without error
@@ -115,9 +112,8 @@ async fn test_get_settings_fallback_when_no_row() {
 
 #[tokio::test]
 async fn test_update_overrides_previous_update() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteIdeationSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-override");
+    let repo = SqliteIdeationSettingsRepository::from_shared(db.shared_conn());
 
     repo.update_settings(&IdeationSettings {
         plan_mode: IdeationPlanMode::Required,
@@ -152,9 +148,8 @@ async fn test_update_overrides_previous_update() {
 
 #[tokio::test]
 async fn test_boolean_fields_toggle_independently() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteIdeationSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-boolean-toggle");
+    let repo = SqliteIdeationSettingsRepository::from_shared(db.shared_conn());
 
     // Enable only require_plan_approval, disable the rest
     repo.update_settings(&IdeationSettings {
@@ -195,9 +190,8 @@ async fn test_boolean_fields_toggle_independently() {
 
 #[tokio::test]
 async fn test_require_verification_for_accept_roundtrip() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteIdeationSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-verify-accept");
+    let repo = SqliteIdeationSettingsRepository::from_shared(db.shared_conn());
 
     repo.update_settings(&IdeationSettings {
         require_verification_for_accept: true,
@@ -224,9 +218,8 @@ async fn test_require_verification_for_accept_roundtrip() {
 
 #[tokio::test]
 async fn test_require_verification_for_proposals_roundtrip() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteIdeationSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-verify-proposals");
+    let repo = SqliteIdeationSettingsRepository::from_shared(db.shared_conn());
 
     repo.update_settings(&IdeationSettings {
         require_verification_for_proposals: true,
@@ -253,9 +246,8 @@ async fn test_require_verification_for_proposals_roundtrip() {
 
 #[tokio::test]
 async fn test_both_verification_fields_toggle_independently() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteIdeationSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_ideation_settings_repo_tests-verify-both");
+    let repo = SqliteIdeationSettingsRepository::from_shared(db.shared_conn());
 
     // Enable accept only
     repo.update_settings(&IdeationSettings {
