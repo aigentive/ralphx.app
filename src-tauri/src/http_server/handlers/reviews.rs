@@ -10,6 +10,7 @@ use crate::application::{GitService, TaskSchedulerService, TaskTransitionService
 use crate::domain::entities::{
     InternalStatus, Review, ReviewIssue, ReviewNote, ReviewOutcome, ReviewerType, TaskId,
 };
+use crate::domain::services::running_agent_registry::RunningAgentKey;
 use crate::domain::state_machine::services::TaskScheduler;
 use crate::domain::state_machine::transition_handler::{
     deferred_merge_cleanup, set_no_code_changes_metadata, set_pending_cleanup_metadata,
@@ -215,6 +216,32 @@ pub async fn complete_review(
     .with_task_scheduler(task_scheduler)
     .with_plan_branch_repo(Arc::clone(&state.app_state.plan_branch_repo))
     .with_interactive_process_registry(Arc::clone(&state.app_state.interactive_process_registry));
+
+    // Early unregister: remove the review agent from running_agent_registry BEFORE triggering
+    // the state transition. This prevents pre_merge_cleanup from seeing the review agent as
+    // "still running" and stopping it — which would kill this very HTTP connection and cancel
+    // the entire inline merge pipeline chain. The registry's unregister is idempotent:
+    // process_stream_background's own unregister later becomes a no-op.
+    {
+        let review_key = RunningAgentKey::new("review", task_id.as_str());
+        if let Some(agent_info) = state
+            .app_state
+            .running_agent_registry
+            .get(&review_key)
+            .await
+        {
+            let _ = state
+                .app_state
+                .running_agent_registry
+                .unregister(&review_key, &agent_info.agent_run_id)
+                .await;
+            tracing::info!(
+                task_id = task_id.as_str(),
+                agent_run_id = %agent_info.agent_run_id,
+                "Early-unregistered review agent before state transition to prevent merge self-sabotage"
+            );
+        }
+    }
 
     let new_status = match outcome {
         ReviewToolOutcome::Approved => {

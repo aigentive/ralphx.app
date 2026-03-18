@@ -123,6 +123,7 @@ pub(super) async fn handle_stream_success<R: Runtime>(
     context_type: ChatContextType,
     context_id: &str,
     has_output: bool,
+    execution_slot_held: bool,
     execution_state: &Option<Arc<ExecutionState>>,
     task_repo: &Arc<dyn TaskRepository>,
     task_dependency_repo: &Arc<dyn TaskDependencyRepository>,
@@ -390,18 +391,31 @@ pub(super) async fn handle_stream_success<R: Runtime>(
                 } else {
                     // Task has already transitioned past Reviewing (e.g. PendingMerge, Merging).
                     // chat_service_send_background.rs re-incremented running_count before this
-                    // handler ran, but the balancing on_exit decrement won't fire for the old
-                    // Reviewing state. Negate the re-increment to prevent a running_count leak
-                    // that would cause merge deferral checks to incorrectly see count=1.
-                    let count_before = exec_state.running_count();
-                    let count_after = exec_state.decrement_running();
-                    tracing::info!(
-                        task_id = task_id.as_str(),
-                        status = ?task.internal_status,
-                        count_before,
-                        count_after,
-                        "Review context: task already past Reviewing — negating re-increment to prevent running_count leak"
-                    );
+                    // handler ran IFF execution_slot_held == false (interactive mode where
+                    // TurnComplete freed the slot mid-stream). Negate that re-increment to
+                    // prevent a running_count leak that would cause merge deferral checks to
+                    // incorrectly see count=1.
+                    //
+                    // Guard: when execution_slot_held == true (autonomous review), TurnComplete
+                    // never freed the slot, so no re-increment happened in send_background.rs.
+                    // Decrementing here would cause a spurious underflow (running_count below 0).
+                    if !execution_slot_held {
+                        let count_before = exec_state.running_count();
+                        let count_after = exec_state.decrement_running();
+                        tracing::info!(
+                            task_id = task_id.as_str(),
+                            status = ?task.internal_status,
+                            count_before,
+                            count_after,
+                            "Review context: task already past Reviewing — negating re-increment to prevent running_count leak"
+                        );
+                    } else {
+                        tracing::debug!(
+                            task_id = task_id.as_str(),
+                            status = ?task.internal_status,
+                            "Review context: task past Reviewing but execution_slot_held=true — skipping decrement (no re-increment occurred)"
+                        );
+                    }
                 }
             }
         } else {
@@ -581,6 +595,7 @@ pub(super) async fn handle_stream_error<R: Runtime + 'static>(
                 context_type,
                 context_id,
                 true, // effective_has_output: turns were finalized → agent produced output
+                false, // execution_slot_held=false: re-increment happened above at line ~570
                 execution_state,
                 task_repo,
                 task_dependency_repo,

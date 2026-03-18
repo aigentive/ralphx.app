@@ -5,6 +5,7 @@
 // when an agent still holds files open in the worktree.
 
 use super::helpers::*;
+use crate::domain::entities::{ChatContextType, InternalStatus};
 use crate::domain::state_machine::{State, TransitionHandler};
 
 // ==================
@@ -31,6 +32,65 @@ async fn test_step0_agent_kill_executes_without_error() {
     assert!(
         result.is_ok(),
         "on_enter(PendingMerge) should succeed even with step 0 agent kill"
+    );
+}
+
+/// Defense-in-depth guard: when task is PendingMerge (not Reviewing),
+/// pre_merge_cleanup skips stop_agent for the Review context but still
+/// calls stop_agent for the Merge context.
+///
+/// This validates the self-sabotage guard: the Review agent should never be
+/// killed after it has already transitioned the task past Reviewing.
+#[tokio::test]
+async fn test_pre_merge_cleanup_skips_review_stop_when_task_past_reviewing() {
+    let setup = setup_pending_merge_repos(
+        "defense-in-depth guard test",
+        Some("feature/test"),
+    )
+    .await;
+
+    // Confirm task is in PendingMerge (not Reviewing) — guard should fire.
+    let task = setup.task_repo.get_by_id(&setup.task_id).await.unwrap().unwrap();
+    assert_eq!(
+        task.internal_status,
+        InternalStatus::PendingMerge,
+        "pre-condition: task must be PendingMerge for guard to fire"
+    );
+
+    let chat_service = Arc::new(MockChatService::new());
+
+    let services = TaskServices::new_mock()
+        .with_task_repo(Arc::clone(&setup.task_repo) as Arc<dyn TaskRepository>)
+        .with_project_repo(Arc::clone(&setup.project_repo) as Arc<dyn ProjectRepository>)
+        .with_chat_service(Arc::clone(&chat_service) as Arc<dyn crate::application::ChatService>);
+
+    let context = TaskContext::new(setup.task_id.as_str(), "proj-1", services);
+    let mut machine = TaskStateMachine::new(context);
+    let handler = TransitionHandler::new(&mut machine);
+
+    let result = handler.on_enter(&State::PendingMerge).await;
+    assert!(result.is_ok(), "on_enter(PendingMerge) should succeed");
+
+    let calls = chat_service.get_stop_agent_calls().await;
+
+    // Guard fires: Review stop_agent must NOT be called.
+    let review_stopped = calls
+        .iter()
+        .any(|(ctx, _)| *ctx == ChatContextType::Review);
+    assert!(
+        !review_stopped,
+        "stop_agent should NOT be called for Review context when task is PendingMerge (self-sabotage guard); got calls: {:?}",
+        calls
+    );
+
+    // Merge stop_agent MUST still be called (guard only skips Review).
+    let merge_stopped = calls
+        .iter()
+        .any(|(ctx, _)| *ctx == ChatContextType::Merge);
+    assert!(
+        merge_stopped,
+        "stop_agent should still be called for Merge context; got calls: {:?}",
+        calls
     );
 }
 

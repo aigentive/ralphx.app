@@ -1177,11 +1177,9 @@ fn routing_only_scope_not_used_in_complete_merge_path() {
     // freshness_conflict_count is preserved (RoutingOnly would also preserve it, but
     // the key distinction is that freshness_origin_state removal is also NOT performed
     // for audit purposes — distinct from RoutingOnly which always removes it).
-    assert!(
-        true,
-        "FreshnessCleanupScope::RoutingOnly is not imported or called in \
-         freshness_routing.rs or git.rs — see static analysis comments above"
-    );
+    // FreshnessCleanupScope::RoutingOnly is not imported or called in
+    // freshness_routing.rs or git.rs — see static analysis comments above.
+    // The behavioral guarantee is verified by test_targeted_metadata_cleanup_on_success.
 }
 
 // --- Dynamic backoff values ---

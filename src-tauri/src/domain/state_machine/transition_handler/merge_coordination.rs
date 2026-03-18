@@ -846,6 +846,24 @@ impl<'a> super::TransitionHandler<'a> {
             crate::domain::entities::ChatContextType::Review,
             crate::domain::entities::ChatContextType::Merge,
         ] {
+            // Defense-in-depth: if this is the Review agent context and the task has already
+            // transitioned past Reviewing (e.g., to PendingMerge), skip stop_agent. The review
+            // agent's job is done; stopping it here would kill the TCP connection that owns the
+            // complete_review HTTP handler and cancel the entire inline merge pipeline.
+            // This guard fires even if early-unregister in the complete_review handler missed
+            // a timing edge (e.g., a different transition path).
+            if ctx_type == crate::domain::entities::ChatContextType::Review
+                && task.internal_status != crate::domain::entities::InternalStatus::Reviewing
+            {
+                tracing::info!(
+                    task_id = task_id_str,
+                    context_type = ?ctx_type,
+                    task_status = ?task.internal_status,
+                    "pre_merge_cleanup: skipping stop_agent for Review context — task already past Reviewing (self-sabotage guard)"
+                );
+                continue;
+            }
+
             let stop_result = tokio::time::timeout(
                 std::time::Duration::from_secs(agent_stop_timeout_secs),
                 self.machine

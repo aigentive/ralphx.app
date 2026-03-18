@@ -3874,6 +3874,103 @@ async fn reconcile_pending_merge_proceeds_when_pipeline_flag_expired() {
     );
 }
 
+// ── Fast-track MergeIncomplete on TTL expiry ──
+
+#[tokio::test]
+async fn reconcile_pending_merge_fast_tracks_to_merge_incomplete_on_pipeline_ttl_expiry() {
+    let app_state = AppState::new_test();
+    let execution_state = Arc::new(ExecutionState::new());
+    let reconciler = build_reconciler(&app_state, &execution_state);
+
+    let project = Project::new("Test Project".to_string(), "/test/path".to_string());
+    app_state
+        .project_repo
+        .create(project.clone())
+        .await
+        .unwrap();
+
+    let mut task = Task::new(project.id.clone(), "Crashed Pipeline Task".to_string());
+    task.internal_status = InternalStatus::PendingMerge;
+    // Expired pipeline flag: set 1 hour ago (well beyond any deadline)
+    let old = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+    task.merge_pipeline_active = Some(old);
+    app_state.task_repo.create(task.clone()).await.unwrap();
+
+    // Record fresh status history (so age-based stale check wouldn't trigger)
+    app_state
+        .task_repo
+        .persist_status_change(
+            &task.id,
+            InternalStatus::Approved,
+            InternalStatus::PendingMerge,
+            "pending_merge",
+        )
+        .await
+        .unwrap();
+
+    let reconciled = reconciler
+        .reconcile_pending_merge_task(&task, InternalStatus::PendingMerge)
+        .await;
+
+    // The fast-track path returns true (applied recovery decision)
+    assert!(
+        reconciled,
+        "Fast-track to MergeIncomplete should return true"
+    );
+
+    // Verify task transitioned to MergeIncomplete
+    let updated = app_state
+        .task_repo
+        .get_by_id(&task.id)
+        .await
+        .unwrap()
+        .expect("task should exist");
+    assert_eq!(
+        updated.internal_status,
+        InternalStatus::MergeIncomplete,
+        "Expired merge_pipeline_active TTL must fast-track to MergeIncomplete"
+    );
+}
+
+#[test]
+fn is_merge_pipeline_active_expired_returns_false_when_not_set() {
+    let task = Task::new(
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "No Flag Task".to_string(),
+    );
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::is_merge_pipeline_active_expired(&task),
+        "Should return false when merge_pipeline_active is None"
+    );
+}
+
+#[test]
+fn is_merge_pipeline_active_expired_returns_false_when_active() {
+    let mut task = Task::new(
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Active Pipeline Task".to_string(),
+    );
+    task.merge_pipeline_active = Some(chrono::Utc::now().to_rfc3339());
+    assert!(
+        !ReconciliationRunner::<tauri::Wry>::is_merge_pipeline_active_expired(&task),
+        "Should return false when pipeline flag is still within TTL"
+    );
+}
+
+#[test]
+fn is_merge_pipeline_active_expired_returns_true_when_expired() {
+    let mut task = Task::new(
+        ralphx_lib::domain::entities::ProjectId::from_string("proj-1".to_string()),
+        "Expired Pipeline Task".to_string(),
+    );
+    let old = (chrono::Utc::now() - chrono::Duration::hours(1)).to_rfc3339();
+    task.merge_pipeline_active = Some(old);
+    assert!(
+        ReconciliationRunner::<tauri::Wry>::is_merge_pipeline_active_expired(&task),
+        "Should return true when merge_pipeline_active TTL has elapsed"
+    );
+}
+
 // ── set/clear merge_pipeline_active persistence tests ──
 
 #[tokio::test]

@@ -2,7 +2,7 @@
 
 use std::sync::Arc;
 use tauri::Runtime;
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use crate::domain::entities::{
     AgentRunStatus, ChatContextType, InternalStatus, MergeFailureSource,
@@ -355,14 +355,15 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
         // Detect TTL expiry: merge_pipeline_active was set but has expired.
         // This means the merge pipeline started but the app crashed or was killed mid-run.
-        // Write metadata so the task UI shows the failure source on next MergeIncomplete.
+        // Write metadata so the task UI shows the failure source, then fast-track to
+        // MergeIncomplete instead of waiting for the pending_merge_stale_minutes gate (2 min).
         if Self::is_merge_pipeline_active_expired(task) {
-            tracing::warn!(
+            warn!(
                 task_id = task.id.as_str(),
                 "merge_pipeline_active TTL expired — possible crash during prior merge attempt"
             );
-            if let Ok(Some(mut fresh_task)) = self.task_repo.get_by_id(&task.id).await {
-                let mut meta: serde_json::Value = fresh_task.metadata
+            let fresh_task = if let Ok(Some(mut t)) = self.task_repo.get_by_id(&task.id).await {
+                let mut meta: serde_json::Value = t.metadata
                     .as_deref()
                     .and_then(|m| serde_json::from_str(m).ok())
                     .unwrap_or_else(|| serde_json::json!({}));
@@ -372,10 +373,31 @@ impl<R: Runtime> ReconciliationRunner<R> {
                         serde_json::to_value(MergeFailureSource::PipelineActiveExpired).unwrap_or_default(),
                     );
                 }
-                fresh_task.metadata = Some(meta.to_string());
-                fresh_task.touch();
-                let _ = self.task_repo.update(&fresh_task).await;
-            }
+                t.metadata = Some(meta.to_string());
+                t.touch();
+                let _ = self.task_repo.update(&t).await;
+                t
+            } else {
+                task.clone()
+            };
+            info!(
+                task_id = task.id.as_str(),
+                "merge_pipeline_active TTL expired — fast-tracking to MergeIncomplete"
+            );
+            return self
+                .apply_recovery_decision(
+                    &fresh_task,
+                    status,
+                    RecoveryContext::PendingMerge,
+                    RecoveryDecision {
+                        action: RecoveryActionKind::Transition(InternalStatus::MergeIncomplete),
+                        reason: Some(
+                            "merge_pipeline_active TTL expired — crash during prior merge attempt"
+                                .to_string(),
+                        ),
+                    },
+                )
+                .await;
         }
 
         // Validation-in-progress guard: if validation commands are actively running
@@ -979,7 +1001,8 @@ impl<R: Runtime> ReconciliationRunner<R> {
 
     /// Returns true if `merge_pipeline_active` is set but has EXPIRED (age >= deadline).
     /// Distinguishes the "expired crash" case from "never set" (both return false from has_merge_pipeline_active).
-    pub(crate) fn is_merge_pipeline_active_expired(task: &crate::domain::entities::Task) -> bool {
+    #[doc(hidden)]
+    pub fn is_merge_pipeline_active_expired(task: &crate::domain::entities::Task) -> bool {
         task.merge_pipeline_active
             .as_deref()
             .and_then(|ts| {

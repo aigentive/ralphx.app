@@ -188,6 +188,13 @@ impl TaskServices {
         self
     }
 
+    /// Replace the chat service (builder pattern).
+    /// Useful in tests to inject a custom MockChatService after `new_mock()`.
+    pub fn with_chat_service(mut self, svc: Arc<dyn ChatService>) -> Self {
+        self.chat_service = svc;
+        self
+    }
+
     /// Set the task repository (builder pattern)
     pub fn with_task_repo(mut self, repo: Arc<dyn TaskRepository>) -> Self {
         self.task_repo = Some(repo);

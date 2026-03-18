@@ -34,6 +34,8 @@ pub struct MockChatService {
     /// Configurable per-context agent running state for is_agent_running().
     /// Key: "{context_type}/{context_id}". Defaults to false if not set.
     running_agents: Mutex<HashMap<String, bool>>,
+    /// Records each (context_type, context_id) pair passed to stop_agent.
+    stop_agent_calls: Mutex<Vec<(ChatContextType, String)>>,
 }
 
 pub struct MockChatResponse {
@@ -53,6 +55,7 @@ impl MockChatService {
             call_count: std::sync::atomic::AtomicU32::new(0),
             already_running_after: Mutex::new(None),
             running_agents: Mutex::new(HashMap::new()),
+            stop_agent_calls: Mutex::new(Vec::new()),
         }
     }
 
@@ -66,7 +69,13 @@ impl MockChatService {
             call_count: std::sync::atomic::AtomicU32::new(0),
             already_running_after: Mutex::new(None),
             running_agents: Mutex::new(HashMap::new()),
+            stop_agent_calls: Mutex::new(Vec::new()),
         }
+    }
+
+    /// Returns a snapshot of all (context_type, context_id) pairs passed to stop_agent.
+    pub async fn get_stop_agent_calls(&self) -> Vec<(ChatContextType, String)> {
+        self.stop_agent_calls.lock().await.clone()
     }
 
     /// Set the agent running state for a specific context.
@@ -281,10 +290,13 @@ impl ChatService for MockChatService {
 
     async fn stop_agent(
         &self,
-        _context_type: ChatContextType,
-        _context_id: &str,
+        context_type: ChatContextType,
+        context_id: &str,
     ) -> Result<bool, ChatServiceError> {
-        // Mock implementation - always returns false (no agent to stop)
+        self.stop_agent_calls
+            .lock()
+            .await
+            .push((context_type, context_id.to_string()));
         Ok(false)
     }
 
