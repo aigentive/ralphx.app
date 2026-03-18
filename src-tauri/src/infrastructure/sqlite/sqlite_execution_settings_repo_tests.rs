@@ -1,11 +1,10 @@
 use super::*;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
 #[tokio::test]
 async fn test_get_default_global_settings() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteExecutionSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_execution_settings_repo_tests-global-defaults");
+    let repo = SqliteExecutionSettingsRepository::from_shared(db.shared_conn());
 
     // Get global defaults (project_id = None)
     let settings = repo.get_settings(None).await.unwrap();
@@ -16,9 +15,8 @@ async fn test_get_default_global_settings() {
 
 #[tokio::test]
 async fn test_update_global_settings() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteExecutionSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_execution_settings_repo_tests-update-global");
+    let repo = SqliteExecutionSettingsRepository::from_shared(db.shared_conn());
 
     let new_settings = ExecutionSettings {
         max_concurrent_tasks: 4,
@@ -41,9 +39,8 @@ async fn test_update_global_settings() {
 
 #[tokio::test]
 async fn test_per_project_settings() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteExecutionSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_execution_settings_repo_tests-per-project");
+    let repo = SqliteExecutionSettingsRepository::from_shared(db.shared_conn());
 
     let project_id = ProjectId::from_string("test-project-123".to_string());
 
@@ -75,9 +72,8 @@ async fn test_per_project_settings() {
 
 #[tokio::test]
 async fn test_global_execution_settings() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteGlobalExecutionSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_execution_settings_repo_tests-global");
+    let repo = SqliteGlobalExecutionSettingsRepository::from_shared(db.shared_conn());
 
     // Get default global settings
     let settings = repo.get_settings().await.unwrap();
@@ -97,9 +93,8 @@ async fn test_global_execution_settings() {
 
 #[tokio::test]
 async fn test_global_max_concurrent_capped_at_50() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteGlobalExecutionSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_execution_settings_repo_tests-global-cap");
+    let repo = SqliteGlobalExecutionSettingsRepository::from_shared(db.shared_conn());
 
     // Try to set above max
     let new_settings = GlobalExecutionSettings {
@@ -117,9 +112,8 @@ async fn test_global_max_concurrent_capped_at_50() {
 
 #[tokio::test]
 async fn test_shared_connection() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let shared_conn = Arc::new(Mutex::new(conn));
+    let db = SqliteTestDb::new("sqlite_execution_settings_repo_tests-shared");
+    let shared_conn = db.shared_conn();
 
     let repo = SqliteExecutionSettingsRepository::from_shared(Arc::clone(&shared_conn));
 
@@ -131,9 +125,8 @@ async fn test_shared_connection() {
 async fn test_global_execution_settings_are_not_per_project() {
     // Verifies that SqliteGlobalExecutionSettingsRepository manages a single shared row,
     // not per-project rows — changing global settings affects all consumers.
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let shared_conn = Arc::new(Mutex::new(conn));
+    let db = SqliteTestDb::new("sqlite_execution_settings_repo_tests-global-shared");
+    let shared_conn = db.shared_conn();
 
     let repo_a =
         SqliteGlobalExecutionSettingsRepository::from_shared(Arc::clone(&shared_conn));
@@ -155,9 +148,8 @@ async fn test_global_execution_settings_are_not_per_project() {
 
 #[tokio::test]
 async fn test_project_settings_do_not_bleed_across_projects() {
-    let conn = open_memory_connection().unwrap();
-    run_migrations(&conn).unwrap();
-    let repo = SqliteExecutionSettingsRepository::new(conn);
+    let db = SqliteTestDb::new("sqlite_execution_settings_repo_tests-projects");
+    let repo = SqliteExecutionSettingsRepository::from_shared(db.shared_conn());
 
     let project_x = ProjectId::from_string("project-x".to_string());
     let project_y = ProjectId::from_string("project-y".to_string());

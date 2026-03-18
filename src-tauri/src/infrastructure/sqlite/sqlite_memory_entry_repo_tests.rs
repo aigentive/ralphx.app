@@ -4,43 +4,43 @@
 use crate::domain::entities::types::ProjectId;
 use crate::domain::entities::{MemoryBucket, MemoryEntry, MemoryEntryId, MemoryStatus};
 use crate::domain::repositories::MemoryEntryRepository;
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 use chrono::Utc;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
 use super::SqliteMemoryEntryRepository;
 
-fn setup_test_db() -> rusqlite::Connection {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
+fn setup_test_db() -> SqliteTestDb {
+    let db = SqliteTestDb::new("sqlite_memory_entry_repo_tests");
     // memory_entries has FK to projects(id) — insert required parent records
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Project 1', '/test/proj1')",
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('proj-2', 'Project 2', '/test/proj2')",
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('proj-a', 'Project A', '/test/proja')",
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('proj-b', 'Project B', '/test/projb')",
-        [],
-    )
-    .unwrap();
-    conn.execute(
-        "INSERT INTO projects (id, name, working_directory) VALUES ('proj-shared', 'Shared Project', '/test/shared')",
-        [],
-    )
-    .unwrap();
-    conn
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-1', 'Project 1', '/test/proj1')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-2', 'Project 2', '/test/proj2')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-a', 'Project A', '/test/proja')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-b', 'Project B', '/test/projb')",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO projects (id, name, working_directory) VALUES ('proj-shared', 'Shared Project', '/test/shared')",
+            [],
+        )
+        .unwrap();
+    });
+    db
 }
 
 fn make_entry(id: &str, project_id: &str) -> MemoryEntry {
@@ -69,8 +69,8 @@ fn make_entry(id: &str, project_id: &str) -> MemoryEntry {
 
 #[tokio::test]
 async fn test_create_returns_entry() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("entry-1", "proj-1");
     let result = repo.create(entry.clone()).await;
@@ -83,8 +83,8 @@ async fn test_create_returns_entry() {
 
 #[tokio::test]
 async fn test_create_preserves_all_optional_fields() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let now = Utc::now();
     let entry = MemoryEntry {
@@ -122,8 +122,8 @@ async fn test_create_preserves_all_optional_fields() {
 
 #[tokio::test]
 async fn test_get_by_id_found() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("entry-2", "proj-1");
     repo.create(entry.clone()).await.unwrap();
@@ -137,8 +137,8 @@ async fn test_get_by_id_found() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let missing_id = MemoryEntryId::from("does-not-exist".to_string());
     let result = repo.get_by_id(&missing_id).await;
@@ -151,8 +151,8 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_find_by_content_hash_found() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("entry-hash", "proj-1");
     repo.create(entry.clone()).await.unwrap();
@@ -171,8 +171,8 @@ async fn test_find_by_content_hash_found() {
 
 #[tokio::test]
 async fn test_find_by_content_hash_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let result = repo
         .find_by_content_hash(
@@ -189,8 +189,8 @@ async fn test_find_by_content_hash_not_found() {
 #[tokio::test]
 async fn test_find_by_content_hash_inactive_not_returned() {
     // find_by_content_hash filters status = 'active'; obsolete entries must not appear
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("entry-obsolete", "proj-1");
     repo.create(entry.clone()).await.unwrap();
@@ -212,8 +212,8 @@ async fn test_find_by_content_hash_inactive_not_returned() {
 
 #[tokio::test]
 async fn test_get_by_project_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let result = repo
         .get_by_project(&ProjectId::from_string("empty-proj".to_string()))
@@ -225,8 +225,8 @@ async fn test_get_by_project_empty() {
 
 #[tokio::test]
 async fn test_get_by_project_returns_matching_entries() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     repo.create(make_entry("entry-a", "proj-a")).await.unwrap();
     repo.create(make_entry("entry-b", "proj-a")).await.unwrap();
@@ -244,8 +244,8 @@ async fn test_get_by_project_returns_matching_entries() {
 #[tokio::test]
 async fn test_get_by_project_includes_all_statuses() {
     // This repo's get_by_project does NOT filter by status
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     repo.create(make_entry("active-e", "proj-1")).await.unwrap();
 
@@ -266,8 +266,8 @@ async fn test_get_by_project_includes_all_statuses() {
 
 #[tokio::test]
 async fn test_get_by_project_and_status_filters_correctly() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     repo.create(make_entry("active-1", "proj-1")).await.unwrap();
     repo.create(make_entry("active-2", "proj-1")).await.unwrap();
@@ -299,8 +299,8 @@ async fn test_get_by_project_and_status_filters_correctly() {
 
 #[tokio::test]
 async fn test_get_by_project_and_bucket_filters_correctly() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     repo.create(make_entry("arch-1", "proj-1")).await.unwrap();
 
@@ -343,8 +343,8 @@ async fn test_get_by_project_and_bucket_filters_correctly() {
 
 #[tokio::test]
 async fn test_get_by_rule_file_returns_matching() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let now = Utc::now();
     let entry_with_rule = MemoryEntry {
@@ -384,8 +384,8 @@ async fn test_get_by_rule_file_returns_matching() {
 
 #[tokio::test]
 async fn test_get_by_content_hash_global_finds_across_projects() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let mut e1 = make_entry("e1", "proj-1");
     e1.content_hash = "shared-hash".to_string();
@@ -400,8 +400,8 @@ async fn test_get_by_content_hash_global_finds_across_projects() {
 
 #[tokio::test]
 async fn test_get_by_content_hash_global_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let results = repo.get_by_content_hash("no-such-hash").await.unwrap();
     assert!(results.is_empty());
@@ -411,8 +411,8 @@ async fn test_get_by_content_hash_global_empty() {
 
 #[tokio::test]
 async fn test_update_status_changes_status() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("entry-status", "proj-1");
     repo.create(entry.clone()).await.unwrap();
@@ -427,8 +427,8 @@ async fn test_update_status_changes_status() {
 
 #[tokio::test]
 async fn test_update_status_not_found_returns_error() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let missing_id = MemoryEntryId::from("ghost-id".to_string());
     let result = repo.update_status(&missing_id, MemoryStatus::Archived).await;
@@ -442,8 +442,8 @@ async fn test_update_status_not_found_returns_error() {
 
 #[tokio::test]
 async fn test_update_modifies_all_fields() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("entry-upd", "proj-1");
     repo.create(entry.clone()).await.unwrap();
@@ -487,8 +487,8 @@ async fn test_update_modifies_all_fields() {
 
 #[tokio::test]
 async fn test_update_not_found_returns_error() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("ghost-upd", "proj-1");
     let result = repo.update(&entry).await;
@@ -504,8 +504,8 @@ async fn test_update_not_found_returns_error() {
 
 #[tokio::test]
 async fn test_delete_removes_entry() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("entry-del", "proj-1");
     repo.create(entry.clone()).await.unwrap();
@@ -518,8 +518,8 @@ async fn test_delete_removes_entry() {
 
 #[tokio::test]
 async fn test_delete_not_found_returns_error() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let missing_id = MemoryEntryId::from("ghost-del".to_string());
     let result = repo.delete(&missing_id).await;
@@ -535,8 +535,8 @@ async fn test_delete_not_found_returns_error() {
 
 #[tokio::test]
 async fn test_get_by_paths_matches_prefix() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     // scope_paths = ["src/**"] → prefix is "src/"
     let entry = make_entry("path-entry", "proj-1");
@@ -556,8 +556,8 @@ async fn test_get_by_paths_matches_prefix() {
 
 #[tokio::test]
 async fn test_get_by_paths_no_match_returns_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     // scope_paths = ["src/**"] → prefix "src/"
     let entry = make_entry("path-entry-2", "proj-1");
@@ -577,8 +577,8 @@ async fn test_get_by_paths_no_match_returns_empty() {
 
 #[tokio::test]
 async fn test_get_by_paths_excludes_inactive() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("inactive-path", "proj-1");
     repo.create(entry.clone()).await.unwrap();
@@ -600,8 +600,8 @@ async fn test_get_by_paths_excludes_inactive() {
 
 #[tokio::test]
 async fn test_get_by_paths_empty_paths_returns_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let entry = make_entry("path-entry-3", "proj-1");
     repo.create(entry).await.unwrap();
@@ -619,8 +619,8 @@ async fn test_get_by_paths_empty_paths_returns_empty() {
 
 #[tokio::test]
 async fn test_get_by_paths_nested_glob() {
-    let conn = setup_test_db();
-    let repo = SqliteMemoryEntryRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteMemoryEntryRepository::from_shared(db.shared_conn());
 
     let now = Utc::now();
     let entry = MemoryEntry {
@@ -668,8 +668,8 @@ async fn test_get_by_paths_nested_glob() {
 
 #[tokio::test]
 async fn test_from_shared_connection() {
-    let conn = setup_test_db();
-    let shared = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let shared = db.shared_conn();
 
     let repo1 = SqliteMemoryEntryRepository::from_shared(Arc::clone(&shared));
     let repo2 = SqliteMemoryEntryRepository::from_shared(Arc::clone(&shared));

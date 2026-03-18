@@ -3,17 +3,13 @@
 
 use crate::domain::entities::{ChatContextType, ChatConversation, ChatConversationId};
 use crate::domain::repositories::ChatConversationRepository;
-use crate::infrastructure::sqlite::{
-    open_memory_connection, run_migrations, SqliteChatConversationRepository,
-};
+use crate::infrastructure::sqlite::SqliteChatConversationRepository;
+use crate::testing::SqliteTestDb;
 use chrono::Utc;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 
-fn setup_test_db() -> rusqlite::Connection {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite_chat_conversation_repo_tests")
 }
 
 /// Build a minimal conversation with a freshly-generated UUID for the ID.
@@ -37,8 +33,8 @@ fn make_conversation(context_type: ChatContextType, context_id: &str) -> ChatCon
 
 #[tokio::test]
 async fn test_create_returns_conversation() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let conv = make_conversation(ChatContextType::Ideation, "ctx-1");
     let conv_id = conv.id.clone();
@@ -52,8 +48,8 @@ async fn test_create_returns_conversation() {
 
 #[tokio::test]
 async fn test_create_preserves_optional_fields() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     // Create a parent conversation first (parent_conversation_id has FK constraint)
     let parent = make_conversation(ChatContextType::Ideation, "ctx-parent");
@@ -89,8 +85,8 @@ async fn test_create_preserves_optional_fields() {
 
 #[tokio::test]
 async fn test_get_by_id_found() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let conv = make_conversation(ChatContextType::Project, "proj-1");
     let conv_id = conv.id.clone();
@@ -105,8 +101,8 @@ async fn test_get_by_id_found() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let missing = ChatConversationId::new();
     let result = repo.get_by_id(&missing).await;
@@ -119,8 +115,8 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_by_context_returns_matching() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     repo.create(make_conversation(ChatContextType::Task, "task-1")).await.unwrap();
     repo.create(make_conversation(ChatContextType::Task, "task-1")).await.unwrap();
@@ -139,8 +135,8 @@ async fn test_get_by_context_returns_matching() {
 
 #[tokio::test]
 async fn test_get_by_context_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let result = repo
         .get_by_context(ChatContextType::Ideation, "no-such-ctx")
@@ -154,8 +150,8 @@ async fn test_get_by_context_empty() {
 
 #[tokio::test]
 async fn test_get_active_for_context_returns_most_recent() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let old_conv = make_conversation(ChatContextType::Ideation, "ctx-1");
     let old_id = old_conv.id.clone();
@@ -182,8 +178,8 @@ async fn test_get_active_for_context_returns_most_recent() {
 
 #[tokio::test]
 async fn test_get_active_for_context_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let result = repo
         .get_active_for_context(ChatContextType::Merge, "no-such")
@@ -197,8 +193,8 @@ async fn test_get_active_for_context_not_found() {
 
 #[tokio::test]
 async fn test_update_claude_session_id() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let conv = make_conversation(ChatContextType::Ideation, "ctx-1");
     let conv_id = conv.id.clone();
@@ -214,8 +210,8 @@ async fn test_update_claude_session_id() {
 
 #[tokio::test]
 async fn test_clear_claude_session_id() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let now = Utc::now();
     let conv = ChatConversation {
@@ -243,8 +239,8 @@ async fn test_clear_claude_session_id() {
 
 #[tokio::test]
 async fn test_update_title() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let conv = make_conversation(ChatContextType::Ideation, "ctx-1");
     let conv_id = conv.id.clone();
@@ -260,8 +256,8 @@ async fn test_update_title() {
 
 #[tokio::test]
 async fn test_update_message_stats() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let conv = make_conversation(ChatContextType::Task, "task-1");
     let conv_id = conv.id.clone();
@@ -279,8 +275,8 @@ async fn test_update_message_stats() {
 
 #[tokio::test]
 async fn test_delete_removes_conversation() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let conv = make_conversation(ChatContextType::Ideation, "ctx-1");
     let conv_id = conv.id.clone();
@@ -295,8 +291,8 @@ async fn test_delete_removes_conversation() {
 #[tokio::test]
 async fn test_delete_nonexistent_is_ok() {
     // delete does not return an error for missing conversations (no affected-rows check)
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let missing = ChatConversationId::new();
     let result = repo.delete(&missing).await;
@@ -308,8 +304,8 @@ async fn test_delete_nonexistent_is_ok() {
 
 #[tokio::test]
 async fn test_delete_by_context_removes_all_matching() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     repo.create(make_conversation(ChatContextType::Review, "review-1")).await.unwrap();
     repo.create(make_conversation(ChatContextType::Review, "review-1")).await.unwrap();
@@ -336,20 +332,21 @@ async fn test_delete_by_context_removes_all_matching() {
 #[tokio::test]
 async fn test_parse_datetime_bad_format_falls_back_to_now() {
     // parse_datetime silently falls back to Utc::now() on bad input — verify no panic
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let id = ChatConversationId::new();
     let id_str = id.as_str().to_string();
 
-    conn.execute(
-        "INSERT INTO chat_conversations \
-         (id, context_type, context_id, message_count, created_at, updated_at) \
-         VALUES (?1, 'ideation', 'ctx-bad', 0, 'not-a-datetime', 'also-not-datetime')",
-        rusqlite::params![id_str],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO chat_conversations \
+             (id, context_type, context_id, message_count, created_at, updated_at) \
+             VALUES (?1, 'ideation', 'ctx-bad', 0, 'not-a-datetime', 'also-not-datetime')",
+            rusqlite::params![id_str],
+        )
+        .unwrap();
+    });
 
-    let shared = Arc::new(Mutex::new(conn));
-    let repo = SqliteChatConversationRepository::from_shared(shared);
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let result = repo.get_by_id(&id).await;
     assert!(result.is_ok(), "Should not panic on bad timestamp");
@@ -360,20 +357,21 @@ async fn test_parse_datetime_bad_format_falls_back_to_now() {
 #[tokio::test]
 async fn test_unknown_context_type_defaults_to_ideation() {
     // context_type_str.parse().unwrap_or(Ideation) — unknown type silently becomes Ideation
-    let conn = setup_test_db();
+    let db = setup_test_db();
     let id = ChatConversationId::new();
     let id_str = id.as_str().to_string();
 
-    conn.execute(
-        "INSERT INTO chat_conversations \
-         (id, context_type, context_id, message_count, created_at, updated_at) \
-         VALUES (?1, 'totally_unknown_type', 'ctx-1', 0, ?2, ?3)",
-        rusqlite::params![id_str, Utc::now().to_rfc3339(), Utc::now().to_rfc3339()],
-    )
-    .unwrap();
+    db.with_connection(|conn| {
+        conn.execute(
+            "INSERT INTO chat_conversations \
+             (id, context_type, context_id, message_count, created_at, updated_at) \
+             VALUES (?1, 'totally_unknown_type', 'ctx-1', 0, ?2, ?3)",
+            rusqlite::params![id_str, Utc::now().to_rfc3339(), Utc::now().to_rfc3339()],
+        )
+        .unwrap();
+    });
 
-    let shared = Arc::new(Mutex::new(conn));
-    let repo = SqliteChatConversationRepository::from_shared(shared);
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let conv = repo.get_by_id(&id).await.unwrap().unwrap();
     assert!(
@@ -386,8 +384,8 @@ async fn test_unknown_context_type_defaults_to_ideation() {
 
 #[tokio::test]
 async fn test_all_context_types_round_trip() {
-    let conn = setup_test_db();
-    let repo = SqliteChatConversationRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteChatConversationRepository::from_shared(db.shared_conn());
 
     let types_and_ids: Vec<(ChatConversation, ChatContextType)> = vec![
         (make_conversation(ChatContextType::Ideation, "ctx"), ChatContextType::Ideation),
@@ -416,8 +414,8 @@ async fn test_all_context_types_round_trip() {
 
 #[tokio::test]
 async fn test_from_shared_connection() {
-    let conn = setup_test_db();
-    let shared = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let shared = db.shared_conn();
 
     let repo1 = SqliteChatConversationRepository::from_shared(Arc::clone(&shared));
     let repo2 = SqliteChatConversationRepository::from_shared(Arc::clone(&shared));

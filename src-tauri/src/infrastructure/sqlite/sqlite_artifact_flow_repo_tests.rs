@@ -2,12 +2,10 @@ use super::*;
 use crate::domain::entities::{
     ArtifactBucketId, ArtifactFlowFilter, ArtifactFlowStep, ArtifactFlowTrigger, ArtifactType,
 };
-use crate::infrastructure::sqlite::{open_memory_connection, run_migrations};
+use crate::testing::SqliteTestDb;
 
-fn setup_test_db() -> Connection {
-    let conn = open_memory_connection().expect("Failed to open memory connection");
-    run_migrations(&conn).expect("Failed to run migrations");
-    conn
+fn setup_test_db() -> SqliteTestDb {
+    SqliteTestDb::new("sqlite_artifact_flow_repo_tests")
 }
 
 fn create_test_flow() -> ArtifactFlow {
@@ -36,8 +34,8 @@ fn create_flow_with_filter() -> ArtifactFlow {
 
 #[tokio::test]
 async fn test_create_artifact_flow() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
     let flow = create_test_flow();
 
     let result = repo.create(flow.clone()).await;
@@ -50,8 +48,8 @@ async fn test_create_artifact_flow() {
 
 #[tokio::test]
 async fn test_get_by_id_found() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
     let flow = create_test_flow();
 
     repo.create(flow.clone()).await.unwrap();
@@ -66,8 +64,8 @@ async fn test_get_by_id_found() {
 
 #[tokio::test]
 async fn test_get_by_id_not_found() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
     let id = ArtifactFlowId::new();
 
     let result = repo.get_by_id(&id).await;
@@ -77,8 +75,8 @@ async fn test_get_by_id_not_found() {
 
 #[tokio::test]
 async fn test_get_all_empty() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let result = repo.get_all().await;
     assert!(result.is_ok());
@@ -87,8 +85,8 @@ async fn test_get_all_empty() {
 
 #[tokio::test]
 async fn test_get_all_with_flows() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let flow1 = create_test_flow();
     let flow2 = create_flow_with_filter();
@@ -103,8 +101,8 @@ async fn test_get_all_with_flows() {
 
 #[tokio::test]
 async fn test_get_all_returns_sorted_by_name() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let mut flow1 = create_test_flow();
     flow1.name = "Zebra Flow".to_string();
@@ -123,8 +121,8 @@ async fn test_get_all_returns_sorted_by_name() {
 
 #[tokio::test]
 async fn test_get_active_filters_inactive() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let active_flow = create_test_flow();
     let inactive_flow = create_flow_with_filter().set_active(false);
@@ -142,8 +140,8 @@ async fn test_get_active_filters_inactive() {
 
 #[tokio::test]
 async fn test_get_active_returns_all_active() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let flow1 = create_test_flow();
     let flow2 = create_flow_with_filter();
@@ -158,8 +156,8 @@ async fn test_get_active_returns_all_active() {
 
 #[tokio::test]
 async fn test_update_flow() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let mut flow = create_test_flow();
     repo.create(flow.clone()).await.unwrap();
@@ -177,8 +175,8 @@ async fn test_update_flow() {
 
 #[tokio::test]
 async fn test_delete_flow() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let flow = create_test_flow();
     repo.create(flow.clone()).await.unwrap();
@@ -192,8 +190,8 @@ async fn test_delete_flow() {
 
 #[tokio::test]
 async fn test_set_active_true() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let flow = create_test_flow().set_active(false);
     repo.create(flow.clone()).await.unwrap();
@@ -206,8 +204,8 @@ async fn test_set_active_true() {
 
 #[tokio::test]
 async fn test_set_active_false() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let flow = create_test_flow(); // default is active
     repo.create(flow.clone()).await.unwrap();
@@ -220,8 +218,8 @@ async fn test_set_active_false() {
 
 #[tokio::test]
 async fn test_exists_true() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let flow = create_test_flow();
     repo.create(flow.clone()).await.unwrap();
@@ -233,8 +231,8 @@ async fn test_exists_true() {
 
 #[tokio::test]
 async fn test_exists_false() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let id = ArtifactFlowId::new();
 
@@ -245,8 +243,8 @@ async fn test_exists_false() {
 
 #[tokio::test]
 async fn test_trigger_filter_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let flow = create_flow_with_filter();
     repo.create(flow.clone()).await.unwrap();
@@ -270,8 +268,8 @@ async fn test_trigger_filter_preserved() {
 
 #[tokio::test]
 async fn test_multiple_steps_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let flow = create_flow_with_filter();
     repo.create(flow.clone()).await.unwrap();
@@ -303,8 +301,8 @@ async fn test_multiple_steps_preserved() {
 
 #[tokio::test]
 async fn test_created_at_preserved() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let flow = create_test_flow();
     let original_created_at = flow.created_at;
@@ -321,8 +319,8 @@ async fn test_created_at_preserved() {
 
 #[tokio::test]
 async fn test_from_shared_connection() {
-    let conn = setup_test_db();
-    let shared = Arc::new(Mutex::new(conn));
+    let db = setup_test_db();
+    let shared = db.shared_conn();
 
     let repo1 = SqliteArtifactFlowRepository::from_shared(shared.clone());
     let repo2 = SqliteArtifactFlowRepository::from_shared(shared.clone());
@@ -338,8 +336,8 @@ async fn test_from_shared_connection() {
 
 #[tokio::test]
 async fn test_update_steps() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let mut flow = create_test_flow();
     repo.create(flow.clone()).await.unwrap();
@@ -355,8 +353,8 @@ async fn test_update_steps() {
 
 #[tokio::test]
 async fn test_update_trigger() {
-    let conn = setup_test_db();
-    let repo = SqliteArtifactFlowRepository::new(conn);
+    let db = setup_test_db();
+    let repo = SqliteArtifactFlowRepository::from_shared(db.shared_conn());
 
     let mut flow = create_test_flow();
     repo.create(flow.clone()).await.unwrap();
