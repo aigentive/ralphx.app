@@ -45,6 +45,7 @@ paths:
 | Large-suite runner | `cargo-nextest` is the adopted broad-runner for large-scale execution; targeted edit-loop runs still stay on `cargo test` |
 | Test layers | Keep fast repo/unit suites separate from slower integration/state-machine/git suites |
 | Internal support | Invest early in a thin shared test-support layer under `src-tauri/src/testing/` when setup repeats |
+| CI coverage split | CI runs broad lib coverage via `cargo nextest run --lib --profile ci` and doctests via separate `cargo test --doc` |
 
 ## Selective Commands
 
@@ -71,6 +72,7 @@ cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci
 | Broad CI-style lib run | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci` |
 | Pinpoint module/test validation | `cargo test --manifest-path src-tauri/Cargo.toml <filter> --lib` or `cargo test --manifest-path src-tauri/Cargo.toml --test <target>` |
 | Doctests | `cargo test --manifest-path src-tauri/Cargo.toml --doc` |
+| CI broad coverage | `cargo nextest run --manifest-path src-tauri/Cargo.toml --lib --profile ci && cargo test --manifest-path src-tauri/Cargo.toml --doc` |
 
 ## Nextest Groups
 
@@ -149,13 +151,13 @@ cargo test --manifest-path src-tauri/Cargo.toml 'infrastructure::sqlite::sqlite_
 | Seeing remaining `open_memory_connection()` calls after migration work | Check whether the suite is connection/formatting-only before converting it; optimize real migration-replay hotspots first |
 | Adding a new repo suite | Start from a suite-local `setup_*()` helper; only introduce a shared helper when repetition appears in multiple files |
 | Verifying a migration | Test the migration itself explicitly; do not force every repo test to replay the full migration chain |
-| Considering `cargo-nextest` or extra tooling | Document it as the scale target; until adopted in CI/dev commands, optimize around targeted Cargo runs and shared fixtures |
+| Considering `cargo-nextest` tuning | Adjust `.config/nextest.toml` groups/profiles instead of ad hoc command-line concurrency flags |
 
-## Future Adoption
+## Ongoing Tuning
 
-| Planned improvement | Why |
+| Improvement | Why |
 |---|---|
-| Adopt `cargo-nextest` as the default large-suite runner | Better concurrency control, retries, partitioning, and resource grouping for thousands of tests |
+| Tune `cargo-nextest` groups/profiles as suites grow | Better concurrency control, retries, partitioning, and resource grouping for thousands of tests |
 | Add shared seed helpers for common row graphs | Removes repeated SQL and makes suite setup cheaper to maintain |
 | Group resource-sensitive tests explicitly | Prevent DB/file/git-heavy tests from competing with fast unit coverage |
 
