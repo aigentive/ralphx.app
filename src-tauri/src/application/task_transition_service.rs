@@ -1347,6 +1347,66 @@ impl<R: Runtime> TaskTransitionService<R> {
                             }
                         }
                     }
+                } else if matches!(&e, AppError::ReviewWorktreeMissing) {
+                    use crate::domain::state_machine::machine::State;
+
+                    tracing::warn!(
+                        task_id = task_id.as_str(),
+                        from = auto_status.as_str(),
+                        "ReviewWorktreeMissing during auto-transition on_enter — routing to Escalated"
+                    );
+
+                    handler.on_exit(&auto_state, &State::Escalated).await;
+
+                    // Re-fetch task and update to Escalated with TOCTOU safety
+                    if let Ok(Some(mut escalated_task)) = self.task_repo.get_by_id(task_id).await {
+                        escalated_task.internal_status = InternalStatus::Escalated;
+                        escalated_task.touch();
+
+                        match self
+                            .task_repo
+                            .update_with_expected_status(&escalated_task, auto_status)
+                            .await
+                        {
+                            Ok(false) => {
+                                tracing::info!(
+                                    task_id = task_id.as_str(),
+                                    expected = auto_status.as_str(),
+                                    "Task already transitioned by another caller, skipping Escalated overwrite"
+                                );
+                            }
+                            Err(update_err) => {
+                                tracing::error!(error = %update_err, "Failed to persist Escalated status after ReviewWorktreeMissing");
+                            }
+                            Ok(true) => {
+                                // Record corrective transition in history
+                                let _ = self
+                                    .task_repo
+                                    .persist_status_change(
+                                        task_id,
+                                        auto_status,
+                                        InternalStatus::Escalated,
+                                        "system",
+                                    )
+                                    .await;
+
+                                // Emit corrective event for UI
+                                if let Some(ref handle) = self._app_handle {
+                                    let _ = handle.emit(
+                                        "task:event",
+                                        serde_json::json!({
+                                            "type": "status_changed",
+                                            "taskId": task_id.as_str(),
+                                            "from": auto_status.as_str(),
+                                            "to": "escalated",
+                                            "changedBy": "system",
+                                            "reason": "ReviewWorktreeMissing during auto-transition",
+                                        }),
+                                    );
+                                }
+                            }
+                        }
+                    }
                 }
             }
             tracing::debug!(?auto_state, "Auto-transition on_enter complete");

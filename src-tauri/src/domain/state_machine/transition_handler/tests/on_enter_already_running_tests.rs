@@ -169,6 +169,12 @@ async fn reviewing_double_on_enter_agent_already_running_is_noop() {
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
 
+    // Set worktree_path to an existing dir so the worktree guard passes
+    let temp_dir = std::env::temp_dir().to_string_lossy().to_string();
+    let mut task_stored = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    task_stored.worktree_path = Some(temp_dir);
+    task_repo.update(&task_stored).await.unwrap();
+
     let mut project = Project::new(
         "test-project".to_string(),
         "/tmp/nonexistent-already-running-review".to_string(),
@@ -389,6 +395,13 @@ async fn reviewing_genuine_error_is_not_propagated() {
     task.internal_status = InternalStatus::Reviewing;
     let task_id = task.id.clone();
     task_repo.create(task).await.unwrap();
+
+    // Set worktree_path to an existing dir so the worktree guard passes and
+    // execution reaches send_message (which will fail due to set_available(false))
+    let temp_dir = std::env::temp_dir().to_string_lossy().to_string();
+    let mut task_stored = task_repo.get_by_id(&task_id).await.unwrap().unwrap();
+    task_stored.worktree_path = Some(temp_dir);
+    task_repo.update(&task_stored).await.unwrap();
 
     let mut project = Project::new(
         "test-project".to_string(),
