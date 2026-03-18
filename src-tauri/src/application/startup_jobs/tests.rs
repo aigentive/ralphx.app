@@ -482,6 +482,7 @@ async fn test_pending_review_auto_transitions_on_startup() {
 
     let mut task = Task::new(project.id.clone(), "PendingReview Task".to_string());
     task.internal_status = InternalStatus::PendingReview;
+    task.worktree_path = Some(std::env::temp_dir().to_string_lossy().to_string());
     let task_id = task.id.clone();
     app_state.task_repo.create(task).await.unwrap();
 
@@ -718,6 +719,7 @@ async fn test_qa_passed_auto_transitions_on_startup() {
 
     let mut task = Task::new(project.id.clone(), "QaPassed Task".to_string());
     task.internal_status = InternalStatus::QaPassed;
+    task.worktree_path = Some(std::env::temp_dir().to_string_lossy().to_string());
     let task_id = task.id.clone();
     app_state.task_repo.create(task).await.unwrap();
 

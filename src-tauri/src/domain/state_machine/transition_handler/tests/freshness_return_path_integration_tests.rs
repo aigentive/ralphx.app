@@ -84,6 +84,8 @@ fn make_merging_task_with_freshness(
     let mut task = Task::new(project_id.clone(), title.to_string());
     task.internal_status = InternalStatus::Merging;
     task.metadata = Some(meta.to_string());
+    // Set worktree_path so on_enter(Reviewing) worktree guard passes on auto-transitions
+    task.worktree_path = Some(std::env::temp_dir().to_string_lossy().to_string());
     task
 }
 

@@ -4,7 +4,7 @@
 use std::sync::Arc;
 
 use tauri::{Emitter, Runtime};
-use tracing::{info, warn};
+use tracing::{error, info, warn};
 
 use crate::application::chat_service::{MergeAutoCompleteContext, reconcile_merge_auto_complete};
 use crate::application::interactive_process_registry::InteractiveProcessKey;
@@ -756,7 +756,22 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 .record_auto_retry_metadata(task, status, retry_count + 1)
                 .await
             {
-                warn!(task_id = task.id.as_str(), error = %e, "Failed to record execution retry metadata");
+                error!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to persist execution retry count — escalating to prevent infinite loop"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        RecoveryContext::Execution,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::Transition(InternalStatus::Failed),
+                            reason: Some(format!("Retry metadata write failed: {}", e)),
+                        },
+                    )
+                    .await;
             }
         }
 
@@ -1264,6 +1279,37 @@ impl<R: Runtime> ReconciliationRunner<R> {
             decision
         };
 
+        // Pre-check: if reviewer spawn failure count has exhausted the retry budget, escalate immediately
+        if decision.action == RecoveryActionKind::ExecuteEntryActions {
+            let spawn_failure_count = task.metadata
+                .as_deref()
+                .and_then(|s| serde_json::from_str::<serde_json::Value>(s).ok())
+                .and_then(|v| v.get("reviewer_spawn_failure_count").and_then(|c| c.as_u64()))
+                .unwrap_or(0) as u32;
+            if spawn_failure_count >= reconciliation_config().reviewing_max_retries as u32 {
+                warn!(
+                    task_id = task.id.as_str(),
+                    spawn_failure_count = spawn_failure_count,
+                    max = reconciliation_config().reviewing_max_retries,
+                    "Reviewer spawn failure count exhausted retry budget — escalating to Escalated"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        RecoveryContext::Review,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::Transition(InternalStatus::Escalated),
+                            reason: Some(format!(
+                                "Reviewer spawn failed {} times — escalating for manual review",
+                                spawn_failure_count
+                            )),
+                        },
+                    )
+                    .await;
+            }
+        }
+
         // E7: Enforce retry limit for review re-spawns
         if decision.action == RecoveryActionKind::ExecuteEntryActions {
             let retry_count = Self::auto_retry_count_for_status(task, status);
@@ -1293,7 +1339,22 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 .record_auto_retry_metadata(task, status, retry_count + 1)
                 .await
             {
-                warn!(task_id = task.id.as_str(), error = %e, "Failed to record review retry metadata");
+                error!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to persist review retry count — escalating to prevent infinite loop"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        RecoveryContext::Review,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::Transition(InternalStatus::Escalated),
+                            reason: Some(format!("Retry metadata write failed: {}", e)),
+                        },
+                    )
+                    .await;
             }
         }
 
@@ -1386,7 +1447,22 @@ impl<R: Runtime> ReconciliationRunner<R> {
                 .record_auto_retry_metadata(task, status, retry_count + 1)
                 .await
             {
-                warn!(task_id = task.id.as_str(), error = %e, "Failed to record QA retry metadata");
+                error!(
+                    task_id = task.id.as_str(),
+                    error = %e,
+                    "Failed to persist QA retry count — escalating to prevent infinite loop"
+                );
+                return self
+                    .apply_recovery_decision(
+                        task,
+                        status,
+                        context,
+                        RecoveryDecision {
+                            action: RecoveryActionKind::Transition(InternalStatus::QaFailed),
+                            reason: Some(format!("Retry metadata write failed: {}", e)),
+                        },
+                    )
+                    .await;
             }
         }
 

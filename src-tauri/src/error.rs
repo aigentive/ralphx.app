@@ -48,6 +48,9 @@ pub enum AppError {
     #[error("Branch freshness conflict: branches need updating before execution can proceed")]
     BranchFreshnessConflict,
 
+    #[error("Review worktree missing: worktree directory does not exist")]
+    ReviewWorktreeMissing,
+
     #[error("Duplicate pull request: branch already has an open PR")]
     DuplicatePr,
 

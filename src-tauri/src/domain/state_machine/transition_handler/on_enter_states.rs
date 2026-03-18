@@ -1017,7 +1017,31 @@ impl<'a> super::TransitionHandler<'a> {
                                         );
                                     }
                                 }
+                            } else {
+                                tracing::error!(
+                                    task_id = task_id_str,
+                                    worktree = %wt_path.display(),
+                                    "Reviewer spawn blocked: worktree directory does not exist"
+                                );
+                                // Persist flag in task metadata
+                                let mut task_meta: serde_json::Value = task
+                                    .metadata
+                                    .as_deref()
+                                    .and_then(|s| serde_json::from_str(s).ok())
+                                    .unwrap_or_else(|| serde_json::json!({}));
+                                task_meta["worktree_missing_at_review"] = serde_json::json!(true);
+                                if let Err(me) = task_repo.update_metadata(&task_id_typed, Some(task_meta.to_string())).await {
+                                    tracing::warn!(task_id = task_id_str, error = %me, "Failed to persist worktree_missing_at_review metadata");
+                                }
+                                return Err(crate::error::AppError::ReviewWorktreeMissing);
                             }
+                        } else {
+                            // worktree_path is None
+                            tracing::error!(
+                                task_id = task_id_str,
+                                "Reviewer spawn blocked: task has no worktree_path set"
+                            );
+                            return Err(crate::error::AppError::ReviewWorktreeMissing);
                         }
                     }
                 }
@@ -1066,6 +1090,12 @@ impl<'a> super::TransitionHandler<'a> {
                     }
                     Err(e) => {
                         tracing::error!(task_id = task_id, error = %e, "Failed to spawn reviewer agent");
+                        record_reviewer_spawn_failure(
+                            &self.machine.context.services.task_repo,
+                            task_id,
+                            &e.to_string(),
+                        )
+                        .await;
                     }
                 }
             }
@@ -2015,6 +2045,56 @@ async fn record_merger_spawn_failure(
                 max_retries,
             );
         }
+    }
+}
+
+/// Record a reviewer agent spawn failure in task metadata.
+///
+/// Uses flat JSON fields: reviewer_spawn_failure_count, last_reviewer_spawn_error,
+/// reviewer_spawn_failed_at. The reconciler reads reviewer_spawn_failure_count
+/// to detect when the retry budget is exhausted and escalate.
+async fn record_reviewer_spawn_failure(
+    task_repo: &Option<std::sync::Arc<dyn crate::domain::repositories::TaskRepository>>,
+    task_id: &str,
+    error: &str,
+) {
+    let Some(repo) = task_repo else { return };
+    let tid = crate::domain::entities::TaskId::from_string(task_id.to_string());
+    let Ok(Some(task)) = repo.get_by_id(&tid).await else {
+        return;
+    };
+
+    let mut meta: serde_json::Value = task
+        .metadata
+        .as_deref()
+        .and_then(|s| serde_json::from_str(s).ok())
+        .unwrap_or_else(|| serde_json::json!({}));
+
+    let current_count = meta
+        .get("reviewer_spawn_failure_count")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    let new_count = current_count + 1;
+
+    meta["reviewer_spawn_failure_count"] = serde_json::json!(new_count);
+    meta["last_reviewer_spawn_error"] = serde_json::json!(error);
+    meta["reviewer_spawn_failed_at"] =
+        serde_json::json!(chrono::Utc::now().to_rfc3339());
+
+    let tid2 = crate::domain::entities::TaskId::from_string(task_id.to_string());
+    if let Err(e) = repo.update_metadata(&tid2, Some(meta.to_string())).await {
+        tracing::warn!(
+            task_id = task_id,
+            error = %e,
+            "Failed to persist reviewer spawn failure metadata"
+        );
+    } else {
+        tracing::warn!(
+            task_id = task_id,
+            count = new_count,
+            "Recorded reviewer spawn failure ({}); reconciler will escalate when retry budget is exhausted",
+            new_count,
+        );
     }
 }
 

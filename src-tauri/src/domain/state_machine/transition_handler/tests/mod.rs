@@ -67,6 +67,9 @@ mod orchestration_chain_tests;
 // Covers Fix 2 (commit 189e8eaf): AttemptFailed events + retry budget exhaustion
 mod spawn_failure_recovery_tests;
 
+// Tests for reviewer spawn failure recovery: on_enter(Reviewing) with missing worktree or failing chat service
+mod reviewer_spawn_failure_tests;
+
 // Tests for was_queued guard in on_enter for all 4 agent-spawning states
 // RC#2: double on_enter (Ok(was_queued: true)) returns no-op instead of recording spawn failure
 mod on_enter_already_running_tests;

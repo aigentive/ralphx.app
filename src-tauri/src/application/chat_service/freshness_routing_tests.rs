@@ -55,6 +55,8 @@ fn build_transition_service(
 }
 
 /// Create a task with the given metadata JSON and insert it into the repo.
+/// Sets worktree_path to temp_dir so the on_enter(Reviewing) worktree guard passes
+/// when auto-transitions fire through the review pipeline.
 async fn insert_task_with_metadata(
     repo: &Arc<dyn TaskRepository>,
     project_id: ProjectId,
@@ -62,6 +64,7 @@ async fn insert_task_with_metadata(
 ) -> Task {
     let mut task = Task::new(project_id, "test task".to_owned());
     task.metadata = metadata.map(|v| v.to_string());
+    task.worktree_path = Some(std::env::temp_dir().to_string_lossy().to_string());
     repo.create(task.clone()).await.expect("Failed to create task");
     task
 }
@@ -670,6 +673,8 @@ async fn test_integration_full_chain_reviewing_through_freshness_conflict_return
     // --- Phase 1: Task starts in Reviewing ---
     let mut task = Task::new(project.id.clone(), "Full chain test".to_owned());
     task.internal_status = InternalStatus::Reviewing;
+    // Set worktree_path so on_enter(Reviewing) worktree guard passes on auto-transitions
+    task.worktree_path = Some(std::env::temp_dir().to_string_lossy().to_string());
     app_state
         .task_repo
         .create(task.clone())

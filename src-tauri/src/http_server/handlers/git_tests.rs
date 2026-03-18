@@ -1234,12 +1234,14 @@ mod freshness_routing_integration {
             .unwrap();
 
         // The transition goes to PendingReview (auto-route from Reviewing origin).
-        // In the in-memory test environment the on_enter for PendingReview may
-        // auto-advance to Reviewing, so we accept both.
+        // PendingReview auto-advances to Reviewing. If the task has no worktree_path
+        // (as in this test), on_enter(Reviewing) returns ReviewWorktreeMissing which
+        // routes to Escalated. All three outcomes indicate the freshness intercept fired.
         assert!(
             task.internal_status == InternalStatus::PendingReview
-                || task.internal_status == InternalStatus::Reviewing,
-            "Task must be in PendingReview or Reviewing after freshness routing. Got: {:?}",
+                || task.internal_status == InternalStatus::Reviewing
+                || task.internal_status == InternalStatus::Escalated,
+            "Task must be in PendingReview, Reviewing, or Escalated after freshness routing. Got: {:?}",
             task.internal_status
         );
 
